@@ -1,6 +1,6 @@
 # Project allows document indexing in vector database and then search
 
-Currently, supports Jira (a ticket is document) and Confluence (a page is document). 
+Currently, supports Jira (a ticket is a document) and Confluence (a page is a document). 
 Provides abstraction to add more sources.
 Supports MCP protocol to use the vector search as a tool in AI agents.
 
@@ -9,6 +9,8 @@ Uses:
 - "sentence-transformers" lib (https://pypi.org/project/sentence-transformers/) for embeddings.
 
 Despite the used dependencies the project allows easy switch to other technologies.
+
+Please check this article for more context: https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba
 
 ## Hot to set up and use:
 
@@ -91,6 +93,11 @@ Add MCP configuration like:
 }
 ```
 
+If you use VS code IDE and GitHub Copilot, you can add the configuration into `.vscode/mcp.json` file in root of you project.
+You can check more details on youtube:
+- https://www.youtube.com/watch?v=VePxCcF99w4
+- https://www.youtube.com/watch?v=iS25RFups4A
+
 Notes:
 - please update ${collectionName} to real collection name (the one used during collection creation), for example: "confluence" or "jira"
 - please update ${fullPathToRootProjectFolder} to real full path to this project root folder.
@@ -108,4 +115,4 @@ Please check `./main/core/documents_collection_searcher.py` code to find most of
 Collection folder structure:
 - `documents` folder contains documents read by `reader` from `./main/sources` package and converted by `converter` from `./main/sources` package.
 - `indexes` folder contains available indexes (usually just one index but multiple are also supported);
-- `manifest.json` filde contains information about index such as (name, last update time, reader details, indexes)
+- `manifest.json` file contains information about index such as (name, last update time, reader details, indexes)
