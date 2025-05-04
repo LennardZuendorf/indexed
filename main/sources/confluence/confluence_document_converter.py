@@ -58,7 +58,8 @@ class ConfluenceDocumentConverter:
         return soup.get_text(separator=os.linesep, strip=True) 
 
     def __build_path_of_titles(self, document):
-        return " -> ".join([ ancestor["title"] for ancestor in document['ancestors'] if "title" in ancestor ] + [document['title']])
+        page_title = [document['title']] if 'title' in document else []
+        return " -> ".join([ ancestor["title"] for ancestor in document['ancestors'] if "title" in ancestor ] + page_title)
     
     def __build_url(self, page):
         base_url = page['_links']['self'].split("/rest/api/")[0]
