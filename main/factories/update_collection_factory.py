@@ -50,8 +50,8 @@ def __create_reader_and_converter(manifest):
 
 def __create_jira_reader_and_converter(manifest):
     token = os.environ.get('JIRA_TOKEN')
-    login=os.environ.get('JIRA_LOGIN')
-    password=os.environ.get('JIRA_PASSWORD')
+    login = os.environ.get('JIRA_LOGIN')
+    password = os.environ.get('JIRA_PASSWORD')
 
     update_date = __calculate_update_date(manifest)
     query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
@@ -67,8 +67,8 @@ def __create_jira_reader_and_converter(manifest):
 
 def __create_conflence_reader_and_converter(manifest):
     token = os.environ.get('CONF_TOKEN')
-    login=os.environ.get('CONF_LOGIN')
-    password=os.environ.get('CONF_PASSWORD')
+    login = os.environ.get('CONF_LOGIN')
+    password = os.environ.get('CONF_PASSWORD')
 
     if not token and (not login or not password):
         raise ValueError("Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided.")

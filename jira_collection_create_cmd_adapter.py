@@ -13,8 +13,8 @@ ap.add_argument("-indexers", "--indexers", required=False, default=["indexer_FAI
 args = vars(ap.parse_args())
 
 token = os.environ.get('JIRA_TOKEN')
-login=os.environ.get('JIRA_LOGIN')
-password=os.environ.get('JIRA_PASSWORD')
+login = os.environ.get('JIRA_LOGIN')
+password = os.environ.get('JIRA_PASSWORD')
 
 if not token and (not login or not password):
     raise ValueError("Either 'token' ('JIRA_TOKEN' env variable) or both 'login' ('JIRA_LOGIN' env variable) and 'password' ('JIRA_PASSWORD' env variable) must be provided.")
