@@ -8,4 +8,4 @@ args = vars(ap.parse_args())
 
 create_collection_updator = create_collection_updator(args['collection'])
 
-create_collection_updator.update_collection()
+create_collection_updator.run()

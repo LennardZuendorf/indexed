@@ -33,4 +33,4 @@ confluence_collection_creator = create_collection_creator(collection_name=args['
                                                           document_reader=confluence_document_reader,
                                                           document_converter=confluence_document_converter)
 
-confluence_collection_creator.update_collection()
+confluence_collection_creator.run()

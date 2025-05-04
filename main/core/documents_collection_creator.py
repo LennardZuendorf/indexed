@@ -28,7 +28,7 @@ class DocumentCollectionCreator:
         self.persister = persister
         self.indexing_batch_size = indexing_batch_size
 
-    def update_collection(self):
+    def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
             self.__create_collection()
             return

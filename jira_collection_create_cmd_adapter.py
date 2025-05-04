@@ -34,4 +34,4 @@ jira_collection_creator = create_collection_creator(collection_name=args['collec
                                                      document_converter=jira_document_converter)
 
 
-jira_collection_creator.update_collection()
+jira_collection_creator.run()
