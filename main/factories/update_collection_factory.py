@@ -82,6 +82,6 @@ def __create_conflence_reader_and_converter(manifest):
                                           login=login, 
                                           password=password, 
                                           batch_size=manifest['reader']['batchSize'],
-                                          read_comments=manifest['reader']['readComments'],)
+                                          read_all_comments=manifest['reader']['readAllComments'],)
     converter = ConfluenceDocumentConverter()
     return reader,converter

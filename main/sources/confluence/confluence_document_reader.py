@@ -1,5 +1,4 @@
 import requests
-import json
 
 from ...utils.retry import execude_with_retry
 from ...utils.batch import read_items_in_batches
@@ -15,7 +14,7 @@ class ConfluenceDocumentReader:
                  number_of_retries=3, 
                  retry_delay=1, 
                  max_skipped_items_in_row=5,
-                 read_comments=False):
+                 read_all_comments=False):
         # "token" or "login" and "password" must be provided
         if not token and (not login or not password):
             raise ValueError("Either 'token' or both 'login' and 'password' must be provided.")
@@ -26,18 +25,18 @@ class ConfluenceDocumentReader:
         self.login = login
         self.password = password
         self.batch_size = batch_size
-        self.expand = "body.storage,ancestors,version,children.comment" if read_comments else "body.storage,ancestors,version"
+        # Confluence has hierarchical comments, we can read first level by adding "children.comment.body.storage" to "expand" parameter
+        # but to read all comments we need to make additional request with "depth=all" parameter
+        self.expand = "body.storage,ancestors,version,children.comment" if read_all_comments else "body.storage,ancestors,version,children.comment.body.storage"
         self.number_of_retries = number_of_retries
         self.retry_delay = retry_delay
         self.max_skipped_items_in_row = max_skipped_items_in_row
-        self.read_comments = read_comments
+        self.read_all_comments = read_all_comments
     
     def read_all_documents(self):
         for page in self.__read_items():
             yield {
                 "page": page,
-                # Confluence has hierarchical comments, we can read first level by adding "children.comment.body.storage" to "expand" parameter
-                # but to read all comments we need to make additional request with "depth=all" parameter
                 "comments": self.__read_comments(page)
             }
 
@@ -59,15 +58,18 @@ class ConfluenceDocumentReader:
             "query": self.query,
             "expand": self.expand,
             "batchSize": self.batch_size,
-            "readComments": self.read_comments,
+            "readAllComments": self.read_all_comments,
         }
 
     def __add_url_prefix(self, relative_path):
         return self.base_url + relative_path
     
     def __read_comments(self, page):
-        if not self.read_comments or page['children']['comment']['size'] == 0:
+        if page['children']['comment']['size'] == 0:
             return []
+
+        if not self.read_all_comments:
+            return page['children']['comment']['results']
 
         read_batch_func = lambda start_at, batch_size: self.__request(
             self.__add_url_prefix(f"/rest/api/content/{page['id']}/child/comment"),
