@@ -76,7 +76,7 @@ Add MCP configuration like:
 {
     "servers": {
         ...
-        "seach_${collectionName}_stdio": {
+        "search_${collectionName}_stdio": {
             "type": "stdio",
             "command": "uv",
             "args": [

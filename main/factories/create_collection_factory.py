@@ -6,8 +6,8 @@ from main.persisters.disk_persister import DiskPersister
 def create_collection_creator(collection_name, indexers, document_reader, document_converter):
     cache_disk_persister = DiskPersister(base_path="./data/caches")
 
-    document_cached_reader = CacheReaderDecorator(reader=document_reader, 
-                                                             persister=cache_disk_persister)
+    document_cached_reader = CacheReaderDecorator(reader=document_reader,
+                                                  persister=cache_disk_persister)
 
     document_indexers = [create_indexer(indexer_name) for indexer_name in indexers]
 
