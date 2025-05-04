@@ -20,8 +20,6 @@ password=os.environ.get('CONF_PASSWORD')
 if not token and (not login or not password):
     raise ValueError("Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided.")
 
-print(f"Using readAllComments: {args['readOnlyFirstLevelComments']}")
-
 confluence_document_reader = ConfluenceDocumentReader(base_url=args['url'],
                                                       query=args['cql'],
                                                       token=token,
