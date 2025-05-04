@@ -14,8 +14,8 @@ ap.add_argument("-readOnlyFirstLevelComments", "--readOnlyFirstLevelComments", a
 args = vars(ap.parse_args())
 
 token = os.environ.get('CONF_TOKEN')
-login=os.environ.get('CONF_LOGIN')
-password=os.environ.get('CONF_PASSWORD')
+login = os.environ.get('CONF_LOGIN')
+password = os.environ.get('CONF_PASSWORD')
 
 if not token and (not login or not password):
     raise ValueError("Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided.")
