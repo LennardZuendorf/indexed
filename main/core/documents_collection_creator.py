@@ -138,12 +138,15 @@ class DocumentCollectionCreator:
 
         last_modified_document_time = None
 
-        for document_pathes in wrap_iterator_with_progress_bar(self.__get_file_path_batches(document_ids), 
-                                                               progress_bar_name="Indexing documents"):
+        for batch_document_ids in wrap_iterator_with_progress_bar(self.__batch_items(document_ids,
+                                                                                     self.indexing_batch_size), 
+                                                                  progress_bar_name="Indexing documents"):
             items_to_index = []
             index_item_ids = []
 
-            for document_path in document_pathes:
+            for document_id in batch_document_ids:
+                document_path = f"{self.collection_name}/documents/{document_id}.json"
+
                 number_of_documents += 1
 
                 converted_document = json.loads(self.persister.read_text_file(document_path))
@@ -193,10 +196,6 @@ class DocumentCollectionCreator:
 
     def __build_index_base_path(self, indexer):
         return f"{self.collection_name}/indexes/{indexer.get_name()}"
-
-    def __get_file_path_batches(self, document_ids):
-        file_paths = [f"{self.collection_name}/documents/{document_id}.json" for document_id in document_ids]
-        return self.__batch_items(file_paths, self.indexing_batch_size)
 
     def __batch_items(self, items, batch_size):
         return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]

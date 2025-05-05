@@ -35,7 +35,7 @@ def read_items_in_batches(read_batch_func,
         items = fetch_items_from_result_func(read_result)
         total = fetch_total_from_result_func(read_result)
 
-        print(f"New batch with {len(items)} {itemsName} were read, alredy read {start_at + len(items)} from {total}")
+        print(f"New batch with {len(items)} {itemsName} was read, alredy read {start_at + len(items)} from {total}")
 
         for item in items:
             yield item
