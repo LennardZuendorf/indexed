@@ -1,7 +1,7 @@
-# Project allows document indexing in vector database and then search
+# Project allows document indexing in vector database and then search (supports Jira and Confluence)
 
-Currently, supports Jira (a ticket is a document) and Confluence (a page is a document).
-Does NOT send any data to any third party systems. All data are processed locally and stored locally (except of cause the case when you use it as MCP with non local AI agent).
+Currently, it supports Jira (a ticket is a document) and Confluence (a page is a document).
+Does NOT send any data to any third-party systems. All data are processed locally and stored locally (except in the case when you use it as MCP with a non-local AI agent).
 Supports MCP protocol to use the vector search as a tool in AI agents.
 Provides abstraction to add more data sources.
 
@@ -9,47 +9,47 @@ Uses:
 - "FAISS" lib (https://github.com/facebookresearch/faiss) for vector search;
 - "sentence-transformers" lib (https://pypi.org/project/sentence-transformers/) for embeddings.
 
-Despite the used dependencies the project allows easy switch to other technologies.
+Despite the used dependencies, the project allows easy switching to other technologies.
 
 Please check this article for more context: https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba
 
 ## Common use case
-1) You create a collection by dedicated script (there are separate scripts for Jira and Confluence cases). During the collection creation, data are loaded into your local machine and then indexed. Results are stored in a subfolder of `./data/collections` with name that you specify via "--collection ${collectionName}" parameter. So collection is just a folder with all needed information for search, such as: loaded documents, index files, metadata etc. Ones a collection is created, it can be used for search and update. The creation process can take a while, depends from number of documents your collection consists from and local machine resources;
-2) After some time you may want to update existing collection to get new data, you can do it via dedicated script. You will need to specify collection name used during collection creation. Collection update reads and reindexes only new/updated ducuments, so it should be much faster than collection creation.
-3) You can search in existed collection by dedicated script. You will need to specify a collection name used during collection creation.
-4) You can setup MCP tool for existed collection, so AI agent will be able to use the search.
+1) You create a collection by dedicated script (there are separate scripts for Jira and Confluence cases). During the collection creation, data are loaded into your local machine and then indexed. Results are stored in a subfolder of `./data/collections` with name that you specify via the "--collection ${collectionName}" parameter. So collection is just a folder with all needed information for search, such as: loaded documents, index files, metadata, etc. Once a collection is created, it can be used for search and update. The creation process can take a while; it depends on the number of documents your collection consists of and local machine resources.
+2) After some time, you may want to update existing collections to get new data, you can do it via a dedicated script. You will need to specify the collection name used during collection creation. Collection update reads and indexes only new/updated documents, so it should be much faster than collection creation.
+3) You can search in an existing collection by dedicated script.
+4) You can set up MCP tool for existing collections, so an AI agent will be able to use the search.
 
-You can create different collections for different use cases. For example, you can create a collection for all Confluence pages to do a general search and you can create a collection for pages from a specific Confluence space, so you will do more narrow search.
+You can create different collections for different use cases. For example, you can create a collection for all Confluence pages to do a general search, and you can create a collection for pages from a specific Confluence space, so you will do a more narrow search.
 
-## Hot to set up and use:
+## How to set up and use
 
 1) Clone the repository
 3) Install `uv`: https://docs.astral.sh/uv/
-4) Navigate to root project folder and run: `uv sync`
+4) Navigate to the root project folder and run: `uv sync`
 
 ### To create collection for Confluence:
 
-1) Set CONF_TOKEN env variable with your Confluence Bearer token (optionally you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but token variant is more recommended)
+1) Set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
 2) Run command like:
 ```
 uv run confluence_collection_create_cmd_adapter.py --collection "confluence" --url "${baseConfluenceUrl}" --cql "${confluenceQuery}"
 ```
 
 Notes:
-- you can use different value for "collection" parameter, but you will need to use same value during collection update and search. It defines collection name and all collection data will be stored in folder with the name in `./data/collections`;
+- you can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with the name under `./data/collections`;
 - please update ${baseConfluenceUrl} to real Confluence base url, example: https://confluence.example.com ;
-- please updae ${confluenceQuery} to real Confluence query, example: (type = 'page') AND (space = 'MySpaceName') AND (created >= '2024-01-14' OR lastModified >= '2024-01-14')
+- please update ${confluenceQuery} to real Confluence query, example: (type = 'page') AND (space = 'MySpace Name') AND (created >= '2024-01-14' OR lastModified >= '2024-01-14')
 
 ### To create collection for Jira:
 
-1) Set JIRA_TOKEN env variable with your Jira Bearer token (optionally you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but token variant is more recommended)
+1) Set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
 2) Run command like:
 ```
 uv run jira_collection_create_cmd_adapter.py --collection "jira" --url "${baseJiraUrl}" --jql "${jiraQuery}"
 ```
 
 Notes:
-- you can use different value for "collection" parameter, but you will need to use same value during collection update and search. It defines collection name and all collection data will be stored in folder with the name in `./data/collections`;
+- you can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with the name under `./data/collections`;
 - please update ${baseJiraUrl} to real Jira base url, example: https://jira.example.com
 - please update ${jiraQuery} to real Jira query, example: project = PMCCP AND created >= -365d 
 
@@ -58,9 +58,9 @@ Notes:
 1) Collection update reads only new information, so it should be much faster than collection creation. 
 Collection update uses information from collection manifest file located in `./data/collections/${collectionName}/manifest.json`. 
 
-If you update Confluence collection: set CONF_TOKEN env variable with your Confluence Bearer token (optionally you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but token variant is more recommended).
+If you update Confluence collection: set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
 
-If you update Jira collection: set JIRA_TOKEN env variable with your Jira Bearer token (optionally you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but token variant is more recommended).
+If you update Jira collection: set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
 2) Run command like:
 ```
 uv run collection_update_cmd_adapter.py --collection "${collectionName}"
