@@ -10,7 +10,7 @@ mcp = FastMCP("documents-search")
 ap = argparse.ArgumentParser()
 ap.add_argument("-collection", "--collection", required=True, help="collaction name (will be used as root folder name)")
 ap.add_argument("-index", "--index", required=False, default="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2", help="index that will be used for search")
-ap.add_argument("-maxNumberOfResults", "--maxNumberOfResults", required=False, type=int, default=10, help="Max number of results to return")
+ap.add_argument("-maxNumberOfResults", "--maxNumberOfResults", required=False, type=int, default=15, help="Max number of results to return")
 args = vars(ap.parse_args())
 
 searcher = create_collection_searcher(collection_name=args['collection'], index_name=args['index'])
