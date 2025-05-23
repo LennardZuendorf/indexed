@@ -113,7 +113,12 @@ You can check more details on youtube:
 Notes:
 - please update ${collectionName} to real collection name (the one used during collection creation), for example: "confluence" or "jira"
 - please update ${fullPathToRootProjectFolder} to real full path to this project root folder.
-- it can be very usefull to increase number of returned results by setting "--maxNumberOfResults ${number}", bigger number - better search, but too big number breaks GitHub Copilot, probably it's just does not fit into model context window. For Jira the parameter can be set for example to 50-70, for Confluence it's better to keep it in range 10-30.
+- it can be usefull to increase number of returned results by setting "--maxNumberOfResults ${number}", bigger number - better search, but too big number breaks GitHub Copilot, probably it's just does not fit into model context window.
+
+Prompt examples:
+- "Find information about AI use cases, search info on Confluence, include all used links in response"
+- "Find information about PDP carousel, search info on Jira, include all used links in response"
+
 
 ## Collection structure
 Collection is a subfolder of `./data/collections` folder.
