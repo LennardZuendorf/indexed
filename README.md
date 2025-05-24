@@ -61,6 +61,7 @@ Collection update uses information from collection manifest file located in `./d
 If you update Confluence collection: set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
 
 If you update Jira collection: set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+
 2) Run command like:
 ```
 uv run collection_update_cmd_adapter.py --collection "${collectionName}"
@@ -78,7 +79,7 @@ uv run collection_search_cmd_adapter.py --collection "${collectionName}" --query
 
 Notes:
 - please update ${collectionName} to real collection name (the one used during collection creation), for example: "confluence" or "jira";
-- please update ${searchQuery} to test that you would like to search, for example: "How to set up react project locally";
+- please update ${searchQuery} to text that you would like to search, for example: "How to set up react project locally";
 - you can add "--includeMatchedChunksText" paramter to include matched chunks of a document text in search results.
 
 ### To set up MCP:
