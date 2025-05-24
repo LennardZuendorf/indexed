@@ -16,7 +16,10 @@ args = vars(ap.parse_args())
 
 searcher = create_collection_searcher(collection_name=args['collection'], index_name=args['index'])
 
-@mcp.tool(name=f"search_{args['collection']}", description="Search documents in the collection")
+tool_description = """The tool allows searching in collection of documents by vector search. 
+Each document contains 'url' field, if you consider a document as relevant to the query, always include the 'url' field in the response, put it close to the information used from the document"""
+
+@mcp.tool(name=f"search_{args['collection']}", description=tool_description)
 def search_documents(query: str) -> str:
     search_results = searcher.search(query, 
                                      max_number_of_chunks=args['maxNumberOfChunks'], 
