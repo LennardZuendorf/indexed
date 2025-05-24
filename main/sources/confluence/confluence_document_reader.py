@@ -20,7 +20,7 @@ class ConfluenceDocumentReader:
             raise ValueError("Either 'token' or both 'login' and 'password' must be provided.")
 
         self.base_url = base_url
-        self.query = query
+        self.query = ConfluenceDocumentReader.build_page_query(query)
         self.token = token
         self.login = login
         self.password = password
@@ -60,6 +60,13 @@ class ConfluenceDocumentReader:
             "batchSize": self.batch_size,
             "readAllComments": self.read_all_comments,
         }
+    
+    @staticmethod
+    def build_page_query(user_query):
+        if not user_query:
+            return "type=page"
+
+        return f'type=page AND ({user_query})'
 
     def __add_url_prefix(self, relative_path):
         return self.base_url + relative_path

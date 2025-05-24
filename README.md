@@ -38,7 +38,7 @@ uv run confluence_collection_create_cmd_adapter.py --collection "confluence" --u
 Notes:
 - you can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with the name under `./data/collections`;
 - please update ${baseConfluenceUrl} to real Confluence base url, example: https://confluence.example.com ;
-- please update ${confluenceQuery} to real Confluence query, example: (type = 'page') AND (space = 'MySpace Name') AND (created >= '2024-01-14' OR lastModified >= '2024-01-14')
+- please update ${confluenceQuery} to real Confluence query, example: (space = 'MySpace Name') AND (created >= '2024-01-14' OR lastModified >= '2024-01-14')
 
 ### To create collection for Jira:
 
