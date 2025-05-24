@@ -6,13 +6,22 @@ class DocumentCollectionSearcher:
         self.indexer = indexer
         self.persister = persister
 
-    def search(self, text, number_of_results=10, include_text_content=False, include_all_chunks_content=False, include_matched_chunks_content=False):
-        scores, indexes = self.indexer.search(text, number_of_results * 3)
+    def search(self, text, 
+               max_number_of_chunks=15, 
+               max_number_of_documents=None, 
+               include_text_content=False, 
+               include_all_chunks_content=False, 
+               include_matched_chunks_content=False):
+        scores, indexes = self.indexer.search(text, max_number_of_chunks)
+
+        results = self.__build_results(scores, indexes, include_text_content, include_all_chunks_content, include_matched_chunks_content)
+        if max_number_of_documents:
+            results = results[:max_number_of_documents]
 
         return {
             "collectionName": self.collection_name,
             "indexerName": self.indexer.get_name(),
-            "results": self.__build_results(scores, indexes, include_text_content, include_all_chunks_content, include_matched_chunks_content)[:number_of_results],
+            "results": results,
         }
 
     def __build_results(self, scores, indexes, include_text_content, include_all_chunks_content, include_matched_chunks_content):
