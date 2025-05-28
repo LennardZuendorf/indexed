@@ -23,7 +23,7 @@ class DocumentCollectionCreator:
         self.operation_type = operation_type
         self.collection_name = collection_name
         self.document_reader = document_reader
-        self.document_convertor = document_converter
+        self.document_converter = document_converter
         self.document_indexers = document_indexers
         self.persister = persister
         self.indexing_batch_size = indexing_batch_size
@@ -90,7 +90,7 @@ class DocumentCollectionCreator:
         document_ids = []
         for document in wrap_generator_with_progress_bar(self.document_reader.read_all_documents(), self.document_reader.get_number_of_documents(), 
                                                          progress_bar_name="Reading documents"):
-            for converted_document in self.document_convertor.convert(document):
+            for converted_document in self.document_converter.convert(document):
                 document_path = f"{self.collection_name}/documents/{converted_document['id']}.json"
                 self.persister.save_text_file(json.dumps(converted_document, indent=4), document_path)
                 document_ids.append(converted_document["id"])

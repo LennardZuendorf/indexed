@@ -8,13 +8,13 @@ from main.factories.search_collection_factory import create_collection_searcher
 mcp = FastMCP("documents-search")
 
 ap = argparse.ArgumentParser()
-ap.add_argument("-collection", "--collection", required=True, help="collaction name (will be used as root folder name)")
+ap.add_argument("-collection", "--collection", required=True, help="collection name (will be used as root folder name)")
 ap.add_argument("-index", "--index", required=False, default="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2", help="index that will be used for search")
 
 ap.add_argument("-maxNumberOfChunks", "--maxNumberOfChunks", required=False, type=int, default=100, help="Max number of text chunks in result")
 ap.add_argument("-maxNumberOfDocuments", "--maxNumberOfDocuments", required=False, type=int, default=None, help="Max number of documents in result")
 
-ap.add_argument("-includeFullText", "--includeFullText", action="store_true", required=False, default=False, help="If passed - full text content will be included in the search result. By default only matched chunks content is included. If passed, it's better to reduce --maxNumberOfChunks or set small --maxNumberOfDocuments like 10-30 to avoid too big response and breacking AI agent.")
+ap.add_argument("-includeFullText", "--includeFullText", action="store_true", required=False, default=False, help="If passed - full text content will be included in the search result. By default only matched chunks content is included. If passed, it's better to reduce --maxNumberOfChunks or set small --maxNumberOfDocuments like 10-30 to avoid too big response and breaking AI agent.")
 args = vars(ap.parse_args())
 
 searcher = create_collection_searcher(collection_name=args['collection'], index_name=args['index'])

@@ -11,7 +11,7 @@ from main.indexes.indexer_factory import load_indexer
 from main.core.documents_collection_creator import DocumentCollectionCreator, OPERATION_TYPE
 
 
-def create_collection_updator(collection_name):
+def create_collection_updater(collection_name):
     disk_persister = DiskPersister(base_path="./data/collections")
 
     if not disk_persister.is_path_exists(collection_name):
@@ -41,7 +41,7 @@ def __create_reader_and_converter(manifest):
         return __create_jira_reader_and_converter(manifest)
     
     if manifest['reader']['type'] == 'confluence':
-        reader, converter = __create_conflence_reader_and_converter(manifest)
+        reader, converter = __create_confluence_reader_and_converter(manifest)
 
         return [reader, converter]
 
@@ -65,7 +65,7 @@ def __create_jira_reader_and_converter(manifest):
     converter = JiraDocumentConverter()
     return reader,converter
 
-def __create_conflence_reader_and_converter(manifest):
+def __create_confluence_reader_and_converter(manifest):
     token = os.environ.get('CONF_TOKEN')
     login = os.environ.get('CONF_LOGIN')
     password = os.environ.get('CONF_PASSWORD')

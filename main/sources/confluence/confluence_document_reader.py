@@ -1,6 +1,6 @@
 import requests
 
-from ...utils.retry import execude_with_retry
+from ...utils.retry import execute_with_retry
 from ...utils.batch import read_items_in_batches
 
 class ConfluenceDocumentReader:
@@ -125,5 +125,5 @@ class ConfluenceDocumentReader:
             response.raise_for_status()
             return response.json()
 
-        return execude_with_retry(do_request, f"Requesting items with params: {params}", self.number_of_retries, self.retry_delay)
+        return execute_with_retry(do_request, f"Requesting items with params: {params}", self.number_of_retries, self.retry_delay)
 

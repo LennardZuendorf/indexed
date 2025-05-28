@@ -80,7 +80,7 @@ uv run collection_search_cmd_adapter.py --collection "${collectionName}" --query
 Notes:
 - please update ${collectionName} to real collection name (the one used during collection creation), for example: "confluence" or "jira";
 - please update ${searchQuery} to text that you would like to search, for example: "How to set up react project locally";
-- you can add "--includeMatchedChunksText" paramter to include matched chunks of a document text in search results.
+- you can add "--includeMatchedChunksText" parameter to include matched chunks of a document text in search results.
 
 ### To set up MCP:
 
@@ -114,7 +114,7 @@ You can check more details on youtube:
 Notes:
 - please update ${collectionName} to real collection name (the one used during collection creation), for example: "confluence" or "jira"
 - please update ${fullPathToRootProjectFolder} to real full path to this project root folder.
-- it can be usefull to increase number of returned matched text chunks by setting "--maxNumberOfChunks ${number}", bigger number - better search, but too big number breaks GitHub Copilot, probably it's just does not fit into model context window.
+- it can be useful to increase number of returned matched text chunks by setting "--maxNumberOfChunks ${number}", bigger number - better search, but too big number breaks GitHub Copilot, probably it's just does not fit into model context window.
 
 Prompt examples:
 - "Find information about AI use cases, search info on Confluence, include all used links in response"
@@ -123,7 +123,7 @@ Prompt examples:
 
 ## Collection structure
 Collection is a subfolder of `./data/collections` folder.
-Collection folder contains all files needed for performing vectore search in the collection.
+Collection folder contains all files needed for performing vector search in the collection.
 
 Collection folder consists from:
 - `documents` folder contains documents read by `reader` from `./main/sources` package and converted by `converter` from `./main/sources` package.

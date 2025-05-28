@@ -1,6 +1,6 @@
 import time
 
-def execude_with_retry(func, func_identifier, retries=3, delay=1):
+def execute_with_retry(func, func_identifier, retries=3, delay=1):
     for attempt in range(retries):
         try:
             return func()

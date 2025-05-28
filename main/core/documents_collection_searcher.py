@@ -42,13 +42,13 @@ class DocumentCollectionSearcher:
                 }
 
                 if include_all_chunks_content or include_text_content:
-                    dicument = self.__get_document(mapping["documentPath"])
+                    document = self.__get_document(mapping["documentPath"])
 
                     if include_all_chunks_content:
-                        result[mapping["documentId"]]["allChunks"] = dicument["chunks"]
+                        result[mapping["documentId"]]["allChunks"] = document["chunks"]
 
                     if include_text_content:
-                        result[mapping["documentId"]]["text"] = dicument["text"]
+                        result[mapping["documentId"]]["text"] = document["text"]
 
             else:
                 result[mapping["documentId"]]["matchedChunks"].append(self.__build_chunk_result(mapping, scores, result_number, include_matched_chunks_content))
