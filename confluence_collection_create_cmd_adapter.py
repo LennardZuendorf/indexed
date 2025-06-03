@@ -6,7 +6,7 @@ from main.sources.confluence.confluence_document_converter import ConfluenceDocu
 from main.factories.create_collection_factory import create_collection_creator
 
 ap = argparse.ArgumentParser()
-ap.add_argument("-url", "--url", required=True, help="confluence base url")
+ap.add_argument("-url", "--url", required=True, help="Confluence Server/Data Center base url (e.g., https://confluence.example.com). For Cloud, use confluence_cloud_collection_create_cmd_adapter.py")
 ap.add_argument("-cql", "--cql", required=True, help="confluence query to get pages for indexing")
 ap.add_argument("-collection", "--collection", required=True, help="collection name (will be used as root folder name)")
 ap.add_argument("-indexers", "--indexers", required=False, default=["indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"], help="list on indexer names", nargs='+')
@@ -19,6 +19,9 @@ password = os.environ.get('CONF_PASSWORD')
 
 if not token and (not login or not password):
     raise ValueError("Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided.")
+
+if args['url'].endswith('.atlassian.net'):
+    raise ValueError("URL must be a Confluence Server/Data Center URL (usually ends with .com). For Confluence Cloud, use confluence_cloud_collection_create_cmd_adapter.py instead.")
 
 confluence_document_reader = ConfluenceDocumentReader(base_url=args['url'],
                                                       query=args['cql'],

@@ -6,7 +6,9 @@ from main.persisters.disk_persister import DiskPersister
 from main.sources.jira.jira_document_reader import JiraDocumentReader
 from main.sources.jira.jira_document_converter import JiraDocumentConverter
 from main.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
+from main.sources.confluence.confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from main.sources.confluence.confluence_document_converter import ConfluenceDocumentConverter
+from main.sources.confluence.confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
 from main.indexes.indexer_factory import load_indexer
 from main.core.documents_collection_creator import DocumentCollectionCreator, OPERATION_TYPE
 
@@ -42,10 +44,13 @@ def __create_reader_and_converter(manifest):
     
     if manifest['reader']['type'] == 'confluence':
         reader, converter = __create_confluence_reader_and_converter(manifest)
-
+        return [reader, converter]
+    
+    if manifest['reader']['type'] == 'confluenceCloud':
+        reader, converter = __create_confluence_cloud_reader_and_converter(manifest)
         return [reader, converter]
 
-    raise Exception(f"Unknown document reader type: {manifest['type']}")
+    raise Exception(f"Unknown document reader type: {manifest['reader']['type']}")
 
 
 def __create_jira_reader_and_converter(manifest):
@@ -84,4 +89,23 @@ def __create_confluence_reader_and_converter(manifest):
                                           batch_size=manifest['reader']['batchSize'],
                                           read_all_comments=manifest['reader']['readAllComments'],)
     converter = ConfluenceDocumentConverter()
+    return reader,converter
+
+def __create_confluence_cloud_reader_and_converter(manifest):
+    email = os.environ.get('ATLASSIAN_EMAIL')
+    api_token = os.environ.get('ATLASSIAN_TOKEN')
+
+    if not email or not api_token:
+        raise ValueError("Both 'ATLASSIAN_EMAIL' and 'ATLASSIAN_TOKEN' environment variables must be provided for Confluence Cloud.")
+
+    update_date = __calculate_update_date(manifest)
+    query_addition = f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
+
+    reader = ConfluenceCloudDocumentReader(base_url=manifest['reader']['baseUrl'], 
+                                          query=f"{manifest['reader']['query']} {query_addition}",
+                                          email=email,
+                                          api_token=api_token, 
+                                          batch_size=manifest['reader']['batchSize'],
+                                          read_all_comments=manifest['reader']['readAllComments'],)
+    converter = ConfluenceCloudDocumentConverter()
     return reader,converter
