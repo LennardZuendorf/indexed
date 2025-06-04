@@ -5,6 +5,8 @@ import json
 from main.persisters.disk_persister import DiskPersister
 from main.sources.jira.jira_document_reader import JiraDocumentReader
 from main.sources.jira.jira_document_converter import JiraDocumentConverter
+from main.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
+from main.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
 from main.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
 from main.sources.confluence.confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from main.sources.confluence.confluence_document_converter import ConfluenceDocumentConverter
@@ -42,6 +44,9 @@ def __create_reader_and_converter(manifest):
     if manifest['reader']['type'] == 'jira':
         return __create_jira_reader_and_converter(manifest)
     
+    if manifest['reader']['type'] == 'jiraCloud':
+        return __create_jira_cloud_reader_and_converter(manifest)
+    
     if manifest['reader']['type'] == 'confluence':
         reader, converter = __create_confluence_reader_and_converter(manifest)
         return [reader, converter]
@@ -68,6 +73,24 @@ def __create_jira_reader_and_converter(manifest):
                                     password=password, 
                                     batch_size=manifest['reader']['batchSize'])
     converter = JiraDocumentConverter()
+    return reader,converter
+
+def __create_jira_cloud_reader_and_converter(manifest):
+    email = os.environ.get('ATLASSIAN_EMAIL')
+    api_token = os.environ.get('ATLASSIAN_TOKEN')
+
+    if not email or not api_token:
+        raise ValueError("Both 'ATLASSIAN_EMAIL' and 'ATLASSIAN_TOKEN' environment variables must be provided for Jira Cloud.")
+
+    update_date = __calculate_update_date(manifest)
+    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
+
+    reader = JiraCloudDocumentReader(base_url=manifest['reader']['baseUrl'], 
+                                    query=f"{manifest['reader']['query']} {query_addition}",
+                                    email=email,
+                                    api_token=api_token, 
+                                    batch_size=manifest['reader']['batchSize'])
+    converter = JiraCloudDocumentConverter()
     return reader,converter
 
 def __create_confluence_reader_and_converter(manifest):

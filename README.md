@@ -1,6 +1,6 @@
 # Project allows document indexing in vector database and then search (supports Jira and Confluence)
 
-Currently, it supports Jira (a ticket is a document) and Confluence (a page is a document).
+Currently, it supports Jira Data Center/Server and Cloud (a ticket is a document) and Confluence Data Center/Server and Cloud (a page is a document).
 Does NOT send any data to any third-party systems. All data are processed locally and stored locally (except in the case when you use it as MCP with a non-local AI agent).
 Supports MCP protocol to use the vector search as a tool in AI agents.
 Provides abstraction to add more data sources.
@@ -54,7 +54,7 @@ Notes:
 - please update ${baseConfluenceCloudUrl} to real Confluence Cloud base url, example: https://your-domain.atlassian.net ;
 - please update ${confluenceQuery} to real Confluence query, example: (space = 'MySpace Name') AND (created >= '2024-01-14' OR lastModified >= '2024-01-14')
 
-### To create collection for Jira:
+### To create collection for Jira Server/Data Center:
 
 1) Set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
 2) Run command like:
@@ -67,6 +67,20 @@ Notes:
 - please update ${baseJiraUrl} to real Jira base url, example: https://jira.example.com
 - please update ${jiraQuery} to real Jira query, example: project = PMCCP AND created >= -365d 
 
+### To create collection for Jira Cloud:
+
+1) Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Jira Cloud API token.
+   - Generate API token at: https://id.atlassian.com/manage/api-tokens
+2) Run command like:
+```
+uv run jira_cloud_collection_create_cmd_adapter.py --collection "jira" --url "${baseJiraCloudUrl}" --jql "${jiraQuery}"
+```
+
+Notes:
+- you can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with the name under `./data/collections`;
+- please update ${baseJiraCloudUrl} to real Jira Cloud base url, example: https://your-domain.atlassian.net ;
+- please update ${jiraQuery} to real Jira query, example: project = PMCCP AND created >= -365d
+
 ### To update existing collection:
 
 1) Collection update reads only new information, so it should be much faster than collection creation. 
@@ -76,7 +90,9 @@ If you update Confluence Server/Data Center collection: set CONF_TOKEN env varia
 
 If you update Confluence Cloud collection: set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Confluence Cloud API token.
 
-If you update Jira collection: set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+If you update Jira Server/Data Center collection: set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+
+If you update Jira Cloud collection: set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Jira Cloud API token.
 
 2) Run command like:
 ```

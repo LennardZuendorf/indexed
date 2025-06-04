@@ -42,7 +42,7 @@ class DiskPersister:
         directory_path = os.path.join(self.base_path, folder_name)
 
         if os.path.exists(directory_path):
-            shutil.rmtree(directory_path)
+            shutil.rmtree(directory_path, ignore_errors=True)
     
     def remove_file(self, file_path):
         path = os.path.join(self.base_path, file_path)

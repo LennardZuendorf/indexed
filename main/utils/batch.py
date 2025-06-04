@@ -1,5 +1,3 @@
-
-
 def read_items_in_batches(read_batch_func, 
                           fetch_items_from_result_func, 
                           fetch_total_from_result_func, 
@@ -47,5 +45,5 @@ def read_items_in_batches(read_batch_func,
         for item in items:
             yield item
 
-        start_at = start_at + current_batch_size
+        start_at = start_at + len(items)
         are_there_more_items_to_read = start_at < total
