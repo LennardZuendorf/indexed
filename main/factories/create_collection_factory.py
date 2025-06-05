@@ -3,7 +3,15 @@ from main.core.documents_collection_creator import DocumentCollectionCreator, OP
 from main.indexes.indexer_factory import create_indexer
 from main.persisters.disk_persister import DiskPersister
 
+from main.utils.performance import log_execution_duration
+
 def create_collection_creator(collection_name, indexers, document_reader, document_converter):
+    return log_execution_duration(
+        lambda: __create_collection_creator(collection_name, indexers, document_reader, document_converter),
+        identifier=f"Preparing collection creator"
+    )
+
+def __create_collection_creator(collection_name, indexers, document_reader, document_converter):
     cache_disk_persister = DiskPersister(base_path="./data/caches")
 
     document_cached_reader = CacheReaderDecorator(reader=document_reader,

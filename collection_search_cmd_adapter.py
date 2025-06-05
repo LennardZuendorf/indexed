@@ -9,9 +9,10 @@ from main.factories.search_collection_factory import create_collection_searcher
 setup_root_logger()
 
 ap = argparse.ArgumentParser()
-ap.add_argument("-collection", "--collection", required=True, help="collection name (will be used as root folder name)")
-ap.add_argument("-index", "--index", required=False, default="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2", help="index that will be used for search")
-ap.add_argument("-query", "--query", required=True, help="text query for search")
+ap.add_argument("-collection", "--collection", required=True, help="Collection name (will be used as root folder name)")
+ap.add_argument("-query", "--query", required=True, help="Text query for search")
+
+ap.add_argument("-index", "--index", required=False, default="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2", help="Index that will be used for search")
 
 ap.add_argument("-maxNumberOfChunks", "--maxNumberOfChunks", required=False, type=int, default=None, help="Max number of text chunks in result")
 ap.add_argument("-maxNumberOfDocuments", "--maxNumberOfDocuments", required=False, type=int, default=10, help="Max number of documents in result")
@@ -30,6 +31,6 @@ search_result = log_execution_duration(lambda: searcher.search(args['query'],
                                                                include_text_content=args['includeFullText'], 
                                                                include_matched_chunks_content=args['includeMatchedChunksText'],
                                                                include_all_chunks_content=args['includeAllChunksText']),
-                                       identifier=f"Searching collection: {args['collection']} by query: {args['query']}")
+                                       identifier=f"Searching collection: \"{args['collection']}\" by query: \"{args['query']}\"")
 
-logging.info(json.dumps(search_result, indent=4))
+logging.info(f"Search results:\n{json.dumps(search_result, indent=4)}")
