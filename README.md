@@ -45,8 +45,8 @@ uv run confluence_collection_create_cmd_adapter.py --collection "confluence" --u
 Notes:
 - You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
 - Please update ${baseConfluenceUrl} to the real Confluence base URL:
-  - For Server/Data Center: https://confluence.example.com
-  - For Cloud: https://your-domain.atlassian.net
+  - For Server/Data Center, example: https://confluence.example.com
+  - For Cloud, example: https://your-domain.atlassian.net
 - Please update ${confluenceQuery} to the real Confluence query, for example: "(space = 'MySpaceName') AND (created >= '2025-01-01' OR lastModified >= '2025-01-01')"
 
 ### To create collection for Jira (Server/Data Center and Cloud):
@@ -67,14 +67,13 @@ uv run jira_collection_create_cmd_adapter.py --collection "jira" --url "${baseJi
 Notes:
 - You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
 - Please update ${baseJiraUrl} to the real Jira base URL:
-  - For Server/Data Center: https://jira.example.com
-  - For Cloud: https://your-domain.atlassian.net
+  - For Server/Data Center, example: https://jira.example.com
+  - For Cloud, example: https://your-domain.atlassian.net
 - Please update ${jiraQuery} to the real Jira query, for example: "project = MyProjectName AND created >= -183d"
 
 ### To update existing collection:
 
-1) Collection update reads only new information, so it should be much faster than collection creation. 
-Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`. Set env variables needed for authentification/authorization:
+1) Set env variables needed for authentification/authorization:
 - **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
 - **For Confluence Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
 - **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
@@ -153,5 +152,6 @@ Please check the `./main/core/documents_collection_creator.py` code to find most
 Please check the `./main/core/documents_collection_searcher.py` code to find most of the details about searching in a collection.
 
 ## Other useful info
-- The "Update" script usually reads a bit more documents than were really updated since last time. Currently, the logic is as follows: it reads all documents that were created/updated since the "lastModifiedDocumentTime" field value from the `./data/collections/${collectionName}/manifest.json` file minus 1 day. It's done so to guarantee that no document update will be lost due to parallel document creations (probably 1 day can be updated to some much less value like a couple of seconds, but it does not look like a big deal to me and I prefer just to be more sure that everything is updated). The "lastModifiedDocumentTime" field contains the value of the latest update time for all documents in the collection.
+- Collection update reads only new information, so it should be much faster than collection creation. Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`.
+- Collection update usually reads a bit more documents than were really updated since last time. Currently, the logic is as follows: it reads all documents that were created/updated since the "lastModifiedDocumentTime" field value from the `./data/collections/${collectionName}/manifest.json` file minus 1 day. It's done so to guarantee that no document update will be lost due to parallel document creations (probably 1 day can be updated to some much less value like a couple of seconds, but it does not look like a big deal to me and I prefer just to be more sure that everything is updated). The "lastModifiedDocumentTime" field contains the value of the latest update time for all documents in the collection.
 - There is a cache mechanism for Jira/Confluence collection creation, so if you create a collection multiple times with the same parameters: url, query (JQL or CQL), etc. - documents will be read from the cache located in the `./data/caches` subfolder (all important parameters are collected together and hashed, the hash is used as the folder name (`./data/caches/{hash}`) for cached documents, there is also a `./data/caches/{hash}_completed` file that indicates if all documents were successfully read, the cache is used only in case if the `./data/caches/{hash}_completed` file is present as well as the `./data/caches/{hash}` folder). The cache is useful during testing, but can lead to a situation where new data are not read. In such a case, you can either run the "update" script after collection creation, or remove the cache manually before collection creation.
