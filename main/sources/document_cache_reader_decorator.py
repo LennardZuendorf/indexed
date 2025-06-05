@@ -1,5 +1,6 @@
 import json
 import hashlib
+import logging
 
 class CacheReaderDecorator:
     def __init__(self, reader, persister):
@@ -10,7 +11,7 @@ class CacheReaderDecorator:
         cache_key = self.__build_cache_key()
 
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(f"{cache_key}_completed"):
-            print(f"Cache hit during 'read_all_documents' for {cache_key}")
+            logging.info(f"Cache hit during 'read_all_documents' for {cache_key}")
             for file_name in self.persister.read_folder_files(cache_key):
                 yield json.loads(self.persister.read_text_file(f"{cache_key}/{file_name}"))
         else:
@@ -29,7 +30,7 @@ class CacheReaderDecorator:
         cache_key = self.__build_cache_key()
         
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(f"{cache_key}_completed"):
-            print(f"Cache hit during 'get_number_of_documents' for {cache_key}")
+            logging.info(f"Cache hit during 'get_number_of_documents' for {cache_key}")
             return len(self.persister.read_folder_files(cache_key))
         else:
             return self.reader.get_number_of_documents()

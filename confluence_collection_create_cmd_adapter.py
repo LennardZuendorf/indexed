@@ -1,11 +1,14 @@
 import os
 import argparse
 
+from main.utils.logger import setup_root_logger
 from main.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
 from main.sources.confluence.confluence_document_converter import ConfluenceDocumentConverter
 from main.sources.confluence.confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from main.sources.confluence.confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
 from main.factories.create_collection_factory import create_collection_creator
+
+setup_root_logger()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-url", "--url", required=True, help="Confluence base url (e.g., https://your-domain.atlassian.net for Cloud or https://confluence.example.com for Server/Data Center)")

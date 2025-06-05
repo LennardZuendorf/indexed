@@ -1,11 +1,14 @@
 import os
 import argparse
 
+from main.utils.logger import setup_root_logger
 from main.sources.jira.jira_document_reader import JiraDocumentReader
 from main.sources.jira.jira_document_converter import JiraDocumentConverter
 from main.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
 from main.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
 from main.factories.create_collection_factory import create_collection_creator
+
+setup_root_logger()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-url", "--url", required=True, help="Jira base url (Cloud: https://your-domain.atlassian.net, Server/Data Center: https://jira.example.com)")

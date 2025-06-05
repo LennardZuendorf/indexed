@@ -1,8 +1,12 @@
 import json
 import argparse
+import logging
 
+from main.utils.logger import setup_root_logger
 from main.utils.performance import log_execution_duration
 from main.factories.search_collection_factory import create_collection_searcher
+
+setup_root_logger()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-collection", "--collection", required=True, help="collection name (will be used as root folder name)")
@@ -28,4 +32,4 @@ search_result = log_execution_duration(lambda: searcher.search(args['query'],
                                                                include_all_chunks_content=args['includeAllChunksText']),
                                        identifier=f"Searching collection: {args['collection']} by query: {args['query']}")
 
-print(json.dumps(search_result, indent=4))
+logging.info(json.dumps(search_result, indent=4))

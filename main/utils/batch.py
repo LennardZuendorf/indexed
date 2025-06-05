@@ -1,3 +1,5 @@
+import logging
+
 def read_items_in_batches(read_batch_func, 
                           fetch_items_from_result_func, 
                           fetch_total_from_result_func, 
@@ -22,10 +24,10 @@ def read_items_in_batches(read_batch_func,
         except Exception as e:
             if current_batch_size == 1:
                 if skipped_items_in_row >= max_skipped_items_in_row:
-                    print(f"Max number of skipped {itemsName} in row ({max_skipped_items_in_row}) was reached. Stopping reading.")
+                    logging.error(f"Max number of skipped {itemsName} in row ({max_skipped_items_in_row}) was reached. Stopping reading.")
                     raise e
 
-                print(f"Skipping one of {itemsName} at position {start_at} because of an error: {e}")
+                logging.warning(f"Skipping one of {itemsName} at position {start_at} because of an error: {e}")
                 skipped_items_in_row += 1
                 start_at += 1
                 are_there_more_items_to_read = start_at < total if total is not None else True
@@ -40,7 +42,7 @@ def read_items_in_batches(read_batch_func,
         total = fetch_total_from_result_func(read_result)
         cursor = cursor_parser(read_result) if cursor_parser is not None else None
 
-        print(f"New batch with {len(items)} {itemsName} was read, already read {start_at + len(items)} from {total}")
+        logging.info(f"New batch with {len(items)} {itemsName} was read, already read {start_at + len(items)} from {total}")
 
         for item in items:
             yield item

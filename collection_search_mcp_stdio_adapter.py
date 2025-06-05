@@ -1,9 +1,13 @@
+#!/usr/bin/env python3
 import json
 import argparse
 
 from mcp.server.fastmcp import FastMCP
 
 from main.factories.search_collection_factory import create_collection_searcher
+from main.utils.logger import setup_root_logger
+
+setup_root_logger()
 
 mcp = FastMCP("documents-search")
 
