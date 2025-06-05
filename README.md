@@ -33,13 +33,9 @@ The script automatically detects whether your Confluence instance is Cloud or Se
 - URLs ending with `.atlassian.net` are treated as Confluence Cloud
 - All other URLs are treated as Confluence Server/Data Center
 
-1) Set env variables needed for authentification/autorisation:
-**For Confluence Server/Data Center:**
-Set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
-
-**For Confluence Cloud:**
-Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token.
-- Generate API token at: https://id.atlassian.com/manage/api-tokens
+1) Set env variables needed for authentification/authorization:
+- **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
+- **For Confluence Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
 
 2) Run command like:
 ```
@@ -59,13 +55,9 @@ The script automatically detects whether your Jira instance is Cloud or Server/D
 - URLs ending with `.atlassian.net` are treated as Jira Cloud
 - All other URLs are treated as Jira Server/Data Center
 
-1) Set env variables needed for authentification/autorisation:
-**For Jira Server/Data Center:**
-Set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
-
-**For Jira Cloud:**
-Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token.
-- Generate API token at: https://id.atlassian.com/manage/api-tokens
+1) Set env variables needed for authentification/authorization:
+- **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+- **For Jira Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
 
 2) Run command like:
 ```
@@ -82,17 +74,11 @@ Notes:
 ### To update existing collection:
 
 1) Collection update reads only new information, so it should be much faster than collection creation. 
-Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`. 
-
-**For Confluence**
-Set the appropriate environment variables:
-- For Server/Data Center: set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
-- For Cloud: set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Confluence Cloud API token.
-
-**For Jira**
-Set the appropriate environment variables:
-- For Server/Data Center: set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
-- For Cloud: set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Jira Cloud API token.
+Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`. Set env variables needed for authentification/authorization:
+- **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
+- **For Confluence Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
+- **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+- **For Jira Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
 
 2) Run command like:
 ```
