@@ -33,12 +33,13 @@ The script automatically detects whether your Confluence instance is Cloud or Se
 - URLs ending with `.atlassian.net` are treated as Confluence Cloud
 - All other URLs are treated as Confluence Server/Data Center
 
+1) Set env variables needed for authentification/autorisation:
 **For Confluence Server/Data Center:**
-1) Set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
+Set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
 
 **For Confluence Cloud:**
-1) Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Confluence Cloud API token.
-   - Generate API token at: https://id.atlassian.com/manage/api-tokens
+Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token.
+- Generate API token at: https://id.atlassian.com/manage/api-tokens
 
 2) Run command like:
 ```
@@ -58,12 +59,13 @@ The script automatically detects whether your Jira instance is Cloud or Server/D
 - URLs ending with `.atlassian.net` are treated as Jira Cloud
 - All other URLs are treated as Jira Server/Data Center
 
+1) Set env variables needed for authentification/autorisation:
 **For Jira Server/Data Center:**
-1) Set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
+Set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
 
 **For Jira Cloud:**
-1) Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Jira Cloud API token.
-   - Generate API token at: https://id.atlassian.com/manage/api-tokens
+Set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token.
+- Generate API token at: https://id.atlassian.com/manage/api-tokens
 
 2) Run command like:
 ```
