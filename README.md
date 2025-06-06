@@ -1,4 +1,17 @@
-# Project allows document indexing in a vector database and then search (supports Jira and Confluence)
+# Project allows document indexing in a local vector database and then search (supports Jira and Confluence, can be integrated via MCP)
+
+- [Base info](#base-info)
+- [Common use case](#common-use-case)
+- [How to set up and use](#how-to-set-up-and-use)
+  - [Create collection for Confluence](#create-collection-for-confluence)
+  - [Create collection for Jira](#create-collection-for-jira)
+  - [Update existing collection](#update-existing-collection)
+  - [Search in collection](#search-in-collection)
+  - [Set up MCP](#set-up-mcp)
+- [Collection structure](#collection-structure)
+- [Other useful info](#other-useful-info)
+
+## Base info
 
 Key points:
 - Supports Jira/Confluence Data Center/Server and Cloud. For Jira ticket is a document, for Confluence page is a document.
@@ -27,11 +40,7 @@ You can create different collections for different use cases. For example, you c
 2) Install `uv`: https://docs.astral.sh/uv/
 3) Navigate to the root project folder and run: `uv sync`
 
-### To create collection for Confluence (Server/Data Center and Cloud):
-
-The script automatically detects whether your Confluence instance is Cloud or Server/Data Center based on the URL:
-- URLs ending with `.atlassian.net` are treated as Confluence Cloud
-- All other URLs are treated as Confluence Server/Data Center
+### Create collection for Confluence:
 
 1) Set env variables needed for authentification/authorization:
 - **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
@@ -43,17 +52,16 @@ uv run confluence_collection_create_cmd_adapter.py --collection "confluence" --u
 ```
 
 Notes:
+- The script automatically detects whether your Confluence instance is Cloud or Server/Data Center based on the URL:
+  - URLs ending with `.atlassian.net` are treated as Confluence Cloud
+  - All other URLs are treated as Confluence Server/Data Center
 - You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
 - Please update ${baseConfluenceUrl} to the real Confluence base URL:
   - For Server/Data Center, example: https://confluence.example.com
   - For Cloud, example: https://your-domain.atlassian.net
 - Please update ${confluenceQuery} to the real Confluence query, for example: "(space = 'MySpaceName') AND (created >= '2025-01-01' OR lastModified >= '2025-01-01')"
 
-### To create collection for Jira (Server/Data Center and Cloud):
-
-The script automatically detects whether your Jira instance is Cloud or Server/Data Center based on the URL:
-- URLs ending with `.atlassian.net` are treated as Jira Cloud
-- All other URLs are treated as Jira Server/Data Center
+### Create collection for Jira:
 
 1) Set env variables needed for authentification/authorization:
 - **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
@@ -65,13 +73,16 @@ uv run jira_collection_create_cmd_adapter.py --collection "jira" --url "${baseJi
 ```
 
 Notes:
+- The script automatically detects whether your Jira instance is Cloud or Server/Data Center based on the URL:
+  - URLs ending with `.atlassian.net` are treated as Jira Cloud
+  - All other URLs are treated as Jira Server/Data Center
 - You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
 - Please update ${baseJiraUrl} to the real Jira base URL:
   - For Server/Data Center, example: https://jira.example.com
   - For Cloud, example: https://your-domain.atlassian.net
 - Please update ${jiraQuery} to the real Jira query, for example: "project = MyProjectName AND created >= -183d"
 
-### To update existing collection:
+### Update existing collection:
 
 1) Set env variables needed for authentification/authorization:
 - **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
@@ -87,7 +98,7 @@ uv run collection_update_cmd_adapter.py --collection "${collectionName}"
 Notes:
 - Please update ${collectionName} to the real collection name (the one used during collection creation), for example: "confluence" or "jira".
 
-### To search in collection:
+### Search in collection:
 
 Run command like:
 ```
@@ -99,7 +110,7 @@ Notes:
 - Please update ${searchQuery} to the text that you would like to search, for example: "How to set up react project locally";
 - You can add the "--includeMatchedChunksText" parameter to include matched chunks of a document text in search results.
 
-### To set up MCP:
+### Set up MCP:
 
 Add MCP configuration like:
 ```
