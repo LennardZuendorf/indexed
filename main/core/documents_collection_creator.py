@@ -47,25 +47,22 @@ class DocumentCollectionCreator:
         document_ids = log_execution_duration(lambda: self.__read_documents(),
                                               identifier=f"Reading documents for collection: {self.collection_name}")
     
-        last_modified_document_time, number_of_documents, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_new_collection(document_ids),
-                                                                                                    identifier=f"Indexing documents for collection: {self.collection_name}")
+        last_modified_document_time, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_new_collection(document_ids),
+                                                                               identifier=f"Indexing documents for collection: {self.collection_name}")
         
         self.__create_manifest_file(update_time, 
-                                    last_modified_document_time, 
-                                    number_of_documents, 
+                                    last_modified_document_time,
                                     number_of_chunks)
 
     def __index_documents_for_new_collection(self, document_ids):
         index_mapping = {}
         reverse_index_mapping = {}
         last_index_item_id = -1
-        number_of_documents = 0
 
         return self.__index_documents(document_ids,
                                       index_mapping,
                                       reverse_index_mapping,
-                                      last_index_item_id,
-                                      number_of_documents)
+                                      last_index_item_id)
 
     def __update_collection(self):
         if not self.persister.is_path_exists(self.collection_name):
@@ -77,12 +74,11 @@ class DocumentCollectionCreator:
         document_ids = log_execution_duration(lambda: self.__read_documents(),
                                               identifier=f"Reading documents for collection: {self.collection_name}")
     
-        last_modified_document_time, number_of_documents, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_existing_collection(document_ids, manifest),
-                                                                                                    identifier=f"Indexing documents for collection: {self.collection_name}")
+        last_modified_document_time, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_existing_collection(document_ids, manifest),
+                                                                               identifier=f"Indexing documents for collection: {self.collection_name}")
         
         self.__create_manifest_file(update_time, 
                                     last_modified_document_time, 
-                                    number_of_documents, 
                                     number_of_chunks,
                                     existing_manifest=manifest)
 
@@ -102,7 +98,6 @@ class DocumentCollectionCreator:
         reverse_index_mapping = json.loads(self.persister.read_text_file(self.__build_reverse_index_mapping_path()))
         index_info = json.loads(self.persister.read_text_file(self.__build_index_info_path()))
         last_index_item_id = index_info["lastIndexItemId"]
-        number_of_documents = manifest["numberOfDocuments"]
 
         for batch_document_ids in wrap_iterator_with_progress_bar(self.__batch_items(document_ids, 
                                                                                      self.indexing_batch_size), 
@@ -118,7 +113,6 @@ class DocumentCollectionCreator:
                     for index_id in document_index_ids_to_remove:
                         del index_mapping[str(index_id)]
                     del reverse_index_mapping[document_id]
-                    number_of_documents -= 1
         
             for indexer in self.document_indexers:
                 indexer.remove_ids(np.array(index_ids_to_remove))
@@ -126,15 +120,13 @@ class DocumentCollectionCreator:
         return self.__index_documents(document_ids,
                                       index_mapping,
                                       reverse_index_mapping,
-                                      last_index_item_id,
-                                      number_of_documents)
+                                      last_index_item_id)
 
     def __index_documents(self, 
                           document_ids, 
                           index_mapping, 
                           reverse_index_mapping, 
-                          last_index_item_id,
-                          number_of_documents):
+                          last_index_item_id):
 
         last_modified_document_time = None
 
@@ -146,8 +138,6 @@ class DocumentCollectionCreator:
 
             for document_id in batch_document_ids:
                 document_path = f"{self.collection_name}/documents/{document_id}.json"
-
-                number_of_documents += 1
 
                 converted_document = json.loads(self.persister.read_text_file(document_path))
 
@@ -183,7 +173,7 @@ class DocumentCollectionCreator:
         self.persister.save_text_file(json.dumps(index_mapping, indent=2), self.__build_index_mapping_path())
         self.persister.save_text_file(json.dumps(reverse_index_mapping, indent=2), self.__build_reverse_index_mapping_path())
         
-        return last_modified_document_time, number_of_documents, last_index_item_id + 1
+        return last_modified_document_time, self.document_indexers[0].get_size()
 
     def __build_reverse_index_mapping_path(self):
         return f"{self.collection_name}/indexes/reverse_index_document_mapping.json"
@@ -203,12 +193,10 @@ class DocumentCollectionCreator:
     def __create_manifest_file(self, 
                                update_time, 
                                last_modified_document_time, 
-                               number_of_documents, 
                                number_of_chunks,
                                existing_manifest=None):
         manifest_content = self.__create_manifest_content(update_time, 
-                                                          last_modified_document_time, 
-                                                          number_of_documents, 
+                                                          last_modified_document_time,
                                                           number_of_chunks,
                                                           existing_manifest=existing_manifest)
 
@@ -219,10 +207,11 @@ class DocumentCollectionCreator:
 
     def __create_manifest_content(self,
                                   update_time, 
-                                  last_modified_document_time, 
-                                  number_of_documents, 
+                                  last_modified_document_time,
                                   number_of_chunks,
                                   existing_manifest=None):
+        number_of_documents = len(self.persister.read_folder_files(f"{self.collection_name}/documents"))
+
         if existing_manifest:
             return { **existing_manifest,
                 "updatedTime": update_time.isoformat(),

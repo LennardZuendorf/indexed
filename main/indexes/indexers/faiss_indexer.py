@@ -25,3 +25,6 @@ class FaissIndexer:
 
     def search(self, text, number_of_results=10):
         return self.faiss_index.search(np.expand_dims(self.embedder.embed(text), axis=0), number_of_results)
+    
+    def get_size(self):
+        return self.faiss_index.ntotal
