@@ -42,7 +42,7 @@ def read_items_in_batches(read_batch_func,
         total = fetch_total_from_result_func(read_result)
         cursor = cursor_parser(read_result) if cursor_parser is not None else None
 
-        logging.info(f"New batch with {len(items)} {itemsName} was read, already read {start_at + len(items)} from {total}")
+        logging.debug(f"New batch with {len(items)} {itemsName} was read, already read {start_at + len(items)} from {total}")
 
         for item in items:
             yield item
