@@ -161,6 +161,9 @@ class FilesDocumentReader:
         return {
             "type": "localFiles",
             "basePath": self.base_path,
+            "includePatterns": self.include_patterns,
+            "excludePatterns": self.exclude_patterns,
+            "failFast": self.fail_fast,
         }  
 
     def __update_result_stats(self, result_stats, file_path, error):
