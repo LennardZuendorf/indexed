@@ -24,10 +24,15 @@ Key points:
 Key technologies used:
 - "FAISS" lib (https://github.com/facebookresearch/faiss) for vector search;
 - "sentence-transformers" lib (https://pypi.org/project/sentence-transformers/) for embeddings;
-- "Unstructured" lib: https://github.com/Unstructured-IO/unstructured.
-- "LangChain" lib: https://python.langchain.com/docs/introduction/
+- "Unstructured" lib: https://github.com/Unstructured-IO/unstructured;
+- "LangChain" lib: https://python.langchain.com/docs/introduction/.
 
 Please check this article for more context: https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba
+
+Communication:
+- if you like the app, please add a star for the repo (it encourages me much for the future work);
+- if you see some issues or improvements, please log them here: https://github.com/shnax0210/documents-vector-search/issues
+- if you want to chat me, please find me on [LinkedIn](https://www.linkedin.com/in/oleksii-shnepov-841447158/)
 
 ## Common use case
 1) You create a collection by a dedicated script (there are separate scripts for Jira, Confluence and local files cases). During the collection creation, data are loaded into your local machine and then indexed. Results are stored in a subfolder of `./data/collections` with the name that you specify via the "--collection ${collectionName}" parameter. So a collection is just a folder with all needed information for search, such as: loaded documents, index files, metadata, etc. Once a collection is created, it can be used for search and update. The creation process can take a while; it depends on the number of documents your collection consists of and local machine resources.
