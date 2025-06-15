@@ -5,6 +5,7 @@
 - [How to set up and use](#how-to-set-up-and-use)
   - [Create collection for Confluence](#create-collection-for-confluence)
   - [Create collection for Jira](#create-collection-for-jira)
+  - [Create collection for local files](#create-collection-for-local-files)
   - [Update existing collection](#update-existing-collection)
   - [Search in collection](#search-in-collection)
   - [Set up MCP](#set-up-mcp)
@@ -91,7 +92,6 @@ Notes:
 - Please update ${jiraQuery} to the real Jira query, for example: "project = MyProjectName AND created >= -183d"
 
 ### Create collection for local files
-
 
 1) Run a command like:
 ```
