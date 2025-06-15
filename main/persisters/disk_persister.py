@@ -56,8 +56,11 @@ class DiskPersister:
 
     def read_folder_files(self, relative_path):
         path = os.path.join(self.base_path, relative_path)
-        return [file_path for file_path in os.listdir(path) if
-            os.path.isfile(os.path.join(path, file_path))]
+        files = []
+        for root, dirs, filenames in os.walk(path):
+            for filename in filenames:
+                files.append(os.path.relpath(os.path.join(root, filename), path))
+        return files
 
     def __make_sure_path_exists(self, path):
         directory_path = os.path.dirname(path)
