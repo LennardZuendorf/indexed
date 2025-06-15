@@ -11,4 +11,5 @@ dependencies = [
     "mcp>=1.6.0",
     "requests>=2.32.3",
     "sentence-transformers>=4.0.2",
+    "unstructured[all-docs]>=0.17.2",
 ]
