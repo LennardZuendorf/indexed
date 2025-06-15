@@ -47,6 +47,11 @@ class DocumentCollectionCreator:
         update_time = datetime.now(timezone.utc)
         document_ids, number_of_expected_documents = log_execution_duration(lambda: self.__read_documents(),
                                                                             identifier=f"Reading documents for collection: {self.collection_name}")
+        
+        if len(document_ids) == 0:
+            logging.warning(f"No documents found for collection creation, so it will be not created.")
+            self.persister.remove_folder(self.collection_name)
+            return
     
         last_modified_document_time, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_new_collection(document_ids),
                                                                                identifier=f"Indexing documents for collection: {self.collection_name}")
@@ -69,6 +74,10 @@ class DocumentCollectionCreator:
         update_time = datetime.now(timezone.utc)
         document_ids, number_of_expected_documents = log_execution_duration(lambda: self.__read_documents(),
                                                                             identifier=f"Reading documents for collection: {self.collection_name}")
+        
+        if len(document_ids) == 0:
+            logging.warning(f"No documents found for collection update, so it will be not updated.")
+            return
     
         last_modified_document_time, number_of_chunks = log_execution_duration(lambda: self.__index_documents_for_existing_collection(document_ids),
                                                                                identifier=f"Indexing documents for collection: {self.collection_name}")
