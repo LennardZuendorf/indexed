@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from main.utils.logger import setup_root_logger
 from main.sources.files.files_document_reader import FilesDocumentReader
@@ -25,7 +26,7 @@ files_document_reader = FilesDocumentReader(base_path=args['basePath'],
                                             fail_fast=args['failFast'])
 files_document_converter = FilesDocumentConverter()
 
-collection_name = args['collection'] if args['collection'] else args['basePath'].split('/')[-1]
+collection_name = args['collection'] if args['collection'] else os.path.basename(args['basePath'])
 files_collection_creator = create_collection_creator(collection_name=collection_name,
                                                      indexers=args['indexers'],
                                                      document_reader=files_document_reader,
