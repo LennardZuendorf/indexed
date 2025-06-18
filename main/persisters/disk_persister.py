@@ -11,13 +11,13 @@ class DiskPersister:
         
         self.__make_sure_path_exists(path)
 
-        with open(path, 'w') as file:
+        with open(path, 'w', encoding="utf-8") as file:
             file.write(data)
     
     def read_text_file(self, file_path):
         path = os.path.join(self.base_path, file_path)  
         
-        with open(path, 'r') as file:
+        with open(path, 'r', encoding="utf-8") as file:
             return file.read()
 
     def save_bin_file(self, data, file_path):
