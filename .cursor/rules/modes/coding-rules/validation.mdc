@@ -1,0 +1,68 @@
+---
+description: Active when Code Mode is used
+globs:
+alwaysApply: false
+---
+
+# 🧪 CODE MODE - VALIDATION RULES
+
+**🚨 CRITICAL: Validation is MANDATORY after EVERY code change. NO EXCEPTIONS.**
+
+## RULE CHAIN CONTEXT
+- **Parent Rule**: `.cursor/rules/modes/code-mode.mdc` (Always Active in Code Mode)
+- **Chained With**: `implementation.mdc`, testing rules
+- **Active When**: Code Mode is active and ANY code change has been made
+
+---
+
+## MANDATORY VALIDATION PROTOCOL
+
+### IMMEDIATE VALIDATION - AFTER EVERY CHANGE:
+1. ✅ **SYNTAX VALIDATION** - Code MUST compile/parse without errors
+2. ✅ **FUNCTIONAL VALIDATION** - Code MUST perform intended functionality  
+3. ✅ **INTEGRATION VALIDATION** - Code MUST work with existing system
+4. ✅ **PERFORMANCE VALIDATION** - Code MUST NOT degrade performance
+5. ✅ **SECURITY VALIDATION** - Code MUST follow security best practices
+
+### VALIDATION FREQUENCY - ABSOLUTE REQUIREMENTS:
+- 🚫 **NEVER proceed without validation** - Validate EVERY single change immediately
+- ✅ **Before Mode Transition** - Complete comprehensive validation before handoff
+- ✅ **Before User Feedback** - ALL changes MUST be validated before user review
+- ✅ **Before Memory Updates** - Validate before updating `.memory/task_subtasks.md`
+
+### VALIDATION EXECUTION METHODS
+
+#### SYNTAX VALIDATION - MANDATORY FIRST STEP:
+- ✅ **Run `pnpm test`** - Execute full test suite immediately after changes
+- ✅ **TypeScript Compilation** - Verify all TypeScript compiles without errors
+- ✅ **ESLint Validation** - Run `pnpm lint` to ensure code quality standards
+- ✅ **Import Resolution** - Verify all imports resolve correctly
+- 🚫 **NEVER run `pnpm dev` or `npm dev`** - User likely has development server running
+
+#### FUNCTIONAL VALIDATION - VERIFY BEHAVIOR:
+- ✅ **Manual Testing** - Physically test the implemented functionality in browser/app
+- ✅ **Edge Case Testing** - Test boundary conditions and error scenarios
+- ✅ **User Flow Testing** - Verify complete user workflows work end-to-end
+- ✅ **API Testing** - Test all API endpoints and data flows if applicable
+
+#### INTEGRATION VALIDATION - SYSTEM COHERENCE:
+- ✅ **Component Integration** - Verify new code works with existing components
+- ✅ **State Management** - Ensure state updates work correctly across the system
+- ✅ **Route Testing** - Test navigation and routing if web application
+- ✅ **Database Integration** - Verify database operations if applicable
+
+#### PERFORMANCE VALIDATION - NO DEGRADATION:
+- ✅ **Load Time Impact** - Measure page/component load time changes
+- ✅ **Memory Usage** - Monitor for memory leaks or excessive usage
+- ✅ **Bundle Size** - Check for significant bundle size increases
+- ✅ **Runtime Performance** - Verify no performance regressions
+
+#### SECURITY VALIDATION - PROTECTION MAINTAINED:
+- ✅ **Input Sanitization** - Verify all user inputs are properly sanitized
+- ✅ **Authentication** - Ensure access controls remain intact
+- ✅ **Data Exposure** - Check for accidental data leaks or exposure
+- ✅ **Dependency Security** - Verify no new security vulnerabilities introduced
+
+### VALIDATION COMMANDS - EXECUTE THESE:
+
+#### REQUIRED TEST COMMANDS:
