@@ -1,16 +1,17 @@
 # Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)
 
-- [Base info](#base-info)
-- [Common use case](#common-use-case)
-- [How to set up and use](#how-to-set-up-and-use)
-  - [Create collection for Confluence](#create-collection-for-confluence)
-  - [Create collection for Jira](#create-collection-for-jira)
-  - [Create collection for local files](#create-collection-for-local-files)
-  - [Update existing collection](#update-existing-collection)
-  - [Search in collection](#search-in-collection)
-  - [Set up MCP](#set-up-mcp)
-- [Collection structure](#collection-structure)
-- [Other useful info](#other-useful-info)
+- [Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)](#project-allows-document-indexing-in-a-local-vector-database-and-then-search-supports-jira-confluence-and-local-files-can-be-integrated-via-mcp)
+  - [Base info](#base-info)
+  - [Common use case](#common-use-case)
+  - [How to set up and use](#how-to-set-up-and-use)
+    - [Create collection for Confluence:](#create-collection-for-confluence)
+    - [Create collection for Jira:](#create-collection-for-jira)
+    - [Create collection for local files](#create-collection-for-local-files)
+    - [Update existing collection:](#update-existing-collection)
+    - [Search in collection:](#search-in-collection)
+    - [Set up MCP:](#set-up-mcp)
+  - [Collection structure](#collection-structure)
+  - [Other useful info](#other-useful-info)
 
 ## Base info
 

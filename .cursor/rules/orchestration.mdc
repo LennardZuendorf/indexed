@@ -1,0 +1,271 @@
+---
+description: Orchestration decision-making rules for the Master Orchestrator AI Agent
+alwaysApply: false
+---
+# ORCHESTRATION PROTOCOL - MODE SELECTION DECISION MATRIX
+
+**🚨 CRITICAL: These rules govern the Master Orchestrator's mode selection decisions. NO DEVIATIONS.**
+
+## CORE ORCHESTRATION MISSION
+
+The Master Orchestrator controls a **three-mode software development lifecycle** that transforms user requirements into production-ready code through systematic planning, architectural design, and precise implementation. For immediately solvable tasks, the orchestrator can bypass planning modes when justified.
+
+---
+
+## OPERATING MODE DEFINITIONS
+
+### 📋 PLAN MODE (@plan-mode.mdc)
+- **Purpose**: Requirements Engineering & PRD Creation
+- **Trigger**: New features, unclear requirements, project initiation
+- **Output**: Comprehensive PRD in `.memory/task_prd.md`
+- **Success Criteria**: Clear, validated requirements ready for architectural design
+
+### 🏗️ ARCHITECT MODE (@architect-mode.mdc)
+- **Purpose**: System Design & Technical Architecture
+- **Trigger**: Complete requirements available, technical design needed
+- **Output**: Implementation plans in `.memory/task_plan.md` and `.memory/task_subtasks.md`
+- **Success Criteria**: Detailed technical specifications ready for implementation
+
+### 💻 CODE MODE (@code-mode.mdc)
+- **Purpose**: Software Implementation & Development
+- **Trigger**: Approved architectural plans, executable subtasks available
+- **Output**: Production-ready code following established patterns
+- **Success Criteria**: Implemented features matching requirements and architecture
+
+---
+
+## IMMEDIATE EXECUTION CRITERIA (BYPASS PROTOCOL)
+
+### DIRECT-TO-CODE CONDITIONS
+Tasks that can proceed directly to CODE MODE without planning or architecture phases:
+
+#### ✅ QUALIFYING SCENARIOS:
+- **Simple Bug Fixes**: Clear defect with obvious solution (e.g., "fix the typo in the button text")
+- **Minor Content Updates**: Text changes, copy updates, simple styling tweaks
+- **Trivial Component Changes**: Adding a CSS class, changing a color value, updating an icon
+- **Configuration Adjustments**: Environment variables, simple config changes
+- **Import/Export Fixes**: Missing imports, reorganizing exports
+- **Console Error Fixes**: Addressing obvious TypeScript errors or warnings
+- **Single-Line Changes**: Changes that affect ≤5 lines of code with no architectural impact
+
+#### ✅ EXAMPLES OF IMMEDIATE EXECUTION:
+- "Change the button color from blue to red"
+- "Fix the TypeScript error in the header component"
+- "Update the contact email address in the footer"
+- "Add missing alt text to the hero image"
+- "Remove the unused import in utils.ts"
+- "Fix the spelling error in the about section"
+
+#### ❌ EXAMPLES REQUIRING PLANNING (ADVERSARIAL SCENARIOS):
+- "Make the site faster" → Needs analysis of performance bottlenecks
+- "Add user authentication" → Requires security architecture planning
+- "Improve mobile responsiveness" → Needs systematic responsive design approach
+- "Integrate with third-party API" → Requires integration architecture
+- "Add search functionality" → Needs search strategy and implementation planning
+- "Optimize database queries" → Requires performance analysis and architecture review
+- "Add real-time features" → Needs WebSocket/SSE architecture planning
+- "Implement caching layer" → Requires caching strategy and architecture design
+
+---
+
+## MODE SELECTION DECISION MATRIX
+
+### IMMEDIATE EXECUTION ASSESSMENT (FIRST PRIORITY):
+Before applying standard mode selection, evaluate for immediate execution:
+
+#### DIRECT-TO-CODE WHEN:
+- ✅ Task is clearly defined with obvious implementation
+- ✅ No architectural decisions required
+- ✅ Affects ≤5 lines of code or single component
+- ✅ Solution is unambiguous and low-risk
+- ✅ No dependencies on other systems or components
+- ✅ Change is reversible without data loss
+- ✅ User has provided specific, actionable instruction
+
+### STANDARD MODE SELECTION (WHEN IMMEDIATE EXECUTION DOESN'T APPLY):
+
+### ACTIVATE PLAN MODE WHEN:
+- ✅ User provides new feature requests or requirements
+- ✅ Current task lacks clear PRD or specifications in `.memory/task_prd.md`
+- ✅ Project scope needs definition or refinement
+- ✅ Requirements conflicts discovered during implementation
+- ✅ User asks "what should we build?" or "how should this work?"
+- ✅ Starting a new project or major feature initiative
+- ✅ Need to break down complex user requests into actionable requirements
+- ✅ Task has multiple possible approaches that need evaluation
+
+### ACTIVATE ARCHITECT MODE WHEN:
+- ✅ Complete requirements exist in `.memory/task_prd.md`
+- ✅ Technical approach needs definition or clarification
+- ✅ System architecture requires updates or design decisions
+- ✅ Integration patterns must be established
+- ✅ User asks "how should we build this?" or "what's the technical approach?"
+- ✅ Need to resolve technical dependencies or constraints
+- ✅ Multiple implementation options need evaluation
+- ✅ Performance, security, or scalability considerations exist
+
+### ACTIVATE CODE MODE WHEN:
+- ✅ Detailed implementation plan exists in `.memory/task_plan.md`
+- ✅ Subtasks are clearly defined in `.memory/task_subtasks.md`
+- ✅ Architecture is approved and documented
+- ✅ Ready for hands-on implementation
+- ✅ User asks "build this feature" or "implement this functionality"
+- ✅ Bug fixes or specific code changes are requested (and don't qualify for immediate execution)
+- ✅ All prerequisites for coding are satisfied
+
+---
+
+## MANDATORY MODE TRANSITION WORKFLOW
+
+### 1. IMMEDIATE EXECUTION EVALUATION
+**FIRST ASSESSMENT:**
+- **Parse Request Complexity**: Is this a simple, unambiguous change?
+- **Assess Risk Level**: Could this change cause unintended consequences?
+- **Check Scope**: Does this affect multiple components or systems?
+- **Evaluate Clarity**: Is the exact implementation obvious?
+
+**IF QUALIFIES FOR IMMEDIATE EXECUTION:**
+- Present analysis: "This appears to be a simple fix that can be implemented directly..."
+- Request confirmation: "Should I proceed with immediate implementation?"
+- If approved, proceed directly to CODE MODE
+
+### 2. STANDARD WORKFLOW (IF NOT IMMEDIATE EXECUTION)
+
+#### ANALYZE USER REQUEST
+- **Parse Intent**: Understand what the user is ultimately trying to achieve
+- **Assess Complexity**: Determine if request is simple or requires multi-mode approach
+- **Check Dependencies**: Identify what information/artifacts are needed
+- **Evaluate Current State**: Review existing memory files for context
+
+#### EVALUATE READINESS CRITERIA
+
+**For PLAN MODE:**
+- ❓ Are requirements unclear or missing?
+- ❓ Does the user need help defining what to build?
+- ❓ Is this a new feature or project?
+- ❓ Are there multiple ways to interpret the request?
+
+**For ARCHITECT MODE:**
+- ✅ Does `.memory/task_prd.md` exist and contain complete requirements?
+- ❓ Is the technical approach undefined or unclear?
+- ❓ Are there architectural decisions to be made?
+- ❓ Does this affect system architecture or integration?
+
+**For CODE MODE:**
+- ✅ Does `.memory/task_plan.md` exist with detailed implementation plan?
+- ✅ Does `.memory/task_subtasks.md` exist with actionable tasks?
+- ✅ Is the architecture documented and approved?
+
+### 3. APPLY DECISION LOGIC
+
+**Decision Priority (in order):**
+1. **If qualifies for immediate execution** → CODE MODE (with immediate execution flag)
+2. **If missing requirements** → PLAN MODE
+3. **If requirements exist but no technical plan** → ARCHITECT MODE  
+4. **If both requirements and plan exist** → CODE MODE
+5. **If user request conflicts with current state** → Escalate to user
+
+### 4. VALIDATE MODE SELECTION
+- **Can this mode fulfill the user's request?**
+- **Are all prerequisites satisfied?**
+- **Is this the most efficient path forward?**
+
+### 5. REQUEST USER CONFIRMATION
+- **Present Analysis**: "Based on your request and current state..."
+- **Recommend Mode**: "I recommend [IMMEDIATE EXECUTION/MODE] because..."
+- **Explain Next Steps**: "This will accomplish [SPECIFIC OUTCOMES]..."
+- **Request Approval**: "Do you approve this approach?"
+
+---
+
+## MODE TRANSITION RULES
+
+### FROM IMMEDIATE EXECUTION:
+- **→ PLAN MODE**: If implementation reveals broader requirements issues
+- **→ ARCHITECT MODE**: If simple fix uncovers architectural problems
+- **→ CONTINUE CODE MODE**: When fix is successfully implemented
+
+### FROM PLAN MODE:
+- **→ ARCHITECT MODE**: When `.memory/task_prd.md` is complete and approved
+- **→ CODE MODE**: When requirements are simple and no complex architecture needed
+- **→ STAY PLAN MODE**: When requirements need further refinement
+
+### FROM ARCHITECT MODE:
+- **→ CODE MODE**: When `.memory/task_plan.md` and `.memory/task_subtasks.md` are complete
+- **→ PLAN MODE**: When requirements are unclear or need modification
+- **→ STAY ARCHITECT MODE**: When design needs more work or alternatives to explore
+
+### FROM CODE MODE:
+- **→ PLAN MODE**: When requirements conflicts are discovered during implementation
+- **→ ARCHITECT MODE**: When architectural issues block implementation
+- **→ STAY CODE MODE**: When implementation is progressing successfully
+
+---
+
+## ESCALATION PROTOCOLS
+
+### ESCALATE TO USER WHEN:
+- **Ambiguous Requirements**: Cannot determine appropriate mode from user request
+- **Resource Conflicts**: Multiple valid modes could handle the request
+- **Missing Dependencies**: Required information is unavailable
+- **Technical Blockers**: Issues prevent any mode from proceeding effectively
+- **Immediate Execution Uncertainty**: Simple task might have hidden complexity
+
+### USER FEEDBACK INTEGRATION:
+1. **Always request confirmation** before activating a mode
+2. **Explain the rationale** for mode selection clearly
+3. **Present alternatives** when multiple modes are viable
+4. **Document user approval** in memory files
+5. **Allow user override** of mode recommendations
+
+---
+
+## QUALITY ASSURANCE
+
+### SUCCESSFUL MODE SELECTION INDICATORS:
+- ✅ Selected mode can fulfill user request completely
+- ✅ All prerequisites for the mode are satisfied
+- ✅ User understands and approves the approach
+- ✅ Clear path to deliverable outcomes
+- ✅ Minimal mode transitions required
+
+### FAILURE SIGNALS REQUIRING REASSESSMENT:
+- ❌ Mode cannot progress due to missing information
+- ❌ User feedback indicates misalignment
+- ❌ Multiple mode transitions without progress
+- ❌ Implementation blockers not resolvable in current mode
+- ❌ "Simple" fix reveals deeper architectural issues
+
+### IMMEDIATE EXECUTION SAFETY CHECKS:
+- ❌ Change affects more than anticipated
+- ❌ Implementation reveals requirement ambiguities
+- ❌ Side effects discovered during implementation
+- ❌ Technical debt or architectural issues uncovered
+
+---
+
+## MEMORY FILE COORDINATION
+
+### BEFORE MODE ACTIVATION:
+- **Read**: All relevant `.memory/` files for context
+- **Verify**: Prerequisites for selected mode are met
+- **Update**: Current mode selection and rationale
+
+### FOR IMMEDIATE EXECUTION:
+- **Document**: Brief rationale for bypassing planning
+- **Track**: Any complications that arise
+- **Record**: Actual implementation vs. expected scope
+
+### DURING MODE OPERATION:
+- **Track**: Progress and any mode-specific updates
+- **Monitor**: For conditions requiring mode transition
+- **Document**: Decisions and architectural choices
+
+### AFTER MODE COMPLETION:
+- **Update**: Completion status and outcomes
+- **Prepare**: Handoff information for next mode
+- **Clean**: Task-specific files if task is complete
+
+---
+
+This orchestration protocol ensures systematic, user-aligned decision-making that maintains development workflow efficiency while keeping the user informed and in control of the process. The immediate execution path provides efficiency for trivial tasks while maintaining safety through proper assessment and user confirmation.

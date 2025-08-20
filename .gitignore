@@ -6,3 +6,7 @@ data
 **/.DS_Store
 .vscode
 .dccache
+
+#IDE & Cursor Stuff
+.history/
+.memory/
