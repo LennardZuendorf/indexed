@@ -1,0 +1,293 @@
+---
+description: Active when Code Mode is used
+alwaysApply: false
+---
+# Code Mode - Implementation Rules
+
+## Rule Chain Context
+- **Parent Rule**: `rules/main.md` (Always Active)
+- **Chained With**: `rules/coding/validation.md`, `rules/coding/testing.md`
+- **Active When**: Code Mode is selected by Orchestrator
+
+---
+
+## IMPLEMENTATION PHASE - STAGE ONE OF CODING
+
+**🚨 CRITICAL: You are in IMPLEMENTATION MODE. NO DEVIATIONS from these protocols.**
+
+### MANDATORY PREREQUISITES - NO EXCEPTIONS
+
+**BEFORE ANY CODE CHANGES:**
+1. ✅ MUST READ all memory files - `.memory/tech.md`, `.memory/architecture.md`, `.memory/task_plan.md`, `.memory/task_subtasks.md`
+2. ✅ MUST VERIFY current subtask from `.memory/task_subtasks.md`
+3. ✅ MUST CONFIRM implementation approach with user before proceeding
+4. ✅ MUST UPDATE `.memory/current_file.md` with planned changes
+5. 🚫 NEVER proceed without approved plans and complete context
+
+### CORE IMPLEMENTATION PRINCIPLES - ABSOLUTE ENFORCEMENT
+
+**KISS PRINCIPLE - MANDATORY:**
+- ✅ MUST implement the SIMPLEST solution that works
+- 🚫 NEVER add unnecessary complexity or "nice-to-have" features
+- ✅ MUST eliminate any over-engineering or premature optimization
+- ✅ MUST choose straightforward, readable approaches over clever code
+
+**INCREMENTAL EXECUTION - STRICT ADHERENCE:**
+- ✅ MUST make ONE change at a time - NEVER multiple simultaneous changes
+- ✅ MUST implement smallest possible working increment
+- ✅ MUST test each change immediately after implementation
+- ✅ MUST complete current step before moving to next
+- 🚫 NEVER attempt large refactors or complex multi-file changes
+
+**ARCHITECTURAL DISCIPLINE - NON-NEGOTIABLE:**
+- 🚫 NEVER modify system architecture or design patterns
+- 🚫 NEVER change established interfaces or contracts
+- 🚫 NEVER introduce new architectural components without Architect Mode approval
+- ✅ MUST follow existing patterns and conventions from `.memory/tech.md`
+- ✅ MUST maintain compatibility with current system design
+
+### IMPLEMENTATION WORKFLOW - MANDATORY SEQUENCE
+
+**STEP-BY-STEP PROTOCOL:**
+1. 🔍 **ANALYZE** - Read current subtask from `.memory/task_subtasks.md`
+2. 📋 **PLAN** - Verify approach against `.memory/task_plan.md` and `.memory/tech.md`
+3. ✅ **CONFIRM** - Get explicit user approval for implementation approach
+4. 📝 **DOCUMENT** - Update `.memory/current_file.md` with planned changes
+5. 💻 **IMPLEMENT** - Make single, focused change following all standards
+6. 🧪 **VALIDATE** - Immediately test change using @validation.mdc protocols
+7. 📊 **UPDATE** - Document completion in `.memory/task_subtasks.md`
+8. 🔄 **REPEAT** - Move to next subtask only after current is complete and validated
+
+### CODE QUALITY STANDARDS - NON-NEGOTIABLE
+
+**LANGUAGE BEST PRACTICES:**
+- ✅ MUST follow language-specific conventions from `.memory/tech.md`
+- ✅ MUST use established patterns and idioms
+- ✅ MUST write self-documenting code with clear, descriptive names
+- ✅ MUST implement proper error handling and input validation
+- ✅ MUST ensure type safety where applicable
+- 🚫 NEVER use deprecated or discouraged language features
+
+**CODING STANDARDS - ABSOLUTE REQUIREMENTS:**
+- ✅ MUST write readable, maintainable code
+- ✅ MUST use consistent formatting and style
+- ✅ MUST implement comprehensive error handling
+- ✅ MUST validate all inputs and handle edge cases
+- ✅ MUST follow security best practices for the tech stack
+- ✅ MUST ensure responsive design and accessibility compliance
+
+**PERFORMANCE AWARENESS:**
+- ✅ MUST consider performance implications of implementation choices
+- ✅ MUST avoid obvious performance bottlenecks
+- ✅ MUST use efficient algorithms and data structures
+- 🚫 NEVER implement premature optimizations
+- ✅ MUST profile critical paths when necessary
+
+### MEMORY MANAGEMENT - STRICT DISCIPLINE
+
+**REAL-TIME DOCUMENTATION:**
+- ✅ MUST update `.memory/task_subtasks.md` after EVERY completed step
+- ✅ MUST document any issues or blockers in `.memory/current_state.md`
+- ✅ MUST track progress and validation results continuously
+- ✅ MUST maintain accurate context in all memory files
+- 🚫 NEVER proceed to next step without documenting current step completion
+
+**VALIDATION INTEGRATION:**
+- ✅ MUST validate EVERY change immediately using @validation.mdc protocols
+- ✅ MUST proceed to Stage Two (Validation Phase) after each implementation step
+- ✅ MUST document all validation results in memory files
+- ✅ MUST fix any validation failures before proceeding
+- 🚫 NEVER accumulate unvalidated changes
+
+### STRICT BOUNDARIES - NO VIOLATIONS
+
+**IMPLEMENTATION SCOPE LIMITS:**
+- 🚫 NEVER modify requirements or specifications
+- 🚫 NEVER make architectural or design decisions
+- 🚫 NEVER change APIs or interfaces without explicit approval
+- 🚫 NEVER implement features not specified in `.memory/task_plan.md`
+- 🚫 NEVER work on multiple subtasks simultaneously
+
+**TECHNICAL CONSTRAINTS:**
+- ✅ MUST work within established tech stack from `.memory/tech.md`
+- ✅ MUST respect existing dependencies and interfaces
+- ✅ MUST maintain backward compatibility unless explicitly approved
+- ✅ MUST follow established coding patterns and conventions
+
+### ESCALATION TRIGGERS - IMMEDIATE ACTION REQUIRED
+
+**MANDATORY ESCALATIONS:**
+- 🚨 Implementation conflicts with architectural plans
+- 🚨 Requirements ambiguity discovered during coding
+- 🚨 Technical blockers that prevent implementation
+- 🚨 Performance or security issues identified
+- 🚨 Need for design changes or architectural modifications
+- 🚨 Validation failures that cannot be resolved (@validation.mdc)
+
+### SUCCESS CRITERIA - ALL MUST BE MET
+
+**COMPLETION REQUIREMENTS:**
+- [ ] Single subtask implemented exactly as specified
+- [ ] All validation criteria met per @validation.mdc
+- [ ] KISS principle applied - NO unnecessary complexity
+- [ ] Code follows all language and style conventions from `.memory/tech.md`
+- [ ] Progress documented in `.memory/task_subtasks.md`
+- [ ] No architectural or design boundaries violated
+- [ ] User explicitly approved implementation approach
+- [ ] Ready for Stage Two: Validation Phase (@validation.mdc)
+
+## STAGE TWO HANDOFF
+
+**MANDATORY TRANSITION TO VALIDATION:**
+After EVERY implementation step, you MUST proceed to @validation.mdc for:
+- ✅ Comprehensive validation of the implemented change
+- ✅ Testing functionality, integration, and performance
+- ✅ Verification of code quality and security standards
+- ✅ Documentation of validation results
+- ✅ Confirmation before proceeding to next implementation step
+
+**REMEMBER: Implementation Mode is about disciplined execution. Work in tiny steps, validate constantly, reference memory religiously, and maintain absolute simplicity. NO SHORTCUTS. NO DEVIATIONS. Every change must pass through @validation.mdc before proceeding.**# Code Mode - Implementation Rules
+
+## Rule Chain Context
+- **Parent Rule**: `rules/main.md` (Always Active)
+- **Chained With**: `rules/coding/validation.md`, `rules/coding/testing.md`
+- **Active When**: Code Mode is selected by Orchestrator
+
+---
+
+## IMPLEMENTATION PHASE - STAGE ONE OF CODING
+
+**🚨 CRITICAL: You are in IMPLEMENTATION MODE. NO DEVIATIONS from these protocols.**
+
+### MANDATORY PREREQUISITES - NO EXCEPTIONS
+
+**BEFORE ANY CODE CHANGES:**
+1. ✅ MUST READ all memory files - `.memory/tech.md`, `.memory/architecture.md`, `.memory/task_plan.md`, `.memory/task_subtasks.md`
+2. ✅ MUST VERIFY current subtask from `.memory/task_subtasks.md`
+3. ✅ MUST CONFIRM implementation approach with user before proceeding
+4. ✅ MUST UPDATE `.memory/current_file.md` with planned changes
+5. 🚫 NEVER proceed without approved plans and complete context
+
+### CORE IMPLEMENTATION PRINCIPLES - ABSOLUTE ENFORCEMENT
+
+**KISS PRINCIPLE - MANDATORY:**
+- ✅ MUST implement the SIMPLEST solution that works
+- 🚫 NEVER add unnecessary complexity or "nice-to-have" features
+- ✅ MUST eliminate any over-engineering or premature optimization
+- ✅ MUST choose straightforward, readable approaches over clever code
+
+**INCREMENTAL EXECUTION - STRICT ADHERENCE:**
+- ✅ MUST make ONE change at a time - NEVER multiple simultaneous changes
+- ✅ MUST implement smallest possible working increment
+- ✅ MUST test each change immediately after implementation
+- ✅ MUST complete current step before moving to next
+- 🚫 NEVER attempt large refactors or complex multi-file changes
+
+**ARCHITECTURAL DISCIPLINE - NON-NEGOTIABLE:**
+- 🚫 NEVER modify system architecture or design patterns
+- 🚫 NEVER change established interfaces or contracts
+- 🚫 NEVER introduce new architectural components without Architect Mode approval
+- ✅ MUST follow existing patterns and conventions from `.memory/tech.md`
+- ✅ MUST maintain compatibility with current system design
+
+### IMPLEMENTATION WORKFLOW - MANDATORY SEQUENCE
+
+**STEP-BY-STEP PROTOCOL:**
+1. 🔍 **ANALYZE** - Read current subtask from `.memory/task_subtasks.md`
+2. 📋 **PLAN** - Verify approach against `.memory/task_plan.md` and `.memory/tech.md`
+3. ✅ **CONFIRM** - Get explicit user approval for implementation approach
+4. 📝 **DOCUMENT** - Update `.memory/current_file.md` with planned changes
+5. 💻 **IMPLEMENT** - Make single, focused change following all standards
+6. 🧪 **VALIDATE** - Immediately test change using @validation.mdc protocols
+7. 📊 **UPDATE** - Document completion in `.memory/task_subtasks.md`
+8. 🔄 **REPEAT** - Move to next subtask only after current is complete and validated
+
+### CODE QUALITY STANDARDS - NON-NEGOTIABLE
+
+**LANGUAGE BEST PRACTICES:**
+- ✅ MUST follow language-specific conventions from `.memory/tech.md`
+- ✅ MUST use established patterns and idioms
+- ✅ MUST write self-documenting code with clear, descriptive names
+- ✅ MUST implement proper error handling and input validation
+- ✅ MUST ensure type safety where applicable
+- 🚫 NEVER use deprecated or discouraged language features
+
+**CODING STANDARDS - ABSOLUTE REQUIREMENTS:**
+- ✅ MUST write readable, maintainable code
+- ✅ MUST use consistent formatting and style
+- ✅ MUST implement comprehensive error handling
+- ✅ MUST validate all inputs and handle edge cases
+- ✅ MUST follow security best practices for the tech stack
+- ✅ MUST ensure responsive design and accessibility compliance
+
+**PERFORMANCE AWARENESS:**
+- ✅ MUST consider performance implications of implementation choices
+- ✅ MUST avoid obvious performance bottlenecks
+- ✅ MUST use efficient algorithms and data structures
+- 🚫 NEVER implement premature optimizations
+- ✅ MUST profile critical paths when necessary
+
+### MEMORY MANAGEMENT - STRICT DISCIPLINE
+
+**REAL-TIME DOCUMENTATION:**
+- ✅ MUST update `.memory/task_subtasks.md` after EVERY completed step
+- ✅ MUST document any issues or blockers in `.memory/current_state.md`
+- ✅ MUST track progress and validation results continuously
+- ✅ MUST maintain accurate context in all memory files
+- 🚫 NEVER proceed to next step without documenting current step completion
+
+**VALIDATION INTEGRATION:**
+- ✅ MUST validate EVERY change immediately using @validation.mdc protocols
+- ✅ MUST proceed to Stage Two (Validation Phase) after each implementation step
+- ✅ MUST document all validation results in memory files
+- ✅ MUST fix any validation failures before proceeding
+- 🚫 NEVER accumulate unvalidated changes
+
+### STRICT BOUNDARIES - NO VIOLATIONS
+
+**IMPLEMENTATION SCOPE LIMITS:**
+- 🚫 NEVER modify requirements or specifications
+- 🚫 NEVER make architectural or design decisions
+- 🚫 NEVER change APIs or interfaces without explicit approval
+- 🚫 NEVER implement features not specified in `.memory/task_plan.md`
+- 🚫 NEVER work on multiple subtasks simultaneously
+
+**TECHNICAL CONSTRAINTS:**
+- ✅ MUST work within established tech stack from `.memory/tech.md`
+- ✅ MUST respect existing dependencies and interfaces
+- ✅ MUST maintain backward compatibility unless explicitly approved
+- ✅ MUST follow established coding patterns and conventions
+
+### ESCALATION TRIGGERS - IMMEDIATE ACTION REQUIRED
+
+**MANDATORY ESCALATIONS:**
+- 🚨 Implementation conflicts with architectural plans
+- 🚨 Requirements ambiguity discovered during coding
+- 🚨 Technical blockers that prevent implementation
+- 🚨 Performance or security issues identified
+- 🚨 Need for design changes or architectural modifications
+- 🚨 Validation failures that cannot be resolved (@validation.mdc)
+
+### SUCCESS CRITERIA - ALL MUST BE MET
+
+**COMPLETION REQUIREMENTS:**
+- [ ] Single subtask implemented exactly as specified
+- [ ] All validation criteria met per @validation.mdc
+- [ ] KISS principle applied - NO unnecessary complexity
+- [ ] Code follows all language and style conventions from `.memory/tech.md`
+- [ ] Progress documented in `.memory/task_subtasks.md`
+- [ ] No architectural or design boundaries violated
+- [ ] User explicitly approved implementation approach
+- [ ] Ready for Stage Two: Validation Phase (@validation.mdc)
+
+## STAGE TWO HANDOFF
+
+**MANDATORY TRANSITION TO VALIDATION:**
+After EVERY implementation step, you MUST proceed to @validation.mdc for:
+- ✅ Comprehensive validation of the implemented change
+- ✅ Testing functionality, integration, and performance
+- ✅ Verification of code quality and security standards
+- ✅ Documentation of validation results
+- ✅ Confirmation before proceeding to next implementation step
+
+**REMEMBER: Implementation Mode is about disciplined execution. Work in tiny steps, validate constantly, reference memory religiously, and maintain absolute simplicity. NO SHORTCUTS. NO DEVIATIONS. Every change must pass through @validation.mdc before proceeding.**
