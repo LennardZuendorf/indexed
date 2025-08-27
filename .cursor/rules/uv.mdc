@@ -1,0 +1,139 @@
+---
+alwaysApply: true
+---
+# Development Environment Rules: Using `uv`
+
+This project standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.  
+You **must not manually activate Python virtual environments** (e.g., `source venv/bin/activate`).  
+Instead, always use `uv run <command>` to ensure commands are executed inside the managed environment.
+
+---
+
+## 1. Environment Setup
+
+### Install runtime dependencies only
+```bash
+uv sync
+```
+
+### Install with development dependencies
+This installs tools such as **pytest**, **ruff**, **mypy**, and other dev tools:
+```bash
+uv sync --all-groups
+```
+
+> ⚠️ Always run `uv sync` (or `uv sync --all-groups`) after modifying `pyproject.toml` or dependency groups.
+
+---
+
+## 2. Running the CLI
+
+The main command-line interface for this project is `indexed-cli`. Always run it with `uv run`.
+
+### General help
+```bash
+uv run indexed-cli --help
+```
+
+### Create collections
+```bash
+uv run indexed-cli create jira -c my-issues -u https://company.atlassian.net --jql "project = PROJ"
+uv run indexed-cli create confluence -c wiki -u https://company.atlassian.net --cql "space = DEV" --readOnlyFirstLevelComments
+uv run indexed-cli create files -c docs --basePath ./documents --includePatterns ".*\.md$"
+```
+
+### Search collections
+```bash
+uv run indexed-cli search "auth methods" -c api-docs --json --maxNumberOfDocuments 5
+```
+
+### Update or delete
+```bash
+uv run indexed-cli update
+uv run indexed-cli delete -c docs --yes
+```
+
+### Inspect and list
+```bash
+uv run indexed-cli inspect --json --include-index-size
+uv run indexed-cli list
+```
+
+### Legacy commands
+These are kept for backwards compatibility and should only be used when strictly necessary:
+```bash
+uv run indexed-cli legacy collection-search ...
+uv run indexed-cli legacy collection-update ...
+uv run indexed-cli legacy collection-mcp ...
+```
+
+### MCP Server
+```bash
+uv run indexed-mcp
+```
+
+---
+
+## 3. Testing (pytest)
+
+All tests are executed with `pytest` inside the uv-managed environment.
+
+### Run full test suite with coverage
+```bash
+uv run pytest -q
+```
+
+### Run specific tests
+```bash
+uv run pytest tests/cli/test_app.py -q
+uv run pytest tests/cli/test_app.py::test_create_jira_calls_service -q
+uv run pytest -k "search and json" -q
+```
+
+### Disable coverage temporarily
+```bash
+uv run pytest -q -o addopts=
+```
+
+### Coverage report
+After running tests with coverage enabled, open the HTML report:
+```
+htmlcov/index.html
+```
+
+---
+
+## 4. Linting & Formatting (ruff)
+
+We use [ruff](https://docs.astral.sh/ruff/) for linting and formatting.
+
+### Run linter
+```bash
+uv run ruff check .
+```
+
+### Auto-fix linting issues
+```bash
+uv run ruff check . --fix
+```
+
+### Run formatter
+```bash
+uv run ruff format
+```
+
+---
+
+## 5. Best Practices & Tips
+
+- Always use `uv run <command>` for any tool (pytest, ruff, mypy, custom scripts, etc.).
+- Keep environments in sync by re-running `uv sync` after dependency changes.
+- Source code is installed from the `src/` directory using setuptools, which means imports like:
+  ```python
+  from cli.app import app
+  ```
+  will work correctly inside `uv run`.
+
+---
+
+✅ By following these rules, developers ensure that all environments remain reproducible and consistent, avoiding conflicts with system Python installations or unmanaged virtual environments.

@@ -34,7 +34,6 @@ Please check this article for more context: https://medium.com/@shnax0210/mcp-to
 Communication:
 - if you like the app, please add a star for the repo (it encourages me much for the future work);
 - if you see some issues or improvements, please log them here: https://github.com/shnax0210/documents-vector-search/issues
-- if you want to chat me, please find me on [LinkedIn](https://www.linkedin.com/in/oleksii-shnepov-841447158/)
 
 ## Common use case
 1) You create a collection by a dedicated script (there are separate scripts for Jira, Confluence and local files cases). During the collection creation, data are loaded into your local machine and then indexed. Results are stored in a subfolder of `./data/collections` with the name that you specify via the "--collection ${collectionName}" parameter. So a collection is just a folder with all needed information for search, such as: loaded documents, index files, metadata, etc. Once a collection is created, it can be used for search and update. The creation process can take a while; it depends on the number of documents your collection consists of and local machine resources.
@@ -138,41 +137,94 @@ Notes:
 
 ### Set up MCP:
 
+The project provides a FastMCP server that exposes search and inspect capabilities as MCP tools and resources. This allows AI agents like Claude, ChatGPT, and others to search your document collections directly.
+
+#### Available MCP Tools:
+- **`search`** - Search across all available collections using semantic similarity
+- **`search_collection`** - Search within a specific collection
+
+#### Available MCP Resources:
+- **`resource://collections`** - List of available collection names
+- **`resource://collections/status`** - Detailed status for all collections
+- **`resource://collections/{name}`** - Detailed status for a specific collection
+
+#### MCP Server Configuration:
+
 Add MCP configuration like:
-```
+```json
 {
     "servers": {
-        ...
-        "search_${collectionName}_stdio": {
+        "indexed-search": {
             "type": "stdio",
             "command": "uv",
             "args": [
                 "--directory",
                 "${fullPathToRootProjectFolder}",
                 "run",
-                "collection_search_mcp_stdio_adapter.py",
-                "--collection",
-                "${collectionName}",
+                "indexed-mcp"
             ]
-        },
-        ...
+        }
     }
 }
 ```
 
-If you use VS code IDE and GitHub Copilot, you can add the configuration into `.vscode/mcp.json` file in the root of your project.
-You can check more details on youtube:
-- https://www.youtube.com/watch?v=VePxCcF99w4
-- https://www.youtube.com/watch?v=iS25RFups4A
+If you use VS Code IDE and GitHub Copilot, you can add the configuration into `.vscode/mcp.json` file in the root of your project.
 
-Notes:
-- Please update ${collectionName} to the real collection name (the one used during collection creation), for example: "confluence" or "jira".
-- Please update ${fullPathToRootProjectFolder} to the real full path to this project root folder.
-- It can be useful to increase the number of returned matched text chunks by setting "--maxNumberOfChunks ${number}". A bigger number means better search, but too large a number may break GitHub Copilot, probably because it does not fit into the model context window.
+#### Usage Examples:
 
-Prompt examples:
-- "Find information about AI use cases, search info on Confluence, include all used links in response"
-- "Find information about PDP carousel, search info on Jira, include all used links in response"
+Once configured, you can use natural language prompts with your AI agent:
+
+- "Search for information about authentication methods across all my collections"
+- "Find documentation about API endpoints in the confluence collection"
+- "What collections are available and how many documents do they contain?"
+- "Search for bug reports related to login issues in the jira collection"
+
+The MCP server will automatically discover all your existing collections and make them searchable through the AI agent.
+
+#### Configuration via Environment Variables:
+
+The MCP server can be configured using environment variables:
+
+**Search Configuration:**
+- `INDEXED_MCP_MAX_DOCS` - Maximum documents to return per search (default: 10)
+- `INDEXED_MCP_MAX_CHUNKS` - Maximum text chunks to return per search (default: 30)
+- `INDEXED_MCP_INCLUDE_FULL_TEXT` - Include complete document text in results (default: false)
+- `INDEXED_MCP_INCLUDE_ALL_CHUNKS` - Include all document chunks in results (default: false)
+- `INDEXED_MCP_INCLUDE_MATCHED_CHUNKS` - Include only matching chunks in results (default: false)
+- `INDEXED_MCP_DEFAULT_INDEXER` - Default FAISS indexer to use (default: indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2)
+
+**Inspect Configuration:**
+- `INDEXED_MCP_INCLUDE_INDEX_SIZE` - Include index size calculation in status (default: false, may be slower)
+
+**Example with environment variables:**
+```json
+{
+    "servers": {
+        "indexed-search": {
+            "type": "stdio",
+            "command": "uv",
+            "args": [
+                "--directory",
+                "${fullPathToRootProjectFolder}",
+                "run",
+                "indexed-mcp"
+            ],
+            "env": {
+                "INDEXED_MCP_MAX_DOCS": "20",
+                "INDEXED_MCP_INCLUDE_MATCHED_CHUNKS": "true",
+                "INDEXED_MCP_INCLUDE_INDEX_SIZE": "true"
+            }
+        }
+    }
+}
+```
+
+#### Notes:
+- Replace `${fullPathToRootProjectFolder}` with the actual full path to this project's root folder
+- The server automatically discovers all collections in `./data/collections/`
+- No need to specify individual collections - the server provides access to all of them
+- Search results include document titles, snippets, and source information
+- Environment variables allow customization without code changes
 
 
 ## Collection structure
