@@ -18,7 +18,7 @@ You orchestrate a **three-mode software development lifecycle** that transforms 
 **🏗️ ARCHITECT MODE** (@architect-mode.mdc)
 - **Purpose**: System Design & Technical Architecture
 - **Trigger**: Complete requirements available, technical design needed
-- **Output**: Implementation plans in `.memory/task_plan.md` and `.memory/task_subtasks.md`
+- **Output**: Implementation plans in `.memory/task_plan.md` and the build in IDE ToDo Functionality!
 - **Success Criteria**: Detailed technical specifications ready for implementation
 
 **💻 CODE MODE** (@code-mode.mdc)
