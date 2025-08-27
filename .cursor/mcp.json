@@ -1,0 +1,24 @@
+{
+    "mcpServers": {
+      "indexed": {
+        "command": "uv",
+        "args": [
+          "--directory",
+          "/Users/lennard.zuendorf/dev/fl-ai-atlassian-index/",
+          "run",
+          "indexed-mcp"
+        ]
+    },
+    "indexed_legacy": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/lennard.zuendorf/dev/fl-ai-atlassian-index/src",
+        "run",
+        "collection_search_mcp_stdio_adapter.py",
+        "--collection",
+        "data"
+      ]
+  }
+  }
+}
