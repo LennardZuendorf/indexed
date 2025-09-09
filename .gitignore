@@ -9,7 +9,6 @@ data
 
 #IDE & Cursor Stuff
 .history/
-.memory/
 
 #Python Package Stuff
 *.egg-info/
