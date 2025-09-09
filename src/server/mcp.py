@@ -39,13 +39,6 @@ def search(query: str) -> Dict[str, Any]:
     """
     Search across all available document collections using semantic similarity.
     
-    Configuration via environment variables:
-    - INDEXED_MCP_MAX_DOCS: Maximum documents to return (default: 10)
-    - INDEXED_MCP_MAX_CHUNKS: Maximum chunks to return (default: 30)
-    - INDEXED_MCP_INCLUDE_FULL_TEXT: Include full document text (default: false)
-    - INDEXED_MCP_INCLUDE_ALL_CHUNKS: Include all chunks (default: false)
-    - INDEXED_MCP_INCLUDE_MATCHED_CHUNKS: Include matched chunks only (default: false)
-    
     Args:
         query: The search query text
         
@@ -187,8 +180,18 @@ def collection_status(name: str) -> Dict[str, Any]:
 
 def main():
     """Main entry point for the MCP server."""
-    # Run the FastMCP server
-    mcp.run()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
+    parser.add_argument("--host", default="localhost", help="Host to bind to (default: localhost)")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], 
+                       help="Log level (default: INFO)")
+    
+    args = parser.parse_args()
+    
+    # Run the FastMCP server with parsed arguments
+    mcp.run(host=args.host, port=args.port, log_level=args.log_level)
 
 
 if __name__ == "__main__":
