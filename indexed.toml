@@ -1,0 +1,20 @@
+[search]
+include_full_text = true
+
+[index]
+embedding_model = "sentence-transformers/all-mpnet-base-v2"
+use_gpu = false
+
+[sources.files]
+base_path = "./documents"
+include_patterns = [
+    "*.md",
+    "*.txt",
+]
+testing_random = "hello"
+
+[sources.jira_cloud]
+base_url = "https://mycompany.atlassian.net"
+email = "user@company.com"
+
+[mcp]

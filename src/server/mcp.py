@@ -8,7 +8,8 @@ from typing import Any, Dict, List
 from fastmcp import FastMCP
 
 # Import our service layer
-from main.services.search_service import search as svc_search, SourceConfig
+import main.services.search_service as search_service
+from main.services.search_service import SourceConfig
 from main.services.inspect_service import status as svc_status
 
 # Create the FastMCP server instance
@@ -47,14 +48,9 @@ def search(query: str) -> Dict[str, Any]:
     """
     try:
         # Use auto-discovery mode (configs=None) to search all collections
-        results = svc_search(
+        results = search_service.search(
             query, 
             configs=None,
-            max_docs=config.max_docs,
-            max_chunks=config.max_chunks,
-            include_full_text=config.include_full_text,
-            include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks
         )
         return results
     except Exception as e:
@@ -95,14 +91,9 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
             indexer=default_indexer,
         )
         
-        results = svc_search(
+        results = search_service.search(
             query, 
             configs=[source_config],
-            max_docs=config.max_docs,
-            max_chunks=config.max_chunks,
-            include_full_text=config.include_full_text,
-            include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks
         )
         return results
     except Exception as e:

@@ -7,7 +7,6 @@ and caching of search indexes for optimal performance.
 """
 
 import json
-import os
 from typing import List, Optional, Dict, Any
 from .models import SourceConfig
 from ..utils.logger import setup_root_logger
@@ -66,25 +65,14 @@ class SearchService:
 
         Returns:
             List[str]: List of collection names that contain a valid manifest.json.
-
-        The previous implementation was relying on `DiskPersister.read_folder_files()` and then
-        assumed that it returned directory names. In reality it returns **file paths**.  As a
-        consequence we were checking for the existence of
-        "<file_path>/manifest.json" which can never be true. The result was an empty list → global
-        searches saw zero collections and therefore returned an empty result set.
         """
         try:
-            # Fetch *all* files under the data directory and look for manifest.json occurrences
-            all_files = self._persister.read_folder_files(".")
-            collection_names: List[str] = []
-            for rel_path in all_files:
-                # Normalise path (DiskPersister returns POSIX style relative paths)
-                if os.path.basename(rel_path) == "manifest.json":
-                    # Parent folder is the collection name (e.g. "files/manifest.json" → "files")
-                    collection_name = os.path.dirname(rel_path).split(os.sep)[0] or os.path.dirname(rel_path)
-                    if collection_name and collection_name not in collection_names:
-                        collection_names.append(collection_name)
-            return sorted(collection_names)
+            entries = self._persister.read_folder_files(".")
+            discovered: List[str] = []
+            for name in entries:
+                if self._persister.is_path_exists(f"{name}/manifest.json"):
+                    discovered.append(name)
+            return discovered
         except Exception:
             return []
 
@@ -246,11 +234,6 @@ def search(
     Returns:
         Dict[str, Any]: Dictionary with collection names as keys and search results
                        as values. See SearchService.search() for detailed format.
-
-    Example:
-        >>> from main.services.search_service import search
-        >>> results = search("python programming", max_docs=3)
-        >>> print(f"Searched {len(results)} collections")
     """
     return _default_service.search(
         query,

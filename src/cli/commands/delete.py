@@ -3,6 +3,13 @@
 from typing import Optional
 import typer
 
+# --- simple styling helpers (ANSI) ---
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+def bold(text: str) -> str:
+    return f"{BOLD}{text}{RESET}"
+
 
 def register(app: typer.Typer) -> None:
     @app.command("delete")
@@ -14,7 +21,7 @@ def register(app: typer.Typer) -> None:
             help="Collection name to delete (omit to select from all collections)",
         ),
         yes: bool = typer.Option(
-            False, "--yes", "-y", is_flag=True, help="Skip confirmation prompts"
+            False, "--yes", "-y", help="Skip confirmation prompts"
         ),
     ) -> None:
         """Delete collections and all their data permanently with per-collection confirmation."""
@@ -25,16 +32,16 @@ def register(app: typer.Typer) -> None:
             statuses = root.svc_status([collection]) if collection else root.svc_status(None)
             if not statuses:
                 if collection:
-                    typer.echo(f"\n📂 Collection '{collection}' was not found. Nothing to delete.\n")
+                    typer.echo(f"\n📂  Collection '{collection}' was not found. Nothing to delete.\n")
                     raise typer.Exit()
                 else:
-                    typer.echo("\n📂 No collections found. Nothing to delete.\n")
+                    typer.echo("\n📂  No collections found. Nothing to delete.\n")
                     raise typer.Exit(0)
 
             # Nicely formatted list of candidate collections
             count = len(statuses)
             heading = (
-                f"\n🗑️  Deletion candidates (1 collection):\n" if count == 1 else f"\n🗑️  Deletion candidates ({count} collections):\n"
+                f"\n🗑️  {bold('Deletion candidates')} (1 collection):\n" if count == 1 else f"\n🗑️  {bold('Deletion candidates')} ({count} collections):\n"
             )
             typer.echo(heading)
 
@@ -77,21 +84,21 @@ def register(app: typer.Typer) -> None:
                 typer.echo("\nConfirm deletions one by one:\n")
                 for s in statuses:
                     prompt = (
-                        f"Delete collection '{s.name}'? This cannot be undone.\n"
+                        f"Delete collection '{s.name}'? This cannot be undone."
                     )
                     if typer.confirm(prompt, default=False):
                         confirmed_names.append(s.name)
                 names_to_delete = confirmed_names
 
             if not names_to_delete:
-                typer.echo("\n✓ No collections selected. Deletion cancelled.\n")
+                typer.echo("\n✓  No collections selected. Deletion cancelled.\n")
                 raise typer.Exit(0)
 
             root.svc_clear(names_to_delete)
 
             # Post-action summary
             listed = ", ".join(names_to_delete)
-            typer.echo(f"\n✓ Deleted {len(names_to_delete)} collection(s): {listed}\n")
+            typer.echo(f"\n✅  {bold('Deleted')} {len(names_to_delete)} collection(s): {listed}\n")
 
         finally:
             raise typer.Exit()

@@ -1,91 +1,118 @@
-# Task PRD: Central Configuration Service & Config CLI
+# Task PRD: Config Formatting Service (Unified Human Output for Config CLI)
 
 ## Goal
-Establish a **single, authoritative configuration system** for the Indexed project that:
-1. Loads settings from `config.toml`, environment variables, and sensible defaults.
-2. Exposes a programmatic `ConfigService` that other services/commands fetch configuration from and merge with runtime overrides (e.g. CLI flags).
-3. Provides a new `indexed config` CLI group to view and modify the persisted configuration.
+Provide a single, reusable formatting service that returns pre-formatted, emoji- and ANSI-styled strings for configuration-related CLI commands. This ensures unified look-and-feel and eliminates duplicated formatting logic across `config get`, `config list` (and a future `config show`).
 
 ## Motivation / Value
-- Removes duplicated option handling scattered across CLI commands and MCP server.
-- Enables non-interactive use through environment variables (ideal for CI/remote agents).
-- Gives users a canonical `config.toml` they can commit/share for reproducible setups.
-- Simplifies future feature flags and advanced options (e.g. embedding model switch).
+- Consistent output across commands; one source of truth for emojis, colors, badges, and section ordering.
+- Cleaner CLI command code (commands simply call a formatter and print the returned string).
+- Easier to extend (add a new section or badge once in the formatter; all commands benefit).
+- Testable: formatting can be unit-tested as pure string-returning functions.
 
-## Functional Scope
-### 1. Configuration Schema
-- Implemented via **pydantic-settings** `BaseSettings` subclass (`IndexedSettings`).
-- **Top-level sections** (initial set):
-  - `search.max_docs: int = 10`
-  - `search.max_chunks: int = 30 | null`
-  - `search.include_full_text: bool = false`
-  - `paths.collections_dir: str = "./data/collections"`
-  - `index.default_indexer: str = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"`
-- Environment variable mapping follows `INDEXED__SEARCH__MAX_DOCS` (double underscore → nested field).
-
-### 2. Config Store
-- Persisted at **project-local** `./config.toml` (git-ignored).
-- Optional **user-level** `~/.config/indexed/config.toml` (lower precedence).
-- Atomic write (`tempfile` + `os.replace`) with backup `config.toml.bak`.
-
-### 3. Precedence Rules (Highest → Lowest)
-1. **Runtime overrides** (explicit kwargs / CLI flags).
-2. **Environment variables**.
-3. **Project `config.toml`**.
-4. **User `config.toml`**.
-5. **Internal defaults** (defined in schema).
-
-### 4. ConfigService API (sync)
-```python
-class ConfigService:
-    def load(self, *, overrides: dict | None = None) -> IndexedSettings: ...
-    def save(self, settings: IndexedSettings) -> None:  # writes project toml
-    def merge(self, overrides: dict | None = None) -> IndexedSettings: ...  # convenience
-```
-- Singleton instance accessible via `main.services.config_service.get()` to avoid repeated disk I/O.
-
-### 5. Injection Pattern
-- **CLI commands** (`create`, `search`, `update`, `mcp`, etc.) obtain a settings object at the beginning and merge CLI options with `ConfigService.merge()`.
-- **MCP server** imports `ConfigService` and passes merged settings into service calls (e.g. `max_docs`).
-
-### 6. New CLI Group `indexed config`
-| Sub-command | Args | Behaviour |
-| ----------- | ---- | --------- |
-| `show` | `--json` | Print resolved config (json or table). |
-| `set` | `key value` | Persist new value to project `config.toml`. |
-| `unset` | `key` | Remove key from project file (fall back to lower precedence). |
-| `edit` | *(no args)* | Open `config.toml` in `$EDITOR` (optional). |
-| `validate` | | Performs full schema validation and prints result. |
-
-### 7. Validation & Error Handling
-- All writes validated by the Pydantic schema. Invalid types raise a clear message.
-- On `save` we keep previous file as `.bak` in case of corruption.
-
-## Non-Functional Requirements
-- **Thread-safe**: concurrent reads allowed; writes acquire file lock (portalocker).
-- **Performance**: Config cached in memory; reload only when `save` is called.
-- **Security**: Sensitive credentials NOT stored in TOML—env vars only.
-- **Testing**: Provide pytest fixtures with temporary config file override.
+## In Scope
+- A new service that:
+  - Computes origin badges (env/toml/default) for values using the same precedence rules as today.
+  - Renders:
+    1) a specific key’s value (for `config get`),
+    2) a full multi-section view (for `config list` without prefix),
+    3) a single top-level section like `flags` (for `config list flags`).
+  - Returns a single string for each render call (commands just `echo` it).
+  - Allows selecting “all sections” vs. a specific section via an enum.
+- Keep JSON output paths unchanged (JSON stays raw, not styled).
 
 ## Out of Scope
-- Remote configuration sync or cloud storage.
-- Secrets management tool (future work).
-- GUI editor.
+- Changing configuration schema or precedence.
+- Storing secrets. (Formatter only displays origin; values are already scrubbed by schema/policy.)
+- Non-config commands.
+
+## Users / Use Cases
+- CLI users invoking `indexed config get ...`, `indexed config list`, or `indexed config list flags`.
+- Developers adding new sections; they extend the enum and a single renderer.
+
+## Functional Requirements
+- Provide an enum to control scope:
+  - `ConfigSection`: `ALL`, `PATHS`, `SEARCH`, `INDEX`, `SOURCES`, `MCP`, `PERFORMANCE`, `FLAGS`.
+- Provide functions that accept an `IndexedSettings` instance (or dict), optional `profile`, and produce formatted strings:
+  - `format_full(settings, profile) -> str` (summary + sections)
+  - `format_section(section: ConfigSection, settings, profile) -> str`
+  - `format_value(key_path: str, settings, profile) -> str`
+- Provide consistent styling helpers (bold/color) and emojis, centralized in this service.
+- Compute and attach origin badges `[env]`, `[toml]`, `[default]` at leaf values.
+- For `SOURCES`, render nested subsections for `files`, `jira_cloud`, and `confluence_cloud` with their own badges.
+
+## Non-Functional Requirements
+- Pure string outputs; no direct printing from the service.
+- Minimal coupling: depends only on types (`IndexedSettings`) and `os.environ`/.env for origin detection.
+- Deterministic ordering of keys within sections (sorted) for stable tests.
+- Toggleable ANSI coloring (default on); future-proof a `disable_color` flag if needed.
 
 ## Acceptance Criteria
-- Running `indexed config show --json` outputs full resolved config in JSON.
-- Setting a value via `indexed config set search.max_docs 20` updates `config.toml` and subsequent `indexed search` picks up the new default without flags.
-- Environment variable `INDEXED__SEARCH__MAX_DOCS=5` overrides TOML at runtime but does **not** persist.
-- MCP server search tool respects settings from `config.toml` when CLI flags are absent.
+- `config get` uses `format_value` output verbatim for human mode and shows correct origin badge.
+- `config list` with no prefix uses `format_full` and matches the unified style (same emojis/ordering as the service defines).
+- `config list flags` uses `format_section(ConfigSection.FLAGS, ...)` and shows badges per key.
+- JSON outputs remain unchanged from current behavior.
+- Unit tests cover: full render, section render, and value render (including origin badges and key ordering).
 
 ## Risks / Mitigations
-| Risk | Mitigation |
-| ---- | ---------- |
-| File corruption on write | Atomic write + backup file. |
-| Confusing precedence | Clear docs + `config show --source` flag (future). |
-| Breaking existing scripts depending on defaults | Keep prior hard-coded defaults in schema. |
+- Risk: Divergence between service and CLI behavior. Mitigation: make CLI delegate all human-mode formatting to the service.
+- Risk: Origin computation drift. Mitigation: centralize origin map computation within the service; write tests for env/toml/default cases.
 
 ## Open Questions
-1. Should we support profiles (e.g. `dev`, `ci`) inside a single TOML?  
-2. How to safely edit nested keys via CLI (`--yaml` style path vs dot notation)?  
-3. Add watch-for-changes & auto-reload for long-running MCP server?  
+- Do we want a public `format_prefix(prefix: str, ...)` for arbitrary dot-path rendering beyond top-level sections? (Initial version covers value rendering via `format_value` and section rendering via enum.)  
+
+---
+
+# Task PRD: Config Injection Runtime (Gateway for CLI and MCP)
+
+## Goal
+Centralize configuration resolution, validation, and runtime parameter derivation for all entry points (CLI commands and MCP server). Provide a thin, reusable gateway that merges CLI/env overrides with `ConfigService` output and injects derived parameters into core services.
+
+## Motivation / Value
+- Single source of truth for loading and validating settings (profile-aware; env/TOML precedence).
+- Remove duplicated config handling in CLI and MCP; reduce drift and bugs.
+- Enable consistent defaults (e.g., indexer, limits, flags) with clear override rules.
+- Make future features (flags, profiles, env) available across all entry points without per-command rewrites.
+
+## In Scope
+- A small runtime/gateway that:
+  - Loads `IndexedSettings` via `ConfigService.get(profile, overrides)` (validation included).
+  - Builds operation-specific parameters from settings with CLI overrides applied (e.g., search limits, include flags, default indexer).
+  - Exposes helpers to construct `SourceConfig` lists from configured sources when needed.
+- Adoption in:
+  - CLI commands in `src/cli/commands/` (at least `search`, `update`, and any command using default indexer).
+  - MCP server in `src/server/mcp.py` (read mcp/search defaults from settings with env fallback).
+
+## Out of Scope
+- Changing core services APIs (`search_service`, `inspect_service`, `collection_service`).
+- Persisting overrides. Runtime overrides remain ephemeral.
+- Redesigning the configuration schema.
+
+## Users / Use Cases
+- CLI users leveraging profiles and defaults without specifying every flag.
+- MCP deployments that want consistent behavior via config (e.g., default indexer/limits, include flags).
+
+## Functional Requirements
+- Provide a function/class to resolve settings with precedence: CLI overrides > env/.env > TOML > defaults.
+- Provide helpers to derive per-operation args:
+  - Search: `configs` (optional), `max_docs`, `max_chunks`, `include_*` flags, default indexer fallback.
+  - Update: list of collections to update (from configured sources or discovered), default indexer when needed.
+- Work without mandatory settings for disk-only flows (e.g., searching existing collections) while still validating the overall config object.
+- Allow per-command `--profile` to select the profile; env var fallback allowed (e.g., `INDEXED_PROFILE`).
+
+## Non-Functional Requirements
+- KISS: minimal surface; avoid decorators unless needed by ergonomics.
+- No circular imports; place runtime under `main/services/` to be shared by CLI and MCP.
+- Deterministic behavior with clear override order.
+
+## Acceptance Criteria
+- CLI `search` loads and validates settings once, applies CLI overrides, and calls `SearchService` with derived params. Defaults align with settings when flags are omitted.
+- MCP reads settings (with env fallback) and applies configured defaults for search and inspect where applicable.
+- No regression in existing tests; add unit tests asserting runtime is invoked and behavior for overrides.
+- Code has no linter errors and follows existing style.
+
+## Risks / Mitigations
+- Risk: Tight coupling to current settings schema. Mitigation: limit the runtime to a small adapter that reads only necessary fields with safe defaults.
+- Risk: Global option propagation across CLI subcommands. Mitigation: start with per-command `--profile`; consider global option later if needed.
+
+## Open Questions
+- Should we add a global `--profile` option at the root Typer app? Initial version will add `--profile` only to affected commands to keep changes small.

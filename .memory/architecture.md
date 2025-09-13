@@ -90,6 +90,44 @@
 ## MCP Integration
 - Unified `indexed mcp` command runs stdio MCP; registers per-source tools and an optional `search_all` tool
 
+## New Component: Config Injection Gateway
+
+### Purpose
+Provide a thin adapter to resolve, validate, and translate `IndexedSettings` into operation-specific argument DTOs for services. Centralizes precedence (CLI overrides > env/.env > TOML > defaults) and default derivation (limits, flags, default indexer), used by CLI and MCP.
+
+### Module & API
+- Module: `src/main/services/inject_config.py`
+- Enum: `ConfigSlice` = { `SEARCH`, `CREATE`, `UPDATE`, `INSPECT`, `MCP_DEFAULTS` }
+- Core function (single entry):
+  - `resolve_and_extract(kind: ConfigSlice, *, profile: str | None, overrides: dict | None, target: str | None = None) -> tuple[IndexedSettings, Any]`
+    - Loads validated `IndexedSettings` via `ConfigService.get(profile, overrides)`
+    - Extracts and returns the slice required by the requested service as a typed DTO defined in that service module.
+- Minimal context type used internally: `ConfigContext` = { `settings: IndexedSettings`, `profile: str | None` }
+
+### DTOs defined by service modules
+- `main/services/search_service.py`: define and export `SearchArgs` dataclass describing needed parameters for `search()`.
+- `main/services/collection_service.py`: define and export `CreateArgs`, `UpdateArgs` dataclasses (e.g., `use_cache`, `force`, and list of `SourceConfig` as appropriate).
+- `main/services/inspect_service.py`: define and export `InspectArgs` (e.g., `include_index_size`).
+- `MCPDefaults` (either in `inject_config.py` or a small `models.py`) to carry defaults for MCP tool behavior; referenced by MCP only.
+
+### Data Sources in Settings
+- `settings.search`: defaults for `max_docs`, `max_chunks`, include flags
+- `settings.index`: defaults for `default_indexer`
+- `settings.mcp`: MCP-specific defaults that can override search defaults when serving MCP
+- `settings.sources`: optional lookup to map a logical source name to a concrete `SourceConfig` (for create/update flows)
+
+### Precedence Strategy
+1) Call `ConfigService.get(profile, overrides)` to obtain validated `IndexedSettings`.
+2) For operation args, merge in order: operation overrides (CLI/env) → settings.* defaults → hardcoded fallbacks.
+
+### Usage Patterns
+- CLI `search`: call `resolve_and_extract(SEARCH, profile, overrides)` to get `(settings, search_args)`; then call `SearchService.search(query, **search_args)`.
+- MCP `search`/`search_collection`: call `resolve_and_extract(MCP_DEFAULTS, profile_from_env, overrides_from_env)` once or per-call; for `search_collection` also build a `SourceConfig` (manifest-derived or via default indexer).
+- CLI `update`: call `resolve_and_extract(UPDATE, profile, overrides)` to obtain `UpdateArgs` (e.g., names → `SourceConfig` list with default indexer) and call `update()`.
+
+### Rationale
+Avoid decorators or global mutation; keep the gateway as a pure translator. This maintains KISS, prevents circular imports, and standardizes option derivation across entry points.
+
 ## System Structure and Components
 - CLI Layer (Typer): `indexed` orchestrates commands
   - Uses Services (below) and the existing `main/` factories; does not modify `main/` code

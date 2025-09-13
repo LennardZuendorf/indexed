@@ -1,17 +1,28 @@
-**/__pycache__/*
-tmp
-data
-.idea
-.venv
-**/.DS_Store
-.vscode
-.dccache
+.env
 
-#IDE & Cursor Stuff
+#IDE Stuff
 .history/
+.vscode/
+.venv
 
 #Python Package Stuff
 *.egg-info/
 .dist
 .ruff_cache/
 .pytest_cache/
+uv.lock
+.DS_Store
+**/__pycache__/
+
+# Application Stuff
+documents/
+dist/
+data/
+tmp/
+
+# Test and Linting Stuff
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage

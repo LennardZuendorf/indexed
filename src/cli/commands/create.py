@@ -5,6 +5,14 @@ import typer
 
 from main.services import SourceConfig
 
+# --- simple styling helpers (ANSI) ---
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+def bold(text: str) -> str:
+    return f"{BOLD}{text}{RESET}"
+
+
 create_app = typer.Typer(help="Create collections from various data sources")
 
 
@@ -47,11 +55,10 @@ def create_jira(
     indexer = index_name or root.DEFAULT_INDEXER
     cfg_type = "jiraCloud" if url.endswith(".atlassian.net") else "jira"
     
-    typer.echo(f"\n🔗 Creating Jira collection '{collection}'...")
+    typer.echo(f"\n🔗  {bold('Creating Jira collection')} '{collection}'…")
     typer.echo(f"   Source: {url}")
     typer.echo(f"   Query: {jql}")
-    typer.echo(f"   Indexer: {indexer}")
-    typer.echo()
+    typer.echo(f"   Indexer: {indexer}\n")
     
     try:
         cfg = SourceConfig(
@@ -63,9 +70,9 @@ def create_jira(
             reader_opts={},
         )
         root.svc_create([cfg], use_cache=not no_cache, force=force)
-        typer.echo(f"✅ Successfully created Jira collection '{collection}'\n")
+        typer.echo(f"✅  {bold('Successfully created')} Jira collection '{collection}'\n")
     except Exception as exc:  # pragma: no cover - error paths
-        typer.echo(f"❌ Error creating collection: {exc}\n", err=True)
+        typer.echo(f"❌  Error creating collection: {exc}\n", err=True)
         raise typer.Exit(1)
 
 
@@ -113,13 +120,12 @@ def create_confluence(
     indexer = index_name or root.DEFAULT_INDEXER
     cfg_type = "confluenceCloud" if url.endswith(".atlassian.net") else "confluence"
     
-    typer.echo(f"\n📚 Creating Confluence collection '{collection}'...")
+    typer.echo(f"\n📚  {bold('Creating Confluence collection')} '{collection}'…")
     typer.echo(f"   Source: {url}")
     typer.echo(f"   Query: {cql}")
-    typer.echo(f"   Indexer: {indexer}")
     if read_only_first_level_comments:
-        typer.echo(f"   Comments: Top-level only")
-    typer.echo()
+        typer.echo("   Comments: Top-level only")
+    typer.echo(f"   Indexer: {indexer}\n")
     
     try:
         cfg = SourceConfig(
@@ -131,15 +137,17 @@ def create_confluence(
             reader_opts={"readOnlyFirstLevelComments": read_only_first_level_comments},
         )
         root.svc_create([cfg], use_cache=not no_cache, force=force)
-        typer.echo(f"✅ Successfully created Confluence collection '{collection}'\n")
+        typer.echo(f"✅  {bold('Successfully created')} Confluence collection '{collection}'\n")
     except Exception as exc:  # pragma: no cover - error paths
-        typer.echo(f"❌ Error creating collection: {exc}\n", err=True)
+        typer.echo(f"❌  Error creating collection: {exc}\n", err=True)
         raise typer.Exit(1)
 
 
 @create_app.command("files")
 def create_files(
-    collection: str = typer.Argument(..., help="Name for the new collection", show_default=False),
+    collection: str = typer.Option(
+        ..., "--collection", "-c", help="Name for the new collection"
+    ),
     base_path: str = typer.Option(
         ..., "--basePath", help="Root directory path to index files from"
     ),
@@ -170,7 +178,7 @@ def create_files(
     
     Examples:
         Create from markdown files:
-        $ indexed-cli create files -c docs --basePath ./documents --includePatterns ".*\.md$"
+        $ indexed-cli create files -c docs --basePath ./documents --includePatterns ".*\\.md$"
         
         Create from code files, excluding tests:
         $ indexed-cli create files -c codebase --basePath ./src --includePatterns ".*\.(py|js|ts)$" --excludePatterns ".*test.*"
@@ -182,14 +190,14 @@ def create_files(
 
     indexer = index_name or root.DEFAULT_INDEXER
     
-    typer.echo(f"\n📁 Creating files collection '{collection}'...")
+    typer.echo(f"\n📁  {bold('Creating files collection')} '{collection}'…")
     typer.echo(f"   Source: {base_path}")
     typer.echo(f"   Include patterns: {', '.join(include_patterns)}")
     if exclude_patterns:
         typer.echo(f"   Exclude patterns: {', '.join(exclude_patterns)}")
     typer.echo(f"   Indexer: {indexer}")
     if fail_fast:
-        typer.echo(f"   Error handling: Fail fast")
+        typer.echo("   Error handling: Fail fast")
     typer.echo()
     
     try:
@@ -206,7 +214,7 @@ def create_files(
             },
         )
         root.svc_create([cfg], use_cache=not no_cache, force=force)
-        typer.echo(f"✅ Successfully created files collection '{collection}'\n")
+        typer.echo(f"✅  {bold('Successfully created')} files collection '{collection}'\n")
     except Exception as exc:  # pragma: no cover - error paths
-        typer.echo(f"❌ Error creating collection: {exc}\n", err=True)
+        typer.echo(f"❌  Error creating collection: {exc}\n", err=True)
         raise typer.Exit(1)

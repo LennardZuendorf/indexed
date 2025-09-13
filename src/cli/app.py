@@ -5,7 +5,6 @@ Provides legacy proxies and stateless commands backed by services.
 
 import json
 import typer
-from typing import Optional
 
 # Re-export service interfaces for tests and command modules to reference dynamically
 from main.services import (
@@ -35,6 +34,11 @@ from .commands.create import create_app  # noqa: E402
 
 app.add_typer(create_app, name="create")
 
+# Register config commands group
+from .commands.config import config_app  # noqa: E402
+
+app.add_typer(config_app, name="config")
+
 # Register other top-level commands (search/update)
 from .commands.search import register as register_search  # noqa: E402
 from .commands.update import register as register_update  # noqa: E402
@@ -43,6 +47,29 @@ from .commands.delete import register as register_delete  # noqa: E402
 register_search(app)
 register_update(app)
 register_delete(app)
+
+@app.command("list")
+def list_cmd() -> None:
+    """List available collections in a concise table."""
+    try:
+        statuses = svc_status(None)
+        # Header
+        header = f"{'NAME':<32} {'TYPE':<16} {'DOCS':>8} {'CHUNKS':>8} {'UPDATED':<22} PATH"
+        typer.echo(header)
+        # Rows
+        for s in statuses:
+            name = s.name[:31]
+            stype = (s.source_type or "-")[:15]
+            docs = s.number_of_documents
+            chunks = s.number_of_chunks
+            updated = (s.updated_time or "-")[:21]
+            path = s.relative_path or "-"
+            typer.echo(f"{name:<32} {stype:<16} {docs:>8d} {chunks:>8d} {updated:<22} {path}")
+        typer.echo(f"found {len(statuses)} collections")
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
 
 @app.command("inspect")
 def inspect_cmd(
@@ -87,7 +114,7 @@ def inspect_cmd(
             typer.echo("\n📂 No collections found\n")
             return
         elif collection_count == 1:
-            typer.echo(f"\n📂 Found 1 collection:\n")
+            typer.echo("\n📂 Found 1 collection:\n")
         else:
             typer.echo(f"\n📂 Found {collection_count} collections:\n")
 

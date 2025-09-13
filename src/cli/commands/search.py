@@ -6,6 +6,13 @@ import typer
 
 from main.services import SourceConfig
 
+# --- simple styling helpers (ANSI) ---
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+def bold(text: str) -> str:
+    return f"{BOLD}{text}{RESET}"
+
 
 def register(app: typer.Typer) -> None:
     @app.command("search")
@@ -29,23 +36,20 @@ def register(app: typer.Typer) -> None:
         include_full_text: bool = typer.Option(
             False,
             "--includeFullText",
-            is_flag=True,
             help="Include complete document text in results",
         ),
         include_all_chunks: bool = typer.Option(
             False,
             "--includeAllChunksText",
-            is_flag=True,
             help="Include all document chunks in results",
         ),
         include_matched_chunks: bool = typer.Option(
             False,
             "--includeMatchedChunksText",
-            is_flag=True,
             help="Include only matching chunks in results",
         ),
         json_out: bool = typer.Option(
-            False, "--json", is_flag=True, help="Output results in JSON format"
+            False, "--json", help="Output results in JSON format"
         ),
     ) -> None:
         """Search collections using semantic similarity.
@@ -87,7 +91,7 @@ def register(app: typer.Typer) -> None:
 
             # Display search info (unless JSON output requested)
             if not json_out:
-                typer.echo(f"\n🔍 Searching {scope_msg} for: '{query}'")
+                typer.echo(f"\n🔍  {bold('Searching')} {scope_msg} for: '{query}'")
                 if max_docs != 10:
                     typer.echo(f"   Max documents: {max_docs}")
                 if max_chunks:
@@ -114,34 +118,47 @@ def register(app: typer.Typer) -> None:
             else:
                 # Format results nicely for human consumption
                 if not result:
-                    typer.echo("📭 No results found.\n")
+                    typer.echo("📭  No results found.\n")
                     raise typer.Exit(0)
 
-                total_docs = sum(len(docs) for docs in result.values())
+                total_docs = sum(
+                    len(v.get("results", [])) for v in result.values() if isinstance(v, dict)
+                )
                 collection_count = len(result)
                 
-                if collection_count == 1:
-                    typer.echo(f"📄 Found {total_docs} document(s) in 1 collection:\n")
-                else:
-                    typer.echo(f"📄 Found {total_docs} document(s) across {collection_count} collections:\n")
+                header = (
+                    f"📄  {bold('Results')}: {total_docs} document(s)"
+                    + (f" across {collection_count} collections" if collection_count > 1 else " in 1 collection")
+                )
+                typer.echo(header + ":\n")
 
-                for collection_name, documents in result.items():
+                for collection_name, search_result in result.items():
                     if collection_count > 1:
-                        typer.echo(f"Collection: {collection_name}")
+                        typer.echo(f"{bold('Collection')}: {collection_name}")
                         typer.echo("─" * (len(collection_name) + 12))
                     
+                    documents = search_result.get("results", []) if isinstance(search_result, dict) else []
                     for i, doc in enumerate(documents, 1):
-                        title = doc.get('title', 'Untitled')
-                        score = doc.get('score', 0.0)
-                        typer.echo(f"{i:2d}. {title} (score: {score:.3f})")
+                        title = doc.get('url') or doc.get('path') or str(doc.get('id', 'Document'))
+                        # Derive a document-level score from the best matched chunk (if present)
+                        score = 0.0
+                        try:
+                            score = max((mc.get('score', 0.0) for mc in doc.get('matchedChunks', [])), default=0.0)
+                        except Exception:
+                            score = 0.0
+                        typer.echo(f"{i:2d}. {title}  (score: {score:.3f})")
                         
                         if doc.get('summary'):
                             typer.echo(f"    {doc['summary']}")
                         
-                        if include_matched_chunks and doc.get('matched_chunks'):
+                        if include_matched_chunks and doc.get('matchedChunks'):
                             typer.echo("    Matched chunks:")
-                            for chunk in doc['matched_chunks'][:3]:  # Show first 3 chunks
-                                preview = chunk[:100] + "..." if len(chunk) > 100 else chunk
+                            for chunk in doc['matchedChunks'][:3]:  # Show first 3 chunks
+                                content = chunk.get('content')
+                                if content is not None:
+                                    preview = content[:100] + "..." if len(content) > 100 else content
+                                else:
+                                    preview = f"(chunk {chunk.get('chunkNumber')})"
                                 typer.echo(f"    • {preview}")
                         
                         typer.echo()
@@ -149,10 +166,13 @@ def register(app: typer.Typer) -> None:
                     if collection_count > 1:
                         typer.echo()
 
+        except (SystemExit, typer.Exit):
+            # Re-raise Typer's normal exit without treating as error
+            raise
         except Exception as exc:  # pragma: no cover - error paths
             if json_out:
                 error_result = {"error": str(exc)}
                 typer.echo(json.dumps(error_result, indent=2), err=True)
             else:
-                typer.echo(f"\n❌ Search error: {exc}\n", err=True)
+                typer.echo(f"\n❌  Search error: {exc}\n", err=True)
             raise typer.Exit(1)

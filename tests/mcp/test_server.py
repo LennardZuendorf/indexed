@@ -1,7 +1,7 @@
 """Tests for the MCP server tools and resources."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from main.services.models import CollectionStatus
 
 
@@ -24,7 +24,7 @@ class TestMCPServerIntegration:
     def test_server_imports_successfully(self):
         """Test that the server module imports without errors."""
         try:
-            import server.mcp
+            import server.mcp  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Server module failed to import: {e}")
