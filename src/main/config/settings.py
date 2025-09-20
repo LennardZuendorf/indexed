@@ -57,7 +57,7 @@ def indexed_toml_source(settings_cls):
             if 'profiles' in data:
                 data = {k: v for k, v in data.items() if k != 'profiles'}
             # Whitelist known top-level sections only
-            allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags"}
+            allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags", "logging"}
             data = {k: v for k, v in data.items() if k in allowed}
             return data
     
@@ -68,7 +68,7 @@ def indexed_toml_source(settings_cls):
 
 
 def _filter_known_top_level_source(source: Callable) -> Callable:
-    allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags"}
+    allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags", "logging"}
     
     def _inner(settings) -> Dict[str, any]:
         data = source(settings)
@@ -174,8 +174,9 @@ class MCPSettings(BaseModel):
     """MCP server configuration."""
     host: str = Field(default="localhost", description="MCP server host")
     port: int = Field(default=8000, ge=1, le=65535, description="MCP server port")
-    log_level: str = Field(default="INFO", description="MCP server log level")
+    log_level: str = Field(default="WARNING", description="MCP server log level")
     enable_async_pool: bool = Field(default=False, description="Enable async processing pool")
+    mcp_json_output: bool = Field(default=True, description="Default JSON output for MCP responses")
 
 
 class PerformanceSettings(BaseModel):
@@ -189,6 +190,13 @@ class FlagsSettings(BaseModel):
     """Feature flags and experimental settings."""
     enable_profiles: bool = Field(default=True, description="Enable configuration profiles")
     warn_on_legacy_cli: bool = Field(default=True, description="Warn when using legacy CLI commands")
+    cli_json_output: bool = Field(default=False, description="Default JSON output for CLI when flag not set")
+
+
+class LoggingSettings(BaseModel):
+    """Central logging configuration."""
+    level: str = Field(default="WARNING", description="Global log level")
+    as_json: bool = Field(default=False, description="Emit JSON logs when true")
 
 
 class IndexedSettings(BaseSettings):
@@ -218,6 +226,7 @@ class IndexedSettings(BaseSettings):
     mcp: MCPSettings = Field(default_factory=MCPSettings)
     performance: PerformanceSettings = Field(default_factory=PerformanceSettings)
     flags: FlagsSettings = Field(default_factory=FlagsSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
     
     @classmethod
     def settings_customise_sources(

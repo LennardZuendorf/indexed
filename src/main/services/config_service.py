@@ -4,8 +4,9 @@ Singleton service for managing application configuration with caching,
 profile support, and runtime override handling.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import logging
+from enum import Enum, auto
 
 from main.config.settings import IndexedSettings
 from main.config.store import (
@@ -60,7 +61,7 @@ class ConfigService:
             return False
 
     def _filter_known_top_level(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags"}
+        allowed = {"paths", "search", "index", "sources", "mcp", "performance", "flags", "logging"}
         unknown = [k for k in data.keys() if k not in allowed]
         if unknown:
             logging.getLogger(__name__).warning(
@@ -182,3 +183,123 @@ def update_config(patch: Dict[str, Any], profile: Optional[str] = None) -> None:
 
 def set_config(settings: Dict[str, Any], profile: Optional[str] = None) -> None:
     ConfigService.get_instance().set(settings, profile=profile)
+
+
+# --- Config injection gateway ---
+
+
+class ConfigSlice(Enum):
+    SEARCH = auto()
+    CREATE = auto()
+    UPDATE = auto()
+    INSPECT = auto()
+
+
+def _default_indexer(settings_dict: Dict[str, Any]) -> str:
+    index_section = settings_dict.get("index", {}) or {}
+    value = index_section.get("default_indexer")
+    if isinstance(value, str) and value:
+        return value
+    return "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+
+
+def _extract_search(settings_dict: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Any:
+    from .search_service import SearchArgs  # local import to avoid cycles
+    from .models import SourceConfig  # local import
+
+    search_section = settings_dict.get("search", {}) or {}
+
+    # Defaults
+    max_docs = int(search_section.get("max_docs", 10))
+    max_chunks = int(search_section.get("max_chunks", max_docs * 3))
+    include_full_text = bool(search_section.get("include_full_text", False))
+    include_all_chunks = bool(search_section.get("include_all_chunks", False))
+    include_matched_chunks = bool(search_section.get("include_matched_chunks", False))
+
+    # Apply overrides if provided
+    if overrides:
+        if "max_docs" in overrides and overrides["max_docs"] is not None:
+            max_docs = int(overrides["max_docs"])  # type: ignore[arg-type]
+        if "max_chunks" in overrides and overrides["max_chunks"] is not None:
+            max_chunks = int(overrides["max_chunks"])  # type: ignore[arg-type]
+        if "include_full_text" in overrides and overrides["include_full_text"] is not None:
+            include_full_text = bool(overrides["include_full_text"])  # type: ignore[arg-type]
+        if "include_all_chunks" in overrides and overrides["include_all_chunks"] is not None:
+            include_all_chunks = bool(overrides["include_all_chunks"])  # type: ignore[arg-type]
+        if "include_matched_chunks" in overrides and overrides["include_matched_chunks"] is not None:
+            include_matched_chunks = bool(overrides["include_matched_chunks"])  # type: ignore[arg-type]
+
+    # Optional single-collection scope
+    configs = None
+    if overrides and overrides.get("collection"):
+        indexer = overrides.get("index_name") or _default_indexer(settings_dict)
+        cfg = SourceConfig(
+            name=str(overrides["collection"]),
+            type="localFiles",
+            base_url_or_path="",
+            indexer=str(indexer),
+        )
+        configs = [cfg]
+
+    return SearchArgs(
+        configs=configs,
+        max_chunks=max_chunks,
+        max_docs=max_docs,
+        include_full_text=include_full_text,
+        include_all_chunks=include_all_chunks,
+        include_matched_chunks=include_matched_chunks,
+    )
+
+
+def _extract_inspect(settings_dict: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Any:
+    from .inspect_service import InspectArgs  # local import to avoid cycles
+
+    mcp_section = settings_dict.get("mcp", {}) or {}
+    include_index_size = bool(mcp_section.get("include_index_size", False))
+    if overrides and "include_index_size" in overrides and overrides["include_index_size"] is not None:
+        include_index_size = bool(overrides["include_index_size"])  # type: ignore[arg-type]
+    return InspectArgs(include_index_size=include_index_size)
+
+
+def _extract_create(settings_dict: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Any:
+    from .collection_service import CreateArgs  # local import to avoid cycles
+    if not overrides or "configs" not in overrides:
+        raise ValueError("CreateArgs requires 'configs' in overrides (List[SourceConfig]).")
+    configs = overrides["configs"]
+    use_cache = bool(overrides.get("use_cache", True))
+    force = bool(overrides.get("force", False))
+    return CreateArgs(configs=configs, use_cache=use_cache, force=force)
+
+
+def _extract_update(settings_dict: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Any:
+    from .collection_service import UpdateArgs  # local import to avoid cycles
+    if not overrides or "configs" not in overrides:
+        raise ValueError("UpdateArgs requires 'configs' in overrides (List[SourceConfig]).")
+    configs = overrides["configs"]
+    return UpdateArgs(configs=configs)
+
+
+def resolve_and_extract(
+    kind: ConfigSlice,
+    *,
+    profile: Optional[str] = None,
+    overrides: Optional[Dict[str, Any]] = None,
+    target: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Any]:
+    """Resolve settings via ConfigService and extract operation-specific args.
+
+    Returns (settings_dict, args_dto) for the requested slice.
+    """
+    settings = ConfigService.get_instance().get(profile=profile, overrides=overrides)
+    settings_dict = settings.model_dump()
+
+    if kind is ConfigSlice.SEARCH:
+        return settings_dict, _extract_search(settings_dict, overrides)
+    if kind is ConfigSlice.INSPECT:
+        return settings_dict, _extract_inspect(settings_dict, overrides)
+    if kind is ConfigSlice.CREATE:
+        return settings_dict, _extract_create(settings_dict, overrides)
+    if kind is ConfigSlice.UPDATE:
+        return settings_dict, _extract_update(settings_dict, overrides)
+
+    raise ValueError(f"Unsupported ConfigSlice: {kind}")

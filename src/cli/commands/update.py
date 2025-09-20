@@ -4,13 +4,7 @@ from typing import Optional
 import typer
 
 from main.services import SourceConfig
-
-# --- simple styling helpers (ANSI) ---
-RESET = "\033[0m"
-BOLD = "\033[1m"
-
-def bold(text: str) -> str:
-    return f"{BOLD}{text}{RESET}"
+from cli.formatters.update_formatter import show_update_start, update_collection, show_update_summary
 
 
 def register(app: typer.Typer) -> None:
@@ -28,16 +22,21 @@ def register(app: typer.Typer) -> None:
 
         try:
             if collection is None:
-                names = [s.name for s in root.svc_status(None)]
-                scope_msg = "all collections"
+                # Get all collections for update
+                all_statuses = root.svc_status(None)
+                names = [s.name for s in all_statuses]
             else:
                 names = [collection]
-                scope_msg = f"collection '{collection}'"
+                all_statuses = None
+                
             if not names:
-                typer.echo("📦  No collections found to update\n")
+                typer.echo("📦 No collections found to update")
                 raise typer.Exit(0)
 
-            typer.echo(f"\n♻️  {bold('Updating')} {scope_msg}…\n")
+            # Show initial message
+            show_update_start(names)
+            
+            # Create configs for all collections
             cfgs = [
                 SourceConfig(
                     name=n,
@@ -47,8 +46,29 @@ def register(app: typer.Typer) -> None:
                 )
                 for n in names
             ]
-            root.svc_update(cfgs)
-            typer.echo(f"✅  {bold('Updated')} {len(names)} collection(s)\n")
+            
+            # Process all collections with spinner
+            if len(names) == 1:
+                with update_collection(names[0]):
+                    root.svc_update(cfgs)
+            else:
+                # For multiple collections, show a general spinner
+                with update_collection("multiple collections"):
+                    root.svc_update(cfgs)
+            
+            # Get updated collection statuses for display
+            # If we already have all statuses and updated all, get fresh status
+            # If we updated specific collections, get status for those
+            if collection is None and all_statuses:
+                # We updated all collections, get fresh status for all
+                updated_statuses = root.svc_status(None)
+            else:
+                # We updated specific collection(s), get status for those
+                updated_statuses = root.svc_status(names)
+            
+            # Show final summary with current status
+            show_update_summary(len(names), collection_statuses=updated_statuses)
+                
         except Exception as exc:  # pragma: no cover - error paths
-            typer.echo(f"✗  Error updating collections: {exc}\n", err=True)
+            typer.echo(f"❌ Error updating collections: {exc}", err=True)
             raise typer.Exit(1)

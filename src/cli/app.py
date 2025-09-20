@@ -4,7 +4,10 @@ Provides legacy proxies and stateless commands backed by services.
 """
 
 import json
+import os
 import typer
+from typing import Optional
+from main.utils.logger import setup_root_logger
 
 # Re-export service interfaces for tests and command modules to reference dynamically
 from main.services import (
@@ -20,6 +23,29 @@ from main.services import (
 app = typer.Typer(
     add_completion=False, help="Indexed CLI - Document indexing and search tool"
 )
+# Global logging init via callback (runs before subcommands)
+@app.callback()
+def _init_logging(
+    verbose: bool = typer.Option(
+        False, "--verbose", help="Enable verbose (DEBUG) logging"
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Logging level (overrides --verbose)",
+        case_sensitive=False,
+        show_choices=True,
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False, "--json-logs", help="Output logs as JSON (structured)"
+    ),
+) -> None:
+    # Resolve effective level with precedence: CLI > env > config (handled later) > default
+    env_level = os.getenv("INDEXED_LOG_LEVEL")
+    level = (log_level or ("DEBUG" if verbose else None) or env_level or "INFO").upper()
+    json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    setup_root_logger(level_str=level, json_mode=json_mode)
 
 # Shared default indexer constant (kept here for backward compatibility with tests)
 DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
@@ -47,29 +73,6 @@ from .commands.delete import register as register_delete  # noqa: E402
 register_search(app)
 register_update(app)
 register_delete(app)
-
-@app.command("list")
-def list_cmd() -> None:
-    """List available collections in a concise table."""
-    try:
-        statuses = svc_status(None)
-        # Header
-        header = f"{'NAME':<32} {'TYPE':<16} {'DOCS':>8} {'CHUNKS':>8} {'UPDATED':<22} PATH"
-        typer.echo(header)
-        # Rows
-        for s in statuses:
-            name = s.name[:31]
-            stype = (s.source_type or "-")[:15]
-            docs = s.number_of_documents
-            chunks = s.number_of_chunks
-            updated = (s.updated_time or "-")[:21]
-            path = s.relative_path or "-"
-            typer.echo(f"{name:<32} {stype:<16} {docs:>8d} {chunks:>8d} {updated:<22} {path}")
-        typer.echo(f"found {len(statuses)} collections")
-    except Exception as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(1)
-
 
 @app.command("inspect")
 def inspect_cmd(

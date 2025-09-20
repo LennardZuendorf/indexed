@@ -62,6 +62,81 @@ Provide a single, reusable formatting service that returns pre-formatted, emoji-
 
 ---
 
+# Task PRD: KISS Loguru Integration (Structured, Simple, Level-Controlled)
+
+## Goal
+Adopt Loguru for unified logging with minimal surface area. Keep it simple: one initializer, capture existing `logging.*` calls, and allow controlling the log level via CLI flag, env var, or config. Default to human-readable console logs; optional JSON serialization is a single boolean toggle.
+
+## Motivation / Value
+- Consistent logging across CLI, services, and MCP with near-zero code churn.
+- Preserve existing `logging.*` calls via interception to avoid mass refactors.
+- Easy level control: `--verbose` or `--log-level` CLI, `.env`/env var, and config default.
+
+## Non-Goals
+- No complex correlation IDs or extensive context binding in v1.
+- No multi-sink routing or remote transports.
+
+## Minimal Design
+- Single module: `main/utils/logger.py` provides `setup_root_logger(level: str | int = "INFO", json_mode: bool = False) -> None` implemented with Loguru.
+  - Add a single sink to `sys.stderr` with simple format: "{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}".
+  - Support `json_mode` by using `serialize=True` when enabled.
+  - Install an InterceptHandler so stdlib `logging` records flow into Loguru (captures existing calls).
+  - Set noisy third-party loggers to `WARNING`.
+- Central initialization points only:
+  - CLI (`cli/app.py`): initialize early based on CLI flags/env/config.
+  - MCP server (`server/mcp.py`): initialize from its `--log-level` argument or env/config.
+  - Remove per-module initializers if present (or keep as no-op when already configured).
+
+## Level Control (three ways)
+- CLI: add `--verbose` (bool → DEBUG) and `--log-level {CRITICAL,ERROR,WARNING,INFO,DEBUG}` on the root Typer app.
+- Env: `INDEXED_LOG_LEVEL` (e.g., `DEBUG`) and `INDEXED_LOG_JSON` (`true|false`).
+- Config (IndexedSettings): add optional `logging` section:
+  - `logging.level: str = "INFO"`
+  - `logging.json: bool = false`
+  - These map to env keys `INDEXED__logging__level` and `INDEXED__logging__json`.
+
+Precedence: CLI flag > env > config > default.
+
+## Structured Fields (v1)
+- Keep message-focused logs; let Loguru add standard fields (time, level, message).
+- If `json` enabled, emit JSON with default Loguru structure (time, level, message, module, line, etc.).
+
+## Key Logging Hotspots (must-have)
+- Configuration lifecycle
+  - `main/services/config_service.py`: `get()` – profile used, overrides presence, unknown key warnings; `atomic_write_toml()` save success/failure.
+  - `main/config/store.py`: validation errors in `validate_no_secrets()`, lock/backup write failures.
+- CLI entrypoints
+  - `cli/app.py`: selected log level/source (CLI/env/config), command invocation name.
+  - `cli/commands/search.py`: query start with options (collection, limits); summarize results count; error output path already handled.
+- Search and Inspect
+  - `main/services/search_service.py`: per-collection search start/finish and caught exceptions (already logs errors; keep via interception). Optionally one INFO summary with docs/chunks counts.
+  - `main/services/inspect_service.py`: index-size computation failures, per-collection status errors (already present; keep).
+- Create/Update orchestration
+  - `main/services/collection_service.py`: create/update start/finish per collection; surface ValueErrors for missing envs; optionally brief success messages.
+- Utilities
+  - `main/utils/performance.py`, `batch.py`, `retry.py`, `sources/*` readers: retain existing logs; interception will route to Loguru.
+
+## Changes Required
+1) Replace implementation of `main/utils/logger.py` to use Loguru with an InterceptHandler and one stderr sink.
+2) Initialize logging once at process start:
+   - `cli/app.py`: parse `--verbose`/`--log-level` and env/config, call `setup_root_logger()`.
+   - `server/mcp.py`: call `setup_root_logger()` based on `--log-level` or env/config.
+3) Settings: add optional `logging` section to `IndexedSettings` and scaffold it in `ensure_indexed_toml_exists()`.
+4) Keep existing `logging.*` calls; do not refactor call sites.
+
+## Acceptance Criteria
+- Running any CLI command shows Loguru-formatted output at the correct level; `--verbose` switches to DEBUG.
+- Env `INDEXED_LOG_LEVEL=DEBUG` and config `logging.level = "DEBUG"` both work when CLI flag is absent.
+- MCP honors `--log-level` and env/config when unspecified.
+- Existing unit tests continue to pass; no behavior changes to return values.
+
+## Risks / Mitigations
+- Double-initialization: guard to avoid adding multiple sinks.
+- Test expectations around logging: interception ensures stability; caplog remains workable by configuring stdlib logging if needed.
+
+## Open Questions
+- Do we want a single `--json-logs` flag for JSON mode now or defer? Proposed: include flag but default off.
+
 # Task PRD: Config Injection Runtime (Gateway for CLI and MCP)
 
 ## Goal
@@ -116,3 +191,40 @@ Centralize configuration resolution, validation, and runtime parameter derivatio
 
 ## Open Questions
 - Should we add a global `--profile` option at the root Typer app? Initial version will add `--profile` only to affected commands to keep changes small.
+
+u---
+
+# Task PRD: Pretty CLI Output (Typer + Rich, Minimal Human Output)
+
+## Goal
+Minimize human-facing CLI output to essentials (what, progress, result), keep JSON schemas unchanged, and control verbosity via logging flags.
+
+## JSON Output Defaults
+- CLI: default human output; return JSON only when explicitly requested via `--json-output` or an opt-in config value `flags.cli_json_output` (bool).
+- MCP: default JSON output true for requests; allow override via config `mcp.mcp_json_output` (bool) and future flags.
+
+## Principles
+- Human mode shows only what/progress/result.
+- JSON mode returns machine-readable results with the existing schema.
+- Verbose details go to logs (respecting `--verbose` / `--log-level`).
+
+## In Scope (commands)
+- create (jira|confluence|files), update, delete, inspect, search.
+
+## UX per command (human mode)
+- Create/Update: transient spinners for phases; concise success summary; errors concise.
+- Delete: minimal candidates list; confirmations; concise result.
+- Inspect: single compact table (Name, Docs, Chunks, Updated). Optional Size behind flag.
+- Search: header; compact results per collection with minimal per-doc line and optional chunk previews when requested.
+
+## Configuration
+- Add config toggles to control JSON output defaults:
+  - `flags.cli_json_output: bool = false` (CLI default human unless true or flag present)
+  - `mcp.mcp_json_output: bool = true` (MCP default JSON; can be set false if desired)
+- CLI precedence: flag `--json-output` > `flags.cli_json_output` > default human.
+
+## Acceptance Criteria
+- CLI returns human by default and JSON only when requested (`--json-output` or `flags.cli_json_output`).
+- MCP returns JSON by default (`mcp.mcp_json_output` true).
+- JSON schemas/content unchanged.
+- Spinners are transient; logs contain details under verbose.

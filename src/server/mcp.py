@@ -6,11 +6,13 @@ Provides search and inspect capabilities for document collections via MCP tools 
 import os
 from typing import Any, Dict, List
 from fastmcp import FastMCP
+from main.utils.logger import setup_root_logger
 
 # Import our service layer
 import main.services.search_service as search_service
 from main.services.search_service import SourceConfig
 from main.services.inspect_service import status as svc_status
+from main.services import resolve_and_extract, ConfigSlice
 
 # Create the FastMCP server instance
 mcp = FastMCP("Indexed MCP Server")
@@ -47,11 +49,9 @@ def search(query: str) -> Dict[str, Any]:
         Dictionary with collection names as keys and search results as values
     """
     try:
-        # Use auto-discovery mode (configs=None) to search all collections
-        results = search_service.search(
-            query, 
-            configs=None,
-        )
+        # Resolve SEARCH args with no overrides → auto-discovery
+        _settings, args = resolve_and_extract(ConfigSlice.SEARCH)
+        results = search_service.search(query, configs=args.configs)
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -91,10 +91,9 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
             indexer=default_indexer,
         )
         
-        results = search_service.search(
-            query, 
-            configs=[source_config],
-        )
+        # Resolve defaults and execute search with fixed configs
+        _settings, _args = resolve_and_extract(ConfigSlice.SEARCH)
+        results = search_service.search(query, configs=[source_config])
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -172,17 +171,43 @@ def collection_status(name: str) -> Dict[str, Any]:
 def main():
     """Main entry point for the MCP server."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
-    parser.add_argument("--host", default="localhost", help="Host to bind to (default: localhost)")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], 
-                       help="Log level (default: INFO)")
-    
+    parser.add_argument(
+        "--transport",
+        default=os.getenv("INDEXED_MCP_TRANSPORT", "stdio"),
+        choices=["stdio", "http", "sse", "streamable-http"],
+        help="Transport protocol: stdio (default), http, sse, streamable-http",
+    )
+    parser.add_argument("--host", default=os.getenv("INDEXED_MCP_HOST", "127.0.0.1"), help="Host to bind (HTTP/SSE)")
+    parser.add_argument("--port", type=int, default=int(os.getenv("INDEXED_MCP_PORT", "8000")), help="Port to bind (HTTP/SSE)")
+    parser.add_argument(
+        "--log-level",
+        default=os.getenv("INDEXED_LOG_LEVEL", "INFO"),
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Log level (default: INFO)",
+    )
+    parser.add_argument("--json-logs", action="store_true", help="Output logs as JSON (structured)")
+
     args = parser.parse_args()
-    
+
+    # Initialize logging before server starts
+    level = (args.log_level or os.getenv("INDEXED_LOG_LEVEL", "WARNING")).upper()
+    json_mode = args.json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    setup_root_logger(level_str=level, json_mode=json_mode)
+
     # Run the FastMCP server with parsed arguments
-    mcp.run(host=args.host, port=args.port, log_level=args.log_level)
+    if args.transport == "stdio":
+        # For stdio, host/port are not applicable
+        mcp.run()
+    elif args.transport == "http":
+        mcp.run(transport="http", host=args.host, port=args.port, log_level=args.log_level)
+    elif args.transport == "sse":
+        mcp.run(transport="sse", host=args.host, port=args.port, log_level=args.log_level)
+    elif args.transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=args.host, port=args.port, log_level=args.log_level)
+    else:
+        raise ValueError(f"Unsupported transport: {args.transport}")
 
 
 if __name__ == "__main__":

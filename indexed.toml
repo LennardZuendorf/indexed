@@ -6,15 +6,13 @@ embedding_model = "sentence-transformers/all-mpnet-base-v2"
 use_gpu = false
 
 [sources.files]
-base_path = "./documents"
+base_path = "./data"
 include_patterns = [
     "*.md",
     "*.txt",
+    "*.pdf",
+    "*.pptx"
 ]
-testing_random = "hello"
 
-[sources.jira_cloud]
-base_url = "https://mycompany.atlassian.net"
-email = "user@company.com"
-
-[mcp]
+[logging]
+level = "WARNING"

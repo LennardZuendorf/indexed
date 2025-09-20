@@ -147,67 +147,74 @@ def ensure_indexed_toml_exists() -> None:
     template = """
 # Indexed configuration (indexed.toml)
 # Notes:
-# - Edit values here for non-secret settings
-# - Secrets should be provided via environment variables referenced by *_env fields
+# - These are explicit defaults so you can see and edit the configuration
+# - Do NOT put secrets here; use environment variables referenced by *_env fields
 # - Unknown keys will be ignored
 
-[paths] # optional
-# collections_dir = "./data/collections"
-# caches_dir = "./data/caches"
-# temp_dir = "./tmp"
+[paths]
+collections_dir = "./data/collections"
+caches_dir = "./data/caches"
+temp_dir = "./tmp"
 
-[search] # optional
-# max_docs = 10
-# max_chunks = 30
-# include_full_text = false
-# include_all_chunks = false
-# include_matched_chunks = false
-# score_threshold = 0.0
+[search]
+max_docs = 10
+max_chunks = 30
+include_full_text = false
+include_all_chunks = false
+include_matched_chunks = false
+# Set to a number 0.0..1.0 to filter by similarity; leave empty for no threshold
+# score_threshold = 
 
-[index] # optional
-# default_indexer = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
-# embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
-# embedding_batch_size = 64
-# use_gpu = false
+[index]
+default_indexer = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+embedding_batch_size = 64
+use_gpu = false
 
-[sources.files] # optional
-# base_path = "./documents" # required for Files source to be ready
-# include_patterns = ["*.md", "*.txt"]
-# exclude_patterns = []
-# follow_symlinks = false
-# max_file_size_mb = 50
+[sources.files]
+base_path = "./data"
+include_patterns = ["*.md", "*.txt", "*.pdf", "*.pptx"]
+exclude_patterns = []
+follow_symlinks = false
+max_file_size_mb = 50
 
-[sources.jira_cloud] # optional (required for Jira Cloud to be ready)
+[sources.jira_cloud]
 # base_url = "https://your-domain.atlassian.net" # required
 # email = "you@company.com" # required
-api_token_env = "JIRA_API_TOKEN" # required env var name (do not put the token here)
-# jql = "project = CURRENT"
-# max_results = 100
-# timeout_sec = 30
+api_token_env = "JIRA_API_TOKEN"
+jql = "project = CURRENT"
+max_results = 100
+timeout_sec = 30
 
-[sources.confluence_cloud] # optional (required for Confluence Cloud to be ready)
+[sources.confluence_cloud]
 # base_url = "https://your-domain.atlassian.net/wiki" # required
 # email = "you@company.com" # required
-api_token_env = "CONFLUENCE_API_TOKEN" # required env var name (do not put the token here)
-# cql = "space = DEV"
-# include_comments = false
-# page_limit = 100
-# timeout_sec = 30
+api_token_env = "CONFLUENCE_API_TOKEN"
+cql = "space = DEV"
+include_comments = false
+page_limit = 100
+timeout_sec = 30
 
-[mcp] # optional
-# host = "localhost"
-# port = 8000
-# log_level = "INFO"
-# enable_async_pool = false
+[mcp]
+host = "localhost"
+port = 8000
+log_level = "WARNING"
+enable_async_pool = false
+mcp_json_output = true
 
-[performance] # optional
-# enable_cache = true
-# cache_max_entries = 32
-# log_sqlite_queries = false
+[performance]
+enable_cache = true
+cache_max_entries = 32
+log_sqlite_queries = false
 
-[flags] # optional
-# enable_profiles = true
-# warn_on_legacy_cli = true
+[flags]
+enable_profiles = true
+warn_on_legacy_cli = true
+cli_json_output = false
+
+[logging]
+level = "WARNING"  # one of: DEBUG, INFO, WARNING, ERROR, CRITICAL
+as_json = false     # set true for JSON (structured) logs
 """.lstrip()
 
     # Write template directly (no secrets and comments preserved)

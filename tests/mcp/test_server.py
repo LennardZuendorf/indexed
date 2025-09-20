@@ -87,7 +87,7 @@ class TestMCPServerFunctions:
         assert "error" in result
         assert result["error"] == "Search failed"
 
-    @patch('main.services.inspect_service.status')
+    @patch('server.mcp.svc_status')
     def test_collections_resource_function_success(self, mock_status):
         """Test collections resource function returns collection names."""
         # Arrange
@@ -120,15 +120,15 @@ class TestMCPServerFunctions:
         
         import server.mcp as server_module
         
-        # Find the collections resource function
+        # Find the collections list resource function
         collections_resource_func = None
         for name, obj in vars(server_module).items():
-            if hasattr(obj, 'fn') and name == 'collections_resource':
+            if hasattr(obj, 'fn') and name == 'collections_list':
                 collections_resource_func = obj.fn
                 break
         
         if collections_resource_func is None:
-            pytest.skip("Could not find collections_resource function")
+            pytest.skip("Could not find collections_list function")
         
         # Act
         result = collections_resource_func()
@@ -140,7 +140,7 @@ class TestMCPServerFunctions:
         assert "collection2" in result
         mock_status.assert_called_once_with()
 
-    @patch('main.services.inspect_service.status')
+    @patch('server.mcp.svc_status')
     def test_collections_resource_function_error_handling(self, mock_status):
         """Test collections resource function handles errors gracefully."""
         # Arrange
@@ -148,15 +148,15 @@ class TestMCPServerFunctions:
         
         import server.mcp as server_module
         
-        # Find the collections resource function
+        # Find the collections list resource function
         collections_resource_func = None
         for name, obj in vars(server_module).items():
-            if hasattr(obj, 'fn') and name == 'collections_resource':
+            if hasattr(obj, 'fn') and name == 'collections_list':
                 collections_resource_func = obj.fn
                 break
         
         if collections_resource_func is None:
-            pytest.skip("Could not find collections_resource function")
+            pytest.skip("Could not find collections_list function")
         
         # Act
         result = collections_resource_func()
@@ -183,14 +183,14 @@ class TestMCPServerFunctions:
         else:
             pytest.skip("Could not find search_collection function")
 
-    def test_collections_status_resource_function_exists(self):
-        """Test that collections_status_resource function exists."""
+    def test_collections_status_list_function_exists(self):
+        """Test that collections_status_list function exists."""
         import server.mcp as server_module
         
-        # Find the collections_status_resource function
+        # Find the collections_status_list function
         collections_status_resource_func = None
         for name, obj in vars(server_module).items():
-            if hasattr(obj, 'fn') and name == 'collections_status_resource':
+            if hasattr(obj, 'fn') and name == 'collections_status_list':
                 collections_status_resource_func = obj.fn
                 break
         
@@ -198,16 +198,16 @@ class TestMCPServerFunctions:
         if collections_status_resource_func is not None:
             assert callable(collections_status_resource_func)
         else:
-            pytest.skip("Could not find collections_status_resource function")
+            pytest.skip("Could not find collections_status_list function")
 
-    def test_collection_status_resource_function_exists(self):
-        """Test that collection_status_resource function exists."""
+    def test_collection_status_function_exists(self):
+        """Test that collection_status function exists."""
         import server.mcp as server_module
         
-        # Find the collection_status_resource function
+        # Find the collection_status function
         collection_status_resource_func = None
         for name, obj in vars(server_module).items():
-            if hasattr(obj, 'fn') and name == 'collection_status_resource':
+            if hasattr(obj, 'fn') and name == 'collection_status':
                 collection_status_resource_func = obj.fn
                 break
         
@@ -215,4 +215,4 @@ class TestMCPServerFunctions:
         if collection_status_resource_func is not None:
             assert callable(collection_status_resource_func)
         else:
-            pytest.skip("Could not find collection_status_resource function")
+            pytest.skip("Could not find collection_status function")

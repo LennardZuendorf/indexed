@@ -7,7 +7,9 @@ and caching of search indexes for optimal performance.
 """
 
 import json
+import logging
 from typing import List, Optional, Dict, Any
+from dataclasses import dataclass
 from .models import SourceConfig
 from ..utils.logger import setup_root_logger
 from ..persisters.disk_persister import DiskPersister
@@ -68,12 +70,27 @@ class SearchService:
         """
         try:
             entries = self._persister.read_folder_files(".")
+            # Derive top-level directory candidates from any file path or directory name
+            top_level_dirs = set()
+            for rel_path in entries:
+                if "/" in rel_path:
+                    parts = rel_path.split("/", 1)
+                    top_level_dirs.add(parts[0])
+                else:
+                    # Treat bare names as top-level directories too
+                    top_level_dirs.add(rel_path)
+            logging.debug("Candidate top-level dirs: %s", sorted(top_level_dirs))
+
             discovered: List[str] = []
-            for name in entries:
-                if self._persister.is_path_exists(f"{name}/manifest.json"):
-                    discovered.append(name)
+            for dirname in sorted(top_level_dirs):
+                manifest_path = f"{dirname}/manifest.json"
+                if self._persister.is_path_exists(manifest_path):
+                    discovered.append(dirname)
+
+            logging.info("Discovered %d collection(s): %s", len(discovered), discovered)
             return discovered
-        except Exception:
+        except Exception as exc:
+            logging.error("Failed to discover collections: %s", exc)
             return []
 
     def _get_default_indexer(self, collection_name: str) -> str:
@@ -177,6 +194,14 @@ class SearchService:
         else:
             search_configs = configs
 
+        logging.info(
+            'Searching query="%s" across %d collection config(s) (max_docs=%s, max_chunks=%s)',
+            query,
+            0 if search_configs is None else len(search_configs),
+            max_docs,
+            max_chunks,
+        )
+
         results = {}
         for cfg in search_configs:
             try:
@@ -190,10 +215,15 @@ class SearchService:
                     include_matched_chunks_content=include_matched_chunks,
                 )
                 results[cfg.name] = result
+                num_docs = len(result.get("results", [])) if isinstance(result, dict) else 0
+                logging.info(
+                    "Collection '%s' searched with indexer '%s': %d document(s) returned",
+                    cfg.name,
+                    cfg.indexer,
+                    num_docs,
+                )
             except Exception as e:
                 # Log error but continue with other collections
-                import logging
-
                 logging.error(f"Error searching collection {cfg.name}: {e}")
                 results[cfg.name] = {"error": str(e)}
 
@@ -244,3 +274,15 @@ def search(
         include_all_chunks=include_all_chunks,
         include_matched_chunks=include_matched_chunks,
     )
+
+
+# DTO for injected config
+@dataclass
+class SearchArgs:
+    configs: Optional[List[SourceConfig]]
+    max_chunks: Optional[int]
+    max_docs: Optional[int]
+    include_full_text: bool
+    include_all_chunks: bool
+    include_matched_chunks: bool
+

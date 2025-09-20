@@ -149,7 +149,7 @@ class FilesDocumentReader:
                 if self.fail_fast:
                     raise RuntimeError(f"Error reading file {file_path}") from error
 
-                logging.exception(f"Error reading file {file_path}", error)
+                logging.exception("Error reading file %s", file_path, exc_info=error)
                 continue
 
             yield {

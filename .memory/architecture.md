@@ -97,7 +97,7 @@ Provide a thin adapter to resolve, validate, and translate `IndexedSettings` int
 
 ### Module & API
 - Module: `src/main/services/inject_config.py`
-- Enum: `ConfigSlice` = { `SEARCH`, `CREATE`, `UPDATE`, `INSPECT`, `MCP_DEFAULTS` }
+- Enum: `ConfigSlice` = { `SEARCH`, `CREATE`, `UPDATE`, `INSPECT` }
 - Core function (single entry):
   - `resolve_and_extract(kind: ConfigSlice, *, profile: str | None, overrides: dict | None, target: str | None = None) -> tuple[IndexedSettings, Any]`
     - Loads validated `IndexedSettings` via `ConfigService.get(profile, overrides)`
@@ -122,7 +122,7 @@ Provide a thin adapter to resolve, validate, and translate `IndexedSettings` int
 
 ### Usage Patterns
 - CLI `search`: call `resolve_and_extract(SEARCH, profile, overrides)` to get `(settings, search_args)`; then call `SearchService.search(query, **search_args)`.
-- MCP `search`/`search_collection`: call `resolve_and_extract(MCP_DEFAULTS, profile_from_env, overrides_from_env)` once or per-call; for `search_collection` also build a `SourceConfig` (manifest-derived or via default indexer).
+- MCP `search`/`search_collection`: call `resolve_and_extract(SEARCH, profile_from_env, overrides_from_env)` for search args; for `search_collection` also build a `SourceConfig` (manifest-derived or via default indexer). For collection status tools, call `resolve_and_extract(INSPECT, ...)`.
 - CLI `update`: call `resolve_and_extract(UPDATE, profile, overrides)` to obtain `UpdateArgs` (e.g., names → `SourceConfig` list with default indexer) and call `update()`.
 
 ### Rationale

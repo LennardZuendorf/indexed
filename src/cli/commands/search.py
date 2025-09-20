@@ -4,14 +4,9 @@ from typing import Optional
 import json
 import typer
 
-from main.services import SourceConfig
-
-# --- simple styling helpers (ANSI) ---
-RESET = "\033[0m"
-BOLD = "\033[1m"
-
-def bold(text: str) -> str:
-    return f"{BOLD}{text}{RESET}"
+from main.services import resolve_and_extract, ConfigSlice, SearchResult
+from cli.utils.output_mode import should_output_json
+from cli.formatters.search_formatter import render_search_results
 
 
 def register(app: typer.Typer) -> None:
@@ -49,7 +44,7 @@ def register(app: typer.Typer) -> None:
             help="Include only matching chunks in results",
         ),
         json_out: bool = typer.Option(
-            False, "--json", help="Output results in JSON format"
+            False, "--json", "--json-output", help="Output results in JSON format"
         ),
     ) -> None:
         """Search collections using semantic similarity.
@@ -74,103 +69,78 @@ def register(app: typer.Typer) -> None:
         import cli.app as root
 
         try:
-            # Determine search scope
-            if collection is None:
-                cfgs = None
-                scope_msg = "all collections"
-            else:
-                cfgs = [
-                    SourceConfig(
-                        name=collection,
-                        type="localFiles",
-                        base_url_or_path="",
-                        indexer=index_name or root.DEFAULT_INDEXER,
-                    )
-                ]
-                scope_msg = f"collection '{collection}'"
-
-            # Display search info (unless JSON output requested)
-            if not json_out:
-                typer.echo(f"\n🔍  {bold('Searching')} {scope_msg} for: '{query}'")
-                if max_docs != 10:
-                    typer.echo(f"   Max documents: {max_docs}")
-                if max_chunks:
-                    typer.echo(f"   Max chunks: {max_chunks}")
-                if index_name:
-                    typer.echo(f"   Indexer: {index_name}")
-                typer.echo()
+            # Determine output mode
+            use_json = should_output_json("cli", json_out)
+            
+            # Build overrides and resolve config slice
+            overrides = {
+                "collection": collection,
+                "index_name": index_name,
+                "max_chunks": max_chunks,
+                "max_docs": max_docs,
+                "include_full_text": include_full_text,
+                "include_all_chunks": include_all_chunks,
+                "include_matched_chunks": include_matched_chunks,
+            }
+            _settings, args = resolve_and_extract(
+                ConfigSlice.SEARCH,
+                profile=None,
+                overrides=overrides,
+            )
 
             # Perform search
             result = root.svc_search(
                 query,
-                configs=cfgs,
-                max_chunks=max_chunks,
-                max_docs=max_docs,
-                include_full_text=include_full_text,
-                include_all_chunks=include_all_chunks,
-                include_matched_chunks=include_matched_chunks,
+                configs=args.configs,
+                max_chunks=args.max_chunks,
+                max_docs=args.max_docs,
+                include_full_text=args.include_full_text,
+                include_all_chunks=args.include_all_chunks,
+                include_matched_chunks=args.include_matched_chunks,
             )
 
             # Output results
-            if json_out:
+            if use_json:
                 output = json.dumps(result, indent=2, ensure_ascii=False)
                 typer.echo(output)
             else:
-                # Format results nicely for human consumption
-                if not result:
-                    typer.echo("📭  No results found.\n")
-                    raise typer.Exit(0)
-
-                total_docs = sum(
-                    len(v.get("results", [])) for v in result.values() if isinstance(v, dict)
-                )
-                collection_count = len(result)
-                
-                header = (
-                    f"📄  {bold('Results')}: {total_docs} document(s)"
-                    + (f" across {collection_count} collections" if collection_count > 1 else " in 1 collection")
-                )
-                typer.echo(header + ":\n")
-
+                # Convert dict result to SearchResult objects for formatter
+                search_results = []
                 for collection_name, search_result in result.items():
-                    if collection_count > 1:
-                        typer.echo(f"{bold('Collection')}: {collection_name}")
-                        typer.echo("─" * (len(collection_name) + 12))
-                    
-                    documents = search_result.get("results", []) if isinstance(search_result, dict) else []
-                    for i, doc in enumerate(documents, 1):
-                        title = doc.get('url') or doc.get('path') or str(doc.get('id', 'Document'))
-                        # Derive a document-level score from the best matched chunk (if present)
-                        score = 0.0
-                        try:
-                            score = max((mc.get('score', 0.0) for mc in doc.get('matchedChunks', [])), default=0.0)
-                        except Exception:
-                            score = 0.0
-                        typer.echo(f"{i:2d}. {title}  (score: {score:.3f})")
-                        
-                        if doc.get('summary'):
-                            typer.echo(f"    {doc['summary']}")
-                        
-                        if include_matched_chunks and doc.get('matchedChunks'):
-                            typer.echo("    Matched chunks:")
-                            for chunk in doc['matchedChunks'][:3]:  # Show first 3 chunks
-                                content = chunk.get('content')
-                                if content is not None:
-                                    preview = content[:100] + "..." if len(content) > 100 else content
-                                else:
-                                    preview = f"(chunk {chunk.get('chunkNumber')})"
-                                typer.echo(f"    • {preview}")
-                        
-                        typer.echo()
-                    
-                    if collection_count > 1:
-                        typer.echo()
+                    if isinstance(search_result, dict):
+                        documents = search_result.get("results", [])
+                        for doc in documents:
+                            # Extract best score from matched chunks
+                            score = None
+                            if doc.get('matchedChunks'):
+                                try:
+                                    score = max((mc.get('score', 0.0) for mc in doc['matchedChunks']), default=0.0)
+                                except Exception:
+                                    score = 0.0
+                            
+                            search_results.append(SearchResult(
+                                id=doc.get('id', ''),
+                                collection_name=collection_name,
+                                url=doc.get('url'),
+                                path=doc.get('path'),
+                                score=score,
+                                matched_chunks=doc.get('matchedChunks', [])
+                            ))
+                
+                render_search_results(search_results, include_chunks=include_matched_chunks)
 
         except (SystemExit, typer.Exit):
             # Re-raise Typer's normal exit without treating as error
             raise
         except Exception as exc:  # pragma: no cover - error paths
-            if json_out:
+            # Fallback to flag value if output mode helper fails
+            output_json = json_out
+            try:
+                output_json = should_output_json("cli", json_out)
+            except Exception:
+                pass
+            
+            if output_json:
                 error_result = {"error": str(exc)}
                 typer.echo(json.dumps(error_result, indent=2), err=True)
             else:

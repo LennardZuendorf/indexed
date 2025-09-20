@@ -35,8 +35,8 @@
 
 —— New Subtasks: Config Injection Gateway ——
 26. ✳️ Create `src/main/services/inject_config.py` with `ConfigSlice` enum and `resolve_and_extract`.
-27. ✳️ Add DTOs in services: SearchArgs, CreateArgs/UpdateArgs, InspectArgs, MCPDefaults.
+27. ✳️ Add DTOs in services: SearchArgs, CreateArgs/UpdateArgs, InspectArgs.
 28. ✳️ Wire `src/cli/commands/search.py` via `resolve_and_extract(ConfigSlice.SEARCH, ...)`.
-29. ✳️ Wire `src/server/mcp.py` via `resolve_and_extract(ConfigSlice.MCP_DEFAULTS, ...)`.
+29. ✳️ Wire `src/server/mcp.py` via `resolve_and_extract(ConfigSlice.SEARCH/INSPECT, ...)`.
 30. ✳️ Add tests for gateway and updated CLI/MCP behavior; run full suite.
 31. ✳️ Document override precedence and `--profile` usage in README.

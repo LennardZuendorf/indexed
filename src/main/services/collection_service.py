@@ -7,6 +7,7 @@ orchestration of readers, converters, and persisters to build searchable collect
 
 import os
 from typing import List, Tuple
+from dataclasses import dataclass
 from .models import SourceConfig
 from ..utils.logger import setup_root_logger
 from ..persisters.disk_persister import DiskPersister
@@ -260,3 +261,17 @@ def clear(collection_names: List[str]) -> None:
     persister = DiskPersister(base_path="./data/collections")
     for name in collection_names:
         persister.remove_folder(name)
+
+
+# DTOs for injected config
+@dataclass
+class CreateArgs:
+    configs: List[SourceConfig]
+    use_cache: bool = True
+    force: bool = False
+
+
+@dataclass
+class UpdateArgs:
+    configs: List[SourceConfig]
+

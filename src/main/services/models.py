@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, Dict, List
+from typing import Literal, Optional, Dict, List, Any
 from dataclasses import dataclass
 
 
@@ -33,3 +33,19 @@ class CollectionStatus:
     source_type: Optional[str] = None
     relative_path: Optional[str] = None
     disk_size_bytes: Optional[int] = None
+
+
+@dataclass
+class SearchResult:
+    """A single search result from a collection."""
+    
+    id: str
+    collection_name: str
+    url: Optional[str] = None
+    path: Optional[str] = None
+    score: Optional[float] = None
+    matched_chunks: List[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        if self.matched_chunks is None:
+            self.matched_chunks = []

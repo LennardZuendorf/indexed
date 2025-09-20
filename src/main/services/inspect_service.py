@@ -8,6 +8,7 @@ use cases.
 
 import json
 from typing import List, Optional, Dict
+from dataclasses import dataclass
 import os
 from .models import CollectionStatus
 from ..utils.logger import setup_root_logger
@@ -246,3 +247,10 @@ def status(
         collection_names=collection_names,
         include_index_size=include_index_size,
     )
+
+
+# DTO for injected config
+@dataclass
+class InspectArgs:
+    include_index_size: bool = False
+
