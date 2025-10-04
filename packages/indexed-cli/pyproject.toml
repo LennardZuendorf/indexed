@@ -17,7 +17,7 @@ dependencies = [
 
 [project.scripts]
 indexed-cli = "indexed_cli.app:app"
-indexed-mcp = "indexed_cli.mcp:main"
+indexed-mcp = "indexed_cli.server.mcp:main"
 
 [tool.uv.sources]
 indexed-core = { workspace = true }
