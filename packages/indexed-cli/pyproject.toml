@@ -1,0 +1,27 @@
+[project]
+name = "indexed-cli"
+version = "0.1.0"
+description = "Command-line interface and MCP server for indexed document search"
+readme = "README.md"
+authors = [
+    { name = "Lennard Zünd orf", email = "l.p.zuendorf@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "indexed-core",
+    "typer>=0.12.3",
+    "rich>=13.7.0",
+    "mcp>=1.13.0",
+    "fastmcp>=2.11.3",
+]
+
+[project.scripts]
+indexed-cli = "indexed_cli.app:app"
+indexed-mcp = "indexed_cli.server.mcp:main"
+
+[tool.uv.sources]
+indexed-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

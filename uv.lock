@@ -16,6 +16,21 @@ resolution-markers = [
     "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 
+[manifest]
+members = [
+    "indexed-cli",
+    "indexed-core",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "mypy", specifier = ">=1.17.1" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "ruff", specifier = ">=0.12.10" },
+]
+
 [[package]]
 name = "accelerate"
 version = "1.7.0"
@@ -663,7 +678,6 @@ dependencies = [
     { name = "numpy" },
     { name = "packaging" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/9a/e33fc563f007924dd4ec3c5101fe5320298d6c13c158a24a9ed849058569/faiss_cpu-1.11.0.tar.gz", hash = "sha256:44877b896a2b30a61e35ea4970d008e8822545cb340eca4eff223ac7f40a1db9", size = 70218 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/e5/7490368ec421e44efd60a21aa88d244653c674d8d6ee6bc455d8ee3d02ed/faiss_cpu-1.11.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:1995119152928c68096b0c1e5816e3ee5b1eebcf615b80370874523be009d0f6", size = 3307996 },
     { url = "https://files.pythonhosted.org/packages/dd/ac/a94fbbbf4f38c2ad11862af92c071ff346630ebf33f3d36fe75c3817c2f0/faiss_cpu-1.11.0-cp310-cp310-macosx_14_0_x86_64.whl", hash = "sha256:788d7bf24293fdecc1b93f1414ca5cc62ebd5f2fecfcbb1d77f0e0530621c95d", size = 7886309 },
@@ -1061,54 +1075,51 @@ wheels = [
 ]
 
 [[package]]
-name = "indexed"
+name = "indexed-cli"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "packages/indexed-cli" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "indexed-core" },
+    { name = "mcp" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp", specifier = ">=2.11.3" },
+    { name = "indexed-core", editable = "packages/indexed-core" },
+    { name = "mcp", specifier = ">=1.13.0" },
+    { name = "rich", specifier = ">=13.7.0" },
+    { name = "typer", specifier = ">=0.12.3" },
+]
+
+[[package]]
+name = "indexed-core"
+version = "0.1.0"
+source = { editable = "packages/indexed-core" }
 dependencies = [
     { name = "bs4" },
     { name = "faiss-cpu" },
-    { name = "fastmcp" },
     { name = "langchain" },
-    { name = "mcp" },
     { name = "platformdirs" },
     { name = "pydantic-settings" },
     { name = "requests" },
     { name = "sentence-transformers" },
-    { name = "typer" },
     { name = "unstructured", extra = ["all-docs"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
     { name = "faiss-cpu", specifier = ">=1.11.0" },
-    { name = "fastmcp", specifier = ">=2.11.3" },
     { name = "langchain", specifier = ">=0.3.26" },
-    { name = "mcp", specifier = ">=1.13.0" },
     { name = "platformdirs", specifier = ">=4.2.0" },
     { name = "pydantic-settings", specifier = ">=2.2.1" },
     { name = "requests", specifier = ">=2.32.4" },
     { name = "sentence-transformers", specifier = ">=5.0.0" },
-    { name = "typer", specifier = ">=0.12.3" },
     { name = "unstructured", extras = ["all-docs"], specifier = ">=0.18.5" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.17.1" },
-    { name = "pytest", specifier = ">=8.4.1" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "pytest-mock", specifier = ">=3.14.1" },
-    { name = "ruff", specifier = ">=0.12.10" },
 ]
 
 [[package]]

@@ -1,17 +1,36 @@
-# Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)
+# Indexed - Document Indexing and Semantic Search
 
-- [Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)](#project-allows-document-indexing-in-a-local-vector-database-and-then-search-supports-jira-confluence-and-local-files-can-be-integrated-via-mcp)
-  - [Base info](#base-info)
-  - [Common use case](#common-use-case)
-  - [How to set up and use](#how-to-set-up-and-use)
-    - [Create collection for Confluence:](#create-collection-for-confluence)
-    - [Create collection for Jira:](#create-collection-for-jira)
-    - [Create collection for local files](#create-collection-for-local-files)
-    - [Update existing collection:](#update-existing-collection)
-    - [Search in collection:](#search-in-collection)
-    - [Set up MCP:](#set-up-mcp)
-  - [Collection structure](#collection-structure)
-  - [Other useful info](#other-useful-info)
+> **Note**: This project recently migrated to a monorepo structure (Phase 1). See [MIGRATION.md](./MIGRATION.md) for details.
+
+A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Can be integrated with AI agents via MCP (Model Context Protocol).
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Usage](#usage)
+- [MCP Integration](#mcp-integration)
+- [Documentation](#documentation)
+- [Development](#development)
+
+## Quick Start
+
+```bash
+# 1. Clone and setup
+git clone <repository-url>
+cd indexed-python
+uv sync
+
+# 2. Create a collection from local files
+uv run indexed-cli create files my-docs --basePath ./documents
+
+# 3. List collections
+uv run indexed-cli inspect
+
+# 4. Search
+uv run indexed-cli search "your query"
+```
 
 ## Base info
 
@@ -244,3 +263,33 @@ Please check the `./main/core/documents_collection_searcher.py` code to find mos
 - Collection update reads only new information, so it should be much faster than collection creation. Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`.
 - Collection update usually reads a bit more documents than were really updated since last time. Currently, the logic is as follows: it reads all documents that were created/updated since the "lastModifiedDocumentTime" field value from the `./data/collections/${collectionName}/manifest.json` file minus 1 day. It's done so to guarantee that no document update will be lost due to parallel document creations (probably 1 day can be updated to some much less value like a couple of seconds, but it does not look like a big deal to me and I prefer just to be more sure that everything is updated). The "lastModifiedDocumentTime" field contains the value of the latest update time for all documents in the collection.
 - There is a cache mechanism for Jira/Confluence collection creation, so if you create a collection multiple times with the same parameters: url, query (JQL or CQL), etc. - documents will be read from the cache located in the `./data/caches` subfolder (all important parameters are collected together and hashed, the hash is used as the folder name (`./data/caches/{hash}`) for cached documents, there is also a `./data/caches/{hash}_completed` file that indicates if all documents were successfully read, the cache is used only in case if the `./data/caches/{hash}_completed` file is present as well as the `./data/caches/{hash}` folder). The cache is useful during testing, but can lead to a situation where new data are not read. In such a case, you can either run the "update" script after collection creation, or remove the cache manually before collection creation.
+
+## Documentation
+
+- **[MIGRATION.md](./MIGRATION.md)** - Phase 1 monorepo migration guide
+- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Development workflow and contribution guide
+- **[.prd/](./prd/)** - Product requirements and implementation plans
+
+## Project Structure
+
+The project uses a monorepo structure (since Phase 1):
+
+```
+indexed-python/
+├── packages/
+│   ├── indexed-core/      # Core library (business logic)
+│   └── indexed-cli/       # CLI application and MCP server
+├── tests/                 # Test suite
+├── data/                  # Collections and caches (generated)
+├── DEVELOPMENT.md         # Development guide
+├── MIGRATION.md           # Migration documentation
+└── README.md              # This file
+```
+
+## Contributing
+
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for setup instructions and development workflow.
+
+## License
+
+See [LICENSE](./LICENSE) file for details.
