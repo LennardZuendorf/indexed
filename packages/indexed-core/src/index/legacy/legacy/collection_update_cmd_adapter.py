@@ -1,7 +1,7 @@
 import argparse
 
-from indexed_core.legacy.utils.logger import setup_root_logger
-from indexed_core.legacy.factories.update_collection_factory import create_collection_updater
+from index.legacy.utils.logger import setup_root_logger
+from index.legacy.factories.update_collection_factory import create_collection_updater
 
 setup_root_logger()
 

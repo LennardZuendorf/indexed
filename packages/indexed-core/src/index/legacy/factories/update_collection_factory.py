@@ -2,30 +2,30 @@ import os
 from datetime import datetime, timedelta
 import json
 
-from indexed_core.legacy.persisters.disk_persister import DiskPersister
-from indexed_core.legacy.sources.jira.jira_document_reader import JiraDocumentReader
-from indexed_core.legacy.sources.jira.jira_document_converter import JiraDocumentConverter
-from indexed_core.legacy.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
-from indexed_core.legacy.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
-from indexed_core.legacy.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
-from indexed_core.legacy.sources.confluence.confluence_cloud_document_reader import (
+from index.legacy.persisters.disk_persister import DiskPersister
+from index.legacy.sources.jira.jira_document_reader import JiraDocumentReader
+from index.legacy.sources.jira.jira_document_converter import JiraDocumentConverter
+from index.legacy.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
+from index.legacy.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
+from index.legacy.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
+from index.legacy.sources.confluence.confluence_cloud_document_reader import (
     ConfluenceCloudDocumentReader,
 )
-from indexed_core.legacy.sources.confluence.confluence_document_converter import (
+from index.legacy.sources.confluence.confluence_document_converter import (
     ConfluenceDocumentConverter,
 )
-from indexed_core.legacy.sources.confluence.confluence_cloud_document_converter import (
+from index.legacy.sources.confluence.confluence_cloud_document_converter import (
     ConfluenceCloudDocumentConverter,
 )
-from indexed_core.legacy.sources.files.files_document_reader import FilesDocumentReader
-from indexed_core.legacy.sources.files.files_document_converter import FilesDocumentConverter
-from indexed_core.legacy.indexes.indexer_factory import load_indexer
-from indexed_core.legacy.core.documents_collection_creator import (
+from index.legacy.sources.files.files_document_reader import FilesDocumentReader
+from index.legacy.sources.files.files_document_converter import FilesDocumentConverter
+from index.legacy.indexes.indexer_factory import load_indexer
+from index.legacy.core.documents_collection_creator import (
     DocumentCollectionCreator,
     OPERATION_TYPE,
 )
 
-from indexed_core.legacy.utils.performance import log_execution_duration
+from index.legacy.utils.performance import log_execution_duration
 
 
 def create_collection_updater(collection_name):

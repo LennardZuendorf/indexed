@@ -4,8 +4,8 @@ import argparse
 
 from mcp.server.fastmcp import FastMCP
 
-from indexed_core.legacy.factories.search_collection_factory import create_collection_searcher
-from indexed_core.legacy.utils.logger import setup_root_logger
+from index.legacy.factories.search_collection_factory import create_collection_searcher
+from index.legacy.utils.logger import setup_root_logger
 
 setup_root_logger()
 

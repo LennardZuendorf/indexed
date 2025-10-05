@@ -2,8 +2,8 @@
 from typing import List, Dict, Any
 import logging
 
-from indexed_core.models.document import SearchResult
-from indexed_core.services.search import SearchService
+from index.models.document import SearchResult
+from index.services.search import SearchService
 
 logger = logging.getLogger(__name__)
 

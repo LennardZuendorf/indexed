@@ -1,12 +1,12 @@
-from indexed_core.legacy.sources.document_cache_reader_decorator import CacheReaderDecorator
-from indexed_core.legacy.core.documents_collection_creator import (
+from index.legacy.sources.document_cache_reader_decorator import CacheReaderDecorator
+from index.legacy.core.documents_collection_creator import (
     DocumentCollectionCreator,
     OPERATION_TYPE,
 )
-from indexed_core.legacy.indexes.indexer_factory import create_indexer
-from indexed_core.legacy.persisters.disk_persister import DiskPersister
+from index.legacy.indexes.indexer_factory import create_indexer
+from index.legacy.persisters.disk_persister import DiskPersister
 
-from indexed_core.legacy.utils.performance import log_execution_duration
+from index.legacy.utils.performance import log_execution_duration
 
 
 def create_collection_creator(

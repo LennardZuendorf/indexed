@@ -248,7 +248,7 @@ def search(
                        as values. See SearchService.search() for detailed format.
 
     Example:
-        >>> from indexed_core.legacy.services.search_service import search
+        >>> from index.legacy.services.search_service import search
         >>> results = search("python programming", max_docs=3)
         >>> print(f"Searched {len(results)} collections")
     """

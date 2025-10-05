@@ -1,10 +1,10 @@
 import argparse
 import os
 
-from indexed_core.legacy.utils.logger import setup_root_logger
-from indexed_core.legacy.sources.files.files_document_reader import FilesDocumentReader
-from indexed_core.legacy.sources.files.files_document_converter import FilesDocumentConverter
-from indexed_core.legacy.factories.create_collection_factory import create_collection_creator
+from index.legacy.utils.logger import setup_root_logger
+from index.legacy.sources.files.files_document_reader import FilesDocumentReader
+from index.legacy.sources.files.files_document_converter import FilesDocumentConverter
+from index.legacy.factories.create_collection_factory import create_collection_creator
 
 setup_root_logger()
 

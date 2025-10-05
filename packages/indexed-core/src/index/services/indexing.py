@@ -3,10 +3,10 @@ from typing import List, Dict, Any
 from pathlib import Path
 import logging
 
-from indexed_core.models.document import Document, Chunk
-from indexed_core.services.embedding import EmbeddingService
-from indexed_core.services.storage import StorageService
-from indexed_core.connectors.base import DocumentConnector
+from index.models.document import Document, Chunk
+from index.services.embedding import EmbeddingService
+from index.services.storage import StorageService
+from index.connectors.base import DocumentConnector
 
 logger = logging.getLogger(__name__)
 

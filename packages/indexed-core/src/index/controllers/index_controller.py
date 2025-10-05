@@ -3,8 +3,8 @@ from typing import List, Dict, Any
 import logging
 import time
 
-from indexed_core.services.indexing import IndexingService
-from indexed_core.services.storage import StorageService
+from index.services.indexing import IndexingService
+from index.services.storage import StorageService
 
 logger = logging.getLogger(__name__)
 

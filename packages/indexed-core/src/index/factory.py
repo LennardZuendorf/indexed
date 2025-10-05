@@ -6,14 +6,14 @@ instantiating all services and controllers with proper dependency injection.
 from typing import Tuple
 import logging
 
-from indexed_core.config.models import IndexedConfig
-from indexed_core.services.embedding import EmbeddingService
-from indexed_core.services.storage import StorageService
-from indexed_core.services.indexing import IndexingService
-from indexed_core.services.search import SearchService
-from indexed_core.connectors.filesystem import FileSystemConnector
-from indexed_core.controllers.index_controller import IndexController
-from indexed_core.controllers.search_controller import SearchController
+from index.config.models import IndexedConfig
+from index.services.embedding import EmbeddingService
+from index.services.storage import StorageService
+from index.services.indexing import IndexingService
+from index.services.search import SearchService
+from index.connectors.filesystem import FileSystemConnector
+from index.controllers.index_controller import IndexController
+from index.controllers.search_controller import SearchController
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterator, List
 import logging
 
-from indexed_core.models.document import Document
+from index.models.document import Document
 
 logger = logging.getLogger(__name__)
 

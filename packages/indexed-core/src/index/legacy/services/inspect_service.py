@@ -232,7 +232,7 @@ def status(
                                for each requested collection.
 
     Example:
-        >>> from indexed_core.legacy.services.inspect_service import status
+        >>> from index.legacy.services.inspect_service import status
         >>> # Get status for all collections
         >>> all_statuses = status()
         >>> # Get status for specific collections

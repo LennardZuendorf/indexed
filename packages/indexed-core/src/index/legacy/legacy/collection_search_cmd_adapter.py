@@ -2,9 +2,9 @@ import json
 import argparse
 import logging
 
-from indexed_core.legacy.utils.logger import setup_root_logger
-from indexed_core.legacy.utils.performance import log_execution_duration
-from indexed_core.legacy.factories.search_collection_factory import create_collection_searcher
+from index.legacy.utils.logger import setup_root_logger
+from index.legacy.utils.performance import log_execution_duration
+from index.legacy.factories.search_collection_factory import create_collection_searcher
 
 setup_root_logger()
 

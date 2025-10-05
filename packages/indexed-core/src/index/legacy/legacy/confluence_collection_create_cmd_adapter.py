@@ -1,18 +1,18 @@
 import os
 import argparse
 
-from indexed_core.legacy.utils.logger import setup_root_logger
-from indexed_core.legacy.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
-from indexed_core.legacy.sources.confluence.confluence_document_converter import (
+from index.legacy.utils.logger import setup_root_logger
+from index.legacy.sources.confluence.confluence_document_reader import ConfluenceDocumentReader
+from index.legacy.sources.confluence.confluence_document_converter import (
     ConfluenceDocumentConverter,
 )
-from indexed_core.legacy.sources.confluence.confluence_cloud_document_reader import (
+from index.legacy.sources.confluence.confluence_cloud_document_reader import (
     ConfluenceCloudDocumentReader,
 )
-from indexed_core.legacy.sources.confluence.confluence_cloud_document_converter import (
+from index.legacy.sources.confluence.confluence_cloud_document_converter import (
     ConfluenceCloudDocumentConverter,
 )
-from indexed_core.legacy.factories.create_collection_factory import create_collection_creator
+from index.legacy.factories.create_collection_factory import create_collection_creator
 
 setup_root_logger()
 

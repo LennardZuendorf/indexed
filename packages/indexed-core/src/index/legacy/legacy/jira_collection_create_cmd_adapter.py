@@ -1,12 +1,12 @@
 import os
 import argparse
 
-from indexed_core.legacy.utils.logger import setup_root_logger
-from indexed_core.legacy.sources.jira.jira_document_reader import JiraDocumentReader
-from indexed_core.legacy.sources.jira.jira_document_converter import JiraDocumentConverter
-from indexed_core.legacy.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
-from indexed_core.legacy.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
-from indexed_core.legacy.factories.create_collection_factory import create_collection_creator
+from index.legacy.utils.logger import setup_root_logger
+from index.legacy.sources.jira.jira_document_reader import JiraDocumentReader
+from index.legacy.sources.jira.jira_document_converter import JiraDocumentConverter
+from index.legacy.sources.jira.jira_cloud_document_reader import JiraCloudDocumentReader
+from index.legacy.sources.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
+from index.legacy.factories.create_collection_factory import create_collection_creator
 
 setup_root_logger()
 

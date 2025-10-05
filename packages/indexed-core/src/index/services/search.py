@@ -2,9 +2,9 @@
 from typing import List, Optional
 import logging
 
-from indexed_core.models.document import SearchResult, Chunk
-from indexed_core.services.embedding import EmbeddingService
-from indexed_core.services.storage import StorageService
+from index.models.document import SearchResult, Chunk
+from index.services.embedding import EmbeddingService
+from index.services.storage import StorageService
 
 logger = logging.getLogger(__name__)
 

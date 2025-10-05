@@ -1,8 +1,8 @@
-from indexed_core.legacy.persisters.disk_persister import DiskPersister
-from indexed_core.legacy.indexes.indexer_factory import load_indexer
-from indexed_core.legacy.core.documents_collection_searcher import DocumentCollectionSearcher
+from index.legacy.persisters.disk_persister import DiskPersister
+from index.legacy.indexes.indexer_factory import load_indexer
+from index.legacy.core.documents_collection_searcher import DocumentCollectionSearcher
 
-from indexed_core.legacy.utils.performance import log_execution_duration
+from index.legacy.utils.performance import log_execution_duration
 
 
 def create_collection_searcher(collection_name, index_name):
