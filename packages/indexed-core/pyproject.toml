@@ -16,6 +16,7 @@ dependencies = [
     "unstructured[all-docs]>=0.18.5",
     "pydantic-settings>=2.2.1",
     "platformdirs>=4.2.0",
+    "tomlkit>=0.13.0",
 ]
 
 [build-system]
