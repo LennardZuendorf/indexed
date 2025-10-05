@@ -131,8 +131,8 @@ Infrastructure (StorageService, EmbeddingService, Connectors)
 ### Manual Test
 ```python
 from pathlib import Path
-from indexed_core.config.service import ConfigService
-from indexed_core.factory import ServiceFactory
+from index.config.service import ConfigService
+from index.factory import ServiceFactory
 
 # Load config
 config_service = ConfigService()
@@ -155,7 +155,7 @@ for result in results:
 
 ### New Files Created (19 total)
 ```
-packages/indexed-core/src/indexed_core/
+packages/indexed-core/src/index/
 ├── config/
 │   ├── models.py           (107 lines)
 │   ├── service.py          (162 lines)
