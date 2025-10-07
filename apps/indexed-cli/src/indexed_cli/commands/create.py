@@ -3,7 +3,7 @@
 from typing import List
 import typer
 
-from indexed_core.legacy.services import SourceConfig
+from index.legacy.services import SourceConfig
 
 create_app = typer.Typer(help="Create collections from various data sources")
 

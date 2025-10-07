@@ -4,7 +4,7 @@ from typing import Optional
 import json
 import typer
 
-from indexed_core.legacy.services import SourceConfig
+from index.legacy.services import SourceConfig
 
 
 def register(app: typer.Typer) -> None:

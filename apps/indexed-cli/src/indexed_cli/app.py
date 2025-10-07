@@ -8,7 +8,7 @@ import typer
 from typing import Optional
 
 # Re-export service interfaces for tests and command modules to reference dynamically
-from indexed_core.legacy.services import (
+from index.legacy.services import (
     SourceConfig,
     clear as svc_clear,
     create as svc_create,
@@ -34,6 +34,11 @@ app.add_typer(legacy_app, name="legacy")
 from .commands.create import create_app  # noqa: E402
 
 app.add_typer(create_app, name="create")
+
+# Register new index command group (v2 engine)
+from .commands.index import index_app  # noqa: E402
+
+app.add_typer(index_app, name="index")
 
 # Register other top-level commands (search/update)
 from .commands.search import register as register_search  # noqa: E402

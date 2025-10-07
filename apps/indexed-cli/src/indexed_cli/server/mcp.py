@@ -8,8 +8,8 @@ from typing import Any, Dict, List
 from fastmcp import FastMCP
 
 # Import our service layer
-from indexed_core.legacy.services.search_service import search as svc_search, SourceConfig
-from indexed_core.legacy.services.inspect_service import status as svc_status
+from index.legacy.services.search_service import search as svc_search, SourceConfig
+from index.legacy.services.inspect_service import status as svc_status
 
 # Create the FastMCP server instance
 mcp = FastMCP("Indexed MCP Server")

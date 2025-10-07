@@ -71,6 +71,13 @@ class ConfigService:
                 'root_path': str(workspace_path) if workspace_path else str(Path.cwd())
             }
         
+        # Set workspace-based persistence path if not explicitly set
+        if 'vector_store' not in merged_config:
+            merged_config['vector_store'] = {}
+        if 'persistence_path' not in merged_config['vector_store']:
+            workspace_root = Path(merged_config['workspace']['root_path'])
+            merged_config['vector_store']['persistence_path'] = str(workspace_root / ".indexed" / "faiss_index")
+        
         # Validate with Pydantic
         try:
             return IndexedConfig(**merged_config)

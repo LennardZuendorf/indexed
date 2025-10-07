@@ -23,11 +23,12 @@ class WorkspaceConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """Embedding model configuration."""
     
-    provider: str = "sentence-transformers"
+    provider: str = "sentence-transformers"  # Options: "sentence-transformers" or "huggingface-api"
     model_name: str = "all-MiniLM-L6-v2"
     dimension: int = 384  # Will be auto-detected from model
     batch_size: int = 32
     device: Optional[str] = None  # None = auto-detect (cuda/mps/cpu)
+    api_token: Optional[str] = None  # Required for huggingface-api provider
 
 
 class VectorStoreConfig(BaseModel):
