@@ -1,28 +1,55 @@
-.env
+# Python
+**/__pycache__/*
+*.py[cod]
+*$py.class
+*.so
+.Python
 
-#IDE Stuff
-.history/
-.vscode/
-.venv
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
 
-#Python Package Stuff
+# Package build artifacts
 *.egg-info/
-.dist
-.ruff_cache/
-.pytest_cache/
-uv.lock
-.DS_Store
-**/__pycache__/
-
-# Application Stuff
-documents/
 dist/
+build/
+.dist/
+*.egg
+
+# uv
+.uv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Linting
+.ruff_cache/
+
+# IDE & Editors
+.idea/
+.vscode/
+.history/
+**/.DS_Store
+.dccache
+
+# Project data
 data/
 tmp/
 
-# Test and Linting Stuff
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-htmlcov/
-.coverage
+# Backups
+*.backup
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db

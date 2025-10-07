@@ -1,100 +1,171 @@
-# Project Brief
+# Project Brief - Indexed Python
 
-## What it does
-Local, privacy-first document indexing and vector search for:
-- Jira (Server/Data Center and Cloud)
-- Confluence (Server/Data Center and Cloud)
-- Local files (PDF, PPTX, DOCX, etc. via Unstructured)
+## Product Overview
 
-## Key capabilities
-- Create, update, and search collections stored locally
-- MCP stdio integration to expose search as a tool
-- Update is incremental based on lastModified time
+**Product Name**: Indexed - Document Search CLI  
+**Status**: Phase 2 - Controller/Service Architecture Implementation  
+**Current Branch**: `phase2-controller-service`
 
-## CLI (Typer) quick reference
-- `indexed init` → Guided setup; create `config.yaml` (and optionally `.env`)
-- `indexed source add jira|confluence|folder` → Add source to config
-- `indexed source list` / `indexed source show <name>` → Inspect configured sources
-- `indexed source update [<name>]` → Update all or one source (create if missing)
-- `indexed source remove <name> [--purge-data]` → Remove source; optionally delete data
-- `indexed status [--sources <list>]` → Collection stats (docs, chunks, last update, indexers)
-- `indexed manifest <name>` → Print manifest.json
-- `indexed search "<query>" [--sources <list>] [--max-chunks N] [--max-docs N] [--include-full-text]` → Local search
-- `indexed indexers list` → Show available indexers
-- `indexed cache clear [<name>]` → Clear read cache
-- `indexed doctor` → Validate env vars, endpoints, FS permissions
-- `indexed mcp [--sources <list>] [--index <name>] [--max-chunks N] [--max-docs N] [--include-full-text] [--config <path>]` → Start MCP server
+## What We're Building
 
-## Configuration plan
-- Central TOML config (`./config.toml`, git-ignored); optional user-level `~/.config/indexed/config.toml`
-- Load with pydantic-settings (TomlConfigSettingsSource) + `.env` for secrets
-- Precedence: CLI flags > env/.env > user TOML > project TOML > defaults
-- Atomic saves for persistence; secrets stay in env
+A simple, privacy-first command-line tool for semantic document search built on modern vector search technology (FAISS + embeddings). The system allows developers to index local documents and perform fast semantic searches without sending data to third parties.
 
-## Requirements for this iteration
-- Implement the `indexed` Typer CLI and services (config, source, status, search, mcp, cache, doctor)
-- Use TOML + pydantic-settings for config loading; implement atomic save
-- Map CLI commands to existing factories and root scripts; avoid changes in `main/`
-- Provide aggregated multi-source search and a unified MCP server
+## Core Value Proposition
 
-## Non-goals
-- Changing on-disk collection layout or `main/` module behaviors
-- Replacing FAISS or embedding models
+1. **Privacy-First**: All processing and storage happens locally
+2. **Semantic Search**: Understands meaning, not just keywords
+3. **Simple Setup**: Fast installation and intuitive CLI commands
+4. **Developer-Friendly**: Clean CLI interface with helpful output
 
-## Milestones and To-Dos
-- CLI & Config: Typer `indexed` entrypoint; pydantic-settings TOML loader; atomic save; add/list/show/remove sources
-- Update & Status: create-on-missing/update orchestration; status/manifest; optional index size
-- Search: single and aggregated multi-source search; indexers list
-- MCP: unified stdio server with per-source tools and optional search_all
-- Utilities: cache clear; doctor checks (env, endpoints, FS)
-- Docs: README CLI section, config.toml example, MCP usage; keep legacy scripts documented
+## Target Users
 
-## FastAPI MCP extension (optional)
-- Offer HTTP-hosted MCP using FastAPI + FastMCP:
-  - Generate MCP from FastAPI (`FastMCP.from_fastapi(app)`) or mount MCP into FastAPI at `/mcp`
-  - New CLI (planned): `indexed serve-http` and `indexed mcp-from-fastapi`
-- Notes: Prefer curated tools; set lifespan correctly; consider new OpenAPI parser env flag
-- Ref: [FastAPI 🤝 FastMCP](https://gofastmcp.com/integrations/fastapi)
+**Primary User: Individual Developer** 👨‍💻
+- Software engineers, researchers, technical writers
+- Need to search through project documentation, notes, code comments
+- Want fast, semantic search through personal document collections
+- Value privacy and local-first approach
 
-## Focus
-- Primary entry points: Typer CLI (`indexed`) and MCP stdio server (`indexed mcp`)
-- No HTTP server in scope for this iteration
+## Current Architecture Status
 
-## PRD (Product Requirements)
-- **Goal**: Provide a local, privacy-first vector search tool with a single CLI (`indexed`) and a unified MCP stdio server.
-- **Users**: Developers, data/knowledge managers, AI agent builders who need to index and query Jira, Confluence, and local files.
-- **Primary Use Cases**:
-  1. Quickly add data sources (Jira, Confluence, folders) via interactive CLI or one-shot flags.
-  2. Incrementally update or recreate collections without manual script juggling.
-  3. Monitor status (docs, chunks, last update, index size) via a single command.
-  4. Run semantic search locally or expose it to LLM agents via MCP stdio.
-  5. Maintain configuration in a simple, user-editable TOML file with env-based secrets.
-- **Non-Goals**: HTTP API/UI (future), changing existing core indexing logic, remote data storage.
+### Monorepo Structure (Implemented)
+```
+indexed-python/
+├── apps/
+│   └── indexed-cli/          # CLI + MCP Server application
+├── packages/
+│   └── indexed-core/         # Core library (legacy + new implementation)
+├── tests/                    # Test suite
+└── data/                     # Local data storage
+```
 
-## Jobs to be Done / Features
-1. **Setup & Config** – `indexed init`, `source add/list/show/remove` manage TOML config; secrets stay in .env.
-2. **Data Ingestion** – `source update` creates or updates collections via existing factories.
-3. **Status & Monitoring** – `status`, `manifest`, optional index size.
-4. **Search** – `search` (single or multi-source) and `indexers list`.
-5. **MCP Exposure** – `indexed mcp` launches a multi-source FastMCP stdio server for agent integration.
-6. **Maintenance Utilities** – `cache clear`, `doctor` for diagnostics.
-7. **Documentation & Examples** – README section, example config.toml.
+### Current Implementation State
 
-## Task Clusters (high-level)
-- **CLI & Config Layer** – Typer entrypoint, settings loader, config store, ConfigService.
-- **Collection Orchestration** – SourceService for create/update; relies on main.factories.
-- **Status & Monitoring** – StatusService.
-- **Search & Indexers** – SearchService, aggregated results.
-- **MCP Service** – unified stdio server.
-- **Utilities** – CacheService, DoctorService.
-- **Docs & Packaging** – README, example config, pyproject updates, entrypoint script.
+**Completed:**
+- ✅ Monorepo migration (packages structure)
+- ✅ Legacy implementation working (Jira, Confluence, Files connectors)
+- ✅ Basic CLI commands functional
+- ✅ MCP server integration
+- ✅ FAISS vector storage with sentence-transformers
 
-## Backlog
-- CLI output/UX polish: Prettify and standardize output across commands (especially `create files`).
-  - Consistent success/error messaging and symbols
-  - Use richer formatting (colors, tables, progress bars) where helpful
-  - Compact default output with optional `--verbose` and `--quiet` modes
-  - JSON output remains stable and pretty-print behind `--json`
-  - Clear, structured error details with actionable hints and proper exit codes
-  - Consider adopting `rich` for formatting and progress rendering
-  - Specifically, prettify `update` command and controller outputs (aligned columns, clearer headers, symbols, progress)
+**In Progress (Phase 2):**
+- 🔄 New controller/service architecture
+- 🔄 Configuration system with Pydantic
+- 🔄 Clean separation: Controllers → Services → Infrastructure
+- 🔄 Cloud embedding support (OpenAI, Voyage AI)
+
+**Planned:**
+- 📋 Enhanced CLI with Rich UI components
+- 📋 Improved error handling and validation
+- 📋 Better progress indicators
+- 📋 Migration tools from legacy to new architecture
+
+## Key Features
+
+### Current Features (Legacy)
+- Multi-source document indexing (Jira, Confluence, Local Files)
+- FAISS vector similarity search
+- Sentence-transformers embeddings (local)
+- Collection management
+- MCP server for AI agent integration
+- TOML configuration
+
+### New Features (Phase 2)
+- Controller/Service architecture
+- Multiple embedding providers (OpenAI, Voyage AI, local)
+- Enhanced configuration management
+- Better error handling
+- Improved testability
+
+## Core Workflow
+
+```bash
+# Create a collection from local files
+indexed-cli create files -c my-docs --basePath ./documents
+
+# Search across collections
+indexed-cli search "authentication methods" -c my-docs
+
+# Inspect collections
+indexed-cli inspect
+
+# Start MCP server for AI agents
+indexed-mcp
+```
+
+## Technical Foundation
+
+**Core Stack:**
+- Python 3.10+ (using uv for package management)
+- FAISS for vector storage
+- Sentence-transformers / OpenAI / Voyage AI for embeddings
+- Typer for CLI framework
+- FastMCP for AI agent integration
+- Pydantic for configuration and data validation
+
+**Architecture Principles:**
+1. **Separation of Concerns**: Controllers → Services → Infrastructure
+2. **Dependency Injection**: ServiceFactory pattern
+3. **Configuration-Driven**: TOML + Pydantic models
+4. **Testability**: All dependencies injected, easy to mock
+5. **Type Safety**: Type hints throughout, Pydantic validation
+
+## Current Tasks & Focus
+
+### Active Development
+- Implementing new controller/service architecture
+- Adding cloud embedding providers
+- Improving configuration management
+- Enhancing error handling
+
+### Success Criteria
+- ✅ All existing commands work with new architecture
+- ✅ Performance maintained or improved
+- ✅ Cloud embeddings integrated
+- ✅ Clean, testable codebase
+- ✅ Backward compatible with existing data
+
+## Project Goals
+
+### Short-term (Current Phase)
+1. Complete Phase 2 controller/service implementation
+2. Integrate cloud embedding providers
+3. Maintain backward compatibility
+4. Improve code quality and testability
+
+### Medium-term
+1. Enhanced CLI with Rich UI components
+2. Better progress indicators and feedback
+3. Advanced search filtering
+4. Collection health monitoring
+
+### Long-term
+1. Web server application (optional extension)
+2. Advanced connectors (Git, Notion, etc.)
+3. Multi-collection search optimization
+4. Enterprise features
+
+## Development Principles
+
+**KISS (Keep It Simple, Stupid)**
+- Start with simplest solution that works
+- Add complexity only when needed
+- Prefer clarity over cleverness
+
+**Quality First**
+- Type hints and validation everywhere
+- Comprehensive testing
+- Clear error messages
+- Good documentation
+
+**Privacy & Local-First**
+- Default to local processing
+- Cloud features are optional
+- User data never leaves their machine (unless explicitly configured)
+
+## Links & Resources
+
+- Architecture: See `ARCHITECTURE.md` and `.memory/architecture.md`
+- Tech Stack: See `.memory/tech.md`
+- Development Guide: See `DEVELOPMENT.md`
+- PRD Documents: See `.prd/` directory
+- Implementation Plans: See `PHASE2_IMPLEMENTATION_PLAN.md`

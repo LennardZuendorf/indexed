@@ -1,230 +1,246 @@
-# Task PRD: Config Formatting Service (Unified Human Output for Config CLI)
+# Task PRD: Complete V2 LlamaIndex Integration and CLI Wiring
 
-## Goal
-Provide a single, reusable formatting service that returns pre-formatted, emoji- and ANSI-styled strings for configuration-related CLI commands. This ensures unified look-and-feel and eliminates duplicated formatting logic across `config get`, `config list` (and a future `config show`).
-
-## Motivation / Value
-- Consistent output across commands; one source of truth for emojis, colors, badges, and section ordering.
-- Cleaner CLI command code (commands simply call a formatter and print the returned string).
-- Easier to extend (add a new section or badge once in the formatter; all commands benefit).
-- Testable: formatting can be unit-tested as pure string-returning functions.
-
-## In Scope
-- A new service that:
-  - Computes origin badges (env/toml/default) for values using the same precedence rules as today.
-  - Renders:
-    1) a specific key’s value (for `config get`),
-    2) a full multi-section view (for `config list` without prefix),
-    3) a single top-level section like `flags` (for `config list flags`).
-  - Returns a single string for each render call (commands just `echo` it).
-  - Allows selecting “all sections” vs. a specific section via an enum.
-- Keep JSON output paths unchanged (JSON stays raw, not styled).
-
-## Out of Scope
-- Changing configuration schema or precedence.
-- Storing secrets. (Formatter only displays origin; values are already scrubbed by schema/policy.)
-- Non-config commands.
-
-## Users / Use Cases
-- CLI users invoking `indexed config get ...`, `indexed config list`, or `indexed config list flags`.
-- Developers adding new sections; they extend the enum and a single renderer.
-
-## Functional Requirements
-- Provide an enum to control scope:
-  - `ConfigSection`: `ALL`, `PATHS`, `SEARCH`, `INDEX`, `SOURCES`, `MCP`, `PERFORMANCE`, `FLAGS`.
-- Provide functions that accept an `IndexedSettings` instance (or dict), optional `profile`, and produce formatted strings:
-  - `format_full(settings, profile) -> str` (summary + sections)
-  - `format_section(section: ConfigSection, settings, profile) -> str`
-  - `format_value(key_path: str, settings, profile) -> str`
-- Provide consistent styling helpers (bold/color) and emojis, centralized in this service.
-- Compute and attach origin badges `[env]`, `[toml]`, `[default]` at leaf values.
-- For `SOURCES`, render nested subsections for `files`, `jira_cloud`, and `confluence_cloud` with their own badges.
-
-## Non-Functional Requirements
-- Pure string outputs; no direct printing from the service.
-- Minimal coupling: depends only on types (`IndexedSettings`) and `os.environ`/.env for origin detection.
-- Deterministic ordering of keys within sections (sorted) for stable tests.
-- Toggleable ANSI coloring (default on); future-proof a `disable_color` flag if needed.
-
-## Acceptance Criteria
-- `config get` uses `format_value` output verbatim for human mode and shows correct origin badge.
-- `config list` with no prefix uses `format_full` and matches the unified style (same emojis/ordering as the service defines).
-- `config list flags` uses `format_section(ConfigSection.FLAGS, ...)` and shows badges per key.
-- JSON outputs remain unchanged from current behavior.
-- Unit tests cover: full render, section render, and value render (including origin badges and key ordering).
-
-## Risks / Mitigations
-- Risk: Divergence between service and CLI behavior. Mitigation: make CLI delegate all human-mode formatting to the service.
-- Risk: Origin computation drift. Mitigation: centralize origin map computation within the service; write tests for env/toml/default cases.
-
-## Open Questions
-- Do we want a public `format_prefix(prefix: str, ...)` for arbitrary dot-path rendering beyond top-level sections? (Initial version covers value rendering via `format_value` and section rendering via enum.)  
+**Date:** 2025-10-06  
+**Status:** 🟢 Active  
+**Priority:** High  
+**Estimated Effort:** 2-3 hours
 
 ---
 
-# Task PRD: KISS Loguru Integration (Structured, Simple, Level-Controlled)
+## 📋 Problem Statement
 
-## Goal
-Adopt Loguru for unified logging with minimal surface area. Keep it simple: one initializer, capture existing `logging.*` calls, and allow controlling the log level via CLI flag, env var, or config. Default to human-readable console logs; optional JSON serialization is a single boolean toggle.
+The V2 architecture with LlamaIndex has been partially implemented:
+- ✅ IndexController exists with basic CRUD API
+- ✅ StorageService, EmbeddingService, RetrievalService implemented
+- ❌ LoaderService is missing (controller imports it but doesn't exist)
+- ❌ CLI still uses unnecessary Engine abstraction layer
+- ❌ Package exports not properly configured
+- ❌ CLI commands not wired to controller
 
-## Motivation / Value
-- Consistent logging across CLI, services, and MCP with near-zero code churn.
-- Preserve existing `logging.*` calls via interception to avoid mass refactors.
-- Easy level control: `--verbose` or `--log-level` CLI, `.env`/env var, and config default.
+**Core Issue:** The clean controller API exists but isn't usable because:
+1. Missing LoaderService breaks the controller
+2. Engine abstraction adds unnecessary complexity
+3. CLI doesn't know how to import and use the controller
 
-## Non-Goals
-- No complex correlation IDs or extensive context binding in v1.
-- No multi-sink routing or remote transports.
+---
 
-## Minimal Design
-- Single module: `main/utils/logger.py` provides `setup_root_logger(level: str | int = "INFO", json_mode: bool = False) -> None` implemented with Loguru.
-  - Add a single sink to `sys.stderr` with simple format: "{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}".
-  - Support `json_mode` by using `serialize=True` when enabled.
-  - Install an InterceptHandler so stdlib `logging` records flow into Loguru (captures existing calls).
-  - Set noisy third-party loggers to `WARNING`.
-- Central initialization points only:
-  - CLI (`cli/app.py`): initialize early based on CLI flags/env/config.
-  - MCP server (`server/mcp.py`): initialize from its `--log-level` argument or env/config.
-  - Remove per-module initializers if present (or keep as no-op when already configured).
+## 🎯 Goals
 
-## Level Control (three ways)
-- CLI: add `--verbose` (bool → DEBUG) and `--log-level {CRITICAL,ERROR,WARNING,INFO,DEBUG}` on the root Typer app.
-- Env: `INDEXED_LOG_LEVEL` (e.g., `DEBUG`) and `INDEXED_LOG_JSON` (`true|false`).
-- Config (IndexedSettings): add optional `logging` section:
-  - `logging.level: str = "INFO"`
-  - `logging.json: bool = false`
-  - These map to env keys `INDEXED__logging__level` and `INDEXED__logging__json`.
+Create a clean, direct integration where:
 
-Precedence: CLI flag > env > config > default.
+```
+CLI Commands → IndexController API → Services → LlamaIndex/FAISS
+                    ↑
+                    └── Also usable by: MCP Server, Future SDK
+```
 
-## Structured Fields (v1)
-- Keep message-focused logs; let Loguru add standard fields (time, level, message).
-- If `json` enabled, emit JSON with default Loguru structure (time, level, message, module, line, etc.).
+**Architecture Principles:**
+- Controller exposes abstract API with config logic
+- No mixing of patterns (remove Engine abstraction)
+- Simple, direct imports: `from index import IndexController`
+- Controller API usable by CLI, Server, SDK
 
-## Key Logging Hotspots (must-have)
-- Configuration lifecycle
-  - `main/services/config_service.py`: `get()` – profile used, overrides presence, unknown key warnings; `atomic_write_toml()` save success/failure.
-  - `main/config/store.py`: validation errors in `validate_no_secrets()`, lock/backup write failures.
-- CLI entrypoints
-  - `cli/app.py`: selected log level/source (CLI/env/config), command invocation name.
-  - `cli/commands/search.py`: query start with options (collection, limits); summarize results count; error output path already handled.
-- Search and Inspect
-  - `main/services/search_service.py`: per-collection search start/finish and caught exceptions (already logs errors; keep via interception). Optionally one INFO summary with docs/chunks counts.
-  - `main/services/inspect_service.py`: index-size computation failures, per-collection status errors (already present; keep).
-- Create/Update orchestration
-  - `main/services/collection_service.py`: create/update start/finish per collection; surface ValueErrors for missing envs; optionally brief success messages.
-- Utilities
-  - `main/utils/performance.py`, `batch.py`, `retry.py`, `sources/*` readers: retain existing logs; interception will route to Loguru.
+---
 
-## Changes Required
-1) Replace implementation of `main/utils/logger.py` to use Loguru with an InterceptHandler and one stderr sink.
-2) Initialize logging once at process start:
-   - `cli/app.py`: parse `--verbose`/`--log-level` and env/config, call `setup_root_logger()`.
-   - `server/mcp.py`: call `setup_root_logger()` based on `--log-level` or env/config.
-3) Settings: add optional `logging` section to `IndexedSettings` and scaffold it in `ensure_indexed_toml_exists()`.
-4) Keep existing `logging.*` calls; do not refactor call sites.
+## 👥 Target Users
 
-## Acceptance Criteria
-- Running any CLI command shows Loguru-formatted output at the correct level; `--verbose` switches to DEBUG.
-- Env `INDEXED_LOG_LEVEL=DEBUG` and config `logging.level = "DEBUG"` both work when CLI flag is absent.
-- MCP honors `--log-level` and env/config when unspecified.
-- Existing unit tests continue to pass; no behavior changes to return values.
+**Primary:** Developers using the CLI tool
+- Need fast, simple commands: `indexed index files ./docs`
+- Want cloud embeddings for instant search (when HF token set)
+- Expect workspace-based approach (not collection-based)
 
-## Risks / Mitigations
-- Double-initialization: guard to avoid adding multiple sinks.
-- Test expectations around logging: interception ensures stability; caplog remains workable by configuring stdlib logging if needed.
+**Secondary:** Future SDK consumers
+- Import and use IndexController in their own code
+- Configure via constructor parameters
+- Get typed responses
 
-## Open Questions
-- Do we want a single `--json-logs` flag for JSON mode now or defer? Proposed: include flag but default off.
+---
 
-# Task PRD: Config Injection Runtime (Gateway for CLI and MCP)
+## ✅ Acceptance Criteria
 
-## Goal
-Centralize configuration resolution, validation, and runtime parameter derivation for all entry points (CLI commands and MCP server). Provide a thin, reusable gateway that merges CLI/env overrides with `ConfigService` output and injects derived parameters into core services.
+### Must Have
+- [ ] LoaderService implemented using LlamaIndex's SimpleDirectoryReader
+- [ ] Package exports configured (`index/__init__.py`)
+- [ ] Engine abstraction removed from CLI
+- [ ] CLI commands wired directly to IndexController
+- [ ] End-to-end flow works: index → search
+- [ ] HuggingFace API token support for cloud embeddings
+- [ ] Proper error messages and user feedback
 
-## Motivation / Value
-- Single source of truth for loading and validating settings (profile-aware; env/TOML precedence).
-- Remove duplicated config handling in CLI and MCP; reduce drift and bugs.
-- Enable consistent defaults (e.g., indexer, limits, flags) with clear override rules.
-- Make future features (flags, profiles, env) available across all entry points without per-command rewrites.
+### Nice to Have
+- [ ] Progress indicators during indexing
+- [ ] Stats display after operations
+- [ ] Config file support for default settings
 
-## In Scope
-- A small runtime/gateway that:
-  - Loads `IndexedSettings` via `ConfigService.get(profile, overrides)` (validation included).
-  - Builds operation-specific parameters from settings with CLI overrides applied (e.g., search limits, include flags, default indexer).
-  - Exposes helpers to construct `SourceConfig` lists from configured sources when needed.
-- Adoption in:
-  - CLI commands in `src/cli/commands/` (at least `search`, `update`, and any command using default indexer).
-  - MCP server in `src/server/mcp.py` (read mcp/search defaults from settings with env fallback).
+---
 
-## Out of Scope
-- Changing core services APIs (`search_service`, `inspect_service`, `collection_service`).
-- Persisting overrides. Runtime overrides remain ephemeral.
-- Redesigning the configuration schema.
+## 🔧 Technical Requirements
 
-## Users / Use Cases
-- CLI users leveraging profiles and defaults without specifying every flag.
-- MCP deployments that want consistent behavior via config (e.g., default indexer/limits, include flags).
+### LoaderService
+- Use `llama_index.core.SimpleDirectoryReader`
+- Support file pattern filtering
+- Return LlamaIndex `Document` objects
+- Handle errors gracefully (missing files, permissions)
 
-## Functional Requirements
-- Provide a function/class to resolve settings with precedence: CLI overrides > env/.env > TOML > defaults.
-- Provide helpers to derive per-operation args:
-  - Search: `configs` (optional), `max_docs`, `max_chunks`, `include_*` flags, default indexer fallback.
-  - Update: list of collections to update (from configured sources or discovered), default indexer when needed.
-- Work without mandatory settings for disk-only flows (e.g., searching existing collections) while still validating the overall config object.
-- Allow per-command `--profile` to select the profile; env var fallback allowed (e.g., `INDEXED_PROFILE`).
+### Package Structure
+```python
+# index/__init__.py should export:
+from index.controller import IndexController
+from index.models import SearchResult
 
-## Non-Functional Requirements
-- KISS: minimal surface; avoid decorators unless needed by ergonomics.
-- No circular imports; place runtime under `main/services/` to be shared by CLI and MCP.
-- Deterministic behavior with clear override order.
+__all__ = ["IndexController", "SearchResult"]
+```
 
-## Acceptance Criteria
-- CLI `search` loads and validates settings once, applies CLI overrides, and calls `SearchService` with derived params. Defaults align with settings when flags are omitted.
-- MCP reads settings (with env fallback) and applies configured defaults for search and inspect where applicable.
-- No regression in existing tests; add unit tests asserting runtime is invoked and behavior for overrides.
-- Code has no linter errors and follows existing style.
+### CLI Commands
+```bash
+# New simple commands (no --engine flag)
+indexed index files ./docs              # Index documents
+indexed index search "query"            # Search indexed docs
+indexed index stats                     # Show index stats
+indexed index clear                     # Clear index
+```
 
-## Risks / Mitigations
-- Risk: Tight coupling to current settings schema. Mitigation: limit the runtime to a small adapter that reads only necessary fields with safe defaults.
-- Risk: Global option propagation across CLI subcommands. Mitigation: start with per-command `--profile`; consider global option later if needed.
+### Controller API
+```python
+controller = IndexController(
+    collection_path=".indexed",              # Where to store index
+    api_token=os.getenv("HUGGINGFACE_API_TOKEN"),  # Optional cloud embeddings
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    chunk_size=512,
+    chunk_overlap=50
+)
 
-## Open Questions
-- Should we add a global `--profile` option at the root Typer app? Initial version will add `--profile` only to affected commands to keep changes small.
+# CRUD operations
+result = controller.create(source_dir="./docs", file_patterns=["*.md", "*.txt"])
+results = controller.search(query="authentication", top_k=10)
+stats = controller.get_stats()
+controller.delete()
+```
 
-u---
+---
 
-# Task PRD: Pretty CLI Output (Typer + Rich, Minimal Human Output)
+## 📦 Deliverables
 
-## Goal
-Minimize human-facing CLI output to essentials (what, progress, result), keep JSON schemas unchanged, and control verbosity via logging flags.
+### 1. LoaderService Implementation
+**File:** `packages/indexed-core/src/index/services/loader.py`
+- Use LlamaIndex SimpleDirectoryReader
+- Support file pattern filtering
+- Proper error handling
 
-## JSON Output Defaults
-- CLI: default human output; return JSON only when explicitly requested via `--json-output` or an opt-in config value `flags.cli_json_output` (bool).
-- MCP: default JSON output true for requests; allow override via config `mcp.mcp_json_output` (bool) and future flags.
+### 2. Package Exports
+**File:** `packages/indexed-core/src/index/__init__.py`
+- Export IndexController
+- Export SearchResult
+- Clean public API
 
-## Principles
-- Human mode shows only what/progress/result.
-- JSON mode returns machine-readable results with the existing schema.
-- Verbose details go to logs (respecting `--verbose` / `--log-level`).
+### 3. Simplified CLI Commands
+**File:** `apps/indexed-cli/src/indexed_cli/commands/index.py`
+- Remove engine selection
+- Direct controller instantiation
+- Clear user feedback
 
-## In Scope (commands)
-- create (jira|confluence|files), update, delete, inspect, search.
+### 4. Engine Cleanup
+- Remove `apps/indexed-cli/src/indexed_cli/engines/v2_engine.py`
+- Remove `apps/indexed-cli/src/indexed_cli/engines/base.py`
+- Keep legacy_engine.py for backward compat (if needed)
 
-## UX per command (human mode)
-- Create/Update: transient spinners for phases; concise success summary; errors concise.
-- Delete: minimal candidates list; confirmations; concise result.
-- Inspect: single compact table (Name, Docs, Chunks, Updated). Optional Size behind flag.
-- Search: header; compact results per collection with minimal per-doc line and optional chunk previews when requested.
+### 5. Updated Documentation
+**Memory Files:**
+- Update `.memory/session_summary.md`
+- Archive `.memory/llama_index_integration.md` (task complete)
 
-## Configuration
-- Add config toggles to control JSON output defaults:
-  - `flags.cli_json_output: bool = false` (CLI default human unless true or flag present)
-  - `mcp.mcp_json_output: bool = true` (MCP default JSON; can be set false if desired)
-- CLI precedence: flag `--json-output` > `flags.cli_json_output` > default human.
+---
 
-## Acceptance Criteria
-- CLI returns human by default and JSON only when requested (`--json-output` or `flags.cli_json_output`).
-- MCP returns JSON by default (`mcp.mcp_json_output` true).
-- JSON schemas/content unchanged.
-- Spinners are transient; logs contain details under verbose.
+## 🚫 Out of Scope
+
+- Legacy command migration (keep existing legacy commands)
+- MCP server updates (separate task)
+- Advanced features (RAG, hybrid search, re-ranking)
+- Configuration file system (can use defaults)
+- Tests (incremental, separate task)
+
+---
+
+## 🧪 Testing Plan
+
+### Manual Testing
+```bash
+# 1. Index documents
+uv run indexed-cli index files ./test-docs
+
+# Expected output:
+# 🚀 Initializing IndexController...
+# 📥 CREATE: Indexing documents from ./test-docs
+# 🔨 Processing 5 documents with IngestionPipeline
+# ✅ CREATE complete: 5 documents, 47 nodes
+
+# 2. Search without HF token (local embeddings)
+uv run indexed-cli index search "test query"
+
+# Expected: Works but slower first time (~80s model load)
+
+# 3. Search with HF token (cloud embeddings)
+export HUGGINGFACE_API_TOKEN=hf_your_token
+uv run indexed-cli index search "test query"
+
+# Expected: Fast query (~1s)
+
+# 4. Get stats
+uv run indexed-cli index stats
+
+# Expected: Show vector count, model info
+
+# 5. Clear index
+uv run indexed-cli index clear
+
+# Expected: Index deleted successfully
+```
+
+### Validation Checks
+- [ ] Documents successfully indexed
+- [ ] Search returns relevant results
+- [ ] HF token auto-detected and used
+- [ ] Stats show correct counts
+- [ ] Clear removes index files
+- [ ] Error messages are helpful
+
+---
+
+## 📊 Success Metrics
+
+- **Simplicity:** CLI commands work with simple, direct calls
+- **Performance:** Search instant with HF token, acceptable without
+- **Usability:** Clear error messages and feedback
+- **Maintainability:** No unnecessary abstractions
+- **Extensibility:** Easy to import and use controller in other contexts
+
+---
+
+## 🔗 Related Documents
+
+- `.memory/architecture.md` - System architecture overview
+- `.memory/tech.md` - Coding standards and tech stack
+- `packages/indexed-core/src/index/controller.py` - Controller implementation
+
+---
+
+## 📝 Notes
+
+**Design Decision:** Remove Engine abstraction
+- **Why:** Adds complexity without clear benefit
+- **Impact:** Simpler, more direct CLI → Controller integration
+- **Trade-off:** Loss of easy legacy/v2 switching (acceptable - v2 is the path forward)
+
+**HuggingFace Token:**
+- Auto-detect from environment (HUGGINGFACE_API_TOKEN or HF_TOKEN)
+- Used for cloud embeddings (instant queries)
+- Falls back to local embeddings if not present
+
+**Workspace-based Approach:**
+- Index stored in `.indexed/` directory by default
+- Can be overridden with `--workspace` or `collection_path` parameter
+- Simpler than collection-based management
+
+---
+
+**End of PRD**
