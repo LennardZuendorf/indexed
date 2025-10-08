@@ -1,76 +1,76 @@
-"""Inspect command for viewing collection details."""
+"""Inspect command - Show indexed collections or detailed info about a specific collection.
+
+This command uses the core inspect() service to fetch collection data and the
+inspect_formatter to display it beautifully with Rich. It's completely decoupled
+from the underlying data storage and connection mechanisms.
+"""
 
 import typer
-from core.v1 import Index
 
-app = typer.Typer(help="Inspect collections")
+from cli.utils.console import console
+from cli.formatters.inspect_formatter import (
+    format_collection_list,
+    format_collection_detail,
+    format_collection_json,
+    format_collections_json,
+)
+from core.v1.engine.services import inspect
 
 
-@app.command()
-def inspect(
-    collection: str = typer.Argument(None, help="Collection name to inspect (optional)"),
-):
-    """View detailed information about collections.
+def inspect_collections(
+    name: str = typer.Argument(None, help="Collection name to inspect in detail"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information for all collections"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show all indexed collections or inspect a specific collection.
     
-    If no collection name is provided, shows all collections in a table.
-    If a collection name is provided, shows detailed information for that collection.
+    Examples:
+        indexed inspect                    # List all collections
+        indexed inspect my-collection      # Detailed info about specific collection
+        indexed inspect --verbose          # Detailed info about all collections
+        indexed inspect my-collection --json
     """
-    index = Index()
-    
-    if collection:
-        # Show detailed info for specific collection
-        status_list = index.status(collection)
+    # Fetch collection info from core - this is connection-agnostic
+    if name:
+        # Inspect specific collection
+        collections = inspect([name])
         
-        if not status_list:
-            typer.echo(f"Error: Collection '{collection}' not found", err=True)
-            raise typer.Exit(1)
+        # Check if collection exists and has valid data
+        if not collections or collections[0].number_of_documents == 0:
+            # Check if it truly doesn't exist vs just being empty
+            all_collections = inspect()
+            exists = any(c.name == name for c in all_collections)
+            
+            if not exists:
+                console.print(f"\n[red]Collection '{name}' not found[/red]")
+                if all_collections:
+                    console.print("\n[dim]Available collections:[/dim]")
+                    for coll in all_collections:
+                        console.print(f"  • {coll.name}")
+                console.print()
+                raise typer.Exit(1)
         
-        coll = status_list
-        
-        typer.echo(f"Collection: {coll.name}")
-        typer.echo(f"Documents: {coll.number_of_documents}")
-        typer.echo(f"Chunks: {coll.number_of_chunks}")
-        typer.echo(f"Updated: {coll.updated_time}")
-        typer.echo(f"Last Modified: {coll.last_modified_document_time}")
-        typer.echo(f"Indexers: {', '.join(coll.indexers)}")
-        
-        if coll.source_type:
-            typer.echo(f"Source Type: {coll.source_type}")
-        if coll.relative_path:
-            typer.echo(f"Path: {coll.relative_path}")
-        if coll.disk_size_bytes:
-            typer.echo(f"Size: {_human_size(coll.disk_size_bytes)}")
+        # Format and display single collection
+        if json_output:
+            format_collection_json(collections[0])
+        else:
+            format_collection_detail(collections[0])
     else:
-        # Show table of all collections
-        status_list = index.status()
+        # List all collections
+        collections = inspect()
         
-        if not status_list:
-            typer.echo("No collections found")
+        if not collections:
+            console.print("\nNo collections found")
+            console.print("\n[dim]Get started: indexed add[/dim]")
             return
         
-        typer.echo(f"\nFound {len(status_list)} collection(s):\n")
-        
-        # Header
-        typer.echo(f"{'Name':<30} {'Docs':>8} {'Chunks':>8} {'Updated':<22}")
-        typer.echo("─" * 70)
-        
-        # Rows
-        for coll in status_list:
-            name = coll.name[:29] if len(coll.name) > 29 else coll.name
-            updated = coll.updated_time[:21] if coll.updated_time else "-"
-            typer.echo(
-                f"{name:<30} {coll.number_of_documents:>8} {coll.number_of_chunks:>8} {updated:<22}"
-            )
-        
-        typer.echo()
+        # Format and display list
+        if json_output:
+            format_collections_json(collections)
+        else:
+            format_collection_list(collections, verbose=verbose)
 
 
-def _human_size(n: int) -> str:
-    """Convert bytes to human-readable size."""
-    units = ["B", "KB", "MB", "GB", "TB"]
-    size = float(n)
-    for u in units:
-        if size < 1024.0:
-            return f"{size:.1f}{u}"
-        size /= 1024.0
-    return f"{size:.1f}PB"
+# For Typer command registration
+app = typer.Typer(help="Inspect indexed collections")
+app.command(name="inspect")(inspect_collections)

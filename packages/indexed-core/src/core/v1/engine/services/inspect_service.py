@@ -10,7 +10,7 @@ import json
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 import os
-from .models import CollectionStatus
+from .models import CollectionStatus, CollectionInfo
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
@@ -204,6 +204,91 @@ class InspectService:
 
         return statuses
 
+    def inspect(
+        self,
+        collection_names: Optional[List[str]] = None,
+        *,
+        include_index_size: bool = False,
+    ) -> List[CollectionInfo]:
+        """Get detailed inspection information for collections.
+        
+        This method returns enhanced CollectionInfo objects with computed statistics
+        and all available metadata. It's designed for detailed inspection views.
+        
+        Args:
+            collection_names (Optional[List[str]]): List of collection names to inspect.
+                                                   If None, all available collections
+                                                   will be discovered and inspected.
+            include_index_size (bool): Whether to include index size information.
+                                     This requires loading the indexer and may be
+                                     slower. Defaults to False.
+        
+        Returns:
+            List[CollectionInfo]: List of detailed info objects containing comprehensive
+                                 metadata and computed statistics for each collection.
+        
+        Example:
+            >>> service = InspectService()
+            >>> # Get detailed info for specific collection
+            >>> info = service.inspect(['my_collection'])
+            >>> print(f"Avg chunks/doc: {info[0].avg_chunks_per_doc:.1f}")
+        """
+        if collection_names is None:
+            collection_names = self._discover_collections()
+        
+        infos = []
+        for name in collection_names:
+            try:
+                manifest = self._read_manifest(name)
+                
+                # Get index size if requested
+                index_size = None
+                if include_index_size and manifest.get("indexers"):
+                    try:
+                        first_indexer = manifest["indexers"][0]["name"]
+                        indexer = load_indexer(first_indexer, name, self._persister)
+                        index_size = indexer.get_size()
+                    except Exception as e:
+                        import logging
+                        logging.warning(f"Could not get index size for {name}: {e}")
+                
+                # Gather all metadata
+                source_type = manifest.get("reader", {}).get("type")
+                abs_path = os.path.join(self._persister.base_path, name)
+                relative_path = os.path.relpath(abs_path, start=os.getcwd())
+                disk_size = self._calculate_disk_size(name)
+                
+                # Build CollectionInfo (averages computed in __post_init__)
+                info = CollectionInfo(
+                    name=name,
+                    source_type=source_type,
+                    number_of_documents=manifest.get("numberOfDocuments", 0),
+                    number_of_chunks=manifest.get("numberOfChunks", 0),
+                    relative_path=relative_path,
+                    disk_size_bytes=disk_size,
+                    index_size_bytes=index_size,
+                    created_time=manifest.get("createdTime"),
+                    updated_time=manifest.get("updatedTime", ""),
+                    last_modified_document_time=manifest.get("lastModifiedDocumentTime", ""),
+                    indexers=[idx["name"] for idx in manifest.get("indexers", [])],
+                )
+                infos.append(info)
+                
+            except Exception as e:
+                import logging
+                logging.error(f"Error inspecting collection {name}: {e}")
+                # Add minimal error info
+                infos.append(
+                    CollectionInfo(
+                        name=name,
+                        source_type=None,
+                        number_of_documents=0,
+                        number_of_chunks=0,
+                    )
+                )
+        
+        return infos
+
 
 # Global singleton for functional interface
 _default_service = InspectService()
@@ -244,6 +329,44 @@ def status(
         data will be cached across multiple calls within the same process.
     """
     return _default_service.status(
+        collection_names=collection_names,
+        include_index_size=include_index_size,
+    )
+
+
+def inspect(
+    collection_names: Optional[List[str]] = None,
+    *,
+    include_index_size: bool = False,
+) -> List[CollectionInfo]:
+    """Functional wrapper for detailed collection inspection.
+    
+    This function provides a stateless interface to get detailed collection
+    information with computed statistics, suitable for CLI inspection commands.
+    
+    Args:
+        collection_names (Optional[List[str]]): List of collection names to inspect.
+                                               If None, all available collections
+                                               will be discovered and inspected.
+        include_index_size (bool): Whether to include index size information.
+                                 This requires loading the indexer and may be
+                                 slower. Defaults to False.
+    
+    Returns:
+        List[CollectionInfo]: List of detailed info objects containing comprehensive
+                             metadata and computed statistics for each collection.
+    
+    Example:
+        >>> from core.v1.engine.services.inspect_service import inspect
+        >>> # Get detailed info for specific collection
+        >>> info = inspect(['my_collection'])
+        >>> print(f"Collection has {info[0].number_of_documents} documents")
+        >>> print(f"Avg chunks/doc: {info[0].avg_chunks_per_doc:.1f}")
+    
+    Note:
+        This function uses a global singleton InspectService instance.
+    """
+    return _default_service.inspect(
         collection_names=collection_names,
         include_index_size=include_index_size,
     )

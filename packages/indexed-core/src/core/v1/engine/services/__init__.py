@@ -1,9 +1,9 @@
 """Services package for indexed application."""
 
-from .models import SourceConfig, CollectionStatus, SearchResult
+from .models import SourceConfig, CollectionStatus, SearchResult, CollectionInfo
 from .collection_service import create, update, clear
 from .search_service import search, SearchService
-from .inspect_service import status, InspectService
+from .inspect_service import status, inspect, InspectService
 from .config_service import (
     ConfigService,
     get_config,
@@ -17,6 +17,7 @@ __all__ = [
     # Models
     "SourceConfig",
     "CollectionStatus",
+    "CollectionInfo",
     "SearchResult",
     
     # Collection operations
@@ -30,6 +31,7 @@ __all__ = [
     
     # Inspect operations
     "status",
+    "inspect",
     "InspectService",
     
     # Configuration operations

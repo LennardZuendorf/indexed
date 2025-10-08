@@ -56,14 +56,15 @@ from .commands.legacy.legacy import legacy_app  # noqa: E402
 app.add_typer(legacy_app, name="legacy")
 
 # Register new commands using plugin architecture
-from .commands import create, search, update, delete, inspect, config  # noqa: E402
+from .commands import create, search, update, delete, config  # noqa: E402
+from .commands.inspect import inspect_collections  # noqa: E402
 
 app.add_typer(create.app, name="create")
 app.add_typer(config.app, name="config")
 app.command("search")(search.search)
 app.command("update")(update.update)
 app.command("delete")(delete.delete)
-app.command("inspect")(inspect.inspect)
+app.command("inspect")(inspect_collections)
 
 
 
