@@ -1,29 +1,26 @@
 [project]
-name = "indexed-cli"
+name = "indexed-connectors"
 version = "0.1.0"
-description = "Command-line interface and MCP server for indexed document search"
+description = "Document connectors for Jira, Confluence, and file systems"
 readme = "README.md"
 authors = [
     { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "indexed-core",
     "indexed-utils",
-    "typer>=0.12.3",
-    "rich>=13.7.0",
-    "mcp>=1.13.0",
-    "fastmcp>=2.11.3",
+    "requests>=2.32.0",
+    "bs4>=0.0.2",
+    "langchain>=0.3.26",
+    "unstructured[all-docs]>=0.18.5",
 ]
 
-[project.scripts]
-indexed-cli = "cli.app:app"
-indexed-mcp = "cli.commands.mcp:main"
-
 [tool.uv.sources]
-indexed-core = { workspace = true }
 indexed-utils = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/connectors"]
