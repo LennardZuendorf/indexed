@@ -61,9 +61,9 @@ from .commands.create import create_app  # noqa: E402
 app.add_typer(create_app, name="create")
 
 # Register new index command group (v2 engine)
-from .commands.index import index_app  # noqa: E402
-
-app.add_typer(index_app, name="index")
+# TODO: Uncomment when index.py is implemented (Phase 2)
+# from .commands.index import index_app  # noqa: E402
+# app.add_typer(index_app, name="index")
 
 # Register other top-level commands (search/update)
 from .commands.search import register as register_search  # noqa: E402

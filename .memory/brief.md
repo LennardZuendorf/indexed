@@ -3,8 +3,9 @@
 ## Product Overview
 
 **Product Name**: Indexed - Document Search CLI  
-**Status**: Phase 2 - Controller/Service Architecture Implementation  
-**Current Branch**: `phase2-controller-service`
+**Status**: Phase 1 Complete ✅ | Phase 2 Standardization In Progress 🔄  
+**Current Branch**: building 
+**Last Updated**: 2025-10-08
 
 ## What We're Building
 
@@ -40,24 +41,27 @@ indexed-python/
 
 ### Current Implementation State
 
-**Completed:**
-- ✅ Monorepo migration (packages structure)
-- ✅ Legacy implementation working (Jira, Confluence, Files connectors)
-- ✅ Basic CLI commands functional
-- ✅ MCP server integration
-- ✅ FAISS vector storage with sentence-transformers
+**Phase 1: Monorepo Migration ✅ COMPLETE (2025-10-08)**
+- ✅ Monorepo structure established (apps/, packages/)
+- ✅ All packages properly configured
+- ✅ CLI commands fully functional
+- ✅ MCP server working with search and inspect tools
+- ✅ All imports and dependencies resolved
+- ✅ Legacy code preserved and working
 
-**In Progress (Phase 2):**
-- 🔄 New controller/service architecture
-- 🔄 Configuration system with Pydantic
-- 🔄 Clean separation: Controllers → Services → Infrastructure
-- 🔄 Cloud embedding support (OpenAI, Voyage AI)
+**Phase 2: Standardization & Refactoring 🔄 IN PROGRESS**
+- 📋 Unified configuration management system
+- 📋 Standardized connector interface (protocol-based)
+- 📋 Clean core service API
+- 📋 Simplified import paths
+- 📋 Legacy migration with deprecation warnings
+- 📋 Comprehensive documentation
 
-**Planned:**
+**Phase 3: Enhancements 📋 PLANNED**
 - 📋 Enhanced CLI with Rich UI components
-- 📋 Improved error handling and validation
-- 📋 Better progress indicators
-- 📋 Migration tools from legacy to new architecture
+- 📋 Additional connectors (Git, Notion)
+- 📋 Additional embedding providers (OpenAI, Voyage AI)
+- 📋 Performance optimizations
 
 ## Key Features
 
@@ -69,27 +73,77 @@ indexed-python/
 - MCP server for AI agent integration
 - TOML configuration
 
-### New Features (Phase 2)
-- Controller/Service architecture
-- Multiple embedding providers (OpenAI, Voyage AI, local)
-- Enhanced configuration management
-- Better error handling
-- Improved testability
+### Planned Features (Next Phases)
+- Enhanced CLI output with Rich components
+- Web server UI for browser-based search
+- Better error handling and user feedback
+- Progress indicators and status updates
+- Improved configuration management
 
-## Core Workflow
+## Target API & Workflow
 
+**Python API (Core V1)**
+```python
+# Collection-based API
+from core.v1 import Index, Config
+from core.v1.connectors import JiraConnector, FileSystemConnector
+
+# Initialize
+config = Config.from_file("indexed.toml")  # Reads [indexer.v1] section
+index = Index(config)
+
+# Add collections
+jira = JiraConnector(config)
+index.add_collection(jira, name="jira")
+
+files = FileSystemConnector('./docs')
+index.add_collection(files, name="docs")
+
+# Search all collections
+results = index.search("authentication methods")
+
+# Search specific collection
+results = index.search(collection="jira", query="What was project xyz?")
+
+# Inspect
+stats = index.inspect()  # All collections
+stats = index.inspect(collection="jira")  # Specific collection
+```
+
+**CLI (Dual Command Groups)**
 ```bash
-# Create a collection from local files
-indexed-cli create files -c my-docs --basePath ./documents
+# Collection management
+indexed-cli add files ./documents --name docs
+indexed-cli add jira --name jira
+indexed-cli list
+indexed-cli remove docs
 
-# Search across collections
-indexed-cli search "authentication methods" -c my-docs
+# Search operations
+indexed-cli search "authentication methods"           # All collections
+indexed-cli search "query" --collection jira          # Specific collection
 
-# Inspect collections
+# Maintenance
+indexed-cli update jira
 indexed-cli inspect
+indexed-cli inspect --collection docs
 
-# Start MCP server for AI agents
+# Config commands - configuration management
+indexed-cli config show
+indexed-cli config set KEY VALUE
+indexed-cli config validate
+indexed-cli config init
+
+# MCP server for AI agents
 indexed-mcp
+```
+
+**Config File (Versioned)**
+```toml
+# indexed.toml
+[indexer.v1]
+embedding_model = "all-MiniLM-L6-v2"
+storage_path = ".indexed/v1"  # Automatically versioned
+chunk_size = 512
 ```
 
 ## Technical Foundation
@@ -103,46 +157,46 @@ indexed-mcp
 - Pydantic for configuration and data validation
 
 **Architecture Principles:**
-1. **Separation of Concerns**: Controllers → Services → Infrastructure
-2. **Dependency Injection**: ServiceFactory pattern
-3. **Configuration-Driven**: TOML + Pydantic models
-4. **Testability**: All dependencies injected, easy to mock
-5. **Type Safety**: Type hints throughout, Pydantic validation
+1. **KISS First**: Simple, clean API over complex patterns
+2. **Versioned API**: `core.v1` with versioned config and storage (`.indexed/v1/`)
+3. **Dual CLI**: Separate index commands (operations) and config commands (management)
+4. **Monorepo Structure**: Clean separation of apps and packages
+5. **Type Safety**: Type hints where they add value, Pydantic for config validation
 
 ## Current Tasks & Focus
 
 ### Active Development
-- Implementing new controller/service architecture
-- Adding cloud embedding providers
-- Improving configuration management
-- Enhancing error handling
+- Monorepo structure completion and dependency fixes
+- CLI restoration and namespace adjustments
+- Package versioning and import structure
+- Getting basic functionality working again
 
 ### Success Criteria
-- ✅ All existing commands work with new architecture
-- ✅ Performance maintained or improved
-- ✅ Cloud embeddings integrated
-- ✅ Clean, testable codebase
-- ✅ Backward compatible with existing data
+- ✅ Monorepo structure properly configured
+- ✅ CLI commands functional and working
+- ✅ Dependencies resolved (uv.lock fixed)
+- ✅ Enhanced CLI output with Rich components
+- ✅ Web server UI ready for use
 
 ## Project Goals
 
 ### Short-term (Current Phase)
-1. Complete Phase 2 controller/service implementation
-2. Integrate cloud embedding providers
-3. Maintain backward compatibility
-4. Improve code quality and testability
+1. Complete monorepo restructuring and get CLI working
+2. Fix pyproject.toml files and dependency issues
+3. Restore basic functionality (index, search, inspect)
+4. Ensure all packages import and work correctly
 
 ### Medium-term
 1. Enhanced CLI with Rich UI components
-2. Better progress indicators and feedback
-3. Advanced search filtering
-4. Collection health monitoring
+2. Better progress indicators and user feedback
+3. Improved error messages and validation
+4. Command structure optimization
 
 ### Long-term
-1. Web server application (optional extension)
-2. Advanced connectors (Git, Notion, etc.)
-3. Multi-collection search optimization
-4. Enterprise features
+1. Web server UI development
+2. HTTP API for browser-based interface
+3. Core V2 API with enhanced features (different config structure, no conflicts with v1)
+4. Advanced connectors and enterprise features
 
 ## Development Principles
 

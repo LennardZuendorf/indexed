@@ -46,9 +46,16 @@ def search(query: str) -> Dict[str, Any]:
         Dictionary with collection names as keys and search results as values
     """
     try:
-        # Resolve SEARCH args with no overrides → auto-discovery
-        _settings, args = resolve_and_extract(ConfigSlice.SEARCH)
-        results = search_service.search(query, configs=args.configs)
+        # Auto-discover all collections by passing configs=None
+        results = svc_search(
+            query,
+            configs=None,
+            max_docs=config.max_docs,
+            max_chunks=config.max_chunks,
+            include_full_text=config.include_full_text,
+            include_all_chunks=config.include_all_chunks,
+            include_matched_chunks=config.include_matched_chunks,
+        )
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -88,9 +95,16 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
             indexer=default_indexer,
         )
         
-        # Resolve defaults and execute search with fixed configs
-        _settings, _args = resolve_and_extract(ConfigSlice.SEARCH)
-        results = search_service.search(query, configs=[source_config])
+        # Execute search with the specific collection config
+        results = svc_search(
+            query,
+            configs=[source_config],
+            max_docs=config.max_docs,
+            max_chunks=config.max_chunks,
+            include_full_text=config.include_full_text,
+            include_all_chunks=config.include_all_chunks,
+            include_matched_chunks=config.include_matched_chunks,
+        )
         return results
     except Exception as e:
         return {"error": str(e)}

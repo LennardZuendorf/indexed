@@ -2,7 +2,7 @@
 
 ## Overview
 
-Indexed is a document search system built on a clean, layered architecture with separation of concerns. The system uses dependency injection, configuration-driven behavior, and a clear upgrade path from legacy to modern implementation.
+Indexed is a document search system built with a privacy-first monorepo structure. The current focus is establishing a clean foundation with working CLI functionality, then enhancing with Rich UI components, and eventually building a web server UI.
 
 ## High-Level Architecture
 

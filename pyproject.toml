@@ -44,7 +44,12 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.uv.workspace]
-members = ["packages/indexed-core", "apps/indexed-cli"]
+members = [
+    "packages/utils",
+    "packages/indexed-connectors",
+    "packages/indexed-core",
+    "apps/indexed-cli"
+]
 
 [dependency-groups]
 dev = [

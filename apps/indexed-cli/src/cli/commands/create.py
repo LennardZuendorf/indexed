@@ -50,7 +50,7 @@ def create_jira(
         Create from Jira Server:
         $ indexed-cli create jira -c server-issues -u https://jira.company.com --jql "assignee = currentUser()"
     """
-    import indexed_cli.app as root
+    from .. import app as root
 
     indexer = index_name or root.DEFAULT_INDEXER
     cfg_type = "jiraCloud" if url.endswith(".atlassian.net") else "jira"
@@ -115,7 +115,7 @@ def create_confluence(
         Create with comment filtering:
         $ indexed-cli create confluence -c docs -u https://wiki.company.com --cql "type = page" --readOnlyFirstLevelComments
     """
-    import indexed_cli.app as root
+    from .. import app as root
 
     indexer = index_name or root.DEFAULT_INDEXER
     cfg_type = "confluenceCloud" if url.endswith(".atlassian.net") else "confluence"
@@ -181,12 +181,12 @@ def create_files(
         $ indexed-cli create files -c docs --basePath ./documents --includePatterns ".*\\.md$"
         
         Create from code files, excluding tests:
-        $ indexed-cli create files -c codebase --basePath ./src --includePatterns ".*\.(py|js|ts)$" --excludePatterns ".*test.*"
+        $ indexed-cli create files -c codebase --basePath ./src --includePatterns ".*\\.(py|js|ts)$" --excludePatterns ".*test.*"
         
         Create with strict error handling:
         $ indexed-cli create files -c strict-docs --basePath ./docs --failFast
     """
-    import indexed_cli.app as root
+    from .. import app as root
 
     indexer = index_name or root.DEFAULT_INDEXER
     
