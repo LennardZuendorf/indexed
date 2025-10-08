@@ -59,16 +59,29 @@ These files are created for specific tasks and cleared after completion:
 - Performance considerations
 
 ### `app_cli.md` (12 KB)
-**CLI Application Details**
-- CLI structure and commands
+**CLI Application Details (Legacy)**
+- Previous CLI structure and commands
 - Engine selection logic (legacy vs v2)
 - MCP server integration
-- Command implementation patterns
-- Configuration management
-- Error handling strategies
-- Testing approach
-- Future enhancements (Rich UI, interactive modes)
-- Complete command reference
+- Historical context
+
+### `cli_final_design.md` (21 KB) ⭐ **CURRENT CLI SPEC**
+**Final CLI Design v2.0**
+- Complete command specification (6 commands total)
+- Interactive-first design with automation support
+- Search-first philosophy
+- Rich library integration patterns
+- Visual design guidelines (minimal colors)
+- Logging strategy (clean by default)
+- User workflows and examples
+- Implementation priorities
+- Success criteria
+
+### `cli_rewrite_complete.md` (9 KB)
+**Previous CLI Rewrite Session Summary**
+- Documents Phase 2 Step 15 completion
+- Historical record of previous implementation
+- Architecture patterns used
 
 ### `package_core.md` (19 KB)
 **Core Library Specification**
