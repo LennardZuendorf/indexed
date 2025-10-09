@@ -76,6 +76,11 @@ def _show_simple_list(collections: List[CollectionInfo]) -> None:
     from rich.columns import Columns
     
     console.print()
+    # Headline showing number of collections
+    count = len(collections)
+    plural = "Collection" if count == 1 else "Collections"
+    console.print(f"[{ACCENT_STYLE}]Inspected {count} {plural}:[/{ACCENT_STYLE}]")
+    console.print()
     
     # Create panels for each collection
     panels = []
@@ -122,6 +127,11 @@ def _show_verbose_list(collections: List[CollectionInfo]) -> None:
     """Show detailed collection info for all collections with unified design."""
     from rich.console import Group
     
+    console.print()
+    # Headline showing number of collections
+    count = len(collections)
+    plural = "Collection" if count == 1 else "Collections"
+    console.print(f"[{ACCENT_STYLE}]Inspected {count} {plural}:[/{ACCENT_STYLE}]")
     console.print()
     
     total_docs = 0
@@ -170,6 +180,9 @@ def format_collection_detail(info: CollectionInfo) -> None:
     Args:
         info: CollectionInfo object to display
     """
+    console.print()
+    # Headline showing collection name
+    console.print(f"[{ACCENT_STYLE}]Inspected {info.name} Collection:[/{ACCENT_STYLE}]")
     console.print()
     
     # Build content using consistent info rows

@@ -7,7 +7,10 @@ import json
 import os
 import typer
 from typing import Optional
+from rich.console import Console
+from rich.theme import Theme
 from utils.logger import setup_root_logger
+from cli.components import get_help_theme_styles
 
 # Re-export service interfaces for tests and command modules to reference dynamically
 from core.v1.engine.services import (
@@ -19,9 +22,17 @@ from core.v1.engine.services import (
     update as svc_update,
 )
 
+# Configure Rich console with custom theme for help display
+_help_console = Console(theme=Theme(get_help_theme_styles()))
+
 # Main Typer application
 app = typer.Typer(
-    add_completion=False, help="Indexed CLI - Document indexing and search tool"
+    add_completion=False,
+    help="Indexed CLI - Document indexing and search tool",
+    rich_markup_mode="rich",
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["--help"]},
+    rich_help_panel=True,
 )
 # Global logging init via callback (runs before subcommands)
 @app.callback()

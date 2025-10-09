@@ -35,6 +35,7 @@ from .theme import (
     get_accent_style,
     get_label_style,
     get_title_style,
+    get_help_theme_styles,
 )
 
 from .info_row import (
@@ -81,6 +82,7 @@ __all__ = [
     "get_accent_style",
     "get_label_style",
     "get_title_style",
+    "get_help_theme_styles",
     
     # Info Rows
     "create_info_row",

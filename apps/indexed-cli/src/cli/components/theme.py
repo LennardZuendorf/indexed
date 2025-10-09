@@ -8,14 +8,14 @@ the CLI for consistent visual design.
 # Color Palette
 # ============================================================================
 
-# Primary accent color for borders, highlights, and emphasis
+# Primary accent color for text highlights and emphasis (not borders)
 ACCENT_COLOR = "cyan"
 ACCENT_STYLE = "bold cyan"
 
 # Text hierarchy styles
 TITLE_STYLE = "bold"              # Card titles, collection names
-LABEL_STYLE = "dim"               # Left-side labels (grey)
-VALUE_STYLE = ""                  # Right-side values (white/default)
+LABEL_STYLE = "bold cyan"         # Left-side labels (cyan and bold)
+VALUE_STYLE = "not bold white"    # Right-side values (white, not bold)
 SECONDARY_STYLE = "dim"           # Helper text, hints
 
 # Status colors for feedback
@@ -42,8 +42,8 @@ GRID_CARD_MIN_WIDTH = 30         # Minimum width for grid cards
 # Border Styles
 # ============================================================================
 
-# Default border style for all cards
-CARD_BORDER_STYLE = ACCENT_COLOR
+# Default border style for all cards (grey/dim to match Typer's help style)
+CARD_BORDER_STYLE = "dim"
 
 # ============================================================================
 # Helper Functions
@@ -77,3 +77,21 @@ def get_label_style() -> str:
 def get_title_style() -> str:
     """Get style string for titles."""
     return TITLE_STYLE
+
+
+# ============================================================================
+# Rich Theme for Typer Help
+# ============================================================================
+
+def get_help_theme_styles() -> dict[str, str]:
+    """Get Rich theme styles for Typer help menu customization.
+    
+    This theme ensures consistent styling with our design system:
+    - Command description (docstring) is cyan and bold
+    - Grey borders matching Typer's default
+    - Consistent text hierarchy
+    """
+    return {
+        # Command description/docstring - cyan and bold
+        "argparse.text": ACCENT_STYLE,
+    }

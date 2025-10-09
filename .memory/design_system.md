@@ -13,13 +13,14 @@ The Indexed CLI uses a **card-based design language** built with Rich for beauti
 - **Hierarchy**: Progressive disclosure through simple → detailed views
 
 ### 2. Visual Language
-- **Accent Color**: Cyan (`#00ffff`) for borders, highlights, and emphasis
+- **Accent Color**: Cyan (`#00ffff`) for text highlights and emphasis
+- **Borders**: Grey (dim) rounded borders on all cards (matching Typer's help style)
 - **Text Hierarchy**:
+  - Bold Cyan: Labels on the left side (e.g., "Docs", "Chunks")
+  - Normal White: Values on the right side (e.g., "13", "174")
   - Bold: Titles and collection names
-  - Dim (grey): Labels and secondary info
-  - Normal (white): Primary values and content
+  - Dim (grey): Helper text and hints
 - **Spacing**: Consistent padding (0, 1) inside panels
-- **Borders**: Rounded cyan borders on all cards
 
 ### 3. Layout Patterns
 - **Grid Layout**: Multiple cards side-by-side (2-3 columns)
@@ -42,7 +43,7 @@ row = create_info_row("Label", "Value")
 ```
 Label     Value
 ```
-- Label: 10 chars wide, dim/grey style
+- Label: 10 chars wide, bold cyan style
 - Value: Normal/white style, left-aligned
 
 ### 2. Info Card
@@ -89,12 +90,12 @@ Total: 39 documents, 539 chunks
 ### Theme Colors
 ```python
 # Primary
-ACCENT_COLOR = "cyan"          # Borders, highlights, emphasis
+ACCENT_COLOR = "cyan"          # Text highlights and emphasis (not borders)
 ACCENT_STYLE = "bold cyan"     # Headers, important text
 
 # Text Hierarchy
 TITLE_STYLE = "bold"           # Card titles, collection names
-LABEL_STYLE = "dim"            # Left-side labels (grey)
+LABEL_STYLE = "bold cyan"      # Left-side labels (cyan and bold)
 VALUE_STYLE = ""               # Right-side values (white/default)
 SECONDARY_STYLE = "dim"        # Helper text, hints
 
@@ -149,13 +150,15 @@ apps/indexed-cli/src/cli/
 
 ### Do's ✅
 - Use `create_info_row()` for all label-value pairs
-- Use cyan accent color for emphasis
+- Use grey (dim) borders for all cards
+- Use bold cyan for labels, white for values
+- Use cyan accent color for headlines and emphasis
 - Keep cards compact and scannable
 - Maintain consistent padding (0, 1)
-- Use dim style for labels, normal for values
 
 ### Don'ts ❌
 - Don't hardcode colors - use theme constants
+- Don't use cyan borders - use grey (dim) instead
 - Don't mix table boxes with card panels
 - Don't create custom label formatting
 - Don't use full-width cards for lists
