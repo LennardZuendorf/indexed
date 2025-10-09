@@ -7,7 +7,6 @@ information in bordered containers with consistent styling.
 from typing import Optional
 from rich.panel import Panel
 from rich.console import Group
-from rich.text import Text
 
 from .theme import (
     CARD_BORDER_STYLE,

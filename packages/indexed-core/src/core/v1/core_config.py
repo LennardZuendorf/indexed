@@ -120,7 +120,7 @@ class Config(BaseModel):
         """
         # TODO: Implement TOML file saving
         # For now, pass (will be implemented in next iteration)
-        save_path = path or Path("./indexed.toml")
+        path or Path("./indexed.toml")
         pass
     
     def pretty_print(self) -> str:

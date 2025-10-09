@@ -86,17 +86,18 @@ class ConfluenceCloudDocumentReader:
         if not self.read_all_comments:
             return page["content"]["children"]["comment"]["results"]
 
-        read_batch_func = lambda start_at, batch_size, cursor=None: self.__request(
-            self.__add_url_prefix(
-                f"/wiki/rest/api/content/{page['content']['id']}/child/comment"
-            ),
-            {
-                "limit": batch_size,
-                "start": start_at,
-                "expand": "body.storage",
-                "depth": "all",
-            },
-        )
+        def read_batch_func(start_at, batch_size, cursor=None):
+            return self.__request(
+                    self.__add_url_prefix(
+                        f"/wiki/rest/api/content/{page['content']['id']}/child/comment"
+                    ),
+                    {
+                        "limit": batch_size,
+                        "start": start_at,
+                        "expand": "body.storage",
+                        "depth": "all",
+                    },
+                )
 
         comments_generator = read_items_in_batches(
             read_batch_func,
@@ -110,16 +111,17 @@ class ConfluenceCloudDocumentReader:
         return [comment for comment in comments_generator]
 
     def __read_items(self):
-        read_batch_func = lambda start_at, batch_size, cursor: self.__request(
-            self.__add_url_prefix("/wiki/rest/api/search"),
-            {
-                "cql": self.query,
-                "limit": batch_size,
-                "start": start_at,
-                "expand": self.expand,
-                "cursor": cursor,
-            },
-        )
+        def read_batch_func(start_at, batch_size, cursor):
+            return self.__request(
+                    self.__add_url_prefix("/wiki/rest/api/search"),
+                    {
+                        "cql": self.query,
+                        "limit": batch_size,
+                        "start": start_at,
+                        "expand": self.expand,
+                        "cursor": cursor,
+                    },
+                )
 
         return read_items_in_batches(
             read_batch_func,

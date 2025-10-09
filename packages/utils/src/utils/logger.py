@@ -1,9 +1,7 @@
-import sys
 from typing import Optional
 
 from loguru import logger
 from rich.console import Console
-from rich.logging import RichHandler
 
 _LOGGING_CONFIGURED = False
 _STATUS_SINK_ID = None

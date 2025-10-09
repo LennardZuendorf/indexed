@@ -4,7 +4,6 @@ This module provides a context manager for showing live status updates
 with a spinner during operations like search.
 """
 
-from typing import Optional
 from rich.console import Console
 from utils.logger import enable_status_capture, disable_status_capture
 

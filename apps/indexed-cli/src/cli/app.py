@@ -3,7 +3,6 @@
 Provides legacy proxies and stateless commands backed by services.
 """
 
-import json
 import os
 import typer
 from typing import Optional

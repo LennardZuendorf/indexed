@@ -16,7 +16,7 @@ else:
 import tomlkit
 from platformdirs import user_config_dir
 
-from .models import IndexedConfig, WorkspaceConfig
+from .models import IndexedConfig
 
 logger = logging.getLogger(__name__)
 

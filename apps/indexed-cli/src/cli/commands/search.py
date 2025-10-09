@@ -41,7 +41,7 @@ def search(
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
     """
-    index = Index()
+    Index()
     
     # Perform search with matched chunks
     # Note: Index.search doesn't expose these params, so we need to use the service directly

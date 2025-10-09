@@ -7,10 +7,7 @@ the core data models and connection logic.
 
 import json
 from typing import List, Optional
-from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
-from rich import box
 
 from core.v1.engine.services import CollectionInfo
 from cli.utils.console import console
@@ -49,7 +46,7 @@ def format_time(timestamp: Optional[str]) -> str:
         if "+" in timestamp:
             timestamp = timestamp.split("+")[0]
         return timestamp
-    except:
+    except Exception:
         return timestamp
 
 

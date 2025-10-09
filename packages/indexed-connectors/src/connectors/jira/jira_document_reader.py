@@ -57,14 +57,15 @@ class JiraDocumentReader:
         return self.base_url + relative_path
 
     def __read_items(self):
-        read_batch_func = lambda start_at, batch_size: self.__request_items(
-            {
-                "jql": self.query,
-                "startAt": start_at,
-                "maxResults": batch_size,
-                "fields": self.fields,
-            }
-        )
+        def read_batch_func(start_at, batch_size):
+            return self.__request_items(
+                    {
+                        "jql": self.query,
+                        "startAt": start_at,
+                        "maxResults": batch_size,
+                        "fields": self.fields,
+                    }
+                )
 
         return read_items_in_batches(
             read_batch_func,
