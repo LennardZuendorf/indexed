@@ -18,7 +18,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "indexed-cli",
+    "indexed",
     "indexed-connectors",
     "indexed-core",
     "indexed-utils",
@@ -1627,9 +1627,9 @@ wheels = [
 ]
 
 [[package]]
-name = "indexed-cli"
+name = "indexed"
 version = "0.1.0"
-source = { editable = "indexed-cli" }
+source = { editable = "indexed" }
 dependencies = [
     { name = "fastmcp" },
     { name = "indexed-core" },

@@ -48,7 +48,7 @@ members = [
     "packages/utils",
     "packages/indexed-connectors",
     "packages/indexed-core",
-    "indexed-cli"
+    "indexed"
 ]
 
 [dependency-groups]

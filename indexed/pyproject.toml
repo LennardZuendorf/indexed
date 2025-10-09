@@ -1,7 +1,7 @@
 [project]
-name = "indexed-cli"
+name = "indexed"
 version = "0.1.0"
-description = "Command-line interface and MCP server for indexed document search"
+description = "Multi-mode application: CLI, MCP server, and web server for indexed document search"
 readme = "README.md"
 authors = [
     { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
-indexed-cli = "cli.app:app"
-indexed-mcp = "cli.commands.mcp:main"
+indexed = "cli.app:app"
+indexed-mcp = "cli.commands.legacy.mcp:main"
 
 [tool.uv.sources]
 indexed-core = { workspace = true }
