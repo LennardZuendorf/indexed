@@ -54,6 +54,11 @@ from .summary import (
     create_total_summary,
 )
 
+from .status import (
+    OperationStatus,
+    SearchStatus,  # Backwards compatibility
+)
+
 __all__ = [
     # Theme
     "ACCENT_COLOR",
@@ -90,4 +95,8 @@ __all__ = [
     "create_summary",
     "create_count_summary",
     "create_total_summary",
+    
+    # Status
+    "OperationStatus",
+    "SearchStatus",  # Backwards compatibility
 ]

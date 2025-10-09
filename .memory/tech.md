@@ -45,7 +45,8 @@ python -m indexed_cli.app
 
 ### CLI & User Interface
 - `typer>=0.12.3` - CLI framework
-- `rich` (planned) - Enhanced terminal UI with colors, tables, progress bars
+- `rich>=13.0.0` - Enhanced terminal UI with colors, tables, progress bars, spinners
+- `loguru>=0.7.0` - Structured logging with Rich integration
 
 ### MCP Integration
 - `mcp>=1.13.0` - MCP protocol
@@ -148,24 +149,43 @@ documents = connector.read_documents()  # No error handling
 ```
 
 ### Logging
-**REQUIRED:** Structured logging with context
+**REQUIRED:** Loguru for all logging (no Python stdlib logging)
+
+**Architecture:**
+- Core services use Loguru directly
+- Rich formatting for console output
+- Three display modes:
+  - **Default (WARNING)**: Clean output, INFO logs captured by spinner
+  - **Verbose (--verbose)**: Rich-formatted INFO logs with cyan styling
+  - **Debug (--log-level=DEBUG)**: Extended DEBUG logs with source location
 
 ```python
-from index.utils.logger import get_logger
+from loguru import logger
 
-logger = get_logger(__name__)
+# ✅ Good - Use Loguru
+logger.info(f"Found {count} collections: {', '.join(names)}")
+logger.debug(f"Candidate directories: {sorted(dirs)}")
+logger.error(f"Failed to process: {error}")
 
-# ✅ Good
-logger.info(
-    "Indexing started",
-    extra={
-        "source_path": path,
-        "document_count": len(documents)
-    }
-)
+# ❌ Bad - Don't use Python logging
+import logging
+logging.info("message")  # NO!
 
-# ❌ Bad
-print(f"Starting indexing for {path}")
+# ❌ Bad - Don't use print
+print(f"Processing {item}")  # NO!
+```
+
+**Log Message Guidelines:**
+- Keep messages user-friendly and concise
+- Use f-strings for clarity
+- Include relevant context (file names, counts, etc.)
+- Use visual indicators: ✓ for success, relevant emojis sparingly
+
+```python
+# Good examples
+logger.info(f"Found {len(collections)} collections: {', '.join(collections)}")
+logger.info(f'Searching "{query}" across {num} collections')
+logger.info(f"✓ {collection}: {count} documents")
 ```
 
 ### Docstrings

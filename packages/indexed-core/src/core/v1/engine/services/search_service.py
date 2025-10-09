@@ -7,15 +7,13 @@ and caching of search indexes for optimal performance.
 """
 
 import json
-import logging
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
+from loguru import logger
+
 from .models import SourceConfig
-from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import create_collection_searcher
-
-setup_root_logger()
 
 
 class SearchService:
@@ -79,7 +77,7 @@ class SearchService:
                 else:
                     # Treat bare names as top-level directories too
                     top_level_dirs.add(rel_path)
-            logging.debug("Candidate top-level dirs: %s", sorted(top_level_dirs))
+            logger.debug(f"Candidate top-level dirs: {sorted(top_level_dirs)}")
 
             discovered: List[str] = []
             for dirname in sorted(top_level_dirs):
@@ -87,10 +85,10 @@ class SearchService:
                 if self._persister.is_path_exists(manifest_path):
                     discovered.append(dirname)
 
-            logging.info("Discovered %d collection(s): %s", len(discovered), discovered)
+            logger.info(f"Found {len(discovered)} collections: {', '.join(discovered)}")
             return discovered
         except Exception as exc:
-            logging.error("Failed to discover collections: %s", exc)
+            logger.error(f"Failed to discover collections: {exc}")
             return []
 
     def _get_default_indexer(self, collection_name: str) -> str:
@@ -194,13 +192,8 @@ class SearchService:
         else:
             search_configs = configs
 
-        logging.info(
-            'Searching query="%s" across %d collection config(s) (max_docs=%s, max_chunks=%s)',
-            query,
-            0 if search_configs is None else len(search_configs),
-            max_docs,
-            max_chunks,
-        )
+        num_collections = len(search_configs) if search_configs else 0
+        logger.info(f'Searching "{query}" across {num_collections} collection{"s" if num_collections != 1 else ""}')
 
         results = {}
         for cfg in search_configs:
@@ -216,15 +209,11 @@ class SearchService:
                 )
                 results[cfg.name] = result
                 num_docs = len(result.get("results", [])) if isinstance(result, dict) else 0
-                logging.info(
-                    "Collection '%s' searched with indexer '%s': %d document(s) returned",
-                    cfg.name,
-                    cfg.indexer,
-                    num_docs,
-                )
+                doc_word = "document" if num_docs == 1 else "documents"
+                logger.info(f"✓ {cfg.name}: {num_docs} {doc_word}")
             except Exception as e:
                 # Log error but continue with other collections
-                logging.error(f"Error searching collection {cfg.name}: {e}")
+                logger.error(f"Error searching collection {cfg.name}: {e}")
                 results[cfg.name] = {"error": str(e)}
 
         return results

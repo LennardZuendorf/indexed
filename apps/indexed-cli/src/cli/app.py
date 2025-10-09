@@ -27,12 +27,12 @@ app = typer.Typer(
 @app.callback()
 def _init_logging(
     verbose: bool = typer.Option(
-        False, "--verbose", help="Enable verbose (DEBUG) logging"
+        False, "--verbose", help="Enable verbose (INFO) logging with rich formatting"
     ),
     log_level: Optional[str] = typer.Option(
         None,
         "--log-level",
-        help="Logging level (overrides --verbose)",
+        help="Set explicit logging level (DEBUG, INFO, WARNING, ERROR). Overrides --verbose.",
         case_sensitive=False,
         show_choices=True,
         rich_help_panel="Logging",
@@ -41,9 +41,12 @@ def _init_logging(
         False, "--json-logs", help="Output logs as JSON (structured)"
     ),
 ) -> None:
-    # Resolve effective level with precedence: CLI > env > config (handled later) > default
+    # Resolve effective level with precedence: CLI > env > default
+    # --verbose sets INFO level for seeing operation progress
+    # --log-level=DEBUG can be used for deep debugging
     env_level = os.getenv("INDEXED_LOG_LEVEL")
-    level = (log_level or ("DEBUG" if verbose else None) or env_level or "INFO").upper()
+    level = (log_level or ("INFO" if verbose else None) or env_level).upper() if (log_level or verbose or env_level) else None
+    # Default is WARNING (set in setup_root_logger)
     json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     setup_root_logger(level_str=level, json_mode=json_mode)
 
