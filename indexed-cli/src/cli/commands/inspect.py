@@ -22,7 +22,7 @@ def inspect_collections(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information for all collections"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """[bold cyan]Show all indexed collections or inspect a specific collection.[/bold cyan]
+    """Show all indexed collections or inspect a specific collection.
     
     Examples:
         indexed inspect                    # List all collections
