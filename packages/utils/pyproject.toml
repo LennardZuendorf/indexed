@@ -1,10 +1,10 @@
 [project]
 name = "indexed-utils"
 version = "0.1.0"
-description = "Utility functions for indexed project (logging, retry, batching, progress)"
+description = "Shared utility functions for the indexed project including logging, retry logic, batching, and progress tracking"
 readme = "README.md"
 authors = [
-    { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
+    { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
 ]
 requires-python = ">=3.10"
 dependencies = [

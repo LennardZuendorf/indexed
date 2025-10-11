@@ -1,10 +1,10 @@
 [project]
 name = "indexed-connectors"
 version = "0.1.0"
-description = "Document connectors for Jira, Confluence, and file systems"
+description = "Document connectors for Jira, Confluence, and local file systems with support for both Cloud and Server/DC versions"
 readme = "README.md"
 authors = [
-    { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
+    { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
 ]
 requires-python = ">=3.10"
 dependencies = [

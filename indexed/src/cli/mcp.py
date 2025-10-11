@@ -7,6 +7,7 @@ import os
 from typing import Any, Dict, List
 from fastmcp import FastMCP
 from utils.logger import setup_root_logger
+from cli.utils.banner import print_indexed_banner
 
 # Import our service layer
 from core.v1.engine.services import search as svc_search, SourceConfig, status as svc_status
@@ -182,6 +183,9 @@ def collection_status(name: str) -> Dict[str, Any]:
 def main():
     """Main entry point for the MCP server."""
     import argparse
+    
+    # Display ASCII banner
+    print_indexed_banner()
 
     parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
     parser.add_argument(

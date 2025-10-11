@@ -1,10 +1,10 @@
 [project]
 name = "indexed"
 version = "0.1.0"
-description = "Multi-mode application: CLI, MCP server, and web server for indexed document search"
+description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 authors = [
-    { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
+    { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -14,11 +14,12 @@ dependencies = [
     "rich>=13.7.0",
     "mcp>=1.13.0",
     "fastmcp>=2.11.3",
+    "art>=6.0",
 ]
 
 [project.scripts]
-indexed = "cli.app:app"
-indexed-mcp = "cli.commands.legacy.mcp:main"
+indexed = "cli.app:main"
+indexed-mcp = "cli.mcp:main"
 
 [tool.uv.sources]
 indexed-core = { workspace = true }

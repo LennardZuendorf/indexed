@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Core library for document indexing and semantic search with FAISS and sentence-transformers"
 readme = "README.md"
 authors = [
-    { name = "Lennard Zündorf", email = "l.p.zuendorf@gmail.com" }
+    { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
 ]
 requires-python = ">=3.10"
 dependencies = [

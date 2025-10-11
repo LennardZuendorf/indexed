@@ -9,12 +9,12 @@ the CLI for consistent visual design.
 # ============================================================================
 
 # Primary accent color for text highlights and emphasis (not borders)
-ACCENT_COLOR = "cyan"
-ACCENT_STYLE = "bold cyan"
+ACCENT_COLOR = "#2581C4"
+ACCENT_STYLE = "bold #2581C4"
 
 # Text hierarchy styles
 TITLE_STYLE = "bold"              # Card titles, collection names
-LABEL_STYLE = "bold cyan"         # Left-side labels (cyan and bold)
+LABEL_STYLE = "bold #2581C4"      # Left-side labels (cyan and bold)
 VALUE_STYLE = "not bold white"    # Right-side values (white, not bold)
 SECONDARY_STYLE = "dim"           # Helper text, hints
 
