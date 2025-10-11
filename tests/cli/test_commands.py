@@ -1,19 +1,19 @@
 """Direct command module tests using Typer's CliRunner.
 
 Covers:
-- src/cli/commands/create.py (create_app)
-- src/cli/commands/delete.py (register)
-- src/cli/commands/search.py (register)
-- src/cli/commands/update.py (register)
+- src/indexed/knowledge/commands/create.py (app)
+- src/indexed/knowledge/commands/remove.py (remove)
+- src/indexed/knowledge/commands/search.py (search)
+- src/indexed/knowledge/commands/update.py (update)
 """
 from typer.testing import CliRunner
 import typer
 
-from cli.commands.create import create_app
-from cli.commands.delete import register as register_delete
-from cli.commands.search import register as register_search
-from cli.commands.update import register as register_update
-from main.services import CollectionStatus
+from indexed.knowledge.commands.create import app as create_app
+from indexed.knowledge.commands.remove import remove
+from indexed.knowledge.commands.search import search
+from indexed.knowledge.commands.update import update
+from core.v1.engine.services.models import CollectionStatus
 
 
 runner = CliRunner()
@@ -27,7 +27,7 @@ def test_create_jira_module(monkeypatch):
         calls["use_cache"] = use_cache
         calls["force"] = force
 
-    monkeypatch.setattr("cli.app.svc_create", fake_create)
+    monkeypatch.setattr("indexed.app.svc_create", fake_create)
 
     result = runner.invoke(
         create_app,
@@ -61,13 +61,13 @@ def test_delete_module_all_yes(monkeypatch):
     def fake_clear(names):
         cleared["names"] = names
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_clear", fake_clear)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_clear", fake_clear)
 
     app = typer.Typer()
-    register_delete(app)
+    app.command("remove")(remove)
 
-    result = runner.invoke(app, ["--yes"])
+    result = runner.invoke(app, ["remove", "--yes"])
     assert result.exit_code == 0, result.output
     assert cleared["names"] == ["a", "b"]
 
@@ -79,12 +79,12 @@ def test_search_module_register(monkeypatch):
         captured["query"] = query
         return {"hits": []}
 
-    monkeypatch.setattr("cli.app.svc_search", fake_search)
+    monkeypatch.setattr("indexed.app.svc_search", fake_search)
 
     app = typer.Typer()
-    register_search(app)
+    app.command("search")(search)
 
-    result = runner.invoke(app, ["hello", "--json"])
+    result = runner.invoke(app, ["search", "hello", "--json"])
     assert result.exit_code == 0, result.output
     assert "\"hits\": []" in result.output
     assert captured["query"] == "hello"
@@ -101,13 +101,13 @@ def test_update_module_register(monkeypatch):
     def fake_update(configs):
         update_calls["configs"] = configs
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_update", fake_update)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_update", fake_update)
 
     app = typer.Typer()
-    register_update(app)
+    app.command("update")(update)
 
-    result = runner.invoke(app, [])  # update all
+    result = runner.invoke(app, ["update"])  # update all
     assert result.exit_code == 0, result.output
     assert status_calls["names"] is None
     cfgs = update_calls["configs"]

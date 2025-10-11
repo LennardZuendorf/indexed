@@ -10,7 +10,7 @@ from typing import Optional
 from rich.console import Console
 from rich.theme import Theme
 from .utils.logging import setup_root_logger
-from .components.theme import get_help_theme_styles, ACCENT_COLOR
+from .utils.components.theme import get_help_theme_styles, ACCENT_COLOR
 from .utils.banner import print_indexed_banner
 
 # Override Typer's default Rich help colors with our custom accent color
@@ -83,35 +83,43 @@ DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
 
 # Register new commands using plugin architecture
-from .commands.knowledge import create, search, update, remove, inspect  # noqa: E402
-from .commands import config  # noqa: E402
+from . import knowledge  # noqa: E402
+from . import config  # noqa: E402
 from . import mcp  # noqa: E402
 
-# Knowledge / Index Management commands (flat with help panel)
-app.add_typer(create.app, name="create", help="Create new collections (files, jira, confluence)", rich_help_panel="Knowledge / Index Management")
-app.command("search", rich_help_panel="Knowledge / Index Management")(search.search)
-app.command("inspect", rich_help_panel="Knowledge / Index Management")(inspect.inspect_collections)
-app.command("update", rich_help_panel="Knowledge / Index Management")(update.update)
-app.command("remove", rich_help_panel="Knowledge / Index Management")(remove.remove)
+# Knowledge / Index Management - Register hidden group and flat commands
+app.add_typer(
+    knowledge.app, 
+    name="knowledge", 
+    help="Knowledge & Index Management Commands", 
+    rich_help_panel="Knowledge / Index Management", 
+    hidden=True
+)
 
-# Configuration Management - Both nested and flattened approaches
-app.add_typer(config.app, name="config", help="Manage configuration (inspect, set, validate, reset)", rich_help_panel="Configuration Management", hidden=True)
+# Show Individual Knowledge Commands In Main Help (Flat Structure)
+app.add_typer(knowledge.create.app, name="index create", help="Create New Collections (Files, Jira, Confluence)", rich_help_panel="Knowledge / Index Management")
+# Show Individual Knowledge Commands In Main Help (Flat Structure)
+app.command("index search", rich_help_panel="Knowledge / Index Management", help="Search Indexed Collections")(knowledge.search.search)
+app.command("index inspect", rich_help_panel="Knowledge / Index Management", help="Inspect Indexed Collections")(knowledge.inspect.inspect_collections)
+app.command("index update", rich_help_panel="Knowledge / Index Management", help="Update Indexed Collections")(knowledge.update.update)
+app.command("index remove", rich_help_panel="Knowledge / Index Management", help="Remove Indexed Collections")(knowledge.remove.remove)
 
-# Also register flattened commands for direct access
-app.command("config inspect", rich_help_panel="Configuration Management")(config.inspect)
-app.command("config init", rich_help_panel="Configuration Management")(config.init)
-app.command("config set", rich_help_panel="Configuration Management")(config.set_config)
-app.command("config validate", rich_help_panel="Configuration Management")(config.validate)
-app.command("config reset", rich_help_panel="Configuration Management")(config.reset)
+# Configuration Management - Hide The Group, Show Only Subcommands
+app.add_typer(config.app, name="config", help="Manage Indexed Configuration", rich_help_panel="Config Management", hidden=True)
+# Show Individual Config Commands In Main Help
+app.command("config inspect", rich_help_panel="Configuration Management", help="Inspect Configuration Settings")(config.inspect)
+app.command("config init", rich_help_panel="Configuration Management", help="Initialize Configuration File")(config.init)
+app.command("config set", rich_help_panel="Configuration Management", help="Set Configuration Values")(config.set_config)
+app.command("config validate", rich_help_panel="Configuration Management", help="Validate Configuration")(config.validate)
+app.command("config reset", rich_help_panel="Configuration Management", help="Reset Configuration To Defaults")(config.reset)
 
-# MCP Server (nested with help panel)
-from . import mcp_cli
-
-# Also register flattened MCP commands for direct access
-app.command("mcp run", rich_help_panel="MCP Server")(mcp_cli.run)
-app.command("mcp dev", rich_help_panel="MCP Server")(mcp_cli.dev)
-app.command("mcp inspect", rich_help_panel="MCP Server")(mcp_cli.inspect)
-app.command("mcp fastmcp", rich_help_panel="MCP Server")(mcp_cli.fastmcp)
+# MCP Server - Hide The Group, Show Only Subcommands
+app.add_typer(mcp.app, name="mcp", help="Start MCP Server For AI Integration", rich_help_panel="MCP Server", hidden=True)
+# Show Individual MCP Commands In Main Help
+app.command("mcp run", rich_help_panel="MCP Server", help="Run The MCP Server With FastMCP CLI")(mcp.run)
+app.command("mcp dev", rich_help_panel="MCP Server", help="Run MCP Server In Development Mode With Inspector")(mcp.dev)
+app.command("mcp inspect", rich_help_panel="MCP Server", help="Inspect MCP Server Capabilities")(mcp.inspect)
+app.command("mcp fastmcp", rich_help_panel="MCP Server", help="Direct Passthrough To FastMCP CLI")(mcp.fastmcp)
 
 __all__ = [
     "app",

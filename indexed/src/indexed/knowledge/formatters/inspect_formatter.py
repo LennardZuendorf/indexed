@@ -10,8 +10,8 @@ from typing import List, Optional
 from rich.panel import Panel
 
 from core.v1.engine.services import CollectionInfo
-from ..utils.console import console
-from ..components import (
+from ...utils.console import console
+from ...utils.components import (
     create_info_row,
     ACCENT_STYLE,
     CARD_BORDER_STYLE,
@@ -292,3 +292,38 @@ def format_collections_json(collections: List[CollectionInfo]) -> None:
         output.append(item)
     
     console.print(json.dumps(output, indent=2))
+
+
+def render_inspect_table(items: List, include_size: bool = True):
+    """Render a table of collection information for status displays.
+    
+    Args:
+        items: List of CollectionInfo or CollectionStatus objects
+        include_size: Whether to include size column
+        
+    Returns:
+        Rich Table object for display
+    """
+    from rich.table import Table
+    
+    table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
+    
+    table.add_column("Collection", style="bold")
+    table.add_column("Documents", justify="right")
+    table.add_column("Chunks", justify="right")
+    if include_size:
+        table.add_column("Size", justify="right")
+    table.add_column("Updated", justify="left")
+    
+    for item in items:
+        row = [
+            item.name,
+            str(item.number_of_documents),
+            str(item.number_of_chunks),
+        ]
+        if include_size:
+            row.append(format_size(getattr(item, 'disk_size_bytes', None)))
+        row.append(format_time(item.updated_time))
+        table.add_row(*row)
+    
+    return table

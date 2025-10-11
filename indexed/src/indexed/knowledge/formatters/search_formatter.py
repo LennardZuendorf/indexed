@@ -9,8 +9,8 @@ from rich.panel import Panel
 from rich.console import Group
 from rich.text import Text
 
-from ..utils.console import console
-from ..components import (
+from ...utils.console import console
+from ...utils.components import (
     create_info_row,
     create_summary,
     create_detail_card,

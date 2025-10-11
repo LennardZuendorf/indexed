@@ -7,11 +7,11 @@ results beautifully with the card-based design system.
 import typer
 from core.v1 import Index
 from ...utils.logging import is_verbose_mode
-from ...formatters.search_formatter import (
+from ..formatters.search_formatter import (
     format_search_results,
     format_search_results_compact,
 )
-from ...components.status import SearchStatus
+from ...utils.components.status import SearchStatus
 from ...utils.console import console
 
 app = typer.Typer(help="Search collections")

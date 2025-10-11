@@ -5,7 +5,7 @@ from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from typing import Iterator, List, Dict, Any
 from io import StringIO
 
-from ..utils.rich_console import console, transient_spinner
+from ...utils.rich_console import console, transient_spinner
 from .inspect_formatter import render_inspect_table
 
 

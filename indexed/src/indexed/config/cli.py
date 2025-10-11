@@ -5,7 +5,6 @@ from core.v1 import Config
 
 app = typer.Typer(help="Manage configuration")
 
-
 @app.command("inspect")
 def inspect():
     """Display current configuration."""

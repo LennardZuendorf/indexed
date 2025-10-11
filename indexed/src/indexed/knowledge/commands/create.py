@@ -5,10 +5,7 @@ import typer
 from core.v1 import Index
 from connectors import FileSystemConnector, JiraConnector, JiraCloudConnector, ConfluenceConnector, ConfluenceCloudConnector
 
-app = typer.Typer(help="Create new collections")
 
-
-@app.command("files")
 def create_files(
     name: str = typer.Option(..., "--name", "-n", help="Collection name"),
     path: str = typer.Option(..., "--path", "-p", help="Path to files"),
@@ -28,7 +25,6 @@ def create_files(
     typer.echo(f"✓ Collection '{name}' created")
 
 
-@app.command("jira")
 def create_jira(
     name: str = typer.Option(..., "--name", "-n", help="Collection name"),
     url: str = typer.Option(..., "--url", "-u", help="Jira URL"),
@@ -57,7 +53,6 @@ def create_jira(
     typer.echo(f"✓ Collection '{name}' created")
 
 
-@app.command("confluence")
 def create_confluence(
     name: str = typer.Option(..., "--name", "-n", help="Collection name"),
     url: str = typer.Option(..., "--url", "-u", help="Confluence URL"),
@@ -84,3 +79,11 @@ def create_confluence(
     typer.echo(f"Creating collection '{name}' from Confluence...")
     index.add_collection(name, connector)
     typer.echo(f"✓ Collection '{name}' created")
+
+
+# Create the typer app and register commands
+app = typer.Typer(help="Create new collections")
+
+app.command("files")(create_files)
+app.command("jira")(create_jira)
+app.command("confluence")(create_confluence)

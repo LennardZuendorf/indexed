@@ -14,7 +14,7 @@ app = typer.Typer(help="Start MCP server for AI agent integration")
 # Helper functions
 def _get_server_path() -> str:
     """Get absolute path to the MCP server file."""
-    return str(Path(__file__).parent / "mcp" / "server.py")
+    return str(Path(__file__).parent / "server.py")
 
 def _build_fastmcp_command(
     subcommand: str,
