@@ -38,14 +38,15 @@
 ```
 indexed
 ├── search <query>          # Search all documents
-├── add                     # Add documents (interactive)
-├── list                    # List collections
-├── remove <name>           # Remove collection
-├── init                    # Initialize setup
-└── config                  # Show/edit configuration
+├── create                  # Create/add new collections (interactive)
+├── inspect [collection]    # Show collections & their contents
+├── update <name>           # Refresh/update a collection
+├── remove <name>           # Remove a collection
+├── config                  # Configuration management
+└── mcp                     # Start MCP server
 ```
 
-**6 commands total. That's it.**
+**Core commands for everyday use.**
 
 ---
 
@@ -303,33 +304,38 @@ Indexing... ━━━━━━━━━━━━━━━━━━━ 100%
 
 ---
 
-### 3. `indexed list`
+### 3. `indexed inspect [collection]`
 
-**Purpose:** Show all indexed collections
+**Purpose:** Show all indexed collections or inspect a specific collection
+
+**Note:** This command replaces the need for a separate `list` command.
 
 **Usage:**
 ```bash
-indexed list [OPTIONS]
+indexed inspect [collection] [OPTIONS]
 ```
 
+**Behavior:**
+- No argument → Show all collections (summary view)
+- With collection name → Show detailed info about that collection
+
 **Options:**
-- `--verbose, -v` - Show detailed info
 - `--json` - JSON output
 
 **Examples:**
 
 ```bash
-# Simple list
-indexed list
+# Show all collections (replaces 'list')
+indexed inspect
 
-# Detailed view
-indexed list --verbose
+# Inspect specific collection
+indexed inspect docs
 
-# JSON (for scripts)
-indexed list --json
+# JSON output
+indexed inspect --json
 ```
 
-**Output (Default):**
+**Output (All Collections):**
 
 ```
 ╭────────── Indexed Collections ──────────╮
@@ -342,29 +348,25 @@ indexed list --json
 ╰─────────────────────────────────────────╯
 ```
 
-**Output (Verbose):**
+**Output (Specific Collection):**
 
 ```
-╭────────── Indexed Collections ──────────╮
-│                                         │
-│  docs                                   │
-│    Type: Local files                    │
-│    Path: ./docs                         │
-│    Documents: 13                        │
-│    Chunks: 174                          │
-│    Size: 145 KB                         │
-│    Updated: just now                    │
-│                                         │
-│  memory                                 │
-│    Type: Local files                    │
-│    Path: ./.memory                      │
-│    Documents: 13                        │
-│    Chunks: 174                          │
-│    Size: 592 KB                         │
-│    Updated: 5min ago                    │
-│                                         │
-│  Total: 26 documents, 348 chunks        │
-╰─────────────────────────────────────────╯
+╭────────── docs ──────────────────────────╮
+│                                          │
+│  Type: Local files                       │
+│  Path: ./docs                            │
+│  Documents: 13                           │
+│  Chunks: 174                             │
+│  Size: 145 KB                            │
+│  Updated: just now                       │
+│  Last Modified: 2 hours ago              │
+│                                          │
+│  Recent Documents:                       │
+│    • README.md                           │
+│    • api_guide.md                        │
+│    • config.md                           │
+│    ...                                   │
+╰──────────────────────────────────────────╯
 ```
 
 ---

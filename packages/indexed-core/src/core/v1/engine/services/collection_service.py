@@ -52,7 +52,7 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
         ValueError: If required environment variables are missing or if source type is unknown.
 
     Note:
-        This reuses the exact same logic from the legacy adapter scripts.
+        This reuses the exact same logic from the original implementation.
 
         Environment variables required by source type:
         - confluence: CONF_TOKEN or (CONF_LOGIN and CONF_PASSWORD)

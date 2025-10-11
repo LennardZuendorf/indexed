@@ -4,9 +4,6 @@
 
 # Ruff configuration
 [tool.ruff]
-extend-exclude = [
-    "src/main/legacy/**",
-]
 
 [tool.ruff.lint.per-file-ignores]
 "src/main/sources/confluence/confluence_cloud_document_reader.py" = ["E731"]

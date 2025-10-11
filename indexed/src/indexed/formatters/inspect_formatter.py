@@ -10,8 +10,8 @@ from typing import List, Optional
 from rich.panel import Panel
 
 from core.v1.engine.services import CollectionInfo
-from cli.utils.console import console
-from cli.components import (
+from ..utils.console import console
+from ..components import (
     create_info_row,
     ACCENT_STYLE,
     CARD_BORDER_STYLE,

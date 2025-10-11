@@ -3,7 +3,6 @@
 Covers:
 - src/cli/commands/create.py (create_app)
 - src/cli/commands/delete.py (register)
-- src/cli/commands/legacy.py (legacy_app)
 - src/cli/commands/search.py (register)
 - src/cli/commands/update.py (register)
 """
@@ -12,7 +11,6 @@ import typer
 
 from cli.commands.create import create_app
 from cli.commands.delete import register as register_delete
-from cli.commands.legacy import legacy_app
 from cli.commands.search import register as register_search
 from cli.commands.update import register as register_update
 from main.services import CollectionStatus
@@ -72,19 +70,6 @@ def test_delete_module_all_yes(monkeypatch):
     result = runner.invoke(app, ["--yes"])
     assert result.exit_code == 0, result.output
     assert cleared["names"] == ["a", "b"]
-
-
-def test_legacy_module_invokes_runpy(monkeypatch):
-    captured = {}
-
-    def fake_run_module(module_name, run_name=None):  # pylint: disable=unused-argument
-        captured["module_name"] = module_name
-
-    monkeypatch.setattr("runpy.run_module", fake_run_module)
-
-    result = runner.invoke(legacy_app, ["collection-search", "--foo", "bar"])
-    assert result.exit_code == 0, result.output
-    assert captured["module_name"] == "main.legacy.collection_search_cmd_adapter"
 
 
 def test_search_module_register(monkeypatch):

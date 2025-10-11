@@ -209,7 +209,6 @@ log_sqlite_queries = false
 
 [flags]
 enable_profiles = true
-warn_on_legacy_cli = true
 cli_json_output = false
 
 [logging]

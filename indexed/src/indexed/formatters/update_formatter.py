@@ -5,8 +5,8 @@ from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from typing import Iterator, List, Dict, Any
 from io import StringIO
 
-from cli.utils.rich_console import console, transient_spinner
-from cli.formatters.inspect_formatter import render_inspect_table
+from ..utils.rich_console import console, transient_spinner
+from .inspect_formatter import render_inspect_table
 
 
 class UpdateProgress:

@@ -5,7 +5,7 @@ with a spinner during operations like search.
 """
 
 from rich.console import Console
-from utils.logger import enable_status_capture, disable_status_capture
+from ..utils.logging import enable_status_capture, disable_status_capture
 
 from .theme import ACCENT_STYLE
 

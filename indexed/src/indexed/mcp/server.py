@@ -6,11 +6,9 @@ Provides search and inspect capabilities for document collections via MCP tools 
 import os
 from typing import Any, Dict, List
 from fastmcp import FastMCP
-from utils.logger import setup_root_logger
-from cli.utils.banner import print_indexed_banner
 
 # Import our service layer
-from core.v1.engine.services import search as svc_search, SourceConfig, status as svc_status
+from core.v1.engine.services import search as svc_search, status as svc_status, SourceConfig
 
 # Create the FastMCP server instance
 mcp = FastMCP("Indexed MCP Server")
@@ -47,15 +45,15 @@ def search(query: str) -> Dict[str, Any]:
         Dictionary with collection names as keys and search results as values
     """
     try:
-        # Auto-discover all collections by passing configs=None
+        # Use auto-discovery mode (configs=None) to search all collections
         results = svc_search(
-            query,
+            query, 
             configs=None,
             max_docs=config.max_docs,
             max_chunks=config.max_chunks,
             include_full_text=config.include_full_text,
             include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks,
+            include_matched_chunks=config.include_matched_chunks
         )
         return results
     except Exception as e:
@@ -96,15 +94,14 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
             indexer=default_indexer,
         )
         
-        # Execute search with the specific collection config
         results = svc_search(
-            query,
+            query, 
             configs=[source_config],
             max_docs=config.max_docs,
             max_chunks=config.max_chunks,
             include_full_text=config.include_full_text,
             include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks,
+            include_matched_chunks=config.include_matched_chunks
         )
         return results
     except Exception as e:
@@ -184,45 +181,16 @@ def main():
     """Main entry point for the MCP server."""
     import argparse
     
-    # Display ASCII banner
-    print_indexed_banner()
-
     parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
-    parser.add_argument(
-        "--transport",
-        default=os.getenv("INDEXED_MCP_TRANSPORT", "stdio"),
-        choices=["stdio", "http", "sse", "streamable-http"],
-        help="Transport protocol: stdio (default), http, sse, streamable-http",
-    )
-    parser.add_argument("--host", default=os.getenv("INDEXED_MCP_HOST", "127.0.0.1"), help="Host to bind (HTTP/SSE)")
-    parser.add_argument("--port", type=int, default=int(os.getenv("INDEXED_MCP_PORT", "8000")), help="Port to bind (HTTP/SSE)")
-    parser.add_argument(
-        "--log-level",
-        default=os.getenv("INDEXED_LOG_LEVEL", "INFO"),
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Log level (default: INFO)",
-    )
-    parser.add_argument("--json-logs", action="store_true", help="Output logs as JSON (structured)")
-
+    parser.add_argument("--host", default="localhost", help="Host to bind to (default: localhost)")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], 
+                       help="Log level (default: INFO)")
+    
     args = parser.parse_args()
-
-    # Initialize logging before server starts
-    level = (args.log_level or os.getenv("INDEXED_LOG_LEVEL", "WARNING")).upper()
-    json_mode = args.json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
-    setup_root_logger(level_str=level, json_mode=json_mode)
-
+    
     # Run the FastMCP server with parsed arguments
-    if args.transport == "stdio":
-        # For stdio, host/port are not applicable
-        mcp.run()
-    elif args.transport == "http":
-        mcp.run(transport="http", host=args.host, port=args.port, log_level=args.log_level)
-    elif args.transport == "sse":
-        mcp.run(transport="sse", host=args.host, port=args.port, log_level=args.log_level)
-    elif args.transport == "streamable-http":
-        mcp.run(transport="streamable-http", host=args.host, port=args.port, log_level=args.log_level)
-    else:
-        raise ValueError(f"Unsupported transport: {args.transport}")
+    mcp.run(host=args.host, port=args.port, log_level=args.log_level)
 
 
 if __name__ == "__main__":

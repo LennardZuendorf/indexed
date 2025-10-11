@@ -110,28 +110,24 @@ stats = index.inspect()  # All collections
 stats = index.inspect(collection="jira")  # Specific collection
 ```
 
-**CLI (Dual Command Groups)**
+**CLI Commands**
 ```bash
+# Search operations (primary use case)
+indexed search "authentication methods"           # All collections
+indexed search "query" --collection jira          # Specific collection
+
 # Collection management
-indexed-cli add files ./documents --name docs
-indexed-cli add jira --name jira
-indexed-cli list
-indexed-cli remove docs
+indexed create                                    # Interactive: add new collection
+indexed inspect                                   # Show all collections
+indexed inspect docs                              # Inspect specific collection
+indexed update jira                               # Refresh a collection
+indexed remove docs                               # Remove a collection
 
-# Search operations
-indexed-cli search "authentication methods"           # All collections
-indexed-cli search "query" --collection jira          # Specific collection
-
-# Maintenance
-indexed-cli update jira
-indexed-cli inspect
-indexed-cli inspect --collection docs
-
-# Config commands - configuration management
-indexed-cli config show
-indexed-cli config set KEY VALUE
-indexed-cli config validate
-indexed-cli config init
+# Configuration management
+indexed config show
+indexed config set KEY VALUE
+indexed config validate
+indexed config init
 
 # MCP server for AI agents
 indexed-mcp

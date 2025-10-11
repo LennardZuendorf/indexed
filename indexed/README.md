@@ -224,20 +224,6 @@ The CLI features a modern, card-based design system with:
 - **Beautiful search results** with content previews
 - **Responsive grid layouts** for multi-collection views
 
-## Legacy Commands
-
-For backwards compatibility, legacy commands are available under the `legacy` subcommand:
-
-```bash
-uv run indexed-cli legacy collection-search ...
-uv run indexed-cli legacy collection-update ...
-uv run indexed-cli legacy jira-create ...
-uv run indexed-cli legacy confluence-create ...
-uv run indexed-cli legacy files-create ...
-```
-
-**Note:** These are kept for compatibility but the new commands are recommended.
-
 ## Dependencies
 
 - **indexed-core** - Core indexing and search engine
@@ -288,8 +274,7 @@ indexed/
 │   │   ├── update.py       # Update command
 │   │   ├── delete.py       # Delete command
 │   │   ├── inspect.py      # Inspect command
-│   │   ├── config.py       # Config command
-│   │   └── legacy/         # Legacy commands
+│   │   └── config.py       # Config command
 │   ├── components/         # Reusable Rich components
 │   │   ├── theme.py        # Design system constants
 │   │   ├── cards.py        # Card components

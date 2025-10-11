@@ -1,6 +1,6 @@
 """Indexed CLI application.
 
-Provides legacy proxies and stateless commands backed by services.
+Provides stateless commands backed by services.
 """
 
 import os
@@ -9,9 +9,9 @@ import typer
 from typing import Optional
 from rich.console import Console
 from rich.theme import Theme
-from utils.logger import setup_root_logger
-from cli.components import get_help_theme_styles, ACCENT_COLOR
-from cli.utils.banner import print_indexed_banner
+from .utils.logging import setup_root_logger
+from .components.theme import get_help_theme_styles, ACCENT_COLOR
+from .utils.banner import print_indexed_banner
 
 # Override Typer's default Rich help colors with our custom accent color
 # This must be done before Typer initializes its help formatting
@@ -81,24 +81,37 @@ def _init_logging(
 # Shared default indexer constant (kept here for backward compatibility with tests)
 DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
-# Register legacy command group
-from .commands.legacy.legacy import legacy_app  # noqa: E402
-
-app.add_typer(legacy_app, name="legacy")
 
 # Register new commands using plugin architecture
-from .commands import create, search, update, delete, config, mcp  # noqa: E402
-from .commands.inspect import inspect_collections  # noqa: E402
+from .commands.knowledge import create, search, update, remove, inspect  # noqa: E402
+from .commands import config  # noqa: E402
+from . import mcp  # noqa: E402
 
-app.add_typer(create.app, name="create")
-app.add_typer(config.app, name="config")
-app.add_typer(mcp.app, name="mcp")
-app.command("search")(search.search)
-app.command("update")(update.update)
-app.command("delete")(delete.delete)
-app.command("inspect")(inspect_collections)
+# Knowledge / Index Management commands (flat with help panel)
+app.add_typer(create.app, name="create", help="Create new collections (files, jira, confluence)", rich_help_panel="Knowledge / Index Management")
+app.command("search", rich_help_panel="Knowledge / Index Management")(search.search)
+app.command("inspect", rich_help_panel="Knowledge / Index Management")(inspect.inspect_collections)
+app.command("update", rich_help_panel="Knowledge / Index Management")(update.update)
+app.command("remove", rich_help_panel="Knowledge / Index Management")(remove.remove)
 
+# Configuration Management - Both nested and flattened approaches
+app.add_typer(config.app, name="config", help="Manage configuration (inspect, set, validate, reset)", rich_help_panel="Configuration Management", hidden=True)
 
+# Also register flattened commands for direct access
+app.command("config inspect", rich_help_panel="Configuration Management")(config.inspect)
+app.command("config init", rich_help_panel="Configuration Management")(config.init)
+app.command("config set", rich_help_panel="Configuration Management")(config.set_config)
+app.command("config validate", rich_help_panel="Configuration Management")(config.validate)
+app.command("config reset", rich_help_panel="Configuration Management")(config.reset)
+
+# MCP Server (nested with help panel)
+from . import mcp_cli
+
+# Also register flattened MCP commands for direct access
+app.command("mcp run", rich_help_panel="MCP Server")(mcp_cli.run)
+app.command("mcp dev", rich_help_panel="MCP Server")(mcp_cli.dev)
+app.command("mcp inspect", rich_help_panel="MCP Server")(mcp_cli.inspect)
+app.command("mcp fastmcp", rich_help_panel="MCP Server")(mcp_cli.fastmcp)
 
 __all__ = [
     "app",

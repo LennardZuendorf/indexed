@@ -7,8 +7,8 @@ from the underlying data storage and connection mechanisms.
 
 import typer
 
-from cli.utils.console import console
-from cli.formatters.inspect_formatter import (
+from ...utils.console import console
+from ...formatters.inspect_formatter import (
     format_collection_list,
     format_collection_detail,
     format_collection_json,

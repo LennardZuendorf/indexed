@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable, List
 
-from cli.utils.rich_console import console
-from cli.formatters.inspect_formatter import render_inspect_table
+from ..utils.rich_console import console
+from .inspect_formatter import render_inspect_table
 from core.v1.engine.services import CollectionStatus
 
 

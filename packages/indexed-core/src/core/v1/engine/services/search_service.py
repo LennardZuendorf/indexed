@@ -167,7 +167,7 @@ class SearchService:
             ...     else:
             ...         print(f"Found {len(result['documents'])} docs in {collection}")
         """
-        # Apply same defaults as legacy adapter
+        # Apply same defaults as original implementation
         if max_docs is None:
             max_docs = 10
         if max_chunks is None:
@@ -255,7 +255,7 @@ def search(
                        as values. See SearchService.search() for detailed format.
 
     Example:
-        >>> from index.legacy.services.search_service import search
+        >>> from core.v1.engine.services.search_service import search
         >>> results = search("python programming", max_docs=3)
         >>> print(f"Searched {len(results)} collections")
     """
