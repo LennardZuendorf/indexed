@@ -25,6 +25,7 @@ from .theme import (
     get_info_row_label_width,
     get_grid_card_min_width,
     get_value_style,
+    get_dim_style,
 )
 
 from .info_row import (
@@ -67,6 +68,7 @@ __all__ = [
     "get_info_row_label_width",
     "get_grid_card_min_width",
     "get_value_style",
+    "get_dim_style",
     
     # Info Rows
     "create_info_row",
