@@ -5,7 +5,7 @@ with consistent formatting and alignment across all CLI commands.
 """
 
 from rich.text import Text
-from .theme import INFO_ROW_LABEL_WIDTH, LABEL_STYLE, VALUE_STYLE
+from .theme import get_info_row_label_width, get_label_style, get_value_style
 
 
 def create_info_row(label: str, value: str) -> Text:
@@ -28,8 +28,8 @@ def create_info_row(label: str, value: str) -> Text:
         >>> #              grey      white
     """
     # Pad label to consistent width for alignment
-    padded_label = f"{label:<{INFO_ROW_LABEL_WIDTH}}"
-    return Text(padded_label, style=LABEL_STYLE) + Text(value, style=VALUE_STYLE)
+    padded_label = f"{label:<{get_info_row_label_width()}}"
+    return Text(padded_label, style=get_label_style()) + Text(value, style=get_value_style())
 
 
 def create_info_rows(data: list[tuple[str, str]]) -> list[Text]:

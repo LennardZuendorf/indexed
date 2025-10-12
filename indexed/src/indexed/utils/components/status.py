@@ -7,7 +7,7 @@ with a spinner during operations like search.
 from rich.console import Console
 from ..logging import enable_status_capture, disable_status_capture
 
-from .theme import ACCENT_STYLE
+from .theme import get_accent_style
 
 
 class OperationStatus:
@@ -65,7 +65,7 @@ class OperationStatus:
         Returns:
             Formatted string: [Operation]: [Message]
         """
-        return f"[{ACCENT_STYLE}]{self.operation_desc}[/{ACCENT_STYLE}]: {message}"
+        return f"[{get_accent_style()}]{self.operation_desc}[/{get_accent_style()}]: {message}"
     
     def _update_display(self) -> None:
         """Update the spinner display with current message."""

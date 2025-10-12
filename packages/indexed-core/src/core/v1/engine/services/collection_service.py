@@ -8,7 +8,7 @@ orchestration of readers, converters, and persisters to build searchable collect
 import os
 from typing import List, Tuple
 from dataclasses import dataclass
-from .models import SourceConfig
+from .models import SourceConfig, ProgressCallback
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
@@ -174,12 +174,13 @@ def _collection_exists(name: str) -> bool:
     return persister.is_path_exists(name)
 
 
-def _create_one(cfg: SourceConfig, use_cache: bool) -> None:
+def _create_one(cfg: SourceConfig, use_cache: bool, progress_callback: ProgressCallback = None) -> None:
     """Create a single collection.
 
     Args:
         cfg (SourceConfig): Source configuration for the collection.
         use_cache (bool): Whether to enable on-disk read-cache decorator.
+        progress_callback (ProgressCallback): Optional callback for progress updates.
     """
     reader, converter = _build_reader_converter(cfg)
 
@@ -189,22 +190,24 @@ def _create_one(cfg: SourceConfig, use_cache: bool) -> None:
         document_reader=reader,
         document_converter=converter,
         use_cache=use_cache,
+        progress_callback=progress_callback,
     )
     creator.run()
 
 
-def _update_one(cfg: SourceConfig) -> None:
+def _update_one(cfg: SourceConfig, progress_callback: ProgressCallback = None) -> None:
     """Update a single collection.
 
     Args:
         cfg (SourceConfig): Source configuration for the collection to update.
+        progress_callback (ProgressCallback): Optional callback for progress updates.
     """
-    updater = create_collection_updater(cfg.name)
+    updater = create_collection_updater(cfg.name, progress_callback)
     updater.run()
 
 
 def create(
-    configs: List[SourceConfig], *, use_cache: bool = True, force: bool = False
+    configs: List[SourceConfig], *, use_cache: bool = True, force: bool = False, progress_callback: ProgressCallback = None
 ) -> None:
     """Create collections from source configurations.
 
@@ -218,6 +221,7 @@ def create(
             performance on subsequent runs. Defaults to True.
         force (bool, optional): Delete existing collection folder first if it exists.
             Defaults to False.
+        progress_callback (ProgressCallback, optional): Callback for progress updates.
 
     Raises:
         ValueError: If source configuration is invalid or required environment
@@ -226,10 +230,10 @@ def create(
     for cfg in configs:
         if force and _collection_exists(cfg.name):
             clear([cfg.name])
-        _create_one(cfg, use_cache)
+        _create_one(cfg, use_cache, progress_callback)
 
 
-def update(configs: List[SourceConfig]) -> None:
+def update(configs: List[SourceConfig], progress_callback: ProgressCallback = None) -> None:
     """Update collections from source configurations.
 
     This function updates existing collections based on the provided source
@@ -238,12 +242,13 @@ def update(configs: List[SourceConfig]) -> None:
     Args:
         configs (List[SourceConfig]): List of source configurations for collections
             to update.
+        progress_callback (ProgressCallback, optional): Callback for progress updates.
 
     Raises:
         ValueError: If source configuration is invalid or collection doesn't exist.
     """
     for cfg in configs:
-        _update_one(cfg)
+        _update_one(cfg, progress_callback)
 
 
 def clear(collection_names: List[str]) -> None:

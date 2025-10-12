@@ -15,5 +15,6 @@ __all__ = [
     "output_mode",
     "rich_console",
     "components",
+    "format_type",
 ]
 

@@ -7,27 +7,7 @@ All components follow the card-based design language with cyan accents
 and consistent spacing/typography.
 """
 
-from .theme import (
-    # Colors
-    ACCENT_COLOR,
-    ACCENT_STYLE,
-    ERROR_COLOR,
-    WARNING_COLOR,
-    SUCCESS_COLOR,
-    INFO_COLOR,
-    
-    # Styles
-    TITLE_STYLE,
-    LABEL_STYLE,
-    VALUE_STYLE,
-    SECONDARY_STYLE,
-    
-    # Layout
-    CARD_PADDING,
-    INFO_ROW_LABEL_WIDTH,
-    DETAIL_CARD_WIDTH,
-    CARD_BORDER_STYLE,
-    
+from .theme import (    
     # Helpers
     get_error_style,
     get_warning_style,
@@ -35,7 +15,16 @@ from .theme import (
     get_accent_style,
     get_label_style,
     get_title_style,
+    get_heading_style,
     get_help_theme_styles,
+    get_default_style,
+    get_secondary_style,
+    get_card_border_style,
+    get_card_padding,
+    get_detail_card_width,
+    get_info_row_label_width,
+    get_grid_card_min_width,
+    get_value_style,
 )
 
 from .info_row import (
@@ -62,27 +51,22 @@ from .status import (
 
 __all__ = [
     # Theme
-    "ACCENT_COLOR",
-    "ACCENT_STYLE",
-    "ERROR_COLOR",
-    "WARNING_COLOR",
-    "SUCCESS_COLOR",
-    "INFO_COLOR",
-    "TITLE_STYLE",
-    "LABEL_STYLE",
-    "VALUE_STYLE",
-    "SECONDARY_STYLE",
-    "CARD_PADDING",
-    "INFO_ROW_LABEL_WIDTH",
-    "DETAIL_CARD_WIDTH",
-    "CARD_BORDER_STYLE",
     "get_error_style",
     "get_warning_style",
     "get_success_style",
     "get_accent_style",
     "get_label_style",
     "get_title_style",
+    "get_heading_style",
     "get_help_theme_styles",
+    "get_default_style",
+    "get_secondary_style",
+    "get_card_border_style",
+    "get_card_padding",
+    "get_detail_card_width",
+    "get_info_row_label_width",
+    "get_grid_card_min_width",
+    "get_value_style",
     
     # Info Rows
     "create_info_row",

@@ -10,18 +10,18 @@ from utils.performance import log_execution_duration
 
 
 def create_collection_creator(
-    collection_name, indexers, document_reader, document_converter, use_cache=True
+    collection_name, indexers, document_reader, document_converter, use_cache=True, progress_callback=None
 ):
     return log_execution_duration(
         lambda: __create_collection_creator(
-            collection_name, indexers, document_reader, document_converter, use_cache
+            collection_name, indexers, document_reader, document_converter, use_cache, progress_callback
         ),
         identifier="Preparing collection creator",
     )
 
 
 def __create_collection_creator(
-    collection_name, indexers, document_reader, document_converter, use_cache
+    collection_name, indexers, document_reader, document_converter, use_cache, progress_callback=None
 ):
     if use_cache:
         cache_disk_persister = DiskPersister(base_path="./data/caches")
@@ -42,4 +42,5 @@ def __create_collection_creator(
         document_indexers=document_indexers,
         persister=disk_persister,
         operation_type=OPERATION_TYPE.CREATE,
+        progress_callback=progress_callback,
     )

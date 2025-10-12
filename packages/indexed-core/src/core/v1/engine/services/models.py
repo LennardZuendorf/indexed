@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, Dict, List, Any
+from typing import Literal, Optional, Dict, List, Any, Callable
 from dataclasses import dataclass
 
 
@@ -97,3 +97,21 @@ class SearchResult:
     def __post_init__(self):
         if self.matched_chunks is None:
             self.matched_chunks = []
+
+
+@dataclass
+class ProgressUpdate:
+    """Progress update information for long-running operations.
+    
+    This dataclass provides structured progress information that can be used
+    by CLI progress bars, logging systems, or other UI components to show
+    real-time progress of operations like document reading, indexing, and searching.
+    """
+    stage: str              # e.g., "reading", "indexing", "searching", "inspecting"
+    current: int            # Current item count
+    total: Optional[int]    # Total items (None if unknown)
+    message: str            # Human-readable message
+
+
+# Type alias for progress callback functions
+ProgressCallback = Optional[Callable[[ProgressUpdate], None]]

@@ -10,15 +10,15 @@ from typing import Optional
 from rich.console import Console
 from rich.theme import Theme
 from .utils.logging import setup_root_logger
-from .utils.components.theme import get_help_theme_styles, ACCENT_COLOR
+from .utils.components.theme import get_help_theme_styles, get_accent_style
 from .utils.banner import print_indexed_banner
 
 # Override Typer's default Rich help colors with our custom accent color
 # This must be done before Typer initializes its help formatting
 import typer.rich_utils
-typer.rich_utils.STYLE_OPTION = f"bold {ACCENT_COLOR}"
-typer.rich_utils.STYLE_SWITCH = f"bold {ACCENT_COLOR}"
-typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {ACCENT_COLOR}"
+typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
+typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"    
+typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_COMMANDS_TABLE_COLUMN_WIDTH_RATIO = (None, None)
 
 # Re-export service interfaces for tests and command modules to reference dynamically
@@ -96,9 +96,10 @@ app.add_typer(
     hidden=True
 )
 
+app.add_typer(knowledge.app, name="index", help="Knowledge & Index Management Commands", rich_help_panel="Knowledge / Index Management", hidden=True)
+
 # Show Individual Knowledge Commands In Main Help (Flat Structure)
 app.add_typer(knowledge.create.app, name="index create", help="Create New Collections (Files, Jira, Confluence)", rich_help_panel="Knowledge / Index Management")
-# Show Individual Knowledge Commands In Main Help (Flat Structure)
 app.command("index search", rich_help_panel="Knowledge / Index Management", help="Search Indexed Collections")(knowledge.search.search)
 app.command("index inspect", rich_help_panel="Knowledge / Index Management", help="Inspect Indexed Collections")(knowledge.inspect.inspect_collections)
 app.command("index update", rich_help_panel="Knowledge / Index Management", help="Update Indexed Collections")(knowledge.update.update)

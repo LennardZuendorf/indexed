@@ -28,14 +28,14 @@ from core.v1.engine.core.documents_collection_creator import (
 from utils.performance import log_execution_duration
 
 
-def create_collection_updater(collection_name):
+def create_collection_updater(collection_name, progress_callback=None):
     return log_execution_duration(
-        lambda: __create_collection_updater(collection_name),
+        lambda: __create_collection_updater(collection_name, progress_callback),
         identifier="Preparing collection updater",
     )
 
 
-def __create_collection_updater(collection_name):
+def __create_collection_updater(collection_name, progress_callback=None):
     disk_persister = DiskPersister(base_path="./data/collections")
 
     if not disk_persister.is_path_exists(collection_name):
@@ -59,6 +59,7 @@ def __create_collection_updater(collection_name):
         document_indexers=document_indexers,
         persister=disk_persister,
         operation_type=OPERATION_TYPE.UPDATE,
+        progress_callback=progress_callback,
     )
 
 

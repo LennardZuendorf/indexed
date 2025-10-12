@@ -4,9 +4,9 @@ from enum import Enum
 import numpy as np
 import logging
 
-from utils.progress_bar import wrap_generator_with_progress_bar
-from utils.progress_bar import wrap_iterator_with_progress_bar
+# Progress bars removed - core services should be pure logic without UI concerns
 from utils.performance import log_execution_duration
+from core.v1.engine.services.models import ProgressUpdate, ProgressCallback
 
 
 class OPERATION_TYPE(Enum):
@@ -24,6 +24,7 @@ class DocumentCollectionCreator:
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
         indexing_batch_size=500_000,
+        progress_callback: ProgressCallback = None,
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
@@ -32,6 +33,7 @@ class DocumentCollectionCreator:
         self.document_indexers = document_indexers
         self.persister = persister
         self.indexing_batch_size = indexing_batch_size
+        self.progress_callback = progress_callback
 
     def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
@@ -126,11 +128,16 @@ class DocumentCollectionCreator:
         document_ids = []
 
         number_of_expected_documents = self.document_reader.get_number_of_documents()
-        for document in wrap_generator_with_progress_bar(
-            self.document_reader.read_all_documents(),
-            number_of_expected_documents,
-            progress_bar_name="Reading documents",
-        ):
+        
+        if self.progress_callback:
+            self.progress_callback(ProgressUpdate(
+                stage="reading",
+                current=0,
+                total=number_of_expected_documents,
+                message="Reading documents..."
+            ))
+        
+        for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
             for converted_document in self.document_converter.convert(document):
                 document_path = (
                     f"{self.collection_name}/documents/{converted_document['id']}.json"
@@ -138,6 +145,14 @@ class DocumentCollectionCreator:
                 self.__save_json_file(converted_document, document_path)
 
                 document_ids.append(converted_document["id"])
+            
+            if self.progress_callback:
+                self.progress_callback(ProgressUpdate(
+                    stage="reading",
+                    current=idx,
+                    total=number_of_expected_documents,
+                    message=f"Reading documents: {idx}/{number_of_expected_documents}"
+                ))
 
         return document_ids, number_of_expected_documents
 
@@ -174,11 +189,18 @@ class DocumentCollectionCreator:
         self, document_ids, index_mapping, reverse_index_mapping, last_index_item_id
     ):
         last_modified_document_time = None
+        total_docs = len(document_ids)
+        processed = 0
+        
+        if self.progress_callback:
+            self.progress_callback(ProgressUpdate(
+                stage="indexing",
+                current=0,
+                total=total_docs,
+                message="Indexing documents..."
+            ))
 
-        for batch_document_ids in wrap_iterator_with_progress_bar(
-            self.__batch_items(document_ids, self.indexing_batch_size),
-            progress_bar_name="Indexing batches of batches",
-        ):
+        for batch_document_ids in self.__batch_items(document_ids, self.indexing_batch_size):
             items_to_index = []
             index_item_ids = []
 
@@ -221,6 +243,15 @@ class DocumentCollectionCreator:
 
             for indexer in self.document_indexers:
                 indexer.index_texts(index_item_ids, items_to_index)
+            
+            processed += len(batch_document_ids)
+            if self.progress_callback:
+                self.progress_callback(ProgressUpdate(
+                    stage="indexing",
+                    current=processed,
+                    total=total_docs,
+                    message=f"Indexing: {processed}/{total_docs} documents"
+                ))
 
         for indexer in self.document_indexers:
             self.persister.save_bin_file(
@@ -241,10 +272,7 @@ class DocumentCollectionCreator:
     def __remove_documents_from_index(
         self, document_ids, index_mapping, reverse_index_mapping
     ):
-        for batch_document_ids in wrap_iterator_with_progress_bar(
-            self.__batch_items(document_ids, self.indexing_batch_size),
-            progress_bar_name="Cleaning batches of batches",
-        ):
+        for batch_document_ids in self.__batch_items(document_ids, self.indexing_batch_size):
             index_ids_to_remove = []
 
             for document_id in batch_document_ids:

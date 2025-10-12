@@ -1,3 +1,4 @@
+# Start of Selection
 """Card Components for consistent panel display.
 
 This module provides reusable card (panel) components for displaying
@@ -7,14 +8,38 @@ information in bordered containers with consistent styling.
 from typing import Optional
 from rich.panel import Panel
 from rich.console import Group
+from rich.table import Table
+from rich.text import Text
 
 from .theme import (
-    CARD_BORDER_STYLE,
-    CARD_PADDING,
-    TITLE_STYLE,
-    DETAIL_CARD_WIDTH,
+    get_card_border_style,
+    get_card_padding,
+    get_detail_card_width,
+    get_value_style,
+    get_label_style,
 )
-from .info_row import create_info_rows
+
+def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
+    """
+    Create info rows with proper spacing between the label and the value.
+    Uses a Rich Table with two columns for neat alignment.
+    """
+    table = Table.grid(expand=True, padding=(0, 1))
+    # Set appropriate alignment and style for columns
+    table.add_column(justify="left", style=get_label_style(), ratio=1)  # Use label_style for left column
+    table.add_column(justify="right", ratio=2)
+    value_style = get_value_style()
+    for label, value in rows:
+        label_text = str(label)
+        # Check if value contains Rich markup
+        if "[" in str(value) and "]" in str(value):
+            # Value contains markup, don't apply additional styling
+            value_text = Text.from_markup(str(value))
+        else:
+            # Plain text, apply value style
+            value_text = Text(str(value), style=value_style)
+        table.add_row(label_text, value_text)
+    return [table]
 
 
 def create_info_card(
@@ -26,7 +51,7 @@ def create_info_card(
     """Create a card panel containing info rows.
     
     Args:
-        title: Card title (will be bolded)
+        title: Card title (will be dim)
         rows: List of (label, value) tuples for info rows
         width: Optional fixed width (default: auto)
         subtitle: Optional subtitle text in parentheses after title
@@ -41,21 +66,21 @@ def create_info_card(
         ...     subtitle="localFiles"
         ... )
     """
-    # Create content from info rows
-    content = Group(*create_info_rows(rows))
+    # Create content from info rows with proper spacing
+    content = Group(*create_info_rows_with_spacing(rows))
     
-    # Build title with optional subtitle
+    # Build title with optional subtitle, using dim style for card headings
     if subtitle:
-        title_text = f"[{TITLE_STYLE}]{title}[/{TITLE_STYLE}] [dim]({subtitle})[/dim]"
+        title_text = f"[dim]{title} ({subtitle})[/dim]"
     else:
-        title_text = f"[{TITLE_STYLE}]{title}[/{TITLE_STYLE}]"
+        title_text = f"[dim]{title}[/dim]"
     
     return Panel(
         content,
         title=title_text,
         title_align="left",
-        border_style=CARD_BORDER_STYLE,
-        padding=CARD_PADDING,
+        border_style=get_card_border_style(),
+        padding=get_card_padding(),
         width=width,
     )
 
@@ -81,7 +106,7 @@ def create_detail_card(
     return create_info_card(
         title=title,
         rows=rows,
-        width=DETAIL_CARD_WIDTH,
+        width=get_detail_card_width(),
         subtitle=subtitle,
     )
 
@@ -127,3 +152,4 @@ def create_grid_cards(
         )
         cards.append(card)
     return cards
+    # End of Selectio
