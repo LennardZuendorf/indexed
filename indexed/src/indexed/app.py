@@ -118,6 +118,7 @@ app.add_typer(
     name="index create",
     help="Create New Collections (Files, Jira, Confluence)",
     rich_help_panel="Knowledge / Index Management",
+    hidden=True,
 )
 app.command(
     "index search",

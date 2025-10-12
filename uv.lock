@@ -1642,6 +1642,7 @@ source = { editable = "indexed" }
 dependencies = [
     { name = "art" },
     { name = "fastmcp" },
+    { name = "indexed-connectors" },
     { name = "indexed-core" },
     { name = "indexed-utils" },
     { name = "mcp" },
@@ -1653,6 +1654,7 @@ dependencies = [
 requires-dist = [
     { name = "art", specifier = ">=6.0" },
     { name = "fastmcp", specifier = ">=2.11.3" },
+    { name = "indexed-connectors", editable = "packages/indexed-connectors" },
     { name = "indexed-core", editable = "packages/indexed-core" },
     { name = "indexed-utils", editable = "packages/utils" },
     { name = "mcp", specifier = ">=1.13.0" },

@@ -14,4 +14,7 @@ Examples:
 from .index import Index
 from .core_config import Config
 
-__all__ = ["Index", "Config"]
+# Semantic version of the core v1 API. Used for connector compatibility checks.
+__version__ = "1.0.0"
+
+__all__ = ["Index", "Config", "__version__"]

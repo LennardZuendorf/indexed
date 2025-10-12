@@ -5,14 +5,26 @@ to provide a standardized BaseConnector interface for both Confluence Server/Dat
 and Confluence Cloud.
 """
 
-from typing import Optional
+from typing import ClassVar, Optional
+from core.v1.connectors.metadata import ConnectorMetadata
 from .confluence_document_reader import ConfluenceDocumentReader
 from .confluence_document_converter import ConfluenceDocumentConverter
 from .confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from .confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
+from .schema import ConfluenceConfig, ConfluenceCloudConfig
 
 
 class ConfluenceConnector:
+    # Metadata for CLI generation and compatibility
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="confluence",
+        display_name="Confluence (Server/Data Center)",
+        description="Index Confluence pages using CQL queries",
+        config_class=ConfluenceConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+        example="indexed index create --type confluence --name wiki",
+    )
     """Connector for Confluence Server/Data Center pages.
 
     Discovers and indexes Confluence pages based on CQL queries. Supports both
@@ -112,6 +124,16 @@ class ConfluenceConnector:
 
 
 class ConfluenceCloudConnector:
+    # Metadata for CLI generation and compatibility
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="confluenceCloud",
+        display_name="Confluence Cloud",
+        description="Index Confluence Cloud pages via Atlassian Cloud API",
+        config_class=ConfluenceCloudConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+        example="indexed index create --type confluenceCloud --name wiki",
+    )
     """Connector for Confluence Cloud pages.
 
     Discovers and indexes Confluence Cloud pages using Atlassian Cloud API.

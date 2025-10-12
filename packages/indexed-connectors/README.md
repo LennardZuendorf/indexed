@@ -1,83 +1,100 @@
 # indexed-connectors
 
-Document connectors for reading and indexing content from various sources including Jira, Confluence, and local file systems.
+Connectors for reading, indexing, and converting rich metadata from diverse sources—Jira, Confluence, GitHub, local files, and more.
 
 ## Overview
 
-`indexed-connectors` provides a standardized interface for discovering, reading, and converting documents from different sources. All connectors implement the `BaseConnector` protocol, making them interchangeable and easy to use with the indexed-core library.
+`indexed-connectors` offers a unified architecture for discovering, ingesting, and transforming documents with context-rich metadata from a growing set of platforms and formats. All connectors implement the modernized `BaseConnector` protocol, ensuring seamless interoperability with the indexed-core framework and consistent metadata extraction.
 
 ## Supported Sources
 
 ### Jira
-- **Jira Server/Data Center** - Self-hosted Jira instances
-- **Jira Cloud** - Atlassian-hosted Jira
+- **Jira Server/Data Center** – On-premises Jira
+- **Jira Cloud** – Atlassian-hosted Jira
 
-Both support:
-- JQL-based issue filtering
-- Token or username/password authentication
-- Issue metadata and comments
-- Automatic pagination
+Features:
+- JQL-based filtering
+- Multi-modal authentication: API token, OAuth, or basic
+- Full issue metadata, fields, and nested comments (authors, timestamps, attachments)
+- Attachment download and indexing
+- Robust pagination
 
 ### Confluence
-- **Confluence Server/Data Center** - Self-hosted Confluence instances
-- **Confluence Cloud** - Atlassian-hosted Confluence
+- **Confluence Server/Data Center** – On-premises Confluence
+- **Confluence Cloud** – Atlassian-hosted Confluence
 
-Both support:
-- CQL-based page filtering
-- Token or username/password authentication
-- Page content and hierarchical comments
-- Ancestor/breadcrumb tracking
-- Automatic pagination
+Features:
+- CQL-based page and space filtering
+- Token, OAuth, or basic authentication
+- Full page content, hierarchical/nested comments (with user/parent/created-at/updated-at), ancestor hierarchy
+- Metadata extraction: revision, history, labels, author, timestamps
+- Child/parent link resolution
+- Attachment handling (download/index)
+
+Features:
+- Repository, issue, pull request, and comment ingestion
+- Rich metadata (author, timestamps, status, labels, linked issues/PRs)
+- Organization, repository, and branch filtering
 
 ### Local Files
-- Supports various file formats through the Unstructured library:
+- Unstructured local/remote sources:
   - Text: `.txt`, `.md`, `.rst`
-  - Documents: `.pdf`, `.docx`, `.pptx`
-  - Code: `.py`, `.js`, `.ts`, `.java`, `.go`, etc.
-  - Data: `.json`, `.yaml`, `.xml`, `.csv`
-- Regex pattern-based file filtering
-- Metadata preservation (page numbers, etc.)
+  - Documents: `.pdf`, `.docx`, `.pptx`, `.odt`
+  - Code: `.py`, `.js`, `.java`, `.go`, etc.
+  - Data: `.csv`, `.json`, `.yaml`, `.xml`, `.parquet`
+- Regex-based path filtering
+- Rich file metadata: path, size, modified/created timestamps, checksums, page/section tracking
 
-## Features
+### Other Connectors (Preview)
+- **Google Drive, Notion, Generic HTTP/REST, S3, and more** (via plugin entry points)
 
-- **Automatic Pagination** - Handles batched API calls transparently
-- **Retry Logic** - Exponential backoff for transient failures
-- **Document Caching** - Optional on-disk caching to speed up re-indexing
-- **Flexible Authentication** - Multiple auth methods per source type
-- **Error Handling** - Graceful degradation with configurable fail-fast mode
+See [docs/CONNECTOR_MATRIX.md](../docs/CONNECTOR_MATRIX.md) for full compatibility.
+
+## Key Features
+
+- **Rich Metadata Extraction** – Every document and segment is annotated with provenance: source IDs, paths, authors, timestamps, context hierarchies, and more.
+- **Automatic Pagination & Batching** – Handles large queries with efficient chunking.
+- **Configurable Retries** – Exponential backoff for network/API errors.
+- **Flexible Authentication** – Multiple auth methods per connector; secrets/passphrases supported.
+- **On-Disk Document Cache** – Optional, greatly speeds up repeated or incremental indexing runs.
+- **Selective Indexing** – Filter by pattern, date, status, or metadata.
+- **Robust Error Handling** – Continue-on-error or fail-fast; exhaustive logs for failed records.
 
 ## Usage
 
-### FileSystem Connector
+### Example: Local File Connector
 
 ```python
 from connectors import FileSystemConnector
 
-# Basic usage
+# Minimal usage
 connector = FileSystemConnector(path="./docs")
 
-# With pattern filtering
+# With include/exclude filters and metadata options
 connector = FileSystemConnector(
     path="./docs",
     include_patterns=[r".*\.md$", r".*\.txt$"],
-    exclude_patterns=[r".*/node_modules/.*", r".*\.min\.js$"]
+    exclude_patterns=[r".*/node_modules/.*", r".*\.min\.js$"],
+    recursive=True,  # enable subdirectory scanning
+    metadata_fields=["checksum", "modified"]
 )
 ```
 
-### Jira Cloud Connector
+### Example: Jira Cloud Connector
 
 ```python
 from connectors import JiraCloudConnector
 
 connector = JiraCloudConnector(
     url="https://company.atlassian.net",
-    query="project = PROJ AND created >= -30d",
+    query="project = PROJ AND updated >= -90d",
     email="user@example.com",
-    api_token="your-api-token"
+    api_token="your-token",
+    include_attachments=True
 )
 ```
 
-### Confluence Cloud Connector
+### Example: Confluence Cloud Connector
 
 ```python
 from connectors import ConfluenceCloudConnector
@@ -86,55 +103,37 @@ connector = ConfluenceCloudConnector(
     url="https://company.atlassian.net/wiki",
     query="space = DEV",
     email="user@example.com",
-    api_token="your-api-token",
-    read_all_comments=True  # Include nested comments
-)
-```
-
-### Jira Server Connector
-
-```python
-from connectors import JiraConnector
-
-connector = JiraConnector(
-    url="https://jira.example.com",
-    query="assignee = currentUser()",
-    token="bearer-token"  # or use login/password
-)
-```
-
-### Confluence Server Connector
-
-```python
-from connectors import ConfluenceConnector
-
-connector = ConfluenceConnector(
-    url="https://confluence.example.com",
-    query="space = MYSPACE AND type = page",
-    token="bearer-token"  # or use login/password
+    api_token="your-token",
+    read_all_comments=True,        # Include nested comments in output
+    include_attachments=False
 )
 ```
 
 ## Connector Protocol
 
-All connectors implement the `BaseConnector` protocol from `core.v1.connectors`:
+All connectors are based on the `BaseConnector` protocol from `core.v1.connectors`. Every connector must provide:
 
 ```python
 @runtime_checkable
 class BaseConnector(Protocol):
     @property
     def reader(self):
-        """Document reader instance"""
+        """Document reader instance, yields docs with .metadata property"""
         ...
     
     @property
     def converter(self):
-        """Document converter instance"""
+        """Document converter instance (standardizes internal document structure)"""
         ...
     
     @property
     def connector_type(self) -> str:
-        """Connector type identifier"""
+        """Human-readable connector type"""
+        ...
+
+    @property
+    def metadata_schema(self) -> dict:
+        """Dict describing metadata fields added to each document/chunk"""
         ...
 ```
 

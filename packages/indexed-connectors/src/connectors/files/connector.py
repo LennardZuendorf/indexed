@@ -4,9 +4,11 @@ This connector wraps the existing FilesDocumentReader and FilesDocumentConverter
 to provide a standardized BaseConnector interface.
 """
 
-from typing import List
+from typing import ClassVar, List
+from core.v1.connectors.metadata import ConnectorMetadata
 from .files_document_reader import FilesDocumentReader
 from .files_document_converter import FilesDocumentConverter
+from .schema import FileSystemConfig
 
 
 class FileSystemConnector:
@@ -33,6 +35,17 @@ class FileSystemConnector:
         ... )
         >>> index.add_collection("docs", connector)
     """
+
+    # Metadata for CLI generation and compatibility
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="files",
+        display_name="Local Files",
+        description="Index documents from local filesystem",
+        config_class=FileSystemConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+        example="indexed index create --type files --name docs",
+    )
 
     def __init__(
         self,
@@ -66,14 +79,22 @@ class FileSystemConnector:
             ...     exclude_patterns=[".*test.*", ".*/tests/.*"]
             ... )
         """
-        self._path = path
-        self._include_patterns = include_patterns or [".*"]
-        self._exclude_patterns = exclude_patterns or []
-        self._fail_fast = fail_fast
+        # Validate and normalize configuration using Pydantic
+        config = FileSystemConfig(
+            path=path,
+            include_patterns=include_patterns or [".*"],
+            exclude_patterns=exclude_patterns or [],
+            fail_fast=fail_fast,
+        )
+
+        self._path = config.path
+        self._include_patterns = config.include_patterns
+        self._exclude_patterns = config.exclude_patterns
+        self._fail_fast = config.fail_fast
 
         # Initialize reader and converter
         self._reader = FilesDocumentReader(
-            base_path=path,
+            base_path=self._path,
             include_patterns=self._include_patterns,
             exclude_patterns=self._exclude_patterns,
             fail_fast=self._fail_fast,

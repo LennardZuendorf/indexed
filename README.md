@@ -32,17 +32,22 @@ git clone <repository-url>
 cd indexed-python
 uv sync
 
-# 2. Create a collection from local files
-uv run indexed create files -n my-docs -p ./documents
+# 2. Create a collection (dynamic connectors)
+# You'll be prompted for connector-specific settings
+uv run indexed index create --type files --name my-docs
 
 # 3. Search your collections
-uv run indexed search "your query"
+uv run indexed index search "your query"
 
 # 4. Start MCP server for AI agents
 uv run indexed mcp
 ```
 
 For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
+
+Note:
+- Legacy command (deprecated): `uv run indexed index create files -n my-docs -p ./documents`
+- New dynamic flow uses typed schemas; available types: `files`, `jira`, `jiraCloud`, `confluence`, `confluenceCloud`.
 
 ## What It Does
 

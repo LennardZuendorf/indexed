@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "indexed-core",
+    "indexed-connectors",
     "indexed-utils",
     "typer>=0.12.3",
     "rich>=13.7.0",
@@ -23,6 +24,7 @@ indexed-mcp = "indexed.mcp.cli:cli_main"
 
 [tool.uv.sources]
 indexed-core = { workspace = true }
+indexed-connectors = { workspace = true }
 indexed-utils = { workspace = true }
 
 [build-system]

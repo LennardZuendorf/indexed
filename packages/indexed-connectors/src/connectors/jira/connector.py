@@ -5,14 +5,26 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
-from typing import Optional
+from typing import ClassVar, Optional
+from core.v1.connectors.metadata import ConnectorMetadata
 from .jira_document_reader import JiraDocumentReader
 from .jira_document_converter import JiraDocumentConverter
 from .jira_cloud_document_reader import JiraCloudDocumentReader
 from .jira_cloud_document_converter import JiraCloudDocumentConverter
+from .schema import JiraConfig, JiraCloudConfig
 
 
 class JiraConnector:
+    # Metadata for CLI generation and compatibility
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="jira",
+        display_name="Jira (Server/Data Center)",
+        description="Index Jira issues using JQL queries (token or basic auth)",
+        config_class=JiraConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+        example="indexed index create --type jira --name issues",
+    )
     """Connector for Jira Server/Data Center issues.
 
     Discovers and indexes Jira issues based on JQL queries. Supports both
@@ -102,6 +114,16 @@ class JiraConnector:
 
 
 class JiraCloudConnector:
+    # Metadata for CLI generation and compatibility
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="jiraCloud",
+        display_name="Jira Cloud",
+        description="Index Jira Cloud issues via Atlassian Cloud API",
+        config_class=JiraCloudConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+        example="indexed index create --type jiraCloud --name issues",
+    )
     """Connector for Jira Cloud issues.
 
     Discovers and indexes Jira Cloud issues using Atlassian Cloud API.
