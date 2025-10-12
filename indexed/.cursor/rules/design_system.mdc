@@ -90,6 +90,42 @@ summary = create_summary("Total", "39 documents, 539 chunks")
 Total: 39 documents, 539 chunks
 ```
 
+### 4. Progress Bar
+**Purpose**: Consistent progress display with centralized styling
+
+**Usage**:
+```python
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from cli.utils.progress_bar import create_progress_callback
+
+with Progress(
+    SpinnerColumn(),
+    TextColumn(f"[bold {PROGRESS_TASK_COLOR}]{{task.description}}"),
+    BarColumn(
+        complete_style=f"bold {PROGRESS_BAR_COLOR}",
+        finished_style=f"bold {PROGRESS_BAR_COLOR}"
+    ),
+    TextColumn(f"[bold {PROGRESS_BAR_COLOR}]{{task.percentage:>3.0f}}%"),
+    TextColumn(f"[{PROGRESS_TIME_COLOR}]{{task.time_remaining}}"),
+    console=console,
+    transient=False
+) as progress:
+    main_task = progress.add_task("Operation", total=100)
+    callback = create_progress_callback(progress, main_task)
+    # Pass callback to core services
+```
+
+**Appearance**:
+```
+⠋ Updating "collection": 45% ████████░░ 0:00:03
+```
+
+**Key Features**:
+- Blue accent for task descriptions (matches theme)
+- Yellow progress bar and percentage (high visibility)
+- White time remaining (readable)
+- Integrated with core services via callback pattern
+
 ## Color Palette
 
 ### Theme Colors
@@ -108,6 +144,11 @@ SECONDARY_STYLE = "dim"        # Helper text, hints
 ERROR_COLOR = "red"            # Error messages
 WARNING_COLOR = "yellow"       # Warnings
 SUCCESS_COLOR = "green"        # Success messages
+
+# Progress Bar Colors
+PROGRESS_TASK_COLOR = "#2581C4"        # Blue accent for task descriptions
+PROGRESS_BAR_COLOR = "bright_yellow"   # Yellow for progress bars and percentage
+PROGRESS_TIME_COLOR = "bold white"     # White for time remaining
 ```
 
 ## Layout Modes
@@ -160,6 +201,9 @@ apps/indexed-cli/src/cli/
 - Use cyan accent color for headlines and emphasis
 - Keep cards compact and scannable
 - Maintain consistent padding (0, 1)
+- Use centralized progress bar styling with theme colors
+- Integrate progress bars with core services via callback pattern
+- Use `create_progress_callback()` for service integration
 
 ### Don'ts ❌
 - Don't hardcode colors - use theme constants
@@ -168,6 +212,9 @@ apps/indexed-cli/src/cli/
 - Don't create custom label formatting
 - Don't use full-width cards for lists
 - Don't use white text for labels
+- Don't hardcode progress bar colors - use theme constants
+- Don't bypass the callback pattern for progress updates
+- Don't use `TimeRemainingColumn` with style parameters (use `TextColumn` instead)
 
 ## Future Enhancements
 

@@ -149,6 +149,35 @@ When creating or updating a command:
 - [ ] Never hardcode colors or styles
 - [ ] Use `create_summary()` for totals
 
+### Progress Bar Styling
+
+**Centralized Progress Bar Colors:**
+- **Task Description**: Blue accent (`#2581C4`) for "Updating" text
+- **Progress Bar**: Bright yellow (`bright_yellow`) for visual emphasis
+- **Percentage**: Bright yellow (`bright_yellow`) to match progress bar
+- **Time Remaining**: White (`bold white`) for readability
+
+**Implementation Pattern:**
+```python
+with Progress(
+    SpinnerColumn(),
+    TextColumn("[bold #2581C4]{task.description}"),  # Blue accent
+    BarColumn(
+        complete_style="bold bright_yellow",  # Yellow progress bar
+        finished_style="bold bright_yellow"
+    ),
+    TextColumn("[bold bright_yellow]{task.percentage:>3.0f}%"),  # Yellow percentage
+    TextColumn("[bold white]{task.time_remaining}"),  # White time remaining
+    console=console,
+    transient=False
+) as progress:
+```
+
+**Callback Integration:**
+- Use `create_progress_callback(progress, main_task)` for core service integration
+- Progress updates flow through `progress_callback` parameter to core services
+- Maintains clean separation between CLI display and core business logic
+
 ### Design Documentation
 
 Full design system documentation in `.memory/design_system.md`
