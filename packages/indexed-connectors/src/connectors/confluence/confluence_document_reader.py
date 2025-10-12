@@ -83,14 +83,14 @@ class ConfluenceDocumentReader:
 
         def read_batch_func(start_at, batch_size):
             return self.__request(
-                    self.__add_url_prefix(f"/rest/api/content/{page['id']}/child/comment"),
-                    {
-                        "limit": batch_size,
-                        "start": start_at,
-                        "expand": "body.storage",
-                        "depth": "all",
-                    },
-                )
+                self.__add_url_prefix(f"/rest/api/content/{page['id']}/child/comment"),
+                {
+                    "limit": batch_size,
+                    "start": start_at,
+                    "expand": "body.storage",
+                    "depth": "all",
+                },
+            )
 
         comments_generator = read_items_in_batches(
             read_batch_func,
@@ -106,14 +106,14 @@ class ConfluenceDocumentReader:
     def __read_items(self):
         def read_batch_func(start_at, batch_size):
             return self.__request(
-                    self.__add_url_prefix("/rest/api/content/search"),
-                    {
-                        "cql": self.query,
-                        "limit": batch_size,
-                        "start": start_at,
-                        "expand": self.expand,
-                    },
-                )
+                self.__add_url_prefix("/rest/api/content/search"),
+                {
+                    "cql": self.query,
+                    "limit": batch_size,
+                    "start": start_at,
+                    "expand": self.expand,
+                },
+            )
 
         return read_items_in_batches(
             read_batch_func,

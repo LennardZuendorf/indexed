@@ -128,15 +128,17 @@ class DocumentCollectionCreator:
         document_ids = []
 
         number_of_expected_documents = self.document_reader.get_number_of_documents()
-        
+
         if self.progress_callback:
-            self.progress_callback(ProgressUpdate(
-                stage="reading",
-                current=0,
-                total=number_of_expected_documents,
-                message="Reading documents..."
-            ))
-        
+            self.progress_callback(
+                ProgressUpdate(
+                    stage="reading",
+                    current=0,
+                    total=number_of_expected_documents,
+                    message="Reading documents...",
+                )
+            )
+
         for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
             for converted_document in self.document_converter.convert(document):
                 document_path = (
@@ -145,14 +147,16 @@ class DocumentCollectionCreator:
                 self.__save_json_file(converted_document, document_path)
 
                 document_ids.append(converted_document["id"])
-            
+
             if self.progress_callback:
-                self.progress_callback(ProgressUpdate(
-                    stage="reading",
-                    current=idx,
-                    total=number_of_expected_documents,
-                    message=f"Reading documents: {idx}/{number_of_expected_documents}"
-                ))
+                self.progress_callback(
+                    ProgressUpdate(
+                        stage="reading",
+                        current=idx,
+                        total=number_of_expected_documents,
+                        message=f"Reading documents: {idx}/{number_of_expected_documents}",
+                    )
+                )
 
         return document_ids, number_of_expected_documents
 
@@ -191,16 +195,20 @@ class DocumentCollectionCreator:
         last_modified_document_time = None
         total_docs = len(document_ids)
         processed = 0
-        
-        if self.progress_callback:
-            self.progress_callback(ProgressUpdate(
-                stage="indexing",
-                current=0,
-                total=total_docs,
-                message="Indexing documents..."
-            ))
 
-        for batch_document_ids in self.__batch_items(document_ids, self.indexing_batch_size):
+        if self.progress_callback:
+            self.progress_callback(
+                ProgressUpdate(
+                    stage="indexing",
+                    current=0,
+                    total=total_docs,
+                    message="Indexing documents...",
+                )
+            )
+
+        for batch_document_ids in self.__batch_items(
+            document_ids, self.indexing_batch_size
+        ):
             items_to_index = []
             index_item_ids = []
 
@@ -243,15 +251,17 @@ class DocumentCollectionCreator:
 
             for indexer in self.document_indexers:
                 indexer.index_texts(index_item_ids, items_to_index)
-            
+
             processed += len(batch_document_ids)
             if self.progress_callback:
-                self.progress_callback(ProgressUpdate(
-                    stage="indexing",
-                    current=processed,
-                    total=total_docs,
-                    message=f"Indexing: {processed}/{total_docs} documents"
-                ))
+                self.progress_callback(
+                    ProgressUpdate(
+                        stage="indexing",
+                        current=processed,
+                        total=total_docs,
+                        message=f"Indexing: {processed}/{total_docs} documents",
+                    )
+                )
 
         for indexer in self.document_indexers:
             self.persister.save_bin_file(
@@ -272,7 +282,9 @@ class DocumentCollectionCreator:
     def __remove_documents_from_index(
         self, document_ids, index_mapping, reverse_index_mapping
     ):
-        for batch_document_ids in self.__batch_items(document_ids, self.indexing_batch_size):
+        for batch_document_ids in self.__batch_items(
+            document_ids, self.indexing_batch_size
+        ):
             index_ids_to_remove = []
 
             for document_id in batch_document_ids:

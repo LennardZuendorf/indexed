@@ -19,6 +19,7 @@ from .theme import (
     get_label_style,
 )
 
+
 def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
     """
     Create info rows with proper spacing between the label and the value.
@@ -26,7 +27,9 @@ def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
     """
     table = Table.grid(expand=True, padding=(0, 1))
     # Set appropriate alignment and style for columns
-    table.add_column(justify="left", style=get_label_style(), ratio=1)  # Use label_style for left column
+    table.add_column(
+        justify="left", style=get_label_style(), ratio=1
+    )  # Use label_style for left column
     table.add_column(justify="right", ratio=2)
     value_style = get_value_style()
     for label, value in rows:
@@ -49,16 +52,16 @@ def create_info_card(
     subtitle: Optional[str] = None,
 ) -> Panel:
     """Create a card panel containing info rows.
-    
+
     Args:
         title: Card title (will be dim)
         rows: List of (label, value) tuples for info rows
         width: Optional fixed width (default: auto)
         subtitle: Optional subtitle text in parentheses after title
-    
+
     Returns:
         Panel with formatted content
-        
+
     Example:
         >>> card = create_info_card(
         ...     title="files",
@@ -68,13 +71,13 @@ def create_info_card(
     """
     # Create content from info rows with proper spacing
     content = Group(*create_info_rows_with_spacing(rows))
-    
+
     # Build title with optional subtitle, using dim style for card headings
     if subtitle:
         title_text = f"[dim]{title} ({subtitle})[/dim]"
     else:
         title_text = f"[dim]{title}[/dim]"
-    
+
     return Panel(
         content,
         title=title_text,
@@ -91,15 +94,15 @@ def create_detail_card(
     subtitle: Optional[str] = None,
 ) -> Panel:
     """Create a fixed-width detail card for single item display.
-    
+
     This is a convenience wrapper around create_info_card() with
     the standard detail view width.
-    
+
     Args:
         title: Card title
         rows: List of (label, value) tuples
         subtitle: Optional subtitle
-    
+
     Returns:
         Panel with fixed width
     """
@@ -118,16 +121,16 @@ def create_grid_cards(
     subtitle_key: Optional[str] = None,
 ) -> list[Panel]:
     """Create multiple cards for grid layout from structured data.
-    
+
     Args:
         items: List of dicts, each containing card data
         title_key: Key for title in each dict
         rows_key: Key for rows list in each dict
         subtitle_key: Optional key for subtitle in each dict
-    
+
     Returns:
         List of Panel objects ready for grid display
-        
+
     Example:
         >>> items = [
         ...     {

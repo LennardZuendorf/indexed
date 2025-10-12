@@ -19,25 +19,21 @@ __all__ = [
     "CollectionStatus",
     "CollectionInfo",
     "SearchResult",
-    
     # Collection operations
     "create",
-    "update", 
+    "update",
     "clear",
-    
     # Search operations
     "search",
     "SearchService",
-    
     # Inspect operations
     "status",
     "inspect",
     "InspectService",
-    
     # Configuration operations
     "ConfigService",
     "get_config",
-    "update_config", 
+    "update_config",
     "set_config",
     # Config injection
     "ConfigSlice",

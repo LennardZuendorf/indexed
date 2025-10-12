@@ -26,21 +26,14 @@ def should_output_json(
     cfg = settings.model_dump()
 
     if for_context == "cli":
-        val = (
-            (cfg.get("flags", {}) or {}).get("cli_json_output")
-        )
+        val = (cfg.get("flags", {}) or {}).get("cli_json_output")
         return bool(val) if isinstance(val, bool) else False
 
     if for_context == "mcp":
-        val = (
-            (cfg.get("mcp", {}) or {}).get("mcp_json_output")
-        )
+        val = (cfg.get("mcp", {}) or {}).get("mcp_json_output")
         if isinstance(val, bool):
             return val
         return True
 
     # Default conservative choice
     return False
-
-
-

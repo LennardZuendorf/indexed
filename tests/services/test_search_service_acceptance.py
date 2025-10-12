@@ -5,7 +5,16 @@ def test_search_service_applies_args(monkeypatch):
     calls = {}
 
     class FakeSearcher:
-        def search(self, query, *, max_number_of_chunks, max_number_of_documents, include_text_content, include_all_chunks_content, include_matched_chunks_content):  # noqa: E501
+        def search(
+            self,
+            query,
+            *,
+            max_number_of_chunks,
+            max_number_of_documents,
+            include_text_content,
+            include_all_chunks_content,
+            include_matched_chunks_content,
+        ):  # noqa: E501
             calls["query"] = query
             calls["max_number_of_chunks"] = max_number_of_chunks
             calls["max_number_of_documents"] = max_number_of_documents
@@ -40,6 +49,3 @@ def test_search_service_applies_args(monkeypatch):
     assert calls["include_text_content"] is True
     assert calls["include_all_chunks_content"] is False
     assert calls["include_matched_chunks_content"] is True
-
-
-

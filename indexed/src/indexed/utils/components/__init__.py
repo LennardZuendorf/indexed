@@ -7,7 +7,7 @@ All components follow the card-based design language with cyan accents
 and consistent spacing/typography.
 """
 
-from .theme import (    
+from .theme import (
     # Helpers
     get_error_style,
     get_warning_style,
@@ -69,21 +69,17 @@ __all__ = [
     "get_grid_card_min_width",
     "get_value_style",
     "get_dim_style",
-    
     # Info Rows
     "create_info_row",
     "create_info_rows",
-    
     # Cards
     "create_info_card",
     "create_detail_card",
     "create_grid_cards",
-    
     # Summary
     "create_summary",
     "create_count_summary",
     "create_total_summary",
-    
     # Status
     "OperationStatus",
     "SearchStatus",  # Backwards compatibility

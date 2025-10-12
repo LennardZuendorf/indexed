@@ -99,6 +99,3 @@ def test_create_update_slice_with_configs():
         overrides={"configs": [cfg]},
     )
     assert update_args.configs == [cfg]
-
-
-

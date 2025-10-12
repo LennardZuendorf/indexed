@@ -10,6 +10,7 @@ def test_setup_root_logger_central_level(tmp_path, monkeypatch):
 
     # Reload logger module to reset _LOGGING_CONFIGURED
     import main.utils.logger as logger_mod
+
     reload(logger_mod)
 
     # Initialize with env (WARNING) and verify stdlib logs below level are ignored
@@ -45,20 +46,24 @@ def test_mcp_init_uses_args(monkeypatch):
     # Ensure MCP uses args to initialize logging without throwing
     import types
     import server.mcp as mcp_mod
+
     reload(mcp_mod)
 
     # Simulate parsed args
-    args = types.SimpleNamespace(host="localhost", port=0, log_level="ERROR", json_logs=True)
+    args = types.SimpleNamespace(
+        host="localhost", port=0, log_level="ERROR", json_logs=True
+    )
 
     # Initialize logging using the same logic as main() without starting the server
     from main.utils.logger import setup_root_logger
+
     level = (args.log_level or os.getenv("INDEXED_LOG_LEVEL", "INFO")).upper()
-    json_mode = args.json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    json_mode = (
+        args.json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    )
     setup_root_logger(level_str=level, json_mode=json_mode)
 
     # Emit a warning which should be suppressed at ERROR level
     logging.warning("suppressed at ERROR level")
 
     assert True
-
-

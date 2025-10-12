@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import timezone
+
 
 def format_time(timestamp: Optional[str]) -> str:
     """Format timestamp as nicely human-readable (e.g., '5 mins ago', 'Yesterday at 13:23', etc).
@@ -44,6 +44,7 @@ def format_time(timestamp: Optional[str]) -> str:
     else:
         return dt.strftime("%Y-%m-%d %H:%M")
 
+
 def _try_parse_to_datetime(timestamp: str) -> Optional[datetime]:
     """Parse string to datetime object, handling common timestamp formats."""
     if not timestamp:
@@ -59,11 +60,13 @@ def _try_parse_to_datetime(timestamp: str) -> Optional[datetime]:
         except Exception:
             return None
 
+
 def format_size(bytes: Optional[int]) -> str:
     """Format bytes to human-readable size."""
     if bytes is None:
         return "unknown"
     return _human_readable_size(float(bytes))
+
 
 def _human_readable_size(size: float) -> str:
     """

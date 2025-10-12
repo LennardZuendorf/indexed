@@ -6,6 +6,7 @@ Covers:
 - src/indexed/knowledge/commands/search.py (search)
 - src/indexed/knowledge/commands/update.py (update)
 """
+
 from typer.testing import CliRunner
 import typer
 
@@ -75,7 +76,16 @@ def test_delete_module_all_yes(monkeypatch):
 def test_search_module_register(monkeypatch):
     captured = {}
 
-    def fake_search(query, *, configs=None, max_chunks=None, max_docs=None, include_full_text=False, include_all_chunks=False, include_matched_chunks=False):  # pylint: disable=too-many-arguments,unused-argument
+    def fake_search(
+        query,
+        *,
+        configs=None,
+        max_chunks=None,
+        max_docs=None,
+        include_full_text=False,
+        include_all_chunks=False,
+        include_matched_chunks=False,
+    ):  # pylint: disable=too-many-arguments,unused-argument
         captured["query"] = query
         return {"hits": []}
 
@@ -86,7 +96,7 @@ def test_search_module_register(monkeypatch):
 
     result = runner.invoke(app, ["search", "hello", "--json"])
     assert result.exit_code == 0, result.output
-    assert "\"hits\": []" in result.output
+    assert '"hits": []' in result.output
     assert captured["query"] == "hello"
 
 

@@ -32,7 +32,9 @@ def test_ensure_indexed_toml_exists_creates_minimal(tmp_path, monkeypatch):
 
     # No secrets persisted; only *_env names
     assert data["sources"]["jira_cloud"]["api_token_env"] == "JIRA_API_TOKEN"
-    assert data["sources"]["confluence_cloud"]["api_token_env"] == "CONFLUENCE_API_TOKEN"
+    assert (
+        data["sources"]["confluence_cloud"]["api_token_env"] == "CONFLUENCE_API_TOKEN"
+    )
     # and there should be no direct token values
     dumped = json.dumps(data)
     assert "secret" not in dumped.lower()

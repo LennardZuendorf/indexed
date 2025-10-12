@@ -88,7 +88,9 @@ class InspectService:
             for item in all_items:
                 if os.path.basename(item) == "manifest.json":
                     # Parent directory name is the collection name
-                    collection_name = os.path.dirname(item).split(os.sep)[0] or os.path.dirname(item)
+                    collection_name = os.path.dirname(item).split(os.sep)[
+                        0
+                    ] or os.path.dirname(item)
                     if collection_name:
                         collections.add(collection_name)
             return sorted(collections)
@@ -147,15 +149,17 @@ class InspectService:
 
         statuses = []
         total = len(collection_names)
-        
+
         for idx, name in enumerate(collection_names, 1):
             if progress_callback:
-                progress_callback(ProgressUpdate(
-                    stage="inspecting",
-                    current=idx,
-                    total=total,
-                    message=f"Inspecting: {name} ({idx}/{total})"
-                ))
+                progress_callback(
+                    ProgressUpdate(
+                        stage="inspecting",
+                        current=idx,
+                        total=total,
+                        message=f"Inspecting: {name} ({idx}/{total})",
+                    )
+                )
             try:
                 manifest = self._read_manifest(name)
 
@@ -223,10 +227,10 @@ class InspectService:
         progress_callback: ProgressCallback = None,
     ) -> List[CollectionInfo]:
         """Get detailed inspection information for collections.
-        
+
         This method returns enhanced CollectionInfo objects with computed statistics
         and all available metadata. It's designed for detailed inspection views.
-        
+
         Args:
             collection_names (Optional[List[str]]): List of collection names to inspect.
                                                    If None, all available collections
@@ -235,11 +239,11 @@ class InspectService:
                                      This requires loading the indexer and may be
                                      slower. Defaults to False.
             progress_callback (ProgressCallback, optional): Callback for progress updates.
-        
+
         Returns:
             List[CollectionInfo]: List of detailed info objects containing comprehensive
                                  metadata and computed statistics for each collection.
-        
+
         Example:
             >>> service = InspectService()
             >>> # Get detailed info for specific collection
@@ -248,21 +252,23 @@ class InspectService:
         """
         if collection_names is None:
             collection_names = self._discover_collections()
-        
+
         infos = []
         total = len(collection_names)
-        
+
         for idx, name in enumerate(collection_names, 1):
             if progress_callback:
-                progress_callback(ProgressUpdate(
-                    stage="inspecting",
-                    current=idx,
-                    total=total,
-                    message=f"Inspecting: {name} ({idx}/{total})"
-                ))
+                progress_callback(
+                    ProgressUpdate(
+                        stage="inspecting",
+                        current=idx,
+                        total=total,
+                        message=f"Inspecting: {name} ({idx}/{total})",
+                    )
+                )
             try:
                 manifest = self._read_manifest(name)
-                
+
                 # Get index size if requested
                 index_size = None
                 if include_index_size and manifest.get("indexers"):
@@ -272,14 +278,15 @@ class InspectService:
                         index_size = indexer.get_size()
                     except Exception as e:
                         import logging
+
                         logging.warning(f"Could not get index size for {name}: {e}")
-                
+
                 # Gather all metadata
                 source_type = manifest.get("reader", {}).get("type")
                 abs_path = os.path.join(self._persister.base_path, name)
                 relative_path = os.path.relpath(abs_path, start=os.getcwd())
                 disk_size = self._calculate_disk_size(name)
-                
+
                 # Build CollectionInfo (averages computed in __post_init__)
                 info = CollectionInfo(
                     name=name,
@@ -291,13 +298,16 @@ class InspectService:
                     index_size_bytes=index_size,
                     created_time=manifest.get("createdTime"),
                     updated_time=manifest.get("updatedTime", ""),
-                    last_modified_document_time=manifest.get("lastModifiedDocumentTime", ""),
+                    last_modified_document_time=manifest.get(
+                        "lastModifiedDocumentTime", ""
+                    ),
                     indexers=[idx["name"] for idx in manifest.get("indexers", [])],
                 )
                 infos.append(info)
-                
+
             except Exception as e:
                 import logging
+
                 logging.error(f"Error inspecting collection {name}: {e}")
                 # Add minimal error info
                 infos.append(
@@ -308,7 +318,7 @@ class InspectService:
                         number_of_chunks=0,
                     )
                 )
-        
+
         return infos
 
 
@@ -365,10 +375,10 @@ def inspect(
     progress_callback: ProgressCallback = None,
 ) -> List[CollectionInfo]:
     """Functional wrapper for detailed collection inspection.
-    
+
     This function provides a stateless interface to get detailed collection
     information with computed statistics, suitable for CLI inspection commands.
-    
+
     Args:
         collection_names (Optional[List[str]]): List of collection names to inspect.
                                                If None, all available collections
@@ -376,18 +386,18 @@ def inspect(
         include_index_size (bool): Whether to include index size information.
                                  This requires loading the indexer and may be
                                  slower. Defaults to False.
-    
+
     Returns:
         List[CollectionInfo]: List of detailed info objects containing comprehensive
                              metadata and computed statistics for each collection.
-    
+
     Example:
         >>> from core.v1.engine.services.inspect_service import inspect
         >>> # Get detailed info for specific collection
         >>> info = inspect(['my_collection'])
         >>> print(f"Collection has {info[0].number_of_documents} documents")
         >>> print(f"Avg chunks/doc: {info[0].avg_chunks_per_doc:.1f}")
-    
+
     Note:
         This function uses a global singleton InspectService instance.
     """
@@ -402,4 +412,3 @@ def inspect(
 @dataclass
 class InspectArgs:
     include_index_size: bool = False
-

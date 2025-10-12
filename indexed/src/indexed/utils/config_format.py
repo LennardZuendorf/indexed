@@ -45,6 +45,7 @@ def _status_style(status: str) -> tuple[str, str, str]:
 
 # --- origin helpers ---
 
+
 def _dotenv_get(name: str) -> Optional[str]:
     value = os.getenv(name)
     if value is not None:
@@ -99,7 +100,9 @@ def _build_merged_toml_for_profile(profile: Optional[str]) -> Dict[str, Any]:
     return merge(base, overlay)
 
 
-def _build_origin_map(effective: Dict[str, Any], profile: Optional[str]) -> Dict[str, Any]:
+def _build_origin_map(
+    effective: Dict[str, Any], profile: Optional[str]
+) -> Dict[str, Any]:
     toml_merged = _build_merged_toml_for_profile(profile)
 
     def build(node: Any, path: Tuple[str, ...]) -> Any:
@@ -124,6 +127,7 @@ def _origin_badge(origin: Optional[str]) -> str:
 
 
 # --- small utils ---
+
 
 def _parse_dot_path(key: str) -> List[str]:
     return key.split(".")
@@ -175,13 +179,20 @@ class ConfigSection(Enum):
 
 # --- section renderers (return lines) ---
 
-def _render_configuration_summary_lines(settings: IndexedSettings, profile: Optional[str]) -> List[str]:
+
+def _render_configuration_summary_lines(
+    settings: IndexedSettings, profile: Optional[str]
+) -> List[str]:
     lines: List[str] = []
     lines.append(_bold("⚙️  Configuration"))
     lines.append(f"  Profile: {_bold(profile) if profile else 'Default'}")
     try:
         src = settings.sources
-        ready_count = int(src.files.is_ready) + int(src.jira_cloud.is_ready) + int(src.confluence_cloud.is_ready)
+        ready_count = (
+            int(src.files.is_ready)
+            + int(src.jira_cloud.is_ready)
+            + int(src.confluence_cloud.is_ready)
+        )
         lines.append(f"  Sources ready: {_bold(str(ready_count))}/3")
     except Exception:
         pass
@@ -189,7 +200,9 @@ def _render_configuration_summary_lines(settings: IndexedSettings, profile: Opti
     return lines
 
 
-def _render_kv_section_lines(title: str, emoji: str, section: Dict[str, Any], origins: Optional[Dict[str, Any]]) -> List[str]:
+def _render_kv_section_lines(
+    title: str, emoji: str, section: Dict[str, Any], origins: Optional[Dict[str, Any]]
+) -> List[str]:
     lines: List[str] = []
     lines.append(_bold(f"{emoji} {title}:"))
     for key in sorted(section.keys()):
@@ -203,7 +216,9 @@ def _render_kv_section_lines(title: str, emoji: str, section: Dict[str, Any], or
     return lines
 
 
-def _render_sources_section_lines(sources: Dict[str, Any], origins: Optional[Dict[str, Any]]) -> List[str]:
+def _render_sources_section_lines(
+    sources: Dict[str, Any], origins: Optional[Dict[str, Any]]
+) -> List[str]:
     lines: List[str] = []
     lines.append(_bold("🌐 Sources:"))
     # Files
@@ -225,7 +240,9 @@ def _render_sources_section_lines(sources: Dict[str, Any], origins: Optional[Dic
                 leaf = origins["jira_cloud"].get(key)
                 origin_map = leaf if isinstance(leaf, str) else None
             badge = f" {_origin_badge(origin_map)}" if origin_map else ""
-            lines.append(f"      - {key}: {_stringify(sources['jira_cloud'][key])}{badge}")
+            lines.append(
+                f"      - {key}: {_stringify(sources['jira_cloud'][key])}{badge}"
+            )
     # Confluence Cloud
     if isinstance(sources.get("confluence_cloud"), dict):
         lines.append(f"  - {_bold('📘 Confluence Cloud:')}")
@@ -235,12 +252,15 @@ def _render_sources_section_lines(sources: Dict[str, Any], origins: Optional[Dic
                 leaf = origins["confluence_cloud"].get(key)
                 origin_map = leaf if isinstance(leaf, str) else None
             badge = f" {_origin_badge(origin_map)}" if origin_map else ""
-            lines.append(f"      - {key}: {_stringify(sources['confluence_cloud'][key])}{badge}")
+            lines.append(
+                f"      - {key}: {_stringify(sources['confluence_cloud'][key])}{badge}"
+            )
     lines.append("")
     return lines
 
 
 # --- Public API ---
+
 
 def format_config_full(settings: IndexedSettings, profile: Optional[str] = None) -> str:
     data: Dict[str, Any] = settings.model_dump()
@@ -265,13 +285,60 @@ def format_config_full(settings: IndexedSettings, profile: Optional[str] = None)
     lines.append("\n ")
 
     # Sections
-    lines.extend(_render_kv_section_lines("Paths", "📂", data.get("paths", {}), origins.get("paths", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_kv_section_lines("Search", "🔎", data.get("search", {}), origins.get("search", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_kv_section_lines("Index", "🗂️", data.get("index", {}), origins.get("index", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_sources_section_lines(data.get("sources", {}), origins.get("sources", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_kv_section_lines("MCP", "🧠", data.get("mcp", {}), origins.get("mcp", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_kv_section_lines("Performance", "⚡", data.get("performance", {}), origins.get("performance", {}) if isinstance(origins, dict) else None))
-    lines.extend(_render_kv_section_lines("Flags", "🚩", data.get("flags", {}), origins.get("flags", {}) if isinstance(origins, dict) else None))
+    lines.extend(
+        _render_kv_section_lines(
+            "Paths",
+            "📂",
+            data.get("paths", {}),
+            origins.get("paths", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_kv_section_lines(
+            "Search",
+            "🔎",
+            data.get("search", {}),
+            origins.get("search", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_kv_section_lines(
+            "Index",
+            "🗂️",
+            data.get("index", {}),
+            origins.get("index", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_sources_section_lines(
+            data.get("sources", {}),
+            origins.get("sources", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_kv_section_lines(
+            "MCP",
+            "🧠",
+            data.get("mcp", {}),
+            origins.get("mcp", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_kv_section_lines(
+            "Performance",
+            "⚡",
+            data.get("performance", {}),
+            origins.get("performance", {}) if isinstance(origins, dict) else None,
+        )
+    )
+    lines.extend(
+        _render_kv_section_lines(
+            "Flags",
+            "🚩",
+            data.get("flags", {}),
+            origins.get("flags", {}) if isinstance(origins, dict) else None,
+        )
+    )
 
     return "\n".join(lines)
 
@@ -285,7 +352,13 @@ def format_config_section(
     origins = _build_origin_map(data, profile)
 
     if section == ConfigSection.SOURCES:
-        return "\n".join([""] + _render_sources_section_lines(data.get("sources", {}), origins.get("sources", {}) if isinstance(origins, dict) else None))
+        return "\n".join(
+            [""]
+            + _render_sources_section_lines(
+                data.get("sources", {}),
+                origins.get("sources", {}) if isinstance(origins, dict) else None,
+            )
+        )
 
     mapping = {
         ConfigSection.PATHS: ("📂", "Paths", "paths"),
@@ -303,7 +376,9 @@ def format_config_section(
         emoji, title, key = mapping[section]
         section_data = data.get(key, {}) if isinstance(data, dict) else {}
         section_origins = origins.get(key, {}) if isinstance(origins, dict) else None
-        return "\n".join([""] + _render_kv_section_lines(title, emoji, section_data, section_origins))
+        return "\n".join(
+            [""] + _render_kv_section_lines(title, emoji, section_data, section_origins)
+        )
 
     # Fallback: unknown section
     return ""
@@ -326,7 +401,9 @@ def format_config_value(
     # Resolve origin for this key
     origin_cursor: Any = origins
     for part in _parse_dot_path(key_path):
-        origin_cursor = origin_cursor.get(part) if isinstance(origin_cursor, dict) else None
+        origin_cursor = (
+            origin_cursor.get(part) if isinstance(origin_cursor, dict) else None
+        )
     origin = origin_cursor if isinstance(origin_cursor, str) else "default"
 
     lines: List[str] = []

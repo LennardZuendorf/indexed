@@ -3,7 +3,13 @@
 import os
 import typer
 from core.v1 import Index
-from connectors import FileSystemConnector, JiraConnector, JiraCloudConnector, ConfluenceConnector, ConfluenceCloudConnector
+from connectors import (
+    FileSystemConnector,
+    JiraConnector,
+    JiraCloudConnector,
+    ConfluenceConnector,
+    ConfluenceCloudConnector,
+)
 
 
 def create_files(
@@ -14,11 +20,9 @@ def create_files(
 ):
     """Create collection from local files."""
     connector = FileSystemConnector(
-        path=path,
-        include_patterns=include,
-        exclude_patterns=exclude
+        path=path, include_patterns=include, exclude_patterns=exclude
     )
-    
+
     index = Index()
     typer.echo(f"Creating collection '{name}' from {path}...")
     index.add_collection(name, connector)
@@ -33,20 +37,24 @@ def create_jira(
     """Create collection from Jira."""
     # Detect cloud vs server
     is_cloud = url.endswith(".atlassian.net")
-    
+
     if is_cloud:
         email = os.getenv("ATLASSIAN_EMAIL")
         token = os.getenv("ATLASSIAN_TOKEN")
         if not email or not token:
             typer.echo("Error: ATLASSIAN_EMAIL and ATLASSIAN_TOKEN required", err=True)
             raise typer.Exit(1)
-        connector = JiraCloudConnector(url=url, query=query, email=email, api_token=token)
+        connector = JiraCloudConnector(
+            url=url, query=query, email=email, api_token=token
+        )
     else:
         token = os.getenv("JIRA_TOKEN")
         login = os.getenv("JIRA_LOGIN")
         password = os.getenv("JIRA_PASSWORD")
-        connector = JiraConnector(url=url, query=query, token=token, login=login, password=password)
-    
+        connector = JiraConnector(
+            url=url, query=query, token=token, login=login, password=password
+        )
+
     index = Index()
     typer.echo(f"Creating collection '{name}' from Jira...")
     index.add_collection(name, connector)
@@ -61,20 +69,24 @@ def create_confluence(
     """Create collection from Confluence."""
     # Detect cloud vs server
     is_cloud = url.endswith(".atlassian.net")
-    
+
     if is_cloud:
         email = os.getenv("ATLASSIAN_EMAIL")
         token = os.getenv("ATLASSIAN_TOKEN")
         if not email or not token:
             typer.echo("Error: ATLASSIAN_EMAIL and ATLASSIAN_TOKEN required", err=True)
             raise typer.Exit(1)
-        connector = ConfluenceCloudConnector(url=url, query=query, email=email, api_token=token)
+        connector = ConfluenceCloudConnector(
+            url=url, query=query, email=email, api_token=token
+        )
     else:
         token = os.getenv("CONF_TOKEN")
         login = os.getenv("CONF_LOGIN")
         password = os.getenv("CONF_PASSWORD")
-        connector = ConfluenceConnector(url=url, query=query, token=token, login=login, password=password)
-    
+        connector = ConfluenceConnector(
+            url=url, query=query, token=token, login=login, password=password
+        )
+
     index = Index()
     typer.echo(f"Creating collection '{name}' from Confluence...")
     index.add_collection(name, connector)

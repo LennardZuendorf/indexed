@@ -14,14 +14,14 @@ from .jira_cloud_document_converter import JiraCloudDocumentConverter
 
 class JiraConnector:
     """Connector for Jira Server/Data Center issues.
-    
+
     Discovers and indexes Jira issues based on JQL queries. Supports both
     token-based and username/password authentication.
-    
+
     Attributes:
         reader: JiraDocumentReader instance for API calls
         converter: JiraDocumentConverter instance for format conversion
-    
+
     Examples:
         >>> # Token authentication (recommended)
         >>> connector = JiraConnector(
@@ -30,7 +30,7 @@ class JiraConnector:
         ...     token="your-token"
         ... )
         >>> index.add_collection("jira-issues", connector)
-        >>> 
+        >>>
         >>> # Username/password authentication
         >>> connector = JiraConnector(
         ...     url="https://jira.example.com",
@@ -39,27 +39,27 @@ class JiraConnector:
         ...     password="password"
         ... )
     """
-    
+
     def __init__(
         self,
         url: str,
         query: str,
         token: Optional[str] = None,
         login: Optional[str] = None,
-        password: Optional[str] = None
+        password: Optional[str] = None,
     ):
         """Initialize Jira Server/Data Center connector.
-        
+
         Args:
             url: Jira base URL (e.g., https://jira.example.com)
             query: JQL query to filter issues
             token: Bearer token for authentication (recommended)
             login: Username for basic auth (if token not provided)
             password: Password for basic auth (if token not provided)
-            
+
         Raises:
             ValueError: If neither token nor login/password are provided
-            
+
         Examples:
             >>> connector = JiraConnector(
             ...     url="https://jira.example.com",
@@ -71,35 +71,31 @@ class JiraConnector:
             raise ValueError(
                 "Either 'token' or both 'login' and 'password' must be provided"
             )
-        
+
         self._url = url
         self._query = query
-        
+
         # Initialize reader and converter
         self._reader = JiraDocumentReader(
-            base_url=url,
-            query=query,
-            token=token,
-            login=login,
-            password=password
+            base_url=url, query=query, token=token, login=login, password=password
         )
         self._converter = JiraDocumentConverter()
-    
+
     @property
     def reader(self) -> JiraDocumentReader:
         """Return the document reader instance."""
         return self._reader
-    
+
     @property
     def converter(self) -> JiraDocumentConverter:
         """Return the document converter instance."""
         return self._converter
-    
+
     @property
     def connector_type(self) -> str:
         """Return connector type identifier."""
         return "jira"
-    
+
     def __repr__(self) -> str:
         """String representation of connector."""
         return f"JiraConnector(url='{self._url}', query='{self._query}')"
@@ -107,14 +103,14 @@ class JiraConnector:
 
 class JiraCloudConnector:
     """Connector for Jira Cloud issues.
-    
+
     Discovers and indexes Jira Cloud issues using Atlassian Cloud API.
     Requires email and API token for authentication.
-    
+
     Attributes:
         reader: JiraCloudDocumentReader instance for API calls
         converter: JiraCloudDocumentConverter instance for format conversion
-    
+
     Examples:
         >>> connector = JiraCloudConnector(
         ...     url="https://company.atlassian.net",
@@ -124,23 +120,17 @@ class JiraCloudConnector:
         ... )
         >>> index.add_collection("jira-cloud", connector)
     """
-    
-    def __init__(
-        self,
-        url: str,
-        query: str,
-        email: str,
-        api_token: str
-    ):
+
+    def __init__(self, url: str, query: str, email: str, api_token: str):
         """Initialize Jira Cloud connector.
-        
+
         Args:
             url: Jira Cloud URL (e.g., https://company.atlassian.net)
             query: JQL query to filter issues
             email: Atlassian account email
-            api_token: Atlassian API token (generate at 
+            api_token: Atlassian API token (generate at
                       https://id.atlassian.com/manage/api-tokens)
-                      
+
         Examples:
             >>> connector = JiraCloudConnector(
             ...     url="https://mycompany.atlassian.net",
@@ -151,31 +141,28 @@ class JiraCloudConnector:
         """
         self._url = url
         self._query = query
-        
+
         # Initialize reader and converter
         self._reader = JiraCloudDocumentReader(
-            base_url=url,
-            query=query,
-            email=email,
-            api_token=api_token
+            base_url=url, query=query, email=email, api_token=api_token
         )
         self._converter = JiraCloudDocumentConverter()
-    
+
     @property
     def reader(self) -> JiraCloudDocumentReader:
         """Return the document reader instance."""
         return self._reader
-    
+
     @property
     def converter(self) -> JiraCloudDocumentConverter:
         """Return the document converter instance."""
         return self._converter
-    
+
     @property
     def connector_type(self) -> str:
         """Return connector type identifier."""
         return "jiraCloud"
-    
+
     def __repr__(self) -> str:
         """String representation of connector."""
         return f"JiraCloudConnector(url='{self._url}', query='{self._query}')"

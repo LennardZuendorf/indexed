@@ -7,7 +7,6 @@ Configures logging levels based on CLI flags:
 """
 
 import logging
-import os
 from rich.logging import RichHandler
 
 # Global state for status capture
@@ -17,7 +16,7 @@ _status_capture_callback = None
 
 def setup_root_logger(level_str: str = None, json_mode: bool = False) -> None:
     """Setup root logger with appropriate level and format.
-    
+
     Args:
         level_str: Log level as string (DEBUG, INFO, WARNING, ERROR)
         json_mode: If True, use JSON formatting for logs
@@ -26,7 +25,7 @@ def setup_root_logger(level_str: str = None, json_mode: bool = False) -> None:
         level = getattr(logging, level_str.upper(), logging.WARNING)
     else:
         level = logging.WARNING
-    
+
     # Configure with Rich handler for beautiful output
     logging.basicConfig(
         level=level,
@@ -34,18 +33,17 @@ def setup_root_logger(level_str: str = None, json_mode: bool = False) -> None:
         datefmt="[%X]",
         handlers=[
             RichHandler(
-                show_time=False,
-                show_path=False,
-                markup=True,
-                rich_tracebacks=True
+                show_time=False, show_path=False, markup=True, rich_tracebacks=True
             )
-        ]
+        ],
     )
 
 
-def setup_logging(verbose: bool = False, debug: bool = False, quiet: bool = False) -> None:
+def setup_logging(
+    verbose: bool = False, debug: bool = False, quiet: bool = False
+) -> None:
     """Setup logging with appropriate level.
-    
+
     Args:
         verbose: Show INFO level logs
         debug: Show DEBUG level logs
@@ -59,7 +57,7 @@ def setup_logging(verbose: bool = False, debug: bool = False, quiet: bool = Fals
         level = logging.INFO
     else:
         level = logging.WARNING
-    
+
     # Configure with Rich handler for beautiful output
     logging.basicConfig(
         level=level,
@@ -67,12 +65,9 @@ def setup_logging(verbose: bool = False, debug: bool = False, quiet: bool = Fals
         datefmt="[%X]",
         handlers=[
             RichHandler(
-                show_time=False,
-                show_path=False,
-                markup=True,
-                rich_tracebacks=True
+                show_time=False, show_path=False, markup=True, rich_tracebacks=True
             )
-        ]
+        ],
     )
 
 
@@ -83,10 +78,10 @@ def is_verbose_mode() -> bool:
 
 def enable_status_capture(callback) -> str:
     """Enable status capture for INFO logs.
-    
+
     Args:
         callback: Function to call with log messages
-        
+
     Returns:
         Sink ID for disabling later
     """
@@ -103,4 +98,10 @@ def disable_status_capture() -> None:
     _status_capture_callback = None
 
 
-__all__ = ["setup_logging", "setup_root_logger", "is_verbose_mode", "enable_status_capture", "disable_status_capture"]
+__all__ = [
+    "setup_logging",
+    "setup_root_logger",
+    "is_verbose_mode",
+    "enable_status_capture",
+    "disable_status_capture",
+]

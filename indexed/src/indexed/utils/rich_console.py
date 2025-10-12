@@ -36,7 +36,9 @@ def error_panel(title: str, body: str | None = None) -> Panel:
     return Panel.fit(text, title=title, border_style="red")
 
 
-def make_table(*columns: str, header_style: str = "bold", show_header: bool = True) -> Table:
+def make_table(
+    *columns: str, header_style: str = "bold", show_header: bool = True
+) -> Table:
     table = Table(show_header=show_header, header_style=header_style)
     for col in columns:
         table.add_column(col)
@@ -95,5 +97,3 @@ def transient_spinner(description: str = "Processing…") -> Iterator[Progress]:
                 progress.remove_task(task_id)
             except Exception:
                 pass
-
-

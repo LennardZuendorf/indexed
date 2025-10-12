@@ -174,7 +174,9 @@ def _collection_exists(name: str) -> bool:
     return persister.is_path_exists(name)
 
 
-def _create_one(cfg: SourceConfig, use_cache: bool, progress_callback: ProgressCallback = None) -> None:
+def _create_one(
+    cfg: SourceConfig, use_cache: bool, progress_callback: ProgressCallback = None
+) -> None:
     """Create a single collection.
 
     Args:
@@ -207,7 +209,11 @@ def _update_one(cfg: SourceConfig, progress_callback: ProgressCallback = None) -
 
 
 def create(
-    configs: List[SourceConfig], *, use_cache: bool = True, force: bool = False, progress_callback: ProgressCallback = None
+    configs: List[SourceConfig],
+    *,
+    use_cache: bool = True,
+    force: bool = False,
+    progress_callback: ProgressCallback = None,
 ) -> None:
     """Create collections from source configurations.
 
@@ -233,7 +239,9 @@ def create(
         _create_one(cfg, use_cache, progress_callback)
 
 
-def update(configs: List[SourceConfig], progress_callback: ProgressCallback = None) -> None:
+def update(
+    configs: List[SourceConfig], progress_callback: ProgressCallback = None
+) -> None:
     """Update collections from source configurations.
 
     This function updates existing collections based on the provided source
@@ -279,4 +287,3 @@ class CreateArgs:
 @dataclass
 class UpdateArgs:
     configs: List[SourceConfig]
-

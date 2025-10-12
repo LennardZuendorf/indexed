@@ -9,4 +9,3 @@ from .cli import app
 from .commands import create, search, inspect, update, remove
 
 __all__ = ["commands", "app", "create", "search", "inspect", "update", "remove"]
-

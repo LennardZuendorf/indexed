@@ -275,8 +275,30 @@ def test_inspect_json(monkeypatch):
 def test_list(monkeypatch):
     def fake_status(names, include_index_size=False):  # pylint: disable=unused-argument
         return [
-            CollectionStatus("a", 1, 2, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", ["i"], 10, "jira", "./data/collections/a", 1234),
-            CollectionStatus("b", 3, 4, "2025-01-02T00:00:00Z", "2025-01-02T00:00:00Z", ["i"], 20, "localFiles", "./data/collections/b", 5678),
+            CollectionStatus(
+                "a",
+                1,
+                2,
+                "2025-01-01T00:00:00Z",
+                "2025-01-01T00:00:00Z",
+                ["i"],
+                10,
+                "jira",
+                "./data/collections/a",
+                1234,
+            ),
+            CollectionStatus(
+                "b",
+                3,
+                4,
+                "2025-01-02T00:00:00Z",
+                "2025-01-02T00:00:00Z",
+                ["i"],
+                20,
+                "localFiles",
+                "./data/collections/b",
+                5678,
+            ),
         ]
 
     monkeypatch.setattr("indexed.app.svc_status", fake_status)

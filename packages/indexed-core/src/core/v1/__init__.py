@@ -5,7 +5,7 @@ collections and performing semantic search.
 
 Examples:
     >>> from core.v1 import Index, Config
-    >>> 
+    >>>
     >>> index = Index()
     >>> index.add_collection("docs", connector="filesystem", path="./docs")
     >>> results = index.search("authentication methods")

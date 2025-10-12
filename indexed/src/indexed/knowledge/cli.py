@@ -12,9 +12,7 @@ app = typer.Typer(help="Knowledge / Index Management commands")
 
 # Register commands in the subgroup
 app.add_typer(
-    create.app,
-    name="create",
-    help="Create new collections (files, jira, confluence)"
+    create.app, name="create", help="Create new collections (files, jira, confluence)"
 )
 app.command("search", help="Search indexed collections")(search.search)
 app.command("inspect", help="Inspect indexed collections")(inspect.inspect_collections)

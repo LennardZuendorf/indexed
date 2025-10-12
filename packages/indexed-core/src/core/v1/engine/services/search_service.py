@@ -13,7 +13,9 @@ from loguru import logger
 
 from .models import SourceConfig, ProgressUpdate, ProgressCallback
 from core.v1.engine.persisters.disk_persister import DiskPersister
-from core.v1.engine.factories.search_collection_factory import create_collection_searcher
+from core.v1.engine.factories.search_collection_factory import (
+    create_collection_searcher,
+)
 
 
 class SearchService:
@@ -194,20 +196,24 @@ class SearchService:
             search_configs = configs
 
         num_collections = len(search_configs) if search_configs else 0
-        logger.info(f'Searching "{query}" across {num_collections} collection{"s" if num_collections != 1 else ""}')
+        logger.info(
+            f'Searching "{query}" across {num_collections} collection{"s" if num_collections != 1 else ""}'
+        )
 
         results = {}
         total_collections = len(search_configs)
-        
+
         for idx, cfg in enumerate(search_configs, 1):
             if progress_callback:
-                progress_callback(ProgressUpdate(
-                    stage="searching",
-                    current=idx,
-                    total=total_collections,
-                    message=f"Searching collection: {cfg.name} ({idx}/{total_collections})"
-                ))
-            
+                progress_callback(
+                    ProgressUpdate(
+                        stage="searching",
+                        current=idx,
+                        total=total_collections,
+                        message=f"Searching collection: {cfg.name} ({idx}/{total_collections})",
+                    )
+                )
+
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
                 result = searcher.search(
@@ -219,7 +225,9 @@ class SearchService:
                     include_matched_chunks_content=include_matched_chunks,
                 )
                 results[cfg.name] = result
-                num_docs = len(result.get("results", [])) if isinstance(result, dict) else 0
+                num_docs = (
+                    len(result.get("results", [])) if isinstance(result, dict) else 0
+                )
                 doc_word = "document" if num_docs == 1 else "documents"
                 logger.info(f"✓ {cfg.name}: {num_docs} {doc_word}")
             except Exception as e:
@@ -292,4 +300,3 @@ class SearchArgs:
     include_full_text: bool
     include_all_chunks: bool
     include_matched_chunks: bool
-
