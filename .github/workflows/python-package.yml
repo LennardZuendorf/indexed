@@ -4,9 +4,8 @@
 name: Python Build, Check, Test
 
 on:
-  push:
-    branches: [ "main", "building*" ]
   pull_request:
+    branches: [ "main", "building*" ]
 
 jobs:
   build:
