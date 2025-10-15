@@ -97,7 +97,6 @@ def test_create_files_calls_service(monkeypatch):
         [
             "create",
             "files",
-            "--collection",
             "local",
             "--basePath",
             "./docs",
@@ -303,16 +302,16 @@ def test_list(monkeypatch):
 
     monkeypatch.setattr("indexed.app.svc_status", fake_status)
 
-    result = runner.invoke(app, ["list"])
+    result = runner.invoke(app, ["inspect"])
     assert result.exit_code == 0, result.output
     lines = [line for line in result.stdout.splitlines() if line.strip()]
 
-    # Header present
-    assert "NAME" in lines[0] and "TYPE" in lines[0]
+    # Header present - inspect shows "Name" and "Type" in the header
+    assert "Name" in lines[1] and "Type" in lines[1]
 
     # Rows contain names
     body = "\n".join(lines)
     assert "a" in body and "b" in body
 
-    # Summary line
-    assert lines[-1] == "found 2 collections"
+    # Check that it found 2 collections (message is at the top)
+    assert "Found 2 collections" in result.stdout

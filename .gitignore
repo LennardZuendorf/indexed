@@ -46,10 +46,8 @@ dmypy.json
 data/
 tmp/
 
-# Backups
-*.backup
-*.bak
-
-# OS
-.DS_Store
-Thumbs.db
+#Python Package Stuff
+*.egg-info/
+.dist
+.ruff_cache/
+.pytest_cache/

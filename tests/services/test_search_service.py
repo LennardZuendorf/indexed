@@ -51,13 +51,15 @@ class TestSearchService:
         """Test _discover_collections when collections exist."""
         service = SearchService()
 
-        # Mock persister methods
+        # Mock persister methods - read_folder_files returns file paths
         service._persister.read_folder_files = Mock(
-            return_value=["collection1", "collection2", "not-a-collection"]
-        )
-        service._persister.is_path_exists = Mock(
-            side_effect=lambda path: path
-            in ["collection1/manifest.json", "collection2/manifest.json"]
+            return_value=[
+                "collection1/manifest.json",
+                "collection1/data.json",
+                "collection2/manifest.json",
+                "collection2/data.json",
+                "not-a-collection/data.json"
+            ]
         )
 
         result = service._discover_collections()

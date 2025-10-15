@@ -14,6 +14,22 @@ class TestMCPServerIntegration:
 
         assert mcp is not None
         assert mcp.name == "Indexed MCP Server"
+"""Tests for the MCP server tools and resources."""
+
+import pytest
+from unittest.mock import patch
+from main.services.models import CollectionStatus
+
+
+class TestMCPServerIntegration:
+    """Integration tests for MCP server."""
+
+    def test_server_instance_exists(self):
+        """Test that the MCP server instance is created."""
+        from server.mcp import mcp
+
+        assert mcp is not None
+        assert mcp.name == "Indexed MCP Server"
 
     def test_main_function_exists(self):
         """Test that the main function exists and is callable."""
@@ -25,7 +41,6 @@ class TestMCPServerIntegration:
         """Test that the server module imports without errors."""
         try:
             import server.mcp  # noqa: F401
-
             assert True
         except ImportError as e:
             pytest.fail(f"Server module failed to import: {e}")
@@ -34,7 +49,7 @@ class TestMCPServerIntegration:
 class TestMCPServerFunctions:
     """Test the underlying functions used by MCP tools and resources."""
 
-    @patch("main.services.search_service.search")
+    @patch('server.mcp.svc_search')
     def test_search_function_success(self, mock_search):
         """Test search function returns results successfully."""
         # Arrange
@@ -43,54 +58,40 @@ class TestMCPServerFunctions:
             "collection2": {"documents": [{"title": "Another Doc"}]},
         }
 
-        # Import and get the function
-        import server.mcp as server_module
-
-        # Find the search function
-        search_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "search":
-                search_func = obj.fn
-                break
-
-        if search_func is None:
-            pytest.skip(
-                "Could not find search function - FastMCP structure may have changed"
-            )
+        # Import the wrapped function from the server module and get the underlying function
+        from server.mcp import search
+        search_fn = search.fn
 
         # Act
-        result = search_func("test query")
+        result = search_fn("test query")
 
         # Assert
         assert isinstance(result, dict)
-        mock_search.assert_called_once_with("test query", configs=None)
+        # Check that the mock was called with the expected arguments
+        # Note: the actual call includes all the config parameters from MCPConfig
+        assert mock_search.called
+        call_args = mock_search.call_args
+        assert call_args[0][0] == "test query"  # First positional arg is query
+        assert call_args[1]["configs"] is None  # configs should be None for auto-discovery
 
-    @patch("main.services.search_service.search")
+    @patch('server.mcp.svc_search')
     def test_search_function_error_handling(self, mock_search):
         """Test search function handles errors gracefully."""
         # Arrange
         mock_search.side_effect = Exception("Search failed")
 
-        import server.mcp as server_module
-
-        # Find the search function
-        search_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "search":
-                search_func = obj.fn
-                break
-
-        if search_func is None:
-            pytest.skip("Could not find search function")
+        # Import the wrapped function from the server module and get the underlying function
+        from server.mcp import search
+        search_fn = search.fn
 
         # Act
-        result = search_func("test query")
+        result = search_fn("test query")
 
         # Assert
         assert "error" in result
         assert result["error"] == "Search failed"
 
-    @patch("server.mcp.svc_status")
+    @patch('server.mcp.svc_status')
     def test_collections_resource_function_success(self, mock_status):
         """Test collections resource function returns collection names."""
         # Arrange
@@ -121,20 +122,12 @@ class TestMCPServerFunctions:
             ),
         ]
 
-        import server.mcp as server_module
-
-        # Find the collections list resource function
-        collections_resource_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "collections_list":
-                collections_resource_func = obj.fn
-                break
-
-        if collections_resource_func is None:
-            pytest.skip("Could not find collections_list function")
+        # Import the wrapped function from the server module and get the underlying function
+        from server.mcp import collections_list
+        collections_list_fn = collections_list.fn
 
         # Act
-        result = collections_resource_func()
+        result = collections_list_fn()
 
         # Assert
         assert isinstance(result, list)
@@ -143,26 +136,18 @@ class TestMCPServerFunctions:
         assert "collection2" in result
         mock_status.assert_called_once_with()
 
-    @patch("server.mcp.svc_status")
+    @patch('server.mcp.svc_status')
     def test_collections_resource_function_error_handling(self, mock_status):
         """Test collections resource function handles errors gracefully."""
         # Arrange
         mock_status.side_effect = Exception("Status failed")
 
-        import server.mcp as server_module
-
-        # Find the collections list resource function
-        collections_resource_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "collections_list":
-                collections_resource_func = obj.fn
-                break
-
-        if collections_resource_func is None:
-            pytest.skip("Could not find collections_list function")
+        # Import the wrapped function from the server module and get the underlying function
+        from server.mcp import collections_list
+        collections_list_fn = collections_list.fn
 
         # Act
-        result = collections_resource_func()
+        result = collections_list_fn()
 
         # Assert
         assert isinstance(result, list)
@@ -171,51 +156,24 @@ class TestMCPServerFunctions:
 
     def test_search_collection_function_exists(self):
         """Test that search_collection function exists."""
-        import server.mcp as server_module
+        from server.mcp import search_collection
 
-        # Find the search_collection function
-        search_collection_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "search_collection":
-                search_collection_func = obj.fn
-                break
+        # The wrapped object has the actual function in .fn
+        assert hasattr(search_collection, 'fn')
+        assert callable(search_collection.fn)
 
-        # Just verify it exists and is callable
-        if search_collection_func is not None:
-            assert callable(search_collection_func)
-        else:
-            pytest.skip("Could not find search_collection function")
+    def test_collections_status_resource_function_exists(self):
+        """Test that collections_status_resource function exists."""
+        from server.mcp import collections_status_list
 
-    def test_collections_status_list_function_exists(self):
-        """Test that collections_status_list function exists."""
-        import server.mcp as server_module
+        # The wrapped object has the actual function in .fn
+        assert hasattr(collections_status_list, 'fn')
+        assert callable(collections_status_list.fn)
 
-        # Find the collections_status_list function
-        collections_status_resource_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "collections_status_list":
-                collections_status_resource_func = obj.fn
-                break
+    def test_collection_status_resource_function_exists(self):
+        """Test that collection_status_resource function exists."""
+        from server.mcp import collection_status
 
-        # Just verify it exists and is callable
-        if collections_status_resource_func is not None:
-            assert callable(collections_status_resource_func)
-        else:
-            pytest.skip("Could not find collections_status_list function")
-
-    def test_collection_status_function_exists(self):
-        """Test that collection_status function exists."""
-        import server.mcp as server_module
-
-        # Find the collection_status function
-        collection_status_resource_func = None
-        for name, obj in vars(server_module).items():
-            if hasattr(obj, "fn") and name == "collection_status":
-                collection_status_resource_func = obj.fn
-                break
-
-        # Just verify it exists and is callable
-        if collection_status_resource_func is not None:
-            assert callable(collection_status_resource_func)
-        else:
-            pytest.skip("Could not find collection_status function")
+        # The wrapped object has the actual function in .fn
+        assert hasattr(collection_status, 'fn')
+        assert callable(collection_status.fn)

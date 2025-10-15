@@ -1,19 +1,21 @@
 """Direct command module tests using Typer's CliRunner.
 
 Covers:
-- src/indexed/knowledge/commands/create.py (app)
-- src/indexed/knowledge/commands/remove.py (remove)
-- src/indexed/knowledge/commands/search.py (search)
-- src/indexed/knowledge/commands/update.py (update)
+- src/commands/create.py (create_app)
+- src/commands/delete.py (register)
+- src/commands/legacy.py (legacy_app)
+- src/commands/search.py (register)
+- src/commands/update.py (register)
 """
 
 from typer.testing import CliRunner
 import typer
 
-from indexed.knowledge.commands.create import app as create_app
-from indexed.knowledge.commands.remove import remove
-from indexed.knowledge.commands.search import search
-from indexed.knowledge.commands.update import update
+from commands.create import create_app
+from commands.delete import register as register_delete
+from commands.legacy import legacy_app
+from commands.search import register as register_search
+from commands.update import register as register_update
 from core.v1.engine.services.models import CollectionStatus
 
 
