@@ -1,15 +1,17 @@
-# Project Brief - Indexed Python
+# Project Brief - Indexed
 
 ## Product Overview
 
-**Product Name**: Indexed - Document Search CLI  
-**Status**: Phase 1 Complete ✅ | Phase 2 Standardization In Progress 🔄  
-**Current Branch**: building 
-**Last Updated**: 2025-10-08
+**Product Name**: Indexed  
+**Version**: 1.0.0  
+**Status**: Production Ready  
+**Last Updated**: 2025-10-15
 
-## What We're Building
+## What is Indexed?
 
-A simple, privacy-first command-line tool for semantic document search built on modern vector search technology (FAISS + embeddings). The system allows developers to index local documents and perform fast semantic searches without sending data to third parties.
+Indexed is a privacy-first command-line tool for semantic document search built on modern vector search technology (FAISS + embeddings). It allows developers to index local and remote documents (Jira, Confluence, local files) and perform fast semantic searches without sending data to third parties.
+
+Think of it as building your own private search engine for your institutional knowledge - documentation, tickets, notes, and more - that understands meaning, not just keywords.
 
 ## Core Value Proposition
 
@@ -26,61 +28,71 @@ A simple, privacy-first command-line tool for semantic document search built on 
 - Want fast, semantic search through personal document collections
 - Value privacy and local-first approach
 
-## Current Architecture Status
+## Project Structure
 
-### Monorepo Structure (Implemented)
+### Monorepo Layout
 ```
-indexed-python/
-├── apps/
-│   └── indexed-cli/          # CLI + MCP Server application
+indexed/
+├── indexed/                  # Main CLI application
+│   └── src/indexed/         # CLI commands, MCP server
 ├── packages/
-│   └── indexed-core/         # Core library (legacy + new implementation)
-├── tests/                    # Test suite
-└── data/                     # Local data storage
+│   ├── indexed-core/        # Core library (core.v1 API)
+│   ├── indexed-connectors/  # Document source connectors
+│   └── utils/               # Shared utilities
+├── tests/                   # Test suite
+└── data/                    # Local data storage (gitignored)
 ```
 
-### Current Implementation State
+### Architecture Overview
 
-**Phase 1: Monorepo Migration ✅ COMPLETE (2025-10-08)**
-- ✅ Monorepo structure established (apps/, packages/)
-- ✅ All packages properly configured
-- ✅ CLI commands fully functional
-- ✅ MCP server working with search and inspect tools
-- ✅ All imports and dependencies resolved
-- ✅ Legacy code preserved and working
+**Core Components:**
+- **`core.v1`**: Clean API for indexing and search (`Index`, `Config` classes)
+- **Connectors**: Protocol-based connector system (Files, Jira, Confluence)
+- **CLI**: Typer-based commands with Rich output formatting
+- **MCP Server**: FastMCP integration for AI agents (Claude, ChatGPT, etc.)
+- **Configuration**: Pydantic-based config management with TOML files
 
-**Phase 2: Standardization & Refactoring 🔄 IN PROGRESS**
-- 📋 Unified configuration management system
-- 📋 Standardized connector interface (protocol-based)
-- 📋 Clean core service API
-- 📋 Simplified import paths
-- 📋 Legacy migration with deprecation warnings
-- 📋 Comprehensive documentation
-
-**Phase 3: Enhancements 📋 PLANNED**
-- 📋 Enhanced CLI with Rich UI components
-- 📋 Additional connectors (Git, Notion)
-- 📋 Additional embedding providers (OpenAI, Voyage AI)
-- 📋 Performance optimizations
+**Design Philosophy:**
+- KISS (Keep It Simple, Stupid) - simplicity over complexity
+- Privacy-first - local processing by default
+- Type-safe - Pydantic validation and type hints throughout
+- Versioned API - `core.v1` with clean upgrade paths
+- UX-first - CLI designed for excellent developer experience
 
 ## Key Features
 
-### Current Features (Legacy)
-- Multi-source document indexing (Jira, Confluence, Local Files)
-- FAISS vector similarity search
-- Sentence-transformers embeddings (local)
-- Collection management
-- MCP server for AI agent integration
-- TOML configuration
+**Document Indexing:**
+- Multi-source indexing (Jira, Confluence, Local Files)
+- Support for 20+ file formats (PDF, DOCX, MD, TXT, etc.)
+- Incremental updates (reindex only changed documents)
+- Configurable include/exclude patterns
 
-### Planned Features (Next Phases)
-- Enhanced CLI output with Rich components
-- Web server UI for browser-based search
-- Better error handling and user feedback
-- Progress indicators and status updates
-- Improved configuration management
+**Search & Retrieval:**
+- Semantic search using FAISS vector similarity
+- Local embeddings (sentence-transformers) - no data sent to cloud
+- Search across all collections or target specific ones
+- Configurable result limits and similarity thresholds
 
-## Target API & Workflow
+**Collection Management:**
+- Create, update, inspect, and remove collections
+- Per-collection configuration and caching
+- Collection-level statistics and metadata
+
+**Developer Integration:**
+- MCP (Model Context Protocol) server for AI agents
+- Works with Claude, ChatGPT, Cursor, and other MCP-compatible tools
+- Clean Python API for programmatic access (`core.v1`)
+- Rich CLI output with colors and formatting
+
+**Configuration:**
+- TOML-based configuration (`indexed.toml`)
+- Environment variable support (`.env` files)
+- Per-collection and global settings
+- Sensible defaults for quick start
+
+## Usage Examples
+
+### Typical Workflow
 
 **Python API (Core V1)**
 ```python
@@ -113,24 +125,28 @@ stats = index.inspect(collection="jira")  # Specific collection
 **CLI Commands**
 ```bash
 # Search operations (primary use case)
-indexed search "authentication methods"           # All collections
-indexed search "query" --collection jira          # Specific collection
+indexed index search "authentication methods"     # All collections
+indexed index search "query" --collection jira    # Specific collection
 
 # Collection management
-indexed create                                    # Interactive: add new collection
-indexed inspect                                   # Show all collections
-indexed inspect docs                              # Inspect specific collection
-indexed update jira                               # Refresh a collection
-indexed remove docs                               # Remove a collection
+indexed index create files --collection docs --path ./docs
+indexed index create jira --collection issues --url <url> --jql <query>
+indexed index create confluence --collection pages --url <url> --cql <query>
+indexed index inspect                             # Show all collections
+indexed index inspect docs                        # Inspect specific collection
+indexed index update docs                         # Refresh a collection
+indexed index remove docs                         # Remove a collection
 
 # Configuration management
-indexed config show
+indexed config inspect
+indexed config init
 indexed config set KEY VALUE
 indexed config validate
-indexed config init
+indexed config reset
 
 # MCP server for AI agents
-indexed-mcp
+indexed mcp run
+indexed mcp dev
 ```
 
 **Config File (Versioned)**
@@ -159,40 +175,16 @@ chunk_size = 512
 4. **Monorepo Structure**: Clean separation of apps and packages
 5. **Type Safety**: Type hints where they add value, Pydantic for config validation
 
-## Current Tasks & Focus
+## Release Status
 
-### Active Development
-- Monorepo structure completion and dependency fixes
-- CLI restoration and namespace adjustments
-- Package versioning and import structure
-- Getting basic functionality working again
+**v1.0 - Production Ready** ✅
+- All core features implemented and tested
+- Clean architecture with `core.v1` API
+- CLI commands fully functional
+- MCP server integration working
+- Documentation complete
 
-### Success Criteria
-- ✅ Monorepo structure properly configured
-- ✅ CLI commands functional and working
-- ✅ Dependencies resolved (uv.lock fixed)
-- ✅ Enhanced CLI output with Rich components
-- ✅ Web server UI ready for use
-
-## Project Goals
-
-### Short-term (Current Phase)
-1. Complete monorepo restructuring and get CLI working
-2. Fix pyproject.toml files and dependency issues
-3. Restore basic functionality (index, search, inspect)
-4. Ensure all packages import and work correctly
-
-### Medium-term
-1. Enhanced CLI with Rich UI components
-2. Better progress indicators and user feedback
-3. Improved error messages and validation
-4. Command structure optimization
-
-### Long-term
-1. Web server UI development
-2. HTTP API for browser-based interface
-3. Core V2 API with enhanced features (different config structure, no conflicts with v1)
-4. Advanced connectors and enterprise features
+**Future enhancements tracked via GitHub Issues**
 
 ## Development Principles
 
@@ -212,10 +204,9 @@ chunk_size = 512
 - Cloud features are optional
 - User data never leaves their machine (unless explicitly configured)
 
-## Links & Resources
+## Additional Documentation
 
-- Architecture: See `ARCHITECTURE.md` and `.memory/architecture.md`
-- Tech Stack: See `.memory/tech.md`
-- Development Guide: See `DEVELOPMENT.md`
-- PRD Documents: See `.prd/` directory
-- Implementation Plans: See `PHASE2_IMPLEMENTATION_PLAN.md`
+- **Architecture**: `.memory/architecture.md` - System design and patterns
+- **Tech Stack**: `.memory/tech.md` - Technology choices and coding standards
+- **Development**: Root `README.md` and package READMEs for setup instructions
+- **Tasks**: GitHub Issues for feature requests and bugs

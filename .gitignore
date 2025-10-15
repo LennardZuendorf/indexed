@@ -5,11 +5,14 @@
 *.so
 .Python
 
-# Virtual environments
+# Virtual environments & Env Variables
 .venv/
 venv/
 ENV/
 env/
+.env
+.env.local
+.env.production
 
 # Package build artifacts
 *.egg-info/
