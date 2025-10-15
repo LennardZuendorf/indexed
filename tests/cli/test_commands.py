@@ -1,20 +1,20 @@
 """Direct command module tests using Typer's CliRunner.
 
 Covers:
-- src/cli/commands/create.py (create_app)
-- src/cli/commands/delete.py (register)
-- src/cli/commands/legacy.py (legacy_app)
-- src/cli/commands/search.py (register)
-- src/cli/commands/update.py (register)
+- src/commands/create.py (create_app)
+- src/commands/delete.py (register)
+- src/commands/legacy.py (legacy_app)
+- src/commands/search.py (register)
+- src/commands/update.py (register)
 """
 from typer.testing import CliRunner
 import typer
 
-from cli.commands.create import create_app
-from cli.commands.delete import register as register_delete
-from cli.commands.legacy import legacy_app
-from cli.commands.search import register as register_search
-from cli.commands.update import register as register_update
+from commands.create import create_app
+from commands.delete import register as register_delete
+from commands.legacy import legacy_app
+from commands.search import register as register_search
+from commands.update import register as register_update
 from main.services import CollectionStatus
 
 
