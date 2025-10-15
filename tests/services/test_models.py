@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from main.services.models import SourceConfig, CollectionStatus
+from core.v1.engine.services.models import SourceConfig, CollectionStatus
 
 
 class TestSourceConfig:

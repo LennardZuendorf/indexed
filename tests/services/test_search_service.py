@@ -3,8 +3,8 @@
 import json
 from unittest.mock import Mock, patch
 
-from main.services.search_service import SearchService, search
-from main.services.models import SourceConfig
+from core.v1.engine.services.search_service import SearchService, search
+from core.v1.engine.services.models import SourceConfig
 
 
 class TestSearchService:
@@ -17,7 +17,7 @@ class TestSearchService:
         assert service._searcher_cache == {}
         assert service._persister is not None
 
-    @patch("main.services.search_service.create_collection_searcher")
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_get_searcher_creates_new(self, mock_factory):
         """Test _get_searcher creates new searcher when not cached."""
         mock_searcher = Mock()
@@ -32,7 +32,7 @@ class TestSearchService:
             collection_name="test-collection", index_name="test-indexer"
         )
 
-    @patch("main.services.search_service.create_collection_searcher")
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_get_searcher_uses_cache(self, mock_factory):
         """Test _get_searcher uses cached searcher."""
         mock_searcher = Mock()
@@ -51,14 +51,22 @@ class TestSearchService:
         """Test _discover_collections when collections exist."""
         service = SearchService()
 
-        # Mock persister methods
+        # Mock persister methods - read_folder_files returns file paths
         service._persister.read_folder_files = Mock(
-            return_value=["collection1", "collection2", "not-a-collection"]
+            return_value=[
+                "collection1/manifest.json",
+                "collection1/data.json",
+                "collection2/manifest.json",
+                "collection2/data.json",
+                "not-a-collection/data.json"
+            ]
         )
-        service._persister.is_path_exists = Mock(
-            side_effect=lambda path: path
-            in ["collection1/manifest.json", "collection2/manifest.json"]
-        )
+        
+        # Mock is_path_exists to return True for manifests
+        def mock_is_path_exists(path):
+            return path in ["collection1/manifest.json", "collection2/manifest.json"]
+        
+        service._persister.is_path_exists = Mock(side_effect=mock_is_path_exists)
 
         result = service._discover_collections()
 
@@ -104,7 +112,7 @@ class TestSearchService:
 
         assert result == "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
-    @patch("main.services.search_service.create_collection_searcher")
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_with_configs(self, mock_factory):
         """Test search with explicit configs."""
         mock_searcher = Mock()
@@ -145,7 +153,7 @@ class TestSearchService:
             include_matched_chunks_content=False,
         )
 
-    @patch("main.services.search_service.create_collection_searcher")
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_auto_discovery(self, mock_factory):
         """Test search with auto-discovery (configs=None)."""
         mock_searcher = Mock()
@@ -198,7 +206,7 @@ class TestSearchService:
             include_matched_chunks_content=False,
         )
 
-    @patch("main.services.search_service.create_collection_searcher")
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_error_handling(self, mock_factory):
         """Test search handles errors gracefully."""
         mock_searcher = Mock()
@@ -227,7 +235,7 @@ class TestSearchService:
 class TestSearchFunctionalInterface:
     """Test functional search interface."""
 
-    @patch("main.services.search_service._default_service")
+    @patch("core.v1.engine.services.search_service._default_service")
     def test_search_function_delegates_to_service(self, mock_service):
         """Test that search function delegates to default service."""
         mock_service.search.return_value = {"test": "result"}
@@ -260,9 +268,10 @@ class TestSearchFunctionalInterface:
             include_full_text=True,
             include_all_chunks=True,
             include_matched_chunks=True,
+            progress_callback=None,
         )
 
-    @patch("main.services.search_service._default_service")
+    @patch("core.v1.engine.services.search_service._default_service")
     def test_search_function_with_defaults(self, mock_service):
         """Test search function with default parameters."""
         mock_service.search.return_value = {}
@@ -277,4 +286,5 @@ class TestSearchFunctionalInterface:
             include_full_text=False,
             include_all_chunks=False,
             include_matched_chunks=False,
+            progress_callback=None,
         )

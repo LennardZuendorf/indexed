@@ -1,246 +1,170 @@
-# Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)
+<p align="left">
+  <img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
+  <h3>
+    Index Institutional Knowledge
+    and Make it Available for AI Agents and LLMs! 
+  </h3>
+</p>
 
-- [Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)](#project-allows-document-indexing-in-a-local-vector-database-and-then-search-supports-jira-confluence-and-local-files-can-be-integrated-via-mcp)
-  - [Base info](#base-info)
-  - [Common use case](#common-use-case)
-  - [How to set up and use](#how-to-set-up-and-use)
-    - [Create collection for Confluence:](#create-collection-for-confluence)
-    - [Create collection for Jira:](#create-collection-for-jira)
-    - [Create collection for local files](#create-collection-for-local-files)
-    - [Update existing collection:](#update-existing-collection)
-    - [Search in collection:](#search-in-collection)
-    - [Set up MCP:](#set-up-mcp)
-  - [Collection structure](#collection-structure)
-  - [Other useful info](#other-useful-info)
+A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Can be integrated with AI agents via MCP (Model Context Protocol).
 
-## Base info
+**Key Features:**
+- 🔒 **Privacy-First**: All processing and storage happens locally (no data sent to third parties)
+- 🧠 **Semantic Search**: Understands meaning, not just keywords using vector embeddings
+- ⚡ **Fast Setup**: Simple installation with `uv` and intuitive CLI commands
+- 🔌 **MCP Integration**: Works with AI agents like Claude, ChatGPT, Cursor via Model Context Protocol
+- 📁 **Multiple Sources**: Index from local files, Jira (Cloud & Server), and Confluence (Cloud & Server)
 
-Key points:
-- Supports Jira/Confluence Data Center/Server and Cloud. For Jira ticket is a document, for Confluence page is a document.
-- Supports local files from a specified folder in various formats like: .pdf, .pptx, .docx, etc. Uses [Unstructured](https://github.com/Unstructured-IO/unstructured) for local files parsing;
-- Does NOT send any data to any third-party systems. All data are processed locally and stored locally (except in the case when you use it as MCP with a non-local AI agent).
-- Supports MCP protocol to use the vector search as a tool in AI agents.
-- Supports "update" operation, so there is no need to fully recreate the vector database each time.
-- Provides an abstraction to add more data sources and to use different technologies (embeddings, vector databases, etc.).
+## Table of Contents
 
-Key technologies used:
-- "FAISS" lib (https://github.com/facebookresearch/faiss) for vector search;
-- "sentence-transformers" lib (https://pypi.org/project/sentence-transformers/) for embeddings;
-- "Unstructured" lib: https://github.com/Unstructured-IO/unstructured;
-- "LangChain" lib: https://python.langchain.com/docs/introduction/.
+- [Quick Start](#quick-start)
+- [What It Does](#what-it-does)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [License](#license)
 
-Please check this article for more context: https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba
+## Quick Start
 
-Communication:
-- if you like the app, please add a star for the repo (it encourages me much for the future work);
-- if you see some issues or improvements, please log them here: https://github.com/shnax0210/documents-vector-search/issues
+```bash
+# 1. Clone and setup
+git clone <repository-url>
+cd indexed-python
+uv sync
 
-## Common use case
-1) You create a collection by a dedicated script (there are separate scripts for Jira, Confluence and local files cases). During the collection creation, data are loaded into your local machine and then indexed. Results are stored in a subfolder of `./data/collections` with the name that you specify via the "--collection ${collectionName}" parameter. So a collection is just a folder with all needed information for search, such as: loaded documents, index files, metadata, etc. Once a collection is created, it can be used for search and update. The creation process can take a while; it depends on the number of documents your collection consists of and local machine resources.
-2) After some time, you may want to update existing collections to get new data, you can do it via a dedicated script. You will need to specify the collection name used during collection creation. Collection update reads and indexes only new/updated documents, so it should be much faster than collection creation.
-3) You can search in an existing collection by dedicated script.
-4) You can set up MCP tool for existing collection, so an AI agent will be able to use the search.
+# 2. Create a collection (dynamic connectors)
+# You'll be prompted for connector-specific settings
+uv run indexed index create --type files --name my-docs
 
-You can create different collections for different use cases. For example, you can create a collection for all Confluence pages to do a general search, and you can create a collection for pages from a specific Confluence space, so you will do a more narrow search.
+# 3. Search your collections
+uv run indexed index search "your query"
 
-## How to set up and use
-
-1) Clone the repository
-2) Install `uv`: https://docs.astral.sh/uv/
-3) Navigate to the root project folder and run: `uv sync`
-
-### Create collection for Confluence:
-
-1) Set env variables needed for authentification/authorization:
-- **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
-- **For Confluence Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
-
-2) Run command like:
-```
-uv run confluence_collection_create_cmd_adapter.py --collection "confluence" --url "${baseConfluenceUrl}" --cql "${confluenceQuery}"
+# 4. Start MCP server for AI agents
+uv run indexed mcp
 ```
 
-Notes:
-- The script automatically detects whether your Confluence instance is Cloud or Server/Data Center based on the URL:
-  - URLs ending with `.atlassian.net` are treated as Confluence Cloud
-  - All other URLs are treated as Confluence Server/Data Center
-- You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
-- Please update ${baseConfluenceUrl} to the real Confluence base URL:
-  - For Server/Data Center, example: https://confluence.example.com
-  - For Cloud, example: https://your-domain.atlassian.net
-- Please update ${confluenceQuery} to the real Confluence query, for example: "(space = 'MySpaceName') AND (created >= '2025-01-01' OR lastModified >= '2025-01-01')"
+For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 
-### Create collection for Jira:
+Note:
+- Legacy command (deprecated): `uv run indexed index create files -n my-docs -p ./documents`
+- New dynamic flow uses typed schemas; available types: `files`, `jira`, `jiraCloud`, `confluence`, `confluenceCloud`.
 
-1) Set env variables needed for authentification/authorization:
-- **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
-- **For Jira Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
+## What It Does
 
-2) Run command like:
-```
-uv run jira_collection_create_cmd_adapter.py --collection "jira" --url "${baseJiraUrl}" --jql "${jiraQuery}"
-```
+**Indexed** lets you create searchable collections of documents and find information using natural language queries (semantic search). Instead of exact keyword matching, it understands the meaning of your queries.
 
-Notes:
-- The script automatically detects whether your Jira instance is Cloud or Server/Data Center based on the URL:
-  - URLs ending with `.atlassian.net` are treated as Jira Cloud
-  - All other URLs are treated as Jira Server/Data Center
-- You can use different values for the "collection" parameter, but you will need to use the same value during collection updates and searches. It defines the collection name, and all collection data will be stored in a folder with that name under `./data/collections`;
-- Please update ${baseJiraUrl} to the real Jira base URL:
-  - For Server/Data Center, example: https://jira.example.com
-  - For Cloud, example: https://your-domain.atlassian.net
-- Please update ${jiraQuery} to the real Jira query, for example: "project = MyProjectName AND created >= -183d"
+**Key Capabilities:**
+- **Local Files**: Index documents in various formats (.pdf, .pptx, .docx, .md, etc.)
+- **Jira & Confluence**: Index tickets and pages from both Cloud and Server/Data Center
+- **Semantic Search**: Find documents by meaning, not just keywords
+- **MCP Protocol**: Integrate with AI agents (Claude, ChatGPT, etc.)
+- **Incremental Updates**: Refresh collections without full re-indexing
+- **Privacy-First**: All processing happens locally on your machine
 
-### Create collection for local files
+### Technology Stack
 
-1) Run a command like:
-```
-uv run files_collection_create_cmd_adapter.py --basePath "${pathToFolderWithFiles}"
-```
+- **[FAISS](https://github.com/facebookresearch/faiss)** - Fast vector similarity search
+- **[Sentence Transformers](https://www.sbert.net/)** - Local embedding models
+- **[Unstructured](https://github.com/Unstructured-IO/unstructured)** - Multi-format document parsing
+- **[Typer](https://typer.tiangolo.com/)** - Modern CLI framework
+- **[Rich](https://rich.readthedocs.io/)** - Beautiful terminal output
+- **[FastMCP](https://github.com/jlowin/fastmcp)** - Model Context Protocol server
 
-Notes:
-- Please update `${pathToFolderWithFiles}` to the actual folder path.
-- By default, the collection will be named after the last folder in `--basePath` (for example, if `--basePath` is "/Users/a/b", the collection name will be "b"). You can override this by adding `--collection ${collectionName}`, as in all other scripts.
-- By default, if a file cannot be read, it is just skipped and written to the log. You can override this by adding the `--failFast` parameter, so the script will fail immediately after the first error.
-- By default, all files from `${pathToFolderWithFiles}` are included (except for some predefined types, like zip, jar, etc.). You can adjust this by adding `--includePatterns` and `--excludePatterns` parameters with regexes. If you specify both `--includePatterns` and `--excludePatterns`, only files that match `--includePatterns` and do not match `--excludePatterns` will be included. Examples:
-    - Example of `--includePatterns` (the parameter can be used multiple times): `--includePatterns "subfolder1/.*" "subfolder2/.*"`.
-    - Example of `--excludePatterns` (the parameter can be used multiple times): `--excludePatterns "subfolder1/.*" "subfolder2/.*"`.
-- The script uses the [Unstructured](https://github.com/Unstructured-IO/unstructured) Python library, which supports many [file formats](https://docs.unstructured.io/welcome#supported-file-types) such as .pdf, .pptx, .docx, etc. Some file formats may require additional software installation, listed [here](https://docs.unstructured.io/open-source/installation/full-installation#full-installation).
+### How It Works
 
-### Update existing collection:
+1. **Index**: Documents are chunked, embedded into vectors, and stored in a FAISS index
+2. **Search**: Your query is embedded and compared against stored vectors using semantic similarity
+3. **Retrieve**: The most relevant document chunks are returned with context
 
-1) Set env variables needed for authentification/authorization (not needed for local files):
-- **For Confluence Server/Data Center:** set CONF_TOKEN env variable with your Confluence Bearer token (optionally, you can set CONF_LOGIN and CONF_PASSWORD env variables instead with your Confluence user login and password, but the token variant is more recommended).
-- **For Confluence Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
-- **For Jira Server/Data Center:** set JIRA_TOKEN env variable with your Jira Bearer token (optionally, you can set JIRA_LOGIN and JIRA_PASSWORD env variables instead with your Jira user login and password, but the token variant is more recommended).
-- **For Jira Cloud:** set ATLASSIAN_EMAIL env variable with your Atlassian account email and ATLASSIAN_TOKEN env variable with your Atlassian Cloud API token. (Generate API token at: https://id.atlassian.com/manage/api-tokens)
+For technical details, see the [Core Library Documentation](./packages/indexed-core/README.md).
 
-2) Run command like:
-```
-uv run collection_update_cmd_adapter.py --collection "${collectionName}"
+## Installation
+
+### Prerequisites
+
+1. **Python 3.10+**
+2. **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager
+
+### Setup
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd indexed-python
+
+# Install dependencies
+uv sync
+
+# Verify installation
+uv run indexed --help
 ```
 
-Notes:
-- Please update ${collectionName} to the real collection name (the one used during collection creation), for example: "confluence" or "jira".
+For detailed usage instructions including:
+- Creating collections (Files, Jira, Confluence)
+- Searching and managing collections
+- MCP server integration
+- Authentication setup
+- CLI commands reference
 
-### Search in collection:
+See the **[CLI Documentation](./indexed/README.md)**
 
-Run command like:
+## Project Structure
+
+The project uses a monorepo structure with independent packages:
+
 ```
-uv run collection_search_cmd_adapter.py --collection "${collectionName}" --query "${searchQuery}"
-```
-
-Notes:
-- Please update ${collectionName} to the real collection name (the one used during collection creation), for example: "confluence" or "jira";
-- Please update ${searchQuery} to the text that you would like to search, for example: "How to set up react project locally";
-- You can add the "--includeMatchedChunksText" parameter to include matched chunks of a document text in search results.
-
-### Set up MCP:
-
-The project provides a FastMCP server that exposes search and inspect capabilities as MCP tools and resources. This allows AI agents like Claude, ChatGPT, and others to search your document collections directly.
-
-#### Available MCP Tools:
-- **`search`** - Search across all available collections using semantic similarity
-- **`search_collection`** - Search within a specific collection
-
-#### Available MCP Resources:
-- **`resource://collections`** - List of available collection names
-- **`resource://collections/status`** - Detailed status for all collections
-- **`resource://collections/{name}`** - Detailed status for a specific collection
-
-#### MCP Server Configuration:
-
-Add MCP configuration like:
-```json
-{
-    "servers": {
-        "indexed-search": {
-            "type": "stdio",
-            "command": "uv",
-            "args": [
-                "--directory",
-                "${fullPathToRootProjectFolder}",
-                "run",
-                "indexed-mcp"
-            ]
-        }
-    }
-}
+indexed-python/
+├── indexed/                   # Main CLI and MCP server
+│   ├── src/cli/              # CLI commands and MCP implementation
+│   └── pyproject.toml        # 📖 See: indexed/README.md
+│
+├── packages/
+│   ├── indexed-core/         # Core indexing and search library
+│   │   ├── src/core/         # Business logic and services
+│   │   └── pyproject.toml    # 📖 See: packages/indexed-core/README.md
+│   │
+│   ├── indexed-connectors/   # Document source connectors
+│   │   ├── src/connectors/   # Jira, Confluence, Files connectors
+│   │   └── pyproject.toml    # 📖 See: packages/indexed-connectors/README.md
+│   │
+│   └── utils/                # Shared utilities
+│       ├── src/utils/        # Logging, retry, batching, etc.
+│       └── pyproject.toml    # 📖 See: packages/utils/README.md
+│
+├── tests/                    # Test suite
+├── data/                     # Runtime data (gitignored)
+│   ├── collections/         # Indexed document collections
+│   └── caches/              # API response caches
+│
+└── pyproject.toml            # Workspace configuration
 ```
 
-If you use VS Code IDE and GitHub Copilot, you can add the configuration into `.vscode/mcp.json` file in the root of your project.
+### Package Documentation
 
-#### Usage Examples:
+- **[indexed/](./indexed/README.md)** - CLI commands, MCP server, usage examples
+- **[indexed-core/](./packages/indexed-core/README.md)** - Core library architecture and APIs
+- **[indexed-connectors/](./packages/indexed-connectors/README.md)** - Document connector implementations
+- **[utils/](./packages/utils/README.md)** - Shared utility functions
 
-Once configured, you can use natural language prompts with your AI agent:
+## Documentation
 
-- "Search for information about authentication methods across all my collections"
-- "Find documentation about API endpoints in the confluence collection"
-- "What collections are available and how many documents do they contain?"
-- "Search for bug reports related to login issues in the jira collection"
+- **[CLI Documentation](./indexed/README.md)** - Complete usage guide
+- **[Core Library](./packages/indexed-core/README.md)** - Technical architecture
+- **[Connectors](./packages/indexed-connectors/README.md)** - Source integrations
+- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Development workflow
+- **[MIGRATION.md](./MIGRATION.md)** - Migration guide
 
-The MCP server will automatically discover all your existing collections and make them searchable through the AI agent.
+## License
 
-#### Configuration via Environment Variables:
+See [LICENSE](./LICENSE) file for details.
 
-The MCP server can be configured using environment variables:
+## Credits
 
-**Search Configuration:**
-- `INDEXED_MCP_MAX_DOCS` - Maximum documents to return per search (default: 10)
-- `INDEXED_MCP_MAX_CHUNKS` - Maximum text chunks to return per search (default: 30)
-- `INDEXED_MCP_INCLUDE_FULL_TEXT` - Include complete document text in results (default: false)
-- `INDEXED_MCP_INCLUDE_ALL_CHUNKS` - Include all document chunks in results (default: false)
-- `INDEXED_MCP_INCLUDE_MATCHED_CHUNKS` - Include only matching chunks in results (default: false)
-- `INDEXED_MCP_DEFAULT_INDEXER` - Default FAISS indexer to use (default: indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2)
+The Core v1 implementation is based on [documents-vector-search](https://github.com/shnax0210/documents-vector-search) by shnax0210, licensed under MIT and modified extensively.
 
-**Inspect Configuration:**
-- `INDEXED_MCP_INCLUDE_INDEX_SIZE` - Include index size calculation in status (default: false, may be slower)
+## Resources
 
-**Example with environment variables:**
-```json
-{
-    "servers": {
-        "indexed-search": {
-            "type": "stdio",
-            "command": "uv",
-            "args": [
-                "--directory",
-                "${fullPathToRootProjectFolder}",
-                "run",
-                "indexed-mcp"
-            ],
-            "env": {
-                "INDEXED_MCP_MAX_DOCS": "20",
-                "INDEXED_MCP_INCLUDE_MATCHED_CHUNKS": "true",
-                "INDEXED_MCP_INCLUDE_INDEX_SIZE": "true"
-            }
-        }
-    }
-}
-```
+- 📖 [Medium Article](https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba) - Original project announcement
+- 🐛 [Issue Tracker](https://github.com/shnax0210/documents-vector-search/issues) - Report bugs or request features
+- ⭐ **Star the repo** if you find it useful!
 
-#### Notes:
-- Replace `${fullPathToRootProjectFolder}` with the actual full path to this project's root folder
-- The server automatically discovers all collections in `./data/collections/`
-- No need to specify individual collections - the server provides access to all of them
-- Search results include document titles, snippets, and source information
-- Environment variables allow customization without code changes
-
-
-## Collection structure
-Collection is a subfolder of the `./data/collections` folder.
-A collection folder contains all files needed for performing vector search in the collection.
-
-A collection folder consists of:
-- `documents` folder contains documents read by `reader` from the `./main/sources` package and converted by `converter` from the `./main/sources` package.
-- `indexes` folder contains available indexes (usually just one index but multiple are also supported);
-- `manifest.json` file contains information about the index such as name, last update time, reader details, and indexes.
-
-Please check the `./main/core/documents_collection_creator.py` code to find most of the details about collection creation or updating.
-
-Please check the `./main/core/documents_collection_searcher.py` code to find most of the details about searching in a collection.
-
-## Other useful info
-- Collection update reads only new information, so it should be much faster than collection creation. Collection update uses information from the collection manifest file located in `./data/collections/${collectionName}/manifest.json`.
-- Collection update usually reads a bit more documents than were really updated since last time. Currently, the logic is as follows: it reads all documents that were created/updated since the "lastModifiedDocumentTime" field value from the `./data/collections/${collectionName}/manifest.json` file minus 1 day. It's done so to guarantee that no document update will be lost due to parallel document creations (probably 1 day can be updated to some much less value like a couple of seconds, but it does not look like a big deal to me and I prefer just to be more sure that everything is updated). The "lastModifiedDocumentTime" field contains the value of the latest update time for all documents in the collection.
-- There is a cache mechanism for Jira/Confluence collection creation, so if you create a collection multiple times with the same parameters: url, query (JQL or CQL), etc. - documents will be read from the cache located in the `./data/caches` subfolder (all important parameters are collected together and hashed, the hash is used as the folder name (`./data/caches/{hash}`) for cached documents, there is also a `./data/caches/{hash}_completed` file that indicates if all documents were successfully read, the cache is used only in case if the `./data/caches/{hash}_completed` file is present as well as the `./data/caches/{hash}` folder). The cache is useful during testing, but can lead to a situation where new data are not read. In such a case, you can either run the "update" script after collection creation, or remove the cache manually before collection creation.
