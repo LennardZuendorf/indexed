@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest.mock import Mock, patch
 
-from main.services.collection_service import (
+from core.v1.engine.services.collection_service import (
     create,
     update,
     clear,
@@ -13,7 +13,7 @@ from main.services.collection_service import (
     _create_one,
     _update_one,
 )
-from main.services.models import SourceConfig
+from core.v1.engine.services.models import SourceConfig
 
 
 class TestBuildReaderConverter:
@@ -32,10 +32,10 @@ class TestBuildReaderConverter:
 
         with (
             patch(
-                "main.services.collection_service.ConfluenceDocumentReader"
+                "core.v1.engine.services.collection_service.ConfluenceDocumentReader"
             ) as mock_reader,
             patch(
-                "main.services.collection_service.ConfluenceDocumentConverter"
+                "core.v1.engine.services.collection_service.ConfluenceDocumentConverter"
             ) as mock_converter,
         ):
             reader, converter = _build_reader_converter(config)
@@ -62,7 +62,7 @@ class TestBuildReaderConverter:
         )
 
         with patch(
-            "main.services.collection_service.ConfluenceDocumentReader"
+            "core.v1.engine.services.collection_service.ConfluenceDocumentReader"
         ) as mock_reader:
             reader, converter = _build_reader_converter(config)
 
@@ -107,7 +107,7 @@ class TestBuildReaderConverter:
         )
 
         with patch(
-            "main.services.collection_service.ConfluenceCloudDocumentReader"
+            "core.v1.engine.services.collection_service.ConfluenceCloudDocumentReader"
         ) as mock_reader:
             reader, converter = _build_reader_converter(config)
 
@@ -131,7 +131,7 @@ class TestBuildReaderConverter:
         )
 
         with patch(
-            "main.services.collection_service.JiraDocumentReader"
+            "core.v1.engine.services.collection_service.JiraDocumentReader"
         ) as mock_reader:
             reader, converter = _build_reader_converter(config)
 
@@ -158,7 +158,7 @@ class TestBuildReaderConverter:
         )
 
         with patch(
-            "main.services.collection_service.JiraCloudDocumentReader"
+            "core.v1.engine.services.collection_service.JiraCloudDocumentReader"
         ) as mock_reader:
             reader, converter = _build_reader_converter(config)
 
@@ -184,7 +184,7 @@ class TestBuildReaderConverter:
         )
 
         with patch(
-            "main.services.collection_service.FilesDocumentReader"
+            "core.v1.engine.services.collection_service.FilesDocumentReader"
         ) as mock_reader:
             reader, converter = _build_reader_converter(config)
 
@@ -213,7 +213,7 @@ class TestBuildReaderConverter:
 class TestCollectionExists:
     """Test _collection_exists function."""
 
-    @patch("main.services.collection_service.DiskPersister")
+    @patch("core.v1.engine.services.collection_service.DiskPersister")
     def test_collection_exists_true(self, mock_persister_class):
         """Test when collection exists."""
         mock_persister = Mock()
@@ -226,7 +226,7 @@ class TestCollectionExists:
         mock_persister_class.assert_called_once_with(base_path="./data/collections")
         mock_persister.is_path_exists.assert_called_once_with("test-collection")
 
-    @patch("main.services.collection_service.DiskPersister")
+    @patch("core.v1.engine.services.collection_service.DiskPersister")
     def test_collection_exists_false(self, mock_persister_class):
         """Test when collection does not exist."""
         mock_persister = Mock()
@@ -241,8 +241,8 @@ class TestCollectionExists:
 class TestCreateOne:
     """Test _create_one function."""
 
-    @patch("main.services.collection_service._build_reader_converter")
-    @patch("main.services.collection_service.create_collection_creator")
+    @patch("core.v1.engine.services.collection_service._build_reader_converter")
+    @patch("core.v1.engine.services.collection_service.create_collection_creator")
     def test_create_one_success(self, mock_factory, mock_build_reader):
         """Test successful creation of one collection."""
         # Setup mocks
@@ -271,6 +271,7 @@ class TestCreateOne:
             document_reader=mock_reader,
             document_converter=mock_converter,
             use_cache=True,
+            progress_callback=None,
         )
         mock_creator.run.assert_called_once()
 
@@ -278,7 +279,7 @@ class TestCreateOne:
 class TestUpdateOne:
     """Test _update_one function."""
 
-    @patch("main.services.collection_service.create_collection_updater")
+    @patch("core.v1.engine.services.collection_service.create_collection_updater")
     def test_update_one_success(self, mock_factory):
         """Test successful update of one collection."""
         mock_updater = Mock()
@@ -293,15 +294,15 @@ class TestUpdateOne:
 
         _update_one(config)
 
-        mock_factory.assert_called_once_with("test-collection")
+        mock_factory.assert_called_once_with("test-collection", None)
         mock_updater.run.assert_called_once()
 
 
 class TestPublicFunctions:
     """Test public functions: create, update, clear."""
 
-    @patch("main.services.collection_service._create_one")
-    @patch("main.services.collection_service._collection_exists")
+    @patch("core.v1.engine.services.collection_service._create_one")
+    @patch("core.v1.engine.services.collection_service._collection_exists")
     def test_create_without_force(self, mock_exists, mock_create_one):
         """Test create function without force flag."""
         mock_exists.return_value = False
@@ -324,12 +325,12 @@ class TestPublicFunctions:
         create(configs, use_cache=False)
 
         assert mock_create_one.call_count == 2
-        mock_create_one.assert_any_call(configs[0], False)
-        mock_create_one.assert_any_call(configs[1], False)
+        mock_create_one.assert_any_call(configs[0], False, None)
+        mock_create_one.assert_any_call(configs[1], False, None)
 
-    @patch("main.services.collection_service._create_one")
-    @patch("main.services.collection_service._collection_exists")
-    @patch("main.services.collection_service.clear")
+    @patch("core.v1.engine.services.collection_service._create_one")
+    @patch("core.v1.engine.services.collection_service._collection_exists")
+    @patch("core.v1.engine.services.collection_service.clear")
     def test_create_with_force(self, mock_clear, mock_exists, mock_create_one):
         """Test create function with force flag."""
         mock_exists.return_value = True
@@ -344,9 +345,9 @@ class TestPublicFunctions:
         create([config], force=True)
 
         mock_clear.assert_called_once_with(["existing-collection"])
-        mock_create_one.assert_called_once_with(config, True)
+        mock_create_one.assert_called_once_with(config, True, None)
 
-    @patch("main.services.collection_service._update_one")
+    @patch("core.v1.engine.services.collection_service._update_one")
     def test_update(self, mock_update_one):
         """Test update function."""
         configs = [
@@ -360,9 +361,9 @@ class TestPublicFunctions:
 
         update(configs)
 
-        mock_update_one.assert_called_once_with(configs[0])
+        mock_update_one.assert_called_once_with(configs[0], None)
 
-    @patch("main.services.collection_service.DiskPersister")
+    @patch("core.v1.engine.services.collection_service.DiskPersister")
     def test_clear(self, mock_persister_class):
         """Test clear function."""
         mock_persister = Mock()

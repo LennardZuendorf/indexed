@@ -3,10 +3,10 @@ from typing import Any, Dict
 
 import pytest
 
-from main.services import resolve_and_extract, ConfigSlice
-from main.services.models import SourceConfig
-from main.services.search_service import SearchArgs
-from main.services.inspect_service import InspectArgs
+from core.v1.engine.services import resolve_and_extract, ConfigSlice
+from core.v1.engine.services.models import SourceConfig
+from core.v1.engine.services.search_service import SearchArgs
+from core.v1.engine.services.inspect_service import InspectArgs
 
 
 @pytest.fixture(autouse=True)

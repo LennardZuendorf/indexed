@@ -1,7 +1,7 @@
 """Test IndexedSettings schema and TOML loading."""
 
-from src.main.config.settings import IndexedSettings
-from src.main.config.store import atomic_write_toml
+from core.v1.config.settings import IndexedSettings
+from core.v1.config.store import atomic_write_toml
 
 
 def test_settings_defaults(tmp_path, monkeypatch):

@@ -1,8 +1,8 @@
 """Test ConfigService CRUD operations and functionality."""
 
 import pytest
-from src.main.services.config_service import ConfigService, get_config
-from src.main.config.store import atomic_write_toml, get_config_path
+from core.v1.engine.services.config_service import ConfigService, get_config
+from core.v1.config.store import atomic_write_toml, get_config_path
 
 
 @pytest.fixture

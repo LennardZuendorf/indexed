@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Dict, Any
 import json
 
-from src.main.config.store import (
+from core.v1.config.store import (
     ensure_indexed_toml_exists,
     ensure_env_example,
     read_toml,
     get_config_path,
 )
-from src.main.services.config_service import ConfigService
+from core.v1.engine.services.config_service import ConfigService
 
 
 def test_ensure_indexed_toml_exists_creates_minimal(tmp_path, monkeypatch):
