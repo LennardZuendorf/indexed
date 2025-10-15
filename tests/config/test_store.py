@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import pytest
-from src.main.config.store import (
+from core.v1.config.store import (
     read_toml,
     atomic_write_toml,
     validate_no_secrets,

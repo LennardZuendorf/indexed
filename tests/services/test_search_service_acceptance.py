@@ -1,4 +1,4 @@
-from main.services.search_service import SearchService
+from core.v1.engine.services.search_service import SearchService
 
 
 def test_search_service_applies_args(monkeypatch):
