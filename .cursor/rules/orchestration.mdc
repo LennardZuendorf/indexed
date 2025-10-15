@@ -1,5 +1,5 @@
 ---
-description: Orchestration decision-making rules for the Master Orchestrator AI Agent
+description: Orchestration decision-making rules applied at EVERY PROMPT/ACTION
 alwaysApply: false
 ---
 # ORCHESTRATION PROTOCOL - MODE SELECTION DECISION MATRIX
