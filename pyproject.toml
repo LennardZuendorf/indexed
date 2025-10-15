@@ -1,49 +1,9 @@
-[project]
-name = "indexed"
-version = "0.1.0"
-description = "Project allows document indexing in a local vector database and then search (supports Jira, Confluence and local files, can be integrated via MCP)"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "bs4>=0.0.2",
-    "faiss-cpu>=1.11.0",
-    "langchain>=0.3.26",
-    "mcp>=1.13.0",
-    "requests>=2.32.4",
-    "sentence-transformers>=5.0.0",
-    "unstructured[all-docs]>=0.18.5",
-    "pydantic-settings>=2.2.1",
-    "platformdirs>=4.2.0",
-    "typer>=0.12.3",
-    "fastmcp>=2.11.3"
-]
-
-[project.scripts]
-indexed-cli = "cli.app:app"
-indexed-mcp = "server.mcp:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["cli*", "main*", "mcp*"]
-
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[dependency-groups]
-dev = [
-    "mypy>=1.17.1",
-    "pytest>=8.4.1",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.14.1",
-    "ruff>=0.12.10",
-]
+# Root workspace configuration for indexed monorepo
+# This file manages the workspace and shared development dependencies
+# Individual packages are in packages/indexed-core and packages/indexed-cli
 
 # Ruff configuration
 [tool.ruff]
-extend-exclude = [
-    "src/main/legacy/**",
-]
 
 [tool.ruff.lint.per-file-ignores]
 "src/main/sources/confluence/confluence_cloud_document_reader.py" = ["E731"]
@@ -64,6 +24,13 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov"
 ]
+filterwarnings = [
+    # Suppress deprecations from third-party libs (faiss/numpy/swig)
+    "ignore:.*numpy.core._multiarray_umath.*:DeprecationWarning",
+    "ignore:.*builtin type SwigPyPacked has no __module__ attribute.*:DeprecationWarning",
+    "ignore:.*builtin type SwigPyObject has no __module__ attribute.*:DeprecationWarning",
+    "ignore:.*builtin type swigvarlink has no __module__ attribute.*:DeprecationWarning",
+]
 
 # MyPy configuration
 [tool.mypy]
@@ -73,4 +40,20 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
 
+[tool.uv.workspace]
+members = [
+    "packages/utils",
+    "packages/indexed-connectors",
+    "packages/indexed-core",
+    "indexed"
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.12.10",
+]
 

@@ -1,14 +1,50 @@
+# Python
 **/__pycache__/*
-tmp
-data
-.idea
-.venv
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Package build artifacts
+*.egg-info/
+dist/
+build/
+.dist/
+*.egg
+
+# uv
+.uv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Linting
+.ruff_cache/
+
+# IDE & Editors
+.idea/
+.vscode/
+.history/
 **/.DS_Store
-.vscode
 .dccache
 
-#IDE & Cursor Stuff
-.history/
+# Project data
+data/
+tmp/
 
 #Python Package Stuff
 *.egg-info/

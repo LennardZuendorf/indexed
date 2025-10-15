@@ -7,6 +7,7 @@ Covers:
 - src/commands/search.py (register)
 - src/commands/update.py (register)
 """
+
 from typer.testing import CliRunner
 import typer
 
@@ -15,7 +16,7 @@ from commands.delete import register as register_delete
 from commands.legacy import legacy_app
 from commands.search import register as register_search
 from commands.update import register as register_update
-from main.services import CollectionStatus
+from core.v1.engine.services.models import CollectionStatus
 
 
 runner = CliRunner()
@@ -29,7 +30,7 @@ def test_create_jira_module(monkeypatch):
         calls["use_cache"] = use_cache
         calls["force"] = force
 
-    monkeypatch.setattr("cli.app.svc_create", fake_create)
+    monkeypatch.setattr("indexed.app.svc_create", fake_create)
 
     result = runner.invoke(
         create_app,
@@ -63,45 +64,41 @@ def test_delete_module_all_yes(monkeypatch):
     def fake_clear(names):
         cleared["names"] = names
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_clear", fake_clear)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_clear", fake_clear)
 
     app = typer.Typer()
-    register_delete(app)
+    app.command("remove")(remove)
 
-    result = runner.invoke(app, ["--yes"])
+    result = runner.invoke(app, ["remove", "--yes"])
     assert result.exit_code == 0, result.output
     assert cleared["names"] == ["a", "b"]
-
-
-def test_legacy_module_invokes_runpy(monkeypatch):
-    captured = {}
-
-    def fake_run_module(module_name, run_name=None):  # pylint: disable=unused-argument
-        captured["module_name"] = module_name
-
-    monkeypatch.setattr("runpy.run_module", fake_run_module)
-
-    result = runner.invoke(legacy_app, ["collection-search", "--foo", "bar"])
-    assert result.exit_code == 0, result.output
-    assert captured["module_name"] == "main.legacy.collection_search_cmd_adapter"
 
 
 def test_search_module_register(monkeypatch):
     captured = {}
 
-    def fake_search(query, *, configs=None, max_chunks=None, max_docs=None, include_full_text=False, include_all_chunks=False, include_matched_chunks=False):  # pylint: disable=too-many-arguments,unused-argument
+    def fake_search(
+        query,
+        *,
+        configs=None,
+        max_chunks=None,
+        max_docs=None,
+        include_full_text=False,
+        include_all_chunks=False,
+        include_matched_chunks=False,
+    ):  # pylint: disable=too-many-arguments,unused-argument
         captured["query"] = query
         return {"hits": []}
 
-    monkeypatch.setattr("cli.app.svc_search", fake_search)
+    monkeypatch.setattr("indexed.app.svc_search", fake_search)
 
     app = typer.Typer()
-    register_search(app)
+    app.command("search")(search)
 
-    result = runner.invoke(app, ["hello", "--json"])
+    result = runner.invoke(app, ["search", "hello", "--json"])
     assert result.exit_code == 0, result.output
-    assert "\"hits\": []" in result.output
+    assert '"hits": []' in result.output
     assert captured["query"] == "hello"
 
 
@@ -116,13 +113,13 @@ def test_update_module_register(monkeypatch):
     def fake_update(configs):
         update_calls["configs"] = configs
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_update", fake_update)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_update", fake_update)
 
     app = typer.Typer()
-    register_update(app)
+    app.command("update")(update)
 
-    result = runner.invoke(app, [])  # update all
+    result = runner.invoke(app, ["update"])  # update all
     assert result.exit_code == 0, result.output
     assert status_calls["names"] is None
     cfgs = update_calls["configs"]

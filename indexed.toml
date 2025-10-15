@@ -1,0 +1,18 @@
+[search]
+include_full_text = true
+
+[index]
+embedding_model = "sentence-transformers/all-mpnet-base-v2"
+use_gpu = false
+
+[sources.files]
+base_path = "./data"
+include_patterns = [
+    "*.md",
+    "*.txt",
+    "*.pdf",
+    "*.pptx"
+]
+
+[logging]
+level = "WARNING"

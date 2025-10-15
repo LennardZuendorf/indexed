@@ -6,8 +6,8 @@ Ensures Typer CLI forwards to services with correct arguments.
 import json
 from typer.testing import CliRunner
 
-from cli.app import app, DEFAULT_INDEXER
-from main.services import CollectionStatus
+from indexed.app import app, DEFAULT_INDEXER
+from core.v1.engine.services.models import CollectionStatus
 
 
 runner = CliRunner()
@@ -21,7 +21,7 @@ def test_create_jira_calls_service(monkeypatch):
         calls["use_cache"] = use_cache
         calls["force"] = force
 
-    monkeypatch.setattr("cli.app.svc_create", fake_create)
+    monkeypatch.setattr("indexed.app.svc_create", fake_create)
 
     result = runner.invoke(
         app,
@@ -57,7 +57,7 @@ def test_create_confluence_server_calls_service(monkeypatch):
         calls["use_cache"] = use_cache
         calls["force"] = force
 
-    monkeypatch.setattr("cli.app.svc_create", fake_create)
+    monkeypatch.setattr("indexed.app.svc_create", fake_create)
 
     result = runner.invoke(
         app,
@@ -90,7 +90,7 @@ def test_create_files_calls_service(monkeypatch):
         calls["use_cache"] = use_cache
         calls["force"] = force
 
-    monkeypatch.setattr("cli.app.svc_create", fake_create)
+    monkeypatch.setattr("indexed.app.svc_create", fake_create)
 
     result = runner.invoke(
         app,
@@ -137,8 +137,8 @@ def test_update_all_uses_status_and_update(monkeypatch):
     def fake_update(configs):
         update_calls["configs"] = configs
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_update", fake_update)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_update", fake_update)
 
     result = runner.invoke(app, ["update"])
     assert result.exit_code == 0, result.output
@@ -158,8 +158,8 @@ def test_update_one(monkeypatch):
     def fake_update(configs):
         update_calls["configs"] = configs
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_update", fake_update)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_update", fake_update)
 
     result = runner.invoke(app, ["update", "--collection", "x"])
     assert result.exit_code == 0, result.output
@@ -179,8 +179,8 @@ def test_delete_all_yes(monkeypatch):
     def fake_clear(names):
         cleared["names"] = names
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
-    monkeypatch.setattr("cli.app.svc_clear", fake_clear)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_clear", fake_clear)
 
     result = runner.invoke(app, ["delete", "--yes"])
     assert result.exit_code == 0, result.output
@@ -211,7 +211,7 @@ def test_search_all_json(monkeypatch):
         }
         return {"a": {"hits": []}}
 
-    monkeypatch.setattr("cli.app.svc_search", fake_search)
+    monkeypatch.setattr("indexed.app.svc_search", fake_search)
 
     result = runner.invoke(
         app,
@@ -249,7 +249,7 @@ def test_search_with_collection(monkeypatch):
         captured["configs"] = configs
         return {}
 
-    monkeypatch.setattr("cli.app.svc_search", fake_search)
+    monkeypatch.setattr("indexed.app.svc_search", fake_search)
 
     result = runner.invoke(
         app, ["search", "hello", "--collection", "x", "--index-name", "idx"]
@@ -263,7 +263,7 @@ def test_inspect_json(monkeypatch):
     def fake_status(names, include_index_size=False):  # pylint: disable=unused-argument
         return [CollectionStatus("a", 1, 2, "t1", "t2", ["i"], 123)]
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
 
     result = runner.invoke(app, ["inspect", "--json", "--include-index-size"])
     assert result.exit_code == 0, result.output
@@ -274,11 +274,33 @@ def test_inspect_json(monkeypatch):
 def test_list(monkeypatch):
     def fake_status(names, include_index_size=False):  # pylint: disable=unused-argument
         return [
-            CollectionStatus("a", 1, 2, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", ["i"], 10, "jira", "./data/collections/a", 1234),
-            CollectionStatus("b", 3, 4, "2025-01-02T00:00:00Z", "2025-01-02T00:00:00Z", ["i"], 20, "localFiles", "./data/collections/b", 5678),
+            CollectionStatus(
+                "a",
+                1,
+                2,
+                "2025-01-01T00:00:00Z",
+                "2025-01-01T00:00:00Z",
+                ["i"],
+                10,
+                "jira",
+                "./data/collections/a",
+                1234,
+            ),
+            CollectionStatus(
+                "b",
+                3,
+                4,
+                "2025-01-02T00:00:00Z",
+                "2025-01-02T00:00:00Z",
+                ["i"],
+                20,
+                "localFiles",
+                "./data/collections/b",
+                5678,
+            ),
         ]
 
-    monkeypatch.setattr("cli.app.svc_status", fake_status)
+    monkeypatch.setattr("indexed.app.svc_status", fake_status)
 
     result = runner.invoke(app, ["inspect"])
     assert result.exit_code == 0, result.output
