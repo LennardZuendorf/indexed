@@ -14,22 +14,6 @@ class TestMCPServerIntegration:
 
         assert mcp is not None
         assert mcp.name == "Indexed MCP Server"
-"""Tests for the MCP server tools and resources."""
-
-import pytest
-from unittest.mock import patch
-from main.services.models import CollectionStatus
-
-
-class TestMCPServerIntegration:
-    """Integration tests for MCP server."""
-
-    def test_server_instance_exists(self):
-        """Test that the MCP server instance is created."""
-        from server.mcp import mcp
-
-        assert mcp is not None
-        assert mcp.name == "Indexed MCP Server"
 
     def test_main_function_exists(self):
         """Test that the main function exists and is callable."""

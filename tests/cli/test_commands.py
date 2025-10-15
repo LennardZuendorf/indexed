@@ -12,11 +12,10 @@ from typer.testing import CliRunner
 import typer
 
 from commands.create import create_app
-from commands.delete import register as register_delete
-from commands.legacy import legacy_app
-from commands.search import register as register_search
-from commands.update import register as register_update
 from core.v1.engine.services.models import CollectionStatus
+from indexed.knowledge.commands.remove import remove
+from indexed.knowledge.commands.search import search
+from indexed.knowledge.commands.update import update
 
 
 runner = CliRunner()
