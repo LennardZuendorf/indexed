@@ -28,7 +28,6 @@ jobs:
         python -m pip install uv
         python -m uv sync
         # Ruff and pytest should be installed via project dependencies, not as standalone tools
-        if [ -f requirements.txt ]; then uv pip install -r requirements.txt; fi
     - name: Run Ruff Linter
       run: |
         uv run ruff check
