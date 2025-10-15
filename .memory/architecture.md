@@ -460,36 +460,29 @@ elif config.vector_store.type == "qdrant":
 }
 ```
 
-## Legacy vs New Architecture
+## Architecture Evolution (v1.0)
 
 ### Current State
 
-**Legacy Implementation** (`packages/indexed-core/src/index/legacy/`):
-- Factory pattern with adapters
-- Complex abstraction layers
-- Works but hard to test and extend
+**v1.0 Implementation** (`packages/indexed-core/src/core/v1/`):
+- Clean Controller/Service pattern
+- Protocol-based connector interface (BaseConnector)
+- Dependency injection via ServiceFactory
+- Unified configuration with Pydantic
+- Dynamic connector registry for discovery/compatibility
 
-**New Implementation** (`packages/indexed-core/src/index/`):
-- Controller/Service pattern
-- Dependency injection
-- Clean, testable, extensible
+**Legacy Code**: No legacy implementation remains in v1.0. All code uses `core.v1` architecture.
 
-### Migration Strategy
+### Connector Registry Purpose
 
-1. **Coexistence**: Both implementations exist
-2. **Engine Selection**: CLI chooses which engine to use
-3. **Gradual Migration**: Move features one at a time
-4. **Data Compatibility**: Both use same storage format
+The dynamic connector registry (`indexed/src/indexed/connectors/`) serves infrastructure needs:
+- **Discovery**: Automatically find all available connectors
+- **Compatibility**: Version checking between connectors and core
+- **Introspection**: List available connectors programmatically
 
-```python
-# Engine selection in CLI
-if use_legacy:
-    from indexed_cli.engines.legacy_engine import LegacyEngine
-    engine = LegacyEngine()
-else:
-    from indexed_cli.engines.v2_engine import V2Engine
-    engine = V2Engine()
-```
+**Not a full plugin system**: CLI remains hardcoded for UX quality (proper --help, type safety, validation).
+
+**Optional future**: `indexed index create --from-registry` for advanced users (deferred).
 
 ## Key Design Principles
 

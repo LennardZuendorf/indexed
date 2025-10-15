@@ -361,22 +361,17 @@ class EmbeddingConfig(BaseModel):
 
 ## Legacy Code Handling
 
-**Current State:** Legacy implementation exists alongside new Phase 2 code
+**Current State (v1.0):** No legacy implementation remains in the codebase. This section is retained for historical context only.
 
-**Rules:**
-1. Don't modify legacy code unless necessary
-2. New features go in new architecture only
-3. Keep imports clearly separated
-4. Plan migration path for each component
+**Historical Context:**
+- During Phase 1 monorepo migration, old code was temporarily in `indexed-core/legacy/`
+- Phase 2 completed migration to `core.v1` architecture
+- All legacy code has been removed; `core.v1` is the sole implementation
 
-```python
-# ✅ Clear separation
-from index.legacy.services import CollectionService  # Legacy
-from index.services.indexing import IndexingService  # New
-
-# Use new implementation for new features
-indexing_service = IndexingService(...)
-```
+**For Future Reference:**
+- If adding new major versions (e.g., `core.v2`), follow similar versioning pattern
+- Maintain clear separation between versions if coexistence is needed
+- Prefer clean breaks over maintaining multiple implementations
 
 ## Key Principles Summary
 
