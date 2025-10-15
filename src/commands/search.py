@@ -113,9 +113,14 @@ def register(app: typer.Typer) -> None:
                 typer.echo(output)
             else:
                 # Format results nicely for human consumption
-                if not result:
+                # Check if result is empty or has no documents
+                has_results = any(
+                    docs for docs in result.values() 
+                    if isinstance(docs, dict) and docs.get('documents')
+                )
+                if not result or not has_results:
                     typer.echo("📭 No results found.\n")
-                    raise typer.Exit(0)
+                    return
 
                 total_docs = sum(len(docs) for docs in result.values())
                 collection_count = len(result)

@@ -34,7 +34,7 @@ def register(app: typer.Typer) -> None:
             # Nicely formatted list of candidate collections
             count = len(statuses)
             heading = (
-                f"\n🗑️  Deletion candidates (1 collection):\n" if count == 1 else f"\n🗑️  Deletion candidates ({count} collections):\n"
+                "\n🗑️  Deletion candidates (1 collection):\n" if count == 1 else f"\n🗑️  Deletion candidates ({count} collections):\n"
             )
             typer.echo(heading)
 

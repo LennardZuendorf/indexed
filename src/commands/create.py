@@ -118,7 +118,7 @@ def create_confluence(
     typer.echo(f"   Query: {cql}")
     typer.echo(f"   Indexer: {indexer}")
     if read_only_first_level_comments:
-        typer.echo(f"   Comments: Top-level only")
+        typer.echo("   Comments: Top-level only")
     typer.echo()
     
     try:
@@ -189,7 +189,7 @@ def create_files(
         typer.echo(f"   Exclude patterns: {', '.join(exclude_patterns)}")
     typer.echo(f"   Indexer: {indexer}")
     if fail_fast:
-        typer.echo(f"   Error handling: Fail fast")
+        typer.echo("   Error handling: Fail fast")
     typer.echo()
     
     try:

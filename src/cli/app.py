@@ -5,7 +5,6 @@ Provides legacy proxies and stateless commands backed by services.
 
 import json
 import typer
-from typing import Optional
 
 # Re-export service interfaces for tests and command modules to reference dynamically
 from main.services import (
@@ -26,19 +25,19 @@ app = typer.Typer(
 DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
 # Register legacy command group
-from .commands.legacy import legacy_app  # noqa: E402
+from commands.legacy import legacy_app  # noqa: E402
 
 app.add_typer(legacy_app, name="legacy")
 
 # Register create commands group
-from .commands.create import create_app  # noqa: E402
+from commands.create import create_app  # noqa: E402
 
 app.add_typer(create_app, name="create")
 
 # Register other top-level commands (search/update)
-from .commands.search import register as register_search  # noqa: E402
-from .commands.update import register as register_update  # noqa: E402
-from .commands.delete import register as register_delete  # noqa: E402
+from commands.search import register as register_search  # noqa: E402
+from commands.update import register as register_update  # noqa: E402
+from commands.delete import register as register_delete  # noqa: E402
 
 register_search(app)
 register_update(app)
@@ -87,7 +86,7 @@ def inspect_cmd(
             typer.echo("\n📂 No collections found\n")
             return
         elif collection_count == 1:
-            typer.echo(f"\n📂 Found 1 collection:\n")
+            typer.echo("\n📂 Found 1 collection:\n")
         else:
             typer.echo(f"\n📂 Found {collection_count} collections:\n")
 

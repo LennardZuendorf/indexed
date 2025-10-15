@@ -5,9 +5,8 @@ name: Python Build, Check, Test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "building*" ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
   build:
