@@ -1,0 +1,437 @@
+---
+description: Core memory management rules and protocols
+globs:
+alwaysApply: true
+---
+
+# 📝 MEMORY MANAGEMENT PROTOCOLS
+
+**🚨 CRITICAL: These memory protocols MUST be followed WITHOUT EXCEPTION.**
+
+## MEMORY FILE STRUCTURE
+
+### Global Context Files (Persistent)
+Files that maintain system-wide context and must persist across sessions:
+
+1. **`tech.md`** - Tech Stack and Style Rules
+   - Tech stack specifications
+   - Coding standards and conventions
+   - Style guidelines and patterns
+   - UPDATE when stack changes or new conventions are established
+
+2. **`brief.md`** - Project Brief and Context
+   - Product goals and objectives
+   - Project scope and constraints
+   - Overall system purpose
+   - UPDATE when product goals or scope changes
+
+3. **`architecture.md`** - System Architecture
+   - System components and relationships
+   - Design patterns and decisions
+   - Interface contracts and APIs
+   - UPDATE when architecture evolves
+
+### Task-Specific Files (Clear after completion)
+Files that track current task progress and are cleared upon completion:
+
+1. **`task_prd.md`** - Current Task Requirements
+   - Problem statement
+   - User stories and requirements
+   - Technical constraints
+   - Success criteria
+   - CLEAR after task completion
+
+2. **`task_plan.md`** - Implementation Plan
+   - Technical approach
+   - Component specifications
+   - Implementation steps
+   - CLEAR after task completion
+
+3. **`task_subtasks.md`** - Task Progress
+   - Subtask breakdown
+   - Progress tracking
+   - Validation results
+   - CLEAR after task completion
+
+## MEMORY PROTOCOLS
+
+### Session Start Protocol
+BEFORE ANY WORK:
+1. ✅ READ all persistent memory files
+2. ✅ VERIFY content is current and complete
+3. ✅ UPDATE outdated information
+4. ✅ CREATE missing files
+5. 🚫 NEVER proceed without complete memory context
+
+### File Update Protocol
+RULES FOR UPDATING FILES:
+
+**Persistent Files:**
+- ✅ UPDATE when system context changes
+- ✅ MAINTAIN historical context
+- ✅ DOCUMENT update rationale
+- 🚫 NEVER delete without replacement
+- 🚫 NEVER make partial updates
+
+**Task Files:**
+- ✅ UPDATE in real-time during task
+- ✅ TRACK all progress incrementally
+- ✅ CLEAR after task completion
+- 🚫 NEVER mix multiple tasks
+- 🚫 NEVER leave stale content
+
+### Memory Validation Protocol
+REGULAR VALIDATION REQUIRED:
+
+1. Content Validation
+   - ✅ Files exist in correct location
+   - ✅ Content is complete and current
+   - ✅ Format follows templates
+   - ✅ No conflicting information
+
+2. Cross-Reference Validation
+   - ✅ Files are internally consistent
+   - ✅ Dependencies are tracked
+   - ✅ Changes are propagated
+   - ✅ No orphaned references
+
+## FILE TEMPLATES
+
+### tech.md Template
+```markdown
+# Technology Stack
+
+## Frontend
+- Framework: [Name & Version]
+- UI Components: [List]
+- State Management: [Solution]
+
+## Backend
+- Language: [Name & Version]
+- Framework: [Name & Version]
+- Database: [Type & Version]
+
+## Development
+- Build Tools: [List]
+- Testing Framework: [Name]
+- Code Quality: [Tools]
+
+## Conventions
+[Language/Framework-specific conventions]
+
+## Style Guide
+[Project style guidelines]
+```
+
+### brief.md Template
+```markdown
+# Project Brief
+
+## Overview
+[Project description and goals]
+
+## Objectives
+- [Primary objectives]
+- [Success metrics]
+
+## Scope
+[Project boundaries and constraints]
+
+## Stakeholders
+[Key stakeholders and roles]
+```
+
+### architecture.md Template
+```markdown
+# System Architecture
+
+## Overview
+[High-level architecture description]
+
+## Components
+[Component breakdown and relationships]
+
+## Interfaces
+[API contracts and specifications]
+
+## Data Flow
+[System data flow patterns]
+
+## Design Decisions
+[Key architectural decisions and rationale]
+```
+
+### task_prd.md Template
+```markdown
+# Task Requirements
+
+## Problem Statement
+[Clear problem definition]
+
+## Requirements
+- Functional: [List]
+- Non-functional: [List]
+
+## Constraints
+[Technical and business constraints]
+
+## Success Criteria
+[Measurable success metrics]
+```
+
+### task_plan.md Template
+```markdown
+# Implementation Plan
+
+## Approach
+[Technical approach description]
+
+## Components
+[Affected components and changes]
+
+## Steps
+1. [Implementation step 1]
+2. [Implementation step 2]
+   ...
+
+## Dependencies
+[Required dependencies and prerequisites]
+```
+
+### task_subtasks.md Template
+```markdown
+# Task Progress
+
+## Subtasks
+- [ ] [Subtask 1]
+  - Status: [Not Started/In Progress/Complete]
+  - Validation: [Not Validated/Passed/Failed]
+- [ ] [Subtask 2]
+  ...
+
+## Notes
+[Implementation notes and observations]
+
+## Blockers
+[Current blockers or issues]
+```
+
+## MANDATORY SUCCESS CRITERIA
+
+- [ ] All memory files exist and are correctly located
+- [ ] File content follows specified templates
+- [ ] Persistent files maintain system context
+- [ ] Task files track current progress
+- [ ] Updates follow prescribed protocols
+- [ ] Regular validation is performed
+- [ ] No stale or conflicting information exists
+
+**REMEMBER: Memory integrity is CRITICAL. These protocols are NOT optional. Every violation creates system confusion and implementation risk.**
+
+---
+alwaysApply: true
+---
+
+# MANDATORY CODING AGENT PROTOCOicoikeflags.ws. 
+**🚨 CRITICAL: This protocol MUST be followed without exception on every interaction.**
+
+## MEMORY MANAGEMENT REQUIREMENTS
+
+You MUST maintain and actively use the following memory files in `.memory/`:
+
+### Global Context Files (Persistent)
+- **`tech.md`** - Tech Stack and Style Rules (UPDATE when stack changes)
+- **`brief.md`** - Project Brief with Product Context and Tasks (UPDATE when product goals or overall scope changes)
+- **`architecture.md`** - Overall System Architecture (UPDATE when architecture evolves)
+
+### Task-Specific Context Files (Clear after task completion)
+- **`task_prd.md`** - PRD Documentation of Current Task
+- **`task_plan.md`** - Technical implementation plan and architecture for current task
+- **`task_subtasks.md`** - Documented subtasks required for current implementation
+
+## MANDATORY WORKFLOW
+
+### 1. SESSION START PROTOCOL
+**BEFORE ANY CODING ACTION:**
+1. ✅ READ all memory files
+2. ✅ VERIFY context is current and complete
+3. ✅ UPDATE outdated information immediately
+4. ✅ If memory files are missing or incomplete, CREATE them first
+
+### 2. TASK EXECUTION PROTOCOL
+**For every new task:**
+1. ✅ DOCUMENT the task in `task_prd.md`
+2. ✅ CREATE detailed implementation plan in `task_plan.md`
+3. ✅ BREAK DOWN into subtasks in `task_subtasks.md`
+4. ✅ GET USER CONFIRMATION before proceeding
+5. ✅ EXECUTE according to approved plan
+6. ✅ UPDATE memory files as you progress
+7. ✅ CLEAR task-specific files when task is complete
+
+### 3. CORE OPERATING PRINCIPLES
+
+**PLANNING FIRST:**
+- 🚫 NEVER start coding without a documented plan
+- ✅ ALWAYS create comprehensive implementation strategy
+- ✅ IDENTIFY all dependencies, risks, and requirements upfront
+
+**CONFIRMATION REQUIRED:**
+- 🚫 NEVER proceed with implementation without explicit user approval
+- ✅ PRESENT complete plan and await confirmation
+- ✅ ASK clarifying questions to resolve ambiguities
+
+**TECHNICAL EXCELLENCE:**
+- ✅ FOLLOW tech stack best practices (documented in `tech.md`)
+- ✅ PRIORITIZE KISS (Keep It Simple, Stupid) over overengineering
+- ✅ WRITE maintainable, readable, and well-documented code
+- ✅ IMPLEMENT proper error handling and validation
+- ✅ ENSURE responsive design and accessibility standards
+
+**DOCUMENTATION DISCIPLINE:**
+- ✅ UPDATE memory files before, during, and after implementation
+- ✅ DOCUMENT all architectural decisions
+- ✅ MAINTAIN accurate task progress tracking
+- ✅ CLEAR task-specific context after completion
+
+## QUALITY GATES
+
+**Before any code implementation:**
+- [ ] Memory files are current and complete
+- [ ] Task is fully documented in PRD
+- [ ] Implementation plan is detailed and approved
+- [ ] Subtasks are clearly defined
+- [ ] User has explicitly confirmed the approach
+
+**During implementation:**
+- [ ] Following established architecture patterns
+- [ ] Adhering to tech stack conventions
+- [ ] Implementing KISS principles
+- [ ] Updating progress in memory files
+
+**After implementation:**
+- [ ] All memory files are updated
+- [ ] Task-specific files are cleared
+- [ ] Implementation matches approved plan
+- [ ] Code follows quality standards
+
+## FAILURE TO COMPLY
+
+**🚨 If you fail to follow this protocol:**
+1. STOP immediately
+2. READ all memory files
+3. DOCUMENT current state
+4. REQUEST user guidance
+5. RESTART with proper protocol
+
+## SUCCESS CRITERIA
+
+- ✅ Memory files are always current and accurate
+- ✅ Every task follows the planning → confirmation → execution cycle
+- ✅ Code quality meets established standards
+- ✅ Architecture remains consistent and well-documented
+- ✅ Implementation complexity is minimized (KISS principle)
+
+**REMEMBER: Planning and documentation are not optional overhead—they are the foundation of reliable software development.**
+
+
+# MANDATORY CODING AGENT PROTOCOL
+
+**🚨 CRITICAL: This protocol MUST be followed without exception on every interaction.**
+
+## MEMORY MANAGEMENT REQUIREMENTS
+
+You MUST maintain and actively use the following memory files in `.memory/`:
+
+### Global Context Files (Persistent)
+- **`tech.md`** - Tech Stack and Style Rules (UPDATE when stack changes)
+- **`brief.md`** - Project Brief with Product Context and Tasks (UPDATE when product goals or overall scope changes)
+- **`architecture.md`** - Overall System Architecture (UPDATE when architecture evolves)
+
+### Task-Specific Context Files (Clear after task completion)
+- **`task_prd.md`** - PRD Documentation of Current Task
+- **`task_plan.md`** - Technical implementation plan and architecture for current task
+- **`task_subtasks.md`** - Documented subtasks required for current implementation
+
+## MANDATORY WORKFLOW
+
+### 1. SESSION START PROTOCOL
+**BEFORE ANY CODING ACTION:**
+1. ✅ READ all memory files
+2. ✅ VERIFY context is current and complete
+3. ✅ UPDATE outdated information immediately
+4. ✅ If memory files are missing or incomplete, CREATE them first
+
+### 2. TASK EXECUTION PROTOCOL
+**For every new task:**
+1. ✅ DOCUMENT the task in `task_prd.md`
+2. ✅ CREATE detailed implementation plan in `task_plan.md`
+3. ✅ BREAK DOWN into subtasks in `task_subtasks.md`
+4. ✅ GET USER CONFIRMATION before proceeding
+5. ✅ EXECUTE according to approved plan
+6. ✅ UPDATE memory files as you progress
+7. ✅ CLEAR task-specific files when task is complete
+
+### 3. CORE OPERATING PRINCIPLES
+
+**PLANNING FIRST:**
+- 🚫 NEVER start coding without a documented plan
+- ✅ ALWAYS create comprehensive implementation strategy
+- ✅ IDENTIFY all dependencies, risks, and requirements upfront
+
+**CONFIRMATION REQUIRED:**
+- 🚫 NEVER proceed with implementation without explicit user approval
+- ✅ PRESENT complete plan and await confirmation
+- ✅ ASK clarifying questions to resolve ambiguities
+
+**TECHNICAL EXCELLENCE:**
+- ✅ FOLLOW tech stack best practices (documented in `tech.md`)
+- ✅ PRIORITIZE KISS (Keep It Simple, Stupid) over overengineering
+- ✅ WRITE maintainable, readable, and well-documented code
+- ✅ IMPLEMENT proper error handling and validation
+- ✅ ENSURE responsive design and accessibility standards
+
+**DOCUMENTATION DISCIPLINE:**
+- ✅ UPDATE memory files before, during, and after implementation
+- ✅ DOCUMENT all architectural decisions
+- ✅ MAINTAIN accurate task progress tracking
+- ✅ CLEAR task-specific context after completion
+
+## QUALITY GATES
+
+**Before any code implementation:**
+- [ ] Memory files are current and complete
+- [ ] Task is fully documented in PRD
+- [ ] Implementation plan is detailed and approved
+- [ ] Subtasks are clearly defined
+- [ ] User has explicitly confirmed the approach
+
+**During implementation:**
+- [ ] Following established architecture patterns
+- [ ] Adhering to tech stack conventions
+- [ ] Implementing KISS principles
+- [ ] Updating progress in memory files
+
+**After implementation:**
+- [ ] All memory files are updated
+- [ ] Task-specific files are cleared
+- [ ] Implementation matches approved plan
+- [ ] Code follows quality standards
+
+## FAILURE TO COMPLY
+
+**🚨 If you fail to follow this protocol:**
+1. STOP immediately
+2. READ all memory files
+3. DOCUMENT current state
+4. REQUEST user guidance
+5. RESTART with proper protocol
+
+## SUCCESS CRITERIA
+
+- ✅ Memory files are always current and accurate
+- ✅ Every task follows the planning → confirmation → execution cycle
+- ✅ Code quality meets established standards
+- ✅ Architecture remains consistent and well-documented
+- ✅ Implementation complexity is minimized (KISS principle)
+
+**REMEMBER: Planning and documentation are not optional overhead—they are the foundation of reliable software development.**
