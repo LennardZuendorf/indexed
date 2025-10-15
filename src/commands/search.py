@@ -122,7 +122,7 @@ def register(app: typer.Typer) -> None:
                     typer.echo("📭 No results found.\n")
                     return
 
-                total_docs = sum(len(docs) for docs in result.values())
+                total_docs = sum(len(docs.get('documents', [])) for docs in result.values() if isinstance(docs, dict))
                 collection_count = len(result)
                 
                 if collection_count == 1:
