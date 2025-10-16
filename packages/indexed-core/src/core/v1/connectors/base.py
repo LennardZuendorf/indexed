@@ -7,7 +7,7 @@ documents from various sources (Jira, Confluence, local files, etc.).
 The core package only depends on this protocol, making connectors true plugins.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, ClassVar, Dict, Any, Type, Optional
 
 
 @runtime_checkable
@@ -41,6 +41,9 @@ class BaseConnector(Protocol):
         >>> connector = MyConnector(url="...")
         >>> index.add_collection("mycollection", connector)
     """
+
+    # Optional metadata object (not required by protocol, but commonly present)
+    META: ClassVar[Any]
 
     @property
     def reader(self):
@@ -79,6 +82,30 @@ class BaseConnector(Protocol):
         Examples:
             >>> connector.connector_type
             'jira'
+        """
+        ...
+
+    # --- Configuration integration (optional but recommended) ---
+    @classmethod
+    def config_spec(cls) -> Dict[str, Dict[str, Any]]:
+        """Return a specification of required/optional config values.
+
+        The spec is a mapping of field name -> metadata dict with keys:
+          - type: str  (e.g., 'str', 'int', 'bool', 'list')
+          - required: bool
+          - secret: bool  (True for values that must come from env/.env)
+          - default: Any (optional)
+          - description: str (optional)
+        """
+        ...
+
+    @classmethod
+    def from_config(cls, config_service: Any, namespace: str) -> "BaseConnector":
+        """Create a connector instance from a ConfigService and config namespace.
+
+        Args:
+            config_service: ConfigService instance (core.v1.engine.services.config_service)
+            namespace: Dotted path within settings (e.g., 'sources.jira_cloud')
         """
         ...
 

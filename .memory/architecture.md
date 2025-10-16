@@ -184,9 +184,16 @@ class IndexController:
 **Components:**
 
 **Connectors (`packages/indexed-core/src/index/connectors`):**
-- `FileSystemConnector` - Local file reading
-- `JiraConnector` (legacy) - Jira integration
-- `ConfluenceConnector` (legacy) - Confluence integration
+- `FileSystemConnector` - Local file reading  
+- `JiraConnector` - Jira integration (uses `atlassian-python-api`)
+- `ConfluenceConnector` (future) - Confluence integration (will use `atlassian-python-api`)
+- `BitbucketConnector` (future) - Bitbucket integration (will use `atlassian-python-api`)
+
+**Atlassian Integration Strategy:**
+- **Unified Dependency**: All Atlassian services use `atlassian-python-api>=4.0.7`
+- **Consistent Patterns**: Same authentication and pagination patterns across services
+- **Cloud + Server/DC**: Single library supports both deployment models
+- **Future-Ready**: Prepared for Confluence and Bitbucket connector implementations
 
 **Configuration (`packages/indexed-core/src/index/config`):**
 - `ConfigService` - Load/save TOML configuration

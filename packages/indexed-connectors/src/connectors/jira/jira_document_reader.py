@@ -1,4 +1,4 @@
-import requests
+from atlassian import Jira
 
 from utils.retry import execute_with_retry
 from utils.batch import read_items_in_batches
@@ -34,15 +34,37 @@ class JiraDocumentReader:
         self.max_skipped_items_in_row = max_skipped_items_in_row
         self.fields = "summary,description,comment,updated"
 
+        # Initialize atlassian-python-api Jira client: PAT via token or username/password
+        if token:
+            self._client = Jira(url=self.base_url, token=token)
+        else:
+            self._client = Jira(
+                url=self.base_url, 
+                username=self.login, 
+                password=self.password,
+                cloud=False
+            )
+
     def read_all_documents(self):
         return self.__read_items()
 
     def get_number_of_documents(self):
-        search_result = self.__request_items(
-            {"jql": self.query, "startAt": 0, "maxResults": 1}
-        )
+        def do_request():
+            # Use jql with limit=1 to get total count efficiently
+            result = self._client.jql(
+                self.query, 
+                fields=self.fields,
+                start=0,
+                limit=1
+            )
+            return result.get("total", 0)
 
-        return search_result["total"]
+        return execute_with_retry(
+            do_request,
+            f"Getting document count for query: {self.query}",
+            self.number_of_retries,
+            self.retry_delay,
+        )
 
     def get_reader_details(self) -> dict:
         return {
@@ -53,19 +75,9 @@ class JiraDocumentReader:
             "fields": self.fields,
         }
 
-    def __add_url_prefix(self, relative_path):
-        return self.base_url + relative_path
-
     def __read_items(self):
         def read_batch_func(start_at, batch_size):
-            return self.__request_items(
-                {
-                    "jql": self.query,
-                    "startAt": start_at,
-                    "maxResults": batch_size,
-                    "fields": self.fields,
-                }
-            )
+            return self.__request_items(start_at=start_at, max_results=batch_size)
 
         return read_items_in_batches(
             read_batch_func,
@@ -75,27 +87,22 @@ class JiraDocumentReader:
             max_skipped_items_in_row=self.max_skipped_items_in_row,
         )
 
-    def __request_items(self, params):
+    def __request_items(self, start_at: int, max_results: int):
         def do_request():
-            response = requests.get(
-                url=self.__add_url_prefix("/rest/api/latest/search"),
-                headers={
-                    "Accept": "application/json",
-                    **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
-                },
-                params=params,
-                auth=(
-                    (self.login, self.password)
-                    if self.login and self.password
-                    else None
-                ),
+            result = self._client.jql(
+                self.query,
+                fields=self.fields,
+                start=start_at,
+                limit=max_results
             )
-            response.raise_for_status()
-            return response.json()
+            return {
+                "issues": result.get("issues", []),
+                "total": result.get("total", 0),
+            }
 
         return execute_with_retry(
             do_request,
-            f"Requesting items with params: {params}",
+            f"Requesting items at {start_at} with max {max_results}",
             self.number_of_retries,
             self.retry_delay,
         )
