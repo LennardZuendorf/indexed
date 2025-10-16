@@ -5,6 +5,9 @@ from typing import List
 
 import typer
 
+from indexed.app import svc_create
+from core.v1.engine.services import SourceConfig, get_config
+
 
 def _is_cloud(url: str) -> bool:
     return url.endswith(".atlassian.net")
@@ -63,9 +66,7 @@ def create_files(
         help="Delete any existing collection with the same name before creating a new one.",
     ),
 ):
-from indexed.app import svc_create
-from core.v1.engine.services import SourceConfig, get_config
-
+    """Create a collection from local files."""
     cfg = SourceConfig(
         name=collection,
         type="localFiles",
@@ -117,7 +118,7 @@ def create_jira(
         help="Delete any existing collection with the same name before creating a new one.",
     ),
 ):
-    from indexed.app import svc_create, DEFAULT_INDEXER
+    from indexed.app import svc_create
     from core.v1.engine.services import SourceConfig
 
     if _is_cloud(url):
@@ -187,7 +188,7 @@ def create_confluence(
         help="Delete any existing collection with the same name before creating a new one.",
     ),
 ):
-    from indexed.app import svc_create, DEFAULT_INDEXER
+    from indexed.app import svc_create
     from core.v1.engine.services import SourceConfig
 
     if _is_cloud(url):
