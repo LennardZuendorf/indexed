@@ -5,13 +5,30 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
+import os
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
+from core.v1.config.settings import _get_env_var
 from .jira_document_reader import JiraDocumentReader
 from .jira_document_converter import JiraDocumentConverter
 from .jira_cloud_document_reader import JiraCloudDocumentReader
 from .jira_cloud_document_converter import JiraCloudDocumentConverter
 from .schema import JiraConfig, JiraCloudConfig
+
+
+def _safe_str_attr(obj, name: str, default: str) -> str:
+    """Safely get string attribute, handling MagicMock in tests.
+    
+    Args:
+        obj: Object to get attribute from
+        name: Attribute name
+        default: Default value if attribute missing or not a string
+        
+    Returns:
+        String attribute value or default
+    """
+    val = getattr(obj, name, default)
+    return val if isinstance(val, str) else default
 
 
 class JiraConnector:
@@ -154,7 +171,6 @@ class JiraConnector:
 
     @classmethod
     def from_config(cls, config_service, namespace: str) -> "JiraConnector":
-        import os
         settings = config_service.get()
         # Navigate by dotted path via getattr
         section = settings
@@ -165,10 +181,14 @@ class JiraConnector:
         query = getattr(section, "jql", None) or getattr(section, "query", None)
         if not base_url or not query:
             raise ValueError("Jira (Server/DC) config requires base_url and query")
-        # Secrets via env
-        token = os.getenv(getattr(section, "token_env", "JIRA_TOKEN"))
-        login = os.getenv(getattr(section, "login_env", "JIRA_LOGIN"))
-        password = os.getenv(getattr(section, "password_env", "JIRA_PASSWORD"))
+        # Secrets via env - use safe getattr to handle MagicMock in tests
+        token_env = _safe_str_attr(section, "token_env", "JIRA_TOKEN")
+        login_env = _safe_str_attr(section, "login_env", "JIRA_LOGIN")
+        password_env = _safe_str_attr(section, "password_env", "JIRA_PASSWORD")
+        
+        token = os.getenv(token_env) or _get_env_var(token_env)
+        login = os.getenv(login_env) or _get_env_var(login_env)
+        password = os.getenv(password_env) or _get_env_var(password_env)
         return cls(url=base_url, query=query, token=token, login=login, password=password)
 
 
@@ -281,7 +301,6 @@ class JiraCloudConnector:
 
     @classmethod
     def from_config(cls, config_service, namespace: str) -> "JiraCloudConnector":
-        import os
         from core.v1.config.settings import _get_env_var
 
         settings = config_service.get()
@@ -294,7 +313,7 @@ class JiraCloudConnector:
         if not base_url or not email or not query:
             raise ValueError("Jira Cloud config requires base_url, email, and query (jql)")
         # Secrets resolution: prefer ATLASSIAN_TOKEN, fallback to configured api_token_env
-        token_env_name = getattr(section, "api_token_env", "ATLASSIAN_TOKEN")
+        token_env_name = _safe_str_attr(section, "api_token_env", "ATLASSIAN_TOKEN")
         api_token = os.getenv("ATLASSIAN_TOKEN") or _get_env_var(token_env_name)
         if not api_token:
             raise ValueError(
