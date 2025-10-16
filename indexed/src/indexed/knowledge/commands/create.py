@@ -63,14 +63,14 @@ def create_files(
         help="Delete any existing collection with the same name before creating a new one.",
     ),
 ):
-    from indexed.app import svc_create, DEFAULT_INDEXER
-    from core.v1.engine.services import SourceConfig
+from indexed.app import svc_create
+from core.v1.engine.services import SourceConfig, get_config
 
     cfg = SourceConfig(
         name=collection,
         type="localFiles",
         base_url_or_path=path,
-        indexer=DEFAULT_INDEXER,
+        indexer=get_config().index.default_indexer,
         reader_opts={
             "includePatterns": include or [],
             "excludePatterns": exclude or [],
@@ -139,7 +139,7 @@ def create_jira(
         type=source_type,
         base_url_or_path=url,
         query=jql,
-        indexer=DEFAULT_INDEXER,
+        indexer=get_config().index.default_indexer,
         reader_opts=reader_opts,
     )
 
@@ -216,7 +216,7 @@ def create_confluence(
         type=source_type,
         base_url_or_path=url,
         query=cql,
-        indexer=DEFAULT_INDEXER,
+        indexer=get_config().index.default_indexer,
         reader_opts=reader_opts,
     )
 

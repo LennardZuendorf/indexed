@@ -63,11 +63,19 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
     """
     if cfg.type == "confluence":
         # Confluence Server/Data Center setup
-        token = os.environ.get("CONF_TOKEN")
-        login = os.environ.get("CONF_LOGIN")
-        password = os.environ.get("CONF_PASSWORD")
+        token = cfg.reader_opts.get("token")
+        username = cfg.reader_opts.get("username")
+        password = cfg.reader_opts.get("password")
+        
+        # Use env vars as fallback
+        if not token:
+            token = os.environ.get("CONF_TOKEN")
+        if not username:
+            username = os.environ.get("CONF_LOGIN")
+        if not password:
+            password = os.environ.get("CONF_PASSWORD")
 
-        if not token and (not login or not password):
+        if not token and (not username or not password):
             raise ValueError(
                 "Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided."
             )
@@ -76,7 +84,7 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
             base_url=cfg.base_url_or_path,
             query=cfg.query,
             token=token,
-            login=login,
+            username=username,
             password=password,
             read_all_comments=(
                 not cfg.reader_opts.get("readOnlyFirstLevelComments", False)
@@ -87,8 +95,8 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
 
     elif cfg.type == "confluenceCloud":
         # Confluence Cloud setup
-        email = os.environ.get("ATLASSIAN_EMAIL")
-        api_token = os.environ.get("ATLASSIAN_TOKEN")
+        email = cfg.reader_opts.get("email", os.environ.get("ATLASSIAN_EMAIL"))
+        api_token = cfg.reader_opts.get("api_token", os.environ.get("ATLASSIAN_TOKEN"))
 
         if not email or not api_token:
             raise ValueError(
@@ -109,11 +117,19 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
 
     elif cfg.type == "jira":
         # Jira Server/Data Center authentication
-        token = os.environ.get("JIRA_TOKEN")
-        login = os.environ.get("JIRA_LOGIN")
-        password = os.environ.get("JIRA_PASSWORD")
+        token = cfg.reader_opts.get("token")
+        username = cfg.reader_opts.get("username")
+        password = cfg.reader_opts.get("password")
+        
+        # Use env vars as fallback
+        if not token:
+            token = os.environ.get("JIRA_TOKEN")
+        if not username:
+            username = os.environ.get("JIRA_LOGIN")
+        if not password:
+            password = os.environ.get("JIRA_PASSWORD")
 
-        if not token and (not login or not password):
+        if not token and (not username or not password):
             raise ValueError(
                 "Either 'token' ('JIRA_TOKEN' env variable) or both 'login' ('JIRA_LOGIN' env variable) and 'password' ('JIRA_PASSWORD' env variable) must be provided for Jira Server/Data Center."
             )
@@ -122,7 +138,7 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
             base_url=cfg.base_url_or_path,
             query=cfg.query,
             token=token,
-            login=login,
+            username=username,
             password=password,
         )
         converter = JiraDocumentConverter()
@@ -130,8 +146,8 @@ def _build_reader_converter(cfg: SourceConfig) -> Tuple:
 
     elif cfg.type == "jiraCloud":
         # Jira Cloud authentication
-        email = os.environ.get("ATLASSIAN_EMAIL")
-        api_token = os.environ.get("ATLASSIAN_TOKEN")
+        email = cfg.reader_opts.get("email", os.environ.get("ATLASSIAN_EMAIL"))
+        api_token = cfg.reader_opts.get("api_token", os.environ.get("ATLASSIAN_TOKEN"))
 
         if not email or not api_token:
             raise ValueError(

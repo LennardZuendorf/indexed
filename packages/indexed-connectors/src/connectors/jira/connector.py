@@ -112,6 +112,65 @@ class JiraConnector:
         """String representation of connector."""
         return f"JiraConnector(url='{self._url}', query='{self._query}')"
 
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        return {
+            "base_url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Jira base URL (Server/Data Center)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base JQL query",
+            },
+            # Auth alternatives (token OR login+password)
+            "token_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_TOKEN",
+                "description": "Env var name containing API token",
+            },
+            "login_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_LOGIN",
+                "description": "Env var name for basic auth username",
+            },
+            "password_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_PASSWORD",
+                "description": "Env var name for basic auth password",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> "JiraConnector":
+        import os
+        settings = config_service.get()
+        # Navigate by dotted path via getattr
+        section = settings
+        for part in namespace.split("."):
+            section = getattr(section, part)
+        # Expect dict-like attributes: base_url, query
+        base_url = getattr(section, "base_url", None)
+        query = getattr(section, "jql", None) or getattr(section, "query", None)
+        if not base_url or not query:
+            raise ValueError("Jira (Server/DC) config requires base_url and query")
+        # Secrets via env
+        token = os.getenv(getattr(section, "token_env", "JIRA_TOKEN"))
+        login = os.getenv(getattr(section, "login_env", "JIRA_LOGIN"))
+        password = os.getenv(getattr(section, "password_env", "JIRA_PASSWORD"))
+        return cls(url=base_url, query=query, token=token, login=login, password=password)
+
 
 class JiraCloudConnector:
     # Metadata for CLI generation and compatibility
@@ -188,6 +247,60 @@ class JiraCloudConnector:
     def __repr__(self) -> str:
         """String representation of connector."""
         return f"JiraCloudConnector(url='{self._url}', query='{self._query}')"
+
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        return {
+            "base_url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Jira Cloud URL (e.g., https://company.atlassian.net)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base JQL query",
+            },
+            "email": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Atlassian account email",
+            },
+            "api_token_env": {
+                "type": "str",
+                "required": True,
+                "secret": True,
+                "default": "ATLASSIAN_TOKEN",
+                "description": "Env var name containing Atlassian API token",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> "JiraCloudConnector":
+        import os
+        from core.v1.config.settings import _get_env_var
+
+        settings = config_service.get()
+        section = settings
+        for part in namespace.split("."):
+            section = getattr(section, part)
+        base_url = getattr(section, "base_url", None)
+        email = getattr(section, "email", None) or os.getenv("ATLASSIAN_EMAIL")
+        query = getattr(section, "jql", None) or getattr(section, "query", None)
+        if not base_url or not email or not query:
+            raise ValueError("Jira Cloud config requires base_url, email, and query (jql)")
+        # Secrets resolution: prefer ATLASSIAN_TOKEN, fallback to configured api_token_env
+        token_env_name = getattr(section, "api_token_env", "ATLASSIAN_TOKEN")
+        api_token = os.getenv("ATLASSIAN_TOKEN") or _get_env_var(token_env_name)
+        if not api_token:
+            raise ValueError(
+                "Missing Atlassian API token. Set ATLASSIAN_TOKEN or the configured api_token_env."
+            )
+        return cls(url=base_url, query=query, email=email, api_token=api_token)
 
 
 __all__ = ["JiraConnector", "JiraCloudConnector"]
