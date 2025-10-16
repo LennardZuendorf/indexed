@@ -37,6 +37,12 @@ python -m indexed_cli.app
 - `langchain>=0.3.26` - Document utilities
 - `bs4>=0.0.2` - HTML parsing
 
+### Atlassian Integration
+- `atlassian-python-api>=4.0.7` - Unified client for Jira, Confluence, and Bitbucket
+  - **Migration from jira-python**: Consolidated dependency for strategic consistency
+  - Supports both Cloud (username/password + cloud=True) and Server/DC (token or username/password + cloud=False)
+  - Uses `jql()` method with `start`/`limit` pagination instead of `search_issues()` with `startAt`/`maxResults`
+
 ### Configuration & Validation
 - `pydantic>=2.5.0` - Data validation and settings
 - `pydantic-settings>=2.2.1` - Configuration management
@@ -372,6 +378,39 @@ class EmbeddingConfig(BaseModel):
 - If adding new major versions (e.g., `core.v2`), follow similar versioning pattern
 - Maintain clear separation between versions if coexistence is needed
 - Prefer clean breaks over maintaining multiple implementations
+
+## Migration Notes
+
+### Jira Client Migration (2025-10-16)
+
+**From:** `jira>=3.5.0` (jira-python)
+**To:** `atlassian-python-api>=4.0.7`
+
+**Rationale:** Consolidate Atlassian service dependencies to prepare for future Confluence and Bitbucket connectors.
+
+**Key API Changes:**
+```python
+# OLD (jira-python)
+from jira import JIRA
+client = JIRA(server=url, basic_auth=(email, token))
+result = client.search_issues(jql, startAt=0, maxResults=50, json_result=True)
+
+# NEW (atlassian-python-api)  
+from atlassian import Jira
+client = Jira(url=url, username=email, password=token, cloud=True)
+result = client.jql(jql, start=0, limit=50)
+```
+
+**Authentication Differences:**
+- **Cloud**: `Jira(url=..., username=email, password=api_token, cloud=True)`
+- **Server/DC with Token**: `Jira(url=..., token=pat_token)`
+- **Server/DC with Credentials**: `Jira(url=..., username=user, password=pass, cloud=False)`
+
+**Benefits:**
+- Single dependency for all Atlassian services
+- Consistent API patterns across Jira, Confluence, Bitbucket
+- Better support for both Cloud and Server/DC environments
+- Future-proofs connector architecture
 
 ## Key Principles Summary
 

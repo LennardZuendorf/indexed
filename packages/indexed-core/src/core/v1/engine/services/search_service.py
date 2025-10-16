@@ -217,7 +217,7 @@ class SearchService:
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
                 result = searcher.search(
-                    query,
+                    query=query,
                     max_number_of_chunks=max_chunks,
                     max_number_of_documents=max_docs,
                     include_text_content=include_full_text,
@@ -244,7 +244,6 @@ _default_service = SearchService()
 
 def search(
     query: str,
-    *,
     configs: Optional[List[SourceConfig]] = None,
     max_chunks: Optional[int] = None,
     max_docs: Optional[int] = None,
@@ -280,7 +279,7 @@ def search(
         >>> print(f"Searched {len(results)} collections")
     """
     return _default_service.search(
-        query,
+        query=query,
         configs=configs,
         max_chunks=max_chunks,
         max_docs=max_docs,

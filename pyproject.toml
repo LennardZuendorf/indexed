@@ -22,8 +22,16 @@ addopts = [
     "--strict-config",
     "--cov=indexed/src/indexed",
     "--cov=packages/indexed-core/src/core",
+    "--cov=packages/indexed-connectors/src/connectors",
+    "--cov=packages/utils/src/utils",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov"
+]
+markers = [
+    "indexed: Main indexed application tests",
+    "connectors: Tests for indexed-connectors package",
+    "core: Tests for indexed-core package",
+    "utils: Tests for indexed-utils package",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)

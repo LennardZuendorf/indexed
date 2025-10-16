@@ -13,6 +13,7 @@ dependencies = [
     "bs4>=0.0.2",
     "langchain>=0.3.26",
     "unstructured[all-docs]>=0.18.5",
+    "atlassian-python-api>=3.41.16",
 ]
 
 [tool.uv.sources]
