@@ -93,8 +93,10 @@ Indexed is a document search system built with a privacy-first monorepo structur
 │  │ - discover_documents()   │  │
 │  │ - read_document()        │  │
 │  │                          │  │
-│  │ JiraConnector (legacy)   │  │
+│  │ JiraConnector            │  │
+│  │ - BaseConnector compliant│  │
 │  │ ConfluenceConnector      │  │
+│  │ - BaseConnector compliant│  │
 │  └──────────────────────────┘  │
 └────────────────────────────────┘
 ```
@@ -183,17 +185,48 @@ class IndexController:
 
 **Components:**
 
-**Connectors (`packages/indexed-core/src/index/connectors`):**
+**Connectors (`packages/indexed-connectors/src/connectors/`):**
 - `FileSystemConnector` - Local file reading  
-- `JiraConnector` - Jira integration (uses `atlassian-python-api`)
-- `ConfluenceConnector` (future) - Confluence integration (will use `atlassian-python-api`)
-- `BitbucketConnector` (future) - Bitbucket integration (will use `atlassian-python-api`)
+- `JiraConnector`, `JiraCloudConnector` - Jira integration (uses `atlassian-python-api`)
+  - ✅ BaseConnector protocol compliant
+  - ✅ Configuration-driven instantiation
+  - ✅ Standardized environment variable handling
+- `ConfluenceConnector`, `ConfluenceCloudConnector` - Confluence integration
+  - ✅ BaseConnector protocol compliant  
+  - ✅ Configuration-driven instantiation
+  - ✅ Standardized environment variable handling
+- `BitbucketConnector` (future) - Bitbucket integration
+
+**BaseConnector Protocol Architecture:**
+
+All Atlassian connectors implement the BaseConnector protocol for standardized configuration-driven instantiation:
+
+```python
+class BaseConnector(Protocol):
+    @classmethod
+    def config_spec(cls) -> ConnectorMetadata:
+        """Return configuration specification."""
+    
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> Self:
+        """Create connector instance from configuration."""
+```
+
+**Environment Variable Resolution Order:**
+1. Direct config attributes (highest priority)
+2. Configured environment variable names  
+3. Standard fallback environment variables
+
+**Common Patterns:**
+- `safe_getattr()` utility for test compatibility (handles MagicMock values)
+- Consistent error messages for validation failures
+- Standardized configuration validation patterns
 
 **Atlassian Integration Strategy:**
 - **Unified Dependency**: All Atlassian services use `atlassian-python-api>=4.0.7`
 - **Consistent Patterns**: Same authentication and pagination patterns across services
 - **Cloud + Server/DC**: Single library supports both deployment models
-- **Future-Ready**: Prepared for Confluence and Bitbucket connector implementations
+- **Future-Ready**: Prepared for Bitbucket connector implementations
 
 **Configuration (`packages/indexed-core/src/index/config`):**
 - `ConfigService` - Load/save TOML configuration
