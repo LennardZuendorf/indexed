@@ -123,31 +123,64 @@ connector = ConfluenceCloudConnector(
 
 ## Connector Protocol
 
-All connectors are based on the `BaseConnector` protocol from `core.v1.connectors`. Every connector must provide:
+All connectors implement the `BaseConnector` protocol from `core.v1.connectors.base`:
+
+**Required Properties:**
+- `reader`: Document reader instance that handles fetching documents
+- `converter`: Document converter instance that handles format conversion  
+- `connector_type`: String identifier for the connector (e.g., "jira", "confluence", "files")
+
+**Optional Class Attributes:**
+- `META`: ConnectorMetadata instance with CLI integration details
+
+### Configuration Integration
+
+Connectors support configuration-driven instantiation through two class methods:
+
+#### config_spec()
+
+Returns a specification dictionary describing configuration fields:
 
 ```python
-@runtime_checkable
-class BaseConnector(Protocol):
-    @property
-    def reader(self):
-        """Document reader instance, yields docs with .metadata property"""
-        ...
-    
-    @property
-    def converter(self):
-        """Document converter instance (standardizes internal document structure)"""
-        ...
-    
-    @property
-    def connector_type(self) -> str:
-        """Human-readable connector type"""
-        ...
-
-    @property
-    def metadata_schema(self) -> dict:
-        """Dict describing metadata fields added to each document/chunk"""
-        ...
+@classmethod
+def config_spec(cls) -> Dict[str, Dict[str, Any]]:
+    return {
+        "base_url": {
+            "type": "str",
+            "required": True,
+            "secret": False,
+            "description": "Service base URL"
+        },
+        "api_token_env": {
+            "type": "str", 
+            "required": False,
+            "secret": True,           # Indicates env var or secret
+            "default": "API_TOKEN",
+            "description": "Env var name containing API token"
+        }
+    }
 ```
+
+#### from_config()
+
+Creates connector instances from configuration service:
+
+```python
+@classmethod
+def from_config(cls, config_service, namespace: str) -> "ConnectorClass":
+    # Navigate to config section and extract fields
+    # Resolve environment variables  
+    # Return connector instance
+```
+
+### Environment Variable Resolution
+
+Environment variables are resolved in this order:
+
+1. **Runtime overrides/CLI flags** (highest precedence)
+2. **INDEXED__* environment variables** (via config service)
+3. **Process environment variables** (`os.getenv()`)
+4. **.env file values** (via `_get_env_var()` fallback)
 
 This allows connectors to be used interchangeably:
 

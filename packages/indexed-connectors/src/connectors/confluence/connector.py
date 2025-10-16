@@ -3,15 +3,41 @@
 This connector wraps the existing ConfluenceDocumentReader and ConfluenceDocumentConverter
 to provide a standardized BaseConnector interface for both Confluence Server/Data Center
 and Confluence Cloud.
+
+Both connectors implement the BaseConnector protocol, exposing reader, converter, and
+connector_type properties. They support both direct instantiation and configuration-driven
+creation via config_spec() and from_config() class methods.
+
+Comment depth handling:
+- read_all_comments=True: Index all nested comments
+- read_all_comments=False: Index only top-level comments
+- Legacy readOnlyFirstLevelComments setting is automatically mapped to read_all_comments
 """
 
+import os
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
+from core.v1.config.settings import _get_env_var
 from .confluence_document_reader import ConfluenceDocumentReader
 from .confluence_document_converter import ConfluenceDocumentConverter
 from .confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from .confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
 from .schema import ConfluenceConfig, ConfluenceCloudConfig
+
+
+def _safe_str_attr(obj, name: str, default: str) -> str:
+    """Safely get string attribute, handling MagicMock in tests.
+    
+    Args:
+        obj: Object to get attribute from
+        name: Attribute name
+        default: Default value if attribute missing or not a string
+        
+    Returns:
+        String attribute value or default
+    """
+    val = getattr(obj, name, default)
+    return val if isinstance(val, str) else default
 
 
 class ConfluenceConnector:
@@ -122,6 +148,96 @@ class ConfluenceConnector:
         """String representation of connector."""
         return f"ConfluenceConnector(url='{self._url}', query='{self._query}')"
 
+    # --- Configuration integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        return {
+            "base_url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Confluence base URL (Server/Data Center)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base CQL query",
+            },
+            # Auth alternatives (token OR login+password)
+            "token_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "CONF_TOKEN",
+                "description": "Env var name containing API token",
+            },
+            "login_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "CONF_LOGIN",
+                "description": "Env var name for basic auth username",
+            },
+            "password_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "CONF_PASSWORD",
+                "description": "Env var name for basic auth password",
+            },
+            "read_all_comments": {
+                "type": "bool",
+                "required": False,
+                "secret": False,
+                "default": True,
+                "description": "Read nested comments (vs top-level only)",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> "ConfluenceConnector":
+        settings = config_service.get()
+        # Navigate by dotted path via getattr
+        section = settings
+        for part in namespace.split("."):
+            section = getattr(section, part)
+        # Expect dict-like attributes: base_url, query
+        base_url = getattr(section, "base_url", None)
+        query = getattr(section, "cql", None) or getattr(section, "query", None)
+        if not base_url or not query:
+            raise ValueError("Confluence (Server/DC) config requires base_url and query")
+        
+        # Secrets via env - use safe getattr to handle MagicMock in tests
+        token_env = _safe_str_attr(section, "token_env", "CONF_TOKEN")
+        login_env = _safe_str_attr(section, "login_env", "CONF_LOGIN")
+        password_env = _safe_str_attr(section, "password_env", "CONF_PASSWORD")
+        
+        token = os.getenv(token_env) or _get_env_var(token_env)
+        login = os.getenv(login_env) or _get_env_var(login_env)
+        password = os.getenv(password_env) or _get_env_var(password_env)
+        
+        if not token and (not login or not password):
+            raise ValueError(
+                "Either 'token' or both 'login' and 'password' must be provided"
+            )
+        
+        # Handle read_all_comments with legacy compatibility
+        read_all_comments = getattr(section, "read_all_comments", True)
+        # Check legacy readOnlyFirstLevelComments (both camelCase and snake_case)
+        if (getattr(section, "read_only_first_level_comments", None) is True or 
+            getattr(section, "readOnlyFirstLevelComments", None) is True):
+            read_all_comments = False
+            
+        return cls(
+            url=base_url, 
+            query=query, 
+            token=token, 
+            login=login, 
+            password=password,
+            read_all_comments=read_all_comments
+        )
+
 
 class ConfluenceCloudConnector:
     # Metadata for CLI generation and compatibility
@@ -212,6 +328,79 @@ class ConfluenceCloudConnector:
     def __repr__(self) -> str:
         """String representation of connector."""
         return f"ConfluenceCloudConnector(url='{self._url}', query='{self._query}')"
+
+    # --- Configuration integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        return {
+            "base_url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Confluence Cloud URL (e.g., https://company.atlassian.net/wiki)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base CQL query",
+            },
+            "email": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Atlassian account email",
+            },
+            "api_token_env": {
+                "type": "str",
+                "required": True,
+                "secret": True,
+                "default": "ATLASSIAN_TOKEN",
+                "description": "Env var name containing Atlassian API token",
+            },
+            "read_all_comments": {
+                "type": "bool",
+                "required": False,
+                "secret": False,
+                "default": True,
+                "description": "Read nested comments (vs top-level only)",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> "ConfluenceCloudConnector":
+        settings = config_service.get()
+        section = settings
+        for part in namespace.split("."):
+            section = getattr(section, part)
+        base_url = getattr(section, "base_url", None)
+        email = getattr(section, "email", None) or os.getenv("ATLASSIAN_EMAIL") or _get_env_var("ATLASSIAN_EMAIL")
+        query = getattr(section, "cql", None) or getattr(section, "query", None)
+        if not base_url or not email or not query:
+            raise ValueError("Confluence Cloud config requires base_url, email, and query (cql)")
+        
+        # Secrets resolution: prefer ATLASSIAN_TOKEN, fallback to configured api_token_env
+        token_env_name = _safe_str_attr(section, "api_token_env", "ATLASSIAN_TOKEN")
+        api_token = os.getenv("ATLASSIAN_TOKEN") or _get_env_var(token_env_name)
+        if not api_token:
+            raise ValueError(
+                "Missing Atlassian API token. Set ATLASSIAN_TOKEN or the configured api_token_env."
+            )
+        
+        # Handle read_all_comments with legacy compatibility
+        read_all_comments = getattr(section, "read_all_comments", True)
+        # Check legacy readOnlyFirstLevelComments (both camelCase and snake_case)
+        if (getattr(section, "read_only_first_level_comments", None) is True or 
+            getattr(section, "readOnlyFirstLevelComments", None) is True):
+            read_all_comments = False
+            
+        return cls(
+            url=base_url, 
+            query=query, 
+            email=email, 
+            api_token=api_token,
+            read_all_comments=read_all_comments
+        )
 
 
 __all__ = ["ConfluenceConnector", "ConfluenceCloudConnector"]

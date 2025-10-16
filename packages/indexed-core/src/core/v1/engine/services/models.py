@@ -12,7 +12,7 @@ class SourceConfig(BaseModel):
         ..., description="baseUrl for remote sources OR basePath for files"
     )
     query: Optional[str] = None
-    indexer: str
+    indexer: Optional[str] = None
     reader_opts: Dict = Field(
         default_factory=dict, description="Type-specific reader options"
     )
