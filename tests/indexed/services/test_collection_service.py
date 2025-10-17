@@ -185,11 +185,7 @@ class TestBuildReaderConverter:
 
     def test_build_unknown_reader_converter(self):
         """Test building reader for unknown source type raises Pydantic validation error."""
-<<<<<<< HEAD
         with pytest.raises(ValueError, match="Input should be"):
-=======
-with pytest.raises(ValueError, match="Input should be"):
->>>>>>> d55879b (fix: fixed tests and linter errors)
             SourceConfig(
                 name="test-collection",
                 type="unknown",
