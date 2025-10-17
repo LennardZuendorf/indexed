@@ -7,7 +7,7 @@ documents from various sources (Jira, Confluence, local files, etc.).
 The core package only depends on this protocol, making connectors true plugins.
 """
 
-from typing import Protocol, runtime_checkable, ClassVar, Dict, Any, Type, Optional
+from typing import Protocol, runtime_checkable, ClassVar, Dict, Any
 
 
 @runtime_checkable

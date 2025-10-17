@@ -1,10 +1,10 @@
-name: Copilot Setup Steps
+name: copilot-setup-steps
 
 on:
   workflow_call:
 
 jobs:
-  setup:
+  copilot-setup-steps:
     runs-on: ubuntu-latest
     
     steps:
