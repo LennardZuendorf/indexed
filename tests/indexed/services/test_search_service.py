@@ -1,5 +1,4 @@
 """Tests for search service."""
-import json
 from unittest.mock import Mock, patch
 
 from core.v1.engine.services.search_service import SearchService, search

@@ -124,5 +124,112 @@ class FileSystemConnector:
             f"exclude_patterns={self._exclude_patterns})"
         )
 
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        """Return specification of required/optional config values.
+
+        Returns a mapping of field name -> metadata dict describing
+        configuration parameters for config-driven instantiation.
+
+        Returns:
+            dict: Configuration specification with keys:
+                - type: str (e.g., 'str', 'list', 'bool')
+                - required: bool
+                - secret: bool (always False for local files)
+                - default: Any (optional)
+                - description: str
+
+        Examples:
+            >>> spec = FileSystemConnector.config_spec()
+            >>> spec['path']['required']
+            True
+            >>> spec['include_patterns']['type']
+            'list'
+        """
+        return {
+            "path": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Root directory path to scan for files",
+            },
+            "include_patterns": {
+                "type": "list",
+                "required": False,
+                "secret": False,
+                "default": [".*"],
+                "description": "List of regex patterns for files to include",
+            },
+            "exclude_patterns": {
+                "type": "list",
+                "required": False,
+                "secret": False,
+                "default": [],
+                "description": "List of regex patterns for files to exclude",
+            },
+            "fail_fast": {
+                "type": "bool",
+                "required": False,
+                "secret": False,
+                "default": False,
+                "description": "Stop indexing on first error (True) or continue (False)",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service, namespace: str) -> "FileSystemConnector":
+        """Create a FileSystemConnector instance from ConfigService and namespace.
+
+        Reads configuration from the provided config service at the specified
+        namespace path and instantiates a connector with those settings.
+
+        Args:
+            config_service: ConfigService instance (core.v1.engine.services.config_service)
+            namespace: Dotted path within settings (e.g., 'sources.local_docs')
+
+        Returns:
+            FileSystemConnector: Configured connector instance
+
+        Raises:
+            ValueError: If required config values are missing or invalid
+
+        Examples:
+            >>> # With config at settings.sources.docs
+            >>> connector = FileSystemConnector.from_config(config_service, "sources.docs")
+            >>>
+            >>> # Expected config structure in settings:
+            >>> # sources:
+            >>> #   docs:
+            >>> #     path: "./my-docs"
+            >>> #     include_patterns: [".*\\.md$", ".*\\.txt$"]
+        """
+        settings = config_service.get()
+
+        # Navigate to the specified namespace using dotted path
+        section = settings
+        for part in namespace.split("."):
+            section = getattr(section, part)
+
+        # Extract configuration values
+        path = getattr(section, "path", None)
+        if not path:
+            raise ValueError(
+                f"FileSystem connector config at '{namespace}' requires 'path'"
+            )
+
+        # Optional parameters with defaults
+        include_patterns = getattr(section, "include_patterns", None)
+        exclude_patterns = getattr(section, "exclude_patterns", None)
+        fail_fast = getattr(section, "fail_fast", False)
+
+        # Create and return connector instance
+        return cls(
+            path=path,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+            fail_fast=fail_fast,
+        )
+
 
 __all__ = ["FileSystemConnector"]
