@@ -66,7 +66,13 @@ def create_files(
         help="Delete any existing collection with the same name before creating a new one.",
     ),
 ):
+<<<<<<< HEAD
     """Create a collection from local files."""
+=======
+    from indexed.app import svc_create
+    from core.v1.engine.services import SourceConfig, get_config
+
+>>>>>>> d55879b (fix: fixed tests and linter errors)
     cfg = SourceConfig(
         name=collection,
         type="localFiles",
@@ -119,7 +125,7 @@ def create_jira(
     ),
 ):
     from indexed.app import svc_create
-    from core.v1.engine.services import SourceConfig
+    from core.v1.engine.services import SourceConfig, get_config
 
     if _is_cloud(url):
         env = _require_env(["ATLASSIAN_EMAIL", "ATLASSIAN_TOKEN"])
@@ -189,7 +195,7 @@ def create_confluence(
     ),
 ):
     from indexed.app import svc_create
-    from core.v1.engine.services import SourceConfig
+    from core.v1.engine.services import SourceConfig, get_config
 
     if _is_cloud(url):
         env = _require_env(["ATLASSIAN_EMAIL", "ATLASSIAN_TOKEN"])
