@@ -67,17 +67,29 @@ See [docs/CONNECTOR_MATRIX.md](../docs/CONNECTOR_MATRIX.md) for full compatibili
 ```python
 from connectors import FileSystemConnector
 
-# Minimal usage
+# Minimal usage (direct instantiation)
 connector = FileSystemConnector(path="./docs")
 
-# With include/exclude filters and metadata options
+# With include/exclude filters
 connector = FileSystemConnector(
     path="./docs",
     include_patterns=[r".*\.md$", r".*\.txt$"],
     exclude_patterns=[r".*/node_modules/.*", r".*\.min\.js$"],
-    recursive=True,  # enable subdirectory scanning
-    metadata_fields=["checksum", "modified"]
+    fail_fast=False  # Continue on errors (default)
 )
+
+# Config-driven instantiation (via ConfigService)
+from core.v1.engine.services.config_service import ConfigService
+
+config_service = ConfigService()
+connector = FileSystemConnector.from_config(config_service, "sources.docs")
+
+# Expected config structure in indexed.toml or settings:
+# [sources.docs]
+# path = "./my-docs"
+# include_patterns = [".*\\.md$", ".*\\.txt$"]
+# exclude_patterns = [".*/node_modules/.*"]
+# fail_fast = false
 ```
 
 ### Example: Jira Cloud Connector

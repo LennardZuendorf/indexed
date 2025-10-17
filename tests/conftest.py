@@ -1,8 +1,6 @@
 """Test configuration and shared fixtures."""
-import os
 import sys
 from pathlib import Path
-import pytest
 
 # Add source directories to Python path for test imports
 indexed_src = str(Path(__file__).parent.parent / "indexed" / "src")

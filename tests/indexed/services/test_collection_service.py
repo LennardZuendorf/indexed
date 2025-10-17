@@ -4,13 +4,8 @@ import pytest
 from unittest.mock import Mock, patch
 
 from core.v1.engine.services.collection_service import (
-    create,
-    update,
-    clear,
     _build_reader_converter,
     _collection_exists,
-    _create_one,
-    _update_one,
 )
 from core.v1.engine.services.models import SourceConfig
 
@@ -191,7 +186,7 @@ class TestBuildReaderConverter:
     def test_build_unknown_reader_converter(self):
         """Test building reader for unknown source type raises Pydantic validation error."""
         with pytest.raises(ValueError, match="Input should be"):
-            config = SourceConfig(
+            SourceConfig(
                 name="test-collection",
                 type="unknown",
                 base_url_or_path="",
