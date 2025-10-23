@@ -19,6 +19,7 @@ resolution-markers = [
 [manifest]
 members = [
     "indexed",
+    "indexed-config",
     "indexed-connectors",
     "indexed-core",
     "indexed-utils",
@@ -1660,6 +1661,7 @@ source = { editable = "indexed" }
 dependencies = [
     { name = "art" },
     { name = "fastmcp" },
+    { name = "indexed-config" },
     { name = "indexed-connectors" },
     { name = "indexed-core" },
     { name = "indexed-utils" },
@@ -1672,6 +1674,7 @@ dependencies = [
 requires-dist = [
     { name = "art", specifier = ">=6.0" },
     { name = "fastmcp", specifier = ">=2.11.3" },
+    { name = "indexed-config", editable = "packages/indexed-config" },
     { name = "indexed-connectors", editable = "packages/indexed-connectors" },
     { name = "indexed-core", editable = "packages/indexed-core" },
     { name = "indexed-utils", editable = "packages/utils" },
@@ -1679,6 +1682,36 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7.0" },
     { name = "typer", specifier = ">=0.12.3" },
 ]
+
+[[package]]
+name = "indexed-config"
+version = "1.0.0"
+source = { editable = "packages/indexed-config" }
+dependencies = [
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "tomlkit" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.17.1" },
+    { name = "platformdirs", specifier = ">=4.2.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.10" },
+    { name = "tomlkit", specifier = ">=0.12.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "indexed-connectors"

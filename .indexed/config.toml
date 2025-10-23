@@ -1,0 +1,10 @@
+[test]
+key = "test_value"
+
+[core.v1.indexing]
+chunk_size = 300
+
+[embedding]
+model = "all-MiniLM-L6-v2"
+
+[connectors.jira]
