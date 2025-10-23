@@ -11,6 +11,7 @@ dependencies = [
     "indexed-core",
     "indexed-connectors",
     "indexed-utils",
+    "indexed-config",
     "typer>=0.12.3",
     "rich>=13.7.0",
     "mcp>=1.13.0",
@@ -26,6 +27,7 @@ indexed-mcp = "indexed.mcp.cli:cli_main"
 indexed-core = { workspace = true }
 indexed-connectors = { workspace = true }
 indexed-utils = { workspace = true }
+indexed-config = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

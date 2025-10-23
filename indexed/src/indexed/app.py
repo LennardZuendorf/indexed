@@ -171,10 +171,10 @@ app.command(
     help="Validate Configuration",
 )(config.validate)
 app.command(
-    "config reset",
+    "config delete",
     rich_help_panel="Configuration Management",
-    help="Reset Configuration To Defaults",
-)(config.reset)
+    help="Delete Configuration Keys",
+)(config.delete_config)
 
 # MCP Server - Hide The Group, Show Only Subcommands
 app.add_typer(

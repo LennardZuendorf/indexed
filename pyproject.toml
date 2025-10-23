@@ -54,6 +54,7 @@ members = [
     "packages/utils",
     "packages/indexed-connectors",
     "packages/indexed-core",
+    "packages/indexed-config",
     "indexed"
 ]
 

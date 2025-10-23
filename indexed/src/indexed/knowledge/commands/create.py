@@ -5,9 +5,6 @@ from typing import List
 
 import typer
 
-from indexed.app import svc_create
-from core.v1.engine.services import SourceConfig, get_config
-
 
 def _is_cloud(url: str) -> bool:
     return url.endswith(".atlassian.net")
@@ -67,6 +64,9 @@ def create_files(
     ),
 ):
     """Create a collection from local files."""
+    from indexed.app import svc_create
+    from core.v1.engine.services import SourceConfig, get_config
+    
     cfg = SourceConfig(
         name=collection,
         type="localFiles",
