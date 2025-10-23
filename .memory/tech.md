@@ -300,32 +300,86 @@ uv run mypy packages/indexed-core/src
 - [ ] mypy checks pass
 - [ ] No print statements (use logging)
 
-## Configuration Management
+### Configuration Management (New KISS System)
+
+**⚠️ Config system refactored to unversioned `indexed-config` package**
+
+### Architecture
+```python
+# Package: indexed-config (unversioned, stable across API versions)
+from indexed_config import ConfigService, Provider
+
+# Registration (in package __init__.py)
+svc = ConfigService.instance()
+svc.register(MyConfigSpec, path="section.subsection")
+
+# Usage
+provider = svc.bind()  # Validates all registered specs
+config_slice = provider.get(MyConfigSpec)  # Typed access
+service = MyService(config_slice)
+```
+
+### CLI Commands
+```bash
+indexed config inspect                    # Show merged config
+indexed config set core.v1.indexing.chunk_size 512  # Set values
+indexed config delete old.section        # Remove keys
+indexed config validate                   # Validate specs
+indexed config init                       # Initialize workspace config
+```
+
+### Config File Merge Strategy
+1. **Defaults** from Pydantic model defaults
+2. **Global**: `~/.config/indexed/config.toml`
+3. **Workspace**: `./.indexed/config.toml` (overrides global)
+4. **Environment**: `INDEXED__section__key=value` (highest priority)
 
 ### Config File Structure
 ```toml
-# config.toml
-[embedding]
-provider = "sentence-transformers"  # or "openai", "voyage"
-model_name = "all-MiniLM-L6-v2"
-
-[vector_store]
-type = "faiss"
-index_type = "IndexFlatL2"
-
-[indexing]
+# .indexed/config.toml (workspace) or ~/.config/indexed/config.toml (global)
+[core.v1.indexing]
 chunk_size = 512
 chunk_overlap = 50
+
+[core.v1.embedding] 
+provider = "sentence-transformers"
+model_name = "all-MiniLM-L6-v2"
+
+[connectors.jira]
+url = "https://jira.example.com"
+query = "project = PROJ"
 ```
 
-### Pydantic Models
+### Pydantic Config Specs
 ```python
 from pydantic import BaseModel, Field
 
-class EmbeddingConfig(BaseModel):
-    provider: str = Field(default="sentence-transformers")
-    model_name: str = Field(default="all-MiniLM-L6-v2")
-    api_key: Optional[str] = None
+class CoreV1Indexing(BaseModel):
+    chunk_size: int = Field(default=512)
+    chunk_overlap: int = Field(default=50)
+
+class JiraConfig(BaseModel):
+    url: str = Field(..., description="Jira base URL")
+    query: str = Field(..., description="JQL query")
+    token: Optional[str] = None
+
+# Registration
+ConfigService.instance().register(CoreV1Indexing, path="core.v1.indexing")
+ConfigService.instance().register(JiraConfig, path="connectors.jira")
+```
+
+### Environment Variables
+```bash
+# Override any config value via environment
+EXPORT INDEXED__core__v1__indexing__chunk_size=1024
+EXPORT INDEXED__connectors__jira__url="https://my-jira.com"
+```
+
+### Legacy Config (Deprecated)
+```python
+# ⚠️ DEPRECATED - use ConfigService instead
+from core.v1 import Config  # Shows deprecation warning
+config = Config.load()      # Legacy API
 ```
 
 ## Performance Guidelines

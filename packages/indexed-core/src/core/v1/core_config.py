@@ -1,5 +1,15 @@
-"""Configuration management for indexed."""
+"""Configuration management for indexed.
 
+⚠️  DEPRECATED: This Config class is deprecated.
+    Use `from indexed_config import ConfigService, Provider` instead.
+    
+    Migration:
+    - Old: config = Config.load()
+    - New: provider = ConfigService.instance().bind()
+           config_slice = provider.get(MyConfigSpec)
+"""
+
+import warnings
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -77,6 +87,11 @@ class Config(BaseModel):
             >>> config = Config.load()  # Load from ./indexed.toml or defaults
             >>> config = Config.load(Path("/path/to/indexed.toml"))
         """
+        warnings.warn(
+            "core.v1.Config is deprecated. Use 'from indexed_config import ConfigService' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # TODO: Implement TOML file loading
         # For now, return defaults
         # Future: Load from config_path or find ./indexed.toml
