@@ -100,12 +100,11 @@ class BaseConnector(Protocol):
         ...
 
     @classmethod
-    def from_config(cls, config_service: Any, namespace: str) -> "BaseConnector":
-        """Create a connector instance from a ConfigService and config namespace.
+    def from_config(cls, config_service: Any) -> "BaseConnector":
+        """Create a connector instance from a ConfigService.
 
         Args:
-            config_service: ConfigService instance (core.v1.engine.services.config_service)
-            namespace: Dotted path within settings (e.g., 'sources.jira_cloud')
+            config_service: ConfigService instance (indexed_config.ConfigService)
         """
         ...
 

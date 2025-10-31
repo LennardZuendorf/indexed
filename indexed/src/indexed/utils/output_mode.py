@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from core.v1.engine.services import ConfigService
+from indexed_config import ConfigService
 
 
 def should_output_json(

@@ -33,19 +33,39 @@ class ConfigService:
 
     # Registry
     def register(self, spec: Type[T], *, path: str) -> None:
+        """Register a config spec at a dot-path.
+        
+        Idempotent - can be called multiple times with same spec.
+        """
         self._specs[path] = spec
 
     # I/O
     def load_raw(self) -> Dict[str, Any]:
+        """Load raw merged config (global + workspace + env)."""
         return self._store.read()
+    
+    def get_raw(self) -> Dict[str, Any]:
+        """Alias for load_raw() for consistency."""
+        return self.load_raw()
 
     def save_raw(self, data: Dict[str, Any]) -> None:
+        """Save config to workspace TOML."""
         self._store.write(data)
 
     # Typed binding
     def bind(self) -> Provider:
+        """Load, validate, and bind all registered specs.
+        
+        Returns:
+            Provider with typed config instances.
+            
+        Raises:
+            ValueError: If any registered spec fails validation.
+        """
         raw = self.load_raw()
         instances: Dict[type, BaseModel] = {}
+        path_to_type: Dict[str, Type[BaseModel]] = {}
+        
         for path, spec in self._specs.items():
             payload = get_by_path(raw, path, default=None)
             # Skip specs that are not present in config (optional sections)
@@ -53,10 +73,12 @@ class ConfigService:
                 continue
             try:
                 instances[spec] = spec.model_validate(payload)  # type: ignore[arg-type]
+                path_to_type[path] = spec
             except ValidationError as exc:
                 # Surface early by raising; caller can handle
                 raise ValueError(f"Invalid config for '{path}': {exc}") from exc
-        return Provider(instances, raw)
+        
+        return Provider(instances, raw, path_to_type)
 
     # Raw ops with dot-paths (write to workspace TOML)
     def get(self, dot_path: str) -> Any:

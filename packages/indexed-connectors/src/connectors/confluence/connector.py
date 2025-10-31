@@ -14,10 +14,8 @@ Comment depth handling:
 - Legacy readOnlyFirstLevelComments setting is automatically mapped to read_all_comments
 """
 
-import os
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
-from core.v1.config.settings import _get_env_var
 from .confluence_document_reader import ConfluenceDocumentReader
 from .confluence_document_converter import ConfluenceDocumentConverter
 from .confluence_cloud_document_reader import ConfluenceCloudDocumentReader
@@ -196,46 +194,40 @@ class ConfluenceConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> "ConfluenceConnector":
-        settings = config_service.get()
-        # Navigate by dotted path via getattr
-        section = settings
-        for part in namespace.split("."):
-            section = getattr(section, part)
-        # Expect dict-like attributes: base_url, query
-        base_url = getattr(section, "base_url", None)
-        query = getattr(section, "cql", None) or getattr(section, "query", None)
-        if not base_url or not query:
-            raise ValueError("Confluence (Server/DC) config requires base_url and query")
+    def from_config(cls, config_service) -> "ConfluenceConnector":
+        """Create ConfluenceConnector from ConfigService.
         
-        # Secrets via env - use safe getattr to handle MagicMock in tests
-        token_env = _safe_str_attr(section, "token_env", "CONF_TOKEN")
-        login_env = _safe_str_attr(section, "login_env", "CONF_LOGIN")
-        password_env = _safe_str_attr(section, "password_env", "CONF_PASSWORD")
+        Registers ConfluenceConfig spec and extracts configuration values.
         
-        token = os.getenv(token_env) or _get_env_var(token_env)
-        login = os.getenv(login_env) or _get_env_var(login_env)
-        password = os.getenv(password_env) or _get_env_var(password_env)
-        
-        if not token and (not login or not password):
-            raise ValueError(
-                "Either 'token' or both 'login' and 'password' must be provided"
-            )
-        
-        # Handle read_all_comments with legacy compatibility
-        read_all_comments = getattr(section, "read_all_comments", True)
-        # Check legacy readOnlyFirstLevelComments (both camelCase and snake_case)
-        if (getattr(section, "read_only_first_level_comments", None) is True or 
-            getattr(section, "readOnlyFirstLevelComments", None) is True):
-            read_all_comments = False
+        Args:
+            config_service: ConfigService instance with config loaded.
             
+        Returns:
+            Configured ConfluenceConnector instance.
+            
+        Raises:
+            ValueError: If required config values are missing.
+            
+        Examples:
+            >>> from indexed_config import ConfigService
+            >>> config = ConfigService()
+            >>> connector = ConfluenceConnector.from_config(config)
+        """
+        # Register our config spec
+        config_service.register(ConfluenceConfig, path="sources.confluence")
+        
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(ConfluenceConfig)
+        
+        # Create instance with config values
         return cls(
-            url=base_url, 
-            query=query, 
-            token=token, 
-            login=login, 
-            password=password,
-            read_all_comments=read_all_comments
+            url=cfg.url,
+            query=cfg.query,
+            token=cfg.get_token(),
+            login=cfg.get_login(),
+            password=cfg.get_password(),
+            read_all_comments=cfg.read_all_comments,
         )
 
 
@@ -368,38 +360,39 @@ class ConfluenceCloudConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> "ConfluenceCloudConnector":
-        settings = config_service.get()
-        section = settings
-        for part in namespace.split("."):
-            section = getattr(section, part)
-        base_url = getattr(section, "base_url", None)
-        email = getattr(section, "email", None) or os.getenv("ATLASSIAN_EMAIL") or _get_env_var("ATLASSIAN_EMAIL")
-        query = getattr(section, "cql", None) or getattr(section, "query", None)
-        if not base_url or not email or not query:
-            raise ValueError("Confluence Cloud config requires base_url, email, and query (cql)")
+    def from_config(cls, config_service) -> "ConfluenceCloudConnector":
+        """Create ConfluenceCloudConnector from ConfigService.
         
-        # Secrets resolution: prefer ATLASSIAN_TOKEN, fallback to configured api_token_env
-        token_env_name = _safe_str_attr(section, "api_token_env", "ATLASSIAN_TOKEN")
-        api_token = os.getenv("ATLASSIAN_TOKEN") or _get_env_var(token_env_name)
-        if not api_token:
-            raise ValueError(
-                "Missing Atlassian API token. Set ATLASSIAN_TOKEN or the configured api_token_env."
-            )
+        Registers ConfluenceCloudConfig spec and extracts configuration values.
         
-        # Handle read_all_comments with legacy compatibility
-        read_all_comments = getattr(section, "read_all_comments", True)
-        # Check legacy readOnlyFirstLevelComments (both camelCase and snake_case)
-        if (getattr(section, "read_only_first_level_comments", None) is True or 
-            getattr(section, "readOnlyFirstLevelComments", None) is True):
-            read_all_comments = False
+        Args:
+            config_service: ConfigService instance with config loaded.
             
+        Returns:
+            Configured ConfluenceCloudConnector instance.
+            
+        Raises:
+            ValueError: If required config values are missing.
+            
+        Examples:
+            >>> from indexed_config import ConfigService
+            >>> config = ConfigService()
+            >>> connector = ConfluenceCloudConnector.from_config(config)
+        """
+        # Register our config spec
+        config_service.register(ConfluenceCloudConfig, path="sources.confluence_cloud")
+        
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(ConfluenceCloudConfig)
+        
+        # Create instance with config values
         return cls(
-            url=base_url, 
-            query=query, 
-            email=email, 
-            api_token=api_token,
-            read_all_comments=read_all_comments
+            url=cfg.url,
+            query=cfg.query,
+            email=cfg.get_email(),
+            api_token=cfg.get_api_token(),
+            read_all_comments=cfg.read_all_comments,
         )
 
 

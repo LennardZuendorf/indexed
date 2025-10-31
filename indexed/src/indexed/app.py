@@ -32,6 +32,8 @@ from core.v1.engine.services import (  # noqa: E402
     update as svc_update,
 )
 
+# Note: These service functions now accept config_service parameter for new config system
+
 # Configure Rich console with custom theme for help display
 _help_console = Console(theme=Theme(get_help_theme_styles()))
 
