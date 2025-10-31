@@ -5,8 +5,7 @@ from various sources including Confluence, Jira, and local files. It handles the
 orchestration of readers, converters, and persisters to build searchable collections.
 """
 
-import os
-from typing import List, Tuple
+from typing import List, Any
 from dataclasses import dataclass
 from .models import SourceConfig, ProgressCallback
 from utils.logger import setup_root_logger
@@ -14,164 +13,71 @@ from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
 from core.v1.engine.factories.update_collection_factory import create_collection_updater
 
-# Import all the readers and converters we need
-from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
-from connectors.confluence.confluence_document_converter import (
-    ConfluenceDocumentConverter,
-)
-from connectors.confluence.confluence_cloud_document_reader import (
-    ConfluenceCloudDocumentReader,
-)
-from connectors.confluence.confluence_cloud_document_converter import (
-    ConfluenceCloudDocumentConverter,
-)
-from connectors.jira.jira_document_reader import JiraDocumentReader
-from connectors.jira.jira_document_converter import JiraDocumentConverter
-from connectors.jira.jira_cloud_document_reader import JiraCloudDocumentReader
-from connectors.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
-from connectors.files.files_document_reader import FilesDocumentReader
-from connectors.files.files_document_converter import FilesDocumentConverter
-
 setup_root_logger()
 
 
-def _build_reader_converter(cfg: SourceConfig) -> Tuple:
-    """Build reader and converter based on source config type.
+def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
+    """Build connector using from_config() pattern.
 
-    This function creates the appropriate document reader and converter pair
-    based on the source configuration type. It handles authentication setup
-    for each source type using environment variables.
+    This function creates the appropriate connector based on the source configuration
+    type using the new explicit registration pattern with ConfigService.
 
     Args:
         cfg (SourceConfig): Source configuration containing type, URL, query, and options.
+        config_service: ConfigService instance from indexed_config
 
     Returns:
-        Tuple: A tuple containing (reader, converter) instances for the specified source type.
+        BaseConnector: Connector instance with reader and converter properties.
 
     Raises:
-        ValueError: If required environment variables are missing or if source type is unknown.
-
-    Note:
-        This reuses the exact same logic from the original implementation.
-
-        Environment variables required by source type:
-        - confluence: CONF_TOKEN or (CONF_LOGIN and CONF_PASSWORD)
-        - confluenceCloud: ATLASSIAN_EMAIL and ATLASSIAN_TOKEN
-        - jira: JIRA_TOKEN or (JIRA_LOGIN and JIRA_PASSWORD)
-        - jiraCloud: ATLASSIAN_EMAIL and ATLASSIAN_TOKEN
-        - localFiles: No authentication required
+        ValueError: If source type is unknown or configuration is invalid.
     """
-    if cfg.type == "confluence":
-        # Confluence Server/Data Center setup
-        token = cfg.reader_opts.get("token")
-        username = cfg.reader_opts.get("username")
-        password = cfg.reader_opts.get("password")
-        
-        # Use env vars as fallback
-        if not token:
-            token = os.environ.get("CONF_TOKEN")
-        if not username:
-            username = os.environ.get("CONF_LOGIN")
-        if not password:
-            password = os.environ.get("CONF_PASSWORD")
+    from connectors.jira import JiraConnector, JiraCloudConnector
+    from connectors.confluence import ConfluenceConnector, ConfluenceCloudConnector
+    from connectors.files import FileSystemConnector
 
-        if not token and (not username or not password):
-            raise ValueError(
-                "Either 'token' ('CONF_TOKEN' env variable) or both 'login' ('CONF_LOGIN' env variable) and 'password' ('CONF_PASSWORD' env variable) must be provided."
-            )
-
-        reader = ConfluenceDocumentReader(
-            base_url=cfg.base_url_or_path,
-            query=cfg.query,
-            token=token,
-            username=username,
-            password=password,
-            read_all_comments=(
-                not cfg.reader_opts.get("readOnlyFirstLevelComments", False)
-            ),
-        )
-        converter = ConfluenceDocumentConverter()
-        return reader, converter
-
-    elif cfg.type == "confluenceCloud":
-        # Confluence Cloud setup
-        email = cfg.reader_opts.get("email", os.environ.get("ATLASSIAN_EMAIL"))
-        api_token = cfg.reader_opts.get("api_token", os.environ.get("ATLASSIAN_TOKEN"))
-
-        if not email or not api_token:
-            raise ValueError(
-                "Both 'ATLASSIAN_EMAIL' and 'ATLASSIAN_TOKEN' environment variables must be provided for Confluence Cloud."
-            )
-
-        reader = ConfluenceCloudDocumentReader(
-            base_url=cfg.base_url_or_path,
-            query=cfg.query,
-            email=email,
-            api_token=api_token,
-            read_all_comments=(
-                not cfg.reader_opts.get("readOnlyFirstLevelComments", False)
-            ),
-        )
-        converter = ConfluenceCloudDocumentConverter()
-        return reader, converter
-
-    elif cfg.type == "jira":
-        # Jira Server/Data Center authentication
-        token = cfg.reader_opts.get("token")
-        username = cfg.reader_opts.get("username")
-        password = cfg.reader_opts.get("password")
-        
-        # Use env vars as fallback
-        if not token:
-            token = os.environ.get("JIRA_TOKEN")
-        if not username:
-            username = os.environ.get("JIRA_LOGIN")
-        if not password:
-            password = os.environ.get("JIRA_PASSWORD")
-
-        if not token and (not username or not password):
-            raise ValueError(
-                "Either 'token' ('JIRA_TOKEN' env variable) or both 'login' ('JIRA_LOGIN' env variable) and 'password' ('JIRA_PASSWORD' env variable) must be provided for Jira Server/Data Center."
-            )
-
-        reader = JiraDocumentReader(
-            base_url=cfg.base_url_or_path,
-            query=cfg.query,
-            token=token,
-            username=username,
-            password=password,
-        )
-        converter = JiraDocumentConverter()
-        return reader, converter
+    # Set config values from SourceConfig
+    if cfg.type == "jira":
+        config_service.set("sources.jira.url", cfg.base_url_or_path)
+        config_service.set("sources.jira.query", cfg.query)
+        # Pass reader_opts for auth credentials
+        for key, value in cfg.reader_opts.items():
+            config_service.set(f"sources.jira.{key}", value)
+        return JiraConnector.from_config(config_service)
 
     elif cfg.type == "jiraCloud":
-        # Jira Cloud authentication
-        email = cfg.reader_opts.get("email", os.environ.get("ATLASSIAN_EMAIL"))
-        api_token = cfg.reader_opts.get("api_token", os.environ.get("ATLASSIAN_TOKEN"))
+        config_service.set("sources.jira_cloud.url", cfg.base_url_or_path)
+        config_service.set("sources.jira_cloud.query", cfg.query)
+        # Pass reader_opts for auth credentials
+        for key, value in cfg.reader_opts.items():
+            config_service.set(f"sources.jira_cloud.{key}", value)
+        return JiraCloudConnector.from_config(config_service)
 
-        if not email or not api_token:
-            raise ValueError(
-                "Both 'ATLASSIAN_EMAIL' and 'ATLASSIAN_TOKEN' environment variables must be provided for Jira Cloud."
-            )
+    elif cfg.type == "confluence":
+        config_service.set("sources.confluence.url", cfg.base_url_or_path)
+        config_service.set("sources.confluence.query", cfg.query)
+        # Pass reader_opts for auth credentials and options
+        for key, value in cfg.reader_opts.items():
+            config_service.set(f"sources.confluence.{key}", value)
+        return ConfluenceConnector.from_config(config_service)
 
-        reader = JiraCloudDocumentReader(
-            base_url=cfg.base_url_or_path,
-            query=cfg.query,
-            email=email,
-            api_token=api_token,
-        )
-        converter = JiraCloudDocumentConverter()
-        return reader, converter
+    elif cfg.type == "confluenceCloud":
+        config_service.set("sources.confluence_cloud.url", cfg.base_url_or_path)
+        config_service.set("sources.confluence_cloud.query", cfg.query)
+        # Pass reader_opts for auth credentials and options
+        for key, value in cfg.reader_opts.items():
+            config_service.set(f"sources.confluence_cloud.{key}", value)
+        return ConfluenceCloudConnector.from_config(config_service)
 
     elif cfg.type == "localFiles":
-        reader = FilesDocumentReader(
-            base_path=cfg.base_url_or_path,
-            include_patterns=cfg.reader_opts.get("includePatterns", [".*"]),
-            exclude_patterns=cfg.reader_opts.get("excludePatterns", []),
-            fail_fast=cfg.reader_opts.get("failFast", False),
-        )
-        converter = FilesDocumentConverter()
-        return reader, converter
+        config_service.set("sources.files.path", cfg.base_url_or_path)
+        if "includePatterns" in cfg.reader_opts:
+            config_service.set("sources.files.include_patterns", cfg.reader_opts["includePatterns"])
+        if "excludePatterns" in cfg.reader_opts:
+            config_service.set("sources.files.exclude_patterns", cfg.reader_opts["excludePatterns"])
+        if "failFast" in cfg.reader_opts:
+            config_service.set("sources.files.fail_fast", cfg.reader_opts["failFast"])
+        return FileSystemConnector.from_config(config_service)
 
     else:
         raise ValueError(f"Unknown source type: {cfg.type}")
@@ -191,22 +97,26 @@ def _collection_exists(name: str) -> bool:
 
 
 def _create_one(
-    cfg: SourceConfig, use_cache: bool, progress_callback: ProgressCallback = None
+    cfg: SourceConfig,
+    config_service: Any,
+    use_cache: bool,
+    progress_callback: ProgressCallback = None
 ) -> None:
     """Create a single collection.
 
     Args:
         cfg (SourceConfig): Source configuration for the collection.
+        config_service: ConfigService instance from indexed_config
         use_cache (bool): Whether to enable on-disk read-cache decorator.
         progress_callback (ProgressCallback): Optional callback for progress updates.
     """
-    reader, converter = _build_reader_converter(cfg)
+    connector = _build_connector_from_config(cfg, config_service)
 
     creator = create_collection_creator(
         collection_name=cfg.name,
         indexers=[cfg.indexer],
-        document_reader=reader,
-        document_converter=converter,
+        document_reader=connector.reader,
+        document_converter=connector.converter,
         use_cache=use_cache,
         progress_callback=progress_callback,
     )
@@ -227,6 +137,7 @@ def _update_one(cfg: SourceConfig, progress_callback: ProgressCallback = None) -
 def create(
     configs: List[SourceConfig],
     *,
+    config_service: Any = None,
     use_cache: bool = True,
     force: bool = False,
     progress_callback: ProgressCallback = None,
@@ -239,6 +150,7 @@ def create(
 
     Args:
         configs (List[SourceConfig]): List of source configurations to process.
+        config_service: ConfigService instance from indexed_config (creates new if None)
         use_cache (bool, optional): Enable on-disk read-cache decorator for improved
             performance on subsequent runs. Defaults to True.
         force (bool, optional): Delete existing collection folder first if it exists.
@@ -249,10 +161,14 @@ def create(
         ValueError: If source configuration is invalid or required environment
             variables are missing.
     """
+    if config_service is None:
+        from indexed_config import ConfigService
+        config_service = ConfigService()
+
     for cfg in configs:
         if force and _collection_exists(cfg.name):
             clear([cfg.name])
-        _create_one(cfg, use_cache, progress_callback)
+        _create_one(cfg, config_service, use_cache, progress_callback)
 
 
 def update(

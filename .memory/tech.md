@@ -300,36 +300,61 @@ uv run mypy packages/indexed-core/src
 - [ ] mypy checks pass
 - [ ] No print statements (use logging)
 
-### Configuration Management (New KISS System)
+### Configuration Management (Explicit Registration Pattern)
 
-**⚠️ Config system refactored to unversioned `indexed-config` package**
+**Single Source of Truth**: `indexed-config` package provides unified configuration.
 
-### Architecture
+### Core Principles
+1. **Explicit Registration**: Components register their own config specs at usage point
+2. **Zero Coupling**: Config doesn't know about consumers
+3. **Type Safety**: Pydantic validation throughout
+4. **Version Awareness**: Namespaced paths support `core.v1.*`, `core.v2.*`, etc.
+
+### Basic Usage Pattern
 ```python
-# Package: indexed-config (unversioned, stable across API versions)
-from indexed_config import ConfigService, Provider
+from indexed_config import ConfigService
+from connectors.jira import JiraCloudConnector
 
-# Registration (in package __init__.py)
-svc = ConfigService.instance()
-svc.register(MyConfigSpec, path="section.subsection")
+# Initialize config
+config = ConfigService()
 
-# Usage
-provider = svc.bind()  # Validates all registered specs
-config_slice = provider.get(MyConfigSpec)  # Typed access
-service = MyService(config_slice)
+# Override with CLI args if needed
+config.set("sources.jira_cloud.url", "https://company.atlassian.net")
+
+# Connector registers its own config spec and extracts values
+connector = JiraCloudConnector.from_config(config)
+```
+
+### Connector Pattern
+```python
+from indexed_config import ConfigService
+from .schema import MyConnectorConfig
+
+class MyConnector:
+    @classmethod
+    def from_config(cls, config_service: ConfigService) -> "MyConnector":
+        # 1. Register our config spec
+        config_service.register(MyConnectorConfig, path="sources.my_connector")
+        
+        # 2. Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(MyConnectorConfig)
+        
+        # 3. Create instance with config values
+        return cls(url=cfg.url, query=cfg.query)
 ```
 
 ### CLI Commands
 ```bash
 indexed config inspect                    # Show merged config
-indexed config set core.v1.indexing.chunk_size 512  # Set values
+indexed config set sources.jira_cloud.url "https://..."  # Set values
 indexed config delete old.section        # Remove keys
 indexed config validate                   # Validate specs
 indexed config init                       # Initialize workspace config
 ```
 
 ### Config File Merge Strategy
-1. **Defaults** from Pydantic model defaults
+1. **Defaults** from Pydantic model defaults (lowest priority)
 2. **Global**: `~/.config/indexed/config.toml`
 3. **Workspace**: `./.indexed/config.toml` (overrides global)
 4. **Environment**: `INDEXED__section__key=value` (highest priority)
@@ -337,49 +362,87 @@ indexed config init                       # Initialize workspace config
 ### Config File Structure
 ```toml
 # .indexed/config.toml (workspace) or ~/.config/indexed/config.toml (global)
+
+[sources.jira_cloud]
+url = "https://company.atlassian.net"
+email = "user@company.com"
+query = "project = PROJ"
+
+[sources.confluence_cloud]
+url = "https://company.atlassian.net/wiki"
+email = "user@company.com"
+query = "space = DEV"
+read_all_comments = true
+
+[sources.files]
+path = "./documents"
+include_patterns = ["*.md", "*.txt"]
+exclude_patterns = []
+
 [core.v1.indexing]
 chunk_size = 512
 chunk_overlap = 50
+batch_size = 32
 
 [core.v1.embedding] 
 provider = "sentence-transformers"
 model_name = "all-MiniLM-L6-v2"
-
-[connectors.jira]
-url = "https://jira.example.com"
-query = "project = PROJ"
+batch_size = 64
 ```
 
-### Pydantic Config Specs
+### Pydantic Config Models
 ```python
 from pydantic import BaseModel, Field
+from typing import Optional
 
-class CoreV1Indexing(BaseModel):
-    chunk_size: int = Field(default=512)
-    chunk_overlap: int = Field(default=50)
-
-class JiraConfig(BaseModel):
-    url: str = Field(..., description="Jira base URL")
+class JiraCloudConfig(BaseModel):
+    url: str = Field(..., description="Jira Cloud URL")
+    email: str = Field(..., description="Atlassian account email")
     query: str = Field(..., description="JQL query")
-    token: Optional[str] = None
+    api_token: str = Field(..., description="API token")
+    
+    def get_api_token(self) -> str:
+        """Get API token from config or environment."""
+        return self.api_token or os.getenv("ATLASSIAN_TOKEN", "")
 
-# Registration
-ConfigService.instance().register(CoreV1Indexing, path="core.v1.indexing")
-ConfigService.instance().register(JiraConfig, path="connectors.jira")
+# Config models are defined in their respective packages:
+# - Connectors: packages/indexed-connectors/src/connectors/*/schema.py
+# - Core v1: packages/indexed-core/src/core/v1/config_models.py
 ```
 
 ### Environment Variables
 ```bash
 # Override any config value via environment
-EXPORT INDEXED__core__v1__indexing__chunk_size=1024
-EXPORT INDEXED__connectors__jira__url="https://my-jira.com"
+export INDEXED__sources__jira_cloud__url="https://company.atlassian.net"
+export INDEXED__core__v1__indexing__chunk_size=1024
+
+# Secrets (referenced by config models)
+export ATLASSIAN_TOKEN="your-api-token"
+export JIRA_TOKEN="your-jira-token"
 ```
+
+### Configuration Paths
+
+**Connectors** (`sources.*`):
+- `sources.jira` - Jira Server/DC
+- `sources.jira_cloud` - Jira Cloud
+- `sources.confluence` - Confluence Server/DC
+- `sources.confluence_cloud` - Confluence Cloud
+- `sources.files` - File System
+
+**Core v1** (`core.v1.*`):
+- `core.v1.indexing` - Indexing pipeline
+- `core.v1.embedding` - Embedding generation
+- `core.v1.storage` - Vector storage
+- `core.v1.search` - Search behavior
+
+**See `.memory/config_api.md` for complete API documentation and examples.**
 
 ### Legacy Config (Deprecated)
 ```python
 # ⚠️ DEPRECATED - use ConfigService instead
-from core.v1 import Config  # Shows deprecation warning
-config = Config.load()      # Legacy API
+from core.v1.config import ConfigService as OldConfigService
+# Old config system is deprecated, use indexed_config instead
 ```
 
 ## Performance Guidelines

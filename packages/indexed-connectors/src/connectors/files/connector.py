@@ -178,57 +178,38 @@ class FileSystemConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> "FileSystemConnector":
-        """Create a FileSystemConnector instance from ConfigService and namespace.
+    def from_config(cls, config_service) -> "FileSystemConnector":
+        """Create FileSystemConnector from ConfigService.
 
-        Reads configuration from the provided config service at the specified
-        namespace path and instantiates a connector with those settings.
+        Registers FileSystemConfig spec and extracts configuration values.
 
         Args:
-            config_service: ConfigService instance (core.v1.engine.services.config_service)
-            namespace: Dotted path within settings (e.g., 'sources.local_docs')
+            config_service: ConfigService instance with config loaded.
 
         Returns:
-            FileSystemConnector: Configured connector instance
+            Configured FileSystemConnector instance.
 
         Raises:
-            ValueError: If required config values are missing or invalid
+            ValueError: If required config values are missing or invalid.
 
         Examples:
-            >>> # With config at settings.sources.docs
-            >>> connector = FileSystemConnector.from_config(config_service, "sources.docs")
-            >>>
-            >>> # Expected config structure in settings:
-            >>> # sources:
-            >>> #   docs:
-            >>> #     path: "./my-docs"
-            >>> #     include_patterns: [".*\\.md$", ".*\\.txt$"]
+            >>> from indexed_config import ConfigService
+            >>> config = ConfigService()
+            >>> connector = FileSystemConnector.from_config(config)
         """
-        settings = config_service.get()
+        # Register our config spec
+        config_service.register(FileSystemConfig, path="sources.files")
 
-        # Navigate to the specified namespace using dotted path
-        section = settings
-        for part in namespace.split("."):
-            section = getattr(section, part)
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(FileSystemConfig)
 
-        # Extract configuration values
-        path = getattr(section, "path", None)
-        if not path:
-            raise ValueError(
-                f"FileSystem connector config at '{namespace}' requires 'path'"
-            )
-
-        # Optional parameters with defaults
-        include_patterns = getattr(section, "include_patterns", None)
-        exclude_patterns = getattr(section, "exclude_patterns", None)
-        fail_fast = getattr(section, "fail_fast", False)
-
-        # Create and return connector instance
+        # Create instance with config values
         return cls(
-            path=path,
-            include_patterns=include_patterns,
-            exclude_patterns=exclude_patterns,
-            fail_fast=fail_fast,
+            path=cfg.path,
+            include_patterns=cfg.include_patterns,
+            exclude_patterns=cfg.exclude_patterns,
+            fail_fast=cfg.fail_fast,
         )
 
 
