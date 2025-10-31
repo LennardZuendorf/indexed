@@ -2,5 +2,6 @@
 
 from .service import ConfigService
 from .provider import Provider
+from .store import TomlStore
 
-__all__ = ["ConfigService", "Provider"]
+__all__ = ["ConfigService", "Provider", "TomlStore"]

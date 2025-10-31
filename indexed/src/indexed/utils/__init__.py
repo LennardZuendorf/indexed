@@ -6,7 +6,6 @@ and formatting helpers.
 
 # Import individual modules
 from . import banner
-from . import config_format
 from . import console
 from . import logging
 from . import output_mode
@@ -16,7 +15,6 @@ from . import format as format_type
 
 __all__ = [
     "banner",
-    "config_format",
     "console",
     "logging",
     "output_mode",

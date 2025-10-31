@@ -5,10 +5,8 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
-import os
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
-from core.v1.config.settings import _get_env_var
 from .jira_document_reader import JiraDocumentReader
 from .jira_document_converter import JiraDocumentConverter
 from .jira_cloud_document_reader import JiraCloudDocumentReader
@@ -170,26 +168,40 @@ class JiraConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> "JiraConnector":
-        settings = config_service.get()
-        # Navigate by dotted path via getattr
-        section = settings
-        for part in namespace.split("."):
-            section = getattr(section, part)
-        # Expect dict-like attributes: base_url, query
-        base_url = getattr(section, "base_url", None)
-        query = getattr(section, "jql", None) or getattr(section, "query", None)
-        if not base_url or not query:
-            raise ValueError("Jira (Server/DC) config requires base_url and query")
-        # Secrets via env - use safe getattr to handle MagicMock in tests
-        token_env = _safe_str_attr(section, "token_env", "JIRA_TOKEN")
-        login_env = _safe_str_attr(section, "login_env", "JIRA_LOGIN")
-        password_env = _safe_str_attr(section, "password_env", "JIRA_PASSWORD")
+    def from_config(cls, config_service) -> "JiraConnector":
+        """Create JiraConnector from ConfigService.
         
-        token = os.getenv(token_env) or _get_env_var(token_env)
-        login = os.getenv(login_env) or _get_env_var(login_env)
-        password = os.getenv(password_env) or _get_env_var(password_env)
-        return cls(url=base_url, query=query, token=token, login=login, password=password)
+        Registers JiraConfig spec and extracts configuration values.
+        
+        Args:
+            config_service: ConfigService instance with config loaded.
+            
+        Returns:
+            Configured JiraConnector instance.
+            
+        Raises:
+            ValueError: If required config values are missing.
+            
+        Examples:
+            >>> from indexed_config import ConfigService
+            >>> config = ConfigService()
+            >>> connector = JiraConnector.from_config(config)
+        """
+        # Register our config spec
+        config_service.register(JiraConfig, path="sources.jira")
+        
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(JiraConfig)
+        
+        # Create instance with config values
+        return cls(
+            url=cfg.url,
+            query=cfg.query,
+            token=cfg.get_token(),
+            login=cfg.get_login(),
+            password=cfg.get_password(),
+        )
 
 
 class JiraCloudConnector:
@@ -300,26 +312,39 @@ class JiraCloudConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> "JiraCloudConnector":
-        from core.v1.config.settings import _get_env_var
-
-        settings = config_service.get()
-        section = settings
-        for part in namespace.split("."):
-            section = getattr(section, part)
-        base_url = getattr(section, "base_url", None)
-        email = getattr(section, "email", None) or os.getenv("ATLASSIAN_EMAIL")
-        query = getattr(section, "jql", None) or getattr(section, "query", None)
-        if not base_url or not email or not query:
-            raise ValueError("Jira Cloud config requires base_url, email, and query (jql)")
-        # Secrets resolution: prefer ATLASSIAN_TOKEN, fallback to configured api_token_env
-        token_env_name = _safe_str_attr(section, "api_token_env", "ATLASSIAN_TOKEN")
-        api_token = os.getenv("ATLASSIAN_TOKEN") or _get_env_var(token_env_name)
-        if not api_token:
-            raise ValueError(
-                "Missing Atlassian API token. Set ATLASSIAN_TOKEN or the configured api_token_env."
-            )
-        return cls(url=base_url, query=query, email=email, api_token=api_token)
+    def from_config(cls, config_service) -> "JiraCloudConnector":
+        """Create JiraCloudConnector from ConfigService.
+        
+        Registers JiraCloudConfig spec and extracts configuration values.
+        
+        Args:
+            config_service: ConfigService instance with config loaded.
+            
+        Returns:
+            Configured JiraCloudConnector instance.
+            
+        Raises:
+            ValueError: If required config values are missing.
+            
+        Examples:
+            >>> from indexed_config import ConfigService
+            >>> config = ConfigService()
+            >>> connector = JiraCloudConnector.from_config(config)
+        """
+        # Register our config spec
+        config_service.register(JiraCloudConfig, path="sources.jira_cloud")
+        
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(JiraCloudConfig)
+        
+        # Create instance with config values
+        return cls(
+            url=cfg.url,
+            query=cfg.query,
+            email=cfg.get_email(),
+            api_token=cfg.get_api_token(),
+        )
 
 
 __all__ = ["JiraConnector", "JiraCloudConnector"]

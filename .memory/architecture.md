@@ -306,41 +306,105 @@ User Command: indexed-cli search "authentication flow"
 └─► 3. CLI formats and displays results
 ```
 
-## Configuration Hierarchy
+## Configuration System
+
+### Architecture
+
+**Single Source of Truth**: `indexed-config` package provides unified configuration management.
 
 ```
-Configuration Sources (lowest to highest priority):
-1. Default values (hardcoded in Pydantic models)
-2. Global config (~/.config/indexed/config.toml)
-3. Workspace config (./config.toml)
-4. Environment variables (INDEXED__*)
-5. Command-line arguments
+Config Sources (Priority: Low → High)
+├── Pydantic Model Defaults
+├── Global Config (~/.config/indexed/config.toml)
+├── Workspace Config (./.indexed/config.toml)
+└── Environment Variables (INDEXED__*)
 
-Example:
+                ↓
+
+        ConfigService
+        ├── register(spec, path)
+        ├── bind() → Provider
+        ├── set(path, value)
+        ├── delete(path)
+        └── validate()
+
+                ↓
+
+          Provider
+          ├── get(Type[T]) → T
+          └── get_by_path(str) → BaseModel
+```
+
+### Core Principles
+
+1. **Explicit Registration**: Components register their own config specs at usage point
+2. **Zero Coupling**: Config doesn't know about consumers
+3. **Type Safety**: Pydantic validation throughout
+4. **Version Awareness**: Namespaced paths support multiple versions (`core.v1.*`, `core.v2.*`)
+
+### Usage Pattern
+
+```python
+from indexed_config import ConfigService
+from connectors.jira import JiraCloudConnector
+
+# Initialize config
+config = ConfigService()
+
+# Override with CLI args if needed
+config.set("sources.jira_cloud.url", "https://company.atlassian.net")
+
+# Connector registers its own config spec and extracts values
+connector = JiraCloudConnector.from_config(config)
+```
+
+### Config Hierarchy Example
+
+```
 ┌─────────────────────────────────────┐
-│ Command-line: --chunk-size 1024     │ (Highest priority)
+│ ENV: INDEXED__core__v1__indexing__  │
+│      chunk_size=1024                │ (Highest priority)
 └──────────────┬──────────────────────┘
                │ overrides
 ┌──────────────▼──────────────────────┐
-│ ENV: INDEXED__CHUNK_SIZE=512        │
+│ Workspace .indexed/config.toml:     │
+│ [core.v1.indexing]                  │
+│ chunk_size = 512                    │
 └──────────────┬──────────────────────┘
                │ overrides
 ┌──────────────▼──────────────────────┐
-│ Workspace config.toml:              │
-│ [indexing]                          │
+│ Global ~/.config/indexed/config.toml│
+│ [core.v1.indexing]                  │
 │ chunk_size = 256                    │
-└──────────────┬──────────────────────┘
-               │ overrides
-┌──────────────▼──────────────────────┐
-│ Global config:                      │
-│ [indexing]                          │
-│ chunk_size = 128                    │
 └──────────────┬──────────────────────┘
                │ overrides
 ┌──────────────▼──────────────────────┐
 │ Default: chunk_size = 512           │ (Lowest priority)
 └─────────────────────────────────────┘
 ```
+
+### Configuration Paths
+
+**Connectors** (`sources.*`):
+- `sources.jira` - Jira Server/DC
+- `sources.jira_cloud` - Jira Cloud
+- `sources.confluence` - Confluence Server/DC
+- `sources.confluence_cloud` - Confluence Cloud
+- `sources.files` - File System
+
+**Core v1** (`core.v1.*`):
+- `core.v1.indexing` - Indexing pipeline config
+- `core.v1.embedding` - Embedding generation config
+- `core.v1.storage` - Vector storage config
+- `core.v1.search` - Search behavior config
+
+**Infrastructure**:
+- `paths` - File system paths
+- `mcp` - MCP server settings
+- `performance` - Caching and performance
+- `logging` - Logging configuration
+
+See `.memory/config_api.md` for complete API documentation.
 
 ## Dependency Injection Pattern
 
