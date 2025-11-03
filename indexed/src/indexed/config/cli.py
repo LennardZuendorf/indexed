@@ -1,14 +1,18 @@
 """Config command for managing index configuration."""
 
 import json
+import webbrowser
 from typing import Any, Optional
 from collections import defaultdict
+from pathlib import Path
 
 import typer
 from rich.panel import Panel
 from rich.console import Group
 from rich.columns import Columns
 from rich.text import Text
+from rich.table import Table
+from rich import box
 
 from indexed_config import ConfigService
 from ..utils.console import console
@@ -155,6 +159,459 @@ def _create_section_card(section_name: str, section_data: dict[str, Any]) -> Pan
     return create_info_card(title=title, rows=rows)
 
 
+def _get_available_config_schema() -> dict[str, dict[str, Any]]:
+    """Get available configuration schema with default values.
+    
+    Returns:
+        Dictionary of available sections and their keys with defaults
+    """
+    return {
+        "index": {
+            "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+            "use_gpu": False,
+        },
+        "search": {
+            "include_full_text": True,
+            "max_results": 10,
+        },
+        "sources": {
+            # Files connector
+            "files.base_path": "./data",
+            "files.include_patterns": ["*.md", "*.txt"],
+            # Jira Cloud connector
+            "jira_cloud.url": "https://your-domain.atlassian.net",
+            "jira_cloud.email": "your-email@example.com",
+            "jira_cloud.api_token": "",
+            "jira_cloud.query": "project = PROJ",
+            # Confluence connector
+            "confluence.url": "https://your-domain.atlassian.net/wiki",
+            "confluence.email": "your-email@example.com",
+            "confluence.api_token": "",
+            "confluence.space_key": "SPACE",
+            "confluence.cql": "space = SPACE",
+        },
+        "logging": {
+            "level": "WARNING",
+        },
+    }
+
+
+def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
+    """Display section selection menu and return selected section.
+    
+    Args:
+        grouped_config: Configuration grouped by sections
+        
+    Returns:
+        Selected section name or None if cancelled
+    """
+    console.print()
+    console.print(f"[{get_heading_style()}]Select Configuration Section[/{get_heading_style()}]")
+    console.print()
+    
+    # Get available schema
+    schema = _get_available_config_schema()
+    
+    # Combine existing and available sections
+    existing_sections = set(grouped_config.keys())
+    all_sections = sorted(existing_sections | set(schema.keys()))
+    
+    # Create a table for better visual organization
+    table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), expand=False)
+    table.add_column("Index", style=get_accent_style(), width=4)
+    table.add_column("Section", style="default", min_width=30)
+    table.add_column("Status", style=get_secondary_style())
+    
+    for idx, section in enumerate(all_sections, 1):
+        # Format section name nicely
+        display_name = section.replace("_", " ").replace(".", " › ").title()
+        
+        if section in existing_sections:
+            key_count = len(grouped_config[section])
+            plural = "key" if key_count == 1 else "keys"
+            status = f"✓ {key_count} {plural} configured"
+            table.add_row(
+                f"{idx}.",
+                display_name,
+                status
+            )
+        else:
+            table.add_row(
+                f"{idx}.",
+                display_name,
+                Text("not configured", style="dim italic")
+            )
+    
+    console.print(table)
+    console.print()
+    console.print(f"  [{get_accent_style()}]0.[/{get_accent_style()}] Exit")
+    console.print()
+    
+    choice = typer.prompt("Select section [0-" + str(len(all_sections)) + "]", default="0")
+    
+    try:
+        choice_idx = int(choice)
+        if choice_idx == 0:
+            return None
+        if 1 <= choice_idx <= len(all_sections):
+            return all_sections[choice_idx - 1]
+    except ValueError:
+        pass
+    
+    console.print(f"[{get_error_style()}]Invalid choice[/{get_error_style()}]")
+    return None
+
+
+def _group_keys_by_prefix(keys: list[str]) -> dict[str, list[str]]:
+    """Group keys by their prefix (first part before dot or underscore).
+    
+    Args:
+        keys: List of keys to group
+        
+    Returns:
+        Dictionary mapping group name to list of keys
+    """
+    groups = defaultdict(list)
+    
+    for key in keys:
+        # Check if key has a group prefix separated by dot (e.g., "files.path")
+        if "." in key:
+            group = key.split(".")[0]
+        # Check if key has underscore separator (e.g., "jira_cloud_url")
+        elif "_" in key:
+            parts = key.split("_")
+            # Handle multi-word prefixes (e.g., jira_cloud)
+            if parts[0] in ["jira", "confluence"] and len(parts) > 1:
+                group = f"{parts[0]}_{parts[1]}"
+            else:
+                group = parts[0]
+        else:
+            group = "general"
+        
+        groups[group].append(key)
+    
+    return dict(groups)
+
+
+def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tuple[str, bool]]:
+    """Display key selection menu within a section and return selected key.
+    
+    Args:
+        section_name: Name of the section
+        section_data: Configuration data for the section
+        
+    Returns:
+        Tuple of (selected key, is_new) or None if cancelled
+    """
+    console.print()
+    console.print(f"[{get_heading_style()}]{section_name.replace('_', ' ').replace('.', ' › ').title()} Settings[/{get_heading_style()}]")
+    console.print()
+    
+    # Get available keys from schema
+    schema = _get_available_config_schema()
+    available_keys = schema.get(section_name, {}).keys()
+    
+    # Combine existing and available keys
+    existing_keys = set(section_data.keys())
+    all_keys = sorted(existing_keys | set(available_keys))
+    
+    # Group keys by prefix for better organization
+    grouped_keys = _group_keys_by_prefix(all_keys)
+    
+    # Create a table for better visual organization
+    table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), expand=False)
+    table.add_column("Index", style=get_accent_style(), width=4)
+    table.add_column("Key", style="default")
+    table.add_column("Value", style=get_secondary_style())
+    
+    idx = 1
+    key_mapping = []
+    
+    # Display keys grouped by prefix
+    for group_idx, (group, keys) in enumerate(sorted(grouped_keys.items())):
+        # Add visual separator between groups (except first)
+        if group_idx > 0:
+            table.add_row("", "", "")
+        
+        # Add group header
+        group_display = group.replace("_", " ").title()
+        if group != "general":
+            table.add_row(
+                "",
+                Text(f"━━ {group_display} ━━", style="dim bold"),
+                ""
+            )
+        
+        # Add keys in this group
+        for key in sorted(keys):
+            # Remove group prefix and format nicely
+            if "." in key:
+                # For dot notation (e.g., "files.include_patterns" -> "Include Patterns")
+                display_key = key.split(".", 1)[1].replace("_", " ").title()
+            elif "_" in key:
+                # For underscore notation (e.g., "jira_cloud_url" -> "Url")
+                display_key = key.replace(f"{group}_", "", 1).replace("_", " ").title()
+            else:
+                display_key = key.replace("_", " ").title()
+            
+            if key in existing_keys:
+                current_value = _format_config_value(section_data[key])
+                # Truncate long values for display
+                if len(str(current_value)) > 50:
+                    current_value = str(current_value)[:47] + "..."
+                table.add_row(
+                    f"{idx}.",
+                    display_key,
+                    current_value
+                )
+            else:
+                table.add_row(
+                    f"{idx}.",
+                    display_key,
+                    Text("(not set)", style="dim italic")
+                )
+            
+            key_mapping.append(key)
+            idx += 1
+    
+    console.print(table)
+    console.print()
+    console.print(f"  [{get_accent_style()}]0.[/{get_accent_style()}] Back")
+    console.print()
+    
+    choice = typer.prompt("Select key [0-" + str(len(all_keys)) + "]", default="0")
+    
+    try:
+        choice_idx = int(choice)
+        if choice_idx == 0:
+            return None
+        if 1 <= choice_idx <= len(key_mapping):
+            selected_key = key_mapping[choice_idx - 1]
+            is_new = selected_key not in existing_keys
+            return (selected_key, is_new)
+    except ValueError:
+        pass
+    
+    console.print(f"[{get_error_style()}]Invalid choice[/{get_error_style()}]")
+    return None
+
+
+def _prompt_for_value(key: str, current_value: Any, is_new: bool = False, section_name: str = "") -> Optional[Any]:
+    """Prompt user for a new value with current value as default.
+    
+    Args:
+        key: Key being updated
+        current_value: Current value (None if new)
+        is_new: Whether this is a new key being added
+        section_name: Section name for looking up default values
+        
+    Returns:
+        New coerced value or None if cancelled
+    """
+    console.print()
+    display_key = key.replace(".", " › ")
+    
+    if is_new:
+        console.print(f"Add [{get_accent_style()}]{display_key}[/{get_accent_style()}]")
+        
+        # Get default from schema if available
+        schema = _get_available_config_schema()
+        default_value = schema.get(section_name, {}).get(key)
+        
+        if default_value is not None:
+            formatted_default = _format_config_value(default_value)
+            console.print(f"Suggested value: [{get_secondary_style()}]{formatted_default}[/{get_secondary_style()}]")
+        console.print()
+        
+        # Convert default to string
+        if isinstance(default_value, bool):
+            default_str = "true" if default_value else "false"
+        elif isinstance(default_value, (list, dict)):
+            default_str = json.dumps(default_value)
+        elif default_value is None:
+            default_str = ""
+        else:
+            default_str = str(default_value)
+    else:
+        console.print(f"Update [{get_accent_style()}]{display_key}[/{get_accent_style()}]")
+        formatted_current = _format_config_value(current_value)
+        console.print(f"Current value: [{get_secondary_style()}]{formatted_current}[/{get_secondary_style()}]")
+        console.print()
+        
+        # Convert current value to string for default
+        if isinstance(current_value, bool):
+            default_str = "true" if current_value else "false"
+        elif isinstance(current_value, (list, dict)):
+            default_str = json.dumps(current_value)
+        elif current_value is None:
+            default_str = ""
+        else:
+            default_str = str(current_value)
+    
+    prompt_text = "Value (or press Enter to cancel)" if is_new else "New value (or press Enter to cancel)"
+    new_value_str = typer.prompt(
+        prompt_text,
+        default=default_str,
+        show_default=bool(default_str)
+    )
+    
+    # If user just pressed Enter with empty default, cancel
+    if not new_value_str and not default_str:
+        return None
+    
+    # Coerce the value
+    return _coerce_value(new_value_str)
+
+
+def _preview_change(key: str, old_value: Any, new_value: Any, is_new: bool = False) -> None:
+    """Display a preview of the configuration change.
+    
+    Args:
+        key: Configuration key
+        old_value: Current value (None if new)
+        new_value: New value
+        is_new: Whether this is a new key being added
+    """
+    console.print()
+    console.print(f"[{get_heading_style()}]Preview Change[/{get_heading_style()}]")
+    console.print()
+    
+    rows = [("Key", key)]
+    
+    if is_new:
+        rows.append(("Action", "Add new value"))
+        rows.append(("Value", _format_config_value(new_value)))
+        title = "Add Configuration"
+    else:
+        rows.append(("Current", _format_config_value(old_value)))
+        rows.append(("New", _format_config_value(new_value)))
+        title = "Update Configuration"
+    
+    card = create_detail_card(title=title, rows=rows)
+    console.print(card)
+    console.print()
+
+
+def _load_external_toml(file_path: str) -> Optional[dict[str, Any]]:
+    """Load and parse external TOML file.
+    
+    Args:
+        file_path: Path to TOML file
+        
+    Returns:
+        Parsed TOML as dict or None if error
+    """
+    import sys
+    
+    # TOML read (tomllib on 3.11+, fallback to tomli)
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        try:
+            import tomli as tomllib
+        except Exception:
+            console.print(f"[{get_error_style()}]❌ TOML library not available[/{get_error_style()}]")
+            return None
+    
+    path = Path(file_path).expanduser().resolve()
+    
+    if not path.exists():
+        console.print(f"[{get_error_style()}]❌ File not found: {path}[/{get_error_style()}]")
+        return None
+    
+    if not path.is_file():
+        console.print(f"[{get_error_style()}]❌ Not a file: {path}[/{get_error_style()}]")
+        return None
+    
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        return data
+    except Exception as e:
+        console.print(f"[{get_error_style()}]❌ Failed to parse TOML: {e}[/{get_error_style()}]")
+        return None
+
+
+def _backup_config(config_path: Path) -> bool:
+    """Create a backup of the current config file.
+    
+    Args:
+        config_path: Path to config file
+        
+    Returns:
+        True if backup created successfully, False otherwise
+    """
+    import shutil
+    from datetime import datetime
+    
+    if not config_path.exists():
+        return True  # Nothing to backup
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = config_path.parent / f"config.toml.backup.{timestamp}"
+    
+    try:
+        shutil.copy2(config_path, backup_path)
+        console.print(f"[{get_success_style()}]✓ Backup created: {backup_path.name}[/{get_success_style()}]")
+        return True
+    except Exception as e:
+        console.print(f"[{get_warning_style()}]⚠️  Could not create backup: {e}[/{get_warning_style()}]")
+        return False
+
+
+def _show_config_diff(current: dict[str, Any], new: dict[str, Any]) -> None:
+    """Show differences between current and new config.
+    
+    Args:
+        current: Current configuration
+        new: New configuration
+    """
+    console.print()
+    console.print(f"[{get_heading_style()}]Configuration Changes[/{get_heading_style()}]")
+    console.print()
+    
+    current_flat = _flatten_dict(current)
+    new_flat = _flatten_dict(new)
+    
+    all_keys = set(current_flat.keys()) | set(new_flat.keys())
+    
+    added = []
+    removed = []
+    modified = []
+    
+    for key in sorted(all_keys):
+        if key not in current_flat:
+            added.append((key, new_flat[key]))
+        elif key not in new_flat:
+            removed.append((key, current_flat[key]))
+        elif current_flat[key] != new_flat[key]:
+            modified.append((key, current_flat[key], new_flat[key]))
+    
+    if added:
+        console.print(f"[{get_success_style()}]Added:[/{get_success_style()}]")
+        for key, value in added:
+            console.print(f"  + {key}: {_format_config_value(value)}")
+        console.print()
+    
+    if removed:
+        console.print(f"[{get_error_style()}]Removed:[/{get_error_style()}]")
+        for key, value in removed:
+            console.print(f"  - {key}: {_format_config_value(value)}")
+        console.print()
+    
+    if modified:
+        console.print(f"[{get_warning_style()}]Modified:[/{get_warning_style()}]")
+        for key, old_val, new_val in modified:
+            console.print(f"  ~ {key}:")
+            console.print(f"    [{get_secondary_style()}]Old:[/{get_secondary_style()}] {_format_config_value(old_val)}")
+            console.print(f"    [{get_accent_style()}]New:[/{get_accent_style()}] {_format_config_value(new_val)}")
+        console.print()
+    
+    if not added and not removed and not modified:
+        console.print("[dim]No changes detected[/dim]")
+        console.print()
+
+
 # ============================================================================
 # Commands
 # ============================================================================
@@ -213,186 +670,229 @@ def inspect(
     console.print()
 
 
-@app.command("init")
-def init(
-    yes: bool = typer.Option(False, "--yes", "-y", help="Use defaults without prompting")
+@app.command("update")
+def update(
+    file: Optional[str] = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Path to TOML file to replace global configuration"
+    )
 ):
-    """Initialize workspace configuration with interactive setup."""
-    console.print()
-    console.print(f"[{get_heading_style()}]🚀 Initialize Indexed Configuration[/{get_heading_style()}]")
-    console.print()
-    console.print("Set up your local document search configuration.")
-    console.print()
-    
-    config_values = {}
-    
-    if yes:
-        # Non-interactive mode - use defaults
-        config = ConfigService()
-        raw = config.load_raw()
-        config.save_raw(raw or {})
-        console.print(f"[{get_success_style()}]✓ Workspace configuration initialized with defaults[/{get_success_style()}]")
-        console.print(f"[{get_secondary_style()}]Location: .indexed/config.toml[/{get_secondary_style()}]")
-        console.print()
-        return
-    
-    # Interactive mode - prompt for essential settings
-    console.print(f"[{get_accent_style()}]Essential Settings[/{get_accent_style()}]")
-    console.print()
-    
-    # Chunk size
-    chunk_size = typer.prompt(
-        "Chunk size for document splitting",
-        default=512,
-        type=int
-    )
-    config_values["core"] = {"v1": {"indexing": {"chunk_size": chunk_size}}}
-    
-    # Embedding model
-    embedding_model = typer.prompt(
-        "Embedding model",
-        default="all-MiniLM-L6-v2"
-    )
-    config_values["embedding"] = {"model": embedding_model}
-    
-    console.print()
-    
-    # Connector setup
-    if typer.confirm("Would you like to configure connectors?", default=True):
-        console.print()
-        console.print(f"[{get_accent_style()}]Connector Setup[/{get_accent_style()}]")
-        console.print()
-        
-        connectors_config = {}
-        
-        while True:
-            console.print("Available connectors:")
-            console.print("  1. Jira Cloud")
-            console.print("  2. Confluence Cloud")
-            console.print("  3. Local Files")
-            console.print("  4. Done (skip remaining)")
-            console.print()
-            
-            choice = typer.prompt("Select connector", default="4")
-            
-            if choice == "4" or choice.lower() == "done":
-                break
-            elif choice == "1":
-                # Jira Cloud
-                console.print()
-                console.print("[dim]Jira Cloud Configuration[/dim]")
-                jira_url = typer.prompt("Jira URL (e.g., https://company.atlassian.net)")
-                jira_email = typer.prompt("Email")
-                jira_query = typer.prompt("JQL Query", default="project = PROJ")
-                connectors_config["jira"] = {
-                    "url": jira_url,
-                    "email": jira_email,
-                    "query": jira_query
-                }
-                console.print(f"[{get_success_style()}]✓ Jira Cloud configured[/{get_success_style()}]")
-                console.print()
-            elif choice == "2":
-                # Confluence Cloud
-                console.print()
-                console.print("[dim]Confluence Cloud Configuration[/dim]")
-                conf_url = typer.prompt("Confluence URL (e.g., https://company.atlassian.net/wiki)")
-                conf_email = typer.prompt("Email")
-                conf_query = typer.prompt("CQL Query", default="space = DEV")
-                read_comments = typer.confirm("Read all comments?", default=False)
-                connectors_config["confluence"] = {
-                    "url": conf_url,
-                    "email": conf_email,
-                    "query": conf_query,
-                    "read_all_comments": read_comments
-                }
-                console.print(f"[{get_success_style()}]✓ Confluence Cloud configured[/{get_success_style()}]")
-                console.print()
-            elif choice == "3":
-                # Local Files
-                console.print()
-                console.print("[dim]Local Files Configuration[/dim]")
-                file_path = typer.prompt("Base path", default="./documents")
-                include_patterns = typer.prompt("Include patterns (comma-separated)", default="*.md,*.txt")
-                patterns_list = [p.strip() for p in include_patterns.split(",")]
-                connectors_config["files"] = {
-                    "path": file_path,
-                    "include_patterns": patterns_list
-                }
-                console.print(f"[{get_success_style()}]✓ Local Files configured[/{get_success_style()}]")
-                console.print()
-            else:
-                console.print("[dim]Invalid choice, please try again[/dim]")
-                console.print()
-        
-        if connectors_config:
-            config_values["connectors"] = connectors_config
-    
-    console.print()
-    
-    # Advanced settings
-    if typer.confirm("Configure advanced settings?", default=False):
-        console.print()
-        console.print(f"[{get_accent_style()}]Advanced Settings[/{get_accent_style()}]")
-        console.print()
-        
-        chunk_overlap = typer.prompt("Chunk overlap", default=50, type=int)
-        batch_size = typer.prompt("Batch size", default=32, type=int)
-        
-        if "core" not in config_values:
-            config_values["core"] = {"v1": {"indexing": {}}}
-        config_values["core"]["v1"]["indexing"]["chunk_overlap"] = chunk_overlap
-        config_values["core"]["v1"]["indexing"]["batch_size"] = batch_size
-        console.print()
-    
-    # Show summary
-    console.print(f"[{get_heading_style()}]Configuration Summary[/{get_heading_style()}]")
-    console.print()
-    
-    # Group by section for better organization
-    grouped = _group_config_by_section(config_values)
-    
-    cards = []
-    for section_name in sorted(grouped.keys()):
-        section_data = grouped[section_name]
-        card = _create_section_card(section_name, section_data)
-        cards.append(card)
-    
-    if len(cards) > 1:
-        console.print(Columns(cards, equal=True, expand=True))
-    else:
-        console.print(cards[0])
-    
-    console.print()
-    
-    # Confirmation
-    if not typer.confirm("Save configuration?", default=True):
-        console.print("[dim]Configuration not saved[/dim]")
-        console.print()
-        return
-    
-    # Save configuration
+    """Update global configuration interactively or from file."""
     config = ConfigService()
+    global_path = config._store.global_path
     
-    # Merge with existing config
-    existing = config.load_raw() or {}
+    # If --file flag is provided, go directly to file replacement
+    if file:
+        _handle_file_replace_with_path(config, global_path, file)
+        return
     
-    # Deep merge the configs
-    def deep_merge(base: dict, updates: dict) -> dict:
-        """Deep merge two dictionaries."""
-        result = base.copy()
-        for key, value in updates.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = deep_merge(result[key], value)
-            else:
-                result[key] = value
-        return result
+    # Default: Interactive individual settings update
+    while True:
+        result = _handle_individual_update(config, global_path)
+        if not result:
+            # User wants to exit
+            console.print()
+            console.print("[dim]Exiting configuration update[/dim]")
+            console.print()
+            break
+
+
+def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
+    """Handle the individual setting update flow.
     
-    merged = deep_merge(existing, config_values)
-    config.save_raw(merged)
+    Args:
+        config: ConfigService instance
+        global_path: Path to global config file
+        
+    Returns:
+        True to continue, False to exit
+    """
+    # Load current config
+    current_config = config.load_raw()
     
-    console.print(f"[{get_success_style()}]✓ Workspace configuration initialized[/{get_success_style()}]")
-    console.print(f"[{get_secondary_style()}]Location: .indexed/config.toml[/{get_secondary_style()}]")
+    if not current_config:
+        current_config = {}
+    
+    # Group by sections
+    grouped = _group_config_by_section(current_config)
+    
+    # Select section (shows both existing and available sections)
+    section_name = _select_section(grouped)
+    if not section_name:
+        return False  # User wants to exit
+    
+    # Get section data (empty dict if section doesn't exist yet)
+    section_data = grouped.get(section_name, {})
+    
+    # Select key (returns tuple of (key, is_new))
+    result = _select_key(section_name, section_data)
+    if not result:
+        return True  # Go back to section selection
+    
+    key, is_new = result
+    
+    # Build full dot-path key
+    full_key = f"{section_name}.{key}"
+    current_value = section_data.get(key) if not is_new else None
+    
+    # Prompt for new value
+    new_value = _prompt_for_value(full_key, current_value, is_new=is_new, section_name=section_name)
+    if new_value is None:
+        console.print()
+        console.print("[dim]Cancelled[/dim]")
+        console.print()
+        return True
+    
+    # Preview change
+    _preview_change(full_key, current_value, new_value, is_new=is_new)
+    
+    # Confirm
+    action_text = "Add this configuration?" if is_new else "Apply this change?"
+    if not typer.confirm(action_text, default=True):
+        console.print()
+        console.print("[dim]Cancelled[/dim]")
+        console.print()
+        return True
+    
+    # Apply change to global config only
+    try:
+        # Read global config directly (not merged)
+        global_config = config._store._read_toml_file(global_path) if global_path.exists() else {}
+        
+        # Set the value in global config
+        from indexed_config.path_utils import set_by_path
+        set_by_path(global_config, full_key, new_value)
+        
+        # Ensure directory exists
+        global_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write to global config
+        config._store.write(global_config)
+        
+        console.print()
+        success_msg = "added" if is_new else "updated"
+        console.print(f"[{get_success_style()}]✓ Configuration {success_msg} successfully[/{get_success_style()}]")
+        console.print(f"[{get_secondary_style()}]Location: {global_path}[/{get_secondary_style()}]")
+        console.print()
+        
+    except Exception as e:
+        console.print()
+        console.print(f"[{get_error_style()}]❌ Error updating configuration: {e}[/{get_error_style()}]")
+        console.print()
+        raise typer.Exit(1)
+    
+    return True
+
+
+def _handle_file_replace_with_path(config: ConfigService, global_path: Path, file_path: str) -> bool:
+    """Handle the replace from file flow with a given file path.
+    
+    Args:
+        config: ConfigService instance
+        global_path: Path to global config file
+        file_path: Path to the TOML file to load
+        
+    Returns:
+        True if replacement was successful, False otherwise
+    """
     console.print()
+    console.print(f"[{get_heading_style()}]Replace Configuration From File[/{get_heading_style()}]")
+    console.print()
+    console.print(f"[{get_warning_style()}]⚠️  Warning: This will completely replace your global configuration![/{get_warning_style()}]")
+    console.print()
+    
+    # Load and validate the file
+    new_config = _load_external_toml(file_path)
+    if new_config is None:
+        console.print()
+        return False
+    
+    console.print()
+    console.print(f"[{get_success_style()}]✓ TOML file loaded successfully[/{get_success_style()}]")
+    console.print()
+    
+    # Show what will change
+    current_config = config._store._read_toml_file(global_path) if global_path.exists() else {}
+    _show_config_diff(current_config, new_config)
+    
+    # Validate the new config
+    console.print(f"[{get_heading_style()}]Validating Configuration...[/{get_heading_style()}]")
+    console.print()
+    
+    # Temporarily write to test validation
+    try:
+        # Save current config for rollback
+        temp_current = config.load_raw()
+        
+        # Write new config to store (this will write to workspace, not global yet)
+        config._store.write(new_config)
+        
+        # Validate
+        errors = config.validate()
+        
+        # Restore original
+        if temp_current:
+            config._store.write(temp_current)
+        
+        if errors:
+            console.print(f"[{get_error_style()}]❌ Validation failed:[/{get_error_style()}]")
+            console.print()
+            for path, msg in errors:
+                console.print(f"  • {path}: {msg}")
+            console.print()
+            console.print(f"[{get_secondary_style()}]Fix these errors in the TOML file and try again.[/{get_secondary_style()}]")
+            console.print()
+            return False
+        
+        console.print(f"[{get_success_style()}]✓ Configuration is valid[/{get_success_style()}]")
+        console.print()
+        
+    except Exception as e:
+        console.print(f"[{get_error_style()}]❌ Validation error: {e}[/{get_error_style()}]")
+        console.print()
+        return False
+    
+    # Final confirmation
+    console.print(f"[{get_warning_style()}]⚠️  This will replace your global configuration at:[/{get_warning_style()}]")
+    console.print(f"[{get_secondary_style()}]    {global_path}[/{get_secondary_style()}]")
+    console.print()
+    
+    if not typer.confirm("Continue with replacement?", default=False):
+        console.print()
+        console.print("[dim]Cancelled[/dim]")
+        console.print()
+        return False
+    
+    # Create backup
+    console.print()
+    if not _backup_config(global_path):
+        if not typer.confirm("Continue without backup?", default=False):
+            console.print("[dim]Cancelled[/dim]")
+            console.print()
+            return False
+    
+    # Write new config to global path
+    try:
+        global_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        import tomlkit
+        with open(global_path, "w", encoding="utf-8") as f:
+            tomlkit.dump(new_config, f)
+        
+        console.print()
+        console.print(f"[{get_success_style()}]✓ Global configuration replaced successfully[/{get_success_style()}]")
+        console.print(f"[{get_secondary_style()}]Location: {global_path}[/{get_secondary_style()}]")
+        console.print()
+        
+    except Exception as e:
+        console.print()
+        console.print(f"[{get_error_style()}]❌ Error writing configuration: {e}[/{get_error_style()}]")
+        console.print()
+        raise typer.Exit(1)
+    
+    return True
 
 
 @app.command("set")
@@ -595,3 +1095,23 @@ def validate():
     console.print()
     
     raise typer.Exit(1)
+
+
+@app.command("docs", rich_help_panel="Resources")
+def docs() -> None:
+    """Open configuration documentation in browser."""
+    url = "https://indexed.ignitr.dev/docs/configuration"
+    try:
+        webbrowser.open(url)
+        console.print()
+        console.print(
+            f"[{get_success_style()}]✓[/{get_success_style()}] Opening configuration documentation in browser..."
+        )
+        console.print(f"[{get_secondary_style()}]{url}[/{get_secondary_style()}]")
+        console.print()
+    except Exception as e:
+        console.print()
+        console.print(f"Failed to open browser: {e}")
+        console.print(f"Visit manually: {url}")
+        console.print()
+        raise typer.Exit(1)

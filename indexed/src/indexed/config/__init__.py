@@ -1,5 +1,5 @@
 """Configuration management module."""
 
-from .cli import app, inspect, init, set_config, delete_config, validate
+from .cli import app, inspect, update, set_config, delete_config, validate
 
-__all__ = ["app", "inspect", "init", "set_config", "delete_config", "validate"]
+__all__ = ["app", "inspect", "update", "set_config", "delete_config", "validate"]
