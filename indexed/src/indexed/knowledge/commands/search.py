@@ -6,14 +6,13 @@ results beautifully with the card-based design system.
 
 import logging
 import typer
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
-from io import StringIO
 from typing import Dict, Any, List, TypedDict
 from rich.panel import Panel
 from core.v1 import Index
 from core.v1.engine.services import search as search_service, SourceConfig, status
 from ...utils.logging import is_verbose_mode
 from ...utils.console import console
+from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.progress_bar import create_operation_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
@@ -35,39 +34,6 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
-
-
-class _NoOpContext:
-    """No-op context manager for verbose mode (no spinner)."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-
-@contextmanager
-def suppress_core_output():
-    """Context manager to suppress all core logging and output."""
-    # Capture all output streams
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-
-    # Save original logging level
-    original_level = logging.getLogger().level
-
-    try:
-        # Suppress all logging output
-        logging.getLogger().setLevel(logging.CRITICAL)
-
-        # Redirect stdout and stderr
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            yield
-
-    finally:
-        # Restore original logging level
-        logging.getLogger().setLevel(original_level)
 
 
 # --- SEARCH FORMATTER FUNCTIONS (moved from search_formatter.py) ---
@@ -417,7 +383,7 @@ def search(
 
         if is_verbose_mode():
             # Verbose mode: show core logs directly
-            with _NoOpContext():
+            with NoOpContext():
                 result = search_service(
                     query,
                     configs=[config],
