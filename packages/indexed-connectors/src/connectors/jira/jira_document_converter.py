@@ -1,54 +1,33 @@
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+"""Jira Server/DC document converter (deprecated - use UnifiedJiraDocumentConverter instead).
+
+This module is maintained for backward compatibility but delegates all functionality
+to the unified converter implementation.
+"""
+
+from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 
 
 class JiraDocumentConverter:
-    def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
+    """Jira Server/DC document converter (DEPRECATED).
+
+    This class is deprecated and maintained only for backward compatibility.
+    New code should use UnifiedJiraDocumentConverter.
+
+    All functionality is delegated to UnifiedJiraDocumentConverter.
+    """
+
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100):
+        """Initialize converter.
+
+        Note: This class is deprecated. Consider using UnifiedJiraDocumentConverter instead.
+        """
+        self._converter = UnifiedJiraDocumentConverter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
         )
+        # Expose text_splitter for compatibility
+        self.text_splitter = self._converter.text_splitter
 
-    def convert(self, document):
-        return [
-            {
-                "id": document["key"],
-                "url": self.__build_url(document),
-                "modifiedTime": document["fields"]["updated"],
-                "text": self.__build_document_text(document),
-                "chunks": self.__split_to_chunks(document),
-            }
-        ]
-
-    def __build_document_text(self, document):
-        main_info = self.__build_main_ticket_info(document)
-        description_and_comments = self.__fetch_description_and_comments(document)
-
-        return self.__convert_to_text([main_info, description_and_comments])
-
-    def __split_to_chunks(self, document):
-        chunks = [{"indexedData": self.__build_main_ticket_info(document)}]
-
-        description_and_comments = self.__fetch_description_and_comments(document)
-        if description_and_comments:
-            for chunk in self.text_splitter.split_text(description_and_comments):
-                chunks.append({"indexedData": chunk})
-
-        return chunks
-
-    def __fetch_description_and_comments(self, document):
-        description = document["fields"]["description"]
-        comments = [
-            comment["body"] for comment in document["fields"]["comment"]["comments"]
-        ]
-
-        return self.__convert_to_text([description] + comments).strip()
-
-    def __build_main_ticket_info(self, document):
-        return f"{document['key']} : {document['fields']['summary']}"
-
-    def __convert_to_text(self, elements, delimiter="\n\n"):
-        return delimiter.join([element for element in elements if element])
-
-    def __build_url(self, document):
-        base_url = document["self"].split("/rest/api/")[0]
-        return f"{base_url}/browse/{document['key']}"
+    def convert(self, document: dict) -> list:
+        """Convert Jira document to indexed format."""
+        return self._converter.convert(document)

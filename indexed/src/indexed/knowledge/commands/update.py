@@ -2,8 +2,6 @@
 
 import logging
 import typer
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
-from io import StringIO
 from core.v1.engine.services import (
     update as update_service,
     SourceConfig,
@@ -11,6 +9,7 @@ from core.v1.engine.services import (
     inspect,
 )
 from ...utils.logging import is_verbose_mode
+from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
 from ...utils.console import console
 from ...utils.progress_bar import create_operation_progress
@@ -25,39 +24,6 @@ from ...utils.components import (
 )
 
 app = typer.Typer(help="Update collections")
-
-
-class _NoOpContext:
-    """No-op context manager for verbose mode (no spinner)."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-
-@contextmanager
-def suppress_core_output():
-    """Context manager to suppress all core logging and output."""
-    # Capture all output streams
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-
-    # Save original logging level
-    original_level = logging.getLogger().level
-
-    try:
-        # Suppress all logging output
-        logging.getLogger().setLevel(logging.CRITICAL)
-
-        # Redirect stdout and stderr
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            yield
-
-    finally:
-        # Restore original logging level
-        logging.getLogger().setLevel(original_level)
 
 
 def _format_update_comparison(before, after):
@@ -196,7 +162,7 @@ def update(
 
         if is_verbose_mode():
             # Verbose mode: show core logs directly
-            with _NoOpContext():
+            with NoOpContext():
                 update_service([config])
         else:
             # Normal mode: use centralized progress tracking
