@@ -34,6 +34,13 @@ class JiraDocumentReader:
 
         Note: This class is deprecated. Consider using UnifiedJiraDocumentReader instead.
         """
+        # Emit deprecation warning
+        warnings.warn(
+            'JiraDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         # Determine auth type based on provided credentials
         if token:
             auth_type = JiraAuthType.SERVER_TOKEN

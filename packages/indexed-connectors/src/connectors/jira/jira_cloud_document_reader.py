@@ -33,6 +33,13 @@ class JiraCloudDocumentReader:
 
         Note: This class is deprecated. Consider using UnifiedJiraDocumentReader instead.
         """
+        # Emit deprecation warning
+        warnings.warn(
+            'JiraCloudDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         # Delegate to unified reader
         self._reader = UnifiedJiraDocumentReader(
             base_url=base_url,
