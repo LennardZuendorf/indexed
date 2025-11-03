@@ -96,6 +96,7 @@ DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 from . import knowledge  # noqa: E402
 from . import config  # noqa: E402
 from . import mcp  # noqa: E402
+from . import info  # noqa: E402
 
 # Knowledge / Index Management - Register hidden group and flat commands
 app.add_typer(
@@ -118,36 +119,35 @@ app.add_typer(
 app.add_typer(
     knowledge.create.app,
     name="index create",
-    help="Create New Collections (Files, Jira, Confluence)",
+    help="Create New Collections using Connectors",
     rich_help_panel="Knowledge / Index Management",
-    hidden=True,
 )
 app.command(
     "index search",
     rich_help_panel="Knowledge / Index Management",
-    help="Search Indexed Collections",
+    help="Search one or all Collections",
 )(knowledge.search.search)
 app.command(
     "index inspect",
     rich_help_panel="Knowledge / Index Management",
-    help="Inspect Indexed Collections",
+    help="Inspect Collections",
 )(knowledge.inspect.inspect_collections)
 app.command(
     "index update",
     rich_help_panel="Knowledge / Index Management",
-    help="Update Indexed Collections",
+    help="Update a Collection",
 )(knowledge.update.update)
 app.command(
     "index remove",
     rich_help_panel="Knowledge / Index Management",
-    help="Remove Indexed Collections",
+    help="Remove one or more Collections",
 )(knowledge.remove.remove)
 
 # Configuration Management - Hide The Group, Show Only Subcommands
 app.add_typer(
     config.app,
     name="config",
-    help="Manage Indexed Configuration",
+    help="Manage Configuration",
     rich_help_panel="Config Management",
     hidden=True,
 )
@@ -158,10 +158,10 @@ app.command(
     help="Inspect Configuration Settings",
 )(config.inspect)
 app.command(
-    "config init",
+    "config update",
     rich_help_panel="Configuration Management",
-    help="Initialize Configuration File",
-)(config.init)
+    help="Update Configuration Settings Interactively",
+)(config.update)
 app.command(
     "config set",
     rich_help_panel="Configuration Management",
@@ -203,6 +203,26 @@ app.command(
     rich_help_panel="MCP Server",
     help="Direct Passthrough To FastMCP CLI",
 )(mcp.fastmcp)
+
+# Resources - Hide The Group, Show Only Subcommands
+app.add_typer(
+    info.app,
+    name="info",
+    help="Resources Commands",
+    rich_help_panel="Resources",
+    hidden=True,
+)
+# Show Individual Info Commands In Main Help
+app.command(
+    "docs",
+    rich_help_panel="Resources",
+    help="Open Documentation in Browser",
+)(info.docs)
+app.command(
+    "license",
+    rich_help_panel="Resources",
+    help="Display License and Terms",
+)(info.license_terms)
 
 __all__ = [
     "app",

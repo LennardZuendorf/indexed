@@ -6,6 +6,7 @@ Runs the FastMCP server to expose indexed collections to AI agents.
 import typer
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 from typing import List, Optional
 
@@ -648,6 +649,24 @@ def fastmcp(
     """
     cmd = ["fastmcp"] + args
     _execute_fastmcp(cmd)
+
+
+@app.command("docs", rich_help_panel="Resources")
+def docs() -> None:
+    """Open MCP server documentation in browser."""
+    url = "https://indexed.ignitr.dev/docs/mcp"
+    try:
+        webbrowser.open(url)
+        typer.echo()
+        typer.echo("✓ Opening MCP documentation in browser...")
+        typer.echo(f"  {url}")
+        typer.echo()
+    except Exception as e:
+        typer.echo()
+        typer.echo(f"Failed to open browser: {e}", err=True)
+        typer.echo(f"Visit manually: {url}")
+        typer.echo()
+        raise typer.Exit(1)
 
 
 def cli_main():
