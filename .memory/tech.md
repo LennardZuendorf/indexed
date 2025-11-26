@@ -72,18 +72,13 @@ python -m indexed_cli.app
 ```
 ┌─────────────────────────────────────┐
 │         CLI Layer                   │
-│  (Typer commands, UI)              │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│      Controller Layer               │
-│  (IndexController, SearchController)│
+│  (Typer commands, Rich UI)         │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
 │       Service Layer                 │
-│  (IndexingService, SearchService,   │
-│   EmbeddingService, StorageService) │
+│  (collection_service, SearchService,│
+│   InspectService)                   │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
@@ -92,27 +87,24 @@ python -m indexed_cli.app
 └─────────────────────────────────────┘
 ```
 
-### Dependency Injection
-- **ServiceFactory** creates and wires all dependencies
-- Controllers receive services via constructor
-- Services receive infrastructure components via constructor
-- No service creates its own dependencies
+### Facade Pattern
+- **CLI directly calls services** - No intermediate controllers
+- **`Index` class** provides user-friendly API that wraps services
+- Services receive infrastructure components via factories
+- Registries provide dynamic connector and indexer discovery
 
 ```python
-# Factory creates everything
-factory = ServiceFactory.create_from_config(config)
-index_controller = factory.create_index_controller()
-search_controller = factory.create_search_controller()
+# CLI calls service directly
+from core.v1.engine.services import create, search, status
 
-# Controllers have all dependencies injected
-class IndexController:
-    def __init__(
-        self,
-        indexing_service: IndexingService,
-        config: IndexConfig
-    ):
-        self.indexing_service = indexing_service
-        self.config = config
+# Create collection
+create([source_config], config_service=config_service)
+
+# For library users, Index class provides clean API
+from core.v1 import Index
+index = Index()
+index.add_collection("docs", connector)
+results = index.search("query")
 ```
 
 ### Configuration-Driven Design

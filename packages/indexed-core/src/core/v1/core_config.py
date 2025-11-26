@@ -12,7 +12,7 @@
 import warnings
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Config(BaseModel):
@@ -64,10 +64,7 @@ class Config(BaseModel):
         description="Default FAISS indexer configuration name",
     )
 
-    class Config:
-        """Pydantic model configuration."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":

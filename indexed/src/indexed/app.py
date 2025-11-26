@@ -88,8 +88,8 @@ def _init_logging(
     setup_root_logger(level_str=level, json_mode=json_mode)
 
 
-# Shared default indexer constant (kept here for backward compatibility with tests)
-DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+# Re-export default indexer constant for backward compatibility with tests
+from core.v1.constants import DEFAULT_INDEXER  # noqa: E402
 
 
 # Register new commands using plugin architecture

@@ -149,7 +149,9 @@ class Index:
         """Update collections with new or modified documents.
 
         Re-indexes new and updated documents while preserving
-        existing indexed content.
+        existing indexed content. For collections not tracked by this Index
+        instance (e.g., created via CLI), uses the manifest to determine
+        how to update.
 
         Args:
             collection: Specific collection name or None to update all
@@ -162,19 +164,46 @@ class Index:
             >>> # Update all collections
             >>> index.update()
         """
+        from .engine.factories.update_collection_factory import create_collection_updater
+        
         if collection:
             if collection in self._collections:
-                update([self._collections[collection]])
+                # For tracked collections, create SourceConfig from connector
+                connector = self._collections[collection]
+                cfg = SourceConfig(
+                    name=collection,
+                    type=connector.connector_type,
+                    base_url_or_path="",  # Not needed for update
+                    indexer=self.config.default_indexer,
+                )
+                update([cfg])
             else:
-                # Collection exists but not tracked - discover and update
+                # Collection exists but not tracked - use update factory 
+                # which reads configuration from manifest
                 statuses = status([collection])
                 if statuses:
-                    # TODO: Reconstruct SourceConfig from collection
-                    pass
+                    updater = create_collection_updater(collection)
+                    updater.run()
         else:
             # Update all tracked collections
             if self._collections:
-                update(list(self._collections.values()))
+                cfgs = [
+                    SourceConfig(
+                        name=name,
+                        type=self._collections[name].connector_type,
+                        base_url_or_path="",
+                        indexer=self.config.default_indexer,
+                    )
+                    for name in self._collections
+                ]
+                update(cfgs)
+            
+            # Also update any discovered collections not tracked
+            statuses = status()
+            for s in statuses:
+                if s.name not in self._collections:
+                    updater = create_collection_updater(s.name)
+                    updater.run()
 
     def status(self, collection: Optional[str] = None):
         """Get status information for collections.

@@ -11,6 +11,7 @@ from .batch import read_items_in_batches
 # Progress bars moved to CLI utils - core services should be pure logic
 from .retry import execute_with_retry
 from .performance import execute_and_measure_duration, log_execution_duration
+from .safe_getattr import safe_str_attr
 
 __all__ = [
     "setup_root_logger",
@@ -21,4 +22,5 @@ __all__ = [
     "execute_with_retry",
     "execute_and_measure_duration",
     "log_execution_duration",
+    "safe_str_attr",
 ]

@@ -1,12 +1,13 @@
 """Basic KISS tests for Confluence connectors."""
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 import pytest
 
 from connectors.confluence.connector import (
     ConfluenceConnector,
     ConfluenceCloudConnector,
 )
+from connectors.confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
 from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
 from connectors.confluence.confluence_cloud_document_reader import (
     ConfluenceCloudDocumentReader,
@@ -57,50 +58,58 @@ def test_confluence_connector_missing_auth():
 
 
 @patch.dict(os.environ, {"CONF_TOKEN": "test-token"})
-def test_confluence_connector_from_config_token_env():
-    """Create ConfluenceConnector from config using token_env."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(spec=["base_url", "query", "token_env"])
-    mock_settings.test.base_url = "https://confluence.example.com"
-    mock_settings.test.query = "space = DEV"
-    mock_settings.test.token_env = "CONF_TOKEN"
-    mock_config.get.return_value = mock_settings
+def test_confluence_connector_from_dto_token():
+    """Create ConfluenceConnector from DTO using token."""
+    config_dto = ConfluenceConfig(
+        url="https://confluence.example.com",
+        query="space = DEV",
+        token="test-token",
+    )
 
-    connector = ConfluenceConnector.from_config(mock_config, "test")
+    connector = ConfluenceConnector.from_dto(config_dto)
     assert isinstance(connector, ConfluenceConnector)
     assert isinstance(connector.reader, ConfluenceDocumentReader)
 
 
-def test_confluence_connector_from_config_missing_fields():
-    """Missing base_url or query should raise a clear error."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(spec=["base_url"])  # missing query
-    mock_settings.test.base_url = "https://confluence.example.com"
-    mock_config.get.return_value = mock_settings
+def test_confluence_connector_from_dto_basic_auth():
+    """Create ConfluenceConnector from DTO using basic auth."""
+    config_dto = ConfluenceConfig(
+        url="https://confluence.example.com",
+        query="space = DEV",
+        login="user",
+        password="pass",
+    )
 
-    with pytest.raises(
-        ValueError, match=r"Confluence \(Server/DC\) config requires base_url and query"
-    ):
-        ConfluenceConnector.from_config(mock_config, "test")
+    connector = ConfluenceConnector.from_dto(config_dto)
+    assert isinstance(connector, ConfluenceConnector)
+    assert isinstance(connector.reader, ConfluenceDocumentReader)
 
 
-def test_confluence_connector_from_config_legacy_comment_flag():
-    """Legacy readOnlyFirstLevelComments should map to read_all_comments=False."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    # Provide minimal required config
-    section = MagicMock()
-    section.base_url = "https://confluence.example.com"
-    section.query = "type = page"
-    section.token_env = "CONF_TOKEN"
-    section.readOnlyFirstLevelComments = True
-    mock_settings.test = section
-    mock_config.get.return_value = mock_settings
-    with patch.dict(os.environ, {"CONF_TOKEN": "tok"}):
-        connector = ConfluenceConnector.from_config(mock_config, "test")
-        assert connector.reader.read_all_comments is False
+def test_confluence_connector_from_dto_read_all_comments():
+    """Test read_all_comments flag is properly passed through from DTO."""
+    config_dto = ConfluenceConfig(
+        url="https://confluence.example.com",
+        query="type = page",
+        token="test-token",
+        read_all_comments=False,
+    )
+
+    connector = ConfluenceConnector.from_dto(config_dto)
+    assert connector.reader.read_all_comments is False
+
+
+def test_confluence_connector_config_spec():
+    """Test ConfluenceConnector.config_spec() returns correct specification."""
+    spec = ConfluenceConnector.config_spec()
+    
+    assert "base_url" in spec
+    assert spec["base_url"]["required"] is True
+    assert "query" in spec
+    assert spec["query"]["required"] is True
+    assert "token_env" in spec
+    assert spec["token_env"]["secret"] is True
+    assert "read_all_comments" in spec
+    assert spec["read_all_comments"]["default"] is True
 
 
 # --- Confluence Cloud ---
@@ -122,60 +131,45 @@ def test_confluence_cloud_connector_init():
     )
 
 
-@patch.dict(os.environ, {"ATLASSIAN_TOKEN": "tok", "ATLASSIAN_EMAIL": "user@example.com"})
-def test_confluence_cloud_connector_from_config_envs():
-    """Create ConfluenceCloudConnector from config with env fallbacks."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(
-        spec=["base_url", "query", "email", "api_token_env", "read_all_comments"],
+def test_confluence_cloud_connector_from_dto():
+    """Create ConfluenceCloudConnector from DTO."""
+    config_dto = ConfluenceCloudConfig(
+        url="https://company.atlassian.net",
+        query="space = DEV",
+        email="user@example.com",
+        api_token="test-token",
     )
-    mock_settings.test.base_url = "https://company.atlassian.net"
-    mock_settings.test.query = "space = DEV"
-    mock_settings.test.email = None  # force env fallback
-    mock_settings.test.api_token_env = "ATLASSIAN_TOKEN"
-    mock_config.get.return_value = mock_settings
 
-    connector = ConfluenceCloudConnector.from_config(mock_config, "test")
+    connector = ConfluenceCloudConnector.from_dto(config_dto)
     assert isinstance(connector, ConfluenceCloudConnector)
     assert isinstance(connector.reader, ConfluenceCloudDocumentReader)
 
 
-def test_confluence_cloud_connector_missing_config():
-    """Ensure missing required fields raise a clear error."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(spec=["base_url"])  # missing email and query
-    mock_settings.test.base_url = "https://company.atlassian.net/wiki"
-    mock_config.get.return_value = mock_settings
-
-    with pytest.raises(
-        ValueError,
-        match="Confluence Cloud config requires base_url, email, and query \(cql\)",
-    ):
-        ConfluenceCloudConnector.from_config(mock_config, "test")
-
-
-def test_confluence_cloud_connector_missing_token():
-    """Missing ATLASSIAN_TOKEN and api_token_env resolution should error."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(
-        spec=["base_url", "query", "email", "api_token_env", "read_all_comments"],
+def test_confluence_cloud_connector_from_dto_read_all_comments():
+    """Test read_all_comments flag is properly passed through from DTO."""
+    config_dto = ConfluenceCloudConfig(
+        url="https://company.atlassian.net",
+        query="space = DEV",
+        email="user@example.com",
+        api_token="test-token",
+        read_all_comments=False,
     )
-    mock_settings.test.base_url = "https://company.atlassian.net"
-    mock_settings.test.query = "space = DEV"
-    mock_settings.test.email = "user@example.com"
-    mock_settings.test.api_token_env = "ATLASSIAN_TOKEN"
-    mock_config.get.return_value = mock_settings
 
-    with patch.dict(os.environ, {}, clear=True):
-        # Ensure fallback secret resolver returns None as well
-        with patch("connectors.confluence.connector._get_env_var", return_value=None):
-            with pytest.raises(
-                ValueError,
-                match=(
-                    "Missing Atlassian API token. Set ATLASSIAN_TOKEN or the configured api_token_env."
-                ),
-            ):
-                ConfluenceCloudConnector.from_config(mock_config, "test")
+    connector = ConfluenceCloudConnector.from_dto(config_dto)
+    assert connector.reader.read_all_comments is False
+
+
+def test_confluence_cloud_connector_config_spec():
+    """Test ConfluenceCloudConnector.config_spec() returns correct specification."""
+    spec = ConfluenceCloudConnector.config_spec()
+    
+    assert "base_url" in spec
+    assert spec["base_url"]["required"] is True
+    assert "query" in spec
+    assert spec["query"]["required"] is True
+    assert "email" in spec
+    assert spec["email"]["required"] is True
+    assert "api_token_env" in spec
+    assert spec["api_token_env"]["secret"] is True
+    assert "read_all_comments" in spec
+    assert spec["read_all_comments"]["default"] is True

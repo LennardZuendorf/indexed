@@ -1,9 +1,9 @@
 """Basic tests for FileSystem connector."""
 
 import tempfile
-from unittest.mock import MagicMock
 import pytest
 from connectors.files.connector import FileSystemConnector
+from connectors.files.schema import LocalFilesConfig
 from connectors.files.files_document_reader import FilesDocumentReader
 
 
@@ -66,67 +66,6 @@ def test_filesystem_connector_config_spec():
     assert spec["fail_fast"]["type"] == "bool"
     assert spec["fail_fast"]["required"] is False
     assert spec["fail_fast"]["default"] is False
-
-
-def test_filesystem_connector_from_config():
-    """Test FileSystemConnector creation from config."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create mock config service
-        mock_config = MagicMock()
-        mock_settings = MagicMock()
-        mock_settings.sources = MagicMock()
-        mock_settings.sources.docs = MagicMock(
-            path=tmpdir,
-            include_patterns=[r".*\.md$"],
-            exclude_patterns=[r".*test.*"],
-            fail_fast=False,
-        )
-        mock_config.get.return_value = mock_settings
-
-        # Create connector from config
-        connector = FileSystemConnector.from_config(mock_config, "sources.docs")
-
-        assert isinstance(connector, FileSystemConnector)
-        assert isinstance(connector.reader, FilesDocumentReader)
-        assert connector._path == tmpdir
-        assert connector._include_patterns == [r".*\.md$"]
-        assert connector._exclude_patterns == [r".*test.*"]
-        assert connector._fail_fast is False
-
-
-def test_filesystem_connector_from_config_minimal():
-    """Test FileSystemConnector creation from config with minimal settings."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create mock config service with only required path
-        mock_config = MagicMock()
-        mock_settings = MagicMock()
-        # Use spec to limit mock to only 'path' attribute
-        mock_settings.test = MagicMock(spec=["path"])
-        mock_settings.test.path = tmpdir
-        mock_config.get.return_value = mock_settings
-
-        # Create connector from config
-        connector = FileSystemConnector.from_config(mock_config, "test")
-
-        assert isinstance(connector, FileSystemConnector)
-        assert connector._path == tmpdir
-        # Defaults should be applied by __init__
-        assert connector._include_patterns == [".*"]
-        assert connector._exclude_patterns == []
-        assert connector._fail_fast is False
-
-
-def test_filesystem_connector_from_config_missing_path():
-    """Test FileSystemConnector raises error when config lacks path."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = MagicMock(spec=[])  # No path attribute
-    mock_config.get.return_value = mock_settings
-
-    with pytest.raises(
-        ValueError, match="FileSystem connector config at 'test' requires 'path'"
-    ):
-        FileSystemConnector.from_config(mock_config, "test")
 
 
 def test_filesystem_connector_repr():

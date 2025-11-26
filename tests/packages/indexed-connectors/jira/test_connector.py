@@ -1,8 +1,9 @@
 """Basic tests for Jira connectors."""
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 import pytest
 from connectors.jira.connector import JiraConnector, JiraCloudConnector
+from connectors.jira.schema import JiraConfig, JiraCloudConfig
 from connectors.jira.jira_document_reader import JiraDocumentReader
 from connectors.jira.jira_cloud_document_reader import JiraCloudDocumentReader
 
@@ -46,20 +47,18 @@ def test_jira_connector_missing_auth():
 
 
 @patch.dict(os.environ, {"JIRA_TOKEN": "test-token"})
-def test_jira_connector_from_config():
-    """Test JiraConnector creation from config."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(spec=['base_url', 'query', 'token_env'])
-    mock_settings.test.base_url = "https://jira.example.com"
-    mock_settings.test.query = "project = TEST"
-    mock_settings.test.token_env = "JIRA_TOKEN"
-    mock_config.get.return_value = mock_settings
+def test_jira_connector_from_dto():
+    """Test JiraConnector creation from DTO."""
+    config_dto = JiraConfig(
+        url="https://jira.example.com",
+        query="project = TEST",
+        token="test-token",
+    )
     
-    connector = JiraConnector.from_config(mock_config, "test")
+    connector = JiraConnector.from_dto(config_dto)
     assert isinstance(connector, JiraConnector)
     assert isinstance(connector.reader, JiraDocumentReader)
-    os.environ.pop("JIRA_TOKEN")
+    assert connector.connector_type == "jira"
 
 
 def test_jira_cloud_connector_init():
@@ -76,35 +75,42 @@ def test_jira_cloud_connector_init():
     assert str(connector) == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
 
 
-@patch.dict(os.environ, {"ATLASSIAN_TOKEN": "test-token"})
-def test_jira_cloud_connector_from_config():
-    """Test JiraCloudConnector creation from config."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = MagicMock(
-        base_url="https://company.atlassian.net",
+def test_jira_cloud_connector_from_dto():
+    """Test JiraCloudConnector creation from DTO."""
+    config_dto = JiraCloudConfig(
+        url="https://company.atlassian.net",
         query="project = TEST",
         email="test@example.com",
-        api_token_env="ATLASSIAN_TOKEN"
+        api_token="test-token"
     )
-    mock_config.get.return_value = mock_settings
     
-    connector = JiraCloudConnector.from_config(mock_config, "test")
+    connector = JiraCloudConnector.from_dto(config_dto)
     assert isinstance(connector, JiraCloudConnector)
     assert isinstance(connector.reader, JiraCloudDocumentReader)
-    os.environ.pop("ATLASSIAN_TOKEN")
+    assert connector.connector_type == "jiraCloud"
 
 
-@patch.dict(os.environ, {"ATLASSIAN_TOKEN": "test-token"})
-def test_jira_cloud_connector_missing_config():
-    """Test JiraCloudConnector raises error with missing config."""
-    mock_config = MagicMock()
-    mock_settings = MagicMock()
-    mock_settings.test = Mock(spec=['base_url', 'api_token_env'])
-    mock_settings.test.base_url = "https://company.atlassian.net"
-    mock_settings.test.api_token_env = "ATLASSIAN_TOKEN"
-    # Missing email and jql
-    mock_config.get.return_value = mock_settings
+def test_jira_connector_config_spec():
+    """Test JiraConnector.config_spec() returns correct specification."""
+    spec = JiraConnector.config_spec()
     
-    with pytest.raises(ValueError, match="Jira Cloud config requires base_url, email, and query \\(jql\\)"):
-        JiraCloudConnector.from_config(mock_config, "test")
+    assert "base_url" in spec
+    assert spec["base_url"]["required"] is True
+    assert "query" in spec
+    assert spec["query"]["required"] is True
+    assert "token_env" in spec
+    assert spec["token_env"]["secret"] is True
+
+
+def test_jira_cloud_connector_config_spec():
+    """Test JiraCloudConnector.config_spec() returns correct specification."""
+    spec = JiraCloudConnector.config_spec()
+    
+    assert "base_url" in spec
+    assert spec["base_url"]["required"] is True
+    assert "query" in spec
+    assert spec["query"]["required"] is True
+    assert "email" in spec
+    assert spec["email"]["required"] is True
+    assert "api_token_env" in spec
+    assert spec["api_token_env"]["secret"] is True

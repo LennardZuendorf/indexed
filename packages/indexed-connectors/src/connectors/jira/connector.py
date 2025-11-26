@@ -14,21 +14,6 @@ from .jira_cloud_document_converter import JiraCloudDocumentConverter
 from .schema import JiraConfig, JiraCloudConfig
 
 
-def _safe_str_attr(obj, name: str, default: str) -> str:
-    """Safely get string attribute, handling MagicMock in tests.
-    
-    Args:
-        obj: Object to get attribute from
-        name: Attribute name
-        default: Default value if attribute missing or not a string
-        
-    Returns:
-        String attribute value or default
-    """
-    val = getattr(obj, name, default)
-    return val if isinstance(val, str) else default
-
-
 class JiraConnector:
     # Metadata for CLI generation and compatibility
     META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
