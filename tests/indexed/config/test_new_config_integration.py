@@ -32,20 +32,25 @@ def test_config_service_crud_operations(tmp_path):
     assert deleted is False
 
 
-def test_connector_from_config(tmp_path):
-    """Test that connectors can be instantiated via from_config()."""
+def test_connector_from_dto(tmp_path):
+    """Test that connectors can be instantiated via from_dto()."""
     from connectors.files import FileSystemConnector
+    from connectors.files.schema import LocalFilesConfig
 
     # Create a temporary test directory
     test_dir = tmp_path / "test"
     test_dir.mkdir()
 
-    config = ConfigService()
-    config.set("sources.files.path", str(test_dir))
-    config.set("sources.files.include_patterns", [r".*\.md$"])  # Use regex, not glob
+    # Create a config DTO directly
+    config_dto = LocalFilesConfig(
+        path=str(test_dir),
+        include_patterns=[r".*\.md$"],  # Use regex, not glob
+        exclude_patterns=[],
+        fail_fast=False,
+    )
 
-    # This should not raise
-    connector = FileSystemConnector.from_config(config)
+    # Create connector from DTO
+    connector = FileSystemConnector.from_dto(config_dto)
 
     # Verify connector has expected properties
     assert hasattr(connector, "reader")
@@ -53,37 +58,41 @@ def test_connector_from_config(tmp_path):
     assert connector.connector_type == "localFiles"
 
 
-def test_jira_connector_from_config():
-    """Test Jira connector instantiation via from_config()."""
+def test_jira_connector_from_dto():
+    """Test Jira connector instantiation via from_dto()."""
     from connectors.jira import JiraCloudConnector
+    from connectors.jira.schema import JiraCloudConfig
     import os
 
     # Set required env vars
     os.environ["ATLASSIAN_EMAIL"] = "test@example.com"
     os.environ["ATLASSIAN_TOKEN"] = "test-token"
 
-    config = ConfigService()
-    config.set("sources.jira_cloud.url", "https://test.atlassian.net")
-    config.set("sources.jira_cloud.email", "test@example.com")
-    config.set("sources.jira_cloud.api_token", "test-token")
-    config.set("sources.jira_cloud.query", "project = TEST")
+    try:
+        # Create a config DTO directly
+        config_dto = JiraCloudConfig(
+            url="https://test.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+            query="project = TEST",
+        )
 
-    # This should not raise
-    connector = JiraCloudConnector.from_config(config)
+        # Create connector from DTO
+        connector = JiraCloudConnector.from_dto(config_dto)
 
-    # Verify connector has expected properties
-    assert hasattr(connector, "reader")
-    assert hasattr(connector, "converter")
-    assert connector.connector_type == "jiraCloud"
-
-    # Cleanup
-    del os.environ["ATLASSIAN_EMAIL"]
-    del os.environ["ATLASSIAN_TOKEN"]
+        # Verify connector has expected properties
+        assert hasattr(connector, "reader")
+        assert hasattr(connector, "converter")
+        assert connector.connector_type == "jiraCloud"
+    finally:
+        # Cleanup
+        del os.environ["ATLASSIAN_EMAIL"]
+        del os.environ["ATLASSIAN_TOKEN"]
 
 
 def test_config_service_validate(tmp_path):
     """Test config validation with registered specs."""
-    from connectors.files import FileSystemConfig
+    from connectors.files.schema import LocalFilesConfig
 
     # Create a temporary test directory
     test_dir = tmp_path / "test"
@@ -92,7 +101,7 @@ def test_config_service_validate(tmp_path):
     config = ConfigService()
 
     # Register a spec
-    config.register(FileSystemConfig, path="sources.files")
+    config.register(LocalFilesConfig, path="sources.files")
 
     # Set valid config with existing path
     config.set("sources.files.path", str(test_dir))

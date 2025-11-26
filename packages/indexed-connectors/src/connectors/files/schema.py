@@ -30,4 +30,7 @@ class FileSystemConfig(BaseModel):
         return v
 
 
-__all__ = ["FileSystemConfig"]
+# Alias for backward compatibility with registry
+LocalFilesConfig = FileSystemConfig
+
+__all__ = ["FileSystemConfig", "LocalFilesConfig"]

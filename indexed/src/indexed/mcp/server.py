@@ -3,9 +3,12 @@
 Provides search and inspect capabilities for document collections via MCP tools and resources.
 """
 
-import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastmcp import FastMCP
+
+# Import ConfigService for configuration
+from indexed_config import ConfigService
+from core.v1.config_models import MCPConfig, CoreV1SearchConfig
 
 # Import our service layer
 from core.v1.engine.services import (
@@ -18,38 +21,58 @@ from core.v1.engine.services import (
 mcp = FastMCP("Indexed MCP Server")
 
 
-# Configuration from environment variables
-class MCPConfig:
-    """Configuration for MCP server from environment variables."""
-
-    def __init__(self):
-        # Search configuration
-        self.max_docs = int(os.getenv("INDEXED_MCP_MAX_DOCS", "10"))
-        self.max_chunks = int(
-            os.getenv("INDEXED_MCP_MAX_CHUNKS", "30")
-        )  # Default: max_docs * 3
-        self.include_full_text = (
-            os.getenv("INDEXED_MCP_INCLUDE_FULL_TEXT", "false").lower() == "true"
-        )
-        self.include_all_chunks = (
-            os.getenv("INDEXED_MCP_INCLUDE_ALL_CHUNKS", "false").lower() == "true"
-        )
-        self.include_matched_chunks = (
-            os.getenv("INDEXED_MCP_INCLUDE_MATCHED_CHUNKS", "false").lower() == "true"
-        )
-        self.default_indexer = os.getenv(
-            "INDEXED_MCP_DEFAULT_INDEXER",
-            "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2",
-        )
-
-        # Inspect configuration
-        self.include_index_size = (
-            os.getenv("INDEXED_MCP_INCLUDE_INDEX_SIZE", "false").lower() == "true"
-        )
+def _get_mcp_config() -> MCPConfig:
+    """Load MCP configuration from ConfigService.
+    
+    Returns:
+        MCPConfig instance with values from config hierarchy
+        (defaults -> global TOML -> workspace TOML -> env vars).
+    """
+    try:
+        config_service = ConfigService.instance()
+        config_service.register(MCPConfig, path="mcp")
+        provider = config_service.bind()
+        return provider.get(MCPConfig)
+    except Exception:
+        # Fallback to defaults if ConfigService unavailable
+        return MCPConfig()
 
 
-# Global configuration instance
-config = MCPConfig()
+def _get_search_config() -> CoreV1SearchConfig:
+    """Load search configuration from ConfigService.
+    
+    Returns:
+        CoreV1SearchConfig instance with values from config hierarchy.
+    """
+    try:
+        config_service = ConfigService.instance()
+        config_service.register(CoreV1SearchConfig, path="core.v1.search")
+        provider = config_service.bind()
+        return provider.get(CoreV1SearchConfig)
+    except Exception:
+        # Fallback to defaults if ConfigService unavailable
+        return CoreV1SearchConfig()
+
+
+# Load configurations at module level (cached)
+_mcp_config: Optional[MCPConfig] = None
+_search_config: Optional[CoreV1SearchConfig] = None
+
+
+def get_mcp_config() -> MCPConfig:
+    """Get cached MCP configuration."""
+    global _mcp_config
+    if _mcp_config is None:
+        _mcp_config = _get_mcp_config()
+    return _mcp_config
+
+
+def get_search_config() -> CoreV1SearchConfig:
+    """Get cached search configuration."""
+    global _search_config
+    if _search_config is None:
+        _search_config = _get_search_config()
+    return _search_config
 
 
 @mcp.tool()
@@ -63,16 +86,19 @@ def search(query: str) -> Dict[str, Any]:
     Returns:
         Dictionary with collection names as keys and search results as values
     """
+    search_cfg = get_search_config()
+    
     try:
         # Use auto-discovery mode (configs=None) to search all collections
         results = svc_search(
             query,
             configs=None,
-            max_docs=config.max_docs,
-            max_chunks=config.max_chunks,
-            include_full_text=config.include_full_text,
-            include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks,
+            max_docs=search_cfg.max_docs,
+            max_chunks=search_cfg.max_chunks,
+            score_threshold=search_cfg.score_threshold,
+            include_full_text=search_cfg.include_full_text,
+            include_all_chunks=search_cfg.include_all_chunks,
+            include_matched_chunks=search_cfg.include_matched_chunks,
         )
         return results
     except Exception as e:
@@ -84,7 +110,7 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
     """
     Search within a specific document collection using semantic similarity.
 
-    Uses the same environment variable configuration as the search tool.
+    Uses the same configuration as the search tool from ConfigService.
 
     Args:
         collection: Name of the collection to search
@@ -93,6 +119,8 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
     Returns:
         Dictionary with search results for the specified collection
     """
+    search_cfg = get_search_config()
+    
     try:
         # Get default indexer for the collection from inspect service
         try:
@@ -104,8 +132,9 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
 
             default_indexer = statuses[0].indexers[0]
         except Exception:
-            # Fallback to configured default indexer
-            default_indexer = config.default_indexer
+            # Fallback to default indexer
+            from core.v1.constants import DEFAULT_INDEXER
+            default_indexer = DEFAULT_INDEXER
 
         # Create SourceConfig for the specific collection
         source_config = SourceConfig(
@@ -118,11 +147,12 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
         results = svc_search(
             query,
             configs=[source_config],
-            max_docs=config.max_docs,
-            max_chunks=config.max_chunks,
-            include_full_text=config.include_full_text,
-            include_all_chunks=config.include_all_chunks,
-            include_matched_chunks=config.include_matched_chunks,
+            max_docs=search_cfg.max_docs,
+            max_chunks=search_cfg.max_chunks,
+            score_threshold=search_cfg.score_threshold,
+            include_full_text=search_cfg.include_full_text,
+            include_all_chunks=search_cfg.include_all_chunks,
+            include_matched_chunks=search_cfg.include_matched_chunks,
         )
         return results
     except Exception as e:
@@ -152,11 +182,12 @@ def collections_status_list() -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
 
-    Configuration via environment variables:
-    - INDEXED_MCP_INCLUDE_INDEX_SIZE: Include index size calculation (default: false)
+    Configuration via ConfigService (mcp.include_index_size).
     """
+    mcp_cfg = get_mcp_config()
+    
     try:
-        statuses = svc_status(include_index_size=config.include_index_size)
+        statuses = svc_status(include_index_size=mcp_cfg.include_index_size)
         # Convert CollectionStatus objects to dictionaries
         return [
             {
@@ -186,10 +217,12 @@ def collection_status(name: str) -> Dict[str, Any]:
     """
     Return detailed status information for a specific collection.
 
-    Uses the same environment variable configuration as collections_status_resource.
+    Uses the same configuration as collections_status_list.
     """
+    mcp_cfg = get_mcp_config()
+    
     try:
-        statuses = svc_status([name], include_index_size=config.include_index_size)
+        statuses = svc_status([name], include_index_size=mcp_cfg.include_index_size)
         if not statuses:
             return {"error": f"Collection '{name}' not found"}
 
@@ -214,18 +247,21 @@ def main():
     """Main entry point for the MCP server."""
     import argparse
 
+    # Get MCP config for defaults
+    mcp_cfg = get_mcp_config()
+    
     parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
     parser.add_argument(
-        "--host", default="localhost", help="Host to bind to (default: localhost)"
+        "--host", default=mcp_cfg.host, help=f"Host to bind to (default: {mcp_cfg.host})"
     )
     parser.add_argument(
-        "--port", type=int, default=8000, help="Port to bind to (default: 8000)"
+        "--port", type=int, default=mcp_cfg.port, help=f"Port to bind to (default: {mcp_cfg.port})"
     )
     parser.add_argument(
         "--log-level",
-        default="INFO",
+        default=mcp_cfg.log_level,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Log level (default: INFO)",
+        help=f"Log level (default: {mcp_cfg.log_level})",
     )
 
     args = parser.parse_args()

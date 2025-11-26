@@ -22,164 +22,140 @@ Indexed is a document search system built with a privacy-first monorepo structur
           └────┤   - Merge configs          ├───┘
                └─────────────┬──────────────┘
                              │
-                    ┌────────▼─────────┐
-                    │  ServiceFactory  │
-                    │  (Dependency     │
-                    │   Injection)     │
-                    └────────┬─────────┘
-                             │
           ┌──────────────────┴──────────────────┐
           │                                     │
-┌─────────▼──────────┐              ┌──────────▼──────────┐
-│  IndexController   │              │  SearchController   │
-│  ┌──────────────┐  │              │  ┌──────────────┐   │
-│  │create_index  │  │              │  │search        │   │
-│  │update_index  │  │              │  │search_filters│   │
-│  │rebuild_index │  │              │  │              │   │
-│  └──────────────┘  │              │  └──────────────┘   │
-└─────────┬──────────┘              └──────────┬──────────┘
-          │                                     │
-┌─────────▼──────────────────────────┐         │
-│      IndexingService                │         │
-│  ┌──────────────────────────────┐  │         │
-│  │ 1. Discover documents        │  │         │
-│  │ 2. Read documents            │  │         │
-│  │ 3. Chunk documents           │  │         │
-│  │ 4. Generate embeddings       │  │         │
-│  │ 5. Store vectors             │  │         │
-│  └──────────────────────────────┘  │         │
-└─────────┬──────────┬────────────────┘         │
-          │          │                          │
-          │          │         ┌────────────────▼──────────┐
-          │          │         │     SearchService          │
-          │          │         │  ┌──────────────────────┐  │
-          │          │         │  │ 1. Embed query       │  │
-          │          │         │  │ 2. Search vectors    │  │
-          │          │         │  │ 3. Retrieve chunks   │  │
-          │          │         │  │ 4. Format results    │  │
-          │          │         │  └──────────────────────┘  │
-          │          │         └────────────┬────────────────┘
-          │          │                      │
-          │          │         ┌────────────▼────────────┐
-          │          └─────────►  EmbeddingService       │
-          │                    │  ┌───────────────────┐  │
-          │                    │  │sentence-          │  │
-          │                    │  │transformers       │  │
-          │                    │  │OpenAI             │  │
-          │                    │  │Voyage AI          │  │
-          │                    │  │                   │  │
-          │                    │  │embed_text()       │  │
-          │                    │  │embed_batch()      │  │
-          │                    │  └───────────────────┘  │
-          │                    └─────────────────────────┘
+┌─────────▼──────────────────────────┐ ┌───────▼───────────────────┐
+│   collection_service (functions)   │ │   SearchService (class)    │
+│  ┌──────────────────────────────┐  │ │  ┌──────────────────────┐  │
+│  │ create(configs, ...)        │  │ │  │ search(query, ...)   │  │
+│  │ update(configs, ...)        │  │ │  │ (caches searchers)   │  │
+│  │ clear(collection_names)     │  │ │  └──────────────────────┘  │
+│  └──────────────────────────────┘  │ └────────────┬──────────────┘
+└─────────┬──────────┬───────────────┘              │
+          │          │                              │
+          │          │    ┌─────────────────────────▼──────────┐
+          │          │    │  InspectService (class)            │
+          │          │    │  ┌──────────────────────────────┐  │
+          │          │    │  │ status(collections)          │  │
+          │          │    │  │ inspect(collections)         │  │
+          │          │    │  └──────────────────────────────┘  │
+          │          │    └────────────────────────────────────┘
+          │          │
+┌─────────▼──────────▼─────────────────┐
+│    DocumentCollectionCreator         │
+│  ┌──────────────────────────────┐    │
+│  │ 1. Read documents (Reader)   │    │
+│  │ 2. Convert (Converter)       │    │
+│  │ 3. Index (FaissIndexer)      │    │
+│  │ 4. Persist (DiskPersister)   │    │
+│  └──────────────────────────────┘    │
+└─────────┬────────────────────────────┘
           │
-┌─────────▼─────────────────────┐
-│     StorageService             │
-│  ┌──────────────────────────┐  │
-│  │ FAISS Vector Store       │  │
-│  │                          │  │
-│  │ add_vectors()            │  │
-│  │ search()                 │  │
-│  │ delete_by_ids()          │  │
-│  │ save() / load()          │  │
-│  └──────────────────────────┘  │
-└────────────────────────────────┘
+          │         ┌────────────────────────────┐
+          └─────────►  FaissIndexer              │
+                    │  ┌──────────────────────┐  │
+                    │  │ SentenceEmbedder     │  │
+                    │  │ FAISS IndexFlatL2    │  │
+                    │  │ index_texts()        │  │
+                    │  │ search()             │  │
+                    │  └──────────────────────┘  │
+                    └────────────────────────────┘
           ▲
           │
 ┌─────────┴──────────────────────┐
 │  DocumentConnectors            │
 │  ┌──────────────────────────┐  │
 │  │ FileSystemConnector      │  │
-│  │ - discover_documents()   │  │
-│  │ - read_document()        │  │
-│  │                          │  │
 │  │ JiraConnector            │  │
-│  │ - BaseConnector compliant│  │
+│  │ JiraCloudConnector       │  │
 │  │ ConfluenceConnector      │  │
-│  │ - BaseConnector compliant│  │
+│  │ ConfluenceCloudConnector │  │
+│  │ - All BaseConnector      │  │
+│  │   protocol compliant     │  │
 │  └──────────────────────────┘  │
 └────────────────────────────────┘
 ```
 
+## Architectural Pattern: Facade + Services
+
+Indexed uses a **simplified Facade pattern** rather than a traditional Controller/Service layering:
+
+1. **CLI Commands** call **Service Functions** directly
+2. **Index Facade** (`core.v1.Index`) wraps services for library users
+3. **Services** handle business logic
+4. **Infrastructure** handles I/O and external systems
+
+This keeps the architecture simple (KISS) while providing clean APIs for both CLI and library usage.
+
 ## Component Architecture
 
-### 1. CLI Layer (`apps/indexed-cli`)
+### 1. CLI Layer (`indexed/src/indexed/`)
 
 **Responsibility:** User interface and command routing
 
 **Structure:**
 ```
-indexed-cli/
+indexed/
 ├── app.py              # Main Typer application
-├── commands/           # Command implementations
-│   ├── create.py      # Create collections
-│   ├── search.py      # Search commands
-│   ├── delete.py      # Delete collections
-│   └── legacy.py      # Legacy command wrappers
-├── engines/           # Engine selection (legacy vs new)
-└── server/
-    └── mcp.py         # MCP server implementation
+├── knowledge/          # Knowledge/Index commands
+│   └── commands/
+│       ├── create.py   # Create collections (jira, confluence, files)
+│       ├── search.py   # Search commands
+│       ├── inspect.py  # Inspect collections
+│       ├── update.py   # Update collections
+│       └── remove.py   # Remove collections
+├── config/             # Configuration commands
+│   └── cli.py          # inspect, update, set, delete, validate
+├── mcp/                # MCP server
+│   └── server.py       # FastMCP integration
+└── utils/              # CLI utilities
+    ├── components/     # Rich UI components
+    ├── progress_bar.py # Progress indicators
+    └── console.py      # Console configuration
 ```
 
 **Key Responsibilities:**
 - Parse command-line arguments
-- Load configuration
-- Initialize service factory
-- Display results to user
+- Load configuration via ConfigService
+- Call service functions directly
+- Display results with Rich UI
 - Handle user errors gracefully
 
-### 2. Controller Layer (`packages/indexed-core/src/index/controllers`)
-
-**Responsibility:** Orchestration and coordination between services
-
-**Controllers:**
-- `IndexController` - Manages indexing operations
-- `SearchController` - Manages search operations
-
-**Pattern:**
-```python
-class IndexController:
-    def __init__(
-        self,
-        indexing_service: IndexingService,
-        config: IndexConfig
-    ):
-        self.indexing_service = indexing_service
-        self.config = config
-    
-    def create_index(self, sources: List[str]) -> IndexStats:
-        # Orchestrate indexing workflow
-        # Coordinate multiple services
-        # Return results
-```
-
-### 3. Service Layer (`packages/indexed-core/src/index/services`)
+### 2. Service Layer (`packages/indexed-core/src/core/v1/engine/services/`)
 
 **Responsibility:** Business logic and core functionality
 
 **Services:**
 
-**IndexingService:**
-- Document discovery and reading
-- Chunking and processing
-- Embedding generation coordination
-- Vector storage coordination
+**collection_service.py** (functional):
+- `create(configs, ...)` - Create new collections
+- `update(configs, ...)` - Update existing collections
+- `clear(collection_names)` - Delete collections
 
-**SearchService:**
-- Query processing
-- Vector similarity search
-- Result retrieval and formatting
+**SearchService** (class-based, stateful):
+- Caches searcher instances for performance
+- `search(query, collections, ...)` - Execute semantic search
 
-**EmbeddingService:**
-- Text embedding generation
-- Multiple provider support (sentence-transformers, OpenAI, Voyage AI)
-- Batch processing optimization
+**InspectService** (class-based, stateful):
+- Caches manifests for performance
+- `status(collections)` - Get collection status
+- `inspect(collections, ...)` - Get detailed collection info
 
-**StorageService:**
-- FAISS vector store management
-- Vector addition and deletion
-- Similarity search
-- Persistence to disk
+### 3. Index Facade (`packages/indexed-core/src/core/v1/index.py`)
+
+**Responsibility:** High-level API for library users
+
+```python
+from core.v1 import Index
+
+# Library usage pattern
+index = Index()
+index.create("my-collection", connector)
+results = index.search("query", collection="my-collection")
+status = index.status()
+```
+
+The Index class wraps service layer functions, providing a clean OOP interface for programmatic usage.
 
 ### 4. Infrastructure Layer
 
@@ -187,136 +163,134 @@ class IndexController:
 
 **Connectors (`packages/indexed-connectors/src/connectors/`):**
 - `FileSystemConnector` - Local file reading  
-- `JiraConnector`, `JiraCloudConnector` - Jira integration (uses `atlassian-python-api`)
-  - ✅ BaseConnector protocol compliant
-  - ✅ Configuration-driven instantiation
-  - ✅ Standardized environment variable handling
+- `JiraConnector`, `JiraCloudConnector` - Jira integration
 - `ConfluenceConnector`, `ConfluenceCloudConnector` - Confluence integration
-  - ✅ BaseConnector protocol compliant  
-  - ✅ Configuration-driven instantiation
-  - ✅ Standardized environment variable handling
-- `BitbucketConnector` (future) - Bitbucket integration
 
-**BaseConnector Protocol Architecture:**
-
-All Atlassian connectors implement the BaseConnector protocol for standardized configuration-driven instantiation:
-
+All connectors implement the **BaseConnector protocol**:
 ```python
 class BaseConnector(Protocol):
-    @classmethod
-    def config_spec(cls) -> ConnectorMetadata:
-        """Return configuration specification."""
+    @property
+    def reader(self) -> DocumentReader: ...
+    
+    @property
+    def converter(self) -> DocumentConverter: ...
+    
+    @property
+    def connector_type(self) -> str: ...
     
     @classmethod
-    def from_config(cls, config_service, namespace: str) -> Self:
-        """Create connector instance from configuration."""
+    def from_dto(cls, config: BaseModel) -> "BaseConnector": ...
 ```
 
-**Environment Variable Resolution Order:**
-1. Direct config attributes (highest priority)
-2. Configured environment variable names  
-3. Standard fallback environment variables
-
-**Common Patterns:**
-- `safe_getattr()` utility for test compatibility (handles MagicMock values)
-- Consistent error messages for validation failures
-- Standardized configuration validation patterns
-
-**Atlassian Integration Strategy:**
-- **Unified Dependency**: All Atlassian services use `atlassian-python-api>=4.0.7`
-- **Consistent Patterns**: Same authentication and pagination patterns across services
-- **Cloud + Server/DC**: Single library supports both deployment models
-- **Future-Ready**: Prepared for Bitbucket connector implementations
-
-**Configuration (`packages/indexed-core/src/index/config`):**
+**Configuration (`packages/indexed-config/`):**
 - `ConfigService` - Load/save TOML configuration
 - Pydantic models for validation
-- Environment variable overrides
+- Automatic .env handling for secrets
 
 **Storage:**
 - FAISS index files
-- Document metadata
+- Document metadata JSON
 - Collection manifests
 
 ## Data Flow: Indexing Pipeline
 
 ```
-User Command: indexed-cli create files -c my-docs --basePath /path
+User Command: indexed index create jira --url https://company.atlassian.net
 │
-├─► 1. CLI loads config via ConfigService
-│       └─► Reads config.toml, validates with Pydantic
+├─► 1. CLI initializes ConfigService (auto-loads .env)
+│       └─► Loads: config.toml + .env files
 │
-├─► 2. CLI calls ServiceFactory.create_from_config()
-│       ├─► Instantiates EmbeddingService (based on config)
-│       ├─► Instantiates StorageService (FAISS)
-│       ├─► Instantiates FileSystemConnector
-│       ├─► Instantiates IndexingService
-│       └─► Instantiates IndexController
-│
-├─► 3. CLI calls IndexController.create_index(["/path"])
+├─► 2. CLI validates requirements using Pydantic model introspection
 │       │
-│       └─► IndexController.create_index()
-│               │
-│               └─► IndexingService.index_source("/path")
-│                       │
-│                       ├─► FileSystemConnector.discover_documents()
-│                       │       └─► Returns: Iterator[Path] of matching files
-│                       │
-│                       ├─► FileSystemConnector.read_document(path)
-│                       │       └─► Returns: Document object
-│                       │
-│                       ├─► IndexingService._chunk_document(document)
-│                       │       └─► Returns: List[Chunk]
-│                       │
-│                       ├─► EmbeddingService.embed_batch([chunk.content, ...])
-│                       │       └─► Returns: numpy.ndarray (embeddings)
-│                       │
-│                       └─► StorageService.add_vectors(embeddings, chunk_ids)
-│                               └─► Stores in FAISS index
+│       └─► config.validate_requirements(
+│               config_class=JiraCloudConfig,
+│               namespace="sources.jira_cloud",
+│               cli_overrides={"url": "..."}
+│           )
+│           │
+│           ├─► Introspects JiraCloudConfig fields
+│           ├─► Checks CLI > config > env for each field
+│           ├─► Identifies missing required fields
+│           └─► Returns: {missing: [...], present: {...}, field_info: {...}}
 │
-└─► 4. IndexController returns stats
-        └─► CLI displays: "Indexed N chunks from M documents"
+├─► 3. CLI prompts for missing values (if any)
+│       │
+│       └─► For each missing field:
+│           ├─► Prompt user with rich styled input
+│           └─► config.set_value(key, value, field_info)
+│                   ├─► If sensitive → saves to .env
+│                   └─► If not → saves to .toml
+│
+├─► 4. CLI builds SourceConfig and calls service directly
+│       │
+│       └─► collection_service.create([cfg], config_service=config)
+│               │
+│               ├─► _build_connector_from_config(cfg, config_service)
+│               │       └─► Returns: JiraCloudConnector instance
+│               │
+│               └─► create_collection_creator(...)
+│                       │
+│                       └─► DocumentCollectionCreator.run()
+│                               │
+│                               ├─► connector.reader.read_all_documents()
+│                               │       └─► Yields documents from Jira API
+│                               │
+│                               ├─► connector.converter.convert(doc)
+│                               │       └─► Returns: List[chunks]
+│                               │
+│                               ├─► indexer.index_texts(ids, texts)
+│                               │       └─► Embeds and stores in FAISS
+│                               │
+│                               └─► persister.save_*()
+│                                       └─► Writes to ./data/collections/
+│
+└─► 5. CLI displays success message
+        └─► "✓ Collection 'jira' created with N documents"
 ```
 
 ## Data Flow: Search Pipeline
 
 ```
-User Command: indexed-cli search "authentication flow"
+User Command: indexed index search "authentication flow"
 │
-├─► 1. CLI loads config and creates services (via factory)
+├─► 1. CLI loads config
 │
-├─► 2. CLI calls SearchController.search("authentication flow")
+├─► 2. CLI calls SearchService.search()
 │       │
-│       └─► SearchController.search()
+│       └─► SearchService.search("authentication flow", top_k=10)
 │               │
-│               └─► SearchService.search("authentication flow", top_k=10)
-│                       │
-│                       ├─► EmbeddingService.embed_text("authentication flow")
-│                       │       └─► Returns: numpy.ndarray (query embedding)
-│                       │
-│                       ├─► StorageService.search(query_embedding, top_k=10)
-│                       │       └─► Returns: [(chunk_id, score), ...]
-│                       │
-│                       ├─► SearchService retrieves Chunk objects by IDs
-│                       │       └─► From metadata store
-│                       │
-│                       └─► SearchService creates SearchResult objects
-│                               └─► Returns: List[SearchResult]
+│               ├─► _get_or_create_searcher(collection)
+│               │       ├─► Loads FAISS index from disk
+│               │       └─► Returns: DocumentCollectionSearcher
+│               │
+│               ├─► searcher.search(query, max_results)
+│               │       │
+│               │       ├─► indexer.search(query_text, k)
+│               │       │       ├─► Embed query with SentenceEmbedder
+│               │       │       └─► FAISS similarity search
+│               │       │
+│               │       └─► Build SearchResult objects
+│               │
+│               └─► Returns: List[SearchResult]
 │
-└─► 3. CLI formats and displays results
+└─► 3. CLI formats and displays results with Rich
 ```
 
 ## Configuration System
 
 ### Architecture
 
-**Single Source of Truth**: `indexed-config` package provides unified configuration management.
+**Single Source of Truth**: `indexed-config` package provides unified configuration management with automatic .env loading and generic validation.
 
 ```
 Config Sources (Priority: Low → High)
 ├── Pydantic Model Defaults
 ├── Global Config (~/.config/indexed/config.toml)
 ├── Workspace Config (./.indexed/config.toml)
+├── Environment Variables (.env files)
+│   ├── Project root .env (highest priority)
+│   ├── Workspace .indexed/.env
+│   └── Global ~/.indexed/.env
 └── Environment Variables (INDEXED__*)
 
                 ↓
@@ -324,7 +298,9 @@ Config Sources (Priority: Low → High)
         ConfigService
         ├── register(spec, path)
         ├── bind() → Provider
-        ├── set(path, value)
+        ├── validate_requirements(config_class, namespace, cli_overrides)
+        ├── set_value(key, value, field_info) → .toml or .env
+        ├── set(path, value) → .toml only
         ├── delete(path)
         └── validate()
 
@@ -338,24 +314,70 @@ Config Sources (Priority: Low → High)
 ### Core Principles
 
 1. **Explicit Registration**: Components register their own config specs at usage point
-2. **Zero Coupling**: Config doesn't know about consumers
-3. **Type Safety**: Pydantic validation throughout
+2. **Zero Coupling**: Config doesn't know about consumers - it's completely generic
+3. **Type Safety**: Pydantic validation throughout with introspection
 4. **Version Awareness**: Namespaced paths support multiple versions (`core.v1.*`, `core.v2.*`)
+5. **Generic Validation**: ConfigService works with ANY Pydantic model through field introspection
+6. **Automatic .env Management**: Sensitive values (tokens, passwords) automatically saved to .env
 
 ### Usage Pattern
 
+**Generic Validation Pattern (Recommended)**:
 ```python
 from indexed_config import ConfigService
-from connectors.jira import JiraCloudConnector
+from connectors.jira import JiraCloudConfig
 
-# Initialize config
+# Initialize config (auto-loads .env)
 config = ConfigService()
 
-# Override with CLI args if needed
-config.set("sources.jira_cloud.url", "https://company.atlassian.net")
+# Validate requirements using Pydantic model introspection
+validation = config.validate_requirements(
+    config_class=JiraCloudConfig,
+    namespace="sources.jira_cloud",
+    cli_overrides={"url": "https://company.atlassian.net"}
+)
 
-# Connector registers its own config spec and extracts values
-connector = JiraCloudConnector.from_config(config)
+# Check what's missing and prompt user
+if validation["missing"]:
+    for field_name in validation["missing"]:
+        field_info = validation["field_info"][field_name]
+        value = prompt_user(field_name)
+        
+        # ConfigService automatically saves to .env or .toml based on sensitivity
+        config.set_value(
+            f"sources.jira_cloud.{field_name}",
+            value,
+            field_info=field_info
+        )
+
+# All values now available in validation["present"]
+```
+
+### Field Metadata Convention
+
+```python
+from pydantic import BaseModel, Field
+
+class MyConnectorConfig(BaseModel):
+    # Non-sensitive, stored in .toml
+    url: str = Field(..., description="Server URL")
+    
+    # Non-sensitive with env var, stored in .toml
+    email: Optional[str] = Field(
+        None,
+        description="Email (env: MY_EMAIL)",
+        json_schema_extra={"env_var": "MY_EMAIL"}
+    )
+    
+    # Sensitive, stored in .env
+    api_token: Optional[str] = Field(
+        None,
+        description="API token (env: MY_TOKEN)",
+        json_schema_extra={
+            "sensitive": True,
+            "env_var": "MY_TOKEN"
+        }
+    )
 ```
 
 ### Config Hierarchy Example
@@ -406,114 +428,97 @@ connector = JiraCloudConnector.from_config(config)
 
 See `.memory/config_api.md` for complete API documentation.
 
-## Dependency Injection Pattern
-
-**ServiceFactory** is the composition root:
-
-```python
-class ServiceFactory:
-    @staticmethod
-    def create_from_config(config: IndexConfig):
-        # 1. Create infrastructure components
-        embedding_service = create_embedding_service(config.embedding)
-        storage_service = create_storage_service(config.vector_store)
-        connectors = create_connectors(config.connectors)
-        
-        # 2. Create services with injected dependencies
-        indexing_service = IndexingService(
-            embedding_service=embedding_service,
-            storage_service=storage_service,
-            connectors=connectors,
-            config=config.indexing
-        )
-        
-        search_service = SearchService(
-            embedding_service=embedding_service,
-            storage_service=storage_service,
-            config=config.search
-        )
-        
-        # 3. Create controllers with injected services
-        index_controller = IndexController(
-            indexing_service=indexing_service,
-            config=config
-        )
-        
-        search_controller = SearchController(
-            search_service=search_service,
-            config=config
-        )
-        
-        return index_controller, search_controller, config
-```
-
-**Key Principles:**
-1. No service instantiates its own dependencies
-2. All dependencies passed via constructor
-3. Easy to test with mocks
-4. Clear dependency graph
-
 ## Extension Points
 
-### 1. Adding a New Embedding Provider
+### 1. Adding a New Connector
+
+Implement the BaseConnector protocol:
 
 ```python
-# Implement EmbeddingProvider protocol
-class AnthropicEmbeddingProvider:
-    def embed_text(self, text: str) -> np.ndarray:
-        # Call Anthropic API
-        pass
-    
-    def embed_batch(self, texts: List[str]) -> np.ndarray:
-        # Batch embedding
-        pass
+from core.v1.connectors.base import BaseConnector
+from core.v1.connectors.metadata import ConnectorMetadata
 
-# Register in factory
-def create_embedding_service(config: EmbeddingConfig):
-    if config.provider == "sentence-transformers":
-        return SentenceTransformerEmbedding(...)
-    elif config.provider == "openai":
-        return OpenAIEmbedding(...)
-    elif config.provider == "anthropic":
-        return AnthropicEmbeddingProvider(...)
+class GitConnector:
+    META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
+        name="git",
+        display_name="Git Repository",
+        description="Index files from a Git repository",
+        config_class=GitConfig,
+        version="1.0.0",
+        min_core_version="1.0.0",
+    )
+    
+    def __init__(self, repo_url: str, branch: str = "main"):
+        self._reader = GitDocumentReader(repo_url, branch)
+        self._converter = GitDocumentConverter()
+    
+    @property
+    def reader(self) -> GitDocumentReader:
+        return self._reader
+    
+    @property
+    def converter(self) -> GitDocumentConverter:
+        return self._converter
+    
+    @property
+    def connector_type(self) -> str:
+        return "git"
+    
+    @classmethod
+    def from_dto(cls, config: GitConfig) -> "GitConnector":
+        return cls(repo_url=config.url, branch=config.branch)
 ```
 
-### 2. Adding a New Connector
+### 2. Adding a New Embedding Provider
 
 ```python
-# Implement DocumentConnector protocol
-class GitConnector:
-    def discover_documents(self, source: str) -> Iterator[Path]:
-        # Clone repo, list files
-        pass
-        
-    def read_document(self, path: Path) -> Document:
-        # Read file content
-        pass
-
-# Register in factory
-if config.connectors.git_enabled:
-    connectors.append(GitConnector(...))
+class OpenAIEmbedder:
+    def __init__(self, model: str = "text-embedding-3-small"):
+        self.model = model
+        self.client = OpenAI()
+    
+    def embed_text(self, text: str) -> np.ndarray:
+        response = self.client.embeddings.create(
+            model=self.model,
+            input=text
+        )
+        return np.array(response.data[0].embedding)
+    
+    def embed_batch(self, texts: List[str]) -> np.ndarray:
+        response = self.client.embeddings.create(
+            model=self.model,
+            input=texts
+        )
+        return np.array([d.embedding for d in response.data])
 ```
 
 ### 3. Swapping Vector Store
 
 ```python
-# Add new storage service implementation
-class QdrantStorageService:
-    def add_vectors(self, vectors: np.ndarray, ids: List[str]) -> None:
-        # Upload to Qdrant
-        pass
+class QdrantIndexer:
+    def __init__(self, collection_name: str, embedder):
+        self.client = QdrantClient(...)
+        self.embedder = embedder
     
-    def search(self, query_vector: np.ndarray, top_k: int) -> List[Tuple[str, float]]:
-        # Query Qdrant
-        pass
-
-# Update factory
-if config.vector_store.type == "faiss":
-    storage_service = StorageService(...)
-elif config.vector_store.type == "qdrant":
-    storage_service = QdrantStorageService(...)
+    def index_texts(self, ids: List[int], texts: List[str]):
+        embeddings = self.embedder.embed_batch(texts)
+        self.client.upsert(
+            collection_name=self.collection_name,
+            points=[
+                PointStruct(id=id, vector=emb.tolist())
+                for id, emb in zip(ids, embeddings)
+            ]
+        )
+    
+    def search(self, text: str, k: int) -> Tuple[np.ndarray, np.ndarray]:
+        embedding = self.embedder.embed_text(text)
+        results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=embedding.tolist(),
+            limit=k
+        )
+        # Return (scores, indices) to match FAISS interface
+        ...
 ```
 
 ## Storage Architecture
@@ -526,6 +531,7 @@ elif config.vector_store.type == "qdrant":
 │   └── {collection_name}/
 │       ├── documents/           # Document metadata
 │       │   └── *.json
+│       ├── manifest.json        # Collection manifest
 │       └── indexes/             # Vector indexes
 │           ├── index_info.json
 │           ├── index_document_mapping.json
@@ -564,37 +570,13 @@ elif config.vector_store.type == "qdrant":
 }
 ```
 
-## Architecture Evolution (v1.0)
-
-### Current State
-
-**v1.0 Implementation** (`packages/indexed-core/src/core/v1/`):
-- Clean Controller/Service pattern
-- Protocol-based connector interface (BaseConnector)
-- Dependency injection via ServiceFactory
-- Unified configuration with Pydantic
-- Dynamic connector registry for discovery/compatibility
-
-**Legacy Code**: No legacy implementation remains in v1.0. All code uses `core.v1` architecture.
-
-### Connector Registry Purpose
-
-The dynamic connector registry (`indexed/src/indexed/connectors/`) serves infrastructure needs:
-- **Discovery**: Automatically find all available connectors
-- **Compatibility**: Version checking between connectors and core
-- **Introspection**: List available connectors programmatically
-
-**Not a full plugin system**: CLI remains hardcoded for UX quality (proper --help, type safety, validation).
-
-**Optional future**: `indexed index create --from-registry` for advanced users (deferred).
-
 ## Key Design Principles
 
-1. **Separation of Concerns**: Each component has single responsibility
-2. **Dependency Inversion**: Depend on abstractions, not implementations
-3. **Open/Closed Principle**: Open for extension, closed for modification
+1. **KISS (Keep It Simple)**: Facade pattern over complex layering
+2. **Separation of Concerns**: Each component has single responsibility
+3. **Protocol-Based Design**: BaseConnector enables extensibility
 4. **Configuration over Code**: Behavior controlled by config files
-5. **Testability**: All dependencies injected, easy to mock
+5. **Testability**: Services have clear interfaces, easy to mock
 6. **Type Safety**: Pydantic validation, type hints throughout
 
 ## Performance Considerations
@@ -623,4 +605,3 @@ The dynamic connector registry (`indexed/src/indexed/connectors/`) serves infras
 ---
 
 This architecture provides a solid foundation for building a maintainable, extensible document search system while enabling smooth evolution from local-first to cloud-ready deployment.
-

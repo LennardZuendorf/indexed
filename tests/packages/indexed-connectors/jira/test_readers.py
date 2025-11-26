@@ -1,7 +1,6 @@
 """Tests for Jira document readers."""
 import pytest
-from connectors.jira.jira_cloud_document_reader import JiraCloudDocumentReader as CloudReader
-from connectors.jira.jira_document_reader import JiraDocumentReader as ServerReader
+from connectors.jira.unified_jira_document_reader import UnifiedJiraDocumentReader, JiraAuthType
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 
@@ -32,14 +31,16 @@ class FakeJiraServer:
 
 
 def test_cloud_reader_count_and_pagination(monkeypatch):
-    # Patch the Jira class in cloud module
-    import connectors.jira.jira_cloud_document_reader as cloud_mod
+    """Test cloud reader document counting and pagination."""
+    # Patch the Jira class in the unified reader module
+    import connectors.jira.unified_jira_document_reader as unified_mod
 
-    monkeypatch.setattr(cloud_mod, "Jira", FakeJiraCloud, raising=True)
+    monkeypatch.setattr(unified_mod, "Jira", FakeJiraCloud, raising=True)
 
-    reader = CloudReader(
+    reader = UnifiedJiraDocumentReader(
         base_url="https://acme.atlassian.net",
         query="project = TEST",
+        auth_type=JiraAuthType.CLOUD,
         email="x@acme.com",
         api_token="token",
         batch_size=2,
@@ -55,13 +56,15 @@ def test_cloud_reader_count_and_pagination(monkeypatch):
 
 
 def test_server_reader_count_and_pagination(monkeypatch):
-    import connectors.jira.jira_document_reader as server_mod
+    """Test server reader document counting and pagination."""
+    import connectors.jira.unified_jira_document_reader as unified_mod
 
-    monkeypatch.setattr(server_mod, "Jira", FakeJiraServer, raising=True)
+    monkeypatch.setattr(unified_mod, "Jira", FakeJiraServer, raising=True)
 
-    reader = ServerReader(
+    reader = UnifiedJiraDocumentReader(
         base_url="https://jira.example.com",
         query="project = APP",
+        auth_type=JiraAuthType.SERVER_TOKEN,
         token="pat-token",
         batch_size=1,
     )
@@ -71,3 +74,82 @@ def test_server_reader_count_and_pagination(monkeypatch):
     docs = list(reader.read_all_documents())
     assert len(docs) == 2
     assert docs[0]["key"] == "S-1"
+
+
+def test_reader_validation_cloud_requires_email_and_token():
+    """Test cloud auth validation."""
+    with pytest.raises(ValueError, match="Cloud authentication requires both 'email' and 'api_token'"):
+        UnifiedJiraDocumentReader(
+            base_url="https://acme.atlassian.net",
+            query="project = TEST",
+            auth_type=JiraAuthType.CLOUD,
+            # Missing email and api_token
+        )
+
+
+def test_reader_validation_server_token_requires_token():
+    """Test server token auth validation."""
+    with pytest.raises(ValueError, match="Token authentication requires 'token'"):
+        UnifiedJiraDocumentReader(
+            base_url="https://jira.example.com",
+            query="project = TEST",
+            auth_type=JiraAuthType.SERVER_TOKEN,
+            # Missing token
+        )
+
+
+def test_reader_validation_server_creds_requires_login_password():
+    """Test server credentials auth validation."""
+    with pytest.raises(ValueError, match="Credential authentication requires both 'login' and 'password'"):
+        UnifiedJiraDocumentReader(
+            base_url="https://jira.example.com",
+            query="project = TEST",
+            auth_type=JiraAuthType.SERVER_CREDENTIALS,
+            # Missing login and password
+        )
+
+
+def test_reader_url_validation_cloud():
+    """Test cloud URL validation."""
+    with pytest.raises(ValueError, match="Cloud URLs must end with .atlassian.net"):
+        UnifiedJiraDocumentReader(
+            base_url="https://jira.example.com",  # Wrong URL for cloud
+            query="project = TEST",
+            auth_type=JiraAuthType.CLOUD,
+            email="x@acme.com",
+            api_token="token",
+        )
+
+
+def test_reader_url_validation_server():
+    """Test server URL validation."""
+    with pytest.raises(ValueError, match="Server/DC URLs should not end with .atlassian.net"):
+        UnifiedJiraDocumentReader(
+            base_url="https://acme.atlassian.net",  # Wrong URL for server
+            query="project = TEST",
+            auth_type=JiraAuthType.SERVER_TOKEN,
+            token="token",
+        )
+
+
+def test_reader_details(monkeypatch):
+    """Test get_reader_details returns correct information."""
+    import connectors.jira.unified_jira_document_reader as unified_mod
+
+    monkeypatch.setattr(unified_mod, "Jira", FakeJiraCloud, raising=True)
+
+    reader = UnifiedJiraDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        auth_type=JiraAuthType.CLOUD,
+        email="x@acme.com",
+        api_token="token",
+        batch_size=100,
+    )
+
+    details = reader.get_reader_details()
+    
+    assert details["type"] == "jiraCloud"
+    assert details["baseUrl"] == "https://acme.atlassian.net"
+    assert details["query"] == "project = TEST"
+    assert details["batchSize"] == 100

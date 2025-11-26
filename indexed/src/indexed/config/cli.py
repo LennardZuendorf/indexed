@@ -1097,6 +1097,134 @@ def validate():
     raise typer.Exit(1)
 
 
+@app.command("init")
+def init_config(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config files"),
+):
+    """Initialize workspace configuration files.
+    
+    Creates a .indexed/ directory with default config.toml and .env.example files.
+    """
+    workspace_dir = Path.cwd() / ".indexed"
+    config_file = workspace_dir / "config.toml"
+    env_example = workspace_dir / ".env.example"
+    
+    console.print()
+    breadcrumb = create_breadcrumb(["Config", "Initialize"])
+    console.print(breadcrumb)
+    console.print()
+    
+    # Check if already initialized
+    if workspace_dir.exists() and not force:
+        console.print(f"[{get_warning_style()}]⚠️  Workspace already initialized at {workspace_dir}[/{get_warning_style()}]")
+        console.print()
+        console.print(f"[{get_secondary_style()}]Use --force to overwrite existing configuration.[/{get_secondary_style()}]")
+        console.print()
+        raise typer.Exit(1)
+    
+    # Create directory
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Default config.toml content
+    default_config = """# Indexed Configuration
+# See: https://indexed.ignitr.dev/docs/configuration
+
+[core.v1.indexing]
+chunk_size = 512
+chunk_overlap = 50
+
+[core.v1.embedding]
+model_name = "all-MiniLM-L6-v2"
+
+[core.v1.search]
+max_docs = 10
+max_chunks = 50
+# score_threshold = 0.0  # Optional: minimum similarity score
+
+[core.v1.storage]
+base_path = "./data/collections"
+
+# Source configurations
+# Uncomment and configure the sources you need
+
+# [sources.files]
+# path = "./docs"
+# include_patterns = [".*\\\\.md$", ".*\\\\.txt$"]
+# exclude_patterns = []
+# fail_fast = false
+
+# [sources.jira_cloud]
+# url = "https://company.atlassian.net"
+# query = "project = PROJ"
+# email = ""  # Set via ATLASSIAN_EMAIL env var
+# api_token = ""  # Set via ATLASSIAN_TOKEN env var
+
+# [sources.confluence_cloud]
+# url = "https://company.atlassian.net/wiki"
+# query = "space = DOCS"
+# email = ""  # Set via ATLASSIAN_EMAIL env var
+# api_token = ""  # Set via ATLASSIAN_TOKEN env var
+# read_all_comments = true
+"""
+
+    # .env.example content
+    env_example_content = """# Indexed Environment Variables
+# Copy this file to .env and fill in your values
+
+# Atlassian Cloud (Jira Cloud, Confluence Cloud)
+# ATLASSIAN_EMAIL=your-email@company.com
+# ATLASSIAN_TOKEN=your-api-token
+
+# Jira Server/Data Center
+# JIRA_TOKEN=your-jira-token
+# JIRA_LOGIN=your-username
+# JIRA_PASSWORD=your-password
+
+# Confluence Server/Data Center
+# CONF_TOKEN=your-confluence-token
+# CONF_LOGIN=your-username
+# CONF_PASSWORD=your-password
+"""
+
+    files_created = []
+    files_skipped = []
+    
+    # Write config.toml
+    if not config_file.exists() or force:
+        config_file.write_text(default_config)
+        files_created.append(str(config_file))
+    else:
+        files_skipped.append(str(config_file))
+    
+    # Write .env.example
+    if not env_example.exists() or force:
+        env_example.write_text(env_example_content)
+        files_created.append(str(env_example))
+    else:
+        files_skipped.append(str(env_example))
+    
+    # Show results
+    if files_created:
+        rows = [(Path(f).name, "created") for f in files_created]
+        if files_skipped:
+            rows.extend([(Path(f).name, "skipped (exists)") for f in files_skipped])
+        
+        card = create_info_card(title="Initialization Complete", rows=rows)
+        console.print(card)
+        console.print()
+    
+    console.print(f"[{get_success_style()}]✓ Workspace initialized at {workspace_dir}[/{get_success_style()}]")
+    console.print()
+    
+    # Next steps
+    console.print(f"[{get_heading_style()}]Next Steps:[/{get_heading_style()}]")
+    console.print()
+    console.print(f"  1. Edit [{get_accent_style()}]{config_file}[/{get_accent_style()}] to configure your sources")
+    console.print(f"  2. Copy [{get_accent_style()}]{env_example}[/{get_accent_style()}] to [{get_accent_style()}].env[/{get_accent_style()}] and add your credentials")
+    console.print(f"  3. Run [{get_accent_style()}]indexed config validate[/{get_accent_style()}] to verify configuration")
+    console.print()
+
+
 @app.command("docs", rich_help_panel="Resources")
 def docs() -> None:
     """Open configuration documentation in browser."""

@@ -1,6 +1,6 @@
 import json
 import hashlib
-import logging
+from loguru import logger
 
 
 class CacheReaderDecorator:
@@ -14,7 +14,7 @@ class CacheReaderDecorator:
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(
             f"{cache_key}_completed"
         ):
-            logging.info(f"Cache hit during 'read_all_documents' for {cache_key}")
+            logger.info(f"Cache hit during 'read_all_documents' for {cache_key}")
             for file_name in self.persister.read_folder_files(cache_key):
                 yield json.loads(
                     self.persister.read_text_file(f"{cache_key}/{file_name}")
@@ -40,7 +40,7 @@ class CacheReaderDecorator:
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(
             f"{cache_key}_completed"
         ):
-            logging.info(f"Cache hit during 'get_number_of_documents' for {cache_key}")
+            logger.info(f"Cache hit during 'get_number_of_documents' for {cache_key}")
             return len(self.persister.read_folder_files(cache_key))
         else:
             return self.reader.get_number_of_documents()

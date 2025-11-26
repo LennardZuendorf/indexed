@@ -1,8 +1,8 @@
 import os
-import logging
 import json
 import datetime
 import re
+from loguru import logger
 from unstructured.partition.auto import partition
 
 EXCLUDED_FILE_EXTENSIONS = [
@@ -149,7 +149,7 @@ class FilesDocumentReader:
                 if self.fail_fast:
                     raise RuntimeError(f"Error reading file {file_path}") from error
 
-                logging.exception("Error reading file %s", file_path, exc_info=error)
+                logger.exception("Error reading file %s", file_path, exc_info=error)
                 continue
 
             yield {
@@ -161,7 +161,7 @@ class FilesDocumentReader:
                 "content": file_content,
             }
 
-        logging.info(
+        logger.info(
             f"Files reading stats: \n{json.dumps(result_stats, indent=2, ensure_ascii=False)}"
         )
 
@@ -239,7 +239,7 @@ class FilesDocumentReader:
         elements = partition(filename=file_path)
 
         if not elements:
-            logging.warning(f"No text content found in file: {file_path}")
+            logger.warning(f"No text content found in file: {file_path}")
             return []
 
         if elements[0].metadata.page_number is None:
