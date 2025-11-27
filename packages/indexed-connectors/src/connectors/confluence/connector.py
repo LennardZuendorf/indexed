@@ -349,6 +349,7 @@ class ConfluenceCloudConnector:
         """Create ConfluenceCloudConnector from ConfigService.
         
         Registers ConfluenceCloudConfig spec and extracts configuration values.
+        Uses unified 'sources.confluence' namespace (Cloud vs Server detected from URL).
         
         Args:
             config_service: ConfigService instance with config loaded.
@@ -364,8 +365,8 @@ class ConfluenceCloudConnector:
             >>> config = ConfigService()
             >>> connector = ConfluenceCloudConnector.from_config(config)
         """
-        # Register our config spec
-        config_service.register(ConfluenceCloudConfig, path="sources.confluence_cloud")
+        # Register our config spec using unified namespace
+        config_service.register(ConfluenceCloudConfig, path="sources.confluence")
         
         # Bind and get our config
         provider = config_service.bind()

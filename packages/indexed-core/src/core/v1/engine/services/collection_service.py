@@ -37,6 +37,8 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
     from connectors.files import FileSystemConnector
 
     # Set config values from SourceConfig
+    # Use unified namespaces (sources.jira for all Jira, sources.confluence for all Confluence)
+    # The Cloud vs Server type is determined from the URL at runtime
     if cfg.type == "jira":
         config_service.set("sources.jira.url", cfg.base_url_or_path)
         config_service.set("sources.jira.query", cfg.query)
@@ -46,11 +48,12 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
         return JiraConnector.from_config(config_service)
 
     elif cfg.type == "jiraCloud":
-        config_service.set("sources.jira_cloud.url", cfg.base_url_or_path)
-        config_service.set("sources.jira_cloud.query", cfg.query)
+        # Use unified sources.jira namespace for Cloud as well
+        config_service.set("sources.jira.url", cfg.base_url_or_path)
+        config_service.set("sources.jira.query", cfg.query)
         # Pass reader_opts for auth credentials
         for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.jira_cloud.{key}", value)
+            config_service.set(f"sources.jira.{key}", value)
         return JiraCloudConnector.from_config(config_service)
 
     elif cfg.type == "confluence":
@@ -62,11 +65,12 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
         return ConfluenceConnector.from_config(config_service)
 
     elif cfg.type == "confluenceCloud":
-        config_service.set("sources.confluence_cloud.url", cfg.base_url_or_path)
-        config_service.set("sources.confluence_cloud.query", cfg.query)
+        # Use unified sources.confluence namespace for Cloud as well
+        config_service.set("sources.confluence.url", cfg.base_url_or_path)
+        config_service.set("sources.confluence.query", cfg.query)
         # Pass reader_opts for auth credentials and options
         for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.confluence_cloud.{key}", value)
+            config_service.set(f"sources.confluence.{key}", value)
         return ConfluenceCloudConnector.from_config(config_service)
 
     elif cfg.type == "localFiles":

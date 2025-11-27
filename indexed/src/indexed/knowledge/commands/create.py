@@ -218,6 +218,7 @@ def create_files(
     )
     
     # Phase 2: Create collection with appropriate UI mode
+    creation_error = None
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
@@ -240,14 +241,28 @@ def create_files(
             with create_operation_progress(operation_desc) as (progress, task_id, callback):
                 with suppress_core_output():
                     svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-        
-        # Phase 3: Verify collection was created
+    
+    except Exception as e:
+        creation_error = e
+    
+    # If creation failed, show error and exit
+    if creation_error:
+        console.print()
+        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        if is_verbose_mode():
+            logger.exception("Full error details:")
+        raise typer.Exit(1)
+    
+    # Phase 3: Verify collection was created by checking if manifest exists
+    try:
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
         collections = status([collection])
         
-        if collections and len(collections) > 0:
+        # Check if we got a valid collection (not just an error placeholder with 0 docs)
+        # A valid collection should have updated_time set
+        if collections and len(collections) > 0 and collections[0].updated_time:
             doc_count = collections[0].number_of_documents
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
@@ -256,7 +271,7 @@ def create_files(
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from files")
         else:
             console.print()
-            typer.secho("⚠ No files found matching patterns - collection not created", fg="yellow")
+            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
     except typer.Exit:
@@ -264,7 +279,7 @@ def create_files(
         raise
     except Exception as e:
         console.print()
-        typer.secho(f"✗ Failed to create collection: {str(e)}", fg="red", err=True)
+        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -327,24 +342,43 @@ def create_jira(
         logger.info("Starting Jira collection creation...")
         logger.info("Resolving configuration parameters...")
     
-    # Determine connector type from URL (if provided) or check config
-    temp_url = url or config.get("sources.jira_cloud.url") or config.get("sources.jira.url")
-    if temp_url and _is_cloud(temp_url):
+    # Use a single namespace for Jira config - detect Cloud vs Server from URL at runtime
+    namespace = "sources.jira"
+    
+    # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    resolved_url = url or config.get(f"{namespace}.url")
+    
+    # If URL is still unknown, prompt for it first before determining source type
+    url_was_prompted = False
+    if not resolved_url:
+        if not is_verbose_mode():
+            console.print()
+            console.print(f"[{get_heading_style()}]Jira Configuration[/{get_heading_style()}]")
+            console.print()
+        
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+        
+        resolved_url = console.input(f"[{get_accent_style()}]Jira URL[/{get_accent_style()}]: ")
+        url_was_prompted = True
+        
+        if not resolved_url:
+            typer.secho("✗ Jira URL is required", fg="red", err=True)
+            raise typer.Exit(1)
+    
+    # Determine connector type based on the URL (Cloud = *.atlassian.net)
+    if _is_cloud(resolved_url):
         source_type = "jiraCloud"
         config_class = JiraCloudConfig
-        namespace = "sources.jira_cloud"
     else:
         source_type = "jira"
         config_class = JiraConfig
-        namespace = "sources.jira"
     
     if is_verbose_mode():
-        logger.info("Detected source type: %s", source_type)
+        logger.info("Detected source type: %s (URL: %s)", source_type, resolved_url)
     
-    # Build CLI overrides
-    cli_overrides = {}
-    if url:
-        cli_overrides["url"] = url
+    # Build CLI overrides (url is now always known)
+    cli_overrides = {"url": resolved_url}
     if jql:
         cli_overrides["query"] = jql
     if email:
@@ -366,23 +400,23 @@ def create_jira(
         logger.info("Validation result: %d fields present, %d missing", 
                     len(validation["present"]), len(validation["missing"]))
     
-    # Phase 1: Prompt for missing values
-    if validation["missing"]:
-        if not is_verbose_mode():
+    # Phase 1: Prompt for missing values (URL already handled above)
+    missing_fields = [f for f in validation["missing"] if f != "url"]
+    if missing_fields:
+        # Show header if not already shown (URL was from CLI/config)
+        if not url_was_prompted and not is_verbose_mode():
             console.print()
             console.print(f"[{get_heading_style()}]Jira Configuration[/{get_heading_style()}]")
             console.print()
         
-        for field_name in validation["missing"]:
+        for field_name in missing_fields:
             field_info = validation["field_info"][field_name]
             
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
             
             # Prompt based on field name
-            if field_name == "url":
-                value = console.input(f"[{get_accent_style()}]Jira URL[/{get_accent_style()}]: ")
-            elif field_name in ["query", "jql"]:
+            if field_name in ["query", "jql"]:
                 value = console.input(f"[{get_accent_style()}]JQL query[/{get_accent_style()}] [project = PROJ]: ") or "project = PROJ"
             elif field_name == "email":
                 value = console.input(f"[{get_accent_style()}]Email[/{get_accent_style()}]: ")
@@ -435,6 +469,7 @@ def create_jira(
     )
     
     # Phase 2: Create collection with appropriate UI mode
+    creation_error = None
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
@@ -456,14 +491,28 @@ def create_jira(
             with create_operation_progress(operation_desc) as (progress, task_id, callback):
                 with suppress_core_output():
                     svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-        
-        # Phase 3: Verify collection was created
+    
+    except Exception as e:
+        creation_error = e
+    
+    # If creation failed, show error and exit
+    if creation_error:
+        console.print()
+        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        if is_verbose_mode():
+            logger.exception("Full error details:")
+        raise typer.Exit(1)
+    
+    # Phase 3: Verify collection was created by checking if manifest exists
+    try:
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
         collections = status([collection])
         
-        if collections and len(collections) > 0:
+        # Check if we got a valid collection (not just an error placeholder with 0 docs)
+        # A valid collection should have updated_time set
+        if collections and len(collections) > 0 and collections[0].updated_time:
             doc_count = collections[0].number_of_documents
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
@@ -472,7 +521,7 @@ def create_jira(
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Jira")
         else:
             console.print()
-            typer.secho("⚠ No documents found matching JQL query - collection not created", fg="yellow")
+            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
     except typer.Exit:
@@ -480,7 +529,7 @@ def create_jira(
         raise
     except Exception as e:
         console.print()
-        typer.secho(f"✗ Failed to create collection: {str(e)}", fg="red", err=True)
+        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -548,24 +597,43 @@ def create_confluence(
         logger.info("Starting Confluence collection creation...")
         logger.info("Resolving configuration parameters...")
     
-    # Determine connector type from URL (if provided) or check config
-    temp_url = url or config.get("sources.confluence_cloud.url") or config.get("sources.confluence.url")
-    if temp_url and _is_cloud(temp_url):
+    # Use a single namespace for Confluence config - detect Cloud vs Server from URL at runtime
+    namespace = "sources.confluence"
+    
+    # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    resolved_url = url or config.get(f"{namespace}.url")
+    
+    # If URL is still unknown, prompt for it first before determining source type
+    url_was_prompted = False
+    if not resolved_url:
+        if not is_verbose_mode():
+            console.print()
+            console.print(f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]")
+            console.print()
+        
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+        
+        resolved_url = console.input(f"[{get_accent_style()}]Confluence URL[/{get_accent_style()}]: ")
+        url_was_prompted = True
+        
+        if not resolved_url:
+            typer.secho("✗ Confluence URL is required", fg="red", err=True)
+            raise typer.Exit(1)
+    
+    # Determine connector type based on the URL (Cloud = *.atlassian.net)
+    if _is_cloud(resolved_url):
         source_type = "confluenceCloud"
         config_class = ConfluenceCloudConfig
-        namespace = "sources.confluence_cloud"
     else:
         source_type = "confluence"
         config_class = ConfluenceConfig
-        namespace = "sources.confluence"
     
     if is_verbose_mode():
-        logger.info("Detected source type: %s", source_type)
+        logger.info("Detected source type: %s (URL: %s)", source_type, resolved_url)
     
-    # Build CLI overrides
-    cli_overrides = {}
-    if url:
-        cli_overrides["url"] = url
+    # Build CLI overrides (url is now always known)
+    cli_overrides = {"url": resolved_url}
     if cql:
         cli_overrides["query"] = cql
     if email:
@@ -589,23 +657,23 @@ def create_confluence(
         logger.info("Validation result: %d fields present, %d missing", 
                     len(validation["present"]), len(validation["missing"]))
     
-    # Phase 1: Prompt for missing values
-    if validation["missing"]:
-        if not is_verbose_mode():
-            console.print()
-            console.print(f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]")
-            console.print()
+    # Phase 1: Prompt for missing values (URL already handled above)
+    missing_fields = [f for f in validation["missing"] if f != "url"]
+    if missing_fields:
+        # Show header if not already shown (URL was from CLI/config)
+        if not url_was_prompted and not is_verbose_mode():
+                console.print()
+                console.print(f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]")
+                console.print()
         
-        for field_name in validation["missing"]:
+        for field_name in missing_fields:
             field_info = validation["field_info"][field_name]
             
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
             
             # Prompt based on field name
-            if field_name == "url":
-                value = console.input(f"[{get_accent_style()}]Confluence URL[/{get_accent_style()}]: ")
-            elif field_name in ["query", "cql"]:
+            if field_name in ["query", "cql"]:
                 value = console.input(f"[{get_accent_style()}]CQL query[/{get_accent_style()}] [type=page]: ") or "type=page"
             elif field_name == "email":
                 value = console.input(f"[{get_accent_style()}]Email[/{get_accent_style()}]: ")
@@ -658,6 +726,7 @@ def create_confluence(
     )
     
     # Phase 2: Create collection with appropriate UI mode
+    creation_error = None
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
@@ -679,14 +748,28 @@ def create_confluence(
             with create_operation_progress(operation_desc) as (progress, task_id, callback):
                 with suppress_core_output():
                     svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-        
-        # Phase 3: Verify collection was created
+    
+    except Exception as e:
+        creation_error = e
+    
+    # If creation failed, show error and exit
+    if creation_error:
+        console.print()
+        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        if is_verbose_mode():
+            logger.exception("Full error details:")
+        raise typer.Exit(1)
+    
+    # Phase 3: Verify collection was created by checking if manifest exists
+    try:
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
         collections = status([collection])
         
-        if collections and len(collections) > 0:
+        # Check if we got a valid collection (not just an error placeholder with 0 docs)
+        # A valid collection should have updated_time set
+        if collections and len(collections) > 0 and collections[0].updated_time:
             doc_count = collections[0].number_of_documents
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
@@ -695,7 +778,7 @@ def create_confluence(
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Confluence")
         else:
             console.print()
-            typer.secho("⚠ No documents found matching CQL query - collection not created", fg="yellow")
+            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
     except typer.Exit:
@@ -703,7 +786,7 @@ def create_confluence(
         raise
     except Exception as e:
         console.print()
-        typer.secho(f"✗ Failed to create collection: {str(e)}", fg="red", err=True)
+        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)

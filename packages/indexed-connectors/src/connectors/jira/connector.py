@@ -301,6 +301,7 @@ class JiraCloudConnector:
         """Create JiraCloudConnector from ConfigService.
         
         Registers JiraCloudConfig spec and extracts configuration values.
+        Uses unified 'sources.jira' namespace (Cloud vs Server detected from URL).
         
         Args:
             config_service: ConfigService instance with config loaded.
@@ -316,8 +317,8 @@ class JiraCloudConnector:
             >>> config = ConfigService()
             >>> connector = JiraCloudConnector.from_config(config)
         """
-        # Register our config spec
-        config_service.register(JiraCloudConfig, path="sources.jira_cloud")
+        # Register our config spec using unified namespace
+        config_service.register(JiraCloudConfig, path="sources.jira")
         
         # Bind and get our config
         provider = config_service.bind()

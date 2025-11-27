@@ -112,7 +112,7 @@ def license_terms() -> None:
     Use arrow keys or Page Up/Down to scroll, Q to quit.
     """
     # Remote LICENSE URL (always up-to-date from GitHub)
-    license_url = "https://raw.githubusercontent.com/LennardZuendorf/indexed-python/refs/heads/main/LICENSE"
+    license_url = "https://raw.githubusercontent.com/LennardZuendorf/indexed/refs/heads/main/LICENSE"
     
     license_content = None
     source = None
@@ -131,8 +131,6 @@ def license_terms() -> None:
         possible_paths = [
             # From installed package (relative to this file)
             Path(__file__).parent.parent.parent.parent.parent / "LICENSE",
-            # From development (workspace root)
-            Path("/Users/lennard.zuendorf/dev/private/indexed/LICENSE"),
             # Relative to current working directory
             Path.cwd() / "LICENSE",
         ]
