@@ -52,7 +52,11 @@ class DocumentCollectionSearcher:
         result = {}
 
         for result_number in range(0, len(indexes[0])):
-            mapping = index_document_mapping[str(indexes[0][result_number])]
+            index_id = indexes[0][result_number]
+            # Skip invalid indices (FAISS returns -1 when there aren't enough results)
+            if index_id < 0:
+                continue
+            mapping = index_document_mapping[str(index_id)]
 
             if mapping["documentId"] not in result:
                 result[mapping["documentId"]] = {

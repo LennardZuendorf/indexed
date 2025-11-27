@@ -262,7 +262,7 @@ class SearchService:
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
                 result = searcher.search(
-                    query=query,
+                    text=query,
                     max_number_of_chunks=max_chunks,
                     max_number_of_documents=max_docs,
                     include_text_content=include_full_text,
