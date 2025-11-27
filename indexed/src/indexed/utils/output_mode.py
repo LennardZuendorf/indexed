@@ -22,8 +22,7 @@ def should_output_json(
         # Explicitly disabled via flag (if we add negative flags in future)
         return False
 
-    settings = ConfigService.get_instance().get()
-    cfg = settings.model_dump()
+    cfg = ConfigService.instance().load_raw()
 
     if for_context == "cli":
         val = (cfg.get("flags", {}) or {}).get("cli_json_output")
