@@ -9,6 +9,7 @@ from core.v1.engine.services import (
     status as svc_status,
     inspect,
 )
+from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
@@ -23,6 +24,7 @@ from ...utils.components import (
     create_detail_card,
     get_accent_style,
 )
+from ...utils.credentials import ensure_credentials_for_source
 
 app = typer.Typer(help="Update collections")
 
@@ -40,6 +42,24 @@ def _format_source_type(source_type: str) -> str:
         "localFiles": "Local Files",
     }
     return type_map.get(source_type, source_type.capitalize())
+
+
+def _config_existed_before(config_service: ConfigService) -> bool:
+    """Check if config file existed based on storage mode."""
+    storage_mode = config_service.resolve_storage_mode()
+    if storage_mode == "local":
+        return config_service.store.has_local_config()
+    else:
+        return config_service.store.has_global_config()
+
+
+def _get_config_path(config_service: ConfigService) -> str:
+    """Get the config file path based on storage mode."""
+    storage_mode = config_service.resolve_storage_mode()
+    if storage_mode == "local":
+        return str(config_service.store.workspace_path)
+    else:
+        return str(config_service.store.global_path)
 
 
 def _format_update_comparison(before, after):
@@ -163,6 +183,10 @@ def update(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
+    # Initialize ConfigService and check if config existed before
+    config_service = ConfigService()
+    config_existed = _config_existed_before(config_service)
+    
     # Determine collections to update
     if collection is None:
         # Update all collections
@@ -194,10 +218,17 @@ def update(
 
     # Update each collection with individual progress
     update_error = None
+    config_was_created = False
     for coll_name in collections_to_update:
         # Get collection status to build proper SourceConfig
         coll_status = svc_status([coll_name])[0]
-        config = SourceConfig(
+        
+        # Ensure credentials are available for this source type
+        source_type = getattr(coll_status, "source_type", None)
+        if source_type:
+            ensure_credentials_for_source(source_type, config_service)
+        
+        source_config = SourceConfig(
             name=coll_name,
             type="localFiles",  # Default type, not used in update
             base_url_or_path="",  # Not used in update
@@ -207,7 +238,7 @@ def update(
         if is_verbose_mode():
             # Verbose mode: show core logs directly
             with NoOpContext():
-                update_service([config])
+                update_service([source_config])
         else:
             # Normal mode: use OperationStatus for live updates
             console.print()
@@ -217,7 +248,7 @@ def update(
                 callback = create_progress_update_callback(status)
                 try:
                     with suppress_core_output():
-                        update_service([config], progress_callback=callback)
+                        update_service([source_config], progress_callback=callback)
                     status.complete(
                         success=True,
                         success_message=f"✓ [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated",
@@ -229,11 +260,22 @@ def update(
                     )
                     update_error = e
                     break
+        
+        # Check if config was created during this update
+        if not config_existed and not config_was_created:
+            if _config_existed_before(config_service):
+                config_was_created = True
     
     # If update failed, show error and exit
     if update_error:
         typer.secho(f"✗ Failed to update collection: {str(update_error)}", fg="red", err=True)
         raise typer.Exit(1)
+
+    # Notify user if config was newly created
+    if not config_existed and config_was_created:
+        config_path = _get_config_path(config_service)
+        console.print()
+        console.print(f"[{get_dim_style()}]ℹ️  Created new config file with default settings: {config_path}[/{get_dim_style()}]")
 
     # Display comparison results
     console.print(

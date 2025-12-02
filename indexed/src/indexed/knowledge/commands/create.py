@@ -1,6 +1,5 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
-import os
 from typing import List, Optional
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from io import StringIO
@@ -20,6 +19,11 @@ from ...utils.components.status import OperationStatus
 from ...utils.components.theme import (
     get_heading_style,
     get_accent_style,
+)
+from ...utils.credentials import (
+    prompt_credential_field,
+    is_credential_field,
+    check_server_auth_present,
 )
 
 
@@ -471,29 +475,20 @@ def create_jira(
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
             
-            # Prompt based on field name
-            if field_name in ["query", "jql"]:
+            # Use shared credential prompting for credential fields
+            if is_credential_field(field_name):
+                value = prompt_credential_field(
+                    field_name, field_info, config, namespace, source_type
+                )
+            # Handle non-credential fields
+            elif field_name in ["query", "jql"]:
                 value = console.input(f"[{get_accent_style()}]JQL query[/{get_accent_style()}] [project = PROJ]: ") or "project = PROJ"
-            elif field_name == "email":
-                value = console.input(f"[{get_accent_style()}]Email[/{get_accent_style()}]: ")
-            elif field_name in ["api_token", "token"]:
-                from rich.prompt import Prompt
-                value = Prompt.ask(f"[{get_accent_style()}]API token[/{get_accent_style()}]", password=True)
-            elif field_name == "login":
-                value = console.input(f"[{get_accent_style()}]Username[/{get_accent_style()}]: ")
-            elif field_name == "password":
-                from rich.prompt import Prompt
-                value = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
+                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
             else:
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
+                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
             
-            # Save using ConfigService (it decides .env vs .toml based on field_info)
-            config.set_value(
-                f"{namespace}.{field_name}",
-                value,
-                field_info=field_info
-            )
             validation["present"][field_name] = value
             
             if is_verbose_mode():
@@ -744,19 +739,14 @@ def create_confluence(
     
     # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
     # but at least one auth method is required by the connector.
-    # Check if we need to prompt for auth credentials.
+    # Check if we need to prompt for auth credentials using shared function.
     if source_type == "confluence":
-        # Check if any auth is present
-        has_token = (
-            validation["present"].get("token") 
-            or os.getenv("CONF_TOKEN")
-        )
-        has_login_password = (
-            (validation["present"].get("login") or os.getenv("CONF_LOGIN"))
-            and (validation["present"].get("password") or os.getenv("CONF_PASSWORD"))
-        )
-        
-        if not has_token and not has_login_password:
+        if not check_server_auth_present(
+            validation["present"],
+            token_env_var="CONF_TOKEN",
+            login_env_var="CONF_LOGIN",
+            password_env_var="CONF_PASSWORD",
+        ):
             # No auth found, prompt for token
             if "token" not in missing_fields:
                 missing_fields.append("token")
@@ -776,33 +766,20 @@ def create_confluence(
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
             
-            # Prompt based on field name
-            if field_name in ["query", "cql"]:
+            # Use shared credential prompting for credential fields
+            if is_credential_field(field_name):
+                value = prompt_credential_field(
+                    field_name, field_info, config, namespace, source_type
+                )
+            # Handle non-credential fields
+            elif field_name in ["query", "cql"]:
                 value = console.input(f"[{get_accent_style()}]CQL query[/{get_accent_style()}] [type=page]: ") or "type=page"
-            elif field_name == "email":
-                value = console.input(f"[{get_accent_style()}]Email[/{get_accent_style()}]: ")
-            elif field_name in ["api_token", "token"]:
-                from rich.prompt import Prompt
-                value = Prompt.ask(f"[{get_accent_style()}]API token[/{get_accent_style()}]", password=True)
-            elif field_name == "login":
-                value = console.input(f"[{get_accent_style()}]Username[/{get_accent_style()}]: ")
-            elif field_name == "password":
-                from rich.prompt import Prompt
-                value = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
+                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
             else:
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
+                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
             
-            # For Confluence Server token, use CONF_TOKEN env var
-            if field_name == "token" and source_type == "confluence":
-                field_info = {**field_info, "sensitive": True, "env_var": "CONF_TOKEN"}
-            
-            # Save using ConfigService (it decides .env vs .toml based on field_info)
-            config.set_value(
-                f"{namespace}.{field_name}",
-                value,
-                field_info=field_info
-            )
             validation["present"][field_name] = value
             
             if is_verbose_mode():
