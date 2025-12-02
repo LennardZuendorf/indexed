@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from connectors.document_cache_reader_decorator import CacheReaderDecorator

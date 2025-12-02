@@ -619,9 +619,34 @@ def _show_config_diff(current: dict[str, Any], new: dict[str, Any]) -> None:
 
 @app.command("inspect")
 def inspect(
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON")
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Display merged configuration (global + workspace + env)."""
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     config = ConfigService()
     raw = config.load_raw()
     
@@ -677,9 +702,34 @@ def update(
         "--file",
         "-f",
         help="Path to TOML file to replace global configuration"
-    )
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Update global configuration interactively or from file."""
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     config = ConfigService()
     global_path = config._store.global_path
     
@@ -900,8 +950,33 @@ def set_config(
     key: str = typer.Argument(..., help="Dot path (e.g., core.v1.indexing.chunk_size)"),
     value: str = typer.Argument(..., help="Value (auto-coerced)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview change without saving"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Set a configuration value at dot-path in workspace config."""
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     config = ConfigService()
     coerced = _coerce_value(value)
     
@@ -976,8 +1051,33 @@ def set_config(
 def delete_config(
     key: str = typer.Argument(..., help="Dot path to delete"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Delete a configuration key from workspace config."""
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     config = ConfigService()
     
     # Get current value
@@ -1033,8 +1133,34 @@ def delete_config(
 
 
 @app.command("validate")
-def validate():
+def validate(
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+):
     """Validate current configuration against registered specs."""
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     config = ConfigService()
     errs = config.validate()
     
@@ -1100,18 +1226,42 @@ def validate():
 @app.command("init")
 def init_config(
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config files"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Initialize workspace configuration files.
     
     Creates a .indexed/ directory with default config.toml and .env.example files.
     """
+    from ..utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     workspace_dir = Path.cwd() / ".indexed"
     config_file = workspace_dir / "config.toml"
     env_example = workspace_dir / ".env.example"
     
     console.print()
-    breadcrumb = create_breadcrumb(["Config", "Initialize"])
-    console.print(breadcrumb)
+    console.print(f"[{get_heading_style()}]Config › Initialize[/{get_heading_style()}]")
     console.print()
     
     # Check if already initialized

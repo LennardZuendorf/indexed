@@ -1,8 +1,6 @@
 """Integration tests for new config system migration."""
 
 import pytest
-import os
-from pathlib import Path
 from indexed_config import ConfigService
 
 

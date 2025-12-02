@@ -9,7 +9,7 @@ from pydantic.fields import FieldInfo
 from .path_utils import get_by_path, set_by_path, delete_by_path
 from .store import TomlStore
 from .provider import Provider
-from .storage import StorageMode, StorageResolver, get_global_root, get_resolver, reset_resolver
+from .storage import StorageMode, StorageResolver, get_resolver, reset_resolver
 
 T = TypeVar("T", bound=BaseModel)
 

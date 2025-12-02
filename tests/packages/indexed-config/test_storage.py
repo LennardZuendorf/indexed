@@ -3,15 +3,12 @@
 Tests the centralized path resolution for indexed's storage locations.
 """
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from indexed_config.storage import (
-    StorageMode,
     StorageResolver,
     get_global_root,
     get_local_root,
@@ -21,9 +18,7 @@ from indexed_config.storage import (
     get_collections_path,
     get_caches_path,
     has_local_storage,
-    has_global_storage,
     has_local_config,
-    has_global_config,
     ensure_storage_dirs,
     get_resolver,
     reset_resolver,

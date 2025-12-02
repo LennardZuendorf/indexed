@@ -12,9 +12,7 @@ from typing import Literal, Optional
 from rich.console import Console
 
 from .components.theme import (
-    get_accent_style,
     get_dim_style,
-    get_success_style,
 )
 
 

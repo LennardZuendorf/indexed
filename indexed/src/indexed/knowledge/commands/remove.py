@@ -1,5 +1,7 @@
 """Remove command for removing collections."""
 
+from typing import Optional
+
 import typer
 from rich.prompt import Confirm
 from rich.panel import Panel
@@ -28,6 +30,25 @@ app = typer.Typer(help="Remove collections")
 def remove(
     collection: str = typer.Argument(..., help="Collection name to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Remove a collection from the index.
 
@@ -35,6 +56,12 @@ def remove(
         indexed remove my-collection      # Remove with confirmation
         indexed remove my-collection -f   # Remove without confirmation
     """
+    from ...utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     index = Index()
 
     # Fetch all collections to validate

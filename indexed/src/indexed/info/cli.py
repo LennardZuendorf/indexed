@@ -44,7 +44,7 @@ DOC_URLS = {
 def docs(
     topic: Optional[str] = typer.Argument(
         None, help="Specific command or topic (index, config, mcp, confluence, files, jira)"
-    )
+    ),
 ) -> None:
     """Open documentation in web browser.
 

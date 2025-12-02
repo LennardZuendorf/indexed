@@ -4,9 +4,8 @@ This command uses the core search service and the search_formatter to display
 results beautifully with the card-based design system.
 """
 
-import logging
 import typer
-from typing import Dict, Any, List, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict
 from rich.panel import Panel
 from core.v1 import Index
 from core.v1.engine.services import search as search_service, SourceConfig, status
@@ -320,6 +319,25 @@ def search(
     no_content: bool = typer.Option(
         False, "--no-content", help="Hide content previews"
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Search across collections using semantic similarity.
 
@@ -329,6 +347,12 @@ def search(
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
     """
+    from ...utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     Index()
 
     # Determine collections to search

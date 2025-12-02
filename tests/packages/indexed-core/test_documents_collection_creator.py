@@ -2,9 +2,8 @@
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 
-import pytest
 
 
 class TestUpdateCollectionTimestamp:

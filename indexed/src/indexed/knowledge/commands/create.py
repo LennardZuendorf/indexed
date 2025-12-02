@@ -1,7 +1,7 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
 import os
-from typing import List
+from typing import List, Optional
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from io import StringIO
 import logging as stdlib_logging
@@ -113,18 +113,31 @@ def create_files(
         False,
         "--verbose",
         "-v",
-        help="Enable verbose logging output.",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
     ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.files import LocalFilesConfig
-    from ...utils.logging import setup_logging
+    from ...utils.logging import setup_root_logger
 
-    # Setup logging based on verbose flag
-    if verbose:
-        setup_logging(verbose=True)
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()
@@ -352,18 +365,31 @@ def create_jira(
         False,
         "--verbose",
         "-v",
-        help="Enable verbose logging output.",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
     ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.jira import JiraCloudConfig, JiraConfig
-    from ...utils.logging import setup_logging
+    from ...utils.logging import setup_root_logger
 
-    # Setup logging based on verbose flag
-    if verbose:
-        setup_logging(verbose=True)
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()
@@ -620,18 +646,31 @@ def create_confluence(
         False,
         "--verbose",
         "-v",
-        help="Enable verbose logging output.",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
     ),
 ):
     """Create a Confluence collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
-    from ...utils.logging import setup_logging
+    from ...utils.logging import setup_root_logger
 
-    # Setup logging based on verbose flag
-    if verbose:
-        setup_logging(verbose=True)
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()

@@ -7,10 +7,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from indexed_config import ConfigService
-from indexed_config.storage import get_global_root
 
 
 class TestConfigServiceInit:

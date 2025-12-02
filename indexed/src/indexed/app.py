@@ -7,13 +7,15 @@ import os
 import sys
 import typer
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from indexed_config import ConfigService
 from rich.theme import Theme
 from .utils.logging import setup_root_logger
 from .utils.components.theme import get_help_theme_styles, get_accent_style
 from .utils.banner import print_indexed_banner
-from .utils.conflict_prompt import handle_storage_conflict
 from .utils.storage_info import (
     print_storage_info,
     get_storage_mode_and_reason,
@@ -52,7 +54,6 @@ app = typer.Typer(
     pretty_exceptions_enable=True,
     context_settings={
         "help_option_names": ["--help"],
-        "allow_interspersed_args": True,
     },
     rich_help_panel=True,
 )
@@ -109,7 +110,10 @@ _prompt_console = Console()
 def _init_app(
     ctx: typer.Context,
     verbose: bool = typer.Option(
-        False, "--verbose", help="Enable verbose (INFO) logging with rich formatting"
+        False,
+        "--verbose",
+        help="Enable verbose (INFO) logging with rich formatting",
+        rich_help_panel="Logging",
     ),
     log_level: Optional[str] = typer.Option(
         None,
@@ -120,7 +124,10 @@ def _init_app(
         rich_help_panel="Logging",
     ),
     json_logs: bool = typer.Option(
-        False, "--json-logs", help="Output logs as JSON (structured)"
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
     ),
 ) -> None:
     """Initialize the indexed CLI application.
@@ -160,7 +167,6 @@ def _init_app(
         ConfigService,
         has_local_config,
         get_local_root,
-        get_global_root,
         ensure_storage_dirs,
     )
     

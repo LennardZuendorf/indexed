@@ -3,7 +3,6 @@
 import tempfile
 import pytest
 from connectors.files.connector import FileSystemConnector
-from connectors.files.schema import LocalFilesConfig
 from connectors.files.files_document_reader import FilesDocumentReader
 
 

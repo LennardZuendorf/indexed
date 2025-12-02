@@ -1,5 +1,7 @@
 """Update command for refreshing collections."""
 
+from typing import Optional
+
 import typer
 from core.v1.engine.services import (
     update as update_service,
@@ -134,8 +136,33 @@ def update(
     collection: str = typer.Argument(
         None, help="Collection name to update (omit to update all collections)"
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Refresh and re-index a collection or all collections."""
+    from ...utils.logging import setup_root_logger
+    
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    
     # Determine collections to update
     if collection is None:
         # Update all collections

@@ -1,10 +1,9 @@
 """Tests for update command UI components and utilities."""
 
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from io import StringIO
 
-import pytest
 
 
 class TestFormatSourceType:
