@@ -1,38 +1,34 @@
 # indexed-utils
 
-Shared utility functions for the indexed project including logging, retry logic, batching, and progress tracking.
+Shared utility functions for the indexed project including logging, retry logic, batching, and performance monitoring.
 
 ## Overview
 
-`indexed-utils` provides common utilities used across the indexed project packages. These utilities handle cross-cutting concerns like logging, error handling, performance monitoring, and user feedback.
+`indexed-utils` provides lightweight, dependency-minimal utilities used across the indexed project packages. These utilities handle cross-cutting concerns like logging, error handling, and performance monitoring.
+
+**Note:** This package intentionally has minimal dependencies (only Loguru). For Rich-enhanced CLI output, use the CLI logging module which extends this base configuration.
 
 ## Features
 
-### Logging
+### Logging (Base Configuration)
 - **Structured logging** with Loguru
-- **Colored console output** for better readability
+- **Simple stderr output** with colorized levels
 - **JSON logging mode** for production environments
-- **Status capture** for real-time UI updates
-- **Configurable log levels** via environment variables
+- **Configurable log levels** (DEBUG, INFO, WARNING, ERROR)
+
+For Rich-formatted CLI output with spinners and status capture, use `indexed.utils.logging` instead.
 
 ### Retry Logic
 - **Exponential backoff** for transient failures
 - **Configurable retry attempts** and delays
+- **Rate limit handling** (respects 429 and Retry-After)
 - **Error logging** with context
-- **Used by connectors** for API resilience
 
 ### Batching
 - **Automatic pagination** handling
 - **Generic batch reader** for various APIs
 - **Cursor-based pagination** support
 - **Skip tracking** for failed items
-- **Progress integration** with batch processing
-
-### Progress Tracking
-- **Progress bars** using tqdm
-- **Generator wrapping** for lazy evaluation
-- **Iterator support** for known-size collections
-- **Customizable labels** and display
 
 ### Performance Monitoring
 - **Execution timing** utilities
@@ -44,9 +40,9 @@ Shared utility functions for the indexed project including logging, retry logic,
 ### Logging
 
 ```python
-from utils.logger import setup_root_logger
+from utils.logger import setup_root_logger, is_verbose_mode
 
-# Setup basic logging
+# Setup basic logging (WARNING level by default)
 setup_root_logger()
 
 # Setup with custom level
@@ -56,7 +52,6 @@ setup_root_logger(level_str="DEBUG")
 setup_root_logger(json_mode=True)
 
 # Check if verbose mode is enabled
-from utils.logger import is_verbose_mode
 if is_verbose_mode():
     print("Verbose logging is enabled")
 ```
@@ -72,7 +67,7 @@ def fetch_data():
     response.raise_for_status()
     return response.json()
 
-# Retry up to 3 times with 1 second delay
+# Retry up to 3 times with exponential backoff
 result = execute_with_retry(
     fetch_data,
     func_identifier="Fetching API data",
@@ -91,7 +86,7 @@ def read_batch(start_at, batch_size, cursor=None):
     response = api.get_items(start=start_at, limit=batch_size)
     return response
 
-# Read all items in batches
+# Read all items in batches with automatic pagination
 items = read_items_in_batches(
     read_batch_func=read_batch,
     fetch_items_from_result_func=lambda r: r["items"],
@@ -103,28 +98,6 @@ items = read_items_in_batches(
 
 for item in items:
     process(item)
-```
-
-### Progress Tracking
-
-```python
-from utils.progress_bar import wrap_generator_with_progress_bar, wrap_iterator_with_progress_bar
-
-# Wrap a generator with progress bar
-def fetch_items():
-    for i in range(100):
-        yield i
-
-items = wrap_generator_with_progress_bar(
-    fetch_items(),
-    approx_total=100,
-    progress_bar_name="Processing items"
-)
-
-# Wrap an iterator with progress bar
-batches = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-for batch in wrap_iterator_with_progress_bar(batches, "Processing batches"):
-    process(batch)
 ```
 
 ### Performance Monitoring
@@ -140,22 +113,35 @@ result = log_execution_duration(
 )
 
 # Measure duration without logging
-duration_ms, result = execute_and_measure_duration(
+result, error, duration = execute_and_measure_duration(
     lambda: expensive_operation()
 )
-print(f"Operation took {duration_ms}ms")
+print(f"Operation took {duration:.2f} seconds")
 ```
-
-## Environment Variables
-
-- `INDEXED__LOGGING__LEVEL` - Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `INDEXED__LOGGING__AS_JSON` - Enable JSON logging (true/false)
 
 ## Dependencies
 
 - **loguru** - Advanced logging with colors and structured output
-- **tqdm** - Progress bars and progress tracking
-- **rich** (optional) - Enhanced console formatting for logs
+
+## Architecture
+
+This package is designed as the **base layer** for logging:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  CLI Layer (indexed/utils/logging.py)               │
+│  - Rich formatting (RichHandler)                    │
+│  - Status capture for spinners                      │
+│  - CLI-specific features                            │
+└─────────────────────────┬───────────────────────────┘
+                          │ extends
+┌─────────────────────────▼───────────────────────────┐
+│  Base Layer (packages/utils - this package)         │
+│  - Pure Loguru (no Rich dependency)                 │
+│  - Simple stderr sink                               │
+│  - Works for library/non-CLI usage                  │
+└─────────────────────────────────────────────────────┘
+```
 
 ## Development
 
@@ -172,4 +158,3 @@ uv run pytest packages/utils
 ## License
 
 See LICENSE file in the project root.
-
