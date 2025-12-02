@@ -1,7 +1,28 @@
+import re
+
 import requests
+from requests.exceptions import HTTPError
 
 from utils.retry import execute_with_retry
 from utils.batch import read_items_in_batches
+
+
+class ConfluenceAPIError(Exception):
+    """Custom exception for Confluence API errors with detailed information."""
+
+    def __init__(self, status_code: int, reason: str, message: str, url: str):
+        self.status_code = status_code
+        self.reason = reason
+        self.message = message
+        self.url = url
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        return (
+            f"Confluence API Error ({self.status_code} {self.reason})\n"
+            f"  URL: {self.url}\n"
+            f"  Message: {self.message}"
+        )
 
 
 class ConfluenceDocumentReader:
@@ -68,6 +89,10 @@ class ConfluenceDocumentReader:
     def build_page_query(user_query):
         if not user_query:
             return "type=page"
+
+        # Check if user query already contains type=page (with various spacing)
+        if re.search(r'\btype\s*=\s*page\b', user_query, re.IGNORECASE):
+            return user_query
 
         return f"type=page AND ({user_query})"
 
@@ -139,7 +164,25 @@ class ConfluenceDocumentReader:
                     else None
                 ),
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except HTTPError:
+                # Try to extract detailed error from JSON response
+                error_message = "Unknown error"
+                error_reason = response.reason
+                try:
+                    error_body = response.json()
+                    error_message = error_body.get("message", error_message)
+                    error_reason = error_body.get("reason", error_reason)
+                except Exception:
+                    # If JSON parsing fails, use the response text
+                    error_message = response.text[:500] if response.text else error_message
+                raise ConfluenceAPIError(
+                    status_code=response.status_code,
+                    reason=error_reason,
+                    message=error_message,
+                    url=response.url,
+                )
             return response.json()
 
         return execute_with_retry(

@@ -5,8 +5,11 @@ to manage output suppression and no-op contexts.
 """
 
 import logging
+import warnings
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from io import StringIO
+
+from loguru import logger as loguru_logger
 
 
 class NoOpContext:
@@ -30,22 +33,26 @@ class NoOpContext:
 
 
 @contextmanager
-def suppress_core_output():
-    """Context manager to suppress all core logging and output.
+def suppress_core_output(redirect_streams: bool = False):
+    """Context manager to suppress core logging output.
 
     Temporarily suppresses:
     - All logging below CRITICAL level
-    - stdout output
-    - stderr output
+    - Python warnings (deprecation warnings, etc.)
+    - Optionally: stdout/stderr output (disabled by default to allow Rich spinners)
 
-    This is useful when running operations that produce verbose output
+    This is useful when running operations that produce verbose logging
     that should be hidden from the user (e.g., when using progress bars).
+
+    Args:
+        redirect_streams: If True, also redirect stdout/stderr. Defaults to False
+                         to allow Rich console output (spinners, progress bars).
 
     Example:
         >>> with suppress_core_output():
-        ...     # Any logging or print statements here will be suppressed
+        ...     # Logging will be suppressed but Rich console works
         ...     logger.info("This won't be shown")
-        ...     print("This won't be shown either")
+        ...     console.print("This WILL be shown")
 
     Yields:
         None
@@ -53,21 +60,32 @@ def suppress_core_output():
     Note:
         The original logging level is restored after exiting the context.
     """
-    # Capture all output streams
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-
     # Save original logging level
     original_level = logging.getLogger().level
 
     try:
-        # Suppress all logging output
+        # Suppress all standard logging output
         logging.getLogger().setLevel(logging.CRITICAL)
 
-        # Redirect stdout and stderr
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            yield
+        # Disable loguru output
+        loguru_logger.disable("")
+
+        # Suppress Python warnings (deprecation warnings, etc.)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            
+            if redirect_streams:
+                # Optionally redirect stdout and stderr
+                stdout_capture = StringIO()
+                stderr_capture = StringIO()
+                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                    yield
+            else:
+                # Don't redirect streams - allow Rich console output
+                yield
 
     finally:
         # Restore original logging level
         logging.getLogger().setLevel(original_level)
+        # Re-enable loguru
+        loguru_logger.enable("")

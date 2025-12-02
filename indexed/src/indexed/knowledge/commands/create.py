@@ -1,5 +1,6 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
+import os
 from typing import List
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from io import StringIO
@@ -13,12 +14,12 @@ from core.v1.constants import DEFAULT_INDEXER
 
 # Import utilities for progress and logging
 from ...utils.logging import is_verbose_mode
-from ...utils.progress_bar import create_operation_progress
+from ...utils.progress_bar import create_progress_update_callback
 from ...utils.console import console
+from ...utils.components.status import OperationStatus
 from ...utils.components.theme import (
     get_heading_style,
     get_accent_style,
-    get_default_style,
 )
 
 
@@ -47,8 +48,11 @@ def suppress_core_output():
     original_level = stdlib_logging.getLogger().level
 
     try:
-        # Suppress all logging output
+        # Suppress all standard logging output
         stdlib_logging.getLogger().setLevel(stdlib_logging.CRITICAL)
+
+        # Disable loguru output
+        logger.disable("")
 
         # Redirect stdout and stderr
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
@@ -57,6 +61,8 @@ def suppress_core_output():
     finally:
         # Restore original logging level
         stdlib_logging.getLogger().setLevel(original_level)
+        # Re-enable loguru
+        logger.enable("")
 
 
 app = typer.Typer(help="Create new collections")
@@ -103,11 +109,22 @@ def create_files(
         "--force",
         help="Delete any existing collection with the same name before creating a new one.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging output.",
+    ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status
+    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.files import LocalFilesConfig
+    from ...utils.logging import setup_logging
+
+    # Setup logging based on verbose flag
+    if verbose:
+        setup_logging(verbose=True)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()
@@ -236,18 +253,23 @@ def create_files(
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
+            console.print()
             
-            operation_desc = f"[{get_default_style()}]Reading files from {validation['present']['path']}[/{get_default_style()}]"
-            with create_operation_progress(operation_desc) as (progress, task_id, callback):
-                with suppress_core_output():
-                    svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+            with OperationStatus(console, f"Reading files from {validation['present']['path']}", capture_logs=False) as status:
+                callback = create_progress_update_callback(status)
+                try:
+                    with suppress_core_output():
+                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+                    status.complete(success=True)
+                except Exception as e:
+                    status.complete(success=False)
+                    creation_error = e
     
     except Exception as e:
         creation_error = e
     
     # If creation failed, show error and exit
     if creation_error:
-        console.print()
         typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
@@ -258,7 +280,7 @@ def create_files(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
-        collections = status([collection])
+        collections = svc_status([collection])
         
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set
@@ -267,10 +289,8 @@ def create_files(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            console.print()
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from files")
         else:
-            console.print()
             typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
@@ -278,7 +298,6 @@ def create_files(
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        console.print()
         typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
@@ -329,11 +348,22 @@ def create_jira(
         "--force",
         help="Delete any existing collection with the same name before creating a new one.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging output.",
+    ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status
+    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.jira import JiraCloudConfig, JiraConfig
+    from ...utils.logging import setup_logging
+
+    # Setup logging based on verbose flag
+    if verbose:
+        setup_logging(verbose=True)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()
@@ -486,18 +516,23 @@ def create_jira(
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
+            console.print()
             
-            operation_desc = f"[{get_default_style()}]Connecting to {validation['present']['url']}[/{get_default_style()}]"
-            with create_operation_progress(operation_desc) as (progress, task_id, callback):
-                with suppress_core_output():
-                    svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+            with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
+                callback = create_progress_update_callback(status)
+                try:
+                    with suppress_core_output():
+                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+                    status.complete(success=True)
+                except Exception as e:
+                    status.complete(success=False)
+                    creation_error = e
     
     except Exception as e:
         creation_error = e
     
     # If creation failed, show error and exit
     if creation_error:
-        console.print()
         typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
@@ -508,7 +543,7 @@ def create_jira(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
-        collections = status([collection])
+        collections = svc_status([collection])
         
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set
@@ -517,10 +552,8 @@ def create_jira(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            console.print()
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Jira")
         else:
-            console.print()
             typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
@@ -528,7 +561,6 @@ def create_jira(
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        console.print()
         typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
@@ -584,11 +616,22 @@ def create_confluence(
         "--force",
         help="Delete any existing collection with the same name before creating a new one.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging output.",
+    ),
 ):
     """Create a Confluence collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status
+    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
+    from ...utils.logging import setup_logging
+
+    # Setup logging based on verbose flag
+    if verbose:
+        setup_logging(verbose=True)
 
     # Initialize ConfigService (auto-loads .env)
     config = ConfigService()
@@ -659,6 +702,28 @@ def create_confluence(
     
     # Phase 1: Prompt for missing values (URL already handled above)
     missing_fields = [f for f in validation["missing"] if f != "url"]
+    
+    # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
+    # but at least one auth method is required by the connector.
+    # Check if we need to prompt for auth credentials.
+    if source_type == "confluence":
+        # Check if any auth is present
+        has_token = (
+            validation["present"].get("token") 
+            or os.getenv("CONF_TOKEN")
+        )
+        has_login_password = (
+            (validation["present"].get("login") or os.getenv("CONF_LOGIN"))
+            and (validation["present"].get("password") or os.getenv("CONF_PASSWORD"))
+        )
+        
+        if not has_token and not has_login_password:
+            # No auth found, prompt for token
+            if "token" not in missing_fields:
+                missing_fields.append("token")
+            if is_verbose_mode():
+                logger.info("No auth credentials found, will prompt for token")
+    
     if missing_fields:
         # Show header if not already shown (URL was from CLI/config)
         if not url_was_prompted and not is_verbose_mode():
@@ -688,6 +753,10 @@ def create_confluence(
             else:
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
+            
+            # For Confluence Server token, use CONF_TOKEN env var
+            if field_name == "token" and source_type == "confluence":
+                field_info = {**field_info, "sensitive": True, "env_var": "CONF_TOKEN"}
             
             # Save using ConfigService (it decides .env vs .toml based on field_info)
             config.set_value(
@@ -743,18 +812,23 @@ def create_confluence(
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
+            console.print()
             
-            operation_desc = f"[{get_default_style()}]Connecting to {validation['present']['url']}[/{get_default_style()}]"
-            with create_operation_progress(operation_desc) as (progress, task_id, callback):
-                with suppress_core_output():
-                    svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+            with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
+                callback = create_progress_update_callback(status)
+                try:
+                    with suppress_core_output():
+                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+                    status.complete(success=True)
+                except Exception as e:
+                    status.complete(success=False)
+                    creation_error = e
     
     except Exception as e:
         creation_error = e
     
     # If creation failed, show error and exit
     if creation_error:
-        console.print()
         typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")
@@ -765,7 +839,7 @@ def create_confluence(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
         
-        collections = status([collection])
+        collections = svc_status([collection])
         
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set
@@ -774,10 +848,8 @@ def create_confluence(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            console.print()
             typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Confluence")
         else:
-            console.print()
             typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
             raise typer.Exit(1)
     
@@ -785,7 +857,6 @@ def create_confluence(
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        console.print()
         typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
         if is_verbose_mode():
             logger.exception("Full error details:")

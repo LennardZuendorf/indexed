@@ -7,6 +7,7 @@ and caching of search indexes for optimal performance.
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from loguru import logger
@@ -16,6 +17,17 @@ from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
     create_collection_searcher,
 )
+
+
+def _get_default_collections_path() -> str:
+    """Get the default collections path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return str(resolver.get_collections_path())
+    except ImportError:
+        # Fallback if indexed_config not available
+        return str(Path.home() / ".indexed" / "data" / "collections")
 
 
 class SearchService:
@@ -36,10 +48,16 @@ class SearchService:
         ...     print(f"Found {len(result.get('documents', []))} docs in {collection}")
     """
 
-    def __init__(self):
-        """Initialize the search service with empty cache and default persister."""
+    def __init__(self, collections_path: Optional[str] = None):
+        """Initialize the search service with empty cache and default persister.
+        
+        Args:
+            collections_path: Optional path for collections storage.
+                             Defaults to resolved path from storage config.
+        """
         self._searcher_cache: Dict[str, Any] = {}
-        self._persister = DiskPersister(base_path="./data/collections")
+        self._collections_path = collections_path or _get_default_collections_path()
+        self._persister = DiskPersister(base_path=self._collections_path)
 
     def _get_searcher(self, collection_name: str, index_name: str):
         """Get or create a cached searcher for the collection.
@@ -58,7 +76,9 @@ class SearchService:
         cache_key = f"{collection_name}:{index_name}"
         if cache_key not in self._searcher_cache:
             self._searcher_cache[cache_key] = create_collection_searcher(
-                collection_name=collection_name, index_name=index_name
+                collection_name=collection_name,
+                index_name=index_name,
+                collections_path=self._collections_path,
             )
         return self._searcher_cache[cache_key]
 
@@ -288,8 +308,16 @@ class SearchService:
         return results
 
 
-# Global singleton for functional interface
-_default_service = SearchService()
+# Global singleton for functional interface (lazily initialized)
+_default_service: Optional[SearchService] = None
+
+
+def _get_service(collections_path: Optional[str] = None) -> SearchService:
+    """Get or create the default SearchService instance."""
+    global _default_service
+    if _default_service is None or collections_path is not None:
+        _default_service = SearchService(collections_path=collections_path)
+    return _default_service
 
 
 def search(
@@ -302,6 +330,7 @@ def search(
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
     progress_callback: ProgressCallback = None,
+    collections_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Functional wrapper around SearchService for one-shot CLI usage.
 
@@ -321,6 +350,7 @@ def search(
         include_full_text (bool): Whether to include full document text in results.
         include_all_chunks (bool): Whether to include all chunks content in results.
         include_matched_chunks (bool): Whether to include matched chunks content.
+        collections_path: Optional path for collections storage.
 
     Returns:
         Dict[str, Any]: Dictionary with collection names as keys and search results
@@ -331,7 +361,8 @@ def search(
         >>> results = search("python programming", max_docs=3, score_threshold=1.5)
         >>> print(f"Searched {len(results)} collections")
     """
-    return _default_service.search(
+    service = _get_service(collections_path)
+    return service.search(
         query=query,
         configs=configs,
         max_chunks=max_chunks,

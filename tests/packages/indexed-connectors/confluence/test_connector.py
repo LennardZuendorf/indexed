@@ -58,21 +58,27 @@ def test_confluence_connector_missing_auth():
 
 
 @patch.dict(os.environ, {"CONF_TOKEN": "test-token"})
-def test_confluence_connector_from_dto_token():
-    """Create ConfluenceConnector from DTO using token."""
+def test_confluence_connector_from_config_dto_token():
+    """Create ConfluenceConnector from config DTO values using token."""
+    # Create config DTO to validate values, then use them with constructor
     config_dto = ConfluenceConfig(
         url="https://confluence.example.com",
         query="space = DEV",
         token="test-token",
     )
 
-    connector = ConfluenceConnector.from_dto(config_dto)
+    # Use constructor directly (from_config requires full ConfigService)
+    connector = ConfluenceConnector(
+        url=config_dto.url,
+        query=config_dto.query,
+        token=config_dto.get_token(),
+    )
     assert isinstance(connector, ConfluenceConnector)
     assert isinstance(connector.reader, ConfluenceDocumentReader)
 
 
-def test_confluence_connector_from_dto_basic_auth():
-    """Create ConfluenceConnector from DTO using basic auth."""
+def test_confluence_connector_from_config_dto_basic_auth():
+    """Create ConfluenceConnector from config DTO values using basic auth."""
     config_dto = ConfluenceConfig(
         url="https://confluence.example.com",
         query="space = DEV",
@@ -80,21 +86,25 @@ def test_confluence_connector_from_dto_basic_auth():
         password="pass",
     )
 
-    connector = ConfluenceConnector.from_dto(config_dto)
+    connector = ConfluenceConnector(
+        url=config_dto.url,
+        query=config_dto.query,
+        login=config_dto.get_login(),
+        password=config_dto.get_password(),
+    )
     assert isinstance(connector, ConfluenceConnector)
     assert isinstance(connector.reader, ConfluenceDocumentReader)
 
 
-def test_confluence_connector_from_dto_read_all_comments():
-    """Test read_all_comments flag is properly passed through from DTO."""
-    config_dto = ConfluenceConfig(
+def test_confluence_connector_read_all_comments_flag():
+    """Test read_all_comments flag is properly passed through."""
+    connector = ConfluenceConnector(
         url="https://confluence.example.com",
         query="type = page",
         token="test-token",
         read_all_comments=False,
     )
 
-    connector = ConfluenceConnector.from_dto(config_dto)
     assert connector.reader.read_all_comments is False
 
 
@@ -131,8 +141,8 @@ def test_confluence_cloud_connector_init():
     )
 
 
-def test_confluence_cloud_connector_from_dto():
-    """Create ConfluenceCloudConnector from DTO."""
+def test_confluence_cloud_connector_from_config_dto():
+    """Create ConfluenceCloudConnector from config DTO values."""
     config_dto = ConfluenceCloudConfig(
         url="https://company.atlassian.net",
         query="space = DEV",
@@ -140,14 +150,20 @@ def test_confluence_cloud_connector_from_dto():
         api_token="test-token",
     )
 
-    connector = ConfluenceCloudConnector.from_dto(config_dto)
+    # Use constructor directly (from_config requires full ConfigService)
+    connector = ConfluenceCloudConnector(
+        url=config_dto.url,
+        query=config_dto.query,
+        email=config_dto.get_email(),
+        api_token=config_dto.get_api_token(),
+    )
     assert isinstance(connector, ConfluenceCloudConnector)
     assert isinstance(connector.reader, ConfluenceCloudDocumentReader)
 
 
-def test_confluence_cloud_connector_from_dto_read_all_comments():
-    """Test read_all_comments flag is properly passed through from DTO."""
-    config_dto = ConfluenceCloudConfig(
+def test_confluence_cloud_connector_read_all_comments_flag():
+    """Test read_all_comments flag is properly passed through."""
+    connector = ConfluenceCloudConnector(
         url="https://company.atlassian.net",
         query="space = DEV",
         email="user@example.com",
@@ -155,7 +171,6 @@ def test_confluence_cloud_connector_from_dto_read_all_comments():
         read_all_comments=False,
     )
 
-    connector = ConfluenceCloudConnector.from_dto(config_dto)
     assert connector.reader.read_all_comments is False
 
 

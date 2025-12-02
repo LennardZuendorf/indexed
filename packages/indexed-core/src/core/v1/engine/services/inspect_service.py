@@ -7,15 +7,30 @@ use cases.
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 import os
+
+from loguru import logger
+
 from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCallback
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 
 setup_root_logger()
+
+
+def _get_default_collections_path() -> str:
+    """Get the default collections path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return str(resolver.get_collections_path())
+    except ImportError:
+        # Fallback if indexed_config not available
+        return str(Path.home() / ".indexed" / "data" / "collections")
 
 
 class InspectService:
@@ -36,10 +51,16 @@ class InspectService:
         >>> print(f"Collection has {statuses[0].number_of_documents} documents")
     """
 
-    def __init__(self):
-        """Initialize the inspect service with empty cache and default persister."""
+    def __init__(self, collections_path: Optional[str] = None):
+        """Initialize the inspect service with empty cache and default persister.
+        
+        Args:
+            collections_path: Optional path for collections storage.
+                             Defaults to resolved path from storage config.
+        """
         self._manifest_cache: Dict[str, dict] = {}
-        self._persister = DiskPersister(base_path="./data/collections")
+        resolved_path = collections_path or _get_default_collections_path()
+        self._persister = DiskPersister(base_path=resolved_path)
 
     def _read_manifest(self, collection_name: str) -> dict:
         """Read and cache manifest for a collection.
@@ -171,9 +192,7 @@ class InspectService:
                         indexer = load_indexer(first_indexer, name, self._persister)
                         index_size = indexer.get_size()
                     except Exception as e:
-                        import logging
-
-                        logging.warning(f"Could not get index size for {name}: {e}")
+                        logger.warning(f"Could not get index size for {name}: {e}")
 
                 # Additional metadata
                 source_type = manifest.get("reader", {}).get("type")
@@ -198,9 +217,7 @@ class InspectService:
                 statuses.append(status)
 
             except Exception as e:
-                import logging
-
-                logging.error(f"Error getting status for collection {name}: {e}")
+                logger.error(f"Error getting status for collection {name}: {e}")
                 # Add error status
                 statuses.append(
                     CollectionStatus(
@@ -277,9 +294,7 @@ class InspectService:
                         indexer = load_indexer(first_indexer, name, self._persister)
                         index_size = indexer.get_size()
                     except Exception as e:
-                        import logging
-
-                        logging.warning(f"Could not get index size for {name}: {e}")
+                        logger.warning(f"Could not get index size for {name}: {e}")
 
                 # Gather all metadata
                 source_type = manifest.get("reader", {}).get("type")
@@ -306,9 +321,7 @@ class InspectService:
                 infos.append(info)
 
             except Exception as e:
-                import logging
-
-                logging.error(f"Error inspecting collection {name}: {e}")
+                logger.error(f"Error inspecting collection {name}: {e}")
                 # Add minimal error info
                 infos.append(
                     CollectionInfo(
@@ -322,8 +335,17 @@ class InspectService:
         return infos
 
 
-# Global singleton for functional interface
-_default_service = InspectService()
+# Global singleton for functional interface (lazily initialized)
+_default_service: Optional[InspectService] = None
+
+
+def _get_service(collections_path: Optional[str] = None) -> InspectService:
+    """Get or create the default InspectService instance."""
+    global _default_service
+    if _default_service is None or collections_path is not None:
+        # Create new service with specified path, or use default
+        _default_service = InspectService(collections_path=collections_path)
+    return _default_service
 
 
 def status(
@@ -331,6 +353,7 @@ def status(
     *,
     include_index_size: bool = False,
     progress_callback: ProgressCallback = None,
+    collections_path: Optional[str] = None,
 ) -> List[CollectionStatus]:
     """Functional wrapper around InspectService for one-shot CLI usage.
 
@@ -345,6 +368,7 @@ def status(
         include_index_size (bool): Whether to include index size information.
                                  This requires loading the indexer and may be
                                  slower. Defaults to False.
+        collections_path: Optional path for collections storage.
 
     Returns:
         List[CollectionStatus]: List of status objects containing metadata
@@ -361,7 +385,8 @@ def status(
         This function uses a global singleton InspectService instance, so manifest
         data will be cached across multiple calls within the same process.
     """
-    return _default_service.status(
+    service = _get_service(collections_path)
+    return service.status(
         collection_names=collection_names,
         include_index_size=include_index_size,
         progress_callback=progress_callback,
@@ -373,6 +398,7 @@ def inspect(
     *,
     include_index_size: bool = False,
     progress_callback: ProgressCallback = None,
+    collections_path: Optional[str] = None,
 ) -> List[CollectionInfo]:
     """Functional wrapper for detailed collection inspection.
 
@@ -386,6 +412,7 @@ def inspect(
         include_index_size (bool): Whether to include index size information.
                                  This requires loading the indexer and may be
                                  slower. Defaults to False.
+        collections_path: Optional path for collections storage.
 
     Returns:
         List[CollectionInfo]: List of detailed info objects containing comprehensive
@@ -401,7 +428,8 @@ def inspect(
     Note:
         This function uses a global singleton InspectService instance.
     """
-    return _default_service.inspect(
+    service = _get_service(collections_path)
+    return service.inspect(
         collection_names=collection_names,
         include_index_size=include_index_size,
         progress_callback=progress_callback,

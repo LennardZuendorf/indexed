@@ -1,5 +1,6 @@
 import time
-import logging
+
+from loguru import logger
 
 
 def execute_and_measure_duration(func):
@@ -20,18 +21,18 @@ def execute_and_measure_duration(func):
 
 def log_execution_duration(func, identifier, enabled=True):
     if enabled:
-        logging.info(
+        logger.info(
             "------------------------------------------------------------------"
         )
-        logging.info(f'Started "{identifier}"')
+        logger.info(f'Started "{identifier}"')
 
     result, error, duration = execute_and_measure_duration(func)
 
     if enabled:
-        logging.info(
+        logger.info(
             f'Finished "{identifier}" in {duration} seconds with {"success" if error is None else "error"} result'
         )
-        logging.info(
+        logger.info(
             "------------------------------------------------------------------"
         )
 

@@ -139,6 +139,41 @@ def create_progress_callback(progress: Progress, task_id: int) -> Callable:
     return callback
 
 
+def create_progress_update_callback(operation_status) -> Callable:
+    """Create callback that updates OperationStatus from ProgressUpdate.
+
+    This adapter function converts ProgressUpdate messages from core services
+    into status display updates for the OperationStatus component.
+
+    Args:
+        operation_status: OperationStatus instance to update
+
+    Returns:
+        Callback function that accepts ProgressUpdate dataclass
+    """
+    from core.v1.engine.services.models import ProgressUpdate
+
+    def callback(update: ProgressUpdate):
+        """Update OperationStatus with progress information.
+
+        Args:
+            update: ProgressUpdate dataclass with stage, current, total, and message
+        """
+        # Handle case where no documents to process (total=0)
+        if update.total == 0:
+            msg = "No changes detected"
+        # Format message with counts if available
+        elif update.total and update.total > 0:
+            msg = f"{update.stage.capitalize()}: {update.current}/{update.total} documents"
+        else:
+            # Use provided message for operations without known totals
+            msg = update.message
+
+        operation_status.update(msg)
+
+    return callback
+
+
 # --- CENTRALIZED PROGRESS BAR FACTORIES ---
 
 

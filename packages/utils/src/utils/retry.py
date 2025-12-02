@@ -1,5 +1,6 @@
 import time
-import logging
+
+from loguru import logger
 
 
 def execute_with_retry(func, func_identifier, retries=3, delay=1):
@@ -13,7 +14,7 @@ def execute_with_retry(func, func_identifier, retries=3, delay=1):
         try:
             return func()
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 f'Attempt of "{func_identifier}" number {attempt + 1} failed: {e}'
             )
             if attempt < retries - 1:
@@ -36,5 +37,5 @@ def execute_with_retry(func, func_identifier, retries=3, delay=1):
                     pass
                 time.sleep(sleep_time)
             else:
-                logging.error(f"All {retries} attempts failed.")
+                logger.error(f"All {retries} attempts failed.")
                 raise e

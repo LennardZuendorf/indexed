@@ -1,10 +1,23 @@
 """Main Index class for managing document collections."""
 
+from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
-from .core_config import Config
 from .connectors import BaseConnector
 from .engine.services import update, search, status, clear, SourceConfig
 from .engine.factories.create_collection_factory import create_collection_creator
+
+# Default indexer name (FAISS IndexFlatL2 with all-MiniLM-L6-v2 embeddings)
+DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+
+
+@dataclass
+class IndexConfig:
+    """Simple configuration for the Index class.
+    
+    Attributes:
+        default_indexer: Name of the default FAISS indexer configuration.
+    """
+    default_indexer: str = DEFAULT_INDEXER
 
 
 class Index:
@@ -32,19 +45,18 @@ class Index:
         >>> index.remove("old-collection")
     """
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[IndexConfig] = None):
         """Initialize index with optional configuration.
 
         Args:
-            config: Configuration instance. If None, loads from defaults
-                   or indexed.toml file.
+            config: IndexConfig instance. If None, uses default configuration.
 
         Examples:
             >>> index = Index()  # Use defaults
-            >>> config = Config.load()
+            >>> config = IndexConfig(default_indexer="custom_indexer")
             >>> index = Index(config=config)  # Use custom config
         """
-        self.config = config or Config.load()
+        self.config = config or IndexConfig()
         self._collections: Dict[str, SourceConfig] = {}
 
     def add_collection(self, name: str, connector: BaseConnector) -> None:

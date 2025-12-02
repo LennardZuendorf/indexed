@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Tuple, Type, TypeVar
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
 
 from .path_utils import get_by_path, set_by_path, delete_by_path
 from .store import TomlStore
 from .provider import Provider
+from .storage import StorageMode, StorageResolver, get_global_root, get_resolver, reset_resolver
 
 T = TypeVar("T", bound=BaseModel)
+
+# Workspace preferences section in config
+WORKSPACE_PREFS_PATH = "workspace_preferences"
 
 
 class ConfigService:
@@ -19,19 +24,78 @@ class ConfigService:
     - bind(): load+merge+validate all registered specs and return Provider
     - get/set/delete: operate on raw mapping (workspace TOML as write target)
     - validate(): validate all specs; returns list of (path, error)
+    - workspace preferences: per-directory storage mode preferences
     """
 
     _instance: "ConfigService" | None = None
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Optional[Path] = None,
+        mode_override: Optional[StorageMode] = None,
+    ) -> None:
+        """Initialize ConfigService.
+        
+        Args:
+            workspace: Optional workspace path. Defaults to current working directory.
+            mode_override: Optional storage mode override ("global" or "local").
+        """
         self._specs: Dict[str, Type[BaseModel]] = {}
-        self._store = TomlStore()
+        self._workspace = workspace or Path.cwd()
+        self._mode_override = mode_override
+        self._store = TomlStore(workspace=self._workspace, mode_override=mode_override)
+        self._resolver = StorageResolver(workspace=self._workspace, mode_override=mode_override)
 
     @classmethod
-    def instance(cls) -> "ConfigService":
-        if cls._instance is None:
-            cls._instance = cls()
+    def instance(
+        cls,
+        *,
+        workspace: Optional[Path] = None,
+        mode_override: Optional[StorageMode] = None,
+        reset: bool = False,
+    ) -> "ConfigService":
+        """Get or create the singleton ConfigService instance.
+        
+        Args:
+            workspace: Optional workspace path.
+            mode_override: Optional storage mode override.
+            reset: If True, create a new instance even if one exists.
+            
+        Returns:
+            ConfigService singleton instance.
+        """
+        if cls._instance is None or reset:
+            cls._instance = cls(workspace=workspace, mode_override=mode_override)
+            # Also reset the module-level resolver singleton so services use
+            # the same mode_override setting
+            get_resolver(
+                workspace=workspace,
+                mode_override=mode_override,
+                reset=True,
+            )
         return cls._instance
+    
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance (useful for testing)."""
+        cls._instance = None
+        reset_resolver()
+    
+    @property
+    def store(self) -> TomlStore:
+        """Access the underlying TomlStore."""
+        return self._store
+    
+    @property
+    def resolver(self) -> StorageResolver:
+        """Access the storage resolver."""
+        return self._resolver
+    
+    @property
+    def workspace(self) -> Path:
+        """Get the current workspace path."""
+        return self._workspace
 
     # Registry
     def register(self, spec: Type[T], *, path: str) -> None:
@@ -227,12 +291,17 @@ class ConfigService:
             dot_path: Dot-separated path (e.g., 'sources.jira.url').
             value: Value to set.
             field_info: Optional field metadata dict with 'sensitive' key.
+                       Can also include 'env_var' to specify exact env var name.
         """
         # Route sensitive values to .env file instead of TOML
         if field_info and field_info.get("sensitive"):
-            # Get the field name from dot_path (last segment)
-            field_name = dot_path.split(".")[-1]
-            env_var = self._field_to_env_var(field_name)
+            # Check if explicit env_var is provided
+            if field_info.get("env_var"):
+                env_var = field_info["env_var"]
+            else:
+                # Get the field name from dot_path (last segment)
+                field_name = dot_path.split(".")[-1]
+                env_var = self._field_to_env_var(field_name)
             self._write_to_env_file(env_var, value)
         else:
             # Non-sensitive: write to TOML config
@@ -279,3 +348,154 @@ class ConfigService:
         # Write back
         with open(env_path, "w") as f:
             f.writelines(updated_lines)
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Workspace Preferences
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    def get_workspace_preference(
+        self,
+        workspace_path: Optional[Path] = None,
+    ) -> Optional[StorageMode]:
+        """Get the storage mode preference for a workspace.
+        
+        Args:
+            workspace_path: Path to the workspace. Defaults to current workspace.
+            
+        Returns:
+            "global" or "local" if a preference exists, None otherwise.
+        """
+        path = str(workspace_path or self._workspace)
+        
+        # Read from global config directly (preferences are stored globally)
+        global_store = TomlStore(mode_override="global")
+        raw = global_store.read()
+        
+        prefs = get_by_path(raw, WORKSPACE_PREFS_PATH, default={}) or {}
+        pref = prefs.get(path)
+        
+        if pref in ("global", "local"):
+            return pref  # type: ignore[return-value]
+        return None
+    
+    def set_workspace_preference(
+        self,
+        mode: StorageMode,
+        workspace_path: Optional[Path] = None,
+    ) -> None:
+        """Set the storage mode preference for a workspace.
+        
+        Preferences are stored in the global config file so they persist
+        across all invocations of indexed.
+        
+        Args:
+            mode: Storage mode ("global" or "local").
+            workspace_path: Path to the workspace. Defaults to current workspace.
+        """
+        path = str(workspace_path or self._workspace)
+        
+        # Read global config, update, and write back
+        global_store = TomlStore(mode_override="global")
+        raw = global_store.read()
+        
+        # Ensure workspace_preferences section exists
+        if WORKSPACE_PREFS_PATH not in raw:
+            raw[WORKSPACE_PREFS_PATH] = {}
+        
+        raw[WORKSPACE_PREFS_PATH][path] = mode
+        global_store.write(raw, to_global=True)
+    
+    def clear_workspace_preference(
+        self,
+        workspace_path: Optional[Path] = None,
+    ) -> bool:
+        """Clear the storage mode preference for a workspace.
+        
+        Args:
+            workspace_path: Path to the workspace. Defaults to current workspace.
+            
+        Returns:
+            True if a preference was cleared, False if none existed.
+        """
+        path = str(workspace_path or self._workspace)
+        
+        global_store = TomlStore(mode_override="global")
+        raw = global_store.read()
+        
+        prefs = raw.get(WORKSPACE_PREFS_PATH, {})
+        if path in prefs:
+            del prefs[path]
+            raw[WORKSPACE_PREFS_PATH] = prefs
+            global_store.write(raw, to_global=True)
+            return True
+        return False
+    
+    def get_all_workspace_preferences(self) -> Dict[str, StorageMode]:
+        """Get all workspace preferences.
+        
+        Returns:
+            Dict mapping workspace paths to their storage mode preferences.
+        """
+        global_store = TomlStore(mode_override="global")
+        raw = global_store.read()
+        
+        prefs = get_by_path(raw, WORKSPACE_PREFS_PATH, default={}) or {}
+        return {k: v for k, v in prefs.items() if v in ("global", "local")}
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Storage & Conflict Detection
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    def has_config_conflict(self) -> bool:
+        """Check if both local and global configs exist with differences.
+        
+        Returns:
+            True if both configs exist and have differing values.
+        """
+        return self._store.configs_differ()
+    
+    def get_config_differences(self) -> Dict[str, tuple[Any, Any]]:
+        """Get differences between local and global configs.
+        
+        Returns:
+            Dict mapping dot-paths to (local_value, global_value) tuples.
+        """
+        return self._store.get_config_differences()
+    
+    def resolve_storage_mode(self) -> StorageMode:
+        """Resolve the effective storage mode for the current workspace.
+        
+        Resolution order:
+        1. CLI mode override (set at init)
+        2. Workspace preference from config
+        3. Default to "global"
+        
+        Returns:
+            "global" or "local"
+        """
+        # CLI override takes precedence
+        if self._mode_override:
+            return self._mode_override
+        
+        # Check workspace preference
+        pref = self.get_workspace_preference()
+        if pref:
+            return pref
+        
+        # Default to global
+        return "global"
+    
+    def get_collections_path(self) -> Path:
+        """Get the resolved collections path based on current storage mode."""
+        pref = self.get_workspace_preference()
+        return self._resolver.get_collections_path(pref)
+    
+    def get_caches_path(self) -> Path:
+        """Get the resolved caches path based on current storage mode."""
+        pref = self.get_workspace_preference()
+        return self._resolver.get_caches_path(pref)
+    
+    def ensure_storage_dirs(self) -> None:
+        """Ensure storage directories exist for the resolved storage mode."""
+        pref = self.get_workspace_preference()
+        self._resolver.ensure_dirs(pref)

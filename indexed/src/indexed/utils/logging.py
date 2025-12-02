@@ -6,12 +6,17 @@ Configures logging levels based on CLI flags:
 - --debug: DEBUG (everything)
 """
 
+import sys
 import logging
 from rich.logging import RichHandler
+from loguru import logger as loguru_logger
 
 # Global state for status capture
 _status_capture_enabled = False
 _status_capture_callback = None
+
+# Track if loguru has been configured
+_loguru_configured = False
 
 
 def setup_root_logger(level_str: str = None, json_mode: bool = False) -> None:
@@ -37,6 +42,24 @@ def setup_root_logger(level_str: str = None, json_mode: bool = False) -> None:
             )
         ],
     )
+    
+    # Also configure loguru to match
+    _configure_loguru(level_str or "WARNING")
+
+
+def _configure_loguru(level: str) -> None:
+    """Configure loguru logger with the specified level."""
+    global _loguru_configured
+    
+    # Remove default handler and add one with appropriate level
+    loguru_logger.remove()
+    loguru_logger.add(
+        sys.stderr,
+        level=level.upper(),
+        format="<level>{level: <8}</level> | {message}",
+        colorize=True,
+    )
+    _loguru_configured = True
 
 
 def setup_logging(
@@ -51,14 +74,18 @@ def setup_logging(
     """
     if quiet:
         level = logging.ERROR
+        level_str = "ERROR"
     elif debug:
         level = logging.DEBUG
+        level_str = "DEBUG"
     elif verbose:
         level = logging.INFO
+        level_str = "INFO"
     else:
         level = logging.WARNING
+        level_str = "WARNING"
 
-    # Configure with Rich handler for beautiful output
+    # Configure standard logging with Rich handler for beautiful output
     logging.basicConfig(
         level=level,
         format="%(message)s",
@@ -68,7 +95,11 @@ def setup_logging(
                 show_time=False, show_path=False, markup=True, rich_tracebacks=True
             )
         ],
+        force=True,  # Force reconfiguration
     )
+    
+    # Also configure loguru to match
+    _configure_loguru(level_str)
 
 
 def is_verbose_mode() -> bool:

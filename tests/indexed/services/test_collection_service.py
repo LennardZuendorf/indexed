@@ -14,16 +14,17 @@ class TestBuildConnectorFromConfig:
     
     The function now uses a registry-based pattern:
     1. Sets config values via config_service.set()
-    2. Gets config DTO via config_service.get_config(ConfigClass, namespace)
-    3. Creates connector via ConnectorClass.from_dto(config_dto)
+    2. Calls ConnectorClass.from_config(config_service) which internally
+       registers specs, binds, and creates the connector
+    
+    Note: Both Cloud and non-Cloud variants use unified namespaces
+    (sources.jira for all Jira, sources.confluence for all Confluence).
     """
 
     @patch.dict(os.environ, {"CONF_TOKEN": "test-token"})
     def test_build_confluence_connector(self):
         """Test building Confluence connector."""
         config_service = MagicMock()
-        mock_config_dto = MagicMock()
-        config_service.get_config.return_value = mock_config_dto
         
         source_config = SourceConfig(
             name="test-collection",
@@ -36,18 +37,18 @@ class TestBuildConnectorFromConfig:
 
         with patch("connectors.confluence.ConfluenceConnector") as mock_connector_class:
             mock_connector = Mock()
-            mock_connector_class.from_dto.return_value = mock_connector
+            mock_connector_class.from_config.return_value = mock_connector
             
             connector = _build_connector_from_config(source_config, config_service)
 
-            # Verify config values were set
+            # Verify config values were set (unified namespace)
             config_service.set.assert_any_call(
                 "sources.confluence.url", "https://confluence.example.com"
             )
             config_service.set.assert_any_call("sources.confluence.query", "space = TEST")
             
-            # Verify connector was created via from_dto
-            mock_connector_class.from_dto.assert_called_once_with(mock_config_dto)
+            # Verify connector was created via from_config
+            mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
     @patch.dict(os.environ, {
@@ -57,8 +58,6 @@ class TestBuildConnectorFromConfig:
     def test_build_confluence_cloud_connector(self):
         """Test building Confluence Cloud connector."""
         config_service = MagicMock()
-        mock_config_dto = MagicMock()
-        config_service.get_config.return_value = mock_config_dto
         
         source_config = SourceConfig(
             name="test-collection",
@@ -71,26 +70,24 @@ class TestBuildConnectorFromConfig:
 
         with patch("connectors.confluence.ConfluenceCloudConnector") as mock_connector_class:
             mock_connector = Mock()
-            mock_connector_class.from_dto.return_value = mock_connector
+            mock_connector_class.from_config.return_value = mock_connector
             
             connector = _build_connector_from_config(source_config, config_service)
 
-            # Verify config values were set
+            # Verify config values were set (uses unified sources.confluence namespace)
             config_service.set.assert_any_call(
-                "sources.confluence_cloud.url", "https://example.atlassian.net"
+                "sources.confluence.url", "https://example.atlassian.net"
             )
-            config_service.set.assert_any_call("sources.confluence_cloud.query", "space = TEST")
+            config_service.set.assert_any_call("sources.confluence.query", "space = TEST")
             
-            # Verify connector was created via from_dto
-            mock_connector_class.from_dto.assert_called_once_with(mock_config_dto)
+            # Verify connector was created via from_config
+            mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
     @patch.dict(os.environ, {"JIRA_TOKEN": "test-token"})
     def test_build_jira_connector(self):
         """Test building Jira connector."""
         config_service = MagicMock()
-        mock_config_dto = MagicMock()
-        config_service.get_config.return_value = mock_config_dto
         
         source_config = SourceConfig(
             name="test-collection",
@@ -103,7 +100,7 @@ class TestBuildConnectorFromConfig:
 
         with patch("connectors.jira.JiraConnector") as mock_connector_class:
             mock_connector = Mock()
-            mock_connector_class.from_dto.return_value = mock_connector
+            mock_connector_class.from_config.return_value = mock_connector
             
             connector = _build_connector_from_config(source_config, config_service)
 
@@ -113,8 +110,8 @@ class TestBuildConnectorFromConfig:
             )
             config_service.set.assert_any_call("sources.jira.query", "project = TEST")
             
-            # Verify connector was created via from_dto
-            mock_connector_class.from_dto.assert_called_once_with(mock_config_dto)
+            # Verify connector was created via from_config
+            mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
     @patch.dict(os.environ, {
@@ -124,8 +121,6 @@ class TestBuildConnectorFromConfig:
     def test_build_jira_cloud_connector(self):
         """Test building Jira Cloud connector."""
         config_service = MagicMock()
-        mock_config_dto = MagicMock()
-        config_service.get_config.return_value = mock_config_dto
         
         source_config = SourceConfig(
             name="test-collection",
@@ -138,25 +133,23 @@ class TestBuildConnectorFromConfig:
 
         with patch("connectors.jira.JiraCloudConnector") as mock_connector_class:
             mock_connector = Mock()
-            mock_connector_class.from_dto.return_value = mock_connector
+            mock_connector_class.from_config.return_value = mock_connector
             
             connector = _build_connector_from_config(source_config, config_service)
 
-            # Verify config values were set
+            # Verify config values were set (uses unified sources.jira namespace)
             config_service.set.assert_any_call(
-                "sources.jira_cloud.url", "https://example.atlassian.net"
+                "sources.jira.url", "https://example.atlassian.net"
             )
-            config_service.set.assert_any_call("sources.jira_cloud.query", "project = TEST")
+            config_service.set.assert_any_call("sources.jira.query", "project = TEST")
             
-            # Verify connector was created via from_dto
-            mock_connector_class.from_dto.assert_called_once_with(mock_config_dto)
+            # Verify connector was created via from_config
+            mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
     def test_build_files_connector(self):
         """Test building files connector."""
         config_service = MagicMock()
-        mock_config_dto = MagicMock()
-        config_service.get_config.return_value = mock_config_dto
         
         source_config = SourceConfig(
             name="test-collection",
@@ -173,15 +166,15 @@ class TestBuildConnectorFromConfig:
 
         with patch("connectors.files.FileSystemConnector") as mock_connector_class:
             mock_connector = Mock()
-            mock_connector_class.from_dto.return_value = mock_connector
+            mock_connector_class.from_config.return_value = mock_connector
             
             connector = _build_connector_from_config(source_config, config_service)
 
             # Verify config values were set
             config_service.set.assert_any_call("sources.files.path", "./docs")
             
-            # Verify connector was created via from_dto
-            mock_connector_class.from_dto.assert_called_once_with(mock_config_dto)
+            # Verify connector was created via from_config
+            mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
 
