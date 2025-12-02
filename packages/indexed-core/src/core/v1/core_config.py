@@ -15,6 +15,16 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def _get_default_storage_path() -> Path:
+    """Get default storage path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return resolver.get_collections_path()
+    except ImportError:
+        return Path.home() / ".indexed" / "data" / "collections"
+
+
 class Config(BaseModel):
     """Main configuration for indexed.
 
@@ -54,7 +64,7 @@ class Config(BaseModel):
 
     # Storage configuration
     storage_path: Path = Field(
-        default=Path("./data/collections"),
+        default_factory=lambda: _get_default_storage_path(),
         description="Base path for storing collections",
     )
 

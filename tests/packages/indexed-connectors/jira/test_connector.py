@@ -47,15 +47,20 @@ def test_jira_connector_missing_auth():
 
 
 @patch.dict(os.environ, {"JIRA_TOKEN": "test-token"})
-def test_jira_connector_from_dto():
-    """Test JiraConnector creation from DTO."""
+def test_jira_connector_from_config_dto():
+    """Test JiraConnector creation from config DTO values."""
     config_dto = JiraConfig(
         url="https://jira.example.com",
         query="project = TEST",
         token="test-token",
     )
     
-    connector = JiraConnector.from_dto(config_dto)
+    # Use constructor directly (from_config requires full ConfigService)
+    connector = JiraConnector(
+        url=config_dto.url,
+        query=config_dto.query,
+        token=config_dto.get_token(),
+    )
     assert isinstance(connector, JiraConnector)
     assert isinstance(connector.reader, JiraDocumentReader)
     assert connector.connector_type == "jira"
@@ -75,8 +80,8 @@ def test_jira_cloud_connector_init():
     assert str(connector) == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
 
 
-def test_jira_cloud_connector_from_dto():
-    """Test JiraCloudConnector creation from DTO."""
+def test_jira_cloud_connector_from_config_dto():
+    """Test JiraCloudConnector creation from config DTO values."""
     config_dto = JiraCloudConfig(
         url="https://company.atlassian.net",
         query="project = TEST",
@@ -84,7 +89,13 @@ def test_jira_cloud_connector_from_dto():
         api_token="test-token"
     )
     
-    connector = JiraCloudConnector.from_dto(config_dto)
+    # Use constructor directly (from_config requires full ConfigService)
+    connector = JiraCloudConnector(
+        url=config_dto.url,
+        query=config_dto.query,
+        email=config_dto.get_email(),
+        api_token=config_dto.get_api_token(),
+    )
     assert isinstance(connector, JiraCloudConnector)
     assert isinstance(connector.reader, JiraCloudDocumentReader)
     assert connector.connector_type == "jiraCloud"

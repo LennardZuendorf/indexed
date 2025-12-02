@@ -40,12 +40,15 @@ CONFIG_REGISTRY: Dict[str, Type[Any]] = {
 }
 
 # Registry mapping connector_type strings to their config namespace paths
+# NOTE: Cloud and Server variants use UNIFIED namespaces (e.g., both jira and
+# jiraCloud use "sources.jira"). The Cloud vs Server type is determined at
+# runtime from the URL. This matches the pattern in collection_service.py.
 NAMESPACE_REGISTRY: Dict[str, str] = {
     "localFiles": "sources.files",
     "jira": "sources.jira",
-    "jiraCloud": "sources.jira_cloud",
+    "jiraCloud": "sources.jira",  # Unified with jira
     "confluence": "sources.confluence",
-    "confluenceCloud": "sources.confluence_cloud",
+    "confluenceCloud": "sources.confluence",  # Unified with confluence
 }
 
 

@@ -1141,8 +1141,12 @@ max_docs = 10
 max_chunks = 50
 # score_threshold = 0.0  # Optional: minimum similarity score
 
-[core.v1.storage]
-base_path = "./data/collections"
+# Storage paths are automatically resolved:
+# - Global: ~/.indexed/data/collections (default)
+# - Local: ./.indexed/data/collections (when --local flag is used)
+# Uncomment below to override:
+# [core.v1.storage]
+# base_path = "~/.indexed/data/collections"
 
 # Source configurations
 # Uncomment and configure the sources you need

@@ -103,15 +103,39 @@ class CoreV1SearchConfig(BaseModel):
     )
 
 
+def _get_default_collections_path() -> Path:
+    """Get default collections path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return resolver.get_collections_path()
+    except ImportError:
+        return Path.home() / ".indexed" / "data" / "collections"
+
+
+def _get_default_caches_path() -> Path:
+    """Get default caches path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return resolver.get_caches_path()
+    except ImportError:
+        return Path.home() / ".indexed" / "data" / "caches"
+
+
 class PathsConfig(BaseModel):
-    """File system paths configuration."""
+    """File system paths configuration.
+    
+    Paths default to the global storage location (~/.indexed/data/...)
+    unless explicitly configured otherwise.
+    """
 
     collections_dir: Path = Field(
-        default=Path("./data/collections"),
+        default_factory=_get_default_collections_path,
         description="Directory for collections storage",
     )
     caches_dir: Path = Field(
-        default=Path("./data/caches"),
+        default_factory=_get_default_caches_path,
         description="Directory for document caches",
     )
     temp_dir: Path = Field(

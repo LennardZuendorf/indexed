@@ -28,9 +28,11 @@ class TestSearchService:
         )
 
         assert searcher == mock_searcher
-        mock_factory.assert_called_once_with(
-            collection_name="test-collection", index_name="test-indexer"
-        )
+        mock_factory.assert_called_once()
+        # Verify the key arguments (collections_path may vary based on config)
+        call_kwargs = mock_factory.call_args.kwargs
+        assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["index_name"] == "test-indexer"
 
     @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_get_searcher_uses_cache(self, mock_factory):
@@ -137,14 +139,15 @@ class TestSearchService:
         assert "test-collection" in result
         assert result["test-collection"] == {"hits": []}
 
-        # Verify searcher creation
-        mock_factory.assert_called_once_with(
-            collection_name="test-collection", index_name="test-indexer"
-        )
+        # Verify searcher creation (collections_path may vary based on config)
+        mock_factory.assert_called_once()
+        call_kwargs = mock_factory.call_args.kwargs
+        assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["index_name"] == "test-indexer"
 
-        # Verify search parameters
+        # Verify search parameters (implementation uses 'text' not 'query')
         mock_searcher.search.assert_called_once_with(
-            query="test query",
+            text="test query",
             max_number_of_chunks=10,
             max_number_of_documents=5,
             include_text_content=True,
@@ -184,15 +187,15 @@ class TestSearchService:
         assert "collection1" in result
         assert result["collection1"] == {"hits": []}
 
-        # Verify searcher creation with discovered collection
-        mock_factory.assert_called_once_with(
-            collection_name="collection1",
-            index_name="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2",
-        )
+        # Verify searcher creation with discovered collection (collections_path may vary)
+        mock_factory.assert_called_once()
+        call_kwargs = mock_factory.call_args.kwargs
+        assert call_kwargs["collection_name"] == "collection1"
+        assert call_kwargs["index_name"] == "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
-        # Verify search parameters
+        # Verify search parameters (implementation uses 'text' not 'query')
         mock_searcher.search.assert_called_once_with(
-            query="test query",
+            text="test query",
             max_number_of_chunks=10,
             max_number_of_documents=5,
             include_text_content=True,

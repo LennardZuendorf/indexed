@@ -98,9 +98,12 @@ class DocumentCollectionCreator:
         )
 
         if len(document_ids) == 0:
-            logger.warning(
-                "No documents found for collection update, so it will be not updated."
+            logger.info(
+                "No new documents found for collection update. Updating timestamp only."
             )
+            # Update only the timestamp in manifest to record that we checked for updates
+            manifest["updatedTime"] = update_time.isoformat()
+            self.__save_json_file(manifest, self.__build_manifest_path())
             return
 
         last_modified_document_time, number_of_chunks = log_execution_duration(

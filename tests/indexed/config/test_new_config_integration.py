@@ -1,13 +1,37 @@
 """Integration tests for new config system migration."""
 
 import pytest
+import os
+from pathlib import Path
 from indexed_config import ConfigService
 
 
-def test_config_service_crud_operations(tmp_path):
+@pytest.fixture
+def isolated_config(tmp_path, monkeypatch):
+    """Create an isolated ConfigService that uses a temp directory.
+    
+    This prevents tests from polluting the real .indexed/config.toml.
+    """
+    # Reset singleton before each test
+    ConfigService.reset()
+    
+    # Create the config in temp directory
+    config_dir = tmp_path / ".indexed"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Change to temp directory so ConfigService uses it
+    monkeypatch.chdir(tmp_path)
+    
+    config = ConfigService(workspace=tmp_path)
+    yield config
+    
+    # Reset singleton after test
+    ConfigService.reset()
+
+
+def test_config_service_crud_operations(isolated_config):
     """Test basic CRUD operations on ConfigService."""
-    # Create a config service
-    config = ConfigService()
+    config = isolated_config
 
     # Test set
     config.set("sources.jira_cloud.url", "https://test.atlassian.net")
@@ -32,25 +56,21 @@ def test_config_service_crud_operations(tmp_path):
     assert deleted is False
 
 
-def test_connector_from_dto(tmp_path):
-    """Test that connectors can be instantiated via from_dto()."""
+def test_connector_direct_instantiation(tmp_path):
+    """Test that connectors can be instantiated directly with constructor args."""
     from connectors.files import FileSystemConnector
-    from connectors.files.schema import LocalFilesConfig
 
     # Create a temporary test directory
     test_dir = tmp_path / "test"
     test_dir.mkdir()
 
-    # Create a config DTO directly
-    config_dto = LocalFilesConfig(
+    # Create connector directly (no from_dto needed)
+    connector = FileSystemConnector(
         path=str(test_dir),
-        include_patterns=[r".*\.md$"],  # Use regex, not glob
+        include_patterns=[r".*\.md$"],
         exclude_patterns=[],
         fail_fast=False,
     )
-
-    # Create connector from DTO
-    connector = FileSystemConnector.from_dto(config_dto)
 
     # Verify connector has expected properties
     assert hasattr(connector, "reader")
@@ -58,47 +78,37 @@ def test_connector_from_dto(tmp_path):
     assert connector.connector_type == "localFiles"
 
 
-def test_jira_connector_from_dto():
-    """Test Jira connector instantiation via from_dto()."""
+def test_jira_connector_direct_instantiation():
+    """Test Jira connector instantiation directly."""
     from connectors.jira import JiraCloudConnector
-    from connectors.jira.schema import JiraCloudConfig
-    import os
 
-    # Set required env vars
-    os.environ["ATLASSIAN_EMAIL"] = "test@example.com"
-    os.environ["ATLASSIAN_TOKEN"] = "test-token"
+    # Create connector directly with all required args
+    connector = JiraCloudConnector(
+        url="https://test.atlassian.net",
+        email="test@example.com",
+        api_token="test-token",
+        query="project = TEST",
+    )
 
-    try:
-        # Create a config DTO directly
-        config_dto = JiraCloudConfig(
-            url="https://test.atlassian.net",
-            email="test@example.com",
-            api_token="test-token",
-            query="project = TEST",
-        )
-
-        # Create connector from DTO
-        connector = JiraCloudConnector.from_dto(config_dto)
-
-        # Verify connector has expected properties
-        assert hasattr(connector, "reader")
-        assert hasattr(connector, "converter")
-        assert connector.connector_type == "jiraCloud"
-    finally:
-        # Cleanup
-        del os.environ["ATLASSIAN_EMAIL"]
-        del os.environ["ATLASSIAN_TOKEN"]
+    # Verify connector has expected properties
+    assert hasattr(connector, "reader")
+    assert hasattr(connector, "converter")
+    assert connector.connector_type == "jiraCloud"
 
 
-def test_config_service_validate(tmp_path):
+def test_config_service_validate(tmp_path, monkeypatch):
     """Test config validation with registered specs."""
     from connectors.files.schema import LocalFilesConfig
 
+    # Reset and create isolated config
+    ConfigService.reset()
+    monkeypatch.chdir(tmp_path)
+    
     # Create a temporary test directory
     test_dir = tmp_path / "test"
     test_dir.mkdir()
 
-    config = ConfigService()
+    config = ConfigService(workspace=tmp_path)
 
     # Register a spec
     config.register(LocalFilesConfig, path="sources.files")
@@ -109,11 +119,16 @@ def test_config_service_validate(tmp_path):
     # Validate should return empty errors
     errors = config.validate()
     assert len(errors) == 0
+    
+    ConfigService.reset()
 
 
-def test_config_merging_priority():
+def test_config_merging_priority(tmp_path, monkeypatch):
     """Test that config sources are merged correctly."""
-    config = ConfigService()
+    ConfigService.reset()
+    monkeypatch.chdir(tmp_path)
+    
+    config = ConfigService(workspace=tmp_path)
 
     # Set workspace config
     config.set("sources.files.path", "./workspace")
@@ -122,6 +137,8 @@ def test_config_merging_priority():
 
     # Workspace should override defaults
     assert raw["sources"]["files"]["path"] == "./workspace"
+    
+    ConfigService.reset()
 
 
 def test_collection_service_with_config():

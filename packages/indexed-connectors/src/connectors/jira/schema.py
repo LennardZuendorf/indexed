@@ -39,16 +39,19 @@ class JiraCloudConfig(BaseModel):
 
     url: str = Field(..., description="Jira Cloud URL (*.atlassian.net)")
     query: str = Field(..., description="JQL query to filter issues")
-    email: str = Field(
-        ..., description="Atlassian account email (env: ATLASSIAN_EMAIL)"
+    email: Optional[str] = Field(
+        None, description="Atlassian account email (env: ATLASSIAN_EMAIL)"
     )
-    api_token: str = Field(
-        ..., description="API token (env: ATLASSIAN_TOKEN)"
+    api_token: Optional[str] = Field(
+        None, description="API token (env: ATLASSIAN_TOKEN)"
     )
 
     def get_email(self) -> str:
         """Get email from config or environment."""
-        return self.email or os.getenv("ATLASSIAN_EMAIL", "")
+        email = self.email or os.getenv("ATLASSIAN_EMAIL")
+        if not email:
+            raise ValueError("ATLASSIAN_EMAIL not set in config or environment")
+        return email
 
     def get_api_token(self) -> str:
         """Get API token from config or environment."""
