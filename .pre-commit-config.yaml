@@ -1,0 +1,20 @@
+# Pre-commit configuration for indexed
+# Install with: uv run pre-commit install --hook-type pre-push
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
