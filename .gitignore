@@ -44,6 +44,7 @@ dmypy.json
 .history/
 **/.DS_Store
 .dccache
+.cursor/mcp.json
 
 # Project data
 data/
