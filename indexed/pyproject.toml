@@ -15,7 +15,7 @@ dependencies = [
     "typer>=0.12.3",
     "rich>=13.7.0",
     "mcp>=1.13.0",
-    "fastmcp>=2.11.3",
+    "fastmcp>=2.13.0",
     "art>=6.0",
 ]
 

@@ -3,21 +3,27 @@
 Provides stateless commands backed by services.
 """
 
-import os
-import sys
-import typer
-from pathlib import Path
-from typing import Optional, TYPE_CHECKING
-from rich.console import Console
+# Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
+# Must be done before any faiss imports occur
+import warnings
+
+warnings.filterwarnings("ignore", message="builtin type Swig.*")
+
+import os  # noqa: E402
+import sys  # noqa: E402
+import typer  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Optional, TYPE_CHECKING  # noqa: E402
+from rich.console import Console  # noqa: E402
 
 if TYPE_CHECKING:
     from indexed_config import ConfigService
-from rich.theme import Theme
-from .utils.logging import setup_root_logger
-from .utils.components.theme import get_help_theme_styles, get_accent_style
-from .utils.components import print_success
-from .utils.banner import print_indexed_banner
-from .utils.storage_info import (
+from rich.theme import Theme  # noqa: E402
+from .utils.logging import setup_root_logger  # noqa: E402
+from .utils.components.theme import get_help_theme_styles, get_accent_style  # noqa: E402
+from .utils.components import print_success  # noqa: E402
+from .utils.banner import print_indexed_banner  # noqa: E402
+from .utils.storage_info import (  # noqa: E402
     print_storage_info,
     get_storage_mode_and_reason,
     StorageMode,
@@ -25,7 +31,7 @@ from .utils.storage_info import (
 
 # Override Typer's default Rich help colors with our custom accent color
 # This must be done before Typer initializes its help formatting
-import typer.rich_utils
+import typer.rich_utils  # noqa: E402
 
 typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"

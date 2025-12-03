@@ -1,29 +1,43 @@
 """Indexed MCP Server using FastMCP.
 
 Provides search and inspect capabilities for document collections via MCP tools and resources.
+Uses FastMCP 2.13+ features including server lifespan and response caching middleware.
 """
 
-from typing import Any, Dict, List, Optional
-from fastmcp import FastMCP
+# Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
+# Must be done before any faiss imports occur
+import warnings
+
+warnings.filterwarnings("ignore", message="builtin type Swig.*")
+
+from contextlib import asynccontextmanager  # noqa: E402
+from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict  # noqa: E402
+
+from fastmcp import FastMCP  # noqa: E402
+from fastmcp.server.middleware.caching import ResponseCachingMiddleware  # noqa: E402
 
 # Import ConfigService for configuration
-from indexed_config import ConfigService
-from core.v1.config_models import MCPConfig, CoreV1SearchConfig
+from indexed_config import ConfigService  # noqa: E402
+from core.v1.config_models import MCPConfig, CoreV1SearchConfig  # noqa: E402
 
 # Import our service layer
-from core.v1.engine.services import (
+from core.v1.engine.services import (  # noqa: E402
     search as svc_search,
     status as svc_status,
     SourceConfig,
 )
 
-# Create the FastMCP server instance
-mcp = FastMCP("Indexed MCP Server")
+
+class LifespanState(TypedDict):
+    """Type definition for lifespan state returned to tools/resources."""
+
+    mcp_config: MCPConfig
+    search_config: CoreV1SearchConfig
 
 
 def _get_mcp_config() -> MCPConfig:
     """Load MCP configuration from ConfigService.
-    
+
     Returns:
         MCPConfig instance with values from config hierarchy
         (defaults -> global TOML -> workspace TOML -> env vars).
@@ -40,7 +54,7 @@ def _get_mcp_config() -> MCPConfig:
 
 def _get_search_config() -> CoreV1SearchConfig:
     """Load search configuration from ConfigService.
-    
+
     Returns:
         CoreV1SearchConfig instance with values from config hierarchy.
     """
@@ -54,13 +68,41 @@ def _get_search_config() -> CoreV1SearchConfig:
         return CoreV1SearchConfig()
 
 
-# Load configurations at module level (cached)
+@asynccontextmanager
+async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
+    """Server lifespan context manager for configuration initialization.
+
+    This runs once when the server starts (not per-client session).
+    Initializes configuration and yields it for use by tools/resources.
+
+    Args:
+        server: The FastMCP server instance
+
+    Yields:
+        LifespanState with mcp_config and search_config
+    """
+    # Initialize configuration at server startup
+    mcp_config = _get_mcp_config()
+    search_config = _get_search_config()
+
+    yield {"mcp_config": mcp_config, "search_config": search_config}
+
+
+# Create the FastMCP server instance with lifespan
+mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
+
+# Add response caching middleware for expensive search operations
+# This caches tool and resource call results with TTL-based expiration
+mcp.add_middleware(ResponseCachingMiddleware())
+
+
+# Legacy config accessors for backward compatibility and non-lifespan contexts
 _mcp_config: Optional[MCPConfig] = None
 _search_config: Optional[CoreV1SearchConfig] = None
 
 
 def get_mcp_config() -> MCPConfig:
-    """Get cached MCP configuration."""
+    """Get cached MCP configuration (fallback for non-lifespan contexts)."""
     global _mcp_config
     if _mcp_config is None:
         _mcp_config = _get_mcp_config()
@@ -68,14 +110,14 @@ def get_mcp_config() -> MCPConfig:
 
 
 def get_search_config() -> CoreV1SearchConfig:
-    """Get cached search configuration."""
+    """Get cached search configuration (fallback for non-lifespan contexts)."""
     global _search_config
     if _search_config is None:
         _search_config = _get_search_config()
     return _search_config
 
 
-@mcp.tool()
+@mcp.tool
 def search(query: str) -> Dict[str, Any]:
     """
     Search across all available document collections using semantic similarity.
@@ -87,7 +129,7 @@ def search(query: str) -> Dict[str, Any]:
         Dictionary with collection names as keys and search results as values
     """
     search_cfg = get_search_config()
-    
+
     try:
         # Use auto-discovery mode (configs=None) to search all collections
         results = svc_search(
@@ -105,7 +147,7 @@ def search(query: str) -> Dict[str, Any]:
         return {"error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool
 def search_collection(collection: str, query: str) -> Dict[str, Any]:
     """
     Search within a specific document collection using semantic similarity.
@@ -120,7 +162,7 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
         Dictionary with search results for the specified collection
     """
     search_cfg = get_search_config()
-    
+
     try:
         # Get default indexer for the collection from inspect service
         try:
@@ -134,6 +176,7 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
         except Exception:
             # Fallback to default indexer
             from core.v1.constants import DEFAULT_INDEXER
+
             default_indexer = DEFAULT_INDEXER
 
         # Create SourceConfig for the specific collection
