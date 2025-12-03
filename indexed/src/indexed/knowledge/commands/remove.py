@@ -19,7 +19,6 @@ from ...utils.components import (
     get_error_style,
     get_accent_style,
     get_dim_style,
-    get_default_style,
     print_success,
     print_error,
 )

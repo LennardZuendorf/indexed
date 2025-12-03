@@ -23,7 +23,6 @@ from ...utils.components.theme import (
 from ...utils.components import (
     create_detail_card,
     get_accent_style,
-    print_success,
     print_error,
     print_info,
     ICON_SUCCESS,
