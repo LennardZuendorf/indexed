@@ -10,6 +10,8 @@ import webbrowser
 from pathlib import Path
 from typing import List, Optional
 
+from ..utils.components import print_success, print_error
+
 app = typer.Typer(help="Start MCP server for AI agent integration")
 
 
@@ -94,13 +96,10 @@ def _execute_fastmcp(cmd: List[str]) -> None:
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        typer.echo(f"❌ Error running FastMCP CLI: {e}", err=True)
+        print_error(f"Error running FastMCP CLI: {e}")
         raise typer.Exit(1)
     except FileNotFoundError:
-        typer.echo(
-            "❌ Error: FastMCP CLI not found. Please install it with: pip install fastmcp",
-            err=True,
-        )
+        print_error("FastMCP CLI not found. Please install it with: pip install fastmcp")
         raise typer.Exit(1)
 
 
@@ -658,12 +657,12 @@ def docs() -> None:
     try:
         webbrowser.open(url)
         typer.echo()
-        typer.echo("✓ Opening MCP documentation in browser...")
+        print_success("Opening MCP documentation in browser...")
         typer.echo(f"  {url}")
         typer.echo()
     except Exception as e:
         typer.echo()
-        typer.echo(f"Failed to open browser: {e}", err=True)
+        print_error(f"Failed to open browser: {e}")
         typer.echo(f"Visit manually: {url}")
         typer.echo()
         raise typer.Exit(1)

@@ -20,6 +20,8 @@ from ...utils.components import (
     get_accent_style,
     get_dim_style,
     get_default_style,
+    print_success,
+    print_error,
 )
 from ...utils.format import format_size, format_time
 
@@ -143,14 +145,12 @@ def remove(
             f"[{get_dim_style()}]Removing collection '{collection}'...[/{get_dim_style()}]"
         )
         index.remove(collection)
-        console.print(
-            f"[{get_default_style()}]✓ Collection '{collection}' removed[/{get_default_style()}]"
-        )
+        print_success(f"Collection '{collection}' removed")
 
         # Show summary
         console.print()
         console.print(create_summary("Removed", f"{collection} collection."))
 
     except Exception as e:
-        console.print(f"[red]✗ Failed to remove '{collection}': {e}[/red]")
+        print_error(f"Failed to remove '{collection}': {e}")
         raise typer.Exit(1)

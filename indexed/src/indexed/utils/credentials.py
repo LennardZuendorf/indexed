@@ -14,6 +14,7 @@ from indexed_config import ConfigService
 from .logging import is_verbose_mode
 from .console import console
 from .components.theme import get_heading_style, get_dim_style, get_accent_style
+from .components import print_error
 
 
 def ensure_credentials_for_source(
@@ -113,7 +114,7 @@ def ensure_atlassian_cloud_credentials(
         if field_name == "email":
             value = console.input(f"[{get_accent_style()}]Atlassian Email[/{get_accent_style()}]: ")
             if not value:
-                typer.secho("✗ Email is required for Atlassian Cloud authentication", fg="red", err=True)
+                print_error("Email is required for Atlassian Cloud authentication")
                 raise typer.Exit(1)
             # Save email to config.toml (non-sensitive)
             config_service.set_value(
@@ -126,7 +127,7 @@ def ensure_atlassian_cloud_credentials(
         elif field_name == "api_token":
             value = Prompt.ask(f"[{get_accent_style()}]API Token[/{get_accent_style()}]", password=True)
             if not value:
-                typer.secho("✗ API token is required for Atlassian Cloud authentication", fg="red", err=True)
+                print_error("API token is required for Atlassian Cloud authentication")
                 raise typer.Exit(1)
             # Save token to .env file (sensitive)
             config_service.set_value(
@@ -193,7 +194,7 @@ def ensure_server_credentials(
     if auth_choice.lower() in ("y", "yes"):
         token = Prompt.ask(f"[{get_accent_style()}]Token[/{get_accent_style()}]", password=True)
         if not token:
-            typer.secho("✗ Token is required", fg="red", err=True)
+            print_error("Token is required")
             raise typer.Exit(1)
         config_service.set_value(
             f"{namespace}.token",
@@ -206,7 +207,7 @@ def ensure_server_credentials(
         # Prompt for login+password
         login = console.input(f"[{get_accent_style()}]Username[/{get_accent_style()}]: ")
         if not login:
-            typer.secho("✗ Username is required", fg="red", err=True)
+            print_error("Username is required")
             raise typer.Exit(1)
         config_service.set_value(
             f"{namespace}.login",
@@ -218,7 +219,7 @@ def ensure_server_credentials(
         
         password = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
         if not password:
-            typer.secho("✗ Password is required", fg="red", err=True)
+            print_error("Password is required")
             raise typer.Exit(1)
         config_service.set_value(
             f"{namespace}.password",
@@ -262,13 +263,13 @@ def prompt_credential_field(
     if field_name == "email":
         value = console.input(f"[{get_accent_style()}]Email[/{get_accent_style()}]: ")
         if not value:
-            typer.secho("✗ Email is required", fg="red", err=True)
+            print_error("Email is required")
             raise typer.Exit(1)
             
     elif field_name in ["api_token", "token"]:
         value = Prompt.ask(f"[{get_accent_style()}]API token[/{get_accent_style()}]", password=True)
         if not value:
-            typer.secho("✗ API token is required", fg="red", err=True)
+            print_error("API token is required")
             raise typer.Exit(1)
         # Set appropriate env var based on source type
         if field_name == "token" and source_type == "confluence":
@@ -284,7 +285,7 @@ def prompt_credential_field(
     elif field_name == "login":
         value = console.input(f"[{get_accent_style()}]Username[/{get_accent_style()}]: ")
         if not value:
-            typer.secho("✗ Username is required", fg="red", err=True)
+            print_error("Username is required")
             raise typer.Exit(1)
         # Set appropriate env var based on source type
         if source_type == "confluence":
@@ -297,7 +298,7 @@ def prompt_credential_field(
     elif field_name == "password":
         value = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
         if not value:
-            typer.secho("✗ Password is required", fg="red", err=True)
+            print_error("Password is required")
             raise typer.Exit(1)
         # Set appropriate env var based on source type
         if source_type == "confluence":

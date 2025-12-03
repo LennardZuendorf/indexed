@@ -15,11 +15,10 @@ from rich.markdown import Markdown
 from ..utils.console import console
 from ..utils.components.theme import (
     get_accent_style,
-    get_error_style,
-    get_success_style,
     get_secondary_style,
     get_dim_style,
 )
+from ..utils.components import print_success, print_error
 
 app = typer.Typer(
     help="Information & Help Commands",
@@ -70,9 +69,7 @@ def docs(
         else:
             # Invalid topic - show helpful error
             console.print()
-            console.print(
-                f"[{get_error_style()}]❌ Unknown documentation topic: {topic}[/{get_error_style()}]"
-            )
+            print_error(f"Unknown documentation topic: {topic}")
             console.print()
             console.print(f"[{get_accent_style()}]Available topics:[/{get_accent_style()}]")
             console.print()
@@ -87,16 +84,12 @@ def docs(
     try:
         webbrowser.open(url)
         console.print()
-        console.print(
-            f"[{get_success_style()}]✓[/{get_success_style()}] Opening {topic_display} in browser..."
-        )
+        print_success(f"Opening {topic_display} in browser...")
         console.print(f"[{get_secondary_style()}]{url}[/{get_secondary_style()}]")
         console.print()
     except Exception as e:
         console.print()
-        console.print(
-            f"[{get_error_style()}]❌ Failed to open browser: {e}[/{get_error_style()}]"
-        )
+        print_error(f"Failed to open browser: {e}")
         console.print(f"[{get_secondary_style()}]Visit manually: {url}[/{get_secondary_style()}]")
         console.print()
         raise typer.Exit(1)
@@ -143,9 +136,7 @@ def license_terms() -> None:
 
         if license_path is None:
             console.print()
-            console.print(
-                f"[{get_error_style()}]❌ LICENSE file not found[/{get_error_style()}]"
-            )
+            print_error("LICENSE file not found")
             console.print()
             console.print(
                 f"[{get_secondary_style()}]Could not fetch from remote and no local file found.[/{get_secondary_style()}]"
@@ -162,10 +153,7 @@ def license_terms() -> None:
             source = "local"
         except Exception as e:
             console.print()
-            console.print(
-                f"[{get_error_style()}]❌ Failed to read LICENSE: {e}[/{get_error_style()}]"
-            )
-            console.print()
+            print_error(f"Failed to read LICENSE: {e}")
             raise typer.Exit(1)
 
     # Display license with pager
@@ -197,10 +185,7 @@ def license_terms() -> None:
 
     except Exception as e:
         console.print()
-        console.print(
-            f"[{get_error_style()}]❌ Failed to display LICENSE: {e}[/{get_error_style()}]"
-        )
-        console.print()
+        print_error(f"Failed to display LICENSE: {e}")
         raise typer.Exit(1)
 
 

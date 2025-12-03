@@ -20,6 +20,7 @@ from ...utils.components.theme import (
     get_heading_style,
     get_accent_style,
 )
+from ...utils.components import print_success, print_error
 from ...utils.credentials import (
     prompt_credential_field,
     is_credential_field,
@@ -287,7 +288,7 @@ def create_files(
     
     # If creation failed, show error and exit
     if creation_error:
-        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        print_error(f"Failed to create collection: {str(creation_error)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -306,16 +307,16 @@ def create_files(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from files")
+            print_success(f"Collection '{collection}' created with {doc_count} documents from files")
         else:
-            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
+            print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)
     
     except typer.Exit:
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
+        print_error(f"Failed to verify collection: {str(e)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -423,7 +424,7 @@ def create_jira(
         url_was_prompted = True
         
         if not resolved_url:
-            typer.secho("✗ Jira URL is required", fg="red", err=True)
+            print_error("Jira URL is required")
             raise typer.Exit(1)
     
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
@@ -554,7 +555,7 @@ def create_jira(
     
     # If creation failed, show error and exit
     if creation_error:
-        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        print_error(f"Failed to create collection: {str(creation_error)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -573,16 +574,16 @@ def create_jira(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Jira")
+            print_success(f"Collection '{collection}' created with {doc_count} documents from Jira")
         else:
-            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
+            print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)
     
     except typer.Exit:
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
+        print_error(f"Failed to verify collection: {str(e)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -695,7 +696,7 @@ def create_confluence(
         url_was_prompted = True
         
         if not resolved_url:
-            typer.secho("✗ Confluence URL is required", fg="red", err=True)
+            print_error("Confluence URL is required")
             raise typer.Exit(1)
     
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
@@ -845,7 +846,7 @@ def create_confluence(
     
     # If creation failed, show error and exit
     if creation_error:
-        typer.secho(f"✗ Failed to create collection: {str(creation_error)}", fg="red", err=True)
+        print_error(f"Failed to create collection: {str(creation_error)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
@@ -864,16 +865,16 @@ def create_confluence(
             if is_verbose_mode():
                 logger.info("Collection created successfully with %d documents", doc_count)
             
-            typer.echo(f"✓ Collection '{collection}' created with {doc_count} documents from Confluence")
+            print_success(f"Collection '{collection}' created with {doc_count} documents from Confluence")
         else:
-            typer.secho("✗ Collection creation failed - no valid collection found", fg="red", err=True)
+            print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)
     
     except typer.Exit:
         # Re-raise typer.Exit to preserve exit code
         raise
     except Exception as e:
-        typer.secho(f"✗ Failed to verify collection: {str(e)}", fg="red", err=True)
+        print_error(f"Failed to verify collection: {str(e)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)

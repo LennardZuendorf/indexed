@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from rich.theme import Theme
 from .utils.logging import setup_root_logger
 from .utils.components.theme import get_help_theme_styles, get_accent_style
+from .utils.components import print_success
 from .utils.banner import print_indexed_banner
 from .utils.storage_info import (
     print_storage_info,
@@ -196,9 +197,7 @@ def _init_app(
             "[storage]\n"
             'mode = "local"  # Always use local storage for this project\n'
         )
-        _prompt_console.print(
-            f"[green]✓[/green] Created local .indexed folder at {local_root}"
-        )
+        print_success(f"Created local .indexed folder at {local_root}")
         local_exists = True
     
     # Determine mode override from flags or local existence

@@ -17,9 +17,9 @@ from .components.theme import (
     get_accent_style,
     get_card_border_style,
     get_dim_style,
-    get_success_style,
     get_warning_style,
 )
+from .components import print_success, print_warning, print_error
 
 
 def _get_legacy_data_path() -> Path:
@@ -133,9 +133,7 @@ def migrate_legacy_data(
             dst = target_collections / collection
             
             if dst.exists():
-                console.print(
-                    f"[{get_warning_style()}]⚠️  Skipping {collection} - already exists at target[/]"
-                )
+                print_warning(f"Skipping {collection} - already exists at target")
                 continue
             
             console.print(f"[{get_dim_style()}]Copying {collection}...[/]")
@@ -156,7 +154,7 @@ def migrate_legacy_data(
                     shutil.copy2(src, dst)
         
         console.print()
-        console.print(f"[{get_success_style()}]✓ Migration complete![/]")
+        print_success("Migration complete!")
         console.print()
         console.print(
             f"[{get_dim_style()}]Note: Original data at ./data/ has been preserved.\n"
@@ -167,7 +165,7 @@ def migrate_legacy_data(
         return True
         
     except Exception as e:
-        console.print(f"[red]Migration failed: {e}[/red]")
+        print_error(f"Migration failed: {e}")
         return False
 
 

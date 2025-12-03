@@ -118,7 +118,12 @@ def get_title_style() -> str:
 
 def get_dim_style() -> str:
     """Get style string for dim text."""
-    return _DIM_COLOR
+    return _DIM_STYLE
+
+
+def get_info_style() -> str:
+    """Get style string for info messages."""
+    return _INFO_STYLE
 
 
 def get_heading_style() -> str:

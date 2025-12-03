@@ -21,6 +21,7 @@ from ...utils.components import (
     get_card_padding,
     get_secondary_style,
     get_default_style,
+    print_error,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -371,7 +372,7 @@ def search(
         # Search specific collection
         statuses = status([collection])
         if not statuses:
-            typer.echo(f"❌ Collection '{collection}' not found")
+            print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_search = [collection]

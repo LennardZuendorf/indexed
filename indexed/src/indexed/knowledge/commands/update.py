@@ -23,6 +23,11 @@ from ...utils.components.theme import (
 from ...utils.components import (
     create_detail_card,
     get_accent_style,
+    print_success,
+    print_error,
+    print_info,
+    ICON_SUCCESS,
+    ICON_ERROR,
 )
 from ...utils.credentials import ensure_credentials_for_source
 
@@ -203,7 +208,7 @@ def update(
         # Update specific collection
         statuses = svc_status([collection])
         if not statuses:
-            typer.echo(f"❌ Collection '{collection}' not found")
+            print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_update = [collection]
@@ -251,12 +256,12 @@ def update(
                         update_service([source_config], progress_callback=callback)
                     status.complete(
                         success=True,
-                        success_message=f"✓ [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated",
+                        success_message=f"{ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated",
                     )
                 except Exception as e:
                     status.complete(
                         success=False,
-                        failure_message=f"✗ [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed",
+                        failure_message=f"{ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed",
                     )
                     update_error = e
                     break
@@ -268,14 +273,14 @@ def update(
     
     # If update failed, show error and exit
     if update_error:
-        typer.secho(f"✗ Failed to update collection: {str(update_error)}", fg="red", err=True)
+        print_error(f"Failed to update collection: {str(update_error)}")
         raise typer.Exit(1)
 
     # Notify user if config was newly created
     if not config_existed and config_was_created:
         config_path = _get_config_path(config_service)
         console.print()
-        console.print(f"[{get_dim_style()}]ℹ️  Created new config file with default settings: {config_path}[/{get_dim_style()}]")
+        print_info(f"Created new config file with default settings: {config_path}")
 
     # Display comparison results
     console.print(

@@ -28,6 +28,11 @@ from ..utils.components import (
     get_secondary_style,
     get_accent_style,
     get_dim_style,
+    print_success,
+    print_error,
+    print_warning,
+    print_info,
+    ICON_SUCCESS,
 )
 
 app = typer.Typer(help="Manage configuration")
@@ -405,7 +410,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
         if section in existing_sections:
             key_count = len(grouped_config[section])
             plural = "key" if key_count == 1 else "keys"
-            status = f"✓ {key_count} {plural} configured"
+            status = f"{ICON_SUCCESS} {key_count} {plural} configured"
             table.add_row(
                 f"{idx}.",
                 display_name,
@@ -442,7 +447,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
     except ValueError:
         pass
     
-    console.print(f"[{get_error_style()}]Invalid choice[/{get_error_style()}]")
+    print_error("Invalid choice")
     return None
 
 
@@ -576,7 +581,7 @@ def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tup
     except ValueError:
         pass
     
-    console.print(f"[{get_error_style()}]Invalid choice[/{get_error_style()}]")
+    print_error("Invalid choice")
     return None
 
 
@@ -694,17 +699,17 @@ def _load_external_toml(file_path: str) -> Optional[dict[str, Any]]:
         try:
             import tomli as tomllib
         except Exception:
-            console.print(f"[{get_error_style()}]❌ TOML library not available[/{get_error_style()}]")
+            print_error("TOML library not available")
             return None
     
     path = Path(file_path).expanduser().resolve()
     
     if not path.exists():
-        console.print(f"[{get_error_style()}]❌ File not found: {path}[/{get_error_style()}]")
+        print_error(f"File not found: {path}")
         return None
     
     if not path.is_file():
-        console.print(f"[{get_error_style()}]❌ Not a file: {path}[/{get_error_style()}]")
+        print_error(f"Not a file: {path}")
         return None
     
     try:
@@ -712,7 +717,7 @@ def _load_external_toml(file_path: str) -> Optional[dict[str, Any]]:
             data = tomllib.load(f)
         return data
     except Exception as e:
-        console.print(f"[{get_error_style()}]❌ Failed to parse TOML: {e}[/{get_error_style()}]")
+        print_error(f"Failed to parse TOML: {e}")
         return None
 
 
@@ -736,10 +741,10 @@ def _backup_config(config_path: Path) -> bool:
     
     try:
         shutil.copy2(config_path, backup_path)
-        console.print(f"[{get_success_style()}]✓ Backup created: {backup_path.name}[/{get_success_style()}]")
+        print_success(f"Backup created: {backup_path.name}")
         return True
     except Exception as e:
-        console.print(f"[{get_warning_style()}]⚠️  Could not create backup: {e}[/{get_warning_style()}]")
+        print_warning(f"Could not create backup: {e}")
         return False
 
 
@@ -1200,14 +1205,13 @@ def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
         
         console.print()
         success_msg = "added" if is_new else "updated"
-        console.print(f"[{get_success_style()}]✓ Configuration {success_msg} successfully[/{get_success_style()}]")
+        print_success(f"Configuration {success_msg} successfully")
         console.print(f"[{get_secondary_style()}]Location: {global_path}[/{get_secondary_style()}]")
         console.print()
         
     except Exception as e:
         console.print()
-        console.print(f"[{get_error_style()}]❌ Error updating configuration: {e}[/{get_error_style()}]")
-        console.print()
+        print_error(f"Error updating configuration: {e}")
         raise typer.Exit(1)
     
     return True
@@ -1227,7 +1231,7 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
     console.print()
     console.print(f"[{get_heading_style()}]Replace Configuration From File[/{get_heading_style()}]")
     console.print()
-    console.print(f"[{get_warning_style()}]⚠️  Warning: This will completely replace your global configuration![/{get_warning_style()}]")
+    print_warning("This will completely replace your global configuration!")
     console.print()
     
     # Load and validate the file
@@ -1237,7 +1241,7 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
         return False
     
     console.print()
-    console.print(f"[{get_success_style()}]✓ TOML file loaded successfully[/{get_success_style()}]")
+    print_success("TOML file loaded successfully")
     console.print()
     
     # Show what will change
@@ -1264,7 +1268,7 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
             config._store.write(temp_current)
         
         if errors:
-            console.print(f"[{get_error_style()}]❌ Validation failed:[/{get_error_style()}]")
+            print_error("Validation failed")
             console.print()
             for path, msg in errors:
                 console.print(f"  • {path}: {msg}")
@@ -1273,17 +1277,15 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
             console.print()
             return False
         
-        console.print(f"[{get_success_style()}]✓ Configuration is valid[/{get_success_style()}]")
+        print_success("Configuration is valid")
         console.print()
         
     except Exception as e:
-        console.print(f"[{get_error_style()}]❌ Validation error: {e}[/{get_error_style()}]")
-        console.print()
+        print_error(f"Validation error: {e}")
         return False
     
     # Final confirmation
-    console.print(f"[{get_warning_style()}]⚠️  This will replace your global configuration at:[/{get_warning_style()}]")
-    console.print(f"[{get_secondary_style()}]    {global_path}[/{get_secondary_style()}]")
+    print_warning(f"This will replace your global configuration at: {global_path}")
     console.print()
     
     if not typer.confirm("Continue with replacement?", default=False):
@@ -1309,14 +1311,13 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
             tomlkit.dump(new_config, f)
         
         console.print()
-        console.print(f"[{get_success_style()}]✓ Global configuration replaced successfully[/{get_success_style()}]")
+        print_success("Global configuration replaced successfully")
         console.print(f"[{get_secondary_style()}]Location: {global_path}[/{get_secondary_style()}]")
         console.print()
         
     except Exception as e:
         console.print()
-        console.print(f"[{get_error_style()}]❌ Error writing configuration: {e}[/{get_error_style()}]")
-        console.print()
+        print_error(f"Error writing configuration: {e}")
         raise typer.Exit(1)
     
     return True
@@ -1395,7 +1396,7 @@ def set_config(
         errs = config.validate()
         if errs:
             console.print()
-            console.print(f"[{get_warning_style()}]⚠️  Validation warnings detected:[/{get_warning_style()}]")
+            print_warning("Validation warnings detected")
             console.print()
             for path, msg in errs:
                 console.print(f"  [{get_warning_style()}]•[/{get_warning_style()}] {path}: {msg}")
@@ -1414,13 +1415,12 @@ def set_config(
         card = create_detail_card(title="Change Summary", rows=rows)
         console.print(card)
         console.print()
-        console.print(f"[{get_success_style()}]✓ Configuration saved to .indexed/config.toml[/{get_success_style()}]")
+        print_success("Configuration saved to .indexed/config.toml")
         console.print()
         
     except Exception as e:
         console.print()
-        console.print(f"[{get_error_style()}]❌ Error: {e}[/{get_error_style()}]")
-        console.print()
+        print_error(f"Error: {e}")
         raise typer.Exit(1)
 
 
@@ -1472,7 +1472,7 @@ def delete_config(
     
     if current_value is None:
         console.print()
-        console.print(f"[{get_warning_style()}]ℹ️  Key not found: {key}[/{get_warning_style()}]")
+        print_info(f"Key not found: {key}")
         console.print()
         return
     
@@ -1490,8 +1490,7 @@ def delete_config(
         card = create_detail_card(title="Current Value", rows=rows)
         console.print(card)
         console.print()
-        console.print(f"[{get_warning_style()}]⚠️  This will remove the key from workspace config.[/{get_warning_style()}]")
-        console.print()
+        print_warning("This will remove the key from workspace config.")
         
         if not typer.confirm("Continue?", default=False):
             console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
@@ -1501,11 +1500,11 @@ def delete_config(
     # Delete the key
     if config.delete(key):
         console.print()
-        console.print(f"[{get_success_style()}]✓ Deleted {key}[/{get_success_style()}]")
+        print_success(f"Deleted {key}")
         console.print()
     else:
         console.print()
-        console.print(f"[{get_warning_style()}]ℹ️  Key not found: {key}[/{get_warning_style()}]")
+        print_info(f"Key not found: {key}")
         console.print()
 
 
@@ -1547,12 +1546,7 @@ def validate(
     
     if not errs:
         # Success case - no errors
-        success_card = Panel(
-            Text("✓ All configuration values are valid", style=get_success_style()),
-            border_style=get_success_style(),
-            padding=get_card_padding(),
-        )
-        console.print(success_card)
+        print_success("All configuration values are valid")
         console.print()
         return
     
@@ -1594,7 +1588,7 @@ def validate(
     # Summary
     error_count = len(errs)
     plural = "error" if error_count == 1 else "errors"
-    console.print(f"[{get_error_style()}]❌ {error_count} validation {plural} found[/{get_error_style()}]")
+    print_error(f"{error_count} validation {plural} found")
     console.print()
     
     raise typer.Exit(1)
@@ -1643,7 +1637,7 @@ def init_config(
     
     # Check if already initialized
     if workspace_dir.exists() and not force:
-        console.print(f"[{get_warning_style()}]⚠️  Workspace already initialized at {workspace_dir}[/{get_warning_style()}]")
+        print_warning(f"Workspace already initialized at {workspace_dir}")
         console.print()
         console.print(f"[{get_secondary_style()}]Use --force to overwrite existing configuration.[/{get_secondary_style()}]")
         console.print()
@@ -1744,7 +1738,7 @@ max_chunks = 50
         console.print(card)
         console.print()
     
-    console.print(f"[{get_success_style()}]✓ Workspace initialized at {workspace_dir}[/{get_success_style()}]")
+    print_success(f"Workspace initialized at {workspace_dir}")
     console.print()
     
     # Next steps
@@ -1763,14 +1757,12 @@ def docs() -> None:
     try:
         webbrowser.open(url)
         console.print()
-        console.print(
-            f"[{get_success_style()}]✓[/{get_success_style()}] Opening configuration documentation in browser..."
-        )
+        print_success("Opening configuration documentation in browser...")
         console.print(f"[{get_secondary_style()}]{url}[/{get_secondary_style()}]")
         console.print()
     except Exception as e:
         console.print()
-        console.print(f"Failed to open browser: {e}")
+        print_error(f"Failed to open browser: {e}")
         console.print(f"Visit manually: {url}")
         console.print()
         raise typer.Exit(1)
