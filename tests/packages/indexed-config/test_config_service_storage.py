@@ -168,13 +168,11 @@ class TestWorkspacePreferences:
                 result = service.clear_workspace_preference()
                 assert result is False
 
-    def test_get_all_workspace_preferences(self):
-        """get_all_workspace_preferences returns all preferences."""
+    def test_get_workspace_config(self):
+        """get_workspace_config returns workspace configuration."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace1 = Path(tmpdir) / "project1"
-            workspace1.mkdir()
-            workspace2 = Path(tmpdir) / "project2"
-            workspace2.mkdir()
+            workspace = Path(tmpdir) / "project"
+            workspace.mkdir()
             
             global_home = Path(tmpdir) / "home"
             global_dir = global_home / ".indexed"
@@ -184,20 +182,34 @@ class TestWorkspacePreferences:
             with patch.object(Path, 'home', return_value=global_home):
                 ConfigService.reset()
                 
-                # Set preferences for two workspaces
-                service1 = ConfigService(workspace=workspace1)
-                service1.set_workspace_preference("local")
+                service = ConfigService(workspace=workspace)
+                service.set_workspace_preference("local")
                 
-                service2 = ConfigService(workspace=workspace2)
-                service2.set_workspace_preference("global")
+                # Get workspace config
+                config = service.get_workspace_config()
                 
-                # Get all preferences
-                all_prefs = service1.get_all_workspace_preferences()
+                assert config["mode"] == "local"
+                assert config["local_path"] == str(workspace)
+                assert config["global_path"] == "~/.indexed"
+    
+    def test_get_workspace_config_returns_empty_when_not_set(self):
+        """get_workspace_config returns empty dict when no config exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "project"
+            workspace.mkdir()
+            
+            global_home = Path(tmpdir) / "home"
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text("")
+            
+            with patch.object(Path, 'home', return_value=global_home):
+                ConfigService.reset()
                 
-                assert str(workspace1) in all_prefs
-                assert all_prefs[str(workspace1)] == "local"
-                assert str(workspace2) in all_prefs
-                assert all_prefs[str(workspace2)] == "global"
+                service = ConfigService(workspace=workspace)
+                config = service.get_workspace_config()
+                
+                assert config == {}
 
 
 class TestStorageModeResolution:

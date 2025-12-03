@@ -55,8 +55,8 @@ class TestBuildConnectorFromConfig:
         "ATLASSIAN_EMAIL": "test@example.com",
         "ATLASSIAN_TOKEN": "test-token"
     })
-    def test_build_confluence_cloud_connector(self):
-        """Test building Confluence Cloud connector."""
+    def test_build_confluence_cloud_type_connector(self):
+        """Test building Confluence Cloud connector (confluenceCloud type)."""
         config_service = MagicMock()
         
         source_config = SourceConfig(
@@ -118,8 +118,8 @@ class TestBuildConnectorFromConfig:
         "ATLASSIAN_EMAIL": "test@example.com",
         "ATLASSIAN_TOKEN": "test-token"
     })
-    def test_build_jira_cloud_connector(self):
-        """Test building Jira Cloud connector."""
+    def test_build_jira_cloud_type_connector(self):
+        """Test building Jira Cloud connector (jiraCloud type)."""
         config_service = MagicMock()
         
         source_config = SourceConfig(

@@ -204,7 +204,7 @@ User Command: indexed index create jira --url https://company.atlassian.net
 │       │
 │       └─► config.validate_requirements(
 │               config_class=JiraCloudConfig,
-│               namespace="sources.jira_cloud",
+│               namespace="sources.jira",
 │               cli_overrides={"url": "..."}
 │           )
 │           │
@@ -333,7 +333,7 @@ config = ConfigService()
 # Validate requirements using Pydantic model introspection
 validation = config.validate_requirements(
     config_class=JiraCloudConfig,
-    namespace="sources.jira_cloud",
+    namespace="sources.jira",
     cli_overrides={"url": "https://company.atlassian.net"}
 )
 
@@ -345,7 +345,7 @@ if validation["missing"]:
         
         # ConfigService automatically saves to .env or .toml based on sensitivity
         config.set_value(
-            f"sources.jira_cloud.{field_name}",
+            f"sources.jira.{field_name}",
             value,
             field_info=field_info
         )
@@ -408,10 +408,8 @@ class MyConnectorConfig(BaseModel):
 ### Configuration Paths
 
 **Connectors** (`sources.*`):
-- `sources.jira` - Jira Server/DC
-- `sources.jira_cloud` - Jira Cloud
-- `sources.confluence` - Confluence Server/DC
-- `sources.confluence_cloud` - Confluence Cloud
+- `sources.jira` - Jira (both Server/DC and Cloud use unified namespace)
+- `sources.confluence` - Confluence (both Server/DC and Cloud use unified namespace)
 - `sources.files` - File System
 
 **Core v1** (`core.v1.*`):

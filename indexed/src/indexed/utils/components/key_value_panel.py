@@ -1,0 +1,192 @@
+"""Key-Value Panel Component.
+
+A reusable component that combines Table.grid() inside Panel for clean
+key-value displays with proper alignment across the CLI.
+"""
+
+from typing import Sequence
+
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
+
+from .theme import (
+    get_label_style,
+    get_card_border_style,
+    get_value_style,
+    get_heading_style,
+    get_secondary_style,
+)
+
+
+def _truncate(value: str, max_len: int) -> str:
+    """Truncate a string with ellipsis if it exceeds max length.
+    
+    Args:
+        value: String to truncate
+        max_len: Maximum length before truncation
+        
+    Returns:
+        Original string or truncated string with "..."
+    """
+    if len(value) <= max_len:
+        return value
+    return value[: max_len - 3] + "..."
+
+
+def create_key_value_panel(
+    title: str,
+    rows: Sequence[tuple[str, str, str] | tuple[str, str]],
+    *,
+    category_width: int = 15,
+    key_width: int = 25,
+    value_max_len: int = 50,
+    show_category: bool = True,
+    show_headers: bool = True,
+    headers: tuple[str, str, str] | tuple[str, str] | None = None,
+    expand: bool = True,
+) -> Panel:
+    """Create a panel with aligned key-value rows.
+    
+    This component uses Table.grid() inside a Panel to achieve:
+    - Clean visual structure with rounded panel borders
+    - Proper column alignment without internal gridlines
+    - Truncated values to prevent line wrapping
+    - Optional muted column headers
+    
+    Args:
+        title: Panel title displayed at the top border
+        rows: List of tuples - either (category, key, value) for 3-column mode
+              or (key, value) for 2-column mode when show_category=False
+        category_width: Fixed width for category column in characters
+        key_width: Fixed width for key column in characters
+        value_max_len: Maximum length for values before truncation with "..."
+        show_category: Whether to show category column (False for 2-column mode)
+        show_headers: Whether to show column headers (default: True)
+        headers: Custom header labels. Defaults to ("source", "key", "value") for 
+                 3-column or ("key", "value") for 2-column mode
+        expand: Whether the panel should expand to fill available width
+    
+    Returns:
+        Rich Panel containing a Table.grid with proper alignment
+        
+    Example:
+        >>> rows = [
+        ...     ("confluence", "url", "https://example.atlassian.net"),
+        ...     ("confluence", "query", "space = 'DOCS'"),
+        ...     ("files", "path", "./documents"),
+        ... ]
+        >>> panel = create_key_value_panel("Sources", rows)
+        >>> console.print(panel)
+    """
+    grid = Table.grid(padding=(0, 2), expand=expand)
+    
+    if show_category:
+        # Category column: blue
+        grid.add_column(style=get_label_style(), width=category_width, no_wrap=True)
+    # Key column: bold white
+    grid.add_column(style=get_heading_style(), width=key_width, no_wrap=True)
+    # Value column: white (not muted)
+    grid.add_column(style=get_value_style(), no_wrap=True)
+    
+    # Add header row if enabled (using Text objects to fully override column styles)
+    if show_headers and rows:
+        from rich.text import Text
+        
+        # Grey color for headers - must set explicit color to override column style
+        header_style = get_secondary_style()
+        
+        if show_category:
+            default_headers = ("source", "key", "value")
+            h = headers if headers and len(headers) == 3 else default_headers
+            # Use Text objects with explicit grey color to override column styles
+            grid.add_row(
+                Text(h[0], style=header_style),
+                Text(h[1], style=header_style),
+                Text(h[2], style=header_style),
+            )
+            # Empty separator row
+            grid.add_row("", "", "")
+        else:
+            default_headers = ("key", "value")
+            h = headers if headers and len(headers) == 2 else default_headers
+            grid.add_row(
+                Text(h[0], style=header_style),
+                Text(h[1], style=header_style),
+            )
+            # Empty separator row
+            grid.add_row("", "")
+    
+    for row in rows:
+        if show_category:
+            if len(row) == 3:
+                category, key, value = row
+            else:
+                # Handle 2-tuple when show_category is True (use empty category)
+                category = ""
+                key, value = row
+            truncated = _truncate(str(value), value_max_len)
+            grid.add_row(category, key, truncated)
+        else:
+            # 2-column mode
+            if len(row) == 3:
+                _, key, value = row  # Ignore category
+            else:
+                key, value = row
+            truncated = _truncate(str(value), value_max_len)
+            grid.add_row(key, truncated)
+    
+    return Panel(
+        grid,
+        title=title,
+        title_align="left",
+        box=box.ROUNDED,
+        border_style=get_card_border_style(),
+        expand=expand,
+    )
+
+
+def create_simple_key_value_panel(
+    title: str,
+    rows: Sequence[tuple[str, str]],
+    *,
+    key_width: int = 50,
+    value_max_len: int = 30,
+    show_headers: bool = True,
+    headers: tuple[str, str] | None = None,
+    expand: bool = True,
+) -> Panel:
+    """Create a simple 2-column key-value panel.
+    
+    A convenience wrapper for create_key_value_panel with show_category=False.
+    
+    Args:
+        title: Panel title
+        rows: List of (key, value) tuples
+        key_width: Fixed width for key column
+        value_max_len: Maximum value length before truncation
+        show_headers: Whether to show column headers
+        headers: Custom header labels (key, value)
+        expand: Whether to expand to fill width
+        
+    Returns:
+        Rich Panel with 2-column layout
+        
+    Example:
+        >>> rows = [
+        ...     ("/Users/dev/project", "local"),
+        ...     ("/Users/dev/other", "global"),
+        ... ]
+        >>> panel = create_simple_key_value_panel("Workspace Preferences", rows)
+    """
+    return create_key_value_panel(
+        title,
+        rows,
+        key_width=key_width,
+        value_max_len=value_max_len,
+        show_category=False,
+        show_headers=show_headers,
+        headers=headers,
+        expand=expand,
+    )
+

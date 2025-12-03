@@ -11,6 +11,6 @@ try:
 
     _svc = ConfigService.instance()
     _svc.register(JiraConfig, path="connectors.jira")
-    _svc.register(JiraCloudConfig, path="connectors.jira_cloud")
+    _svc.register(JiraCloudConfig, path="connectors.jira")
 except Exception:
     pass

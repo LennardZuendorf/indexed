@@ -124,8 +124,8 @@ def test_confluence_connector_config_spec():
 
 # --- Confluence Cloud ---
 
-def test_confluence_cloud_connector_init():
-    """Instantiate ConfluenceCloudConnector with direct email+token."""
+def test_confluence_cloud_type_connector_init():
+    """Instantiate ConfluenceCloudConnector with direct email+token (confluenceCloud type)."""
     connector = ConfluenceCloudConnector(
         url="https://company.atlassian.net",
         query="space = DEV",
@@ -141,8 +141,8 @@ def test_confluence_cloud_connector_init():
     )
 
 
-def test_confluence_cloud_connector_from_config_dto():
-    """Create ConfluenceCloudConnector from config DTO values."""
+def test_confluence_cloud_type_connector_from_config_dto():
+    """Create ConfluenceCloudConnector from config DTO values (confluenceCloud type)."""
     config_dto = ConfluenceCloudConfig(
         url="https://company.atlassian.net",
         query="space = DEV",
@@ -161,8 +161,8 @@ def test_confluence_cloud_connector_from_config_dto():
     assert isinstance(connector.reader, ConfluenceCloudDocumentReader)
 
 
-def test_confluence_cloud_connector_read_all_comments_flag():
-    """Test read_all_comments flag is properly passed through."""
+def test_confluence_cloud_type_connector_read_all_comments_flag():
+    """Test read_all_comments flag is properly passed through (confluenceCloud type)."""
     connector = ConfluenceCloudConnector(
         url="https://company.atlassian.net",
         query="space = DEV",
@@ -174,7 +174,7 @@ def test_confluence_cloud_connector_read_all_comments_flag():
     assert connector.reader.read_all_comments is False
 
 
-def test_confluence_cloud_connector_config_spec():
+def test_confluence_cloud_type_connector_config_spec():
     """Test ConfluenceCloudConnector.config_spec() returns correct specification."""
     spec = ConfluenceCloudConnector.config_spec()
     

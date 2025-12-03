@@ -42,7 +42,7 @@ class Provider:
         """Get config instance by dot path.
         
         Args:
-            path: Dot-separated path (e.g., 'sources.jira_cloud').
+            path: Dot-separated path (e.g., 'sources.jira').
             
         Returns:
             Validated config instance.

@@ -105,7 +105,7 @@ def get_config_namespace(connector_type: str) -> str:
         connector_type: Connector type string
         
     Returns:
-        Config namespace path (e.g., "sources.jira_cloud")
+        Config namespace path (e.g., "sources.jira")
         
     Raises:
         ValueError: If connector_type is not registered

@@ -25,7 +25,7 @@ config = ConfigService.instance()  # Singleton pattern
 #### 1. `register(spec: Type[BaseModel], *, path: str) -> None`
 Register a Pydantic config model at a dot-path.
 - **Idempotent**: Can be called multiple times with same spec
-- **Example**: `config.register(JiraCloudConfig, path="sources.jira_cloud")`
+- **Example**: `config.register(JiraCloudConfig, path="sources.jira")`
 
 #### 2. `bind() -> Provider`
 Load, merge, and validate all registered specs.
@@ -49,11 +49,11 @@ Save config to workspace TOML file.
 
 #### 6. `get(dot_path: str) -> Any`
 Get raw value at dot-path.
-- **Example**: `url = config.get("sources.jira_cloud.url")`
+- **Example**: `url = config.get("sources.jira.url")`
 
 #### 7. `set(dot_path: str, value: Any) -> None`
 Set value at dot-path (writes to workspace TOML).
-- **Example**: `config.set("sources.jira_cloud.url", "https://...")`
+- **Example**: `config.set("sources.jira.url", "https://...")`
 
 #### 8. `delete(dot_path: str) -> bool`
 Delete key at dot-path (from workspace TOML).
@@ -86,7 +86,7 @@ Get typed config instance by Pydantic model class.
 Get config instance by dot-path.
 - Returns `BaseModel` instance
 - Raises `KeyError` if path not registered
-- **Example**: `cfg = provider.get_by_path("sources.jira_cloud")`
+- **Example**: `cfg = provider.get_by_path("sources.jira")`
 
 #### 3. `raw` (property)
 Get raw merged config dictionary.
@@ -128,9 +128,9 @@ Get raw merged config dictionary.
 │    def create_jira(collection, url, jql, ...):              │
 │        config = ConfigService()                             │
 │        if url:                                              │
-│            config.set("sources.jira_cloud.url", url)        │
+│            config.set("sources.jira.url", url)              │
 │        if jql:                                              │
-│            config.set("sources.jira_cloud.jql", jql)        │
+│            config.set("sources.jira.jql", jql)              │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -140,7 +140,7 @@ Get raw merged config dictionary.
 │                                                             │
 │    Inside from_config():                                    │
 │    ├─ config.register(JiraCloudConfig,                      │
-│    │                   path="sources.jira_cloud")           │
+│    │                   path="sources.jira")                 │
 │    ├─ provider = config.bind()                              │
 │    ├─ cfg = provider.get(JiraCloudConfig)                   │
 │    └─ return cls(url=cfg.url, email=cfg.get_email(), ...)  │
@@ -185,7 +185,7 @@ Get raw merged config dictionary.
 │ config = ConfigService()                                    │
 │ raw = config.load_raw()                                     │
 │ # OR                                                        │
-│ value = config.get("sources.jira_cloud.url")                │
+│ value = config.get("sources.jira.url")                      │
 │                                                             │
 │ Flow:                                                       │
 │ ConfigService → TomlStore.read() → Merge files → Return    │
@@ -195,7 +195,7 @@ Get raw merged config dictionary.
 │ CREATE/UPDATE Operation                                     │
 │                                                             │
 │ config = ConfigService()                                    │
-│ config.set("sources.jira_cloud.url", "https://...")        │
+│ config.set("sources.jira.url", "https://...")              │
 │                                                             │
 │ Flow:                                                       │
 │ ConfigService.set()                                         │
@@ -222,7 +222,7 @@ Get raw merged config dictionary.
 │ VALIDATE Operation                                          │
 │                                                             │
 │ config = ConfigService()                                    │
-│ config.register(JiraCloudConfig, path="sources.jira_cloud") │
+│ config.register(JiraCloudConfig, path="sources.jira")       │
 │ config.register(CoreV1IndexingConfig, path="core.v1.indexing")│
 │ errors = config.validate()                                  │
 │                                                             │
@@ -247,7 +247,7 @@ Get raw merged config dictionary.
 │ from connectors.jira import JiraCloudConfig                 │
 │                                                             │
 │ config = ConfigService()                                    │
-│ config.register(JiraCloudConfig, path="sources.jira_cloud") │
+│ config.register(JiraCloudConfig, path="sources.jira")       │
 │                                                             │
 │ provider = config.bind()  # Validates all registered specs  │
 │ cfg = provider.get(JiraCloudConfig)  # Type: JiraCloudConfig│
@@ -310,10 +310,8 @@ class JiraCloudConfig(BaseModel):
 
 **Connector Configs** (`sources.*`):
 ```
-sources.jira                    # Jira Server/DC
-sources.jira_cloud              # Jira Cloud
-sources.confluence              # Confluence Server/DC
-sources.confluence_cloud        # Confluence Cloud
+sources.jira                    # Jira (both Server/DC and Cloud)
+sources.confluence              # Confluence (both Server/DC and Cloud)
 sources.files                   # File System
 ```
 
@@ -345,9 +343,9 @@ from connectors.jira import JiraCloudConnector
 config = ConfigService()
 
 # Set config values (optional, can also be in TOML file)
-config.set("sources.jira_cloud.url", "https://company.atlassian.net")
-config.set("sources.jira_cloud.email", "user@company.com")
-config.set("sources.jira_cloud.query", "project = PROJ")
+config.set("sources.jira.url", "https://company.atlassian.net")
+config.set("sources.jira.email", "user@company.com")
+config.set("sources.jira.query", "project = PROJ")
 
 # Create connector (registers its own config spec)
 connector = JiraCloudConnector.from_config(config)
@@ -365,7 +363,7 @@ from core.v1.config_models import CoreV1IndexingConfig
 config = ConfigService()
 
 # Register multiple specs
-config.register(JiraCloudConfig, path="sources.jira_cloud")
+config.register(JiraCloudConfig, path="sources.jira")
 config.register(CoreV1IndexingConfig, path="core.v1.indexing")
 
 # Validate before using
@@ -416,7 +414,7 @@ def validate():
     """Validate all registered specs."""
     config = ConfigService()
     # Register known specs
-    config.register(JiraCloudConfig, path="sources.jira_cloud")
+    config.register(JiraCloudConfig, path="sources.jira")
     # ... register others
     
     errors = config.validate()

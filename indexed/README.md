@@ -187,12 +187,12 @@ include_matched_chunks = true
 embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 embedding_batch_size = 64
 
-[sources.jira_cloud]
+[sources.jira]
 base_url = "https://company.atlassian.net"
 email = "user@example.com"
 api_token_env = "JIRA_API_TOKEN"
 
-[sources.confluence_cloud]
+[sources.confluence]
 base_url = "https://company.atlassian.net/wiki"
 email = "user@example.com"
 api_token_env = "CONFLUENCE_API_TOKEN"

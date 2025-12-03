@@ -311,7 +311,7 @@ from connectors.jira import JiraCloudConnector
 config = ConfigService()
 
 # Override with CLI args if needed
-config.set("sources.jira_cloud.url", "https://company.atlassian.net")
+config.set("sources.jira.url", "https://company.atlassian.net")
 
 # Connector registers its own config spec and extracts values
 connector = JiraCloudConnector.from_config(config)
@@ -339,7 +339,7 @@ class MyConnector:
 ### CLI Commands
 ```bash
 indexed config inspect                    # Show merged config
-indexed config set sources.jira_cloud.url "https://..."  # Set values
+indexed config set sources.jira.url "https://..."  # Set values
 indexed config delete old.section        # Remove keys
 indexed config validate                   # Validate specs
 indexed config init                       # Initialize workspace config
@@ -355,12 +355,12 @@ indexed config init                       # Initialize workspace config
 ```toml
 # .indexed/config.toml (workspace) or ~/.config/indexed/config.toml (global)
 
-[sources.jira_cloud]
+[sources.jira]
 url = "https://company.atlassian.net"
 email = "user@company.com"
 query = "project = PROJ"
 
-[sources.confluence_cloud]
+[sources.confluence]
 url = "https://company.atlassian.net/wiki"
 email = "user@company.com"
 query = "space = DEV"
@@ -405,7 +405,7 @@ class JiraCloudConfig(BaseModel):
 ### Environment Variables
 ```bash
 # Override any config value via environment
-export INDEXED__sources__jira_cloud__url="https://company.atlassian.net"
+export INDEXED__sources__jira__url="https://company.atlassian.net"
 export INDEXED__core__v1__indexing__chunk_size=1024
 
 # Secrets (referenced by config models)
@@ -416,10 +416,8 @@ export JIRA_TOKEN="your-jira-token"
 ### Configuration Paths
 
 **Connectors** (`sources.*`):
-- `sources.jira` - Jira Server/DC
-- `sources.jira_cloud` - Jira Cloud
-- `sources.confluence` - Confluence Server/DC
-- `sources.confluence_cloud` - Confluence Cloud
+- `sources.jira` - Jira (both Server/DC and Cloud use unified namespace)
+- `sources.confluence` - Confluence (both Server/DC and Cloud use unified namespace)
 - `sources.files` - File System
 
 **Core v1** (`core.v1.*`):

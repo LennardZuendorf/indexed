@@ -22,7 +22,8 @@ _TITLE_STYLE = f"bold underline {_ACCENT_COLOR}"  # Card titles, collection name
 _HEADING_STYLE = f"bold {_WHITE}"  # Section headings and main titles
 _LABEL_STYLE = f"bold {_ACCENT_COLOR}"  # Left-side labels (cyan and bold)
 _VALUE_STYLE = f"not bold {_WHITE}"  # Right-side values (white, not bold)
-_SECONDARY_STYLE = _DIM_COLOR  # Helper text, hints
+_SECONDARY_STYLE = f"not bold {_DIM_COLOR}"  # Helper text, hints
+_DIM_STYLE = f"not bold {_DIM_COLOR}"  # Helper text, hints
 
 # Status Styles
 _INFO_STYLE = _DIM_COLOR

@@ -65,8 +65,8 @@ connector = JiraCloudConnector.from_config(config)
 
 ```python
 # Set config values (writes to workspace TOML)
-config.set("sources.jira_cloud.base_url", "https://company.atlassian.net")
-config.set("sources.jira_cloud.jql", "project = MYPROJ")
+config.set("sources.jira.base_url", "https://company.atlassian.net")
+config.set("sources.jira.jql", "project = MYPROJ")
 
 # Now create connector with overridden values
 connector = JiraCloudConnector.from_config(config)
@@ -149,14 +149,14 @@ from indexed_config import ConfigService
 from connectors.jira import JiraCloudConnector
 
 config = ConfigService()
-config.set("sources.jira_cloud.url", "https://company.atlassian.net")
-config.set("sources.jira_cloud.email", "user@company.com")
-config.set("sources.jira_cloud.query", "project = PROJ")
+config.set("sources.jira.url", "https://company.atlassian.net")
+config.set("sources.jira.email", "user@company.com")
+config.set("sources.jira.query", "project = PROJ")
 
 connector = JiraCloudConnector.from_config(config)
 ```
 
-**Config Path**: `sources.jira_cloud`  
+**Config Path**: `sources.jira` (unified namespace for both Server and Cloud)  
 **Config Model**: `JiraCloudConfig`  
 **Required Fields**: `url`, `email`, `query`  
 **Auth**: API token from `ATLASSIAN_TOKEN` env var
@@ -186,14 +186,14 @@ from indexed_config import ConfigService
 from connectors.confluence import ConfluenceCloudConnector
 
 config = ConfigService()
-config.set("sources.confluence_cloud.url", "https://company.atlassian.net/wiki")
-config.set("sources.confluence_cloud.email", "user@company.com")
-config.set("sources.confluence_cloud.query", "space = DEV")
+config.set("sources.confluence.url", "https://company.atlassian.net/wiki")
+config.set("sources.confluence.email", "user@company.com")
+config.set("sources.confluence.query", "space = DEV")
 
 connector = ConfluenceCloudConnector.from_config(config)
 ```
 
-**Config Path**: `sources.confluence_cloud`  
+**Config Path**: `sources.confluence` (unified namespace for both Server and Cloud)  
 **Config Model**: `ConfluenceCloudConfig`  
 **Required Fields**: `url`, `email`, `query`  
 **Auth**: API token from `ATLASSIAN_TOKEN` env var
@@ -280,12 +280,12 @@ search_cfg = provider.get(CoreV1SearchConfig)
 ### Workspace Config (`.indexed/config.toml`)
 
 ```toml
-[sources.jira_cloud]
+[sources.jira]
 url = "https://company.atlassian.net"
 email = "user@company.com"
 query = "project = PROJ AND updated >= -30d"
 
-[sources.confluence_cloud]
+[sources.confluence]
 url = "https://company.atlassian.net/wiki"
 email = "user@company.com"
 query = "space = DEV"
@@ -319,7 +319,7 @@ Override any config value using environment variables:
 
 ```bash
 # Format: INDEXED__section__subsection__key=value
-export INDEXED__sources__jira_cloud__url="https://company.atlassian.net"
+export INDEXED__sources__jira__url="https://company.atlassian.net"
 export INDEXED__core__v1__indexing__chunk_size=1024
 
 # Secrets (referenced by config)
@@ -340,7 +340,7 @@ from core.v1.config_models import CoreV1IndexingConfig
 config = ConfigService()
 
 # Register multiple specs
-config.register(JiraCloudConfig, path="sources.jira_cloud")
+config.register(JiraCloudConfig, path="sources.jira")
 config.register(CoreV1IndexingConfig, path="core.v1.indexing")
 
 # Bind once to validate all
@@ -360,7 +360,7 @@ print(f"Chunk size: {indexing_cfg.chunk_size}")
 ```python
 # Get config by path (useful for dynamic access)
 provider = config.bind()
-jira_cfg = provider.get_by_path("sources.jira_cloud")
+jira_cfg = provider.get_by_path("sources.jira")
 ```
 
 ### Validation
@@ -387,7 +387,7 @@ from core.v1.config import ConfigService as OldConfigService
 
 config = OldConfigService.get_instance()
 settings = config.get()
-jira_config = settings.sources.jira_cloud
+jira_config = settings.sources.jira
 ```
 
 ### New Pattern
@@ -419,7 +419,7 @@ provider = config.bind()
 cfg = provider.get(JiraCloudConfig)  # KeyError!
 
 # ✅ Fix: Register first
-config.register(JiraCloudConfig, path="sources.jira_cloud")
+config.register(JiraCloudConfig, path="sources.jira")
 provider = config.bind()
 cfg = provider.get(JiraCloudConfig)  # Works!
 ```
@@ -434,17 +434,17 @@ try:
 except ValueError as e:
     print(f"Config error: {e}")
     # Fix the config file or set the missing value
-    config.set("sources.jira_cloud.url", "https://company.atlassian.net")
+    config.set("sources.jira.url", "https://company.atlassian.net")
 ```
 
 ### Environment Variables Not Working
 
 ```bash
 # ❌ Wrong format
-export JIRA_CLOUD_URL="..."  # Won't work
+export JIRA_URL="..."  # Won't work
 
 # ✅ Correct format
-export INDEXED__sources__jira_cloud__url="..."  # Works!
+export INDEXED__sources__jira__url="..."  # Works!
 ```
 
 ## Summary

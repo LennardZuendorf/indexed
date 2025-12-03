@@ -13,8 +13,11 @@ from .storage import StorageMode, StorageResolver, get_resolver, reset_resolver
 
 T = TypeVar("T", bound=BaseModel)
 
-# Workspace preferences section in config
-WORKSPACE_PREFS_PATH = "workspace_preferences"
+# Workspace config section in config
+WORKSPACE_PATH = "workspace"
+
+# Default global path
+DEFAULT_GLOBAL_PATH = "~/.indexed"
 
 
 class ConfigService:
@@ -190,7 +193,7 @@ class ConfigService:
         
         Args:
             config_class: Pydantic model class to validate against.
-            namespace: Dot-path namespace for config lookup (e.g., 'sources.jira_cloud').
+            namespace: Dot-path namespace for config lookup (e.g., 'sources.jira').
             cli_overrides: Optional dict of values provided via CLI.
             
         Returns:
@@ -350,7 +353,7 @@ class ConfigService:
             f.writelines(updated_lines)
     
     # ─────────────────────────────────────────────────────────────────────────
-    # Workspace Preferences
+    # Workspace Configuration
     # ─────────────────────────────────────────────────────────────────────────
     
     def get_workspace_preference(
@@ -365,82 +368,97 @@ class ConfigService:
         Returns:
             "global" or "local" if a preference exists, None otherwise.
         """
-        path = str(workspace_path or self._workspace)
-        
-        # Read from global config directly (preferences are stored globally)
+        # Read from global config directly (workspace config is stored globally)
         global_store = TomlStore(mode_override="global")
         raw = global_store.read()
         
-        prefs = get_by_path(raw, WORKSPACE_PREFS_PATH, default={}) or {}
-        pref = prefs.get(path)
+        workspace_config = get_by_path(raw, WORKSPACE_PATH, default={}) or {}
+        mode = workspace_config.get("mode")
         
-        if pref in ("global", "local"):
-            return pref  # type: ignore[return-value]
+        if mode in ("global", "local"):
+            return mode  # type: ignore[return-value]
         return None
     
     def set_workspace_preference(
         self,
         mode: StorageMode,
         workspace_path: Optional[Path] = None,
+        global_path: Optional[str] = None,
     ) -> None:
-        """Set the storage mode preference for a workspace.
+        """Set the workspace configuration.
         
-        Preferences are stored in the global config file so they persist
+        Configuration is stored in the global config file so it persists
         across all invocations of indexed.
         
         Args:
             mode: Storage mode ("global" or "local").
-            workspace_path: Path to the workspace. Defaults to current workspace.
+            workspace_path: Path to the local workspace. Defaults to current workspace.
+            global_path: Path to global storage. Defaults to ~/.indexed.
         """
-        path = str(workspace_path or self._workspace)
+        local_path = str(workspace_path or self._workspace)
         
         # Read global config, update, and write back
         global_store = TomlStore(mode_override="global")
         raw = global_store.read()
         
-        # Ensure workspace_preferences section exists
-        if WORKSPACE_PREFS_PATH not in raw:
-            raw[WORKSPACE_PREFS_PATH] = {}
+        # Build workspace config
+        workspace_config: Dict[str, str] = {
+            "mode": mode,
+            "local_path": local_path,
+        }
         
-        raw[WORKSPACE_PREFS_PATH][path] = mode
+        # Only include global_path if non-default
+        if global_path and global_path != DEFAULT_GLOBAL_PATH:
+            workspace_config["global_path"] = global_path
+        
+        raw[WORKSPACE_PATH] = workspace_config
         global_store.write(raw, to_global=True)
     
     def clear_workspace_preference(
         self,
         workspace_path: Optional[Path] = None,
     ) -> bool:
-        """Clear the storage mode preference for a workspace.
+        """Clear the workspace configuration.
         
         Args:
-            workspace_path: Path to the workspace. Defaults to current workspace.
+            workspace_path: Unused, kept for API compatibility.
             
         Returns:
-            True if a preference was cleared, False if none existed.
+            True if workspace config was cleared, False if none existed.
         """
-        path = str(workspace_path or self._workspace)
-        
         global_store = TomlStore(mode_override="global")
         raw = global_store.read()
         
-        prefs = raw.get(WORKSPACE_PREFS_PATH, {})
-        if path in prefs:
-            del prefs[path]
-            raw[WORKSPACE_PREFS_PATH] = prefs
+        if WORKSPACE_PATH in raw:
+            del raw[WORKSPACE_PATH]
             global_store.write(raw, to_global=True)
             return True
         return False
     
-    def get_all_workspace_preferences(self) -> Dict[str, StorageMode]:
-        """Get all workspace preferences.
+    def get_workspace_config(self) -> Dict[str, str]:
+        """Get the workspace configuration.
+        
+        Reads from merged config (local takes precedence over global),
+        so workspace config can be in either .indexed/config.toml or ~/.indexed/config.toml.
         
         Returns:
-            Dict mapping workspace paths to their storage mode preferences.
+            Dict with keys: mode, local_path, global_path.
+            Returns empty dict if no workspace config exists.
         """
-        global_store = TomlStore(mode_override="global")
-        raw = global_store.read()
+        # Read from merged config (local + global)
+        raw = self.load_raw()
         
-        prefs = get_by_path(raw, WORKSPACE_PREFS_PATH, default={}) or {}
-        return {k: v for k, v in prefs.items() if v in ("global", "local")}
+        workspace_config = get_by_path(raw, WORKSPACE_PATH, default={}) or {}
+        
+        # Validate and return only valid config
+        if workspace_config.get("mode") not in ("global", "local"):
+            return {}
+        
+        return {
+            "mode": workspace_config.get("mode", ""),
+            "local_path": workspace_config.get("local_path", str(self._workspace)),
+            "global_path": workspace_config.get("global_path", DEFAULT_GLOBAL_PATH),
+        }
     
     # ─────────────────────────────────────────────────────────────────────────
     # Storage & Conflict Detection

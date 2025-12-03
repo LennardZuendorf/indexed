@@ -9,7 +9,6 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 from rich.console import Group
-from rich.columns import Columns
 from rich.text import Text
 from rich.table import Table
 from rich import box
@@ -19,7 +18,8 @@ from ..utils.console import console
 from ..utils.components import (
     create_info_card,
     create_detail_card,
-    create_summary,
+    create_key_value_panel,
+    create_simple_key_value_panel,
     get_card_padding,
     get_heading_style,
     get_success_style,
@@ -27,6 +27,7 @@ from ..utils.components import (
     get_warning_style,
     get_secondary_style,
     get_accent_style,
+    get_dim_style,
 )
 
 app = typer.Typer(help="Manage configuration")
@@ -132,6 +133,53 @@ def _format_config_value(value: Any) -> str:
         return str(value)
 
 
+def _is_sensitive_key(key: str) -> bool:
+    """Check if a key is sensitive (should be masked in display).
+    
+    Args:
+        key: The key name (e.g., "api_token", "jira.email")
+        
+    Returns:
+        True if the key is sensitive
+    """
+    sensitive_patterns = ["api_token", "token", "password", "secret"]
+    key_lower = key.lower()
+    # Check last part of dot-path (e.g., "jira.api_token" -> "api_token")
+    key_name = key.split(".")[-1].lower() if "." in key else key_lower
+    return any(pattern in key_name for pattern in sensitive_patterns)
+
+
+def _get_sensitive_env_value(key: str) -> Optional[str]:
+    """Check if a sensitive key has a value set via environment variable.
+    
+    Args:
+        key: The key name (e.g., "api_token", "jira.email")
+        
+    Returns:
+        The masked value "*****" if set, None otherwise
+    """
+    import os
+    
+    # Map config keys to their environment variable names
+    env_mappings = {
+        "api_token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
+        "token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
+        "email": ["ATLASSIAN_EMAIL"],
+        "password": ["JIRA_PASSWORD", "CONF_PASSWORD"],
+    }
+    
+    # Get the key name (last part of dot-path)
+    key_name = key.split(".")[-1].lower() if "." in key else key.lower()
+    
+    # Check env vars for this key type
+    env_vars = env_mappings.get(key_name, [])
+    for env_var in env_vars:
+        if os.getenv(env_var):
+            return "*****"
+    
+    return None
+
+
 def _create_section_card(section_name: str, section_data: dict[str, Any]) -> Panel:
     """Create a card for a config section.
     
@@ -159,11 +207,137 @@ def _create_section_card(section_name: str, section_data: dict[str, Any]) -> Pan
     return create_info_card(title=title, rows=rows)
 
 
+def _get_full_config_schema() -> dict[str, dict[str, Any]]:
+    """Get full configuration schema with default values from Pydantic models.
+    
+    Returns:
+        Dictionary of all available config sections and their keys with defaults.
+        Sections include: core.v1 (indexing, embedding, search, storage), 
+        sources (files, jira, confluence), logging, mcp, performance.
+    """
+    # Import Pydantic models for defaults
+    try:
+        from core.v1.config_models import (
+            CoreV1IndexingConfig,
+            CoreV1EmbeddingConfig,
+            CoreV1SearchConfig,
+            CoreV1StorageConfig,
+            MCPConfig,
+            PerformanceConfig,
+            LoggingConfig,
+        )
+        
+        # Get defaults from Pydantic models by instantiating with no args
+        indexing_defaults = CoreV1IndexingConfig().model_dump()
+        embedding_defaults = CoreV1EmbeddingConfig().model_dump()
+        search_defaults = CoreV1SearchConfig().model_dump()
+        storage_defaults = CoreV1StorageConfig().model_dump()
+        mcp_defaults = MCPConfig().model_dump()
+        performance_defaults = PerformanceConfig().model_dump()
+        logging_defaults = LoggingConfig().model_dump()
+        
+        return {
+            "core": {
+                "v1": {
+                    "indexing": indexing_defaults,
+                    "embedding": embedding_defaults,
+                    "search": search_defaults,
+                    "storage": storage_defaults,
+                }
+            },
+            "mcp": mcp_defaults,
+            "performance": performance_defaults,
+            "logging": logging_defaults,
+            # Sources don't have defaults - they're user-configured
+            "sources": {},
+        }
+    except ImportError:
+        # Fallback if core models aren't available
+        return {
+            "core": {
+                "v1": {
+                    "indexing": {
+                        "chunk_size": 512,
+                        "chunk_overlap": 50,
+                        "batch_size": 32,
+                    },
+                    "embedding": {
+                        "provider": "sentence-transformers",
+                        "model_name": "all-MiniLM-L6-v2",
+                        "batch_size": 64,
+                    },
+                    "search": {
+                        "max_docs": 10,
+                        "max_chunks": 30,
+                        "include_full_text": False,
+                    },
+                }
+            },
+            "logging": {
+                "level": "WARNING",
+            },
+            "sources": {},
+        }
+
+
+def _merge_with_defaults(
+    raw_config: dict[str, Any],
+    defaults_schema: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Merge raw config with defaults, tracking which values are manually set.
+    
+    Args:
+        raw_config: The raw config loaded from files/env
+        defaults_schema: The full schema with default values
+        
+    Returns:
+        Dictionary where each key maps to {"value": Any, "is_default": bool}
+        grouped by section.
+    """
+    # Flatten both configs for comparison
+    flat_raw = _flatten_dict(raw_config) if raw_config else {}
+    flat_defaults = _flatten_dict(defaults_schema) if defaults_schema else {}
+    
+    # Build result with tracking
+    result: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    
+    # All keys from both sources
+    all_keys = set(flat_raw.keys()) | set(flat_defaults.keys())
+    
+    for key in sorted(all_keys):
+        # Determine section (first part of dot-path)
+        parts = key.split(".", 1)
+        section = parts[0]
+        subkey = parts[1] if len(parts) > 1 else key
+        
+        # Skip workspace - handled separately
+        if section == "workspace":
+            continue
+        
+        if key in flat_raw:
+            # Value was explicitly set
+            result[section][subkey] = {
+                "value": flat_raw[key],
+                "is_default": False,
+            }
+        elif key in flat_defaults:
+            # Using default value
+            result[section][subkey] = {
+                "value": flat_defaults[key],
+                "is_default": True,
+            }
+    
+    return dict(result)
+
+
 def _get_available_config_schema() -> dict[str, dict[str, Any]]:
     """Get available configuration schema with default values.
     
     Returns:
         Dictionary of available sections and their keys with defaults
+        
+    Note: This is kept for backwards compatibility with the interactive
+    update command. For inspect, use _get_full_config_schema() instead.
     """
     return {
         "index": {
@@ -176,19 +350,20 @@ def _get_available_config_schema() -> dict[str, dict[str, Any]]:
         },
         "sources": {
             # Files connector
-            "files.base_path": "./data",
+            "files.path": "./data",
             "files.include_patterns": ["*.md", "*.txt"],
-            # Jira Cloud connector
-            "jira_cloud.url": "https://your-domain.atlassian.net",
-            "jira_cloud.email": "your-email@example.com",
-            "jira_cloud.api_token": "",
-            "jira_cloud.query": "project = PROJ",
+            "files.exclude_patterns": [],
+            # Jira connector
+            "jira.url": "https://your-domain.atlassian.net",
+            "jira.email": "your-email@example.com",
+            "jira.api_token": "",
+            "jira.query": "project = PROJ",
             # Confluence connector
             "confluence.url": "https://your-domain.atlassian.net/wiki",
             "confluence.email": "your-email@example.com",
             "confluence.api_token": "",
-            "confluence.space_key": "SPACE",
-            "confluence.cql": "space = SPACE",
+            "confluence.query": "space = SPACE",
+            "confluence.read_all_comments": True,
         },
         "logging": {
             "level": "WARNING",
@@ -216,6 +391,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
     existing_sections = set(grouped_config.keys())
     all_sections = sorted(existing_sections | set(schema.keys()))
     
+    
     # Create a table for better visual organization
     table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), expand=False)
     table.add_column("Index", style=get_accent_style(), width=4)
@@ -236,10 +412,18 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
                 status
             )
         else:
+            # Section not configured - show number of available default values
+            section_schema = schema.get(section, {})
+            default_count = len(section_schema)
+            if default_count > 0:
+                plural = "value" if default_count == 1 else "values"
+                status_text = f"using {default_count} default {plural}"
+            else:
+                status_text = "not configured"
             table.add_row(
                 f"{idx}.",
                 display_name,
-                Text("not configured", style="dim italic")
+                Text(status_text, style=get_secondary_style())
             )
     
     console.print(table)
@@ -247,7 +431,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
     console.print(f"  [{get_accent_style()}]0.[/{get_accent_style()}] Exit")
     console.print()
     
-    choice = typer.prompt("Select section [0-" + str(len(all_sections)) + "]", default="0")
+    choice = typer.prompt("Select section or exit", default="0")
     
     try:
         choice_idx = int(choice)
@@ -263,7 +447,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
 
 
 def _group_keys_by_prefix(keys: list[str]) -> dict[str, list[str]]:
-    """Group keys by their prefix (first part before dot or underscore).
+    """Group keys by their prefix (first part before dot).
     
     Args:
         keys: List of keys to group
@@ -274,17 +458,9 @@ def _group_keys_by_prefix(keys: list[str]) -> dict[str, list[str]]:
     groups = defaultdict(list)
     
     for key in keys:
-        # Check if key has a group prefix separated by dot (e.g., "files.path")
+        # Group by first part before dot (e.g., "files.path" -> "files")
         if "." in key:
             group = key.split(".")[0]
-        # Check if key has underscore separator (e.g., "jira_cloud_url")
-        elif "_" in key:
-            parts = key.split("_")
-            # Handle multi-word prefixes (e.g., jira_cloud)
-            if parts[0] in ["jira", "confluence"] and len(parts) > 1:
-                group = f"{parts[0]}_{parts[1]}"
-            else:
-                group = parts[0]
         else:
             group = "general"
         
@@ -338,26 +514,25 @@ def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tup
         if group != "general":
             table.add_row(
                 "",
-                Text(f"━━ {group_display} ━━", style="dim bold"),
+                Text(f"━━ {group_display} ━━", style=get_secondary_style()),
                 ""
             )
         
         # Add keys in this group
         for key in sorted(keys):
-            # Remove group prefix and format nicely
+            # Remove group prefix and format nicely (e.g., "files.include_patterns" -> "Include Patterns")
             if "." in key:
-                # For dot notation (e.g., "files.include_patterns" -> "Include Patterns")
                 display_key = key.split(".", 1)[1].replace("_", " ").title()
-            elif "_" in key:
-                # For underscore notation (e.g., "jira_cloud_url" -> "Url")
-                display_key = key.replace(f"{group}_", "", 1).replace("_", " ").title()
             else:
                 display_key = key.replace("_", " ").title()
             
             if key in existing_keys:
                 current_value = _format_config_value(section_data[key])
+                # Mask sensitive values that are set
+                if _is_sensitive_key(key) and current_value not in ("(not set)", "(empty)"):
+                    current_value = "*****"
                 # Truncate long values for display
-                if len(str(current_value)) > 50:
+                elif len(str(current_value)) > 50:
                     current_value = str(current_value)[:47] + "..."
                 table.add_row(
                     f"{idx}.",
@@ -365,11 +540,20 @@ def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tup
                     current_value
                 )
             else:
-                table.add_row(
-                    f"{idx}.",
-                    display_key,
-                    Text("(not set)", style="dim italic")
-                )
+                # Check if sensitive value is set via environment variable
+                env_value = _get_sensitive_env_value(key)
+                if env_value:
+                    table.add_row(
+                        f"{idx}.",
+                        display_key,
+                        Text(env_value, style=get_secondary_style())
+                    )
+                else:
+                    table.add_row(
+                        f"{idx}.",
+                        display_key,
+                        Text("(not set)", style=get_secondary_style())
+                    )
             
             key_mapping.append(key)
             idx += 1
@@ -379,7 +563,7 @@ def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tup
     console.print(f"  [{get_accent_style()}]0.[/{get_accent_style()}] Back")
     console.print()
     
-    choice = typer.prompt("Select key [0-" + str(len(all_keys)) + "]", default="0")
+    choice = typer.prompt("Select setting or go back", default="0")
     
     try:
         choice_idx = int(choice)
@@ -608,7 +792,7 @@ def _show_config_diff(current: dict[str, Any], new: dict[str, Any]) -> None:
         console.print()
     
     if not added and not removed and not modified:
-        console.print("[dim]No changes detected[/dim]")
+        console.print(f"[{get_secondary_style()}]No changes detected[/{get_secondary_style()}]")
         console.print()
 
 
@@ -619,7 +803,18 @@ def _show_config_diff(current: dict[str, Any], new: dict[str, Any]) -> None:
 
 @app.command("inspect")
 def inspect(
+    section: Optional[str] = typer.Argument(
+        None,
+        help="Section to inspect (sources, core, logging, mcp, performance)",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    show_defaults: bool = typer.Option(
+        False,
+        "--show-defaults",
+        "--defaults",
+        "-d",
+        help="Show all default values (not just select ones)",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -640,7 +835,13 @@ def inspect(
         rich_help_panel="Logging",
     ),
 ):
-    """Display merged configuration (global + workspace + env)."""
+    """Display merged configuration (global + workspace + env).
+    
+    Examples:
+        indexed config inspect          # Show custom values + select defaults
+        indexed config inspect sources  # Show only sources config
+        indexed config inspect --defaults  # Show all values including defaults
+    """
     from ..utils.logging import setup_root_logger
     
     # Setup logging based on options
@@ -654,44 +855,220 @@ def inspect(
         console.print(json.dumps(raw, indent=2, ensure_ascii=False))
         return
     
+    # Normalize section argument
+    section_filter = section.lower() if section else None
+    
     console.print()
-    console.print(f"[{get_heading_style()}]Configuration Overview[/{get_heading_style()}]")
+    if section_filter:
+        console.print(f"[{get_heading_style()}]Configuration: {section_filter.title()}[/{get_heading_style()}]")
+    else:
+        console.print(f"[{get_heading_style()}]Configuration Overview[/{get_heading_style()}]")
     console.print()
     
-    # Group config by sections
-    grouped = _group_config_by_section(raw)
+    # Get defaults schema and merge with raw config
+    defaults_schema = _get_full_config_schema()
+    merged = _merge_with_defaults(raw, defaults_schema)
     
-    if not grouped:
-        console.print("[dim]No configuration found[/dim]")
+    # Track statistics
+    manual_keys = 0
+    default_keys = 0
+    manual_sections: set[str] = set()
+    
+    # Select default values to always show (when not showing all defaults)
+    SELECT_DEFAULTS = {
+        ("core", "v1.embedding.model_name"),
+        ("core", "v1.embedding.provider"),
+        ("core", "v1.storage.type"),
+        ("logging", "level"),
+    }
+    
+    # Group sections by type for display
+    sources_sections = {}
+    core_sections = {}
+    other_sections = {}
+    
+    for section_name, section_data in merged.items():
+        if not section_data:
+            continue
+            
+        # Categorize sections
+        if section_name == "sources":
+            sources_sections[section_name] = section_data
+        elif section_name == "core":
+            core_sections[section_name] = section_data
+        else:
+            other_sections[section_name] = section_data
+        
+        # Count keys
+        for key, info in section_data.items():
+            if info["is_default"]:
+                default_keys += 1
+            else:
+                manual_keys += 1
+                manual_sections.add(section_name)
+    
+    # Get workspace config separately
+    workspace_config = config.get_workspace_config()
+    
+    # Helper to check if a key should be shown
+    def should_show_key(section: str, key: str, is_default: bool) -> bool:
+        if not is_default:
+            return True  # Always show manual values
+        if show_defaults:
+            return True  # Show all if --show-defaults
+        # Check if it's a select default
+        return (section, key) in SELECT_DEFAULTS
+    
+    # Display Sources panel (if no filter or filter matches)
+    if sources_sections and (not section_filter or section_filter == "sources"):
+        rows: list[tuple[str, str, str]] = []
+        for section_name, section_data in sources_sections.items():
+            for key, info in sorted(section_data.items()):
+                if should_show_key(section_name, key, info["is_default"]):
+                    # Split key to get category (e.g., "confluence.query" -> "confluence", "query")
+                    parts = key.split(".", 1)
+                    category = parts[0] if len(parts) > 1 else section_name
+                    subkey = parts[1] if len(parts) > 1 else key
+                    value = _format_config_value(info["value"])
+                    rows.append((category, subkey, value))
+        
+        if rows:
+            panel = create_key_value_panel(
+                "Sources", rows, 
+                category_width=14, key_width=20,
+                headers=("source", "setting", "value"),
+            )
+            console.print(panel)
+            console.print()
+    
+    # Display Core Settings panel (if showing defaults or filter matches)
+    if core_sections and (show_defaults or section_filter == "core"):
+        rows = []
+        for section_name, section_data in core_sections.items():
+            for key, info in sorted(section_data.items()):
+                if should_show_key(section_name, key, info["is_default"]):
+                    # Key format: "v1.indexing.chunk_size" -> category="indexing", subkey="chunk_size"
+                    parts = key.split(".")
+                    if len(parts) >= 2:
+                        category = parts[-2] if len(parts) > 2 else parts[0]
+                        subkey = parts[-1]
+                    else:
+                        category = "core"
+                        subkey = key
+                    value = _format_config_value(info["value"])
+                    rows.append((category, subkey, value))
+        
+        if rows:
+            panel = create_key_value_panel(
+                "Core Settings", rows, 
+                category_width=14, key_width=24,
+                headers=("category", "setting", "value"),
+            )
+            console.print(panel)
+            console.print()
+    
+    # Display other sections (logging, mcp, performance)
+    for section_name, section_data in sorted(other_sections.items()):
+        # Skip if filtering and doesn't match
+        if section_filter and section_filter != section_name:
+            continue
+            
+        rows = []
+        for key, info in sorted(section_data.items()):
+            if should_show_key(section_name, key, info["is_default"]):
+                value = _format_config_value(info["value"])
+                rows.append((section_name, key, value))
+        
+        if rows and show_defaults:
+            title = section_name.replace("_", " ").title()
+            panel = create_key_value_panel(
+                title, rows, 
+                category_width=14, key_width=24,
+                headers=("category", "setting", "value"),
+            )
+            console.print(panel)
+            console.print()
+    
+    # Display Workspace panel (if no filter)
+    if workspace_config and not section_filter:
+        ws_rows: list[tuple[str, str]] = []
+        
+        # Mode
+        ws_rows.append(("mode", workspace_config.get("mode", "")))
+        
+        # Local path (truncate if needed)
+        local_path = workspace_config.get("local_path", "")
+        if len(local_path) > 45:
+            local_path = "..." + local_path[-42:]
+        ws_rows.append(("local_path", local_path))
+        
+        # Global path (truncate if needed)
+        global_path = workspace_config.get("global_path", "~/.indexed")
+        if len(global_path) > 45:
+            global_path = "..." + global_path[-42:]
+        ws_rows.append(("global_path", global_path))
+        
+        panel = create_simple_key_value_panel(
+            "Workspace", 
+            ws_rows, 
+            key_width=15,
+            value_max_len=50,
+            headers=("setting", "value"),
+        )
+        console.print(panel)
+        console.print()
+    
+    # Display Select Default Values panel (only when not filtering and not showing all defaults)
+    if not section_filter and not show_defaults:
+        select_rows: list[tuple[str, str, str]] = []
+        
+        # Collect select default values
+        for section_name, section_data in merged.items():
+            for key, info in sorted(section_data.items()):
+                if (section_name, key) in SELECT_DEFAULTS and info["is_default"]:
+                    # Parse key for display
+                    parts = key.split(".")
+                    if len(parts) >= 2:
+                        category = parts[-2] if len(parts) > 2 else parts[0]
+                        subkey = parts[-1]
+                    else:
+                        category = section_name
+                        subkey = key
+                    value = _format_config_value(info["value"])
+                    select_rows.append((category, subkey, value))
+        
+        if select_rows:
+            panel = create_key_value_panel(
+                "Select Default Values", select_rows, 
+                category_width=14, key_width=24,
+                headers=("category", "setting", "value"),
+            )
+            console.print(panel)
+            # Count remaining defaults
+            remaining_defaults = default_keys - len(select_rows)
+            if remaining_defaults > 0:
+                console.print(f"[{get_secondary_style()}]{remaining_defaults} more default values used...[/{get_secondary_style()}]")
+            console.print()
+    
+    # Summary with manual vs default statistics
+    total_keys = manual_keys + default_keys
+    if total_keys == 0 and not workspace_config:
+        console.print(f"[{get_dim_style()}]No configuration found[/{get_dim_style()}]")
         console.print()
         return
     
-    # Create cards for each section
-    cards = []
-    total_keys = 0
-    
-    for section_name in sorted(grouped.keys()):
-        section_data = grouped[section_name]
-        total_keys += len(section_data)
-        card = _create_section_card(section_name, section_data)
-        cards.append(card)
-    
-    # Display cards in columns (2-3 per row)
-    if len(cards) > 1:
-        console.print(Columns(cards, equal=True, expand=True))
-    else:
-        console.print(cards[0])
-    
-    # Summary
-    console.print()
-    section_count = len(grouped)
-    plural = "section" if section_count == 1 else "sections"
-    console.print(
-        create_summary(
-            "Total",
-            f"{section_count} {plural}, {total_keys} keys configured"
+    # Build informative summary
+    if manual_keys > 0:
+        section_list = ", ".join(sorted(manual_sections))
+        console.print(
+            f"[bold]Overall:[/bold] [{get_accent_style()}]{manual_keys}[/{get_accent_style()}] keys "
+            f"set manually for [{get_accent_style()}]{section_list}[/{get_accent_style()}]."
         )
-    )
+    elif workspace_config:
+        mode = workspace_config.get("mode", "unknown")
+        console.print(f"[bold]Overall:[/bold] Workspace configured in [{get_accent_style()}]{mode}[/{get_accent_style()}] mode")
+    else:
+        console.print("[bold]Overall:[/bold] All values using defaults")
     console.print()
 
 
@@ -744,7 +1121,7 @@ def update(
         if not result:
             # User wants to exit
             console.print()
-            console.print("[dim]Exiting configuration update[/dim]")
+            console.print(f"[{get_secondary_style()}]Exiting configuration update.[/{get_secondary_style()}]")
             console.print()
             break
 
@@ -791,7 +1168,7 @@ def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
     new_value = _prompt_for_value(full_key, current_value, is_new=is_new, section_name=section_name)
     if new_value is None:
         console.print()
-        console.print("[dim]Cancelled[/dim]")
+        console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
         console.print()
         return True
     
@@ -802,7 +1179,7 @@ def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
     action_text = "Add this configuration?" if is_new else "Apply this change?"
     if not typer.confirm(action_text, default=True):
         console.print()
-        console.print("[dim]Cancelled[/dim]")
+        console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
         console.print()
         return True
     
@@ -911,7 +1288,7 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
     
     if not typer.confirm("Continue with replacement?", default=False):
         console.print()
-        console.print("[dim]Cancelled[/dim]")
+        console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
         console.print()
         return False
     
@@ -919,7 +1296,7 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
     console.print()
     if not _backup_config(global_path):
         if not typer.confirm("Continue without backup?", default=False):
-            console.print("[dim]Cancelled[/dim]")
+            console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
             console.print()
             return False
     
@@ -1117,7 +1494,7 @@ def delete_config(
         console.print()
         
         if not typer.confirm("Continue?", default=False):
-            console.print("[dim]Cancelled[/dim]")
+            console.print(f"[{get_secondary_style()}]Cancelled[/{get_secondary_style()}]")
             console.print()
             return
     
@@ -1307,13 +1684,13 @@ max_chunks = 50
 # exclude_patterns = []
 # fail_fast = false
 
-# [sources.jira_cloud]
+# [sources.jira]
 # url = "https://company.atlassian.net"
 # query = "project = PROJ"
 # email = ""  # Set via ATLASSIAN_EMAIL env var
 # api_token = ""  # Set via ATLASSIAN_TOKEN env var
 
-# [sources.confluence_cloud]
+# [sources.confluence]
 # url = "https://company.atlassian.net/wiki"
 # query = "space = DOCS"
 # email = ""  # Set via ATLASSIAN_EMAIL env var

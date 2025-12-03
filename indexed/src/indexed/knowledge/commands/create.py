@@ -153,7 +153,7 @@ def create_files(
     # Files connector (no cloud/server split)
     source_type = "localFiles"
     config_class = LocalFilesConfig
-    namespace = "sources.local_files"
+    namespace = "sources.files"
     
     if is_verbose_mode():
         logger.info("Using source type: %s", source_type)

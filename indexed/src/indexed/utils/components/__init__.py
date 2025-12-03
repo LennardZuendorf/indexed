@@ -50,6 +50,11 @@ from .status import (
     SearchStatus,  # Backwards compatibility
 )
 
+from .key_value_panel import (
+    create_key_value_panel,
+    create_simple_key_value_panel,
+)
+
 __all__ = [
     # Theme
     "get_error_style",
@@ -83,4 +88,7 @@ __all__ = [
     # Status
     "OperationStatus",
     "SearchStatus",  # Backwards compatibility
+    # Key-Value Panel
+    "create_key_value_panel",
+    "create_simple_key_value_panel",
 ]

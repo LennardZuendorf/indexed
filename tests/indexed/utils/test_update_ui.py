@@ -14,7 +14,7 @@ class TestFormatSourceType:
         from indexed.knowledge.commands.update import _format_source_type
         assert _format_source_type("jira") == "Jira"
 
-    def test_format_jira_cloud(self):
+    def test_format_jira_cloud_type(self):
         """Test formatting 'jiraCloud' source type."""
         from indexed.knowledge.commands.update import _format_source_type
         assert _format_source_type("jiraCloud") == "Jira Cloud"
@@ -24,12 +24,12 @@ class TestFormatSourceType:
         from indexed.knowledge.commands.update import _format_source_type
         assert _format_source_type("confluence") == "Confluence"
 
-    def test_format_confluence_cloud(self):
+    def test_format_confluence_cloud_type(self):
         """Test formatting 'confluenceCloud' source type."""
         from indexed.knowledge.commands.update import _format_source_type
         assert _format_source_type("confluenceCloud") == "Confluence Cloud"
 
-    def test_format_local_files(self):
+    def test_format_files_type(self):
         """Test formatting 'localFiles' source type."""
         from indexed.knowledge.commands.update import _format_source_type
         assert _format_source_type("localFiles") == "Local Files"
@@ -375,4 +375,5 @@ class TestDynamicResultText:
         result_text = f"Updated {num_collections} {coll_word}: {change_str} (now {total_docs} documents, {total_chunks} chunks)"
         
         assert result_text == "Updated 1 Collection: +10 chunks (now 100 documents, 510 chunks)"
+
 

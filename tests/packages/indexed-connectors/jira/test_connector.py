@@ -66,8 +66,8 @@ def test_jira_connector_from_config_dto():
     assert connector.connector_type == "jira"
 
 
-def test_jira_cloud_connector_init():
-    """Test JiraCloudConnector initialization."""
+def test_jira_cloud_type_connector_init():
+    """Test JiraCloudConnector initialization (jiraCloud type)."""
     connector = JiraCloudConnector(
         url="https://company.atlassian.net",
         query="project = TEST",
@@ -80,8 +80,8 @@ def test_jira_cloud_connector_init():
     assert str(connector) == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
 
 
-def test_jira_cloud_connector_from_config_dto():
-    """Test JiraCloudConnector creation from config DTO values."""
+def test_jira_cloud_type_connector_from_config_dto():
+    """Test JiraCloudConnector creation from config DTO values (jiraCloud type)."""
     config_dto = JiraCloudConfig(
         url="https://company.atlassian.net",
         query="project = TEST",
@@ -113,7 +113,7 @@ def test_jira_connector_config_spec():
     assert spec["token_env"]["secret"] is True
 
 
-def test_jira_cloud_connector_config_spec():
+def test_jira_cloud_type_connector_config_spec():
     """Test JiraCloudConnector.config_spec() returns correct specification."""
     spec = JiraCloudConnector.config_spec()
     

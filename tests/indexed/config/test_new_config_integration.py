@@ -32,22 +32,22 @@ def test_config_service_crud_operations(isolated_config):
     config = isolated_config
 
     # Test set
-    config.set("sources.jira_cloud.url", "https://test.atlassian.net")
-    config.set("sources.jira_cloud.query", "project = TEST")
+    config.set("sources.jira.url", "https://test.atlassian.net")
+    config.set("sources.jira.query", "project = TEST")
 
     # Test get (via load_raw)
     raw = config.load_raw()
     assert "sources" in raw
-    assert "jira_cloud" in raw["sources"]
-    assert raw["sources"]["jira_cloud"]["url"] == "https://test.atlassian.net"
-    assert raw["sources"]["jira_cloud"]["query"] == "project = TEST"
+    assert "jira" in raw["sources"]
+    assert raw["sources"]["jira"]["url"] == "https://test.atlassian.net"
+    assert raw["sources"]["jira"]["query"] == "project = TEST"
 
     # Test delete
-    deleted = config.delete("sources.jira_cloud.query")
+    deleted = config.delete("sources.jira.query")
     assert deleted is True
 
     raw = config.load_raw()
-    assert "query" not in raw["sources"]["jira_cloud"]
+    assert "query" not in raw["sources"]["jira"]
 
     # Test delete non-existent key
     deleted = config.delete("sources.nonexistent.key")

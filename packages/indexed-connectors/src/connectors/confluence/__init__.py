@@ -18,6 +18,6 @@ try:
 
     _svc = ConfigService.instance()
     _svc.register(ConfluenceConfig, path="connectors.confluence")
-    _svc.register(ConfluenceCloudConfig, path="connectors.confluence_cloud")
+    _svc.register(ConfluenceCloudConfig, path="connectors.confluence")
 except Exception:
     pass
