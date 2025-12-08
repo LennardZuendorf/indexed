@@ -9,9 +9,9 @@
 A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Integrates with AI agents via MCP (Model Context Protocol).
 
 **Key Features:**
-- 🔒 **Privacy-First**: All processing and storage happens locally—no data sent to third parties
+- 🔒 **Privacy-First**: All processing and storage happens locally - no data sent to third parties
 - 🧠 **Semantic Search**: Understands meaning, not just keywords, using vector embeddings
-- ⚡ **Fast Setup**: Simple installation with `uv` and intuitive CLI commands
+- ⚡ **Fast Setup**: Simple installation and usage with `uv` and intuitive CLI commands
 - 🔌 **MCP Integration**: Works with AI agents like Claude, Cursor, and Cline via Model Context Protocol
 - 📁 **Multiple Sources**: Index from local files, Jira (Cloud & Server), and Confluence (Cloud & Server)
 
@@ -22,6 +22,7 @@ A privacy-first document indexing and semantic search tool that supports Jira, C
 - [Installation](#installation)
 - [Usage](#usage)
 - [MCP Integration](#mcp-integration)
+- [Docker](#docker)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
 - [License](#license)
@@ -30,9 +31,7 @@ A privacy-first document indexing and semantic search tool that supports Jira, C
 
 ```bash
 # 1. Clone and setup
-git clone <repository-url>
-cd indexed
-uv sync
+uvx indexed 
 
 # 2. Create a collection from local files
 uv run indexed index create --type files --name my-docs
@@ -217,6 +216,70 @@ Add to your Cursor MCP settings:
 ```
 
 See [MCP Server Documentation](./indexed/README.md#mcp-server-examples) for more details.
+
+## Docker
+
+Run indexed in a Docker container for isolated, reproducible deployments.
+
+### Building the Image
+
+```bash
+docker build -t indexed .
+```
+
+### Running the MCP Server
+
+```bash
+# Default: stdio transport (for Claude Desktop pipe)
+docker run -i -v ~/.indexed:/root/.indexed indexed
+
+# HTTP transport (for network access)
+docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport http --host 0.0.0.0
+
+# SSE transport
+docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport sse --host 0.0.0.0
+```
+
+### Managing Collections in Docker
+
+```bash
+# Create a collection from local files
+docker run -v ~/.indexed:/root/.indexed -v /path/to/docs:/docs \
+  indexed index create --type files --name my-docs --path /docs
+
+# Search collections
+docker run -v ~/.indexed:/root/.indexed indexed index search "your query"
+
+# Inspect collections
+docker run -v ~/.indexed:/root/.indexed indexed index inspect
+```
+
+### Docker Compose
+
+For HTTP-based deployments, use the included `docker-compose.yml`:
+
+```bash
+# Start HTTP server
+docker compose up indexed-http
+
+# Run CLI commands
+docker compose run indexed-cli index inspect
+```
+
+### Volume Mounts
+
+| Container Path | Purpose |
+|----------------|---------|
+| `/root/.indexed` | Configuration and data storage |
+| `/docs` (example) | Mount local files for indexing |
+
+### Environment Variables
+
+Configure via `INDEXED__` prefix:
+
+```bash
+docker run -e INDEXED__mcp__log_level=DEBUG indexed mcp
+```
 
 ## Project Structure
 
