@@ -117,29 +117,20 @@ def _format_update_comparison(before, after):
 
     def format_size_change(before_bytes, after_bytes):
         """Format size change with proper units."""
+        from indexed.utils.format import format_size
+        
         if before_bytes is None or after_bytes is None:
             return f"{before_bytes} → {after_bytes}"
 
-        def format_bytes(bytes_val):
-            if bytes_val is None:
-                return "unknown"
-            units = ["B", "KB", "MB", "GB", "TB"]
-            size = float(bytes_val)
-            for unit in units:
-                if size < 1024.0:
-                    return f"{size:.1f} {unit}"
-                size /= 1024.0
-            return f"{size:.1f} PB"
-
-        before_str = format_bytes(before_bytes)
-        after_str = format_bytes(after_bytes)
+        before_str = format_size(before_bytes)
+        after_str = format_size(after_bytes)
 
         if before_bytes is not None and after_bytes is not None:
             delta = after_bytes - before_bytes
             if delta > 0:
-                return f"{before_str} → {after_str} ([green]+{format_bytes(delta)}[/green])"
+                return f"{before_str} → {after_str} ([green]+{format_size(delta)}[/green])"
             elif delta < 0:
-                return f"{before_str} → {after_str} ([red]{format_bytes(abs(delta))}[/red])"
+                return f"{before_str} → {after_str} ([red]{format_size(abs(delta))}[/red])"
             else:
                 return f"{before_str} → {after_str} [{get_dim_style()}](no change)[/{get_dim_style()}]"
 

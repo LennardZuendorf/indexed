@@ -107,8 +107,8 @@ def _parse_early_storage_flags() -> tuple[bool, bool]:
 _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = False, False
 
 
-# Console for conflict prompts
-_prompt_console = Console()
+# Import shared console for prompts
+from .utils.console import console as _prompt_console
 
 
 # Global logging init via callback (runs before subcommands)
@@ -482,8 +482,7 @@ def migrate_data(
     """
     from indexed_config import get_global_root
     from .utils.migration import migrate_legacy_data, has_legacy_data
-    
-    console = Console()
+    from .utils.console import console
     
     if not has_legacy_data():
         console.print("[dim]No legacy data found at ./data/[/dim]")

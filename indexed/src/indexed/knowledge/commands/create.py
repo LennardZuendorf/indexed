@@ -1,6 +1,6 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 import typer
 from loguru import logger
@@ -10,20 +10,18 @@ from core.v1.constants import DEFAULT_INDEXER
 
 # Import utilities for progress and logging
 from ...utils.logging import is_verbose_mode
-from ...utils.progress_bar import create_progress_update_callback
 from ...utils.console import console
-from ...utils.components.status import OperationStatus
 from ...utils.components.theme import (
     get_heading_style,
     get_accent_style,
 )
-from ...utils.components import print_success, print_error
+from ...utils.components import print_error
 from ...utils.credentials import (
     prompt_credential_field,
     is_credential_field,
     check_server_auth_present,
 )
-from ...utils.context_managers import NoOpContext, suppress_core_output
+from ._create_helpers import execute_create_command
 
 
 def _is_cloud(url: str) -> bool:
@@ -102,31 +100,16 @@ def create_files(
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
+    from core.v1.engine.services import SourceConfig
     from connectors.files import LocalFilesConfig
-    from ...utils.logging import setup_root_logger
-
-    # Setup logging based on options
-    effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
-
-    # Get ConfigService singleton (auto-loads .env)
-    config = ConfigService.instance()
-    
-    if is_verbose_mode():
-        logger.info("Starting Files collection creation...")
-        logger.info("Resolving configuration parameters...")
     
     # Files connector (no cloud/server split)
     source_type = "localFiles"
     config_class = LocalFilesConfig
     namespace = "sources.files"
     
-    if is_verbose_mode():
-        logger.info("Using source type: %s", source_type)
-    
     # Build CLI overrides (map CLI params to schema fields)
-    cli_overrides = {}
+    cli_overrides: Dict[str, Any] = {}
     if path:
         cli_overrides["path"] = path
     if include:
@@ -136,22 +119,11 @@ def create_files(
     if fail_fast is not None:
         cli_overrides["fail_fast"] = fail_fast
     
-    # Validate requirements using ConfigService (generic!)
-    if is_verbose_mode():
-        logger.info("Validating configuration requirements for %s...", config_class.__name__)
-    
-    validation = config.validate_requirements(
-        config_class=config_class,
-        namespace=namespace,
-        cli_overrides=cli_overrides
-    )
-    
-    if is_verbose_mode():
-        logger.info("Validation result: %d fields present, %d missing", 
-                    len(validation["present"]), len(validation["missing"]))
-    
-    # Phase 1: Prompt for missing values
-    if validation["missing"]:
+    def prompt_missing_files_fields(validation: Dict[str, Any], config: ConfigService, ns: str) -> None:
+        """Prompt for missing Files-specific fields."""
+        if not validation["missing"]:
+            return
+            
         if not is_verbose_mode():
             console.print()
             console.print(f"[{get_heading_style()}]Files Configuration[/{get_heading_style()}]")
@@ -179,113 +151,43 @@ def create_files(
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
             
-            # Save using ConfigService (it decides .env vs .toml based on field_info)
-            config.set_value(
-                f"{namespace}.{field_name}",
-                value,
-                field_info=field_info
-            )
+            # Save using ConfigService
+            config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
             validation["present"][field_name] = value
             
             if is_verbose_mode():
                 logger.info("Saved %s to %s", field_name, "env" if field_info.get("sensitive") else "config")
     
-    # Also set CLI overrides in config for connector to read
-    for key, value in cli_overrides.items():
-        field_info = validation["field_info"].get(key)
-        config.set_value(f"{namespace}.{key}", value, field_info=field_info)
+    def build_files_source_config(present: Dict[str, Any], coll_name: str) -> SourceConfig:
+        """Build SourceConfig for Files connector."""
+        return SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["path"],
+            indexer=DEFAULT_INDEXER,
+            reader_opts={
+                "includePatterns": present.get("include_patterns", [".*"]),
+                "excludePatterns": present.get("exclude_patterns", []),
+                "failFast": present.get("fail_fast", False),
+            },
+        )
     
-    # Log resolved configuration in verbose mode
-    if is_verbose_mode():
-        logger.info("Configuration resolved:")
-        for field_name, value in validation["present"].items():
-            if validation["field_info"][field_name].get("sensitive"):
-                logger.info("  %s: ******** (sensitive)", field_name)
-            else:
-                logger.info("  %s: %s", field_name, value)
-        logger.info("  Collection: %s", collection)
-    
-    # Build source config
-    cfg = SourceConfig(
-        name=collection,
-        type=source_type,
-        base_url_or_path=validation["present"]["path"],
-        indexer=DEFAULT_INDEXER,
-        reader_opts={
-            "includePatterns": validation["present"].get("include_patterns", [".*"]),
-            "excludePatterns": validation["present"].get("exclude_patterns", []),
-            "failFast": validation["present"].get("fail_fast", False),
-        },
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_files_fields,
+        build_source_config=build_files_source_config,
+        success_message_suffix="from files",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
     )
-    
-    # Phase 2: Create collection with appropriate UI mode
-    creation_error = None
-    try:
-        if is_verbose_mode():
-            # Verbose mode: show all logs, no spinner
-            with NoOpContext():
-                logger.info("Reading files from %s...", validation["present"]["path"])
-                logger.info("Include patterns: %s", validation["present"].get("include_patterns", [".*"]))
-                logger.info("Exclude patterns: %s", validation["present"].get("exclude_patterns", []))
-                logger.info("Creating collection '%s'...", collection)
-                svc_create([cfg], config_service=config, use_cache=use_cache, force=force)
-        else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
-                f"[{get_heading_style()}]Creating Files collection: "
-                f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
-                f"[/{get_heading_style()}]"
-            )
-            console.print()
-            
-            with OperationStatus(console, f"Reading files from {validation['present']['path']}", capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
-                try:
-                    with suppress_core_output(redirect_streams=True):
-                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-                    status.complete(success=True)
-                except Exception as e:
-                    status.complete(success=False)
-                    creation_error = e
-    
-    except Exception as e:
-        creation_error = e
-    
-    # If creation failed, show error and exit
-    if creation_error:
-        print_error(f"Failed to create collection: {str(creation_error)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
-    
-    # Phase 3: Verify collection was created by checking if manifest exists
-    try:
-        if is_verbose_mode():
-            logger.info("Verifying collection was created...")
-        
-        collections = svc_status([collection])
-        
-        # Check if we got a valid collection (not just an error placeholder with 0 docs)
-        # A valid collection should have updated_time set
-        if collections and len(collections) > 0 and collections[0].updated_time:
-            doc_count = collections[0].number_of_documents
-            if is_verbose_mode():
-                logger.info("Collection created successfully with %d documents", doc_count)
-            
-            print_success(f"Collection '{collection}' created with {doc_count} documents from files")
-        else:
-            print_error("Collection creation failed - no valid collection found")
-            raise typer.Exit(1)
-    
-    except typer.Exit:
-        # Re-raise typer.Exit to preserve exit code
-        raise
-    except Exception as e:
-        print_error(f"Failed to verify collection: {str(e)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
 
 
 @app.command(
@@ -491,6 +393,7 @@ def create_jira(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
+            with NoOpContext():
             with NoOpContext():
                 logger.info("Connecting to Jira at %s...", validation["present"]["url"])
                 logger.info("Using JQL query: %s", validation["present"]["query"])
@@ -786,6 +689,7 @@ def create_confluence(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
+            with NoOpContext():
             with NoOpContext():
                 logger.info("Connecting to Confluence at %s...", validation["present"]["url"])
                 logger.info("Using CQL query: %s", validation["present"]["query"])
