@@ -1,3 +1,6 @@
+> [!WARNING]
+> Indexed is currently in a very early alpha stage!
+
 <p align="left">
   <img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
   <h3>
