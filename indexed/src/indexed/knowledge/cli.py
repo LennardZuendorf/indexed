@@ -25,7 +25,11 @@ app.command("remove", help="Remove indexed collections")(remove.remove)
 
 @app.command("docs", rich_help_panel="Resources")
 def docs() -> None:
-    """Open indexing documentation in browser."""
+    """
+    Open the index documentation URL in the user's default web browser.
+    
+    Prints a success message and the documentation URL when the browser is opened. If opening the browser fails, prints an error and the URL and exits the process with code 1.
+    """
     url = "https://indexed.ignitr.dev/docs/indexing"
     try:
         webbrowser.open(url)

@@ -107,17 +107,17 @@ def wrap_iterator_with_progress_bar(iterator, progress_bar_name="Processing"):
 
 
 def create_progress_callback(progress: Progress, task_id: int) -> Callable:
-    """Create a standard progress callback from Rich Progress instance.
-
-    This function creates a callback that can be passed to core services
-    to update Rich progress bars with structured progress information.
-
-    Args:
-        progress: Rich Progress instance
-        task_id: Task ID in the progress bar
-
+    """
+    Create a callback that updates a Rich Progress task from ProgressUpdate objects.
+    
+    The returned callable accepts an update object with `current`, `total`, and `message`. When `total` is greater than zero it computes completion percentage and updates the task's completed value and description; otherwise it updates the task description with the message only.
+    
+    Parameters:
+        progress (Progress): Rich Progress instance used to update the task.
+        task_id (int): ID of the task to update within the Progress instance.
+    
     Returns:
-        Callback function that updates the Rich progress bar with ProgressUpdate data
+        callback (Callable): A function that accepts a ProgressUpdate-like object and applies its values to the specified progress task.
     """
 
     def callback(update):
@@ -140,24 +140,28 @@ def create_progress_callback(progress: Progress, task_id: int) -> Callable:
 
 
 def create_progress_update_callback(operation_status) -> Callable:
-    """Create callback that updates OperationStatus from ProgressUpdate.
-
-    This adapter function converts ProgressUpdate messages from core services
-    into status display updates for the OperationStatus component.
-
-    Args:
-        operation_status: OperationStatus instance to update
-
+    """
+    Create a callback that applies ProgressUpdate values to an OperationStatus display.
+    
+    Parameters:
+        operation_status: OperationStatus instance to receive formatted status messages.
+    
     Returns:
-        Callback function that accepts ProgressUpdate dataclass
+        callback (Callable[[ProgressUpdate], None]): Function that accepts a ProgressUpdate and updates the provided OperationStatus with a human-readable message.
     """
     from core.v1.engine.services.models import ProgressUpdate
 
     def callback(update: ProgressUpdate):
-        """Update OperationStatus with progress information.
-
-        Args:
-            update: ProgressUpdate dataclass with stage, current, total, and message
+        """
+        Update the provided OperationStatus with a human-readable message derived from a ProgressUpdate.
+        
+        Formats the message as follows:
+        - If update.total == 0: "No changes detected".
+        - If update.total > 0: "{Stage}: {current}/{total} documents" (stage capitalized).
+        - Otherwise: uses update.message.
+        
+        Parameters:
+            update (ProgressUpdate): Progress information with attributes `stage`, `current`, `total`, and `message`.
         """
         # Handle case where no documents to process (total=0)
         if update.total == 0:

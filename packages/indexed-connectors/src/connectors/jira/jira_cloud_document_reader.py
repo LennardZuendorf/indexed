@@ -29,9 +29,20 @@ class JiraCloudDocumentReader:
         retry_delay=1,
         max_skipped_items_in_row=5,
     ):
-        """Initialize Jira Cloud document reader.
-
-        Note: This class is deprecated. Consider using UnifiedJiraDocumentReader instead.
+        """
+        Deprecated wrapper that configures a Jira Cloud document reader for backward compatibility.
+        
+        This initializer emits a DeprecationWarning and constructs an internal UnifiedJiraDocumentReader configured for Jira Cloud authentication; the instance exposes compatibility attributes from the internal reader. Prefer using UnifiedJiraDocumentReader with auth_type set to JiraAuthType.CLOUD.
+        
+        Parameters:
+            base_url (str): Base URL of the Jira instance (e.g., "https://your-domain.atlassian.net").
+            query (str): JQL query used to select issues/documents.
+            email (str | None): Account email for Cloud authentication (optional).
+            api_token (str | None): API token for Cloud authentication (optional).
+            batch_size (int): Number of items fetched per request.
+            number_of_retries (int): Number of retry attempts for transient failures.
+            retry_delay (int | float): Delay in seconds between retries.
+            max_skipped_items_in_row (int): Maximum consecutive items allowed to be skipped before aborting.
         """
         # Emit deprecation warning
         warnings.warn(
@@ -66,13 +77,28 @@ class JiraCloudDocumentReader:
         self._client = self._reader._client
 
     def read_all_documents(self):
-        """Read all documents matching the JQL query."""
+        """
+        Read all documents matching the configured JQL query.
+        
+        Returns:
+            documents (list[dict]): Documents extracted from Jira for issues that match the reader's query.
+        """
         return self._reader.read_all_documents()
 
     def get_number_of_documents(self):
-        """Get the total count of documents matching the query."""
+        """
+        Get the total number of documents that match the reader's query.
+        
+        Returns:
+            int: Total count of matching documents.
+        """
         return self._reader.get_number_of_documents()
 
     def get_reader_details(self) -> dict:
-        """Get reader configuration details."""
+        """
+        Return a dictionary describing the reader's configuration and runtime details.
+        
+        Returns:
+            details (dict): Mapping containing reader configuration and metadata (for example: base_url, query, auth_type, email/api token presence, batch_size, number_of_retries, retry_delay, max_skipped_items_in_row, and client information).
+        """
         return self._reader.get_reader_details()

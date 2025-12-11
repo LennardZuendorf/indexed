@@ -29,16 +29,15 @@ def _get_server_path() -> str:
 
 
 def _parse_fastmcp_inspect_json(json_output: str) -> Optional[Dict[str, Any]]:
-    """Parse FastMCP inspect JSON output.
-
-    Handles cases where there might be non-JSON content before the actual JSON
-    (like banners or log messages), and control characters in string values.
-
-    Args:
-        json_output: JSON string from fastmcp inspect --format fastmcp
-
+    """
+    Parse FastMCP `inspect` CLI output and return the contained JSON as a dictionary if present.
+    
+    Parameters:
+        json_output (str): Raw stdout produced by `fastmcp inspect --format fastmcp`.
+    
     Returns:
-        Parsed dictionary or None if parsing fails
+        dict: Parsed JSON object extracted from the output.
+        None: If no valid JSON object can be found or parsed.
     """
     # Try direct parsing with strict=False to allow control characters in strings
     try:
@@ -62,13 +61,22 @@ def _parse_fastmcp_inspect_json(json_output: str) -> Optional[Dict[str, Any]]:
 
 
 def _extract_inspect_summary(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract summary information from FastMCP inspect data.
-
-    Args:
-        data: Full FastMCP inspect JSON data
-
+    """
+    Create a concise summary of FastMCP inspect output containing server metadata, reported versions, and counts of components.
+    
+    Parameters:
+        data (Dict[str, Any]): Parsed FastMCP inspect JSON.
+    
     Returns:
-        Simplified summary dictionary
+        summary (Dict[str, Any]): Dictionary with the following keys:
+            - name (str): Server name or "Unknown" if not provided.
+            - website_url (Optional[str]): Server website URL if present.
+            - fastmcp_version (str): Reported FastMCP version or "Unknown".
+            - mcp_version (str): Reported MCP version or "Unknown".
+            - tools_count (int): Number of tools listed.
+            - resources_count (int): Number of resources listed.
+            - prompts_count (int): Number of prompts listed.
+            - templates_count (int): Number of templates listed.
     """
     server = data.get("server", {})
     env = data.get("environment", {})
@@ -141,10 +149,13 @@ def _display_mcp_inspect(data: Dict[str, Any]) -> None:
 
 
 def _display_mcp_inspect_json(data: Dict[str, Any]) -> None:
-    """Display MCP server inspection as formatted JSON.
-
-    Args:
-        data: Parsed FastMCP inspect JSON data
+    """
+    Render a concise JSON-formatted summary of MCP server inspection to the console.
+    
+    Formats a distilled summary extracted from the full FastMCP inspect output, pretty-prints it as indented JSON with syntax highlighting, and writes it to the configured console.
+    
+    Parameters:
+        data: The full parsed FastMCP `inspect` output; only the extracted summary fields are displayed.
     """
     from rich.syntax import Syntax
 
@@ -181,12 +192,37 @@ def _build_fastmcp_command(
     output: Optional[str] = None,
     **kwargs,
 ) -> List[str]:
-    """Build FastMCP CLI command with subcommand-specific options.
-
-    Options are applied based on which subcommand is being used:
-    - run: transport, host, port, log-level, path, env options, no-banner
-    - dev: same as run + inspector-version, ui-port, server-port
-    - inspect: format, output ONLY
+    """
+    Constructs the FastMCP CLI argument list for a specific subcommand using the provided options.
+    
+    Builds an argv-style list beginning with "fastmcp", the subcommand, and the local server path, then appends flags appropriate to the chosen subcommand:
+    - For "run" and "dev": transport, host, port, path, log level, environment/project options, and banner control.
+    - For "dev": additionally supports inspector version, UI port, and server port.
+    - For "inspect": supports only format and output options.
+    
+    Parameters:
+        subcommand (str): FastMCP subcommand to invoke (e.g., "run", "dev", "inspect").
+        transport (str): Transport type for run/dev (default "stdio").
+        host (str): Host for run/dev (default "127.0.0.1").
+        port (int): Port for run/dev (default 8000).
+        log_level (str): Log level for run/dev (default "INFO").
+        path (Optional[str]): Application path passed to FastMCP.
+        python (Optional[str]): Python executable or interpreter spec for environment creation.
+        with_packages (Optional[List[str]]): Extra packages to install into the environment (each added with `--with`).
+        with_requirements (Optional[str]): Path to a requirements file to pass with `--with-requirements`.
+        with_editable (Optional[str]): Editable package spec passed with `--with-editable`.
+        project (Optional[str]): Project directory to pass with `--project`.
+        skip_env (bool): If True, include `--skip-env` to avoid creating a virtual environment.
+        no_banner (bool): If True, include `--no-banner` to suppress the startup banner.
+        inspector_version (Optional[str]): Inspector version for "dev" (passed via `--inspector-version`).
+        ui_port (Optional[int]): UI port for "dev" (passed via `--ui-port`).
+        server_port (Optional[int]): Server port for "dev" (passed via `--server-port`).
+        format (Optional[str]): Output format for "inspect" (passed via `--format`).
+        output (Optional[str]): Output file/path for "inspect" (passed via `-o`).
+        **kwargs: Ignored additional keyword arguments.
+    
+    Returns:
+        List[str]: The assembled command and arguments ready to be executed (e.g., via subprocess).
     """
     cmd = ["fastmcp", subcommand, _get_server_path()]
 
@@ -240,7 +276,16 @@ def _build_fastmcp_command(
 
 
 def _execute_fastmcp(cmd: List[str]) -> None:
-    """Execute FastMCP CLI command with proper error handling."""
+    """
+    Run the FastMCP CLI command and exit the application on failure.
+    
+    This executes the provided command list using subprocess.run and, on error,
+    reports a user-facing message and terminates the CLI with a non-zero exit code.
+    
+    Raises:
+        typer.Exit: Exit with code 1 if the FastMCP command returns a non-zero status
+            or if the FastMCP executable is not found.
+    """
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -775,15 +820,16 @@ def inspect(
         False, "--raw", help="Output raw FastMCP JSON (full response)"
     ),
 ):
-    """Inspect MCP server capabilities and generate reports.
-
-    By default, displays server info using indexed's panel design.
-
-    Examples:
-        indexed mcp inspect                    # Custom panel display
-        indexed mcp inspect --json             # Summary as formatted JSON
-        indexed mcp inspect --raw              # Full FastMCP JSON response
-        indexed mcp inspect --format mcp -o manifest.json
+    """
+    Inspect MCP server capabilities and present a report using either a custom panel view or raw/JSON output.
+    
+    If `format`, `output`, or `raw` is provided, this command delegates directly to the FastMCP CLI and returns its output (optionally writing to `output`). When run without those options, it captures FastMCP's JSON inspection output and either displays a concise panel-based summary or a formatted JSON summary when `json_output` is true. If parsing the FastMCP JSON fails, the command falls back to displaying FastMCP's text output.
+    
+    Parameters:
+        format (Optional[str]): Output format to request from FastMCP ("text", "fastmcp", or "mcp"). When provided, the CLI call is passed through to FastMCP.
+        output (Optional[str]): File path to write FastMCP output; when set, the CLI call is passed through to FastMCP.
+        json_output (bool): If true and JSON inspection is captured, display a formatted JSON summary instead of the panel view.
+        raw (bool): If true, request the full FastMCP JSON response and pass it through unmodified.
     """
     # If user wants raw FastMCP output (format specified or output file), use FastMCP directly
     if format or output or raw:
@@ -879,7 +925,14 @@ def fastmcp(
 
 @app.command("docs", rich_help_panel="Resources")
 def docs() -> None:
-    """Open MCP server documentation in browser."""
+    """
+    Open the MCP server documentation URL in the user's default web browser.
+    
+    If the browser cannot be opened, prints a manual URL instruction and exits with code 1 by raising typer.Exit.
+    
+    Raises:
+        typer.Exit: with exit code 1 if the browser could not be opened.
+    """
     url = "https://indexed.ignitr.dev/docs/mcp"
     try:
         webbrowser.open(url)

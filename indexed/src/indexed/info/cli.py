@@ -97,12 +97,12 @@ def docs(
 
 @app.command("license")
 def license_terms() -> None:
-    """Display license and terms & conditions.
-
-    Displays the Indexed software license in a scrollable markdown view.
-    The license uses the Sustainable Use License with specific usage terms.
-
-    Use arrow keys or Page Up/Down to scroll, Q to quit.
+    """
+    Display the Indexed software license in a scrollable Markdown pager.
+    
+    Attempts to load the LICENSE text from the project's GitHub repository and, if that fails, falls back to a local LICENSE file in known locations. Prints a header and a source indicator ("Loaded from GitHub repository" or "Using local copy - may not reflect latest version") before opening a scrollable pager showing the license content.
+    
+    Exits with code 1 if the license cannot be fetched or read, or if the license content cannot be displayed.
     """
     # Remote LICENSE URL (always up-to-date from GitHub)
     license_url = "https://raw.githubusercontent.com/LennardZuendorf/indexed/refs/heads/main/LICENSE"
@@ -196,4 +196,3 @@ def cli_main() -> None:
 
 if __name__ == "__main__":
     cli_main()
-

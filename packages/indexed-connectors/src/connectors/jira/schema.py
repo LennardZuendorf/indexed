@@ -22,15 +22,30 @@ class JiraConfig(BaseModel):
     )
 
     def get_token(self) -> Optional[str]:
-        """Get token from config or environment."""
+        """
+        Retrieve the Jira bearer token from the configuration or the JIRA_TOKEN environment variable.
+        
+        Returns:
+            token (Optional[str]): The token from the instance if set; otherwise the value of the JIRA_TOKEN environment variable, or `None` if neither is present.
+        """
         return self.token or os.getenv("JIRA_TOKEN")
 
     def get_login(self) -> Optional[str]:
-        """Get login from config or environment."""
+        """
+        Retrieve the configured Jira login, falling back to the JIRA_LOGIN environment variable.
+        
+        Returns:
+            Optional[str]: The login from the configuration if set, otherwise the value of the JIRA_LOGIN environment variable, or None if neither is set.
+        """
         return self.login or os.getenv("JIRA_LOGIN")
 
     def get_password(self) -> Optional[str]:
-        """Get password from config or environment."""
+        """
+        Return the configured Jira password or the value of the JIRA_PASSWORD environment variable.
+        
+        Returns:
+            str | None: The password if set, `None` otherwise.
+        """
         return self.password or os.getenv("JIRA_PASSWORD")
 
 
@@ -47,14 +62,30 @@ class JiraCloudConfig(BaseModel):
     )
 
     def get_email(self) -> str:
-        """Get email from config or environment."""
+        """
+        Retrieve the Atlassian account email from the configuration or the ATLASSIAN_EMAIL environment variable.
+        
+        Returns:
+            email (str): The configured email or the value of ATLASSIAN_EMAIL.
+        
+        Raises:
+            ValueError: If neither the configured email nor ATLASSIAN_EMAIL is set.
+        """
         email = self.email or os.getenv("ATLASSIAN_EMAIL")
         if not email:
             raise ValueError("ATLASSIAN_EMAIL not set in config or environment")
         return email
 
     def get_api_token(self) -> str:
-        """Get API token from config or environment."""
+        """
+        Retrieve the Atlassian API token from the instance configuration or the ATLASSIAN_TOKEN environment variable.
+        
+        Returns:
+            api_token (str): The resolved API token.
+        
+        Raises:
+            ValueError: If neither the instance `api_token` nor the `ATLASSIAN_TOKEN` environment variable is set.
+        """
         token = self.api_token or os.getenv("ATLASSIAN_TOKEN")
         if not token:
             raise ValueError("ATLASSIAN_TOKEN not set in config or environment")
@@ -62,5 +93,4 @@ class JiraCloudConfig(BaseModel):
 
 
 __all__ = ["JiraConfig", "JiraCloudConfig"]
-
 

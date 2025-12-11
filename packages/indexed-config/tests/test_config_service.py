@@ -21,7 +21,14 @@ class RequiredSpec(BaseModel):
 
 @pytest.fixture
 def temp_workspace():
-    """Create temporary workspace directory."""
+    """
+    Create a temporary directory and set it as the current working directory for the fixture's scope.
+    
+    The directory is removed and the original working directory is restored when the fixture finishes.
+    
+    Returns:
+        Path: Path object pointing to the temporary workspace directory for the test.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         original_cwd = os.getcwd()
         os.chdir(tmpdir)
@@ -33,7 +40,15 @@ def temp_workspace():
 
 @pytest.fixture
 def config_service(temp_workspace):
-    """Create fresh ConfigService instance."""
+    """
+    Create and return a fresh ConfigService singleton configured for tests.
+    
+    Resets the ConfigService singleton, obtains a new instance, and registers
+    SampleConfigSpec at "test.config" and RequiredSpec at "test.required".
+    
+    Returns:
+        ConfigService: the singleton instance with the test specs registered.
+    """
     # Clear singleton
     ConfigService._instance = None
     svc = ConfigService.instance()
@@ -124,7 +139,11 @@ def test_env_variable_override(config_service, temp_workspace):
 
 
 def test_merge_order(config_service, temp_workspace):
-    """Test merge order: workspace > global > env."""
+    """
+    Verify that environment variables take precedence over workspace configuration when merging settings.
+    
+    Sets a workspace key and an environment variable for the same path, then asserts the merged raw configuration contains the environment value.
+    """
     # Set workspace config
     config_service.set("merge.test", "workspace_value")
     

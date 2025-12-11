@@ -29,6 +29,12 @@ from ...utils.credentials import (
 
 
 def _is_cloud(url: str) -> bool:
+    """
+    Determine whether a given Atlassian base URL refers to the cloud-hosted service.
+    
+    Returns:
+        True if the URL ends with ".atlassian.net", False otherwise.
+    """
     return url.endswith(".atlassian.net")
 
 
@@ -36,15 +42,31 @@ class _NoOpContext:
     """No-op context manager for verbose mode (no spinner)."""
 
     def __enter__(self):
+        """
+        Enter the no-op context manager.
+        
+        Returns:
+            self: The context manager instance to be bound by the with-statement.
+        """
         return self
 
     def __exit__(self, *args):
+        """
+        No-op context manager exit handler that performs no cleanup and does not suppress exceptions.
+        
+        Returns:
+            None: exceptions (if any) are not suppressed and will propagate.
+        """
         pass
 
 
 @contextmanager
 def suppress_core_output():
-    """Context manager to suppress all core logging and output."""
+    """
+    Temporarily silences core library output and redirects stdout/stderr while in the context.
+    
+    While active, the root stdlib logging level is raised to CRITICAL, Loguru logging is disabled, and both stdout and stderr are redirected to internal captures (discarding any output). Original logging state and Loguru are restored when the context exits.
+    """
     # Capture all output streams
     stdout_capture = StringIO()
     stderr_capture = StringIO()
@@ -658,7 +680,11 @@ def create_confluence(
         rich_help_panel="Logging",
     ),
 ):
-    """Create a Confluence collection with comprehensive parameter resolution and progress tracking."""
+    """
+    Create a Confluence collection by resolving configuration, executing the ingestion, and verifying the result.
+    
+    Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
+    """
     from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
