@@ -20,14 +20,15 @@ from .theme import (
 
 
 def _truncate(value: str, max_len: int) -> str:
-    """Truncate a string with ellipsis if it exceeds max length.
+    """
+    Truncates a string to a maximum length, appending "..." when truncation occurs.
     
-    Args:
-        value: String to truncate
-        max_len: Maximum length before truncation
-        
+    Parameters:
+        value (str): The input string to truncate.
+        max_len (int): Maximum allowed length of the returned string. When truncation occurs, the returned string's length will equal `max_len` (including the appended ellipsis).
+    
     Returns:
-        Original string or truncated string with "..."
+        str: The original string if its length is less than or equal to `max_len`, otherwise a truncated string ending with "...".
     """
     if len(value) <= max_len:
         return value
@@ -46,38 +47,22 @@ def create_key_value_panel(
     headers: tuple[str, str, str] | tuple[str, str] | None = None,
     expand: bool = True,
 ) -> Panel:
-    """Create a panel with aligned key-value rows.
+    """
+    Render a Rich Panel showing aligned key/value rows with an optional category column and optional headers.
     
-    This component uses Table.grid() inside a Panel to achieve:
-    - Clean visual structure with rounded panel borders
-    - Proper column alignment without internal gridlines
-    - Truncated values to prevent line wrapping
-    - Optional muted column headers
-    
-    Args:
-        title: Panel title displayed at the top border
-        rows: List of tuples - either (category, key, value) for 3-column mode
-              or (key, value) for 2-column mode when show_category=False
-        category_width: Fixed width for category column in characters
-        key_width: Fixed width for key column in characters
-        value_max_len: Maximum length for values before truncation with "..."
-        show_category: Whether to show category column (False for 2-column mode)
-        show_headers: Whether to show column headers (default: True)
-        headers: Custom header labels. Defaults to ("source", "key", "value") for 
-                 3-column or ("key", "value") for 2-column mode
-        expand: Whether the panel should expand to fill available width
+    Parameters:
+        title (str): Panel title displayed on the top border.
+        rows (Sequence[tuple[str, str, str] | tuple[str, str]]): Iterable of row tuples. In 3-column mode each row is (category, key, value); in 2-column mode each row is (key, value). When show_category is True a 2-tuple is treated as (key, value) with an empty category; when show_category is False a 3-tuple ignores the category.
+        category_width (int): Fixed width (characters) for the category column.
+        key_width (int): Fixed width (characters) for the key column.
+        value_max_len (int): Maximum length for rendered values; longer values are truncated and end with an ellipsis.
+        show_category (bool): Show a category column (three-column layout) when True; otherwise render two columns (key, value).
+        show_headers (bool): Render a muted header row above the data when True.
+        headers (tuple[str, ...] | None): Custom header labels. Expected length is 3 for three-column mode or 2 for two-column mode; defaults to ("source", "key", "value") or ("key", "value") respectively.
+        expand (bool): Whether the panel should expand to fill available width.
     
     Returns:
-        Rich Panel containing a Table.grid with proper alignment
-        
-    Example:
-        >>> rows = [
-        ...     ("confluence", "url", "https://example.atlassian.net"),
-        ...     ("confluence", "query", "space = 'DOCS'"),
-        ...     ("files", "path", "./documents"),
-        ... ]
-        >>> panel = create_key_value_panel("Sources", rows)
-        >>> console.print(panel)
+        Panel: A styled Rich Panel containing a fixed-width, non-wrapping grid of the provided rows with applied heading, label, and border styles.
     """
     grid = Table.grid(padding=(0, 2), expand=expand)
     
@@ -189,4 +174,3 @@ def create_simple_key_value_panel(
         headers=headers,
         expand=expand,
     )
-

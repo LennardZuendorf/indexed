@@ -12,6 +12,15 @@ class ConfluenceCloudAPIError(Exception):
     """Custom exception for Confluence Cloud API errors with detailed information."""
 
     def __init__(self, status_code: int, reason: str, message: str, url: str):
+        """
+        Initialize ConfluenceCloudAPIError with HTTP details for a failed Confluence Cloud API request.
+        
+        Parameters:
+            status_code (int): HTTP status code returned by the API.
+            reason (str): HTTP reason phrase or short description of the error.
+            message (str): Detailed error message extracted from the response body or fallback text.
+            url (str): The request URL that produced the error.
+        """
         self.status_code = status_code
         self.reason = reason
         self.message = message
@@ -19,6 +28,12 @@ class ConfluenceCloudAPIError(Exception):
         super().__init__(self._format_message())
 
     def _format_message(self) -> str:
+        """
+        Format a multi-line string that describes this Confluence Cloud API error.
+        
+        Returns:
+            str: A human-readable message containing the HTTP status code and reason, the request URL, and the API error message.
+        """
         return (
             f"Confluence Cloud API Error ({self.status_code} {self.reason})\n"
             f"  URL: {self.url}\n"
@@ -40,6 +55,23 @@ class ConfluenceCloudDocumentReader:
         read_all_comments=False,
     ):
         # "email" and "api_token" must be provided for Cloud
+        """
+        Initialize a ConfluenceCloudDocumentReader configured to read pages and comments from a Confluence Cloud instance.
+        
+        Parameters:
+            base_url (str): Confluence Cloud base URL; must end with ".atlassian.net".
+            query (str): CQL query used to select pages. If falsy, the reader will default to selecting pages only.
+            email (str): Account email used for HTTP basic authentication (required).
+            api_token (str): API token used for HTTP basic authentication (required).
+            batch_size (int): Number of items to request per API call when paginating.
+            number_of_retries (int): Number of retry attempts for transient HTTP errors.
+            retry_delay (int): Delay in seconds between retry attempts.
+            max_skipped_items_in_row (int): Maximum number of consecutive items the reader will skip before stopping pagination.
+            read_all_comments (bool): If True, comments are fetched at full depth (all threads); if False, only immediate comment bodies are expanded.
+        
+        Raises:
+            ValueError: If either `email` or `api_token` is missing, or if `base_url` does not end with ".atlassian.net".
+        """
         if not email or not api_token:
             raise ValueError(
                 "Both 'email' and 'api_token' must be provided for Confluence Cloud."
@@ -92,6 +124,15 @@ class ConfluenceCloudDocumentReader:
 
     @staticmethod
     def build_page_query(user_query):
+        """
+        Ensure a Confluence CQL query targets pages by adding a `type=page` clause when necessary.
+        
+        Parameters:
+            user_query (str): The user-supplied CQL fragment. May be empty or already include a `type=page` clause.
+        
+        Returns:
+            str: The original `user_query` if it already contains a `type=page` clause, otherwise a query prefixed with `type=page AND (...)`. If `user_query` is empty, returns `"type=page"`.
+        """
         if not user_query:
             return "type=page"
 
@@ -102,6 +143,15 @@ class ConfluenceCloudDocumentReader:
         return f"type=page AND ({user_query})"
 
     def __add_url_prefix(self, relative_path):
+        """
+        Prepend the reader's base URL to a relative path to form an absolute URL.
+        
+        Parameters:
+            relative_path (str): Relative URL path to append to the reader's base URL.
+        
+        Returns:
+            absolute_url (str): The combined absolute URL (base_url + relative_path).
+        """
         return self.base_url + relative_path
 
     def __read_comments(self, page):
@@ -159,6 +209,19 @@ class ConfluenceCloudDocumentReader:
         )
 
     def __request(self, url, params):
+        """
+        Perform an authenticated GET to the given Confluence URL with the provided query parameters.
+        
+        Parameters:
+            url (str): Full request URL to call.
+            params (dict): Query parameters to include in the request.
+        
+        Returns:
+            object: The parsed JSON response.
+        
+        Raises:
+            ConfluenceCloudAPIError: If the HTTP response indicates an error; the exception carries `status_code`, `reason`, `message`, and `url`.
+        """
         def do_request():
             response = requests.get(
                 url=url,

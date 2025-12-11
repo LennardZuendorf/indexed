@@ -115,6 +115,14 @@ class JiraConnector:
     # --- Config integration ---
     @classmethod
     def config_spec(cls) -> dict:
+        """
+        Configuration schema for the Jira (Server/Data Center) connector.
+        
+        Provides the expected configuration keys and their metadata: "base_url" (Jira server URL), "query" (JQL query), and authentication alternatives via environment variable names "token_env" (API token) or "login_env" and "password_env" (basic auth). Each key maps to a dictionary describing type, requirement, secrecy, and defaults where applicable.
+        
+        Returns:
+            dict: Mapping of configuration keys to their schema definitions.
+        """
         return {
             "base_url": {
                 "type": "str",
@@ -154,23 +162,16 @@ class JiraConnector:
 
     @classmethod
     def from_config(cls, config_service) -> "JiraConnector":
-        """Create JiraConnector from ConfigService.
+        """
+        Create a JiraConnector using configuration from a ConfigService.
         
-        Registers JiraConfig spec and extracts configuration values.
+        Registers the JiraConfig schema at "sources.jira", binds the service, reads the Jira configuration, and returns a JiraConnector initialized from those configuration values.
         
-        Args:
-            config_service: ConfigService instance with config loaded.
-            
+        Parameters:
+            config_service (ConfigService): Service providing configuration; must expose JiraConfig at the "sources.jira" path.
+        
         Returns:
-            Configured JiraConnector instance.
-            
-        Raises:
-            ValueError: If required config values are missing.
-            
-        Examples:
-            >>> from indexed_config import ConfigService
-            >>> config = ConfigService()
-            >>> connector = JiraConnector.from_config(config)
+            JiraConnector: A connector configured with values from the retrieved JiraConfig.
         """
         # Register our config spec
         config_service.register(JiraConfig, path="sources.jira")
@@ -262,12 +263,27 @@ class JiraCloudConnector:
         return "jiraCloud"
 
     def __repr__(self) -> str:
-        """String representation of connector."""
+        """
+        Return a concise string identifying the JiraCloudConnector instance.
+        
+        Returns:
+            str: String in the form "JiraCloudConnector(url='<base_url>', query='<jql_query>')".
+        """
         return f"JiraCloudConnector(url='{self._url}', query='{self._query}')"
 
     # --- Config integration ---
     @classmethod
     def config_spec(cls) -> dict:
+        """
+        Provide the configuration schema used to construct a JiraCloudConnector.
+        
+        Returns:
+            A dictionary mapping configuration keys to their schema definitions:
+            - `base_url`: Jira Cloud base URL (e.g., `https://company.atlassian.net`), required.
+            - `query`: Base JQL query, required.
+            - `email`: Atlassian account email used for authentication, required.
+            - `api_token_env`: Name of the environment variable that contains the Atlassian API token, required, secret, defaults to `"ATLASSIAN_TOKEN"`.
+        """
         return {
             "base_url": {
                 "type": "str",
@@ -298,24 +314,16 @@ class JiraCloudConnector:
 
     @classmethod
     def from_config(cls, config_service) -> "JiraCloudConnector":
-        """Create JiraCloudConnector from ConfigService.
+        """
+        Create a JiraCloudConnector configured from a ConfigService.
         
-        Registers JiraCloudConfig spec and extracts configuration values.
-        Uses unified 'sources.jira' namespace (Cloud vs Server detected from URL).
+        Registers the JiraCloudConfig at path "sources.jira", binds the service, and constructs a JiraCloudConnector using values from the bound configuration.
         
-        Args:
-            config_service: ConfigService instance with config loaded.
-            
+        Parameters:
+            config_service: ConfigService providing configuration data.
+        
         Returns:
-            Configured JiraCloudConnector instance.
-            
-        Raises:
-            ValueError: If required config values are missing.
-            
-        Examples:
-            >>> from indexed_config import ConfigService
-            >>> config = ConfigService()
-            >>> connector = JiraCloudConnector.from_config(config)
+            JiraCloudConnector: Configured connector instance.
         """
         # Register our config spec using unified namespace
         config_service.register(JiraCloudConfig, path="sources.jira")

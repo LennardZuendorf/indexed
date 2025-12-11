@@ -15,21 +15,30 @@ class Provider:
         raw: Dict[str, Any],
         path_to_type: Dict[str, Type[BaseModel]] | None = None,
     ) -> None:
+        """
+        Initialize the Provider with typed configuration slices, the merged raw configuration, and an optional mapping from dot-paths to model types.
+        
+        Parameters:
+            slices (Dict[type, BaseModel]): Mapping from Pydantic model types to their corresponding configuration instances; treated as the immutable typed view.
+            raw (Dict[str, Any]): The raw merged configuration dictionary.
+            path_to_type (Dict[str, Type[BaseModel]] | None): Optional mapping from dot-separated config paths to Pydantic model types; defaults to an empty dict when omitted.
+        """
         self._slices = slices
         self._raw = raw
         self._path_to_type = path_to_type or {}
 
     def get(self, spec: Type[T]) -> T:
-        """Get config instance by type.
+        """
+        Retrieve the configuration instance associated with the given Pydantic model type.
         
-        Args:
-            spec: Pydantic model class type.
-            
+        Parameters:
+            spec: Pydantic model class whose registered configuration instance to return.
+        
         Returns:
-            Validated config instance.
-            
+            The configuration instance corresponding to `spec`.
+        
         Raises:
-            KeyError: If spec not registered or not found in config.
+            KeyError: If `spec` is not registered in this provider.
         """
         if spec not in self._slices:
             raise KeyError(
@@ -60,5 +69,10 @@ class Provider:
 
     @property
     def raw(self) -> Dict[str, Any]:
-        """Get raw merged config dictionary."""
+        """
+        Return the underlying merged configuration dictionary.
+        
+        Returns:
+            Dict[str, Any]: The raw merged configuration mapping.
+        """
         return self._raw

@@ -24,15 +24,16 @@ def get_storage_indicator(
     path: Path,
     reason: Optional[str] = None,
 ) -> str:
-    """Get a formatted storage mode indicator string.
+    """
+    Constructs a formatted indicator showing the storage mode, the storage root path (with the home directory replaced by `~`), and an optional reason.
     
-    Args:
-        mode: The storage mode ("global" or "local").
-        path: The storage root path.
-        reason: Optional reason for using this mode.
-        
+    Parameters:
+        mode (StorageMode): "global" or "local".
+        path (Path): Path to the storage root.
+        reason (Optional[str]): Optional explanation for using this mode.
+    
     Returns:
-        Formatted indicator string.
+        str: A single formatted string containing an icon, the capitalized mode label, the path, and the optional reason (e.g. "🌐 Global storage (~/.indexed) - via config setting").
     """
     icon = "🌐" if mode == "global" else "📁"
     mode_display = mode.capitalize()
@@ -52,15 +53,16 @@ def print_storage_info(
     newline_before: bool = False,
     newline_after: bool = True,
 ) -> None:
-    """Print a storage mode indicator to the console.
+    """
+    Prints a formatted storage mode indicator to the given Rich Console.
     
-    Args:
-        console: Rich Console to print to.
-        mode: The storage mode ("global" or "local").
-        path: The storage root path.
-        reason: Optional reason for using this mode.
-        newline_before: Add newline before the message.
-        newline_after: Add newline after the message.
+    Parameters:
+        console (Console): Rich Console to print to.
+        mode (StorageMode): Storage mode label, either "global" or "local".
+        path (Path): Path to the storage root; home directory may be shown as "~".
+        reason (Optional[str]): Optional explanatory text appended to the indicator.
+        newline_before (bool): If True, print a blank line before the indicator.
+        newline_after (bool): If True, print a blank line after the indicator.
     """
     if newline_before:
         console.print()
@@ -78,23 +80,19 @@ def get_storage_mode_and_reason(
     config_mode: Optional[StorageMode],
     workspace_pref: Optional[StorageMode],
 ) -> tuple[StorageMode, str]:
-    """Determine storage mode and the reason for using it.
+    """
+    Resolve which storage mode to use and provide a short reason explaining the choice.
     
-    Resolution order:
-    1. CLI flag (--local or --global)
-    2. Config setting (storage.mode in config.toml)
-    3. Workspace preference (saved from previous --local use)
-    4. Local exists -> use local
-    5. Default to global
+    Resolution precedence (highest to lowest): CLI override, config setting, workspace preference, presence of a local .indexed folder, then default to global.
     
-    Args:
-        has_local: Whether local .indexed folder exists.
-        mode_override: Explicit mode from CLI flag.
-        config_mode: Mode from config.toml storage.mode setting.
-        workspace_pref: Workspace preference from global config.
-        
+    Parameters:
+        has_local (bool): True if a local .indexed directory exists in the workspace.
+        mode_override (Optional[StorageMode]): Mode explicitly specified via CLI flags.
+        config_mode (Optional[StorageMode]): Mode from the project's config (e.g., config.toml).
+        workspace_pref (Optional[StorageMode]): Previously saved workspace preference.
+    
     Returns:
-        Tuple of (mode, reason_string).
+        tuple[StorageMode, str]: Chosen storage mode and a concise reason (e.g., "via --local flag", "via config setting", "saved preference", "local .indexed found", or "default").
     """
     if mode_override == "local":
         return ("local", "via --local flag")
@@ -115,4 +113,3 @@ def get_storage_mode_and_reason(
         return ("local", "local .indexed found")
     
     return ("global", "default")
-

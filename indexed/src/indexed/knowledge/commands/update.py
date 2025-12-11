@@ -34,7 +34,15 @@ app = typer.Typer(help="Update collections")
 
 
 def _format_source_type(source_type: str) -> str:
-    """Format source type for display (e.g., 'jiraCloud' -> 'Jira Cloud')."""
+    """
+    Convert an internal source type identifier into a human-readable display name.
+    
+    Parameters:
+        source_type (str): Internal source type identifier (may be falsy).
+    
+    Returns:
+        str: A friendly display name for the source type (returns "Unknown" if `source_type` is falsy; falls back to a capitalized form if the type is unrecognized).
+    """
     if not source_type:
         return "Unknown"
     
@@ -49,7 +57,12 @@ def _format_source_type(source_type: str) -> str:
 
 
 def _config_existed_before(config_service: ConfigService) -> bool:
-    """Check if config file existed based on storage mode."""
+    """
+    Determine whether a configuration file existed prior to an operation based on the ConfigService's resolved storage mode.
+    
+    Returns:
+        bool: `True` if a local config file exists when storage mode is "local", or `True` if a global config file exists when storage mode is not "local"; `False` otherwise.
+    """
     storage_mode = config_service.resolve_storage_mode()
     if storage_mode == "local":
         return config_service.store.has_local_config()
@@ -58,7 +71,15 @@ def _config_existed_before(config_service: ConfigService) -> bool:
 
 
 def _get_config_path(config_service: ConfigService) -> str:
-    """Get the config file path based on storage mode."""
+    """
+    Return the path to the active configuration file based on the resolved storage mode.
+    
+    Parameters:
+        config_service (ConfigService): Service used to determine storage mode and access configured paths.
+    
+    Returns:
+        str: The configuration file path — the workspace path when storage mode is "local", otherwise the global path.
+    """
     storage_mode = config_service.resolve_storage_mode()
     if storage_mode == "local":
         return str(config_service.store.workspace_path)
@@ -67,7 +88,19 @@ def _get_config_path(config_service: ConfigService) -> str:
 
 
 def _format_update_comparison(before, after):
-    """Displays a comparison of metadata before and after the update using card format."""
+    """
+    Display a detail card comparing collection metadata before and after an update.
+    
+    Parameters:
+        before: An object representing the collection state prior to the update. Expected attributes (when present) include
+            `name`, `source_type`, `number_of_documents`, `number_of_chunks`, `disk_size_bytes`, and `updated_time`.
+        after: An object representing the collection state after the update. Expected attributes match those of `before`.
+    
+    Description:
+        Prints a formatted "Updated Collection" detail card to the console containing any of the following rows when data
+        is available: Collection name, Type (friendly display of `source_type`), Documents (with delta), Chunks (with delta),
+        Size (human-readable bytes with delta), and Updated (human-readable timestamp). Missing attributes are omitted.
+    """
 
     def format_change(before_val, after_val):
         """Format a value change with color coding."""

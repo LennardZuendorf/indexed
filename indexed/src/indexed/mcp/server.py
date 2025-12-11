@@ -36,11 +36,13 @@ class LifespanState(TypedDict):
 
 
 def _get_mcp_config() -> MCPConfig:
-    """Load MCP configuration from ConfigService.
-
+    """
+    Load the MCP configuration from the application's configuration service.
+    
+    Attempts to read the MCPConfig from the configuration hierarchy (defaults -> global TOML -> workspace TOML -> environment); if the configuration service is unavailable or an error occurs, returns a default MCPConfig instance.
+    
     Returns:
-        MCPConfig instance with values from config hierarchy
-        (defaults -> global TOML -> workspace TOML -> env vars).
+        MCPConfig: The resolved MCP configuration, or a default MCPConfig on failure.
     """
     try:
         config_service = ConfigService.instance()
@@ -53,10 +55,11 @@ def _get_mcp_config() -> MCPConfig:
 
 
 def _get_search_config() -> CoreV1SearchConfig:
-    """Load search configuration from ConfigService.
-
+    """
+    Load the search configuration from the configuration service, falling back to defaults if unavailable.
+    
     Returns:
-        CoreV1SearchConfig instance with values from config hierarchy.
+        CoreV1SearchConfig: Configuration values from the "core.v1.search" path, or a default CoreV1SearchConfig if retrieval fails.
     """
     try:
         config_service = ConfigService.instance()
@@ -102,7 +105,12 @@ _search_config: Optional[CoreV1SearchConfig] = None
 
 
 def get_mcp_config() -> MCPConfig:
-    """Get cached MCP configuration (fallback for non-lifespan contexts)."""
+    """
+    Return the cached MCP configuration, initializing it from the configuration service if not already loaded (used as a fallback outside lifespan).
+    
+    Returns:
+        MCPConfig: The cached MCP configuration instance.
+    """
     global _mcp_config
     if _mcp_config is None:
         _mcp_config = _get_mcp_config()
@@ -110,7 +118,12 @@ def get_mcp_config() -> MCPConfig:
 
 
 def get_search_config() -> CoreV1SearchConfig:
-    """Get cached search configuration (fallback for non-lifespan contexts)."""
+    """
+    Return the cached CoreV1SearchConfig, loading it from the configuration service on first access.
+    
+    Returns:
+        CoreV1SearchConfig: The active search configuration used by the server.
+    """
     global _search_config
     if _search_config is None:
         _search_config = _get_search_config()
@@ -120,13 +133,13 @@ def get_search_config() -> CoreV1SearchConfig:
 @mcp.tool
 def search(query: str) -> Dict[str, Any]:
     """
-    Search across all available document collections using semantic similarity.
-
-    Args:
-        query: The search query text
-
+    Search all available document collections for semantically similar content to the provided query.
+    
+    Parameters:
+        query (str): The search query text.
+    
     Returns:
-        Dictionary with collection names as keys and search results as values
+        dict: Mapping of collection name to its search results. On error, returns a dictionary with a single `"error"` key containing the error message.
     """
     search_cfg = get_search_config()
 
@@ -224,8 +237,22 @@ def collections_list() -> List[str]:
 def collections_status_list() -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
-
-    Configuration via ConfigService (mcp.include_index_size).
+    
+    Each item is a mapping of collection attributes (name, document and chunk counts, timestamps, indexer names, index size, source type, relative path, and disk usage). The `include_index_size` flag from the MCP configuration controls whether index size is populated.
+    
+    Returns:
+        List[Dict[str, Any]]: A list of collection status dictionaries with keys:
+            - name: collection name
+            - number_of_documents: total documents in the collection
+            - number_of_chunks: total chunks derived from documents
+            - updated_time: last index update time (as provided by the status object)
+            - last_modified_document_time: timestamp of the most recently modified source document
+            - indexers: list of indexer names associated with the collection
+            - index_size: size of the index (may be omitted or null if not requested)
+            - source_type: type of the collection source
+            - relative_path: source relative path
+            - disk_size_bytes: disk usage in bytes
+        On error, returns a single-item list containing {"error": "<error message>"}.
     """
     mcp_cfg = get_mcp_config()
     
@@ -258,9 +285,24 @@ def collections_status_list() -> List[Dict[str, Any]]:
 )
 def collection_status(name: str) -> Dict[str, Any]:
     """
-    Return detailed status information for a specific collection.
-
-    Uses the same configuration as collections_status_list.
+    Get detailed status information for a named collection.
+    
+    Parameters:
+        name (str): Collection name to query.
+    
+    Returns:
+        dict: A mapping with the collection's status fields:
+            - name: collection name
+            - number_of_documents: total documents in the collection
+            - number_of_chunks: total chunks derived from documents
+            - updated_time: last time the collection status was updated
+            - last_modified_document_time: timestamp of the most recently modified document
+            - indexers: list of configured indexers for the collection
+            - index_size: size of the index for the collection (when available)
+            - source_type: type of the source (e.g., "localFiles")
+            - relative_path: collection's relative path
+            - disk_size_bytes: on-disk size in bytes
+        If the collection is not found or an error occurs, returns {'error': <message>}.
     """
     mcp_cfg = get_mcp_config()
     
