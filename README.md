@@ -1,6 +1,3 @@
-> [!WARNING]
-> Indexed is currently in a very early alpha stage!
-
 <p align="left">
   <img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
   <h3>
@@ -17,6 +14,9 @@ A privacy-first document indexing and semantic search tool that supports Jira, C
 - ⚡ **Fast Setup**: Simple installation and usage with `uv` and intuitive CLI commands
 - 🔌 **MCP Integration**: Works with AI agents like Claude, Cursor, and Cline via Model Context Protocol
 - 📁 **Multiple Sources**: Index from local files, Jira (Cloud & Server), and Confluence (Cloud & Server)
+
+> [!WARNING]
+> Indexed is currently in a very early alpha stage!
 
 ## Table of Contents
 
