@@ -289,16 +289,17 @@ def prompt_credential_field(
         if not value:
             print_error("Username is required")
             raise typer.Exit(1)
-        # Set appropriate env var based on source type
+        # Login is non-sensitive (like email) - store in TOML, not .env
+        # Set env vars for immediate use if source type is known
         if source_type == "confluence":
-            updated_field_info = {**field_info, "sensitive": True, "env_var": "CONF_LOGIN"}
+            updated_field_info = {**field_info, "sensitive": False}
             os.environ["CONF_LOGIN"] = value
         elif source_type == "jira":
-            updated_field_info = {**field_info, "sensitive": True, "env_var": "JIRA_LOGIN"}
+            updated_field_info = {**field_info, "sensitive": False}
             os.environ["JIRA_LOGIN"] = value
         else:
-            # Unknown source type - don't set env var, just mark as sensitive
-            updated_field_info = {**field_info, "sensitive": True}
+            # Unknown source type - mark as non-sensitive
+            updated_field_info = {**field_info, "sensitive": False}
             
     elif field_name == "password":
         value = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)

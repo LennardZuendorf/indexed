@@ -876,7 +876,7 @@ def inspect(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
-    config = ConfigService()
+    config = ConfigService.instance()
     raw = config.load_raw()
     
     if json_output:
@@ -1148,7 +1148,7 @@ def update(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
-    config = ConfigService()
+    config = ConfigService.instance()
     global_path = config._store.global_path
     
     # If --file flag is provided, go directly to file replacement
@@ -1413,7 +1413,7 @@ def set_config(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
-    config = ConfigService()
+    config = ConfigService.instance()
     coerced = _coerce_value(value)
     
     # Get old value if exists
@@ -1524,7 +1524,7 @@ def delete_config(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
-    config = ConfigService()
+    config = ConfigService.instance()
     
     # Get current value
     try:
@@ -1610,7 +1610,7 @@ def validate(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
-    config = ConfigService()
+    config = ConfigService.instance()
     errs = config.validate()
     
     console.print()

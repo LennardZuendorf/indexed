@@ -221,7 +221,7 @@ def update(
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
     
     # Initialize ConfigService and check if config existed before
-    config_service = ConfigService()
+    config_service = ConfigService.instance()
     config_existed = _config_existed_before(config_service)
     
     # Determine collections to update
