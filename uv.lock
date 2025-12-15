@@ -1751,6 +1751,7 @@ source = { editable = "packages/indexed-config" }
 dependencies = [
     { name = "platformdirs" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "tomlkit" },
 ]
 
@@ -1769,6 +1770,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.10" },
     { name = "tomlkit", specifier = ">=0.12.0" },
 ]
