@@ -102,9 +102,9 @@ class TomlStore:
     def _read_toml_file(self, path: Path) -> Dict[str, Any]:
         if not path.exists():
             return {}
+        if tomllib is None:
+            raise RuntimeError("tomllib/tomli not available for reading TOML")
         with open(path, "rb") as f:
-            if tomllib is None:
-                raise RuntimeError("tomllib/tomli not available for reading TOML")
             return tomllib.load(f)  # type: ignore
 
     def read(self) -> Dict[str, Any]:
@@ -233,6 +233,20 @@ class TomlStore:
     def _load_dotenv(self, env_path: Optional[Path] = None) -> None:
         """Load .env file into environment if it exists.
         
+        Note: This is a basic parser that supports:
+        - Simple KEY=value assignments
+        - Quoted values (single or double quotes, stripped)
+        - Comments (lines starting with #)
+        - Empty lines
+        
+        Limitations (not supported):
+        - Multiline values (quoted with literal line breaks or \\n escapes)
+        - Export prefixes (export KEY=value)
+        - Escaped characters within quoted values
+        - Variable expansion (${VAR} or $VAR)
+        
+        For full .env file compatibility, consider using python-dotenv library.
+        
         Args:
             env_path: Path to the .env file. Defaults to self.env_path.
         """
@@ -301,6 +315,12 @@ class TomlStore:
             cur = out
             for seg in parts[:-1]:
                 seg = seg.lower()
+                # Check for type conflict: if seg exists and is not a dict, raise error
+                if seg in cur and not isinstance(cur[seg], dict):
+                    raise ValueError(
+                        f"Environment variable conflict: '{k}' conflicts with existing scalar value at '{seg}'. "
+                        f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix):]}"
+                    )
                 cur = cur.setdefault(seg, {})  # type: ignore[assignment]
             cur[parts[-1].lower()] = v
         return out

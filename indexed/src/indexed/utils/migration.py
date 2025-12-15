@@ -226,7 +226,7 @@ def prompt_migration(
             f"[{get_dim_style()}]Skipped. Run 'indexed migrate' later to migrate.[/]"
         )
         console.print()
-        return True
+        return False
 
 
 

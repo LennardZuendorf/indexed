@@ -17,7 +17,7 @@ try:
     from .schema import ConfluenceConfig, ConfluenceCloudConfig
 
     _svc = ConfigService.instance()
-    _svc.register(ConfluenceConfig, path="connectors.confluence")
-    _svc.register(ConfluenceCloudConfig, path="connectors.confluence")
+    _svc.register(ConfluenceConfig, path="connectors.confluence.server")
+    _svc.register(ConfluenceCloudConfig, path="connectors.confluence.cloud")
 except Exception:
     pass

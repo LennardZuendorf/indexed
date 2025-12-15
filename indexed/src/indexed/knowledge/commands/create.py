@@ -1,9 +1,6 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
 from typing import List, Optional
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
-from io import StringIO
-import logging as stdlib_logging
 
 import typer
 from loguru import logger
@@ -26,48 +23,11 @@ from ...utils.credentials import (
     is_credential_field,
     check_server_auth_present,
 )
+from ...utils.context_managers import NoOpContext, suppress_core_output
 
 
 def _is_cloud(url: str) -> bool:
     return url.endswith(".atlassian.net")
-
-
-class _NoOpContext:
-    """No-op context manager for verbose mode (no spinner)."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-
-@contextmanager
-def suppress_core_output():
-    """Context manager to suppress all core logging and output."""
-    # Capture all output streams
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-
-    # Save original logging level (stdlib logging used by core)
-    original_level = stdlib_logging.getLogger().level
-
-    try:
-        # Suppress all standard logging output
-        stdlib_logging.getLogger().setLevel(stdlib_logging.CRITICAL)
-
-        # Disable loguru output
-        logger.disable("")
-
-        # Redirect stdout and stderr
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            yield
-
-    finally:
-        # Restore original logging level
-        stdlib_logging.getLogger().setLevel(original_level)
-        # Re-enable loguru
-        logger.enable("")
 
 
 app = typer.Typer(help="Create new collections")
@@ -144,8 +104,8 @@ def create_files(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    # Initialize ConfigService (auto-loads .env)
-    config = ConfigService()
+    # Get ConfigService singleton (auto-loads .env)
+    config = ConfigService.instance()
     
     if is_verbose_mode():
         logger.info("Starting Files collection creation...")
@@ -257,7 +217,7 @@ def create_files(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
-            with _NoOpContext():
+            with NoOpContext():
                 logger.info("Reading files from %s...", validation["present"]["path"])
                 logger.info("Include patterns: %s", validation["present"].get("include_patterns", [".*"]))
                 logger.info("Exclude patterns: %s", validation["present"].get("exclude_patterns", []))
@@ -276,7 +236,7 @@ def create_files(
             with OperationStatus(console, f"Reading files from {validation['present']['path']}", capture_logs=False) as status:
                 callback = create_progress_update_callback(status)
                 try:
-                    with suppress_core_output():
+                    with suppress_core_output(redirect_streams=True):
                         svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
                     status.complete(success=True)
                 except Exception as e:
@@ -396,8 +356,8 @@ def create_jira(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    # Initialize ConfigService (auto-loads .env)
-    config = ConfigService()
+    # Get ConfigService singleton (auto-loads .env)
+    config = ConfigService.instance()
     
     if is_verbose_mode():
         logger.info("Starting Jira collection creation...")
@@ -525,7 +485,7 @@ def create_jira(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
-            with _NoOpContext():
+            with NoOpContext():
                 logger.info("Connecting to Jira at %s...", validation["present"]["url"])
                 logger.info("Using JQL query: %s", validation["present"]["query"])
                 logger.info("Creating collection '%s'...", collection)
@@ -543,7 +503,7 @@ def create_jira(
             with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
                 callback = create_progress_update_callback(status)
                 try:
-                    with suppress_core_output():
+                    with suppress_core_output(redirect_streams=True):
                         svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
                     status.complete(success=True)
                 except Exception as e:
@@ -668,8 +628,8 @@ def create_confluence(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    # Initialize ConfigService (auto-loads .env)
-    config = ConfigService()
+    # Get ConfigService singleton (auto-loads .env)
+    config = ConfigService.instance()
     
     if is_verbose_mode():
         logger.info("Starting Confluence collection creation...")
@@ -816,7 +776,7 @@ def create_confluence(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
-            with _NoOpContext():
+            with NoOpContext():
                 logger.info("Connecting to Confluence at %s...", validation["present"]["url"])
                 logger.info("Using CQL query: %s", validation["present"]["query"])
                 logger.info("Creating collection '%s'...", collection)
@@ -834,7 +794,7 @@ def create_confluence(
             with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
                 callback = create_progress_update_callback(status)
                 try:
-                    with suppress_core_output():
+                    with suppress_core_output(redirect_streams=True):
                         svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
                     status.complete(success=True)
                 except Exception as e:

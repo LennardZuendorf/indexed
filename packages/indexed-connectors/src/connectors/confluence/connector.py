@@ -199,7 +199,7 @@ class ConfluenceConnector:
             >>> connector = ConfluenceConnector.from_config(config)
         """
         # Register our config spec
-        config_service.register(ConfluenceConfig, path="sources.confluence")
+        config_service.register(ConfluenceConfig, path="sources.confluence.server")
         
         # Bind and get our config
         provider = config_service.bind()
@@ -366,7 +366,7 @@ class ConfluenceCloudConnector:
             >>> connector = ConfluenceCloudConnector.from_config(config)
         """
         # Register our config spec using unified namespace
-        config_service.register(ConfluenceCloudConfig, path="sources.confluence")
+        config_service.register(ConfluenceCloudConfig, path="sources.confluence.cloud")
         
         # Bind and get our config
         provider = config_service.bind()

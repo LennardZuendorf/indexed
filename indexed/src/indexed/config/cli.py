@@ -1248,24 +1248,34 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
     current_config = config._store._read_toml_file(global_path) if global_path.exists() else {}
     _show_config_diff(current_config, new_config)
     
-    # Validate the new config
+    # Validate the new config in-memory without writing
     console.print(f"[{get_heading_style()}]Validating Configuration...[/{get_heading_style()}]")
     console.print()
     
-    # Temporarily write to test validation
     try:
-        # Save current config for rollback
-        temp_current = config.load_raw()
+        # Validate in-memory by creating a temporary ConfigService
+        # that uses the new_config dict instead of reading from files
+        from indexed_config import ConfigService
+        from indexed_config.path_utils import get_by_path
+        from pydantic import ValidationError
         
-        # Write new config to store (this will write to workspace, not global yet)
-        config._store.write(new_config)
+        # Create a temporary config service for validation
+        temp_config = ConfigService.instance()
         
-        # Validate
-        errors = config.validate()
+        # Get all registered specs
+        registered_specs = temp_config._specs.copy()
         
-        # Restore original
-        if temp_current:
-            config._store.write(temp_current)
+        # Validate against new_config dict directly
+        errors = []
+        for path, spec in registered_specs.items():
+            payload = get_by_path(new_config, path, default=None)
+            # Only validate sections that exist (skip absent optional sections)
+            if payload in (None, {}):
+                continue
+            try:
+                spec.model_validate(payload)  # type: ignore[arg-type]
+            except ValidationError as exc:
+                errors.append((path, str(exc)))
         
         if errors:
             print_error("Validation failed")

@@ -116,11 +116,11 @@ class JiraConnector:
     @classmethod
     def config_spec(cls) -> dict:
         return {
-            "base_url": {
+            "url": {
                 "type": "str",
                 "required": True,
                 "secret": False,
-                "description": "Jira base URL (Server/Data Center)",
+                "description": "Jira URL (Server/Data Center)",
             },
             "query": {
                 "type": "str",

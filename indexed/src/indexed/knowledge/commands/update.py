@@ -225,12 +225,20 @@ def update(
     config_was_created = False
     for coll_name in collections_to_update:
         # Get collection status to build proper SourceConfig
-        coll_status = svc_status([coll_name])[0]
+        coll_statuses = svc_status([coll_name])
+        if not coll_statuses:
+            print_error(f"Collection '{coll_name}' not found during update")
+            continue
+        coll_status = coll_statuses[0]
         
         # Ensure credentials are available for this source type
         source_type = getattr(coll_status, "source_type", None)
         if source_type:
             ensure_credentials_for_source(source_type, config_service)
+        
+        if not coll_status.indexers:
+            print_error(f"Collection '{coll_name}' has no indexers configured")
+            continue
         
         source_config = SourceConfig(
             name=coll_name,

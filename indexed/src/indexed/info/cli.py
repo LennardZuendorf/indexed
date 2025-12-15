@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 import urllib.request
 import urllib.error
+from importlib import resources
 
 import typer
 from rich.markdown import Markdown
@@ -121,40 +122,47 @@ def license_terms() -> None:
 
     # Fall back to local LICENSE file if remote fetch failed
     if license_content is None:
-        possible_paths = [
-            # From installed package (relative to this file)
-            Path(__file__).parent.parent.parent.parent.parent / "LICENSE",
-            # Relative to current working directory
-            Path.cwd() / "LICENSE",
-        ]
-
-        license_path = None
-        for path in possible_paths:
-            if path.exists():
-                license_path = path
-                break
-
-        if license_path is None:
-            console.print()
-            print_error("LICENSE file not found")
-            console.print()
-            console.print(
-                f"[{get_secondary_style()}]Could not fetch from remote and no local file found.[/{get_secondary_style()}]"
-            )
-            console.print()
-            console.print(
-                f"[{get_secondary_style()}]View online: {license_url.replace('/refs/heads/main/', '/blob/main/')}[/{get_secondary_style()}]"
-            )
-            console.print()
-            raise typer.Exit(1)
-
+        # Try importlib.resources first (for installed packages)
         try:
-            license_content = license_path.read_text(encoding="utf-8")
-            source = "local"
-        except Exception as e:
-            console.print()
-            print_error(f"Failed to read LICENSE: {e}")
-            raise typer.Exit(1)
+            # Attempt to read from package if LICENSE is included in package data
+            license_content = resources.files("indexed").joinpath("LICENSE").read_text(encoding="utf-8")
+            source = "package"
+        except (FileNotFoundError, ModuleNotFoundError, AttributeError):
+            # Fall back to file system paths
+            possible_paths = [
+                # From repository root (4 levels up from src/indexed/info/cli.py)
+                Path(__file__).parent.parent.parent.parent / "LICENSE",
+                # Relative to current working directory
+                Path.cwd() / "LICENSE",
+            ]
+
+            license_path = None
+            for path in possible_paths:
+                if path.exists():
+                    license_path = path
+                    break
+
+            if license_path is None:
+                console.print()
+                print_error("LICENSE file not found")
+                console.print()
+                console.print(
+                    f"[{get_secondary_style()}]Could not fetch from remote and no local file found.[/{get_secondary_style()}]"
+                )
+                console.print()
+                console.print(
+                    f"[{get_secondary_style()}]View online: {license_url.replace('/refs/heads/main/', '/blob/main/')}[/{get_secondary_style()}]"
+                )
+                console.print()
+                raise typer.Exit(1)
+
+            try:
+                license_content = license_path.read_text(encoding="utf-8")
+                source = "local"
+            except Exception as e:
+                console.print()
+                print_error(f"Failed to read LICENSE: {e}")
+                raise typer.Exit(1)
 
     # Display license with pager
     try:

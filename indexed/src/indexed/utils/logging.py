@@ -65,14 +65,36 @@ def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) 
 
 def _configure_loguru(level: str) -> None:
     """Configure loguru logger with the specified level."""
-    # Remove default handler and add one with appropriate level
+    global _status_sink_id
+    
+    # Preserve status sink if active
+    status_sink_id = _status_sink_id
+    status_callback = _status_capture_callback
+    
+    # Remove all handlers (including status sink)
     loguru_logger.remove()
+    
+    # Re-add stderr handler with appropriate level
     loguru_logger.add(
         sys.stderr,
         level=level.upper(),
         format="<level>{level: <8}</level> | {message}",
         colorize=True,
     )
+    
+    # Re-register status sink if it was active
+    if status_sink_id is not None and status_callback is not None:
+        def status_sink(message):
+            record = message.record
+            if record["level"].name == "INFO" and status_callback:
+                status_callback(record["message"])
+        
+        _status_sink_id = loguru_logger.add(
+            status_sink,
+            level="INFO",
+            format="{message}",
+            filter=lambda record: record["level"].name == "INFO",
+        )
 
 
 def setup_logging(

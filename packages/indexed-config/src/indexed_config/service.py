@@ -19,6 +19,15 @@ WORKSPACE_PATH = "workspace"
 # Default global path
 DEFAULT_GLOBAL_PATH = "~/.indexed"
 
+# Common field name to environment variable mappings
+_ENV_VAR_MAPPINGS = {
+    "api_token": "ATLASSIAN_TOKEN",
+    "token": "JIRA_TOKEN",
+    "email": "ATLASSIAN_EMAIL",
+    "password": "JIRA_PASSWORD",
+    "login": "JIRA_LOGIN",
+}
+
 
 class ConfigService:
     """Singleton registry + I/O for application configuration.
@@ -272,15 +281,7 @@ class ConfigService:
             if match:
                 return match.group(1)
         
-        # Common env var mappings
-        env_mappings = {
-            "api_token": "ATLASSIAN_TOKEN",
-            "token": "JIRA_TOKEN",
-            "email": "ATLASSIAN_EMAIL",
-            "password": "JIRA_PASSWORD",
-            "login": "JIRA_LOGIN",
-        }
-        return env_mappings.get(field_name)
+        return _ENV_VAR_MAPPINGS.get(field_name)
 
     def set_value(
         self,
@@ -312,14 +313,7 @@ class ConfigService:
     
     def _field_to_env_var(self, field_name: str) -> str:
         """Convert field name to environment variable name."""
-        env_mappings = {
-            "api_token": "ATLASSIAN_TOKEN",
-            "token": "JIRA_TOKEN",
-            "email": "ATLASSIAN_EMAIL",
-            "password": "JIRA_PASSWORD",
-            "login": "JIRA_LOGIN",
-        }
-        return env_mappings.get(field_name, field_name.upper())
+        return _ENV_VAR_MAPPINGS.get(field_name, field_name.upper())
     
     def _write_to_env_file(self, key: str, value: str) -> None:
         """Write a key-value pair to the .indexed/.env file."""
@@ -505,13 +499,13 @@ class ConfigService:
     
     def get_collections_path(self) -> Path:
         """Get the resolved collections path based on current storage mode."""
-        pref = self.get_workspace_preference()
-        return self._resolver.get_collections_path(pref)
+        mode = self.resolve_storage_mode()
+        return self._resolver.get_collections_path(mode)
     
     def get_caches_path(self) -> Path:
         """Get the resolved caches path based on current storage mode."""
-        pref = self.get_workspace_preference()
-        return self._resolver.get_caches_path(pref)
+        mode = self.resolve_storage_mode()
+        return self._resolver.get_caches_path(mode)
     
     def ensure_storage_dirs(self) -> None:
         """Ensure storage directories exist for the resolved storage mode."""

@@ -15,6 +15,11 @@ from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict  # noqa: 
 
 from fastmcp import FastMCP  # noqa: E402
 from fastmcp.server.middleware.caching import ResponseCachingMiddleware  # noqa: E402
+try:
+    from fastmcp import Context  # noqa: E402
+except ImportError:
+    # Fallback for older FastMCP versions
+    Context = None  # type: ignore
 
 # Import ConfigService for configuration
 from indexed_config import ConfigService  # noqa: E402
@@ -118,17 +123,29 @@ def get_search_config() -> CoreV1SearchConfig:
 
 
 @mcp.tool
-def search(query: str) -> Dict[str, Any]:
+def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
     """
     Search across all available document collections using semantic similarity.
 
     Args:
         query: The search query text
+        ctx: FastMCP Context (optional, for accessing lifespan state)
 
     Returns:
         Dictionary with collection names as keys and search results as values
     """
-    search_cfg = get_search_config()
+    # Try to get config from lifespan state, fallback to cached getter
+    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+        try:
+            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            if lifespan_state:
+                search_cfg = lifespan_state.get("search_config")
+            else:
+                search_cfg = get_search_config()
+        except (AttributeError, TypeError):
+            search_cfg = get_search_config()
+    else:
+        search_cfg = get_search_config()
 
     try:
         # Use auto-discovery mode (configs=None) to search all collections
@@ -148,7 +165,7 @@ def search(query: str) -> Dict[str, Any]:
 
 
 @mcp.tool
-def search_collection(collection: str, query: str) -> Dict[str, Any]:
+def search_collection(collection: str, query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
     """
     Search within a specific document collection using semantic similarity.
 
@@ -157,11 +174,23 @@ def search_collection(collection: str, query: str) -> Dict[str, Any]:
     Args:
         collection: Name of the collection to search
         query: The search query text
+        ctx: FastMCP Context (optional, for accessing lifespan state)
 
     Returns:
         Dictionary with search results for the specified collection
     """
-    search_cfg = get_search_config()
+    # Try to get config from lifespan state, fallback to cached getter
+    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+        try:
+            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            if lifespan_state:
+                search_cfg = lifespan_state.get("search_config")
+            else:
+                search_cfg = get_search_config()
+        except (AttributeError, TypeError):
+            search_cfg = get_search_config()
+    else:
+        search_cfg = get_search_config()
 
     try:
         # Get default indexer for the collection from inspect service
@@ -221,13 +250,27 @@ def collections_list() -> List[str]:
     name="CollectionsStatusList",
     description="Return detailed status information for all collections.",
 )
-def collections_status_list() -> List[Dict[str, Any]]:
+def collections_status_list(ctx: Optional[Context] = None) -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
 
     Configuration via ConfigService (mcp.include_index_size).
+    
+    Args:
+        ctx: FastMCP Context (optional, for accessing lifespan state)
     """
-    mcp_cfg = get_mcp_config()
+    # Try to get config from lifespan state, fallback to cached getter
+    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+        try:
+            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            if lifespan_state:
+                mcp_cfg = lifespan_state.get("mcp_config")
+            else:
+                mcp_cfg = get_mcp_config()
+        except (AttributeError, TypeError):
+            mcp_cfg = get_mcp_config()
+    else:
+        mcp_cfg = get_mcp_config()
     
     try:
         statuses = svc_status(include_index_size=mcp_cfg.include_index_size)
@@ -256,13 +299,28 @@ def collections_status_list() -> List[Dict[str, Any]]:
     name="CollectionStatus",
     description="Return detailed status information for a specific collection.",
 )
-def collection_status(name: str) -> Dict[str, Any]:
+def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
     """
     Return detailed status information for a specific collection.
 
     Uses the same configuration as collections_status_list.
+    
+    Args:
+        name: Collection name
+        ctx: FastMCP Context (optional, for accessing lifespan state)
     """
-    mcp_cfg = get_mcp_config()
+    # Try to get config from lifespan state, fallback to cached getter
+    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+        try:
+            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            if lifespan_state:
+                mcp_cfg = lifespan_state.get("mcp_config")
+            else:
+                mcp_cfg = get_mcp_config()
+        except (AttributeError, TypeError):
+            mcp_cfg = get_mcp_config()
+    else:
+        mcp_cfg = get_mcp_config()
     
     try:
         statuses = svc_status([name], include_index_size=mcp_cfg.include_index_size)

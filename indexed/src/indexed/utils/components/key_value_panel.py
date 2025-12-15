@@ -31,6 +31,11 @@ def _truncate(value: str, max_len: int) -> str:
     """
     if len(value) <= max_len:
         return value
+    if max_len <= 0:
+        return ""
+    if max_len < 3:
+        # Too small for ellipsis, just truncate without it
+        return value[:max_len]
     return value[: max_len - 3] + "..."
 
 

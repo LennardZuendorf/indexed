@@ -212,9 +212,8 @@ def ensure_server_credentials(
         config_service.set_value(
             f"{namespace}.login",
             login,
-            field_info={"sensitive": True, "env_var": login_env_var}
+            field_info={"sensitive": False}
         )
-        os.environ[login_env_var] = login
         result["login"] = login
         
         password = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
@@ -291,9 +290,12 @@ def prompt_credential_field(
         if source_type == "confluence":
             updated_field_info = {**field_info, "sensitive": True, "env_var": "CONF_LOGIN"}
             os.environ["CONF_LOGIN"] = value
-        else:
+        elif source_type == "jira":
             updated_field_info = {**field_info, "sensitive": True, "env_var": "JIRA_LOGIN"}
             os.environ["JIRA_LOGIN"] = value
+        else:
+            # Unknown source type - don't set env var, just mark as sensitive
+            updated_field_info = {**field_info, "sensitive": True}
             
     elif field_name == "password":
         value = Prompt.ask(f"[{get_accent_style()}]Password[/{get_accent_style()}]", password=True)
@@ -304,9 +306,12 @@ def prompt_credential_field(
         if source_type == "confluence":
             updated_field_info = {**field_info, "sensitive": True, "env_var": "CONF_PASSWORD"}
             os.environ["CONF_PASSWORD"] = value
-        else:
+        elif source_type == "jira":
             updated_field_info = {**field_info, "sensitive": True, "env_var": "JIRA_PASSWORD"}
             os.environ["JIRA_PASSWORD"] = value
+        else:
+            # Unknown source type - don't set env var, just mark as sensitive
+            updated_field_info = {**field_info, "sensitive": True}
     else:
         # Unknown credential field, use generic prompt
         is_sensitive = field_info.get("sensitive", False)
