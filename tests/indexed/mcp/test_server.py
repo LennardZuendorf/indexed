@@ -207,9 +207,9 @@ class TestCollectionsListResourceFunction:
         mock_status2.name = "collection2"
         mock_status.return_value = [mock_status1, mock_status2]
 
-        resource = mcp._resource_manager._resources.get("resource://collections")
-        assert resource is not None
-        result = resource.fn()
+        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
+        assert template is not None
+        result = template.fn("all")
 
         assert result == ["collection1", "collection2"]
 
@@ -218,9 +218,9 @@ class TestCollectionsListResourceFunction:
         """Test that collections_list handles errors gracefully."""
         mock_status.side_effect = Exception("Status failed")
 
-        resource = mcp._resource_manager._resources.get("resource://collections")
-        assert resource is not None
-        result = resource.fn()
+        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
+        assert template is not None
+        result = template.fn("all")
 
         assert len(result) == 1
         assert "error" in result[0]
@@ -252,9 +252,9 @@ class TestCollectionsStatusListResourceFunction:
         mock_status_item.disk_size_bytes = 2048
         mock_status.return_value = [mock_status_item]
 
-        resource = mcp._resource_manager._resources.get("resource://collections/status")
-        assert resource is not None
-        result = resource.fn()
+        template = mcp._resource_manager._templates.get("resource://collections/status/{_all}")
+        assert template is not None
+        result = template.fn("all")
 
         assert len(result) == 1
         assert result[0]["name"] == "collection1"
@@ -271,9 +271,9 @@ class TestCollectionsStatusListResourceFunction:
         mock_get_config.return_value = mock_config
         mock_status.side_effect = Exception("Status failed")
 
-        resource = mcp._resource_manager._resources.get("resource://collections/status")
-        assert resource is not None
-        result = resource.fn()
+        template = mcp._resource_manager._templates.get("resource://collections/status/{_all}")
+        assert template is not None
+        result = template.fn("all")
 
         assert len(result) == 1
         assert "error" in result[0]
@@ -364,7 +364,7 @@ class TestToolRegistration:
         tool = mcp._tool_manager._tools.get("search")
         assert tool is not None
         assert tool.description is not None
-        assert "semantic similarity" in tool.description.lower()
+        assert "semantically similar" in tool.description.lower()
 
     def test_search_collection_tool_has_description(self) -> None:
         """Test that search_collection tool has a description."""
@@ -379,13 +379,13 @@ class TestResourceRegistration:
 
     def test_collections_list_resource_registered(self) -> None:
         """Test that collections list resource is registered."""
-        resources = mcp._resource_manager._resources
-        assert "resource://collections" in resources
+        templates = mcp._resource_manager._templates
+        assert "resource://collections/{_all}" in templates
 
     def test_collections_status_resource_registered(self) -> None:
         """Test that collections status resource is registered."""
-        resources = mcp._resource_manager._resources
-        assert "resource://collections/status" in resources
+        templates = mcp._resource_manager._templates
+        assert "resource://collections/status/{_all}" in templates
 
     def test_collection_status_template_registered(self) -> None:
         """Test that collection status template is registered."""
@@ -394,12 +394,12 @@ class TestResourceRegistration:
 
     def test_collections_list_resource_has_name(self) -> None:
         """Test that collections list resource has a name."""
-        resource = mcp._resource_manager._resources.get("resource://collections")
-        assert resource is not None
-        assert resource.name == "CollectionsList"
+        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
+        assert template is not None
+        assert template.name == "CollectionsList"
 
     def test_collections_status_resource_has_name(self) -> None:
         """Test that collections status resource has a name."""
-        resource = mcp._resource_manager._resources.get("resource://collections/status")
-        assert resource is not None
-        assert resource.name == "CollectionsStatusList"
+        template = mcp._resource_manager._templates.get("resource://collections/status/{_all}")
+        assert template is not None
+        assert template.name == "CollectionsStatusList"

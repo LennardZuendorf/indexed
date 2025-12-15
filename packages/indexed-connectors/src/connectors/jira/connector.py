@@ -118,7 +118,7 @@ class JiraConnector:
         """
         Configuration schema for the Jira (Server/Data Center) connector.
         
-        Provides the expected configuration keys and their metadata: "base_url" (Jira server URL), "query" (JQL query), and authentication alternatives via environment variable names "token_env" (API token) or "login_env" and "password_env" (basic auth). Each key maps to a dictionary describing type, requirement, secrecy, and defaults where applicable.
+        Provides the expected configuration keys and their metadata: "url" (Jira server URL), "query" (JQL query), and authentication alternatives via environment variable names "token_env" (API token) or "login_env" and "password_env" (basic auth). Each key maps to a dictionary describing type, requirement, secrecy, and defaults where applicable.
         
         Returns:
             dict: Mapping of configuration keys to their schema definitions.
@@ -279,13 +279,13 @@ class JiraCloudConnector:
         
         Returns:
             A dictionary mapping configuration keys to their schema definitions:
-            - `base_url`: Jira Cloud base URL (e.g., `https://company.atlassian.net`), required.
+            - `url`: Jira Cloud base URL (e.g., `https://company.atlassian.net`), required.
             - `query`: Base JQL query, required.
             - `email`: Atlassian account email used for authentication, required.
             - `api_token_env`: Name of the environment variable that contains the Atlassian API token, required, secret, defaults to `"ATLASSIAN_TOKEN"`.
         """
         return {
-            "base_url": {
+            "url": {
                 "type": "str",
                 "required": True,
                 "secret": False,

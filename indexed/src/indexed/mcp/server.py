@@ -245,11 +245,11 @@ def search_collection(collection: str, query: str, ctx: Optional[Context] = None
 
 
 @mcp.resource(
-    "resource://collections",
+    "resource://collections/{_all}",
     name="CollectionsList",
     description="Return list of available collection names.",
 )
-def collections_list() -> List[str]:
+def collections_list(_all: str = "all") -> List[str]:
     """Return list of available collection names."""
     try:
         statuses = svc_status()
@@ -259,11 +259,11 @@ def collections_list() -> List[str]:
 
 
 @mcp.resource(
-    "resource://collections/status",
+    "resource://collections/status/{_all}",
     name="CollectionsStatusList",
     description="Return detailed status information for all collections.",
 )
-def collections_status_list(ctx: Optional[Context] = None) -> List[Dict[str, Any]]:
+def collections_status_list(_all: str = "all", ctx: Optional[Context] = None) -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
     

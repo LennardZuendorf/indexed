@@ -34,7 +34,9 @@ A privacy-first document indexing and semantic search tool that supports Jira, C
 
 ```bash
 # 1. Clone and setup
-uvx indexed 
+git clone https://github.com/LennardZuendorf/indexed.git
+cd indexed
+uv sync
 
 # 2. Create a collection from local files
 uv run indexed index create --type files --name my-docs

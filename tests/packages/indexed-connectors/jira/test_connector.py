@@ -105,8 +105,8 @@ def test_jira_connector_config_spec():
     """Test JiraConnector.config_spec() returns correct specification."""
     spec = JiraConnector.config_spec()
     
-    assert "base_url" in spec
-    assert spec["base_url"]["required"] is True
+    assert "url" in spec
+    assert spec["url"]["required"] is True
     assert "query" in spec
     assert spec["query"]["required"] is True
     assert "token_env" in spec
@@ -117,8 +117,8 @@ def test_jira_cloud_type_connector_config_spec():
     """Test JiraCloudConnector.config_spec() returns correct specification."""
     spec = JiraCloudConnector.config_spec()
     
-    assert "base_url" in spec
-    assert spec["base_url"]["required"] is True
+    assert "url" in spec
+    assert spec["url"]["required"] is True
     assert "query" in spec
     assert spec["query"]["required"] is True
     assert "email" in spec
