@@ -47,11 +47,12 @@ class ConfigService:
         workspace: Optional[Path] = None,
         mode_override: Optional[StorageMode] = None,
     ) -> None:
-        """Initialize ConfigService.
+        """
+        Create a ConfigService bound to a specific workspace and optional storage mode override.
         
-        Args:
-            workspace: Optional workspace path. Defaults to current working directory.
-            mode_override: Optional storage mode override ("global" or "local").
+        Parameters:
+            workspace (Optional[Path]): Workspace directory used for config storage; defaults to the current working directory.
+            mode_override (Optional[StorageMode]): If provided, forces the storage mode ("global" or "local") for this service instance.
         """
         self._specs: Dict[str, Type[BaseModel]] = {}
         self._workspace = workspace or Path.cwd()
@@ -67,15 +68,16 @@ class ConfigService:
         mode_override: Optional[StorageMode] = None,
         reset: bool = False,
     ) -> "ConfigService":
-        """Get or create the singleton ConfigService instance.
+        """
+        Get or create the singleton ConfigService.
         
-        Args:
-            workspace: Optional workspace path.
-            mode_override: Optional storage mode override.
-            reset: If True, create a new instance even if one exists.
-            
+        Parameters:
+            workspace (Optional[Path]): Workspace path to bind the service to when creating a new instance; defaults to the current working directory.
+            mode_override (Optional[StorageMode]): Storage mode override to apply when creating a new instance.
+            reset (bool): If True, force creation of a new instance even if one already exists.
+        
         Returns:
-            ConfigService singleton instance.
+            ConfigService: The singleton ConfigService instance.
         """
         if cls._instance is None or reset:
             cls._instance = cls(workspace=workspace, mode_override=mode_override)
@@ -90,55 +92,100 @@ class ConfigService:
     
     @classmethod
     def reset(cls) -> None:
-        """Reset the singleton instance (useful for testing)."""
+        """
+        Clear the ConfigService singleton and reset the module-level storage resolver.
+        
+        This sets the class singleton reference to None and calls the global resolver reset function to restore resolver state.
+        """
         cls._instance = None
         reset_resolver()
     
     @property
     def store(self) -> TomlStore:
-        """Access the underlying TomlStore."""
+        """
+        Provide access to the configured TOML-backed store.
+        
+        Returns:
+            store (TomlStore): The underlying TOML store used for configuration I/O.
+        """
         return self._store
     
     @property
     def resolver(self) -> StorageResolver:
-        """Access the storage resolver."""
+        """
+        Access the storage resolver.
+        
+        Returns:
+            resolver (StorageResolver): Resolver responsible for resolving storage modes and paths.
+        """
         return self._resolver
     
     @property
     def workspace(self) -> Path:
-        """Get the current workspace path."""
+        """
+        Current workspace path.
+        
+        Returns:
+            Path: The workspace directory used by this ConfigService instance.
+        """
         return self._workspace
 
     # Registry
     def register(self, spec: Type[T], *, path: str) -> None:
-        """Register a config spec at a dot-path.
+        """
+        Register a typed configuration spec under a dot-separated namespace.
         
-        Idempotent - can be called multiple times with same spec.
+        Registers the given Pydantic model type as the config schema for the specified dot-path. If called again for the same path, the new spec replaces the previous one (registration is idempotent with respect to the intended mapping).
+        
+        Parameters:
+            spec (Type[T]): A Pydantic BaseModel subclass describing the config schema.
+            path (str): Dot-separated path in the merged config where this spec's data will be read from and written to.
         """
         self._specs[path] = spec
 
     # I/O
     def load_raw(self) -> Dict[str, Any]:
-        """Load raw merged config (global + workspace + env)."""
+        """
+        Retrieve the merged raw configuration from global, workspace, and environment sources.
+        
+        Returns:
+            raw (Dict[str, Any]): Dictionary containing the merged configuration values.
+        """
         return self._store.read()
     
     def get_raw(self) -> Dict[str, Any]:
-        """Alias for load_raw() for consistency."""
+        """
+        Retrieve the merged raw configuration from storage.
+        
+        Returns:
+            dict: The merged raw configuration as a mapping of configuration keys to their values.
+        """
         return self.load_raw()
 
     def save_raw(self, data: Dict[str, Any]) -> None:
-        """Save config to workspace TOML."""
+        """
+        Persist the provided raw configuration to the workspace TOML store.
+        
+        Parameters:
+            data (Dict[str, Any]): Merged raw configuration to write to the workspace TOML.
+        """
         self._store.write(data)
 
     # Typed binding
     def bind(self) -> Provider:
-        """Load, validate, and bind all registered specs.
+        """
+        Bind registered config specs to validated model instances using the merged raw configuration.
+        
+        Loads the merged raw configuration, validates each registered spec present in the raw data, and returns a Provider containing the validated instances and related metadata.
         
         Returns:
-            Provider with typed config instances.
-            
+            Provider: Contains three items—
+                - `instances`: mapping of spec type to its validated `BaseModel` instance,
+                - `raw`: the merged raw configuration dictionary,
+                - `path_to_type`: mapping from dot-path string to the corresponding spec type.
+        
         Raises:
-            ValueError: If any registered spec fails validation.
+            ValueError: If validation fails for any registered spec; the error message includes the spec's dot-path.
         """
         raw = self.load_raw()
         instances: Dict[type, BaseModel] = {}
@@ -160,14 +207,39 @@ class ConfigService:
 
     # Raw ops with dot-paths (write to workspace TOML)
     def get(self, dot_path: str) -> Any:
+        """
+        Retrieve a value from the merged raw configuration using a dot-separated path.
+        
+        Parameters:
+            dot_path (str): Dot-separated path specifying the key to retrieve from the merged configuration.
+        
+        Returns:
+            Any: The value at the specified path, or `None` if the path does not exist.
+        """
         return get_by_path(self.load_raw(), dot_path)
 
     def set(self, dot_path: str, value: Any) -> None:
+        """
+        Set a value in the merged raw configuration at the given dot-path and persist the change to the workspace TOML store.
+        
+        Parameters:
+            dot_path (str): Dot-delimited path indicating where to set the value in the configuration (e.g., "section.sub.key").
+            value (Any): The value to store at the specified path.
+        """
         raw = self.load_raw()
         set_by_path(raw, dot_path, value)
         self.save_raw(raw)
 
     def delete(self, dot_path: str) -> bool:
+        """
+        Delete the value at a dot-separated path from the merged raw configuration and persist the updated config if a change occurred.
+        
+        Parameters:
+            dot_path (str): Dot-separated path identifying the configuration key to remove.
+        
+        Returns:
+            `true` if a value was removed and the change was saved, `false` otherwise.
+        """
         raw = self.load_raw()
         changed = delete_by_path(raw, dot_path)
         if changed:
@@ -176,6 +248,14 @@ class ConfigService:
 
     # Validation across all registered specs
     def validate(self) -> List[Tuple[str, str]]:
+        """
+        Validate all registered configuration specs against the merged raw configuration.
+        
+        Only sections that are present and non-empty in the merged config are validated; absent or empty optional sections are skipped. Validation failures are collected as pairs of the spec dot-path and the validation error message.
+        
+        Returns:
+            errors (List[Tuple[str, str]]): List of tuples where the first element is the spec's dot-path and the second element is the validation error message.
+        """
         raw = self.load_raw()
         errors: List[Tuple[str, str]] = []
         for path, spec in self._specs.items():
@@ -195,21 +275,23 @@ class ConfigService:
         namespace: str,
         cli_overrides: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        """Validate requirements for a config class.
+        """
+        Determine which fields of a Pydantic config class are provided and which required fields are missing within the given namespace.
         
-        Checks which required fields are present (from config, env, or cli_overrides)
-        and which are missing.
+        Parameters:
+            config_class (Type[BaseModel]): Pydantic model class describing the config schema.
+            namespace (str): Dot-path namespace to look up config values (for example, "sources.jira").
+            cli_overrides (Dict[str, Any] | None): Optional mapping of field names to values provided via CLI; these take precedence over file and environment values.
         
-        Args:
-            config_class: Pydantic model class to validate against.
-            namespace: Dot-path namespace for config lookup (e.g., 'sources.jira').
-            cli_overrides: Optional dict of values provided via CLI.
-            
         Returns:
-            Dict with:
-                - present: Dict[str, Any] - field names to their values
-                - missing: List[str] - field names that are required but missing
-                - field_info: Dict[str, Dict] - field names to field metadata
+            Dict[str, Any]: A mapping with:
+                - present (Dict[str, Any]): Field names to their resolved values (from CLI overrides, config file, environment for sensitive fields, or defaults).
+                - missing (List[str]): Names of fields that are required by the model but have no provided value.
+                - field_info (Dict[str, Dict[str, Any]]): Per-field metadata including:
+                    - required (bool): Whether the field is required by the model.
+                    - description (str): Field description from the model (empty string if none).
+                    - default (Any | None): Field default value if defined, otherwise None.
+                    - sensitive (bool): Whether the field is considered sensitive.
         """
         if cli_overrides is None:
             cli_overrides = {}
@@ -265,13 +347,32 @@ class ConfigService:
         }
     
     def _is_sensitive_field(self, field_name: str, field: FieldInfo) -> bool:
-        """Determine if a field is sensitive (should be stored in env/.env)."""
+        """
+        Detect whether a configuration field should be treated as sensitive.
+        
+        Sensitivity is determined from the field name (e.g., contains substrings like "token", "password", "secret", "api_key", or "api_token").
+        
+        Returns:
+            True if the field name indicates sensitivity, False otherwise.
+        """
         sensitive_patterns = ["token", "password", "secret", "api_key", "api_token"]
         name_lower = field_name.lower()
         return any(pattern in name_lower for pattern in sensitive_patterns)
     
     def _get_env_var_name(self, field_name: str, field: FieldInfo) -> str | None:
-        """Get environment variable name for a field if applicable."""
+        """
+        Determine the environment variable name associated with a config field.
+        
+        If the field's description contains an explicit "env: NAME" hint, that name is returned.
+        Otherwise, common field-name-to-environment-variable mappings are used.
+        
+        Parameters:
+            field_name (str): The config field's name (dot/path segment or attribute name).
+            field (FieldInfo): Pydantic FieldInfo providing metadata such as description.
+        
+        Returns:
+            The environment variable name if one can be determined, `None` otherwise.
+        """
         # Check if field description mentions an env var
         desc = field.description or ""
         if "env:" in desc.lower():
@@ -289,13 +390,13 @@ class ConfigService:
         value: Any,
         field_info: Dict[str, Any] | None = None,
     ) -> None:
-        """Set a config value, routing to env/.env for sensitive fields.
+        """
+        Set a configuration value, writing sensitive fields to the environment file and other fields to the TOML store.
         
-        Args:
-            dot_path: Dot-separated path (e.g., 'sources.jira.url').
-            value: Value to set.
-            field_info: Optional field metadata dict with 'sensitive' key.
-                       Can also include 'env_var' to specify exact env var name.
+        Parameters:
+            dot_path (str): Dot-separated configuration path (e.g., "sources.jira.url").
+            value (Any): Value to store.
+            field_info (dict | None): Optional metadata. If it contains `'sensitive': True`, the value is written to an environment variable. If it contains `'env_var'`, that variable name is used; otherwise an environment variable name is derived from the field name.
         """
         # Route sensitive values to .env file instead of TOML
         if field_info and field_info.get("sensitive"):
@@ -312,11 +413,27 @@ class ConfigService:
             self.set(dot_path, value)
     
     def _field_to_env_var(self, field_name: str) -> str:
-        """Convert field name to environment variable name."""
+        """
+        Map a configuration field name to its corresponding environment variable name.
+        
+        Parameters:
+            field_name (str): The config field name to map.
+        
+        Returns:
+            str: The environment variable name for the field; uses predefined mappings for common names (e.g., "api_token" -> "ATLASSIAN_TOKEN") and otherwise returns the uppercase form of the field name.
+        """
         return _ENV_VAR_MAPPINGS.get(field_name, field_name.upper())
     
     def _write_to_env_file(self, key: str, value: str) -> None:
-        """Write a key-value pair to the .indexed/.env file."""
+        """
+        Write or update an environment variable in the workspace .indexed/.env file.
+        
+        Reads the existing .env if present and replaces the line for `key` with `key=value`; if `key` is not found, appends `key=value`. Ensures the parent directory exists before writing the updated file.
+        
+        Parameters:
+            key (str): Environment variable name to set.
+            value (str): Value to assign to the environment variable.
+        """
         env_path = self._store.get_env_path()
         
         # Read existing .env content
@@ -354,13 +471,14 @@ class ConfigService:
         self,
         workspace_path: Optional[Path] = None,
     ) -> Optional[StorageMode]:
-        """Get the storage mode preference for a workspace.
+        """
+        Retrieve the storage mode preference for a workspace.
         
-        Args:
-            workspace_path: Path to the workspace. Defaults to current workspace.
-            
+        Parameters:
+            workspace_path (Path | None): Path to the workspace; if None, uses the service's current workspace.
+        
         Returns:
-            "global" or "local" if a preference exists, None otherwise.
+            str | None: `"global"` or `"local"` if a preference is configured for the workspace, `None` otherwise.
         """
         # Read from global config directly (workspace config is stored globally)
         global_store = TomlStore(mode_override="global")
@@ -379,15 +497,16 @@ class ConfigService:
         workspace_path: Optional[Path] = None,
         global_path: Optional[str] = None,
     ) -> None:
-        """Set the workspace configuration.
+        """
+        Persist the workspace's storage preference into the global configuration.
         
-        Configuration is stored in the global config file so it persists
-        across all invocations of indexed.
+        Stores a small workspace config record in the global TOML store so the chosen storage
+        mode and paths persist across runs.
         
-        Args:
-            mode: Storage mode ("global" or "local").
-            workspace_path: Path to the local workspace. Defaults to current workspace.
-            global_path: Path to global storage. Defaults to ~/.indexed.
+        Parameters:
+            mode (StorageMode): Storage mode to persist ("global" or "local").
+            workspace_path (Optional[Path]): Workspace path to record; defaults to this service's workspace.
+            global_path (Optional[str]): Global storage path to record; omitted if equal to the default.
         """
         local_path = str(workspace_path or self._workspace)
         
@@ -412,13 +531,14 @@ class ConfigService:
         self,
         workspace_path: Optional[Path] = None,
     ) -> bool:
-        """Clear the workspace configuration.
+        """
+        Clear any stored workspace preference from the global configuration.
         
-        Args:
-            workspace_path: Unused, kept for API compatibility.
-            
+        Parameters:
+            workspace_path (Optional[Path]): Ignored; present for API compatibility.
+        
         Returns:
-            True if workspace config was cleared, False if none existed.
+            bool: `True` if the workspace preference existed and was removed, `False` otherwise.
         """
         global_store = TomlStore(mode_override="global")
         raw = global_store.read()
@@ -430,14 +550,15 @@ class ConfigService:
         return False
     
     def get_workspace_config(self) -> Dict[str, str]:
-        """Get the workspace configuration.
-        
-        Reads from merged config (local takes precedence over global),
-        so workspace config can be in either .indexed/config.toml or ~/.indexed/config.toml.
+        """
+        Retrieve the effective workspace configuration merged from global and workspace sources.
         
         Returns:
-            Dict with keys: mode, local_path, global_path.
-            Returns empty dict if no workspace config exists.
+            dict: Mapping with keys:
+                - `mode` (str): Either "global" or "local".
+                - `local_path` (str): Path to the workspace-local config (defaults to the service workspace).
+                - `global_path` (str): Path to the global config (defaults to DEFAULT_GLOBAL_PATH).
+            Returns an empty dict if no valid workspace configuration exists.
         """
         # Read from merged config (local + global)
         raw = self.load_raw()
@@ -459,10 +580,11 @@ class ConfigService:
     # ─────────────────────────────────────────────────────────────────────────
     
     def has_config_conflict(self) -> bool:
-        """Check if both local and global configs exist with differences.
+        """
+        Determine whether both workspace-local and global configuration files exist and contain different values.
         
         Returns:
-            True if both configs exist and have differing values.
+            `true` if both local and global configs exist and have differing values, `false` otherwise.
         """
         return self._store.configs_differ()
     
@@ -475,15 +597,16 @@ class ConfigService:
         return self._store.get_config_differences()
     
     def resolve_storage_mode(self) -> StorageMode:
-        """Resolve the effective storage mode for the current workspace.
+        """
+        Determine the effective storage mode for the current workspace.
         
-        Resolution order:
-        1. CLI mode override (set at init)
-        2. Workspace preference from config
-        3. Default to "global"
+        Resolution order (highest to lowest precedence):
+        1. CLI `mode_override` provided at initialization
+        2. Workspace preference stored in global config
+        3. Default `"global"`
         
         Returns:
-            "global" or "local"
+            StorageMode: `"global"` or `"local"` indicating the resolved storage mode.
         """
         # CLI override takes precedence
         if self._mode_override:
@@ -498,12 +621,22 @@ class ConfigService:
         return "global"
     
     def get_collections_path(self) -> Path:
-        """Get the resolved collections path based on current storage mode."""
+        """
+        Return the collections directory path for the resolved storage mode.
+        
+        Returns:
+            Path: Filesystem path to the collections directory for the active storage mode.
+        """
         mode = self.resolve_storage_mode()
         return self._resolver.get_collections_path(mode)
     
     def get_caches_path(self) -> Path:
-        """Get the resolved caches path based on current storage mode."""
+        """
+        Resolve the caches directory path for the current workspace storage mode.
+        
+        Returns:
+            Path: Filesystem path to the caches directory for the resolved storage mode.
+        """
         mode = self.resolve_storage_mode()
         return self._resolver.get_caches_path(mode)
     

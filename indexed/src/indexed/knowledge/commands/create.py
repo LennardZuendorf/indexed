@@ -27,6 +27,12 @@ from ...utils.context_managers import NoOpContext, suppress_core_output
 
 
 def _is_cloud(url: str) -> bool:
+    """
+    Determine whether a given Atlassian base URL refers to the cloud-hosted service.
+    
+    Returns:
+        True if the URL ends with ".atlassian.net", False otherwise.
+    """
     return url.endswith(".atlassian.net")
 
 
@@ -618,7 +624,11 @@ def create_confluence(
         rich_help_panel="Logging",
     ),
 ):
-    """Create a Confluence collection with comprehensive parameter resolution and progress tracking."""
+    """
+    Create a Confluence collection by resolving configuration, executing the ingestion, and verifying the result.
+    
+    Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
+    """
     from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig

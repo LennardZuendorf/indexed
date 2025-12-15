@@ -56,12 +56,22 @@ class TomlStore:
 
     @property
     def global_root(self) -> Path:
-        """Get the global storage root (~/.indexed)."""
+        """
+        Provide the path to the global storage root directory (~/.indexed).
+        
+        Returns:
+            Path: Path to the global storage root directory.
+        """
         return get_global_root()
 
     @property
     def global_path(self) -> Path:
-        """Get the global config file path (~/.indexed/config.toml)."""
+        """
+        Get the path to the global configuration file (~/.indexed/config.toml).
+        
+        Returns:
+            Path: Path to the global configuration file.
+        """
         return get_config_path(get_global_root())
 
     @property
@@ -71,15 +81,23 @@ class TomlStore:
 
     @property
     def workspace_path(self) -> Path:
-        """Get the workspace/local config file path (./.indexed/config.toml)."""
+        """
+        Return the workspace/local configuration file path.
+        
+        Returns:
+            Path to the workspace/local config file (./.indexed/config.toml).
+        """
         return get_config_path(get_local_root(self.workspace))
     
     @property
     def env_path(self) -> Path:
-        """Path to the .env file for sensitive values.
+        """
+        Get the .env file path used for sensitive values.
         
-        Returns the .env path based on mode_override if set,
-        otherwise defaults to the workspace .env.
+        When the instance was created with mode_override == "global", returns the global .env path; otherwise returns the workspace/local .env path.
+        
+        Returns:
+            Path: The filesystem path to the selected `.env` file.
         """
         if self._mode_override == "global":
             return storage_get_env_path(get_global_root())
@@ -88,7 +106,12 @@ class TomlStore:
     
     @property
     def global_env_path(self) -> Path:
-        """Path to the global .env file (~/.indexed/.env)."""
+        """
+        Get the path to the global .env file under the global storage root.
+        
+        Returns:
+            Path: Path to the global `.env` file (e.g., `~/.indexed/.env`).
+        """
         return storage_get_env_path(get_global_root())
     
     @property
@@ -97,10 +120,30 @@ class TomlStore:
         return storage_get_env_path(get_local_root(self.workspace))
     
     def get_env_path(self) -> str:
-        """Get the .env file path as string."""
+        """
+        Return the resolved .env file path as a string.
+        
+        Returns:
+            The path to the selected `.env` file (global or workspace) as a string.
+        """
         return str(self.env_path)
 
     def _read_toml_file(self, path: Path) -> Dict[str, Any]:
+        """
+        Read and parse a TOML file at the given path and return its contents as a dictionary.
+        
+        If the file does not exist, returns an empty dictionary. Raises RuntimeError if a TOML parser
+        (tomllib or tomli) is not available.
+        
+        Parameters:
+            path (Path): Filesystem path to the TOML file.
+        
+        Returns:
+            Dict[str, Any]: Parsed TOML data as a mapping; empty dict when the file is missing.
+        
+        Raises:
+            RuntimeError: If no TOML parser (tomllib/tomli) is available for reading.
+        """
         if not path.exists():
             return {}
         if tomllib is None:
@@ -146,19 +189,29 @@ class TomlStore:
         return data
     
     def has_local_config(self) -> bool:
-        """Check if local/workspace config exists."""
+        """
+        Determine whether the workspace (local) TOML configuration file exists.
+        
+        Returns:
+            True if the workspace config file exists, False otherwise.
+        """
         return self.workspace_path.exists()
     
     def has_global_config(self) -> bool:
-        """Check if global config exists."""
+        """
+        Determine whether the global TOML configuration file exists.
+        
+        Returns:
+            `True` if the global config file exists, `False` otherwise.
+        """
         return self.global_path.exists()
     
     def configs_differ(self) -> bool:
-        """Check if local and global configs have different values.
+        """
+        Determine whether the workspace (local) and global TOML configurations contain differing values.
         
         Returns:
-            True if both configs exist and have differing values,
-            False if only one exists or they are identical.
+            `true` if both config files exist and at least one value differs; `false` otherwise.
         """
         if not self.has_local_config() or not self.has_global_config():
             return False
@@ -173,10 +226,15 @@ class TomlStore:
         local: Dict[str, Any],
         global_: Dict[str, Any],
     ) -> bool:
-        """Recursively check if two config dicts have differences.
+        """
+        Determine whether any keys present in both config mappings have different values, recursing into nested dicts.
         
-        Only checks keys that exist in both configs - we're looking for
-        conflicts, not missing keys.
+        Parameters:
+            local (Dict[str, Any]): Local configuration mapping; only keys present here are considered for conflict checks.
+            global_ (Dict[str, Any]): Global configuration mapping to compare against.
+        
+        Returns:
+            bool: `True` if a differing value is found for any key present in both mappings, `False` otherwise.
         """
         # Check keys in local
         for key, local_val in local.items():
@@ -194,11 +252,11 @@ class TomlStore:
         return False
     
     def get_config_differences(self) -> Dict[str, tuple[Any, Any]]:
-        """Get a dict of differing values between local and global configs.
+        """
+        Produce a mapping of dot-separated paths to tuples containing the differing (local_value, global_value) for keys present in the workspace config.
         
         Returns:
-            Dict mapping dot-paths to (local_value, global_value) tuples.
-            Empty dict if no differences or only one config exists.
+            Dict[str, tuple[Any, Any]]: Mapping from dot-path (e.g., "section.subkey") to a tuple of (local_value, global_value). Returns an empty dict if either the local or global config is missing or if no differences exist.
         """
         if not self.has_local_config() or not self.has_global_config():
             return {}
@@ -217,7 +275,17 @@ class TomlStore:
         prefix: str,
         differences: Dict[str, tuple[Any, Any]],
     ) -> None:
-        """Recursively collect differing values."""
+        """
+        Recursively record paths where values differ between a local and global configuration.
+        
+        Traverse keys present in `local` and, for any key also present in `global_`, record entries in `differences` when the corresponding values differ. Nested dictionaries are descended into; differences are recorded using dot-separated paths (e.g., "section.subkey") with the mapped value (local_value, global_value).
+        
+        Parameters:
+            local (Dict[str, Any]): The local configuration subtree to inspect.
+            global_ (Dict[str, Any]): The global configuration subtree to compare against.
+            prefix (str): Dot-separated path prefix for the current recursion level; empty for the root.
+            differences (Dict[str, tuple[Any, Any]]): Mutable mapping that will be populated with path -> (local_value, global_value) for each detected difference.
+        """
         for key, local_val in local.items():
             path = f"{prefix}.{key}" if prefix else key
             
@@ -232,14 +300,13 @@ class TomlStore:
                 differences[path] = (local_val, global_val)
     
     def _load_dotenv(self, env_path: Optional[Path] = None) -> None:
-        """Load .env file into environment using python-dotenv.
+        """
+        Load variables from a .env file into the process environment using python-dotenv.
         
-        Uses python-dotenv for full .env file compatibility including
-        multiline values, export prefixes, escaped characters, and
-        variable expansion.
+        Uses python-dotenv for full .env file compatibility including multiline values, export prefixes, escaped characters, and variable expansion.
         
-        Args:
-            env_path: Path to the .env file. Defaults to self.env_path.
+        Parameters:
+            env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the store's configured env_path.
         """
         path = env_path or self.env_path
         if not path.exists():
@@ -249,12 +316,18 @@ class TomlStore:
         load_dotenv(str(path), override=False)
 
     def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
-        """Write configuration to TOML file.
+        """
+        Write the given configuration mapping to the appropriate TOML config file (workspace or global).
         
-        Args:
-            data: Configuration data to write.
-            to_global: If True, write to global config. If False, write to
-                      workspace config (default) unless mode_override is set.
+        The destination is chosen as follows:
+        - If `to_global` is True, write to the global config.
+        - Else if the instance `mode_override` is "global", write to the global config.
+        - Else if `mode_override` is "local", write to the workspace config.
+        - Otherwise, write to the workspace config (backward-compatible default).
+        
+        Parameters:
+            data (Mapping[str, Any]): Configuration data to persist.
+            to_global (bool): If True, force writing to the global config; otherwise follow the mode override or default to the workspace.
         """
         if to_global:
             target = self.global_path
@@ -272,12 +345,22 @@ class TomlStore:
             tomlkit.dump(dict(data), f)
     
     def write_to_global(self, data: Mapping[str, Any]) -> None:
-        """Write configuration to global config file."""
+        """
+        Write the provided configuration mapping to the global TOML config file.
+        
+        Parameters:
+            data (Mapping[str, Any]): Configuration data to persist; must be representable as TOML.
+        """
         self.write(data, to_global=True)
 
     def _env_to_mapping(self) -> Dict[str, Any]:
-        """Convert INDEXED__A__B=val env vars to nested dict {"a": {"b": val}}.
-        Values are left as strings; Pydantic will coerce types on bind().
+        """
+        Convert environment variables with the `INDEXED__` prefix into a nested dictionary.
+        
+        Only variables whose names start with `INDEXED__` are considered. The portion after the prefix is split on `__` to form a nested path; empty segments are ignored and all key segments are lowercased. Values are kept as strings.
+        
+        Returns:
+            mapping (Dict[str, Any]): Nested dictionary representing the matched environment variables, with lowercase keys and string values.
         """
         prefix = "INDEXED__"
         out: Dict[str, Any] = {}

@@ -44,13 +44,16 @@ app = typer.Typer(help="Manage configuration")
 
 
 def _coerce_value(value: str) -> Any:
-    """Coerce string value to appropriate type.
+    """
+    Convert a string to an appropriate Python type.
     
-    Args:
-        value: String value to coerce
-        
+    Attempts to interpret the input as a boolean, integer, float, or JSON value (list/dict); if none apply, returns the original string.
+    
+    Parameters:
+        value (str): The input string to coerce.
+    
     Returns:
-        Coerced value (int, float, bool, list, dict, or string)
+        The coerced value as an `int`, `float`, `bool`, `list`, `dict`, or the original `str`.
     """
     # Try int, float, bool, JSON (list/dict), else keep string
     low = value.lower()
@@ -91,13 +94,14 @@ def _flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict[str, An
 
 
 def _group_config_by_section(config_dict: dict) -> dict[str, dict[str, Any]]:
-    """Group configuration by top-level sections.
+    """
+    Group configuration entries by their top-level section.
     
-    Args:
-        config_dict: Configuration dictionary
-        
+    Flattens nested keys into dot-separated paths and returns a mapping where each top-level
+    section name maps to a dictionary of its sub-keys (the remainder of the path) to values.
+    
     Returns:
-        Dictionary grouped by section name
+        dict[str, dict[str, Any]]: Mapping from section name to a dict of sub-key -> value.
     """
     # Flatten the config first
     flat_config = _flatten_dict(config_dict)
@@ -114,13 +118,13 @@ def _group_config_by_section(config_dict: dict) -> dict[str, dict[str, Any]]:
 
 
 def _format_config_value(value: Any) -> str:
-    """Format a config value for display.
+    """
+    Produce a display-friendly string for a configuration value.
     
-    Args:
-        value: Value to format
-        
+    Formats common config types for human-readable output: booleans become "true"/"false", empty lists or dicts become "(empty)", None becomes "(not set)", non-empty lists are joined with ", ", and dicts are summarized as "(N items)".
+    
     Returns:
-        Formatted string
+        str: Display-friendly representation of the provided value.
     """
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -139,13 +143,14 @@ def _format_config_value(value: Any) -> str:
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """Check if a key is sensitive (should be masked in display).
+    """
+    Determine whether a configuration key should be treated as sensitive for display.
     
-    Args:
-        key: The key name (e.g., "api_token", "jira.email")
-        
+    Parameters:
+        key (str): Dot-separated configuration key (e.g., "jira.api_token"); only the last segment is inspected.
+    
     Returns:
-        True if the key is sensitive
+        true if the last key segment contains any of: "api_token", "token", "password", or "secret"; false otherwise.
     """
     sensitive_patterns = ["api_token", "token", "password", "secret"]
     key_lower = key.lower()
@@ -155,13 +160,14 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _get_sensitive_env_value(key: str) -> Optional[str]:
-    """Check if a sensitive key has a value set via environment variable.
+    """
+    Return a masked value if the given configuration key has a corresponding environment variable set.
     
-    Args:
-        key: The key name (e.g., "api_token", "jira.email")
-        
+    Parameters:
+        key (str): Dot-path or simple key name to check (e.g., "api_token" or "jira.email").
+    
     Returns:
-        The masked value "*****" if set, None otherwise
+        Optional[str]: The masked string "*****" if a relevant environment variable is present for the key, None otherwise.
     """
     import os
     
@@ -186,14 +192,17 @@ def _get_sensitive_env_value(key: str) -> Optional[str]:
 
 
 def _create_section_card(section_name: str, section_data: dict[str, Any]) -> Panel:
-    """Create a card for a config section.
+    """
+    Render a UI card summarizing a configuration section.
     
-    Args:
-        section_name: Name of the section
-        section_data: Configuration data for the section
-        
+    Displays each config key (dot-paths shown with separators) alongside a formatted value. If the section has no keys, includes a single "Status" row with "(no configuration)".
+    
+    Parameters:
+        section_name (str): Section identifier used as the card title.
+        section_data (dict[str, Any]): Mapping of configuration keys to their values for the section.
+    
     Returns:
-        Panel with section data
+        Panel: A Rich Panel containing the section title and key/value rows.
     """
     # Format section name nicely
     title = section_name.replace("_", " ").title()
@@ -213,12 +222,13 @@ def _create_section_card(section_name: str, section_data: dict[str, Any]) -> Pan
 
 
 def _get_full_config_schema() -> dict[str, dict[str, Any]]:
-    """Get full configuration schema with default values from Pydantic models.
+    """
+    Return a mapping of configuration sections to their default configuration values.
+    
+    Attempts to obtain defaults from Pydantic models (core.v1 indexing, embedding, search, storage; MCP; performance; logging). If those models are unavailable, falls back to a minimal built-in defaults schema for core.v1 and logging. The returned structure includes top-level sections such as "core" (with "v1" sub-sections), "mcp", "performance", "logging", and "sources" (empty when no defaults are defined).
     
     Returns:
-        Dictionary of all available config sections and their keys with defaults.
-        Sections include: core.v1 (indexing, embedding, search, storage), 
-        sources (files, jira, confluence), logging, mcp, performance.
+        dict[str, dict[str, Any]]: Mapping of section names to dictionaries of default configuration values.
     """
     # Import Pydantic models for defaults
     try:
@@ -377,13 +387,14 @@ def _get_available_config_schema() -> dict[str, dict[str, Any]]:
 
 
 def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
-    """Display section selection menu and return selected section.
+    """
+    Present an interactive menu for selecting a configuration section.
     
-    Args:
-        grouped_config: Configuration grouped by sections
-        
+    Parameters:
+        grouped_config (dict[str, dict[str, Any]]): Mapping of section names to their keys and values used to determine which sections are configured.
+    
     Returns:
-        Selected section name or None if cancelled
+        Optional[str]: The chosen section name, or `None` if the user exits or makes no valid selection.
     """
     console.print()
     console.print(f"[{get_heading_style()}]Select Configuration Section[/{get_heading_style()}]")
@@ -475,14 +486,15 @@ def _group_keys_by_prefix(keys: list[str]) -> dict[str, list[str]]:
 
 
 def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tuple[str, bool]]:
-    """Display key selection menu within a section and return selected key.
+    """
+    Prompt the user to select a configuration key within the given section.
     
-    Args:
-        section_name: Name of the section
-        section_data: Configuration data for the section
-        
+    Parameters:
+        section_name (str): The section identifier (dot-notated) to list keys for.
+        section_data (dict[str, Any]): Existing key→value mappings in the section.
+    
     Returns:
-        Tuple of (selected key, is_new) or None if cancelled
+        tuple[str, bool] | None: A `(selected_key, is_new)` tuple where `is_new` is `True` if the selected key is not currently set, or `None` if the user cancelled or chose to go back.
     """
     console.print()
     console.print(f"[{get_heading_style()}]{section_name.replace('_', ' ').replace('.', ' › ').title()} Settings[/{get_heading_style()}]")
@@ -586,16 +598,19 @@ def _select_key(section_name: str, section_data: dict[str, Any]) -> Optional[tup
 
 
 def _prompt_for_value(key: str, current_value: Any, is_new: bool = False, section_name: str = "") -> Optional[Any]:
-    """Prompt user for a new value with current value as default.
+    """
+    Prompt the user to enter a configuration value for a given key, showing the current or suggested default.
     
-    Args:
-        key: Key being updated
-        current_value: Current value (None if new)
-        is_new: Whether this is a new key being added
-        section_name: Section name for looking up default values
-        
+    If the user cancels (presses Enter with no input and no default), returns None.
+    
+    Parameters:
+        key (str): Dot-path configuration key being edited (e.g., "core.v1.indexing.chunk_size").
+        current_value (Any): Existing value for the key, or None when adding a new key.
+        is_new (bool): True when adding a new key; affects prompts and suggested defaults.
+        section_name (str): Section name used to look up a suggested default for new keys.
+    
     Returns:
-        New coerced value or None if cancelled
+        Optional[Any]: The value coerced from the user's input, or `None` if the prompt was cancelled.
     """
     console.print()
     display_key = key.replace(".", " › ")
@@ -653,13 +668,19 @@ def _prompt_for_value(key: str, current_value: Any, is_new: bool = False, sectio
 
 
 def _preview_change(key: str, old_value: Any, new_value: Any, is_new: bool = False) -> None:
-    """Display a preview of the configuration change.
+    """
+    Show a UI preview card for a pending configuration change.
     
-    Args:
-        key: Configuration key
-        old_value: Current value (None if new)
-        new_value: New value
-        is_new: Whether this is a new key being added
+    Displays a detail card that summarizes the change for the given configuration `key`.
+    If `is_new` is True, the card indicates an "Add new value" action and shows the formatted
+    new value. Otherwise the card shows the formatted current value and the formatted new value,
+    with the title set to "Update Configuration" for updates and "Add Configuration" for additions.
+    
+    Parameters:
+        key (str): Dot-path configuration key being changed.
+        old_value (Any): Existing value for the key; may be None for new keys.
+        new_value (Any): Proposed new value to display.
+        is_new (bool): If True, treat the change as adding a new key (default False).
     """
     console.print()
     console.print(f"[{get_heading_style()}]Preview Change[/{get_heading_style()}]")
@@ -682,13 +703,15 @@ def _preview_change(key: str, old_value: Any, new_value: Any, is_new: bool = Fal
 
 
 def _load_external_toml(file_path: str) -> Optional[dict[str, Any]]:
-    """Load and parse external TOML file.
+    """
+    Parse a TOML file at the provided filesystem path and return its contents as a dictionary.
     
-    Args:
-        file_path: Path to TOML file
-        
+    Parameters:
+        file_path (str): Filesystem path to the TOML file; can be relative or absolute.
+    
     Returns:
-        Parsed TOML as dict or None if error
+        dict: Parsed TOML data when successful.
+        None: If the file does not exist, is not a regular file, a TOML parser is unavailable, or parsing fails. Errors are reported to the user before returning None.
     """
     import sys
     
@@ -917,6 +940,19 @@ def inspect(
     
     # Helper to check if a key should be shown
     def should_show_key(section: str, key: str, is_default: bool) -> bool:
+        """
+        Decides whether a configuration key should be displayed.
+        
+        A key is shown if it is a manually set value, or if default values are globally enabled for display, or if the (section, key) pair is included in the predefined selected-defaults set.
+        
+        Parameters:
+            section (str): Top-level configuration section name.
+            key (str): Configuration key path (relative to the section).
+            is_default (bool): True when the key's value originates from defaults, False when manually set.
+        
+        Returns:
+            bool: `true` if the key should be shown, `false` otherwise.
+        """
         if not is_default:
             return True  # Always show manual values
         if show_defaults:
@@ -1132,14 +1168,20 @@ def update(
 
 
 def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
-    """Handle the individual setting update flow.
+    """
+    Run an interactive flow to add or update a single configuration key in the global configuration.
     
-    Args:
-        config: ConfigService instance
-        global_path: Path to global config file
-        
+    Prompts the user to select a section and key, collect a new value (with coercion), preview the change, and on confirmation persist the update to the global config file.
+    
+    Parameters:
+        config (ConfigService): Service used to read, validate, and write configuration.
+        global_path (Path): Path to the global configuration TOML file to be updated.
+    
     Returns:
-        True to continue, False to exit
+        bool: `True` to continue the interactive update loop, `False` to exit.
+    
+    Raises:
+        typer.Exit: If applying the change fails when writing the global configuration.
     """
     # Load current config
     current_config = config.load_raw()
@@ -1218,15 +1260,21 @@ def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
 
 
 def _handle_file_replace_with_path(config: ConfigService, global_path: Path, file_path: str) -> bool:
-    """Handle the replace from file flow with a given file path.
+    """
+    Replace the global configuration file with the contents of a TOML file after interactive confirmation.
     
-    Args:
-        config: ConfigService instance
-        global_path: Path to global config file
-        file_path: Path to the TOML file to load
-        
+    Loads and parses the provided TOML file, displays a diff against the current global configuration, validates the new configuration by temporarily writing it to the config store, prompts the user for confirmation, creates a backup of the existing global file, and writes the new configuration to the global path if confirmed.
+    
+    Parameters:
+        config (ConfigService): Configuration service used for temporary write and validation.
+        global_path (Path): Path to the global configuration file to be replaced.
+        file_path (str): Filesystem path to the TOML file to load and apply.
+    
     Returns:
-        True if replacement was successful, False otherwise
+        bool: `True` if the replacement completed successfully, `False` if the operation was cancelled or validation/loading failed.
+    
+    Raises:
+        typer.Exit: If writing the new configuration to the global path fails.
     """
     console.print()
     console.print(f"[{get_heading_style()}]Replace Configuration From File[/{get_heading_style()}]")
@@ -1458,7 +1506,18 @@ def delete_config(
         rich_help_panel="Logging",
     ),
 ):
-    """Delete a configuration key from workspace config."""
+    """
+    Delete a configuration key from the workspace configuration.
+    
+    Shows the current value and, unless `force` is True, prompts for confirmation before removing the key from the workspace config. Reports success when the key is deleted and prints informational messages if the key is not found.
+    
+    Parameters:
+        key (str): Dot-separated path of the configuration key to delete (e.g., "core.v1.indexing.chunk_size").
+        force (bool): If True, skip the confirmation prompt and delete immediately.
+        verbose (bool): Enable verbose (INFO) logging.
+        json_logs (bool): Output logs as JSON (structured).
+        log_level (Optional[str]): Explicit logging level (e.g., "DEBUG", "INFO", "WARNING", "ERROR").
+    """
     from ..utils.logging import setup_root_logger
     
     # Setup logging based on options
@@ -1540,7 +1599,11 @@ def validate(
         rich_help_panel="Logging",
     ),
 ):
-    """Validate current configuration against registered specs."""
+    """
+    Validate the active configuration against registered validation rules and report any problems.
+    
+    Runs configuration validation, prints a success message when no issues are found, and prints grouped, sectioned error cards when issues exist. If validation errors are present the command prints a summary and exits the process with status code 1.
+    """
     from ..utils.logging import setup_root_logger
     
     # Setup logging based on options
@@ -1627,9 +1690,16 @@ def init_config(
         rich_help_panel="Logging",
     ),
 ):
-    """Initialize workspace configuration files.
+    """
+    Initialize workspace configuration files by creating a .indexed directory with a default config.toml and .env.example.
     
-    Creates a .indexed/ directory with default config.toml and .env.example files.
+    If the workspace already exists and `force` is False, the command exits without modifying files. When `force` is True, existing files are overwritten. Logging options control logging level and JSON formatting for the command's output.
+    
+    Parameters:
+    	force (bool): Overwrite existing configuration files when True.
+    	verbose (bool): Enable verbose (INFO) logging.
+    	json_logs (bool): Emit logs in JSON (structured) format.
+    	log_level (Optional[str]): Explicit logging level (e.g., "DEBUG", "INFO"); overrides `verbose` when provided.
     """
     from ..utils.logging import setup_root_logger
     

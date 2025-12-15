@@ -23,25 +23,41 @@ from .components import print_success, print_warning, print_error
 
 
 def _get_legacy_data_path() -> Path:
-    """Get the legacy data path (./data)."""
+    """
+    Return the legacy data directory path relative to the current working directory.
+    
+    Returns:
+        Path: Path to the legacy data directory (current working directory joined with "data").
+    """
     return Path.cwd() / "data"
 
 
 def _get_legacy_collections_path() -> Path:
-    """Get the legacy collections path (./data/collections)."""
+    """
+    Return the path to the legacy collections directory located at ./data/collections.
+    
+    Returns:
+        Path: The filesystem path pointing to the legacy `data/collections` directory.
+    """
     return _get_legacy_data_path() / "collections"
 
 
 def _get_legacy_caches_path() -> Path:
-    """Get the legacy caches path (./data/caches)."""
+    """
+    Resolve the legacy caches directory path under the current working directory.
+    
+    Returns:
+        Path: Path to the legacy caches directory ('./data/caches').
+    """
     return _get_legacy_data_path() / "caches"
 
 
 def has_legacy_data() -> bool:
-    """Check if legacy data exists at ./data/collections.
+    """
+    Determine whether any legacy collections exist under ./data/collections.
     
     Returns:
-        True if legacy collections directory exists and has content.
+        True if at least one directory containing a `manifest.json` file exists in the legacy collections path, False otherwise.
     """
     legacy_path = _get_legacy_collections_path()
     if not legacy_path.exists():
@@ -56,10 +72,13 @@ def has_legacy_data() -> bool:
 
 
 def get_legacy_collections() -> list[str]:
-    """Get list of collection names in legacy data directory.
+    """
+    Return the names of collections found in the legacy data directory.
+    
+    A collection is any subdirectory that contains a `manifest.json` file.
     
     Returns:
-        List of collection names found in ./data/collections.
+        A sorted list of collection names (subdirectory names) that contain a `manifest.json`.
     """
     legacy_path = _get_legacy_collections_path()
     if not legacy_path.exists():
@@ -78,15 +97,18 @@ def migrate_legacy_data(
     console: Console,
     dry_run: bool = False,
 ) -> bool:
-    """Migrate legacy data from ./data to target storage root.
+    """
+    Migrate legacy "./data" contents into the specified target storage root under "data/".
     
-    Args:
-        target_root: Target storage root (e.g., ~/.indexed)
-        console: Rich Console for output.
-        dry_run: If True, only show what would be migrated without copying.
-        
+    Copies legacy collection directories into {target_root}/data/collections and legacy cache items into {target_root}/data/caches, skipping items that already exist at the target and preserving the originals. When dry_run is True, reports what would be migrated without performing any file operations.
+    
+    Parameters:
+        target_root (Path): Destination root for migrated data (e.g., ~/.indexed).
+        console (Console): Rich Console used for user-facing output.
+        dry_run (bool): If True, show actions without copying files.
+    
     Returns:
-        True if migration was successful, False otherwise.
+        bool: `True` if migration completed successfully or no migration was needed, `False` if a failure occurred.
     """
     legacy_collections = _get_legacy_collections_path()
     legacy_caches = _get_legacy_caches_path()
@@ -173,14 +195,15 @@ def prompt_migration(
     console: Console,
     target_root: Path,
 ) -> bool:
-    """Prompt user to migrate legacy data if it exists.
+    """
+    Prompt the user to migrate legacy data from ./data into the provided target storage root.
     
-    Args:
-        console: Rich Console for output.
-        target_root: Target storage root (e.g., ~/.indexed).
-        
+    Parameters:
+        console (Console): Rich Console used to display messages and prompts.
+        target_root (Path): Destination root for migrated data (e.g., ~/.indexed).
+    
     Returns:
-        True if migration was performed (or not needed), False if user declined.
+        bool: `True` if migration succeeded, was skipped, or was not needed; `False` if a migration attempt failed.
     """
     if not has_legacy_data():
         return True
@@ -227,6 +250,5 @@ def prompt_migration(
         )
         console.print()
         return False
-
 
 

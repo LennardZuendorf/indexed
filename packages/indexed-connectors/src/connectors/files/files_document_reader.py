@@ -135,6 +135,19 @@ class FilesDocumentReader:
         self.default_reader = self.__read_file_by_unstructured_lib
 
     def read_all_documents(self):
+        """
+        Iterate over files selected by the reader configuration and yield a document record for each successfully read file.
+        
+        Yields:
+            dict: A document record containing:
+                - fileRelativePath (str): Path relative to the configured base_path.
+                - fileFullPath (str): Absolute path to the file.
+                - modifiedTime (str): File modification time as an ISO 8601 formatted string.
+                - content (list[dict] | list[str] | str): Content produced by the selected file reader (e.g., a list of element dictionaries or a text string).
+        
+        Raises:
+            RuntimeError: If `fail_fast` is true and reading any file raises an error.
+        """
         result_stats = {
             "successFiles": [],
             "errorFiles": [],
@@ -236,6 +249,20 @@ class FilesDocumentReader:
             return [{"text": file_content}]
 
     def __read_file_by_unstructured_lib(self, file_path: str):
+        """
+        Extract text content from a file using the unstructured partitioner and return one or more document dictionaries.
+        
+        Parameters:
+            file_path (str): Path to the file to extract text from.
+        
+        Returns:
+            list[dict]: A list of document dictionaries:
+                - If no text content is found, returns an empty list.
+                - If elements lack page numbers, returns a single dict with key `"text"` containing the file's combined text.
+                - If elements include page numbers, returns one dict per page with keys:
+                    - `"metadata"`: `{"pageNumber": <int>}` for the page
+                    - `"text"`: combined text for that page
+        """
         elements = partition(filename=file_path)
 
         if not elements:

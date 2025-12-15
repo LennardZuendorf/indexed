@@ -128,12 +128,29 @@ class ConfluenceConnector:
         return "confluence"
 
     def __repr__(self) -> str:
-        """String representation of connector."""
+        """
+        Provide a concise developer-focused string identifying this connector instance.
+        
+        Returns:
+            str: Representation containing the connector type along with its configured base URL and CQL query.
+        """
         return f"ConfluenceConnector(url='{self._url}', query='{self._query}')"
 
     # --- Configuration integration ---
     @classmethod
     def config_spec(cls) -> dict:
+        """
+        Configuration specification for the Confluence Server/Data Center connector.
+        
+        Returns:
+            dict: Mapping of configuration option names to their schema. Includes:
+                - "base_url": Confluence base URL (required).
+                - "query": Base CQL query (required).
+                - "token_env": Environment variable name for an API token (optional, secret).
+                - "login_env": Environment variable name for basic auth username (optional, secret).
+                - "password_env": Environment variable name for basic auth password (optional, secret).
+                - "read_all_comments": Whether to read nested comments instead of only top-level comments (optional, defaults to True).
+        """
         return {
             "base_url": {
                 "type": "str",
@@ -180,23 +197,16 @@ class ConfluenceConnector:
 
     @classmethod
     def from_config(cls, config_service) -> "ConfluenceConnector":
-        """Create ConfluenceConnector from ConfigService.
+        """
+        Create a ConfluenceConnector using values from a ConfigService.
         
-        Registers ConfluenceConfig spec and extracts configuration values.
+        Registers the ConfluenceConfig schema at "sources.confluence", binds the provider to retrieve the configured ConfluenceConfig, and constructs a ConfluenceConnector populated from that configuration.
         
-        Args:
-            config_service: ConfigService instance with config loaded.
-            
+        Parameters:
+            config_service: ConfigService that provides access to registered configuration values.
+        
         Returns:
-            Configured ConfluenceConnector instance.
-            
-        Raises:
-            ValueError: If required config values are missing.
-            
-        Examples:
-            >>> from indexed_config import ConfigService
-            >>> config = ConfigService()
-            >>> connector = ConfluenceConnector.from_config(config)
+            ConfluenceConnector: An instance configured with values from ConfluenceConfig.
         """
         # Register our config spec
         config_service.register(ConfluenceConfig, path="sources.confluence.server")
@@ -303,12 +313,30 @@ class ConfluenceCloudConnector:
         return "confluenceCloud"
 
     def __repr__(self) -> str:
-        """String representation of connector."""
+        """
+        Provide a developer-focused string identifying the connector by base URL and CQL query.
+        
+        Returns:
+            str: Representation in the form "ConfluenceCloudConnector(url='<base_url>', query='<cql_query>')".
+        """
         return f"ConfluenceCloudConnector(url='{self._url}', query='{self._query}')"
 
     # --- Configuration integration ---
     @classmethod
     def config_spec(cls) -> dict:
+        """
+        Return the configuration specification for Confluence Cloud connector options.
+        
+        The returned dictionary maps configuration keys to their metadata: expected type, whether the key is required, whether it is secret, default value when applicable, and a short description.
+        
+        Returns:
+            dict: Specification with these keys:
+                - "base_url" (str): Confluence Cloud base URL (required).
+                - "query" (str): Base CQL query to select pages (required).
+                - "email" (str): Atlassian account email (required).
+                - "api_token_env" (str): Environment variable name holding the API token (required, secret, default "ATLASSIAN_TOKEN").
+                - "read_all_comments" (bool): Whether to read nested comments instead of only top-level comments (optional, default True).
+        """
         return {
             "base_url": {
                 "type": "str",
@@ -346,24 +374,14 @@ class ConfluenceCloudConnector:
 
     @classmethod
     def from_config(cls, config_service) -> "ConfluenceCloudConnector":
-        """Create ConfluenceCloudConnector from ConfigService.
+        """
+        Create a ConfluenceCloudConnector from a ConfigService.
         
-        Registers ConfluenceCloudConfig spec and extracts configuration values.
-        Uses unified 'sources.confluence' namespace (Cloud vs Server detected from URL).
+        Parameters:
+            config_service (ConfigService): Config service providing a ConfluenceCloudConfig (expected under "sources.confluence").
         
-        Args:
-            config_service: ConfigService instance with config loaded.
-            
         Returns:
-            Configured ConfluenceCloudConnector instance.
-            
-        Raises:
-            ValueError: If required config values are missing.
-            
-        Examples:
-            >>> from indexed_config import ConfigService
-            >>> config = ConfigService()
-            >>> connector = ConfluenceCloudConnector.from_config(config)
+            ConfluenceCloudConnector: Connector instance configured from the retrieved ConfluenceCloudConfig.
         """
         # Register our config spec using unified namespace
         config_service.register(ConfluenceCloudConfig, path="sources.confluence.cloud")

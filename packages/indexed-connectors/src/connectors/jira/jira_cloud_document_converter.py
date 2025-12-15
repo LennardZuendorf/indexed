@@ -17,9 +17,14 @@ class JiraCloudDocumentConverter:
     """
 
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100):
-        """Initialize converter.
-
-        Note: This class is deprecated. Consider using UnifiedJiraDocumentConverter instead.
+        """
+        Create a deprecated JiraCloudDocumentConverter that delegates conversion work to UnifiedJiraDocumentConverter.
+        
+        This constructor builds an internal UnifiedJiraDocumentConverter with the provided chunking parameters and exposes its text_splitter for compatibility. This class is deprecated — use UnifiedJiraDocumentConverter instead.
+        
+        Parameters:
+            chunk_size (int): Maximum size of text chunks when splitting document content.
+            chunk_overlap (int): Number of characters to overlap between consecutive chunks.
         """
         self._converter = UnifiedJiraDocumentConverter(
             chunk_size=chunk_size,
@@ -29,5 +34,13 @@ class JiraCloudDocumentConverter:
         self.text_splitter = self._converter.text_splitter
 
     def convert(self, document: dict) -> list:
-        """Convert Jira document to indexed format."""
+        """
+        Convert a Jira Cloud document into the indexed document format used by the connector.
+        
+        Parameters:
+            document (dict): Jira document payload to convert.
+        
+        Returns:
+            list: A list of indexed document items representing the converted document.
+        """
         return self._converter.convert(document)

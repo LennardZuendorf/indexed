@@ -24,7 +24,12 @@ class NoOpContext:
     """
 
     def __enter__(self):
-        """Enter the context (no-op)."""
+        """
+        Provide the context manager instance without performing any action.
+        
+        Returns:
+            self: The same NoOpContext instance to be used within the `with` statement.
+        """
         return self
 
     def __exit__(self, *args):
@@ -34,31 +39,13 @@ class NoOpContext:
 
 @contextmanager
 def suppress_core_output(redirect_streams: bool = False):
-    """Context manager to suppress core logging output.
-
-    Temporarily suppresses:
-    - All logging below CRITICAL level
-    - Python warnings (deprecation warnings, etc.)
-    - Optionally: stdout/stderr output (disabled by default to allow Rich spinners)
-
-    This is useful when running operations that produce verbose logging
-    that should be hidden from the user (e.g., when using progress bars).
-
-    Args:
-        redirect_streams: If True, also redirect stdout/stderr. Defaults to False
-                         to allow Rich console output (spinners, progress bars).
-
-    Example:
-        >>> with suppress_core_output():
-        ...     # Logging will be suppressed but Rich console works
-        ...     logger.info("This won't be shown")
-        ...     console.print("This WILL be shown")
-
-    Yields:
-        None
-
-    Note:
-        The original logging level is restored after exiting the context.
+    """
+    Temporarily suppress core logging, disable loguru logging, and ignore Python warnings; optionally redirect stdout and stderr for the duration of the context.
+    
+    When used as a context manager, sets the root logging level to CRITICAL, disables loguru, and suppresses warnings; on exit it restores the original logging level and re-enables loguru.
+    
+    Parameters:
+        redirect_streams (bool): If True, redirect stdout and stderr to in-memory buffers for the duration of the context. Defaults to False to allow Rich console output (spinners, progress bars).
     """
     # Save original logging level
     original_level = logging.getLogger().level

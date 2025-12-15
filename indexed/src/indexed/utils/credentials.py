@@ -22,17 +22,15 @@ def ensure_credentials_for_source(
     config_service: ConfigService,
     namespace: Optional[str] = None,
 ) -> None:
-    """Ensure required credentials are available for a source type.
+    """
+    Ensure required credentials exist for the given source type, prompting the user and persisting any missing values.
     
-    Checks for missing credentials and prompts the user to enter them.
-    Non-sensitive values (email) are saved to config.toml.
-    Sensitive values (tokens) are saved to .env file.
+    Determines a config namespace when not provided (jira/jiraCloud -> "sources.jira", confluence/confluenceCloud -> "sources.confluence"), skips processing for "localFiles", and delegates to the appropriate handler to gather and store credentials (Atlassian Cloud email + API token or server token/login+password). Unknown source types are ignored.
     
-    Args:
-        source_type: The source type (e.g., 'jiraCloud', 'confluence', 'localFiles')
-        config_service: ConfigService instance for reading/writing config
-        namespace: Optional config namespace override. If not provided, 
-                   uses default based on source_type.
+    Parameters:
+        source_type (str): Source identifier (e.g., "jiraCloud", "confluence", "localFiles") that determines which credential flow to run.
+        config_service (ConfigService): Service used to read and write configuration and environment-backed secrets.
+        namespace (Optional[str]): Optional configuration namespace override; when omitted a default namespace is chosen based on the source_type.
     """
     # Skip credential check for local files
     if source_type == "localFiles":
@@ -73,21 +71,21 @@ def ensure_atlassian_cloud_credentials(
     namespace: str,
     display_name: str,
 ) -> Dict[str, Any]:
-    """Ensure Atlassian Cloud credentials (email + api_token) are available.
+    """
+    Ensure Atlassian Cloud credentials (email and API token) are present, prompting the user for any missing values and persisting them.
     
-    Checks config and environment for existing credentials.
-    Prompts for missing values and saves them appropriately.
+    Reads existing values from the config under "{namespace}.email" and from the ATLASSIAN_EMAIL / ATLASSIAN_TOKEN environment variables. Prompts for any missing fields, saves the email to the config (non-sensitive) and the API token to the config as sensitive while also setting the ATLASSIAN_TOKEN environment variable for immediate use.
     
-    Args:
-        config_service: ConfigService instance
-        namespace: Config namespace (e.g., 'sources.jira')
-        display_name: Display name for prompts (e.g., 'Jira Cloud')
-        
+    Parameters:
+        config_service (ConfigService): Service used to read/write configuration values.
+        namespace (str): Config namespace for storing values (e.g., "sources.jira").
+        display_name (str): Human-readable name shown in prompts (e.g., "Jira Cloud").
+    
     Returns:
-        Dict with prompted/existing values: {'email': ..., 'api_token': ...}
-        
+        dict: Dictionary with keys "email" and "api_token" containing the resulting credentials.
+    
     Raises:
-        typer.Exit: If required credentials are not provided
+        typer.Exit: If the user does not provide a required credential when prompted.
     """
     # Check for existing values
     email = config_service.get(f"{namespace}.email") or os.getenv("ATLASSIAN_EMAIL")
@@ -150,24 +148,24 @@ def ensure_server_credentials(
     login_env_var: str,
     password_env_var: str,
 ) -> Dict[str, Any]:
-    """Ensure Server/DC credentials are available (token OR login+password).
+    """
+    Ensure server/Data Center credentials are present for the given namespace, prompting the user and saving values when necessary.
     
-    Checks config and environment for existing credentials.
-    Prompts for missing values and saves them to .env file.
+    Prompts for either a token or a username/password pair when no valid authentication is already present in the config or environment.
     
-    Args:
-        config_service: ConfigService instance
-        namespace: Config namespace (e.g., 'sources.jira')
-        display_name: Display name for prompts (e.g., 'Jira Server')
-        token_env_var: Environment variable name for token (e.g., 'JIRA_TOKEN')
-        login_env_var: Environment variable name for login (e.g., 'JIRA_LOGIN')
-        password_env_var: Environment variable name for password (e.g., 'JIRA_PASSWORD')
-        
+    Parameters:
+        config_service (ConfigService): ConfigService instance used to read/write configuration.
+        namespace (str): Config namespace (e.g., "sources.jira") where values are stored.
+        display_name (str): Human-readable name shown in prompts (e.g., "Jira Server").
+        token_env_var (str): Environment variable name for token (e.g., "JIRA_TOKEN").
+        login_env_var (str): Environment variable name for login (e.g., "JIRA_LOGIN").
+        password_env_var (str): Environment variable name for password (e.g., "JIRA_PASSWORD").
+    
     Returns:
-        Dict with prompted/existing values
-        
+        dict: A dictionary with keys "token", "login", and "password". Each key maps to the existing or prompted value, or `None` if not provided for that method.
+    
     Raises:
-        typer.Exit: If required credentials are not provided
+        typer.Exit: If a required credential is not provided when prompted.
     """
     # Check for existing values
     token = os.getenv(token_env_var)
@@ -238,23 +236,28 @@ def prompt_credential_field(
     namespace: str,
     source_type: Optional[str] = None,
 ) -> str:
-    """Prompt for a credential field and save it appropriately.
+    """
+    Prompt for a credential field, persist it to the config, and export any corresponding environment variable.
     
-    Handles known credential fields (email, api_token, token, login, password)
-    with proper prompts and env var mappings.
+    Prompts are specialized for recognized credential names:
+    - "email": plain text input.
+    - "api_token" / "token": password-style input; sets ATLASSIAN_TOKEN, JIRA_TOKEN, or CONF_TOKEN as appropriate.
+    - "login": plain text input; sets JIRA_LOGIN or CONF_LOGIN.
+    - "password": password-style input; sets JIRA_PASSWORD or CONF_PASSWORD.
+    Unknown fields use a password prompt when field_info["sensitive"] is true, otherwise a plain input.
     
-    Args:
-        field_name: Name of the field to prompt for
-        field_info: Field metadata dict (may be modified for special cases)
-        config_service: ConfigService instance
-        namespace: Config namespace (e.g., 'sources.jira')
-        source_type: Optional source type for special handling (e.g., 'confluence' server)
-        
+    Parameters:
+        field_name (str): Credential field name to prompt for.
+        field_info (Dict[str, Any]): Metadata for the field; used to determine sensitivity and is copied before modification.
+        config_service (ConfigService): Service used to persist the entered value.
+        namespace (str): Config namespace where the value will be stored (e.g., "sources.jira").
+        source_type (Optional[str]): Optional source identifier (e.g., "jira" or "confluence") to select environment variable mappings.
+    
     Returns:
-        The entered value
-        
+        str: The value entered by the user.
+    
     Raises:
-        typer.Exit: If a required credential is not provided
+        typer.Exit: If a required value is not provided by the user.
     """
     value: str = ""
     updated_field_info = dict(field_info)  # Copy to avoid modifying original
@@ -334,13 +337,14 @@ def prompt_credential_field(
 
 
 def is_credential_field(field_name: str) -> bool:
-    """Check if a field name is a credential field.
+    """
+    Determine whether a field name corresponds to a recognized credential field.
     
-    Args:
-        field_name: Name of the field
-        
+    Parameters:
+        field_name (str): The field name to check.
+    
     Returns:
-        True if the field is a credential field
+        True if `field_name` is one of "email", "api_token", "token", "login", or "password", False otherwise.
     """
     credential_fields = {"email", "api_token", "token", "login", "password"}
     return field_name in credential_fields
@@ -371,4 +375,3 @@ def check_server_auth_present(
         and (validation_present.get("password") or os.getenv(password_env_var))
     )
     return bool(has_token or has_login_password)
-

@@ -8,6 +8,9 @@
 
 A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Integrates with AI agents via MCP (Model Context Protocol).
 
+> [!WARNING]
+> Indexed is currently in a very early alpha stage!
+
 **Key Features:**
 - 🔒 **Privacy-First**: All processing and storage happens locally - no data sent to third parties
 - 🧠 **Semantic Search**: Understands meaning, not just keywords, using vector embeddings

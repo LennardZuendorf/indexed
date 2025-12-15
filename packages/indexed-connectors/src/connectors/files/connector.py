@@ -179,23 +179,16 @@ class FileSystemConnector:
 
     @classmethod
     def from_config(cls, config_service) -> "FileSystemConnector":
-        """Create FileSystemConnector from ConfigService.
-
-        Registers FileSystemConfig spec and extracts configuration values.
-
-        Args:
-            config_service: ConfigService instance with config loaded.
-
+        """
+        Create a FileSystemConnector from a ConfigService.
+        
+        Binds the provided ConfigService to obtain FileSystemConfig values and constructs a connector using the configured path, include_patterns, exclude_patterns, and fail_fast.
+        
+        Parameters:
+            config_service: ConfigService instance that provides FileSystemConfig (registered under "sources.files").
+        
         Returns:
-            Configured FileSystemConnector instance.
-
-        Raises:
-            ValueError: If required config values are missing or invalid.
-
-        Examples:
-            >>> from indexed_config import ConfigService
-            >>> config = ConfigService()
-            >>> connector = FileSystemConnector.from_config(config)
+            FileSystemConnector: Connector configured from the service values.
         """
         # Register our config spec
         config_service.register(FileSystemConfig, path="sources.files")
