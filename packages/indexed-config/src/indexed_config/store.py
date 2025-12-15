@@ -15,6 +15,7 @@ else:
         tomllib = None  # type: ignore
 
 import tomlkit
+from dotenv import load_dotenv
 
 from .path_utils import deep_merge
 from .storage import (
@@ -231,21 +232,11 @@ class TomlStore:
                 differences[path] = (local_val, global_val)
     
     def _load_dotenv(self, env_path: Optional[Path] = None) -> None:
-        """Load .env file into environment if it exists.
+        """Load .env file into environment using python-dotenv.
         
-        Note: This is a basic parser that supports:
-        - Simple KEY=value assignments
-        - Quoted values (single or double quotes, stripped)
-        - Comments (lines starting with #)
-        - Empty lines
-        
-        Limitations (not supported):
-        - Multiline values (quoted with literal line breaks or \\n escapes)
-        - Export prefixes (export KEY=value)
-        - Escaped characters within quoted values
-        - Variable expansion (${VAR} or $VAR)
-        
-        For full .env file compatibility, consider using python-dotenv library.
+        Uses python-dotenv for full .env file compatibility including
+        multiline values, export prefixes, escaped characters, and
+        variable expansion.
         
         Args:
             env_path: Path to the .env file. Defaults to self.env_path.
@@ -254,24 +245,8 @@ class TomlStore:
         if not path.exists():
             return
         
-        with open(path, "r") as f:
-            for line in f:
-                line = line.strip()
-                # Skip empty lines and comments
-                if not line or line.startswith("#"):
-                    continue
-                # Parse KEY=value
-                if "=" in line:
-                    key, _, value = line.partition("=")
-                    key = key.strip()
-                    value = value.strip()
-                    # Remove quotes if present
-                    if (value.startswith('"') and value.endswith('"')) or \
-                       (value.startswith("'") and value.endswith("'")):
-                        value = value[1:-1]
-                    # Only set if not already in environment (env takes precedence)
-                    if key not in os.environ:
-                        os.environ[key] = value
+        # Use python-dotenv with override=False to preserve existing env vars
+        load_dotenv(str(path), override=False)
 
     def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
         """Write configuration to TOML file.
