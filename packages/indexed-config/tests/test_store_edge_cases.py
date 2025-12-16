@@ -12,7 +12,14 @@ def test_toml_store_python_3_11_plus():
 
 
 def test_toml_store_python_below_3_11():
-    """Test TomlStore falls back to tomli on Python < 3.11."""
+    """
+    Test TomlStore falls back to tomli on Python < 3.11.
+    
+    Note: This test uses module reloading which can affect other tests if run
+    in the same process. If flaky test behavior is observed, consider using
+    pytest's monkeypatch fixture or separating version-specific tests into
+    different test sessions.
+    """
     # Mock sys.version_info to simulate older Python
     original_version = sys.version_info
     try:

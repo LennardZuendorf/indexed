@@ -43,6 +43,26 @@ app = typer.Typer(help="Manage configuration")
 # ============================================================================
 
 
+def _value_to_default_str(value: Any) -> str:
+    """
+    Convert a config value to its string representation for prompts.
+    
+    Parameters:
+        value: The config value to convert (bool, list, dict, None, or other).
+    
+    Returns:
+        str: String representation suitable for use as a prompt default.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    elif isinstance(value, (list, dict)):
+        return json.dumps(value)
+    elif value is None:
+        return ""
+    else:
+        return str(value)
+
+
 def _coerce_value(value: str) -> Any:
     """
     Convert a string to an appropriate Python type.
@@ -60,11 +80,14 @@ def _coerce_value(value: str) -> Any:
     if low in {"true", "false"}:
         return low == "true"
     try:
-        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+        # Try int first (handles both positive and negative integers)
+        if value.lstrip('-').isdigit():
             return int(value)
-        f = float(value)
-        return f
-    except Exception:
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
         pass
     try:
         return json.loads(value)
@@ -628,14 +651,7 @@ def _prompt_for_value(key: str, current_value: Any, is_new: bool = False, sectio
         console.print()
         
         # Convert default to string
-        if isinstance(default_value, bool):
-            default_str = "true" if default_value else "false"
-        elif isinstance(default_value, (list, dict)):
-            default_str = json.dumps(default_value)
-        elif default_value is None:
-            default_str = ""
-        else:
-            default_str = str(default_value)
+        default_str = _value_to_default_str(default_value)
     else:
         console.print(f"Update [{get_accent_style()}]{display_key}[/{get_accent_style()}]")
         formatted_current = _format_config_value(current_value)
@@ -643,14 +659,7 @@ def _prompt_for_value(key: str, current_value: Any, is_new: bool = False, sectio
         console.print()
         
         # Convert current value to string for default
-        if isinstance(current_value, bool):
-            default_str = "true" if current_value else "false"
-        elif isinstance(current_value, (list, dict)):
-            default_str = json.dumps(current_value)
-        elif current_value is None:
-            default_str = ""
-        else:
-            default_str = str(current_value)
+        default_str = _value_to_default_str(current_value)
     
     prompt_text = "Value (or press Enter to cancel)" if is_new else "New value (or press Enter to cancel)"
     new_value_str = typer.prompt(
@@ -721,7 +730,7 @@ def _load_external_toml(file_path: str) -> Optional[dict[str, Any]]:
     else:
         try:
             import tomli as tomllib
-        except Exception:
+        except ImportError:
             print_error("TOML library not available")
             return None
     
@@ -1303,7 +1312,6 @@ def _handle_file_replace_with_path(config: ConfigService, global_path: Path, fil
     try:
         # Validate in-memory by creating a temporary ConfigService
         # that uses the new_config dict instead of reading from files
-        from indexed_config import ConfigService
         from indexed_config.path_utils import get_by_path
         from pydantic import ValidationError
         
@@ -1419,13 +1427,8 @@ def set_config(
     # Get old value if exists
     try:
         old_raw = config.load_raw() or {}
-        old_value = old_raw
-        for part in key.split("."):
-            if isinstance(old_value, dict):
-                old_value = old_value.get(part)
-            else:
-                old_value = None
-                break
+        from indexed_config.path_utils import get_by_path
+        old_value = get_by_path(old_raw, key, default=None)
     except Exception:
         old_value = None
     

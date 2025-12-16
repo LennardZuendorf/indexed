@@ -251,7 +251,11 @@ def update(
     # Capture before state for all collections
     before_data = {}
     for coll_name in collections_to_update:
-        before_data[coll_name] = inspect([coll_name])[0]
+        inspect_result = inspect([coll_name])
+        if not inspect_result:
+            print_error(f"Cannot inspect collection '{coll_name}' before update")
+            raise typer.Exit(1)
+        before_data[coll_name] = inspect_result[0]
 
     # Update each collection with individual progress
     update_error = None
@@ -282,8 +286,13 @@ def update(
 
         if is_verbose_mode():
             # Verbose mode: show core logs directly
-            with NoOpContext():
-                update_service([source_config])
+            try:
+                with NoOpContext():
+                    update_service([source_config])
+            except Exception as e:
+                print_error(f"Failed to update collection '{coll_name}': {str(e)}")
+                update_error = e
+                break
         else:
             # Normal mode: use OperationStatus for live updates
             console.print()
@@ -333,7 +342,11 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
-        after_info = inspect([coll_name])[0]
+        inspect_result = inspect([coll_name])
+        if not inspect_result:
+            print_error(f"Cannot inspect collection '{coll_name}' after update")
+            raise typer.Exit(1)
+        after_info = inspect_result[0]
         before_info = before_data[coll_name]
         
         total_docs += after_info.number_of_documents

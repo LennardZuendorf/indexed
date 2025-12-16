@@ -203,7 +203,7 @@ def prompt_migration(
         target_root (Path): Destination root for migrated data (e.g., ~/.indexed).
     
     Returns:
-        bool: `True` if migration succeeded, was skipped, or was not needed; `False` if a migration attempt failed.
+        bool: `True` if migration succeeded or was not needed; `False` if user declined migration or a migration attempt failed.
     """
     if not has_legacy_data():
         return True
