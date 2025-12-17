@@ -1,8 +1,9 @@
 """Comprehensive tests for storage_info utility module."""
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pytest
+from rich.console import Console
 
 from indexed.utils.storage_info import (
     get_storage_indicator,
@@ -75,43 +76,43 @@ class TestGetStorageIndicator:
 class TestPrintStorageInfo:
     """Test print_storage_info function."""
 
-    @patch('indexed.utils.storage_info.console')
-    def test_prints_to_console(self, mock_console):
+    def test_prints_to_console(self):
         """Should print storage info to Rich console."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path)
         
         assert mock_console.print.called
 
-    @patch('indexed.utils.storage_info.console')
-    def test_newline_before_when_specified(self, mock_console):
+    def test_newline_before_when_specified(self):
         """Should print newline before indicator when requested."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, newline_before=True)
         
         # Should have multiple print calls
         assert mock_console.print.call_count >= 2
 
-    @patch('indexed.utils.storage_info.console')
-    def test_newline_after_when_specified(self, mock_console):
+    def test_newline_after_when_specified(self):
         """Should print newline after indicator when requested."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, newline_after=True)
         
         assert mock_console.print.call_count >= 2
 
-    @patch('indexed.utils.storage_info.console')
-    def test_no_newlines_when_both_false(self, mock_console):
+    def test_no_newlines_when_both_false(self):
         """Should print only indicator when both newline options are False."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, newline_before=False, newline_after=False)
         
         # Should print once (just the indicator)
         assert mock_console.print.call_count == 1
 
-    @patch('indexed.utils.storage_info.console')
-    def test_includes_reason_in_output(self, mock_console):
+    def test_includes_reason_in_output(self):
         """Should include reason in printed output."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         reason = "via --global flag"
         print_storage_info(mock_console, "global", path, reason=reason)
@@ -120,9 +121,9 @@ class TestPrintStorageInfo:
         call_args = str(mock_console.print.call_args_list)
         assert "via --global flag" in call_args or mock_console.print.called
 
-    @patch('indexed.utils.storage_info.console')
-    def test_local_mode_formatting(self, mock_console):
+    def test_local_mode_formatting(self):
         """Should format local mode correctly."""
+        mock_console = Mock(spec=Console)
         path = Path.cwd() / ".indexed"
         print_storage_info(mock_console, "local", path)
         
@@ -259,9 +260,9 @@ class TestEdgeCases:
         
         assert "Global" in result
 
-    @patch('indexed.utils.storage_info.console')
-    def test_print_with_none_reason(self, mock_console):
+    def test_print_with_none_reason(self):
         """Should handle None reason gracefully."""
+        mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, reason=None)
         
@@ -286,9 +287,9 @@ class TestEdgeCases:
             assert mode == expected_mode
             assert reason_keyword in reason
 
-    @patch('indexed.utils.storage_info.console')
-    def test_print_handles_console_errors_gracefully(self, mock_console):
+    def test_print_handles_console_errors_gracefully(self):
         """Should not crash if console printing fails."""
+        mock_console = Mock(spec=Console)
         mock_console.print.side_effect = Exception("Console error")
         
         path = Path.home() / ".indexed"

@@ -1,6 +1,6 @@
 """Comprehensive tests for alerts component module."""
 
-from unittest.mock import Mock, patch, call
+from unittest.mock import patch
 import pytest
 
 from indexed.utils.components.alerts import (
@@ -167,8 +167,6 @@ class TestAlertFormatting:
     @patch('indexed.utils.components.alerts.console')
     def test_creates_panel_object(self, mock_console):
         """Should create Rich Panel object."""
-        from rich.panel import Panel
-        
         print_success("Test")
         
         # Check that print was called with a Panel

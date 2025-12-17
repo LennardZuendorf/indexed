@@ -1,9 +1,8 @@
 """Comprehensive tests for migration utility module."""
 
-import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import pytest
+from unittest.mock import Mock, patch
+from rich.console import Console
 
 from indexed.utils.migration import (
     _get_legacy_data_path,
@@ -159,47 +158,56 @@ class TestGetLegacyCollections:
 class TestPromptMigration:
     """Test prompt_migration interactive prompt."""
 
-    @patch('indexed.utils.migration.console')
     @patch('indexed.utils.migration.Confirm.ask')
-    def test_shows_collections_to_user(self, mock_confirm, mock_console, tmp_path):
+    @patch('indexed.utils.migration.has_legacy_data', return_value=True)
+    @patch('indexed.utils.migration.get_legacy_collections', return_value=["coll-a", "coll-b"])
+    def test_shows_collections_to_user(self, mock_get_collections, mock_has_legacy, mock_confirm, tmp_path):
         """Should display list of collections to user."""
-        collections = ["coll-a", "coll-b"]
+        mock_console = Mock(spec=Console)
+        target_root = tmp_path / "target"
         mock_confirm.return_value = False
         
-        prompt_migration(collections)
+        prompt_migration(mock_console, target_root)
         
         # Should have printed to console
         assert mock_console.print.called
 
-    @patch('indexed.utils.migration.console')
     @patch('indexed.utils.migration.Confirm.ask')
-    def test_returns_true_when_user_confirms(self, mock_confirm, mock_console):
+    @patch('indexed.utils.migration.migrate_legacy_data', return_value=True)
+    @patch('indexed.utils.migration.has_legacy_data', return_value=True)
+    @patch('indexed.utils.migration.get_legacy_collections', return_value=["coll-a"])
+    def test_returns_true_when_user_confirms(self, mock_get_collections, mock_has_legacy, mock_migrate, mock_confirm):
         """Should return True when user confirms migration."""
+        mock_console = Mock(spec=Console)
+        target_root = Path("/tmp/target")
         mock_confirm.return_value = True
         
-        result = prompt_migration(["coll-a"])
+        result = prompt_migration(mock_console, target_root)
         
         assert result is True
 
-    @patch('indexed.utils.migration.console')
     @patch('indexed.utils.migration.Confirm.ask')
-    def test_returns_false_when_user_declines(self, mock_confirm, mock_console):
+    @patch('indexed.utils.migration.has_legacy_data', return_value=True)
+    @patch('indexed.utils.migration.get_legacy_collections', return_value=["coll-a"])
+    def test_returns_false_when_user_declines(self, mock_get_collections, mock_has_legacy, mock_confirm):
         """Should return False when user declines migration."""
+        mock_console = Mock(spec=Console)
+        target_root = Path("/tmp/target")
         mock_confirm.return_value = False
         
-        result = prompt_migration(["coll-a"])
+        result = prompt_migration(mock_console, target_root)
         
         assert result is False
 
-    @patch('indexed.utils.migration.console')
-    @patch('indexed.utils.migration.Confirm.ask')
-    def test_handles_empty_collection_list(self, mock_confirm, mock_console):
+    @patch('indexed.utils.migration.has_legacy_data', return_value=False)
+    def test_handles_empty_collection_list(self, mock_has_legacy):
         """Should handle empty collection list gracefully."""
-        mock_confirm.return_value = False
+        mock_console = Mock(spec=Console)
+        target_root = Path("/tmp/target")
         
-        result = prompt_migration([])
+        result = prompt_migration(mock_console, target_root)
         
-        assert result is False
+        assert result is True  # Returns True when no legacy data
 
 
 class TestMigrateLegacyData:
@@ -219,10 +227,12 @@ class TestMigrateLegacyData:
         
         # New location
         new_root = tmp_path / "new"
-        new_collections = new_root / "collections"
+        new_collections = new_root / "data" / "collections"
         
+        mock_console = Mock(spec=Console)
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=["my-coll"]):
+                migrate_legacy_data(new_root, mock_console)
         
         # Check files were copied
         assert (new_collections / "my-coll" / "manifest.json").exists()
@@ -238,11 +248,14 @@ class TestMigrateLegacyData:
         coll_dir.mkdir()
         (coll_dir / "manifest.json").write_text('{}')
         
-        new_collections = tmp_path / "new" / "nested" / "collections"
+        new_root = tmp_path / "new"
         
+        mock_console = Mock(spec=Console)
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=["coll1"]):
+                migrate_legacy_data(new_root, mock_console)
         
+        new_collections = new_root / "data" / "collections"
         assert new_collections.exists()
         assert (new_collections / "coll1").exists()
 
@@ -259,11 +272,14 @@ class TestMigrateLegacyData:
         nested.mkdir(parents=True)
         (nested / "file.txt").write_text("nested data")
         
-        new_collections = tmp_path / "new" / "collections"
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
         
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=["nested-coll"]):
+                migrate_legacy_data(new_root, mock_console)
         
+        new_collections = new_root / "data" / "collections"
         assert (new_collections / "nested-coll" / "subdir" / "deep" / "file.txt").exists()
 
     def test_skips_collections_without_manifest(self, tmp_path):
@@ -281,11 +297,14 @@ class TestMigrateLegacyData:
         invalid.mkdir()
         (invalid / "data.txt").write_text("data")
         
-        new_collections = tmp_path / "new" / "collections"
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
         
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=["valid"]):
+                migrate_legacy_data(new_root, mock_console)
         
+        new_collections = new_root / "data" / "collections"
         assert (new_collections / "valid").exists()
         assert not (new_collections / "invalid").exists()
 
@@ -294,14 +313,15 @@ class TestMigrateLegacyData:
         legacy_collections = tmp_path / "legacy" / "collections"
         legacy_collections.mkdir(parents=True)
         
-        new_collections = tmp_path / "new" / "collections"
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
         
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            # Should not raise
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=[]):
+                # Should not raise
+                migrate_legacy_data(new_root, mock_console)
 
-    @patch('indexed.utils.migration.console')
-    def test_reports_progress_to_console(self, mock_console, tmp_path):
+    def test_reports_progress_to_console(self, tmp_path):
         """Should report migration progress via Rich console."""
         legacy_collections = tmp_path / "legacy" / "collections"
         legacy_collections.mkdir(parents=True)
@@ -311,10 +331,12 @@ class TestMigrateLegacyData:
             coll.mkdir()
             (coll / "manifest.json").write_text('{}')
         
-        new_collections = tmp_path / "new" / "collections"
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
         
         with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-            migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration.get_legacy_collections', return_value=["coll1", "coll2"]):
+                migrate_legacy_data(new_root, mock_console)
         
         # Should have printed progress
         assert mock_console.print.called
@@ -332,12 +354,15 @@ class TestEdgeCases:
         coll.mkdir()
         (coll / "manifest.json").write_text('{}')
         
-        new_collections = tmp_path / "new" / "collections"
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
         
         with patch('shutil.copytree', side_effect=PermissionError("Access denied")):
-            with pytest.raises(PermissionError):
-                with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
-                    migrate_legacy_data(new_collections)
+            with patch('indexed.utils.migration._get_legacy_collections_path', return_value=legacy_collections):
+                with patch('indexed.utils.migration.get_legacy_collections', return_value=["protected"]):
+                    # Function catches exceptions and returns False, doesn't re-raise
+                    result = migrate_legacy_data(new_root, mock_console)
+                    assert result is False
 
     def test_handles_corrupted_manifest_json(self, tmp_path):
         """Should handle corrupted manifest.json gracefully."""

@@ -396,7 +396,6 @@ def create_jira(
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
             with NoOpContext():
-            with NoOpContext():
                 logger.info("Connecting to Jira at %s...", validation["present"]["url"])
                 logger.info("Using JQL query: %s", validation["present"]["query"])
                 logger.info("Creating collection '%s'...", collection)
@@ -691,7 +690,6 @@ def create_confluence(
     try:
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
-            with NoOpContext():
             with NoOpContext():
                 logger.info("Connecting to Confluence at %s...", validation["present"]["url"])
                 logger.info("Using CQL query: %s", validation["present"]["query"])

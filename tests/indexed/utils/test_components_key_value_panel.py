@@ -1,7 +1,5 @@
 """Comprehensive tests for key_value_panel component module."""
 
-from unittest.mock import Mock, patch
-import pytest
 
 from indexed.utils.components.key_value_panel import (
     _truncate,
