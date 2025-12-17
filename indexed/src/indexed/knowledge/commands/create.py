@@ -592,8 +592,8 @@ def create_confluence(
         cli_overrides["email"] = email
     if token:
         cli_overrides["api_token"] = token
-    if read_all_comments is not None:
-        cli_overrides["read_all_comments"] = read_all_comments
+    # Always include read_all_comments (has a default of True)
+    cli_overrides["read_all_comments"] = read_all_comments
     
     # Validate requirements using ConfigService (generic!)
     if is_verbose_mode():
