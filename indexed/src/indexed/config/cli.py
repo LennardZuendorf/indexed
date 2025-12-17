@@ -89,24 +89,31 @@ def _coerce_value(value: str) -> Any:
     Returns:
         The coerced value as an `int`, `float`, `bool`, `list`, `dict`, or the original `str`.
     """
-    # Try int, float, bool, JSON (list/dict), else keep string
+    # Try bool first
     low = value.lower()
     if low in {"true", "false"}:
         return low == "true"
+    
+    # Try int (handles both positive and negative integers properly)
     try:
-        # Try int first (handles both positive and negative integers)
-        if value.lstrip('-').isdigit():
-            return int(value)
+        return int(value)
     except ValueError:
         pass
+    
+    # Try float
     try:
         return float(value)
     except ValueError:
         pass
+    
+    # Try JSON (for lists/dicts)
     try:
         return json.loads(value)
-    except Exception:
-        return value
+    except (json.JSONDecodeError, ValueError):
+        pass
+    
+    # Return original string if no conversion succeeded
+    return value
 
 
 def _flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict[str, Any]:

@@ -34,6 +34,8 @@ def execute_create_command(
     log_level: Optional[str],
     use_cache: bool,
     force: bool,
+    progress_message: Optional[str] = None,
+    verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> None:
     """Common execution flow for all create commands.
     
@@ -60,24 +62,23 @@ def execute_create_command(
         log_level: Explicit log level
         use_cache: Enable document caching
         force: Force overwrite existing collection
+        progress_message: Optional custom progress message (defaults to "Creating {collection}")
+        verbose_pre_creation_log: Optional callback to log connector-specific info before creation (in verbose mode)
     """
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    # Initialize ConfigService (auto-loads .env)
-    config = ConfigService()
+    # Get ConfigService singleton (auto-loads .env)
+    config = ConfigService.instance()
     
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")
-    
-    if is_verbose_mode():
         logger.info("Using source type: %s", source_type)
+        logger.info("Validating configuration requirements for %s...", config_class.__name__)
     
     # Validate requirements using ConfigService
-    if is_verbose_mode():
-        logger.info("Validating configuration requirements for %s...", config_class.__name__)
     
     validation = config.validate_requirements(
         config_class=config_class,
@@ -117,6 +118,8 @@ def execute_create_command(
         if is_verbose_mode():
             # Verbose mode: show all logs, no spinner
             with NoOpContext():
+                if verbose_pre_creation_log:
+                    verbose_pre_creation_log(validation["present"])
                 logger.info("Creating collection '%s'...", collection)
                 svc_create([cfg], config_service=config, use_cache=use_cache, force=force)
         else:
@@ -129,7 +132,8 @@ def execute_create_command(
             )
             console.print()
             
-            with OperationStatus(console, f"Creating {collection}", capture_logs=False) as status:
+            progress_msg = progress_message or f"Creating {collection}"
+            with OperationStatus(console, progress_msg, capture_logs=False) as status:
                 callback = create_progress_update_callback(status)
                 try:
                     with suppress_core_output():
@@ -176,5 +180,6 @@ def execute_create_command(
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
+
 
 

@@ -88,14 +88,13 @@ def wrap_iterator_with_progress_bar(iterator, progress_bar_name="Processing"):
             _cli_progress.update(task_id, advance=1)
     else:
         # Fallback to standalone Rich progress
-        from indexed.utils.console import console as fallback_console
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeRemainingColumn(),
-            console=fallback_console,
+            console=console,
             transient=True,
         ) as progress:
             total = len(iterator) if hasattr(iterator, "__len__") else None
@@ -223,14 +222,13 @@ def create_standalone_progress() -> Progress:
     Returns:
         Configured Progress instance for standalone use
     """
-    from indexed.utils.console import console as standalone_console
     return Progress(
         SpinnerColumn(),
         TextColumn(f"{get_accent_style()}]{'{task.description}'}"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TimeRemainingColumn(f"{get_label_style()}"),
-        console=standalone_console,
+        console=console,
         transient=True,
     )
 

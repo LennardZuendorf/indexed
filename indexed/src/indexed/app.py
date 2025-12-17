@@ -221,6 +221,8 @@ def _init_app(
     
     # Determine mode override from flags or local existence
     mode_override: Optional[StorageMode] = None
+    config_mode: Optional[str] = None
+    
     if use_local:
         mode_override = "local"
     elif use_global:
@@ -229,24 +231,28 @@ def _init_app(
         # If local .indexed exists, prefer it by default
         mode_override = "local"
     
-    # Initialize ConfigService with resolved mode
+    # Optionally read storage.mode from config before full initialization
+    # to avoid double-init in the common case
+    if not use_local and not use_global:
+        # Read storage.mode from config files without full initialization
+        from indexed_config.store import TomlStore
+        temp_store = TomlStore(workspace=workspace, mode_override=None)
+        try:
+            config_data = temp_store.read()
+            config_mode = config_data.get("storage", {}).get("mode")
+            if config_mode in ("local", "global"):
+                # Config setting takes precedence over auto-detection
+                mode_override = config_mode
+        except Exception:
+            # If config read fails, proceed with auto-detected mode
+            pass
+    
+    # Initialize ConfigService with resolved mode (only once)
     config_service = ConfigService.instance(
         workspace=workspace,
         mode_override=mode_override,
         reset=True,  # Reset to ensure fresh state with new settings
     )
-    
-    # Check for storage.mode setting in config
-    config_mode = config_service.get("storage.mode")
-    if config_mode in ("local", "global") and not use_local and not use_global:
-        # Config setting takes precedence over auto-detection
-        mode_override = config_mode
-        # Re-initialize with config-specified mode
-        config_service = ConfigService.instance(
-            workspace=workspace,
-            mode_override=mode_override,
-            reset=True,
-        )
     
     # Handle storage mode display and context setup (only if running a command)
     if ctx.invoked_subcommand is not None and not ctx.resilient_parsing:

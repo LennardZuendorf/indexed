@@ -15,9 +15,7 @@ from ...utils.components.theme import (
     get_heading_style,
     get_accent_style,
 )
-from ...utils.components import print_error, print_success, OperationStatus
-from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.progress_bar import create_progress_update_callback
+from ...utils.components import print_error
 from ...utils.credentials import (
     prompt_credential_field,
     is_credential_field,
@@ -118,7 +116,7 @@ def create_files(
         cli_overrides["include_patterns"] = include
     if exclude:
         cli_overrides["exclude_patterns"] = exclude
-    if fail_fast is not None:
+    if fail_fast:
         cli_overrides["fail_fast"] = fail_fast
     
     def prompt_missing_files_fields(validation: Dict[str, Any], config: ConfigService, ns: str) -> None:
@@ -258,25 +256,14 @@ def create_jira(
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
+    from core.v1.engine.services import SourceConfig
     from connectors.jira import JiraCloudConfig, JiraConfig
-    from ...utils.logging import setup_root_logger
 
-    # Setup logging based on options
-    effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
-
-    # Get ConfigService singleton (auto-loads .env)
-    config = ConfigService.instance()
-    
-    if is_verbose_mode():
-        logger.info("Starting Jira collection creation...")
-        logger.info("Resolving configuration parameters...")
-    
     # Use a single namespace for Jira config - detect Cloud vs Server from URL at runtime
     namespace = "sources.jira"
     
     # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    config = ConfigService.instance()
     resolved_url = url or config.get(f"{namespace}.url")
     
     # If URL is still unknown, prompt for it first before determining source type
@@ -305,9 +292,6 @@ def create_jira(
         source_type = "jira"
         config_class = JiraConfig
     
-    if is_verbose_mode():
-        logger.info("Detected source type: %s (URL: %s)", source_type, resolved_url)
-    
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
     if jql:
@@ -317,23 +301,13 @@ def create_jira(
     if token:
         cli_overrides["api_token"] = token
     
-    # Validate requirements using ConfigService (generic!)
-    if is_verbose_mode():
-        logger.info("Validating configuration requirements for %s...", config_class.__name__)
-    
-    validation = config.validate_requirements(
-        config_class=config_class,
-        namespace=namespace,
-        cli_overrides=cli_overrides
-    )
-    
-    if is_verbose_mode():
-        logger.info("Validation result: %d fields present, %d missing", 
-                    len(validation["present"]), len(validation["missing"]))
-    
-    # Phase 1: Prompt for missing values (URL already handled above)
-    missing_fields = [f for f in validation["missing"] if f != "url"]
-    if missing_fields:
+    def prompt_missing_jira_fields(validation: Dict[str, Any], config: ConfigService, ns: str) -> None:
+        """Prompt for missing Jira-specific fields."""
+        # URL already handled above, exclude it from missing fields
+        missing_fields = [f for f in validation["missing"] if f != "url"]
+        if not missing_fields:
+            return
+        
         # Show header if not already shown (URL was from CLI/config)
         if not url_was_prompted and not is_verbose_mode():
             console.print()
@@ -349,114 +323,56 @@ def create_jira(
             # Use shared credential prompting for credential fields
             if is_credential_field(field_name):
                 value = prompt_credential_field(
-                    field_name, field_info, config, namespace, source_type
+                    field_name, field_info, config, ns, source_type
                 )
             # Handle non-credential fields
             elif field_name in ["query", "jql"]:
                 value = console.input(f"[{get_accent_style()}]JQL query[/{get_accent_style()}] [project = PROJ]: ") or "project = PROJ"
-                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
+                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
             else:
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
-                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
+                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
             
             validation["present"][field_name] = value
             
             if is_verbose_mode():
                 logger.info("Saved %s to %s", field_name, "env" if field_info.get("sensitive") else "config")
     
-    # Also set CLI overrides in config for connector to read
-    for key, value in cli_overrides.items():
-        field_info = validation["field_info"].get(key)
-        config.set_value(f"{namespace}.{key}", value, field_info=field_info)
+    def build_jira_source_config(present: Dict[str, Any], coll_name: str) -> SourceConfig:
+        """Build SourceConfig for Jira connector."""
+        return SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            query=present["query"],
+            indexer=DEFAULT_INDEXER,
+            reader_opts={},  # Credentials are read from ConfigService by connector
+        )
     
-    # Log resolved configuration in verbose mode
-    if is_verbose_mode():
-        logger.info("Configuration resolved:")
-        for field_name, value in validation["present"].items():
-            if validation["field_info"][field_name].get("sensitive"):
-                logger.info("  %s: ******** (sensitive)", field_name)
-            else:
-                logger.info("  %s: %s", field_name, value)
-        logger.info("  Collection: %s", collection)
+    def verbose_jira_log(present: Dict[str, Any]) -> None:
+        """Log Jira-specific info before creation in verbose mode."""
+        logger.info("Connecting to Jira at %s...", present["url"])
+        logger.info("Using JQL query: %s", present["query"])
     
-    # Build source config
-    cfg = SourceConfig(
-        name=collection,
-        type=source_type,
-        base_url_or_path=validation["present"]["url"],
-        query=validation["present"]["query"],
-        indexer=DEFAULT_INDEXER,
-        reader_opts={},  # Credentials are read from ConfigService by connector
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_jira_fields,
+        build_source_config=build_jira_source_config,
+        success_message_suffix="from Jira",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_jira_log,
     )
-    
-    # Phase 2: Create collection with appropriate UI mode
-    creation_error = None
-    try:
-        if is_verbose_mode():
-            # Verbose mode: show all logs, no spinner
-            with NoOpContext():
-                logger.info("Connecting to Jira at %s...", validation["present"]["url"])
-                logger.info("Using JQL query: %s", validation["present"]["query"])
-                logger.info("Creating collection '%s'...", collection)
-                svc_create([cfg], config_service=config, use_cache=use_cache, force=force)
-        else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
-                f"[{get_heading_style()}]Creating Jira collection: "
-                f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
-                f"[/{get_heading_style()}]"
-            )
-            console.print()
-            
-            with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
-                try:
-                    with suppress_core_output(redirect_streams=True):
-                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-                    status.complete(success=True)
-                except Exception as e:
-                    status.complete(success=False)
-                    creation_error = e
-    
-    except Exception as e:
-        creation_error = e
-    
-    # If creation failed, show error and exit
-    if creation_error:
-        print_error(f"Failed to create collection: {str(creation_error)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
-    
-    # Phase 3: Verify collection was created by checking if manifest exists
-    try:
-        if is_verbose_mode():
-            logger.info("Verifying collection was created...")
-        
-        collections = svc_status([collection])
-        
-        # Check if we got a valid collection (not just an error placeholder with 0 docs)
-        # A valid collection should have updated_time set
-        if collections and len(collections) > 0 and collections[0].updated_time:
-            doc_count = collections[0].number_of_documents
-            if is_verbose_mode():
-                logger.info("Collection created successfully with %d documents", doc_count)
-            
-            print_success(f"Collection '{collection}' created with {doc_count} documents from Jira")
-        else:
-            print_error("Collection creation failed - no valid collection found")
-            raise typer.Exit(1)
-    
-    except typer.Exit:
-        # Re-raise typer.Exit to preserve exit code
-        raise
-    except Exception as e:
-        print_error(f"Failed to verify collection: {str(e)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
 
 
 @app.command(
@@ -534,25 +450,14 @@ def create_confluence(
     Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
     """
     from indexed_config import ConfigService
-    from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
+    from core.v1.engine.services import SourceConfig
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
-    from ...utils.logging import setup_root_logger
 
-    # Setup logging based on options
-    effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
-
-    # Get ConfigService singleton (auto-loads .env)
-    config = ConfigService.instance()
-    
-    if is_verbose_mode():
-        logger.info("Starting Confluence collection creation...")
-        logger.info("Resolving configuration parameters...")
-    
     # Use a single namespace for Confluence config - detect Cloud vs Server from URL at runtime
     namespace = "sources.confluence"
     
     # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    config = ConfigService.instance()
     resolved_url = url or config.get(f"{namespace}.url")
     
     # If URL is still unknown, prompt for it first before determining source type
@@ -581,9 +486,6 @@ def create_confluence(
         source_type = "confluence"
         config_class = ConfluenceConfig
     
-    if is_verbose_mode():
-        logger.info("Detected source type: %s (URL: %s)", source_type, resolved_url)
-    
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
     if cql:
@@ -595,45 +497,35 @@ def create_confluence(
     # Always include read_all_comments (has a default of True)
     cli_overrides["read_all_comments"] = read_all_comments
     
-    # Validate requirements using ConfigService (generic!)
-    if is_verbose_mode():
-        logger.info("Validating configuration requirements for %s...", config_class.__name__)
-    
-    validation = config.validate_requirements(
-        config_class=config_class,
-        namespace=namespace,
-        cli_overrides=cli_overrides
-    )
-    
-    if is_verbose_mode():
-        logger.info("Validation result: %d fields present, %d missing", 
-                    len(validation["present"]), len(validation["missing"]))
-    
-    # Phase 1: Prompt for missing values (URL already handled above)
-    missing_fields = [f for f in validation["missing"] if f != "url"]
-    
-    # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
-    # but at least one auth method is required by the connector.
-    # Check if we need to prompt for auth credentials using shared function.
-    if source_type == "confluence":
-        if not check_server_auth_present(
-            validation["present"],
-            token_env_var="CONF_TOKEN",
-            login_env_var="CONF_LOGIN",
-            password_env_var="CONF_PASSWORD",
-        ):
-            # No auth found, prompt for token
-            if "token" not in missing_fields:
-                missing_fields.append("token")
-            if is_verbose_mode():
-                logger.info("No auth credentials found, will prompt for token")
-    
-    if missing_fields:
+    def prompt_missing_confluence_fields(validation: Dict[str, Any], config: ConfigService, ns: str) -> None:
+        """Prompt for missing Confluence-specific fields."""
+        # URL already handled above, exclude it from missing fields
+        missing_fields = [f for f in validation["missing"] if f != "url"]
+        
+        # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
+        # but at least one auth method is required by the connector.
+        # Check if we need to prompt for auth credentials using shared function.
+        if source_type == "confluence":
+            if not check_server_auth_present(
+                validation["present"],
+                token_env_var="CONF_TOKEN",
+                login_env_var="CONF_LOGIN",
+                password_env_var="CONF_PASSWORD",
+            ):
+                # No auth found, prompt for token
+                if "token" not in missing_fields:
+                    missing_fields.append("token")
+                if is_verbose_mode():
+                    logger.info("No auth credentials found, will prompt for token")
+        
+        if not missing_fields:
+            return
+        
         # Show header if not already shown (URL was from CLI/config)
         if not url_was_prompted and not is_verbose_mode():
-                console.print()
-                console.print(f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]")
-                console.print()
+            console.print()
+            console.print(f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]")
+            console.print()
         
         for field_name in missing_fields:
             field_info = validation["field_info"][field_name]
@@ -644,111 +536,53 @@ def create_confluence(
             # Use shared credential prompting for credential fields
             if is_credential_field(field_name):
                 value = prompt_credential_field(
-                    field_name, field_info, config, namespace, source_type
+                    field_name, field_info, config, ns, source_type
                 )
             # Handle non-credential fields
             elif field_name in ["query", "cql"]:
                 value = console.input(f"[{get_accent_style()}]CQL query[/{get_accent_style()}] [type=page]: ") or "type=page"
-                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
+                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
             else:
                 # Generic fallback
                 value = console.input(f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: ")
-                config.set_value(f"{namespace}.{field_name}", value, field_info=field_info)
+                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
             
             validation["present"][field_name] = value
             
             if is_verbose_mode():
                 logger.info("Saved %s to %s", field_name, "env" if field_info.get("sensitive") else "config")
     
-    # Also set CLI overrides in config for connector to read
-    for key, value in cli_overrides.items():
-        field_info = validation["field_info"].get(key)
-        config.set_value(f"{namespace}.{key}", value, field_info=field_info)
+    def build_confluence_source_config(present: Dict[str, Any], coll_name: str) -> SourceConfig:
+        """Build SourceConfig for Confluence connector."""
+        return SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            query=present["query"],
+            indexer=DEFAULT_INDEXER,
+            reader_opts={"readAllComments": present.get("read_all_comments", True)},
+        )
     
-    # Log resolved configuration in verbose mode
-    if is_verbose_mode():
-        logger.info("Configuration resolved:")
-        for field_name, value in validation["present"].items():
-            if validation["field_info"][field_name].get("sensitive"):
-                logger.info("  %s: ******** (sensitive)", field_name)
-            else:
-                logger.info("  %s: %s", field_name, value)
-        logger.info("  Collection: %s", collection)
+    def verbose_confluence_log(present: Dict[str, Any]) -> None:
+        """Log Confluence-specific info before creation in verbose mode."""
+        logger.info("Connecting to Confluence at %s...", present["url"])
+        logger.info("Using CQL query: %s", present["query"])
     
-    # Build source config
-    cfg = SourceConfig(
-        name=collection,
-        type=source_type,
-        base_url_or_path=validation["present"]["url"],
-        query=validation["present"]["query"],
-        indexer=DEFAULT_INDEXER,
-        reader_opts={"readAllComments": validation["present"].get("read_all_comments", True)},
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_confluence_fields,
+        build_source_config=build_confluence_source_config,
+        success_message_suffix="from Confluence",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_confluence_log,
     )
-    
-    # Phase 2: Create collection with appropriate UI mode
-    creation_error = None
-    try:
-        if is_verbose_mode():
-            # Verbose mode: show all logs, no spinner
-            with NoOpContext():
-                logger.info("Connecting to Confluence at %s...", validation["present"]["url"])
-                logger.info("Using CQL query: %s", validation["present"]["query"])
-                logger.info("Creating collection '%s'...", collection)
-                svc_create([cfg], config_service=config, use_cache=use_cache, force=force)
-        else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
-                f"[{get_heading_style()}]Creating Confluence collection: "
-                f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
-                f"[/{get_heading_style()}]"
-            )
-            console.print()
-            
-            with OperationStatus(console, f"Connecting to {validation['present']['url']}", capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
-                try:
-                    with suppress_core_output(redirect_streams=True):
-                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
-                    status.complete(success=True)
-                except Exception as e:
-                    status.complete(success=False)
-                    creation_error = e
-    
-    except Exception as e:
-        creation_error = e
-    
-    # If creation failed, show error and exit
-    if creation_error:
-        print_error(f"Failed to create collection: {str(creation_error)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
-    
-    # Phase 3: Verify collection was created by checking if manifest exists
-    try:
-        if is_verbose_mode():
-            logger.info("Verifying collection was created...")
-        
-        collections = svc_status([collection])
-        
-        # Check if we got a valid collection (not just an error placeholder with 0 docs)
-        # A valid collection should have updated_time set
-        if collections and len(collections) > 0 and collections[0].updated_time:
-            doc_count = collections[0].number_of_documents
-            if is_verbose_mode():
-                logger.info("Collection created successfully with %d documents", doc_count)
-            
-            print_success(f"Collection '{collection}' created with {doc_count} documents from Confluence")
-        else:
-            print_error("Collection creation failed - no valid collection found")
-            raise typer.Exit(1)
-    
-    except typer.Exit:
-        # Re-raise typer.Exit to preserve exit code
-        raise
-    except Exception as e:
-        print_error(f"Failed to verify collection: {str(e)}")
-        if is_verbose_mode():
-            logger.exception("Full error details:")
-        raise typer.Exit(1)
