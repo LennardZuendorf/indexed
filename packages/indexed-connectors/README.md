@@ -1,86 +1,93 @@
 # indexed-connectors
 
-Connectors for reading, indexing, and converting rich metadata from diverse sources—Jira, Confluence, GitHub, local files, and more.
+Document connectors for Jira, Confluence, and local file systems with support for both Cloud and Server/Data Center versions.
 
 ## Overview
 
-`indexed-connectors` offers a unified architecture for discovering, ingesting, and transforming documents with context-rich metadata from a growing set of platforms and formats. All connectors implement the modernized `BaseConnector` protocol, ensuring seamless interoperability with the indexed-core framework and consistent metadata extraction.
+`indexed-connectors` provides standardized connector classes for ingesting documents from various sources. All connectors implement the `BaseConnector` protocol from `indexed-core`, ensuring seamless interoperability with the indexing framework.
 
 ## Supported Sources
 
-### Jira
-- **Jira Server/Data Center** – On-premises Jira
-- **Jira Cloud** – Atlassian-hosted Jira
+| Connector | Type Key | Description |
+|-----------|----------|-------------|
+| `FileSystemConnector` | `files` | Local files and directories |
+| `JiraConnector` | `jira` | Jira Server/Data Center |
+| `JiraCloudConnector` | `jiraCloud` | Jira Cloud (Atlassian hosted) |
+| `ConfluenceConnector` | `confluence` | Confluence Server/Data Center |
+| `ConfluenceCloudConnector` | `confluenceCloud` | Confluence Cloud (Atlassian hosted) |
 
-Features:
-- JQL-based filtering
-- Multi-modal authentication: API token, OAuth, or basic
-- Full issue metadata, fields, and nested comments (authors, timestamps, attachments)
+### File System Connector
+
+Supports multiple document formats via [Unstructured](https://github.com/Unstructured-IO/unstructured):
+
+| Category | Formats |
+|----------|---------|
+| **Text** | `.txt`, `.md`, `.rst` |
+| **Documents** | `.pdf`, `.docx`, `.pptx`, `.odt` |
+| **Code** | `.py`, `.js`, `.java`, `.go`, etc. |
+| **Data** | `.csv`, `.json`, `.yaml`, `.xml`, `.parquet` |
+
+**Features:**
+- Regex-based include/exclude filtering
+- Rich file metadata: path, size, timestamps, checksums
+- Automatic format detection
+
+### Jira Connectors
+
+**Features:**
+- JQL-based issue filtering
+- Full issue metadata, fields, and comments
 - Attachment download and indexing
-- Robust pagination
+- Author and timestamp tracking
+- Robust pagination handling
 
-### Confluence
-- **Confluence Server/Data Center** – On-premises Confluence
-- **Confluence Cloud** – Atlassian-hosted Confluence
+### Confluence Connectors
 
-Features:
+**Features:**
 - CQL-based page and space filtering
-- Token, OAuth, or basic authentication
-- Full page content, hierarchical/nested comments (with user/parent/created-at/updated-at), ancestor hierarchy
-- Metadata extraction: revision, history, labels, author, timestamps
-- Child/parent link resolution
-- Attachment handling (download/index)
+- Full page content with HTML parsing
+- Hierarchical comment support (nested comments, authors, timestamps)
+- Ancestor hierarchy tracking
+- Attachment handling
 
-Features:
-- Repository, issue, pull request, and comment ingestion
-- Rich metadata (author, timestamps, status, labels, linked issues/PRs)
-- Organization, repository, and branch filtering
+## Installation
 
-### Local Files
-- Unstructured local/remote sources:
-  - Text: `.txt`, `.md`, `.rst`
-  - Documents: `.pdf`, `.docx`, `.pptx`, `.odt`
-  - Code: `.py`, `.js`, `.java`, `.go`, etc.
-  - Data: `.csv`, `.json`, `.yaml`, `.xml`, `.parquet`
-- Regex-based path filtering
-- Rich file metadata: path, size, modified/created timestamps, checksums, page/section tracking
+This package is part of the indexed monorepo workspace:
 
-### Other Connectors (Preview)
-- **Google Drive, Notion, Generic HTTP/REST, S3, and more** (via plugin entry points)
+```bash
+# Install with workspace
+uv sync
 
-See [docs/CONNECTOR_MATRIX.md](../docs/CONNECTOR_MATRIX.md) for full compatibility.
-
-## Key Features
-
-- **Rich Metadata Extraction** – Every document and segment is annotated with provenance: source IDs, paths, authors, timestamps, context hierarchies, and more.
-- **Automatic Pagination & Batching** – Handles large queries with efficient chunking.
-- **Configurable Retries** – Exponential backoff for network/API errors.
-- **Flexible Authentication** – Multiple auth methods per connector; secrets/passphrases supported.
-- **On-Disk Document Cache** – Optional, greatly speeds up repeated or incremental indexing runs.
-- **Selective Indexing** – Filter by pattern, date, status, or metadata.
-- **Robust Error Handling** – Continue-on-error or fail-fast; exhaustive logs for failed records.
+# Or standalone
+cd packages/indexed-connectors
+uv pip install -e .
+```
 
 ## Usage
 
-### Example: Local File Connector
+### File System Connector
 
 ```python
 from connectors import FileSystemConnector
 
-# Minimal usage
+# Basic usage
 connector = FileSystemConnector(path="./docs")
 
-# With include/exclude filters and metadata options
+# With filtering
 connector = FileSystemConnector(
     path="./docs",
     include_patterns=[r".*\.md$", r".*\.txt$"],
     exclude_patterns=[r".*/node_modules/.*", r".*\.min\.js$"],
-    recursive=True,  # enable subdirectory scanning
-    metadata_fields=["checksum", "modified"]
 )
+
+# From configuration
+from indexed_config import ConfigService
+
+config = ConfigService.instance()
+connector = FileSystemConnector.from_config(config, "sources.docs")
 ```
 
-### Example: Jira Cloud Connector
+### Jira Cloud Connector
 
 ```python
 from connectors import JiraCloudConnector
@@ -90,11 +97,23 @@ connector = JiraCloudConnector(
     query="project = PROJ AND updated >= -90d",
     email="user@example.com",
     api_token="your-token",
-    include_attachments=True
+    include_attachments=True,
 )
 ```
 
-### Example: Confluence Cloud Connector
+### Jira Server/DC Connector
+
+```python
+from connectors import JiraConnector
+
+connector = JiraConnector(
+    url="https://jira.company.com",
+    query="project = PROJ",
+    token="bearer-token",  # or use login/password
+)
+```
+
+### Confluence Cloud Connector
 
 ```python
 from connectors import ConfluenceCloudConnector
@@ -104,75 +123,217 @@ connector = ConfluenceCloudConnector(
     query="space = DEV",
     email="user@example.com",
     api_token="your-token",
-    read_all_comments=True,        # Include nested comments in output
-    include_attachments=False
+    read_all_comments=True,
+    include_attachments=False,
 )
+```
+
+### Confluence Server/DC Connector
+
+```python
+from connectors import ConfluenceConnector
+
+connector = ConfluenceConnector(
+    url="https://confluence.company.com",
+    query="space = DEV",
+    token="bearer-token",  # or use login/password
+)
+```
+
+### Using with Core Index
+
+```python
+from core.v1 import Index
+from connectors import FileSystemConnector
+
+index = Index()
+connector = FileSystemConnector(path="./docs")
+index.add_collection("my-docs", connector)
+```
+
+### Dynamic Connector Registry
+
+```python
+from connectors import (
+    get_connector_class,
+    get_config_class,
+    list_connector_types,
+)
+
+# List available types
+types = list_connector_types()
+# ['files', 'jira', 'jiraCloud', 'confluence', 'confluenceCloud']
+
+# Get connector class by type
+ConnectorClass = get_connector_class("jiraCloud")
+
+# Get config schema class
+ConfigClass = get_config_class("jiraCloud")
 ```
 
 ## Connector Protocol
 
-All connectors are based on the `BaseConnector` protocol from `core.v1.connectors`. Every connector must provide:
+All connectors implement the `BaseConnector` protocol:
 
 ```python
-@runtime_checkable
 class BaseConnector(Protocol):
     @property
-    def reader(self):
-        """Document reader instance, yields docs with .metadata property"""
+    def reader(self) -> DocumentReader:
+        """Document reader instance for fetching documents."""
         ...
     
     @property
-    def converter(self):
-        """Document converter instance (standardizes internal document structure)"""
+    def converter(self) -> DocumentConverter:
+        """Document converter for format transformation."""
         ...
     
     @property
     def connector_type(self) -> str:
-        """Human-readable connector type"""
-        ...
-
-    @property
-    def metadata_schema(self) -> dict:
-        """Dict describing metadata fields added to each document/chunk"""
+        """String identifier (e.g., 'jira', 'confluence', 'files')."""
         ...
 ```
 
-This allows connectors to be used interchangeably:
+### Configuration Integration
+
+Connectors support configuration-driven instantiation:
 
 ```python
-from core.v1 import Index
+# Define config spec
+@classmethod
+def config_spec(cls) -> Dict[str, Dict[str, Any]]:
+    return {
+        "url": {
+            "type": "str",
+            "required": True,
+            "description": "Service base URL"
+        },
+        "api_token_env": {
+            "type": "str",
+            "required": False,
+            "secret": True,
+            "default": "ATLASSIAN_TOKEN",
+            "description": "Env var containing API token"
+        }
+    }
 
-index = Index()
-index.add_collection("my-collection", connector)  # Works with any connector!
+# Create from config service
+@classmethod
+def from_config(cls, config_service, namespace: str) -> "Connector":
+    ...
 ```
 
 ## Authentication
 
 ### Atlassian Cloud (Jira/Confluence)
-- Email + API token (generate at https://id.atlassian.com/manage/api-tokens)
+
+Use email + API token:
+
+```python
+connector = JiraCloudConnector(
+    url="https://company.atlassian.net",
+    email="user@example.com",
+    api_token="your-api-token",  # From https://id.atlassian.com/manage/api-tokens
+    query="project = PROJ",
+)
+```
 
 ### Server/Data Center (Jira/Confluence)
-- Bearer token (recommended)
-- Username + password (basic auth)
+
+**Bearer Token (recommended):**
+
+```python
+connector = JiraConnector(
+    url="https://jira.company.com",
+    token="bearer-token",
+    query="project = PROJ",
+)
+```
+
+**Basic Auth:**
+
+```python
+connector = JiraConnector(
+    url="https://jira.company.com",
+    login="username",
+    password="password",
+    query="project = PROJ",
+)
+```
+
+## Project Structure
+
+```
+indexed-connectors/
+├── src/connectors/
+│   ├── __init__.py              # Package exports
+│   ├── registry.py              # Dynamic connector registry
+│   ├── document_cache_reader_decorator.py
+│   │
+│   ├── files/
+│   │   ├── connector.py         # FileSystemConnector
+│   │   ├── files_document_reader.py
+│   │   ├── files_document_converter.py
+│   │   └── schema.py           # Pydantic config schema
+│   │
+│   ├── jira/
+│   │   ├── connector.py         # JiraConnector, JiraCloudConnector
+│   │   ├── jira_document_reader.py
+│   │   ├── jira_document_converter.py
+│   │   ├── jira_cloud_document_reader.py
+│   │   ├── jira_cloud_document_converter.py
+│   │   ├── unified_jira_document_reader.py
+│   │   ├── unified_jira_document_converter.py
+│   │   └── schema.py
+│   │
+│   └── confluence/
+│       ├── connector.py         # ConfluenceConnector, ConfluenceCloudConnector
+│       ├── confluence_document_reader.py
+│       ├── confluence_document_converter.py
+│       ├── confluence_cloud_document_reader.py
+│       ├── confluence_cloud_document_converter.py
+│       └── schema.py
+│
+├── pyproject.toml
+└── README.md
+```
 
 ## Dependencies
 
-- **indexed-utils** - Shared utilities (retry, batching, progress)
-- **requests** - HTTP client for API calls
-- **beautifulsoup4** - HTML parsing for Confluence pages
-- **langchain** - Text splitting and chunking
-- **unstructured** - Multi-format document parsing
+| Package | Purpose |
+|---------|---------|
+| **indexed-utils** | Shared utilities (retry, batching, logging) |
+| **requests** | HTTP client for API calls |
+| **beautifulsoup4** | HTML parsing for Confluence pages |
+| **langchain** | Text splitting and chunking |
+| **unstructured** | Multi-format document parsing |
+| **atlassian-python-api** | Atlassian API client |
 
 ## Development
 
-This package is part of the indexed monorepo workspace. Use `uv` for dependency management:
+### Running Tests
 
 ```bash
-# Install dependencies
-uv sync --all-groups
+# Run connector tests
+uv run pytest tests/packages/indexed-connectors -v
 
-# Run tests
-uv run pytest packages/indexed-connectors
+# Run specific connector
+uv run pytest tests/packages/indexed-connectors/jira -v
+
+# With coverage
+uv run pytest tests/packages/indexed-connectors --cov=connectors
+```
+
+### Code Quality
+
+```bash
+# Format
+uv run ruff format packages/indexed-connectors/
+
+# Lint
+uv run ruff check packages/indexed-connectors/
+
+# Type check
+uv run mypy packages/indexed-connectors/src/
 ```
 
 ## License

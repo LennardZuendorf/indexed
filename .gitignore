@@ -5,11 +5,14 @@
 *.so
 .Python
 
-# Virtual environments
+# Virtual environments & Env Variables
 .venv/
 venv/
 ENV/
 env/
+.env
+.env.local
+.env.production
 
 # Package build artifacts
 *.egg-info/
@@ -41,6 +44,7 @@ dmypy.json
 .history/
 **/.DS_Store
 .dccache
+.cursor/mcp.json
 
 # Project data
 data/
@@ -53,3 +57,5 @@ tmp/
 .pytest_cache/
 .coverage
 htmlcov/
+
+.indexed/

@@ -1,10 +1,23 @@
-import requests
+"""Jira Server/DC document reader (deprecated - use UnifiedJiraDocumentReader instead).
 
-from utils.retry import execute_with_retry
-from utils.batch import read_items_in_batches
+This module is maintained for backward compatibility but delegates all functionality
+to the unified reader implementation.
+"""
+
+import warnings
+
+from .unified_jira_document_reader import UnifiedJiraDocumentReader, JiraAuthType
 
 
 class JiraDocumentReader:
+    """Jira Server/DC document reader (DEPRECATED).
+
+    This class is deprecated and maintained only for backward compatibility.
+    New code should use UnifiedJiraDocumentReader with appropriate auth_type.
+
+    All functionality is delegated to UnifiedJiraDocumentReader.
+    """
+
     def __init__(
         self,
         base_url,
@@ -17,85 +30,88 @@ class JiraDocumentReader:
         retry_delay=1,
         max_skipped_items_in_row=5,
     ):
-        # "token" or "login" and "password" must be provided
-        if not token and (not login or not password):
-            raise ValueError(
-                "Either 'token' or both 'login' and 'password' must be provided."
-            )
+        """
+        Create a deprecated Jira Server/DC document reader wrapper that delegates functionality to UnifiedJiraDocumentReader.
+        
+        This constructor emits a DeprecationWarning and instantiates an underlying UnifiedJiraDocumentReader using the provided parameters. Authentication type is chosen by precedence: if `token` is provided, server token authentication is used; else if both `login` and `password` are provided, server credentials authentication is used; otherwise it defaults to server token and defers validation to the unified reader. Common reader attributes (base_url, query, token, login, password, batch_size, number_of_retries, retry_delay, max_skipped_items_in_row, fields, and _client) are exposed on the wrapper for compatibility.
+        
+        Parameters:
+            base_url (str): Base URL of the Jira Server/DC instance.
+            query (str): JQL or query string used to select issues/documents.
+            token (str, optional): Personal access token; takes precedence over login/password when provided.
+            login (str, optional): Username for basic authentication; used only if `token` is not provided.
+            password (str, optional): Password for basic authentication; used only if `token` is not provided.
+            batch_size (int, optional): Number of items to fetch per request; passed through to the unified reader.
+            number_of_retries (int, optional): Retry attempts for transient failures; passed through to the unified reader.
+            retry_delay (int|float, optional): Delay in seconds between retries; passed through to the unified reader.
+            max_skipped_items_in_row (int, optional): Maximum consecutive skipped items tolerated; passed through to the unified reader.
+        """
+        # Emit deprecation warning
+        warnings.warn(
+            'JiraDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
+        # Determine auth type based on provided credentials
+        if token:
+            auth_type = JiraAuthType.SERVER_TOKEN
+        elif login and password:
+            auth_type = JiraAuthType.SERVER_CREDENTIALS
+        else:
+            # Let the unified reader handle validation
+            auth_type = JiraAuthType.SERVER_TOKEN
 
-        self.base_url = base_url
-        self.query = query
-        self.token = token
-        self.login = login
-        self.password = password
-        self.batch_size = batch_size
-        self.number_of_retries = number_of_retries
-        self.retry_delay = retry_delay
-        self.max_skipped_items_in_row = max_skipped_items_in_row
-        self.fields = "summary,description,comment,updated"
+        # Delegate to unified reader
+        self._reader = UnifiedJiraDocumentReader(
+            base_url=base_url,
+            query=query,
+            auth_type=auth_type,
+            token=token,
+            login=login,
+            password=password,
+            batch_size=batch_size,
+            number_of_retries=number_of_retries,
+            retry_delay=retry_delay,
+            max_skipped_items_in_row=max_skipped_items_in_row,
+        )
+
+        # Expose attributes for compatibility
+        self.base_url = self._reader.base_url
+        self.query = self._reader.query
+        self.token = self._reader.token
+        self.login = self._reader.login
+        self.password = self._reader.password
+        self.batch_size = self._reader.batch_size
+        self.number_of_retries = self._reader.number_of_retries
+        self.retry_delay = self._reader.retry_delay
+        self.max_skipped_items_in_row = self._reader.max_skipped_items_in_row
+        self.fields = self._reader.fields
+        self._client = self._reader._client
 
     def read_all_documents(self):
-        return self.__read_items()
+        """
+        Return an iterator of documents that match the configured JQL query.
+        
+        Returns:
+            iterator (Iterator[dict]): An iterator over document records (each record represented as a dict) that match the reader's JQL query.
+        """
+        return self._reader.read_all_documents()
 
     def get_number_of_documents(self):
-        search_result = self.__request_items(
-            {"jql": self.query, "startAt": 0, "maxResults": 1}
-        )
-
-        return search_result["total"]
+        """
+        Return the total number of documents that match the reader's query.
+        
+        Returns:
+            int: Total matching document count.
+        """
+        return self._reader.get_number_of_documents()
 
     def get_reader_details(self) -> dict:
-        return {
-            "type": "jira",
-            "baseUrl": self.base_url,
-            "query": self.query,
-            "batchSize": self.batch_size,
-            "fields": self.fields,
-        }
-
-    def __add_url_prefix(self, relative_path):
-        return self.base_url + relative_path
-
-    def __read_items(self):
-        def read_batch_func(start_at, batch_size):
-            return self.__request_items(
-                {
-                    "jql": self.query,
-                    "startAt": start_at,
-                    "maxResults": batch_size,
-                    "fields": self.fields,
-                }
-            )
-
-        return read_items_in_batches(
-            read_batch_func,
-            fetch_items_from_result_func=lambda result: result["issues"],
-            fetch_total_from_result_func=lambda result: result["total"],
-            batch_size=self.batch_size,
-            max_skipped_items_in_row=self.max_skipped_items_in_row,
-        )
-
-    def __request_items(self, params):
-        def do_request():
-            response = requests.get(
-                url=self.__add_url_prefix("/rest/api/latest/search"),
-                headers={
-                    "Accept": "application/json",
-                    **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
-                },
-                params=params,
-                auth=(
-                    (self.login, self.password)
-                    if self.login and self.password
-                    else None
-                ),
-            )
-            response.raise_for_status()
-            return response.json()
-
-        return execute_with_retry(
-            do_request,
-            f"Requesting items with params: {params}",
-            self.number_of_retries,
-            self.retry_delay,
-        )
+        """
+        Retrieve reader configuration details.
+        
+        Returns:
+            details (dict): Configuration values for the reader, such as connection and query parameters and runtime settings (for example base URL, query, authentication info, batch size, retry settings, and configured fields).
+        """
+        return self._reader.get_reader_details()

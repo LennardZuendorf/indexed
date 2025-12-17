@@ -7,6 +7,7 @@ and caching of search indexes for optimal performance.
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from loguru import logger
@@ -16,6 +17,17 @@ from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
     create_collection_searcher,
 )
+
+
+def _get_default_collections_path() -> str:
+    """Get the default collections path from storage config."""
+    try:
+        from indexed_config import get_resolver
+        resolver = get_resolver()
+        return str(resolver.get_collections_path())
+    except ImportError:
+        # Fallback if indexed_config not available
+        return str(Path.home() / ".indexed" / "data" / "collections")
 
 
 class SearchService:
@@ -36,10 +48,16 @@ class SearchService:
         ...     print(f"Found {len(result.get('documents', []))} docs in {collection}")
     """
 
-    def __init__(self):
-        """Initialize the search service with empty cache and default persister."""
+    def __init__(self, collections_path: Optional[str] = None):
+        """Initialize the search service with empty cache and default persister.
+        
+        Args:
+            collections_path: Optional path for collections storage.
+                             Defaults to resolved path from storage config.
+        """
         self._searcher_cache: Dict[str, Any] = {}
-        self._persister = DiskPersister(base_path="./data/collections")
+        self._collections_path = collections_path or _get_default_collections_path()
+        self._persister = DiskPersister(base_path=self._collections_path)
 
     def _get_searcher(self, collection_name: str, index_name: str):
         """Get or create a cached searcher for the collection.
@@ -58,7 +76,9 @@ class SearchService:
         cache_key = f"{collection_name}:{index_name}"
         if cache_key not in self._searcher_cache:
             self._searcher_cache[cache_key] = create_collection_searcher(
-                collection_name=collection_name, index_name=index_name
+                collection_name=collection_name,
+                index_name=index_name,
+                collections_path=self._collections_path,
             )
         return self._searcher_cache[cache_key]
 
@@ -117,6 +137,46 @@ class SearchService:
             # Fallback to default indexer
             return "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
+    def _filter_by_score(
+        self, result: Dict[str, Any], score_threshold: float
+    ) -> Dict[str, Any]:
+        """Filter search results by score threshold.
+
+        For FAISS L2 distance, lower scores indicate better matches. This method
+        filters out documents where the best (lowest) matching chunk score exceeds
+        the threshold, and removes chunks that exceed the threshold within each
+        document.
+
+        Args:
+            result (Dict[str, Any]): Search result dictionary containing 'results' key.
+            score_threshold (float): Maximum distance score allowed.
+
+        Returns:
+            Dict[str, Any]: Filtered result with same structure but fewer documents/chunks.
+        """
+        if "results" not in result:
+            return result
+
+        filtered_results = []
+        for doc in result["results"]:
+            if "matchedChunks" not in doc:
+                filtered_results.append(doc)
+                continue
+
+            # Filter chunks by score
+            filtered_chunks = [
+                chunk
+                for chunk in doc["matchedChunks"]
+                if chunk.get("score", float("inf")) <= score_threshold
+            ]
+
+            # Only include document if it has at least one matching chunk
+            if filtered_chunks:
+                filtered_doc = {**doc, "matchedChunks": filtered_chunks}
+                filtered_results.append(filtered_doc)
+
+        return {**result, "results": filtered_results}
+
     def search(
         self,
         query: str,
@@ -124,6 +184,7 @@ class SearchService:
         configs: Optional[List[SourceConfig]] = None,
         max_chunks: Optional[int] = None,
         max_docs: Optional[int] = None,
+        score_threshold: Optional[float] = None,
         include_full_text: bool = False,
         include_all_chunks: bool = False,
         include_matched_chunks: bool = False,
@@ -144,6 +205,9 @@ class SearchService:
                 Defaults to max_docs * 3 if not specified.
             max_docs (Optional[int]): Maximum number of documents to return per collection.
                 Defaults to 10 if not specified.
+            score_threshold (Optional[float]): Maximum distance score for results.
+                Results with scores above this threshold are filtered out. For FAISS
+                L2 distance, lower scores indicate better matches.
             include_full_text (bool): Whether to include full document text in results.
                 Defaults to False.
             include_all_chunks (bool): Whether to include all chunks content in results.
@@ -162,6 +226,7 @@ class SearchService:
             >>> results = service.search(
             ...     "machine learning algorithms",
             ...     max_docs=5,
+            ...     score_threshold=1.5,
             ...     include_matched_chunks=True
             ... )
             >>> for collection, result in results.items():
@@ -217,13 +282,18 @@ class SearchService:
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
                 result = searcher.search(
-                    query,
+                    text=query,
                     max_number_of_chunks=max_chunks,
                     max_number_of_documents=max_docs,
                     include_text_content=include_full_text,
                     include_all_chunks_content=include_all_chunks,
                     include_matched_chunks_content=include_matched_chunks,
                 )
+                
+                # Apply score threshold filtering if specified
+                if score_threshold is not None and isinstance(result, dict):
+                    result = self._filter_by_score(result, score_threshold)
+                
                 results[cfg.name] = result
                 num_docs = (
                     len(result.get("results", [])) if isinstance(result, dict) else 0
@@ -238,20 +308,29 @@ class SearchService:
         return results
 
 
-# Global singleton for functional interface
-_default_service = SearchService()
+# Global singleton for functional interface (lazily initialized)
+_default_service: Optional[SearchService] = None
+
+
+def _get_service(collections_path: Optional[str] = None) -> SearchService:
+    """Get or create the default SearchService instance."""
+    global _default_service
+    if _default_service is None or collections_path is not None:
+        _default_service = SearchService(collections_path=collections_path)
+    return _default_service
 
 
 def search(
     query: str,
-    *,
     configs: Optional[List[SourceConfig]] = None,
     max_chunks: Optional[int] = None,
     max_docs: Optional[int] = None,
+    score_threshold: Optional[float] = None,
     include_full_text: bool = False,
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
     progress_callback: ProgressCallback = None,
+    collections_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Functional wrapper around SearchService for one-shot CLI usage.
 
@@ -266,9 +345,12 @@ def search(
             available collections.
         max_chunks (Optional[int]): Maximum number of chunks to return per collection.
         max_docs (Optional[int]): Maximum number of documents to return per collection.
+        score_threshold (Optional[float]): Maximum distance score for results.
+            Results with scores above this threshold are filtered out.
         include_full_text (bool): Whether to include full document text in results.
         include_all_chunks (bool): Whether to include all chunks content in results.
         include_matched_chunks (bool): Whether to include matched chunks content.
+        collections_path: Optional path for collections storage.
 
     Returns:
         Dict[str, Any]: Dictionary with collection names as keys and search results
@@ -276,14 +358,16 @@ def search(
 
     Example:
         >>> from core.v1.engine.services.search_service import search
-        >>> results = search("python programming", max_docs=3)
+        >>> results = search("python programming", max_docs=3, score_threshold=1.5)
         >>> print(f"Searched {len(results)} collections")
     """
-    return _default_service.search(
-        query,
+    service = _get_service(collections_path)
+    return service.search(
+        query=query,
         configs=configs,
         max_chunks=max_chunks,
         max_docs=max_docs,
+        score_threshold=score_threshold,
         include_full_text=include_full_text,
         include_all_chunks=include_all_chunks,
         include_matched_chunks=include_matched_chunks,
@@ -297,6 +381,7 @@ class SearchArgs:
     configs: Optional[List[SourceConfig]]
     max_chunks: Optional[int]
     max_docs: Optional[int]
+    score_threshold: Optional[float]
     include_full_text: bool
     include_all_chunks: bool
     include_matched_chunks: bool

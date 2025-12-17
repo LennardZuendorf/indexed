@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from enum import Enum
 import numpy as np
-import logging
+from loguru import logger
 
 # Progress bars removed - core services should be pure logic without UI concerns
 from utils.performance import log_execution_duration
@@ -57,7 +57,7 @@ class DocumentCollectionCreator:
         )
 
         if len(document_ids) == 0:
-            logging.warning(
+            logger.warning(
                 "No documents found for collection creation, so it will be not created."
             )
             self.persister.remove_folder(self.collection_name)
@@ -73,11 +73,11 @@ class DocumentCollectionCreator:
         )
 
         if number_of_expected_documents != len(document_ids):
-            logging.warning(
+            logger.warning(
                 f"Expected number of documents: {number_of_expected_documents} does not match actual number of read documents: {len(document_ids)}. Usually it happens when an error occurs during document reading. Please check logs for more details."
             )
 
-        logging.info(
+        logger.info(
             f"Collection successfully created: \n{json.dumps(manifest, indent=2, ensure_ascii=False)}"
         )
 
@@ -98,9 +98,12 @@ class DocumentCollectionCreator:
         )
 
         if len(document_ids) == 0:
-            logging.warning(
-                "No documents found for collection update, so it will be not updated."
+            logger.info(
+                "No new documents found for collection update. Updating timestamp only."
             )
+            # Update only the timestamp in manifest to record that we checked for updates
+            manifest["updatedTime"] = update_time.isoformat()
+            self.__save_json_file(manifest, self.__build_manifest_path())
             return
 
         last_modified_document_time, number_of_chunks = log_execution_duration(
@@ -116,11 +119,11 @@ class DocumentCollectionCreator:
         )
 
         if number_of_expected_documents != len(document_ids):
-            logging.warning(
+            logger.warning(
                 f"Expected number of documents: {number_of_expected_documents} does not match actual number of read documents: {len(document_ids)}. Usually it happens when an error occurs during document reading. Please check logs for more details."
             )
 
-        logging.info(
+        logger.info(
             f"Collection successfully updated: \n{json.dumps(manifest, indent=2, ensure_ascii=False)}"
         )
 

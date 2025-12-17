@@ -1,7 +1,7 @@
 [project]
 name = "indexed-utils"
 version = "0.1.0"
-description = "Shared utility functions for the indexed project including logging, retry logic, batching, and progress tracking"
+description = "Shared utility functions for the indexed project including logging, retry logic, batching, and performance monitoring"
 readme = "README.md"
 authors = [
     { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
@@ -9,7 +9,6 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "loguru>=0.7.0",
-    "tqdm>=4.66.0",
 ]
 
 [build-system]
