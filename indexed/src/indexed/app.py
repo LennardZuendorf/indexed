@@ -108,7 +108,7 @@ _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = False, False
 
 
 # Import shared console for prompts
-from .utils.console import console as _prompt_console
+from .utils.console import console as _prompt_console  # noqa: E402
 
 
 # Global logging init via callback (runs before subcommands)

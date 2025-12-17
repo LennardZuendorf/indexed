@@ -60,7 +60,7 @@ def has_legacy_data() -> bool:
         True if at least one directory containing a `manifest.json` file exists in the legacy collections path, False otherwise.
     """
     legacy_path = _get_legacy_collections_path()
-    if not legacy_path.exists():
+    if not legacy_path.exists() or not legacy_path.is_dir():
         return False
     
     # Check if there are any collections (directories with manifest.json)
@@ -81,7 +81,7 @@ def get_legacy_collections() -> list[str]:
         A sorted list of collection names (subdirectory names) that contain a `manifest.json`.
     """
     legacy_path = _get_legacy_collections_path()
-    if not legacy_path.exists():
+    if not legacy_path.exists() or not legacy_path.is_dir():
         return []
     
     collections = []
@@ -163,17 +163,24 @@ def migrate_legacy_data(
         
         # Copy caches if they exist
         if legacy_caches.exists():
-            for cache_item in legacy_caches.iterdir():
-                src = cache_item
-                dst = target_caches / cache_item.name
-                
-                if dst.exists():
-                    continue
-                
-                if cache_item.is_dir():
-                    shutil.copytree(src, dst)
-                else:
-                    shutil.copy2(src, dst)
+            if legacy_caches.is_dir():
+                # Legacy caches is a directory - iterate through items
+                for cache_item in legacy_caches.iterdir():
+                    src = cache_item
+                    dst = target_caches / cache_item.name
+                    
+                    if dst.exists():
+                        continue
+                    
+                    if cache_item.is_dir():
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+            else:
+                # Legacy caches is a file - copy it directly
+                dst = target_caches / legacy_caches.name
+                if not dst.exists():
+                    shutil.copy2(legacy_caches, dst)
         
         console.print()
         print_success("Migration complete!")
@@ -210,7 +217,7 @@ def prompt_migration(
     
     # Check if target already has data
     target_collections = target_root / "data" / "collections"
-    if target_collections.exists() and any(target_collections.iterdir()):
+    if target_collections.exists() and target_collections.is_dir() and any(target_collections.iterdir()):
         # Both have data - just inform user
         console.print()
         console.print(

@@ -34,8 +34,22 @@ from ..utils.components import (
     print_info,
     ICON_SUCCESS,
 )
+from indexed_config.path_utils import set_by_path
 
 app = typer.Typer(help="Manage configuration")
+
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+# Environment variable mappings for sensitive config keys
+_ENV_VAR_MAPPINGS = {
+    "api_token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
+    "token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
+    "email": ["ATLASSIAN_EMAIL"],
+    "password": ["JIRA_PASSWORD", "CONF_PASSWORD"],
+}
 
 
 # ============================================================================
@@ -194,19 +208,11 @@ def _get_sensitive_env_value(key: str) -> Optional[str]:
     """
     import os
     
-    # Map config keys to their environment variable names
-    env_mappings = {
-        "api_token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
-        "token": ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"],
-        "email": ["ATLASSIAN_EMAIL"],
-        "password": ["JIRA_PASSWORD", "CONF_PASSWORD"],
-    }
-    
     # Get the key name (last part of dot-path)
     key_name = key.split(".")[-1].lower() if "." in key else key.lower()
     
     # Check env vars for this key type
-    env_vars = env_mappings.get(key_name, [])
+    env_vars = _ENV_VAR_MAPPINGS.get(key_name, [])
     for env_var in env_vars:
         if os.getenv(env_var):
             return "*****"
@@ -1245,7 +1251,6 @@ def _handle_individual_update(config: ConfigService, global_path: Path) -> bool:
         global_config = config._store._read_toml_file(global_path) if global_path.exists() else {}
         
         # Set the value in global config
-        from indexed_config.path_utils import set_by_path
         set_by_path(global_config, full_key, new_value)
         
         # Ensure directory exists

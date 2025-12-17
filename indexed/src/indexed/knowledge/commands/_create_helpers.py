@@ -4,13 +4,12 @@ This module contains common logic extracted from create_files, create_jira,
 and create_confluence commands to eliminate code duplication.
 """
 
-from typing import Optional, Dict, Any, Callable, Type, List
+from typing import Optional, Dict, Any, Callable, Type
 import typer
 from loguru import logger
 
 from indexed_config import ConfigService
 from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
-from core.v1.constants import DEFAULT_INDEXER
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -177,4 +176,5 @@ def execute_create_command(
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
+
 

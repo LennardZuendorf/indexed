@@ -11,6 +11,7 @@ from rich.progress import (
     TimeRemainingColumn,
     SpinnerColumn,
 )
+from rich.console import Console
 import time
 from typing import Callable
 from contextlib import contextmanager

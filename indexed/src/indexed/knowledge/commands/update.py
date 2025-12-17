@@ -305,16 +305,15 @@ def update(
                     )
                     update_error = e
                     break
-        
-        # Check if config was created during this update
-        if not config_existed and not config_was_created:
-            if _config_existed_before(config_service):
-                config_was_created = True
     
     # If update failed, show error and exit
     if update_error:
         print_error(f"Failed to update collection: {str(update_error)}")
         raise typer.Exit(1)
+    
+    # Check if config was created during updates
+    if not config_existed:
+        config_was_created = _config_existed_before(config_service)
 
     # Notify user if config was newly created
     if not config_existed and config_was_created:
