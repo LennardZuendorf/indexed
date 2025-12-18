@@ -45,6 +45,7 @@ dmypy.json
 # Project data
 data/
 tmp/
+.indexed/
 
 #Python Package Stuff
 *.egg-info/
