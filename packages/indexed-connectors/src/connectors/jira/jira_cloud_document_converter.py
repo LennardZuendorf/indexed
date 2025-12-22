@@ -1,73 +1,45 @@
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+"""Jira Cloud document converter (deprecated - use UnifiedJiraDocumentConverter instead).
+
+This module is maintained for backward compatibility but delegates all functionality
+to the unified converter implementation.
+"""
+
+from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 
 
 class JiraCloudDocumentConverter:
-    def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
+    """Jira Cloud document converter (DEPRECATED).
+
+    This class is deprecated and maintained only for backward compatibility.
+    New code should use UnifiedJiraDocumentConverter.
+
+    All functionality is delegated to UnifiedJiraDocumentConverter.
+    """
+
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100):
+        """
+        Create a deprecated JiraCloudDocumentConverter that delegates conversion work to UnifiedJiraDocumentConverter.
+
+        This constructor builds an internal UnifiedJiraDocumentConverter with the provided chunking parameters and exposes its text_splitter for compatibility. This class is deprecated — use UnifiedJiraDocumentConverter instead.
+
+        Parameters:
+            chunk_size (int): Maximum size of text chunks when splitting document content.
+            chunk_overlap (int): Number of characters to overlap between consecutive chunks.
+        """
+        self._converter = UnifiedJiraDocumentConverter(
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
+        # Expose text_splitter for compatibility
+        self.text_splitter = self._converter.text_splitter
 
-    def convert(self, document):
-        return [
-            {
-                "id": document["key"],
-                "url": self.__build_url(document),
-                "modifiedTime": document["fields"]["updated"],
-                "text": self.__build_document_text(document),
-                "chunks": self.__split_to_chunks(document),
-            }
-        ]
+    def convert(self, document: dict) -> list:
+        """
+        Convert a Jira Cloud document into the indexed document format used by the connector.
 
-    def __build_document_text(self, document):
-        main_info = self.__build_main_ticket_info(document)
-        description_and_comments = self.__fetch_description_and_comments(document)
+        Parameters:
+            document (dict): Jira document payload to convert.
 
-        return self.__convert_to_text([main_info, description_and_comments])
-
-    def __split_to_chunks(self, document):
-        chunks = [{"indexedData": self.__build_main_ticket_info(document)}]
-
-        description_and_comments = self.__fetch_description_and_comments(document)
-        if description_and_comments:
-            for chunk in self.text_splitter.split_text(description_and_comments):
-                chunks.append({"indexedData": chunk})
-
-        return chunks
-
-    def __fetch_description_and_comments(self, document):
-        description = self.__fetch_description(document)
-        comments = [
-            self.__convert_content_text(comment["body"])
-            for comment in document["fields"]["comment"]["comments"]
-        ]
-
-        return self.__convert_to_text([description] + comments)
-
-    def __fetch_description(self, document):
-        description = document["fields"]["description"]
-        if not description:
-            return ""
-
-        return self.__convert_content_text(description)
-
-    def __convert_content_text(self, field_with_content):
-        texts = []
-
-        for content in field_with_content["content"]:
-            if "content" in content:
-                for content_of_content in content["content"]:
-                    if "text" in content_of_content:
-                        texts.append(content_of_content["text"])
-
-        return self.__convert_to_text(texts, delimiter="\n")
-
-    def __build_main_ticket_info(self, document):
-        return f"{document['key']} : {document['fields']['summary']}"
-
-    def __convert_to_text(self, elements, delimiter="\n\n"):
-        return delimiter.join([element for element in elements if element]).strip()
-
-    def __build_url(self, document):
-        base_url = document["self"].split("/rest/api/")[0]
-        return f"{base_url}/browse/{document['key']}"
+        Returns:
+            list: A list of indexed document items representing the converted document.
+        """
+        return self._converter.convert(document)

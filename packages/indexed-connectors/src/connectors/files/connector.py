@@ -124,5 +124,86 @@ class FileSystemConnector:
             f"exclude_patterns={self._exclude_patterns})"
         )
 
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        """Return specification of required/optional config values.
+
+        Returns a mapping of field name -> metadata dict describing
+        configuration parameters for config-driven instantiation.
+
+        Returns:
+            dict: Configuration specification with keys:
+                - type: str (e.g., 'str', 'list', 'bool')
+                - required: bool
+                - secret: bool (always False for local files)
+                - default: Any (optional)
+                - description: str
+
+        Examples:
+            >>> spec = FileSystemConnector.config_spec()
+            >>> spec['path']['required']
+            True
+            >>> spec['include_patterns']['type']
+            'list'
+        """
+        return {
+            "path": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Root directory path to scan for files",
+            },
+            "include_patterns": {
+                "type": "list",
+                "required": False,
+                "secret": False,
+                "default": [".*"],
+                "description": "List of regex patterns for files to include",
+            },
+            "exclude_patterns": {
+                "type": "list",
+                "required": False,
+                "secret": False,
+                "default": [],
+                "description": "List of regex patterns for files to exclude",
+            },
+            "fail_fast": {
+                "type": "bool",
+                "required": False,
+                "secret": False,
+                "default": False,
+                "description": "Stop indexing on first error (True) or continue (False)",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service) -> "FileSystemConnector":
+        """
+        Create a FileSystemConnector from a ConfigService.
+
+        Binds the provided ConfigService to obtain FileSystemConfig values and constructs a connector using the configured path, include_patterns, exclude_patterns, and fail_fast.
+
+        Parameters:
+            config_service: ConfigService instance that provides FileSystemConfig (registered under "sources.files").
+
+        Returns:
+            FileSystemConnector: Connector configured from the service values.
+        """
+        # Register our config spec
+        config_service.register(FileSystemConfig, path="sources.files")
+
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(FileSystemConfig)
+
+        # Create instance with config values
+        return cls(
+            path=cfg.path,
+            include_patterns=cfg.include_patterns,
+            exclude_patterns=cfg.exclude_patterns,
+            fail_fast=cfg.fail_fast,
+        )
+
 
 __all__ = ["FileSystemConnector"]

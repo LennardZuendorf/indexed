@@ -25,11 +25,24 @@ class FileSystemConfig(BaseModel):
     @field_validator("path")
     @classmethod
     def validate_path_exists(cls, v: str) -> str:
+        """
+        Validate that the provided filesystem path exists.
+
+        Parameters:
+            v (str): Path string to validate.
+
+        Returns:
+            str: The same path string when it exists.
+
+        Raises:
+            ValueError: If the path does not exist.
+        """
         if not Path(v).exists():
             raise ValueError(f"Path does not exist: {v}")
         return v
 
 
-__all__ = ["FileSystemConfig"]
+# Alias for backward compatibility with registry
+LocalFilesConfig = FileSystemConfig
 
-
+__all__ = ["FileSystemConfig", "LocalFilesConfig"]

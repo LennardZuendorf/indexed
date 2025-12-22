@@ -1,9 +1,9 @@
 """Session-wide fixtures for isolated configuration.
 
 This autouse fixture redirects global/workspace config paths used by
-ConfigService *and* legacy `indexed.toml` loading so that tests cannot
-interact with real user or repository configuration files. All tests
-run against temporary, empty TOML files created inside a sandbox dir.
+ConfigService so that tests cannot interact with real user or repository
+configuration files. All tests run against temporary, empty TOML files
+created inside a sandbox dir.
 """
 
 from __future__ import annotations
@@ -13,8 +13,7 @@ from pathlib import Path
 import pytest
 from pytest import MonkeyPatch
 
-import core.v1.config.store as store_module
-import core.v1.engine.services.config_service as cs_module
+from indexed_config import ConfigService
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -27,46 +26,35 @@ def isolate_config_paths(tmp_path_factory: pytest.TempPathFactory):
 
     sandbox_root = tmp_path_factory.mktemp("indexed_config_sandbox")
 
-    # Global config (~/.config/indexed/config.toml)
-    global_path = sandbox_root / "global.toml"
-    global_path.touch()
+    # Create a fake HOME inside sandbox and point Path.home() to it
+    sandbox_home = sandbox_root / "home"
+    sandbox_home.mkdir(parents=True, exist_ok=True)
 
-    # Workspace config (<ws>/.indexed/config.toml)
-    workspace_path = sandbox_root / ".indexed" / "config.toml"
-    workspace_path.parent.mkdir(parents=True, exist_ok=True)
-    workspace_path.touch()
+    # Create sandbox global root at ~/.indexed
+    global_root = sandbox_home / ".indexed"
+    global_root.mkdir(parents=True, exist_ok=True)
+    (global_root / "config.toml").touch()
 
-    # Apply patches
-    mp.setattr(
-        store_module, "get_global_config_path", lambda: global_path, raising=False
-    )
-    mp.setattr(cs_module, "get_global_config_path", lambda: global_path, raising=False)
+    # Also prepare a local root template (not overriding default behavior)
+    local_template = sandbox_root / "local"
+    local_template.mkdir(parents=True, exist_ok=True)
+    (local_template / "config.toml").touch()
 
-    # Preserve original implementations for delegated calls
-    _orig_get_ws = store_module.get_workspace_config_path  # type: ignore[attr-defined]
+    # Patch Path.home to return sandbox_home so code using Path.home() is isolated
+    mp.setattr(Path, "home", lambda: sandbox_home)
 
-    def _patched_get_ws(wp: Path | None = None):  # type: ignore[override]
-        if wp is None:
-            return workspace_path
-        return _orig_get_ws(wp)
-
-    mp.setattr(
-        store_module, "get_workspace_config_path", _patched_get_ws, raising=False
-    )
-
-    # Do NOT patch get_config_path so tests manipulating root-level indexed.toml still work
+    # Reset ConfigService singleton for clean test state
+    ConfigService.reset()
 
     yield  # run the test session
 
-    # Teardown: undo monkeypatches and reset ConfigService singleton/cache
+    # Teardown: undo monkeypatches and reset ConfigService singleton
     mp.undo()
-    cs_module.ConfigService._instance = None
-    cs_module.ConfigService._settings_cache = None
+    ConfigService.reset()
 
 
 @pytest.fixture(autouse=True)
 def reset_config_service():
     """Ensure ConfigService cache is cleared between individual tests."""
     yield
-    cs_module.ConfigService._instance = None
-    cs_module.ConfigService._settings_cache = None
+    ConfigService.reset()

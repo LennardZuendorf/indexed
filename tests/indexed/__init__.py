@@ -1,0 +1,1 @@
+"""Main indexed app tests."""

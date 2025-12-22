@@ -1,8 +1,29 @@
-"""Configuration management for indexed."""
+"""Configuration management for indexed.
 
+⚠️  DEPRECATED: This Config class is deprecated.
+    Use `from indexed_config import ConfigService, Provider` instead.
+
+    Migration:
+    - Old: config = Config.load()
+    - New: provider = ConfigService.instance().bind()
+           config_slice = provider.get(MyConfigSpec)
+"""
+
+import warnings
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+def _get_default_storage_path() -> Path:
+    """Get default storage path from storage config."""
+    try:
+        from indexed_config import get_resolver
+
+        resolver = get_resolver()
+        return resolver.get_collections_path()
+    except ImportError:
+        return Path.home() / ".indexed" / "data" / "collections"
 
 
 class Config(BaseModel):
@@ -44,7 +65,7 @@ class Config(BaseModel):
 
     # Storage configuration
     storage_path: Path = Field(
-        default=Path("./data/collections"),
+        default_factory=lambda: _get_default_storage_path(),
         description="Base path for storing collections",
     )
 
@@ -54,10 +75,7 @@ class Config(BaseModel):
         description="Default FAISS indexer configuration name",
     )
 
-    class Config:
-        """Pydantic model configuration."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
@@ -77,6 +95,11 @@ class Config(BaseModel):
             >>> config = Config.load()  # Load from ./indexed.toml or defaults
             >>> config = Config.load(Path("/path/to/indexed.toml"))
         """
+        warnings.warn(
+            "core.v1.Config is deprecated. Use 'from indexed_config import ConfigService' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # TODO: Implement TOML file loading
         # For now, return defaults
         # Future: Load from config_path or find ./indexed.toml
@@ -114,7 +137,7 @@ class Config(BaseModel):
         """
         # TODO: Implement TOML file saving
         # For now, pass (will be implemented in next iteration)
-        path or Path("./indexed.toml")
+        # save_path = path or Path("./indexed.toml")
         pass
 
     def pretty_print(self) -> str:

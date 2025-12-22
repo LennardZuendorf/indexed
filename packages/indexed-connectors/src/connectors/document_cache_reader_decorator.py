@@ -1,6 +1,6 @@
 import json
 import hashlib
-import logging
+from loguru import logger
 
 
 class CacheReaderDecorator:
@@ -9,12 +9,20 @@ class CacheReaderDecorator:
         self.persister = persister
 
     def read_all_documents(self):
+        """
+        Iterates over all documents from the underlying reader, yielding each document and using a persister-backed cache to avoid re-reading or re-computing on subsequent calls.
+
+        On a cache hit, documents are yielded from the persister's stored files; on a cache miss, documents are read from the underlying reader, saved into the persister for future calls, and yielded as they are produced.
+
+        Returns:
+            iterator: An iterator that yields each document as a deserialized JSON object (typically a dict).
+        """
         cache_key = self.__build_cache_key()
 
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(
             f"{cache_key}_completed"
         ):
-            logging.info(f"Cache hit during 'read_all_documents' for {cache_key}")
+            logger.info(f"Cache hit during 'read_all_documents' for {cache_key}")
             for file_name in self.persister.read_folder_files(cache_key):
                 yield json.loads(
                     self.persister.read_text_file(f"{cache_key}/{file_name}")
@@ -35,12 +43,18 @@ class CacheReaderDecorator:
             self.persister.save_text_file("", f"{cache_key}_completed")
 
     def get_number_of_documents(self):
+        """
+        Return the number of documents available for the underlying reader, using a completed cache when present.
+
+        Returns:
+            int: Number of documents; taken from the completed cache directory if a valid cache exists, otherwise obtained from the wrapped reader.
+        """
         cache_key = self.__build_cache_key()
 
         if self.persister.is_path_exists(cache_key) and self.persister.is_path_exists(
             f"{cache_key}_completed"
         ):
-            logging.info(f"Cache hit during 'get_number_of_documents' for {cache_key}")
+            logger.info(f"Cache hit during 'get_number_of_documents' for {cache_key}")
             return len(self.persister.read_folder_files(cache_key))
         else:
             return self.reader.get_number_of_documents()

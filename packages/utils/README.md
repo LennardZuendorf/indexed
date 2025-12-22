@@ -1,173 +1,269 @@
 # indexed-utils
 
-Shared utility functions for the indexed project including logging, retry logic, batching, and progress tracking.
+Shared utility functions for the indexed project including logging, retry logic, batching, and performance monitoring.
 
 ## Overview
 
-`indexed-utils` provides common utilities used across the indexed project packages. These utilities handle cross-cutting concerns like logging, error handling, performance monitoring, and user feedback.
+`indexed-utils` provides lightweight, dependency-minimal utilities used across all indexed packages. These utilities handle cross-cutting concerns like logging, error handling, API pagination, and performance monitoring.
+
+**Design Principle:** This package has minimal dependencies (only Loguru) to avoid circular dependencies and keep the utility layer lightweight. For Rich-enhanced CLI output, use `indexed.utils.logging` which extends this base configuration.
 
 ## Features
 
-### Logging
-- **Structured logging** with Loguru
-- **Colored console output** for better readability
-- **JSON logging mode** for production environments
-- **Status capture** for real-time UI updates
-- **Configurable log levels** via environment variables
+| Feature | Description |
+|---------|-------------|
+| **Logging** | Base Loguru configuration with JSON support |
+| **Retry Logic** | Exponential backoff for transient failures |
+| **Batching** | Automatic pagination for API calls |
+| **Performance** | Execution timing and profiling utilities |
 
-### Retry Logic
-- **Exponential backoff** for transient failures
-- **Configurable retry attempts** and delays
-- **Error logging** with context
-- **Used by connectors** for API resilience
+## Installation
 
-### Batching
-- **Automatic pagination** handling
-- **Generic batch reader** for various APIs
-- **Cursor-based pagination** support
-- **Skip tracking** for failed items
-- **Progress integration** with batch processing
+This package is part of the indexed monorepo workspace:
 
-### Progress Tracking
-- **Progress bars** using rich
-- **Generator wrapping** for lazy evaluation
-- **Iterator support** for known-size collections
-- **Customizable labels** and display
+```bash
+# Install with workspace
+uv sync
 
-### Performance Monitoring
-- **Execution timing** utilities
-- **Duration logging** with identifiers
-- **Conditional profiling** support
+# Or standalone
+cd packages/utils
+uv pip install -e .
+```
 
 ## Usage
 
 ### Logging
 
 ```python
-from utils.logger import setup_root_logger
+from utils import setup_root_logger, is_verbose_mode, get_current_log_level
 
-# Setup basic logging
+# Setup basic logging (WARNING level by default, quiet mode)
 setup_root_logger()
 
 # Setup with custom level
 setup_root_logger(level_str="DEBUG")
 
+# Setup with verbose mode (INFO level)
+setup_root_logger(level_str="INFO")
+
 # Setup JSON logging for production
 setup_root_logger(json_mode=True)
 
-# Check if verbose mode is enabled
-from utils.logger import is_verbose_mode
+# Check current mode
 if is_verbose_mode():
     print("Verbose logging is enabled")
+
+level = get_current_log_level()
+print(f"Current log level: {level}")
 ```
 
 ### Retry Logic
 
 ```python
-from utils.retry import execute_with_retry
+from utils import execute_with_retry
 
 def fetch_data():
-    # Some operation that might fail
+    """Operation that might fail transiently."""
     response = requests.get("https://api.example.com/data")
     response.raise_for_status()
     return response.json()
 
-# Retry up to 3 times with 1 second delay
+# Retry up to 3 times with exponential backoff
 result = execute_with_retry(
     fetch_data,
     func_identifier="Fetching API data",
     retries=3,
-    delay=1
+    delay=1,  # Initial delay in seconds
 )
+
+# The retry logic handles:
+# - HTTP 429 (Rate Limit) with Retry-After header
+# - Network timeouts
+# - Connection errors
+# - Configurable exponential backoff
 ```
 
-### Batching
+### Batching / Pagination
 
 ```python
-from utils.batch import read_items_in_batches
+from utils import read_items_in_batches
 
-def read_batch(start_at, batch_size, cursor=None):
-    # Make API call for a batch
+def read_batch(start_at: int, batch_size: int, cursor=None):
+    """Make API call for a batch of items."""
     response = api.get_items(start=start_at, limit=batch_size)
     return response
 
-# Read all items in batches
+# Read all items with automatic pagination
 items = read_items_in_batches(
     read_batch_func=read_batch,
     fetch_items_from_result_func=lambda r: r["items"],
     fetch_total_from_result_func=lambda r: r["total"],
     batch_size=100,
-    max_skipped_items_in_row=5,
-    itemsName="documents"
+    max_skipped_items_in_row=5,  # Fail after 5 consecutive errors
+    itemsName="documents",       # For logging
 )
 
 for item in items:
     process(item)
-```
 
-### Progress Tracking
-
-```python
-from utils.progress_bar import wrap_generator_with_progress_bar, wrap_iterator_with_progress_bar
-
-# Wrap a generator with progress bar
-def fetch_items():
-    for i in range(100):
-        yield i
-
-items = wrap_generator_with_progress_bar(
-    fetch_items(),
-    approx_total=100,
-    progress_bar_name="Processing items"
-)
-
-# Wrap an iterator with progress bar
-batches = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-for batch in wrap_iterator_with_progress_bar(batches, "Processing batches"):
-    process(batch)
+# The batch reader handles:
+# - Automatic pagination
+# - Error recovery (skip failed items, continue with next batch)
+# - Progress logging
+# - Cursor-based pagination support
 ```
 
 ### Performance Monitoring
 
 ```python
-from utils.performance import log_execution_duration, execute_and_measure_duration
+from utils import log_execution_duration, execute_and_measure_duration
 
-# Log execution duration
+# Log execution duration automatically
 result = log_execution_duration(
     lambda: expensive_operation(),
     identifier="Data processing",
-    enabled=True
+    enabled=True,  # Set to False to disable timing
 )
 
-# Measure duration without logging
-duration_ms, result = execute_and_measure_duration(
+# Measure duration without logging (for custom handling)
+result, error, duration = execute_and_measure_duration(
     lambda: expensive_operation()
 )
-print(f"Operation took {duration_ms}ms")
+
+if error:
+    print(f"Operation failed after {duration:.2f}s: {error}")
+else:
+    print(f"Operation succeeded in {duration:.2f}s")
 ```
 
-## Environment Variables
+### Safe Attribute Access
 
-- `INDEXED__LOGGING__LEVEL` - Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `INDEXED__LOGGING__AS_JSON` - Enable JSON logging (true/false)
+```python
+from utils import safe_str_attr
+
+# Safely get string attribute with fallback
+obj = SomeObject()
+value = safe_str_attr(obj, "name", default="Unknown")
+
+# Handles:
+# - None objects
+# - Missing attributes
+# - Non-string values (converts to string)
+```
+
+## Architecture
+
+This package is designed as the **base layer** for logging and utilities:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  CLI Layer (indexed/utils/logging.py)               │
+│  - Rich formatting (RichHandler)                    │
+│  - Status capture for spinners                      │
+│  - CLI-specific features                            │
+└─────────────────────────┬───────────────────────────┘
+                          │ extends
+┌─────────────────────────▼───────────────────────────┐
+│  Base Layer (packages/utils - this package)         │
+│  - Pure Loguru (no Rich dependency)                 │
+│  - Simple stderr sink                               │
+│  - Works for library/non-CLI usage                  │
+└─────────────────────────────────────────────────────┘
+```
+
+## API Reference
+
+### Logging Functions
+
+| Function | Description |
+|----------|-------------|
+| `setup_root_logger(level_str, json_mode)` | Configure Loguru root logger |
+| `is_verbose_mode()` | Check if verbose logging is enabled |
+| `get_current_log_level()` | Get current log level string |
+
+### Retry Function
+
+| Function | Description |
+|----------|-------------|
+| `execute_with_retry(func, func_identifier, retries, delay)` | Execute function with exponential backoff |
+
+### Batch Function
+
+| Function | Description |
+|----------|-------------|
+| `read_items_in_batches(...)` | Read paginated API results as generator |
+
+### Performance Functions
+
+| Function | Description |
+|----------|-------------|
+| `log_execution_duration(func, identifier, enabled)` | Execute and log duration |
+| `execute_and_measure_duration(func)` | Execute and return (result, error, duration) |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `safe_str_attr(obj, attr, default)` | Safely get string attribute |
+
+## Project Structure
+
+```
+utils/
+├── src/utils/
+│   ├── __init__.py          # Package exports
+│   ├── logger.py            # Loguru configuration
+│   ├── retry.py             # Retry with exponential backoff
+│   ├── batch.py             # Paginated reading
+│   ├── performance.py       # Timing utilities
+│   └── safe_getattr.py      # Safe attribute access
+│
+├── pyproject.toml
+└── README.md
+```
 
 ## Dependencies
 
-- **loguru** - Advanced logging with colors and structured output
-- **tqdm** - Progress bars and progress tracking
-- **rich** (optional) - Enhanced console formatting for logs
+| Package | Purpose |
+|---------|---------|
+| **loguru** | Advanced logging with colors and structured output |
 
 ## Development
 
-This package is part of the indexed monorepo workspace. Use `uv` for dependency management:
+### Running Tests
 
 ```bash
-# Install dependencies
-uv sync --all-groups
+# Run utils tests
+uv run pytest tests/packages/utils -v
 
-# Run tests
-uv run pytest packages/utils
+# With coverage
+uv run pytest tests/packages/utils --cov=utils
 ```
+
+### Code Quality
+
+```bash
+# Format
+uv run ruff format packages/utils/
+
+# Lint
+uv run ruff check packages/utils/
+
+# Type check
+uv run mypy packages/utils/src/
+```
+
+## Best Practices
+
+1. **Always use `execute_with_retry` for external API calls** to handle transient failures gracefully.
+
+2. **Use `read_items_in_batches` for paginated APIs** to avoid memory issues with large datasets.
+
+3. **Set `enabled=False` on performance logging in production** unless actively profiling.
+
+4. **Use `safe_str_attr` when accessing attributes from external data** to avoid AttributeError exceptions.
+
+5. **Configure logging at application entry point** (CLI main, test setup) not in library code.
 
 ## License
 

@@ -4,14 +4,6 @@ from .models import SourceConfig, CollectionStatus, SearchResult, CollectionInfo
 from .collection_service import create, update, clear
 from .search_service import search, SearchService
 from .inspect_service import status, inspect, InspectService
-from .config_service import (
-    ConfigService,
-    get_config,
-    update_config,
-    set_config,
-    ConfigSlice,
-    resolve_and_extract,
-)
 
 __all__ = [
     # Models
@@ -30,12 +22,4 @@ __all__ = [
     "status",
     "inspect",
     "InspectService",
-    # Configuration operations
-    "ConfigService",
-    "get_config",
-    "update_config",
-    "set_config",
-    # Config injection
-    "ConfigSlice",
-    "resolve_and_extract",
 ]

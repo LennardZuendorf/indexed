@@ -55,10 +55,10 @@ def clean_config(temp_workspace):
     This fixture ensures each test gets an isolated ConfigService instance
     with the singleton pattern properly reset before and after the test.
     """
-    from core.v1.engine.services.config_service import ConfigService
+    from indexed_config import ConfigService
 
     # Reset singleton before test
-    ConfigService._instance = None
+    ConfigService.reset()
 
     # Create fresh instance
     config = ConfigService()
@@ -66,7 +66,7 @@ def clean_config(temp_workspace):
     yield config
 
     # Cleanup singleton after test
-    ConfigService._instance = None
+    ConfigService.reset()
 
 
 @pytest.fixture
@@ -220,43 +220,49 @@ def mock_jira_server():
     server.start()
 
     # Define Jira REST API endpoints
-    # JiraConnector (Server/DC) uses /rest/api/latest/search
+    # Some clients use /rest/api/latest/search, others use /rest/api/2/search
+    jira_response = {
+        "issues": [
+            {
+                "id": "10001",
+                "key": "TEST-1",
+                "self": f"http://localhost:{server.port}/rest/api/latest/issue/10001",
+                "fields": {
+                    "summary": "Test Issue for Authentication",
+                    "description": "This issue covers authentication methods",
+                    "issuetype": {"name": "Story"},
+                    "status": {"name": "Open"},
+                    "priority": {"name": "High"},
+                    "updated": "2025-01-01T00:00:00.000+0000",
+                    "comment": {"comments": []},
+                },
+            },
+            {
+                "id": "10002",
+                "key": "TEST-2",
+                "self": f"http://localhost:{server.port}/rest/api/latest/issue/10002",
+                "fields": {
+                    "summary": "API Integration Testing",
+                    "description": "Testing REST API integrations",
+                    "issuetype": {"name": "Task"},
+                    "status": {"name": "In Progress"},
+                    "priority": {"name": "Medium"},
+                    "updated": "2025-01-02T00:00:00.000+0000",
+                    "comment": {"comments": []},
+                },
+            },
+        ],
+        "total": 2,
+        "maxResults": 50,
+        "startAt": 0,
+    }
+
+    # Accept both endpoints
     server.expect_request("/rest/api/latest/search", method="GET").respond_with_json(
-        {
-            "issues": [
-                {
-                    "id": "10001",
-                    "key": "TEST-1",
-                    "self": f"http://localhost:{server.port}/rest/api/latest/issue/10001",
-                    "fields": {
-                        "summary": "Test Issue for Authentication",
-                        "description": "This issue covers authentication methods",
-                        "issuetype": {"name": "Story"},
-                        "status": {"name": "Open"},
-                        "priority": {"name": "High"},
-                        "updated": "2025-01-01T00:00:00.000+0000",
-                        "comment": {"comments": []},
-                    },
-                },
-                {
-                    "id": "10002",
-                    "key": "TEST-2",
-                    "self": f"http://localhost:{server.port}/rest/api/latest/issue/10002",
-                    "fields": {
-                        "summary": "API Integration Testing",
-                        "description": "Testing REST API integrations",
-                        "issuetype": {"name": "Task"},
-                        "status": {"name": "In Progress"},
-                        "priority": {"name": "Medium"},
-                        "updated": "2025-01-02T00:00:00.000+0000",
-                        "comment": {"comments": []},
-                    },
-                },
-            ],
-            "total": 2,
-            "maxResults": 50,
-            "startAt": 0,
-        }
+        jira_response
+    )
+    server.expect_request("/rest/api/2/search", method="GET").respond_with_json(
+        jira_response
     )
 
     yield server
@@ -277,15 +283,15 @@ def isolate_config():
     singleton is properly reset before and after each test, preventing
     state leakage between tests.
     """
-    from core.v1.engine.services.config_service import ConfigService
+    from indexed_config import ConfigService
 
     # Reset before test
-    ConfigService._instance = None
+    ConfigService.reset()
 
     yield
 
     # Reset after test
-    ConfigService._instance = None
+    ConfigService.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -296,16 +302,21 @@ def isolate_search_service():
     cache to prevent resource leaks (like tqdm threads from sentence-transformers)
     that cause segfaults during test teardown.
     """
-    from core.v1.engine.services.search_service import _default_service
+    import core.v1.engine.services.search_service as search_service_module
 
-    # Clear cache before test
-    _default_service._searcher_cache.clear()
+    # Clear cache before test (only if service exists)
+    if search_service_module._default_service is not None:
+        search_service_module._default_service._searcher_cache.clear()
 
     yield
 
     # Clear cache after test to release references to FAISS indexers and models
     # This prevents tqdm threads from sentence-transformers from causing segfaults
-    _default_service._searcher_cache.clear()
+    if search_service_module._default_service is not None:
+        search_service_module._default_service._searcher_cache.clear()
+
+    # Reset the singleton to ensure clean state
+    search_service_module._default_service = None
 
     # Force garbage collection to ensure resources are released
     import gc

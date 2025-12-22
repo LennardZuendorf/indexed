@@ -112,6 +112,83 @@ class JiraConnector:
         """String representation of connector."""
         return f"JiraConnector(url='{self._url}', query='{self._query}')"
 
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        """
+        Configuration schema for the Jira (Server/Data Center) connector.
+
+        Provides the expected configuration keys and their metadata: "url" (Jira server URL), "query" (JQL query), and authentication alternatives via environment variable names "token_env" (API token) or "login_env" and "password_env" (basic auth). Each key maps to a dictionary describing type, requirement, secrecy, and defaults where applicable.
+
+        Returns:
+            dict: Mapping of configuration keys to their schema definitions.
+        """
+        return {
+            "url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Jira URL (Server/Data Center)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base JQL query",
+            },
+            # Auth alternatives (token OR login+password)
+            "token_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_TOKEN",
+                "description": "Env var name containing API token",
+            },
+            "login_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_LOGIN",
+                "description": "Env var name for basic auth username",
+            },
+            "password_env": {
+                "type": "str",
+                "required": False,
+                "secret": True,
+                "default": "JIRA_PASSWORD",
+                "description": "Env var name for basic auth password",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service) -> "JiraConnector":
+        """
+        Create a JiraConnector using configuration from a ConfigService.
+
+        Registers the JiraConfig schema at "sources.jira", binds the service, reads the Jira configuration, and returns a JiraConnector initialized from those configuration values.
+
+        Parameters:
+            config_service (ConfigService): Service providing configuration; must expose JiraConfig at the "sources.jira" path.
+
+        Returns:
+            JiraConnector: A connector configured with values from the retrieved JiraConfig.
+        """
+        # Register our config spec
+        config_service.register(JiraConfig, path="sources.jira")
+
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(JiraConfig)
+
+        # Create instance with config values
+        return cls(
+            url=cfg.url,
+            query=cfg.query,
+            token=cfg.get_token(),
+            login=cfg.get_login(),
+            password=cfg.get_password(),
+        )
+
 
 class JiraCloudConnector:
     # Metadata for CLI generation and compatibility
@@ -186,8 +263,82 @@ class JiraCloudConnector:
         return "jiraCloud"
 
     def __repr__(self) -> str:
-        """String representation of connector."""
+        """
+        Return a concise string identifying the JiraCloudConnector instance.
+
+        Returns:
+            str: String in the form "JiraCloudConnector(url='<base_url>', query='<jql_query>')".
+        """
         return f"JiraCloudConnector(url='{self._url}', query='{self._query}')"
+
+    # --- Config integration ---
+    @classmethod
+    def config_spec(cls) -> dict:
+        """
+        Provide the configuration schema used to construct a JiraCloudConnector.
+
+        Returns:
+            A dictionary mapping configuration keys to their schema definitions:
+            - `url`: Jira Cloud base URL (e.g., `https://company.atlassian.net`), required.
+            - `query`: Base JQL query, required.
+            - `email`: Atlassian account email used for authentication, required.
+            - `api_token_env`: Name of the environment variable that contains the Atlassian API token, required, secret, defaults to `"ATLASSIAN_TOKEN"`.
+        """
+        return {
+            "url": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Jira Cloud URL (e.g., https://company.atlassian.net)",
+            },
+            "query": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Base JQL query",
+            },
+            "email": {
+                "type": "str",
+                "required": True,
+                "secret": False,
+                "description": "Atlassian account email",
+            },
+            "api_token_env": {
+                "type": "str",
+                "required": True,
+                "secret": True,
+                "default": "ATLASSIAN_TOKEN",
+                "description": "Env var name containing Atlassian API token",
+            },
+        }
+
+    @classmethod
+    def from_config(cls, config_service) -> "JiraCloudConnector":
+        """
+        Create a JiraCloudConnector configured from a ConfigService.
+
+        Registers the JiraCloudConfig at path "sources.jira", binds the service, and constructs a JiraCloudConnector using values from the bound configuration.
+
+        Parameters:
+            config_service: ConfigService providing configuration data.
+
+        Returns:
+            JiraCloudConnector: Configured connector instance.
+        """
+        # Register our config spec using unified namespace
+        config_service.register(JiraCloudConfig, path="sources.jira")
+
+        # Bind and get our config
+        provider = config_service.bind()
+        cfg = provider.get(JiraCloudConfig)
+
+        # Create instance with config values
+        return cls(
+            url=cfg.url,
+            query=cfg.query,
+            email=cfg.get_email(),
+            api_token=cfg.get_api_token(),
+        )
 
 
 __all__ = ["JiraConnector", "JiraCloudConnector"]

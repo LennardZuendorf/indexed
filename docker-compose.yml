@@ -1,0 +1,98 @@
+# =============================================================================
+# Indexed MCP Server - Docker Compose Configuration
+# =============================================================================
+# Example configurations for running the indexed MCP server in different modes.
+#
+# Usage:
+#   docker compose up indexed-http     # HTTP transport (default)
+#   docker compose up indexed-sse      # SSE transport
+#   docker compose run indexed-cli index inspect  # CLI commands
+#
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # MCP Server - HTTP Transport
+  # ---------------------------------------------------------------------------
+  # Use this for HTTP-based MCP connections.
+  # Access at http://localhost:8000
+  indexed-http:
+    build: .
+    image: indexed:latest
+    container_name: indexed-mcp-http
+    command: ["mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - indexed-data:/root/.indexed
+    environment:
+      - INDEXED__mcp__log_level=INFO
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MCP Server - SSE Transport
+  # ---------------------------------------------------------------------------
+  # Use this for Server-Sent Events transport.
+  # Access at http://localhost:8001
+  indexed-sse:
+    build: .
+    image: indexed:latest
+    container_name: indexed-mcp-sse
+    command: ["mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - indexed-data:/root/.indexed
+    environment:
+      - INDEXED__mcp__log_level=INFO
+    restart: unless-stopped
+    profiles:
+      - sse
+
+  # ---------------------------------------------------------------------------
+  # MCP Server - Streamable HTTP Transport
+  # ---------------------------------------------------------------------------
+  # Modern streaming HTTP transport.
+  # Access at http://localhost:8002
+  indexed-streamable:
+    build: .
+    image: indexed:latest
+    container_name: indexed-mcp-streamable
+    command: ["mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8002:8000"
+    volumes:
+      - indexed-data:/root/.indexed
+    environment:
+      - INDEXED__mcp__log_level=INFO
+    restart: unless-stopped
+    profiles:
+      - streamable
+
+  # ---------------------------------------------------------------------------
+  # CLI Runner
+  # ---------------------------------------------------------------------------
+  # Use this for running CLI commands (create, search, inspect, etc.)
+  # Example: docker compose run indexed-cli index inspect
+  indexed-cli:
+    build: .
+    image: indexed:latest
+    container_name: indexed-cli
+    entrypoint: ["indexed"]
+    command: ["--help"]
+    volumes:
+      - indexed-data:/root/.indexed
+      # Mount local documents for indexing (adjust path as needed)
+      # - ./docs:/docs:ro
+    profiles:
+      - cli
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  # Persistent storage for collections and configuration
+  indexed-data:
+    name: indexed-data
+
+

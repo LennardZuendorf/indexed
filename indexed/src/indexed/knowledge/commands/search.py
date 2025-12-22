@@ -4,16 +4,14 @@ This command uses the core search service and the search_formatter to display
 results beautifully with the card-based design system.
 """
 
-import logging
 import typer
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
-from io import StringIO
-from typing import Dict, Any, List, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict
 from rich.panel import Panel
 from core.v1 import Index
 from core.v1.engine.services import search as search_service, SourceConfig, status
 from ...utils.logging import is_verbose_mode
 from ...utils.console import console
+from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.progress_bar import create_operation_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
@@ -23,6 +21,7 @@ from ...utils.components import (
     get_card_padding,
     get_secondary_style,
     get_default_style,
+    print_error,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -35,39 +34,6 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
-
-
-class _NoOpContext:
-    """No-op context manager for verbose mode (no spinner)."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-
-@contextmanager
-def suppress_core_output():
-    """Context manager to suppress all core logging and output."""
-    # Capture all output streams
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-
-    # Save original logging level
-    original_level = logging.getLogger().level
-
-    try:
-        # Suppress all logging output
-        logging.getLogger().setLevel(logging.CRITICAL)
-
-        # Redirect stdout and stderr
-        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            yield
-
-    finally:
-        # Restore original logging level
-        logging.getLogger().setLevel(original_level)
 
 
 # --- SEARCH FORMATTER FUNCTIONS (moved from search_formatter.py) ---
@@ -354,6 +320,25 @@ def search(
     no_content: bool = typer.Option(
         False, "--no-content", help="Hide content previews"
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
 ):
     """Search across collections using semantic similarity.
 
@@ -363,6 +348,12 @@ def search(
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
     """
+    from ...utils.logging import setup_root_logger
+
+    # Setup logging based on options
+    effective_level = log_level or ("INFO" if verbose else None)
+    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+
     Index()
 
     # Determine collections to search
@@ -381,7 +372,7 @@ def search(
         # Search specific collection
         statuses = status([collection])
         if not statuses:
-            typer.echo(f"❌ Collection '{collection}' not found")
+            print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_search = [collection]
@@ -417,7 +408,7 @@ def search(
 
         if is_verbose_mode():
             # Verbose mode: show core logs directly
-            with _NoOpContext():
+            with NoOpContext():
                 result = search_service(
                     query,
                     configs=[config],

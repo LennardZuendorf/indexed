@@ -1,6 +1,3 @@
-# Pre-commit hooks configuration for indexed-python
-# See https://pre-commit.com for more information
-
 repos:
   # General file checks (run on pre-commit)
   - repo: https://github.com/pre-commit/pre-commit-hooks

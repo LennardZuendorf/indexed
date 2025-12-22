@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+      "indexed": {
+        "command": "uv",
+        "args": [
+          "--directory",
+          "{{PROJECT_ROOT}}/indexed",
+          "run",
+          "indexed",
+          "mcp",
+          "run"
+        ]
+      }
+    }
+}

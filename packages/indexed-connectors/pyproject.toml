@@ -14,6 +14,8 @@ dependencies = [
     "langchain>=0.3.26",
     "langchain-text-splitters>=0.3.0",
     "unstructured[all-docs]>=0.18.5",
+    "atlassian-python-api>=3.41.16",
+    "loguru>=0.7.0",
 ]
 
 [tool.uv.sources]
