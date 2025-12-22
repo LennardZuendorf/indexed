@@ -60,7 +60,7 @@ class TestCreateFiles:
 
         # Verify execute_create_command was called
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
 
         assert call_kwargs["collection"] == "test-files"
         assert call_kwargs["source_type"] == "localFiles"
@@ -68,7 +68,7 @@ class TestCreateFiles:
         assert call_kwargs["force"] is True
 
         # Verify CLI overrides were passed correctly
-        cli_overrides = mock_execute.call_args[0][4]  # 5th positional arg
+        cli_overrides = call_kwargs["cli_overrides"]
         assert cli_overrides["path"] == "/test/path"
         assert cli_overrides["include_patterns"] == ["*.md"]
         assert cli_overrides["exclude_patterns"] == ["*.tmp"]
@@ -95,7 +95,8 @@ class TestCreateFiles:
         )
 
         mock_execute.assert_called_once()
-        cli_overrides = mock_execute.call_args[0][4]
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
         # Should only have empty dict or minimal overrides
         assert "path" not in cli_overrides or cli_overrides["path"] is None
 
@@ -130,7 +131,7 @@ class TestCreateJira:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         # Should use jiraCloud for .atlassian.net URLs
         assert call_kwargs["source_type"] == "jiraCloud"
 
@@ -161,7 +162,7 @@ class TestCreateJira:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         # Should use jira (server) for non-cloud URLs
         assert call_kwargs["source_type"] == "jira"
 
@@ -260,7 +261,7 @@ class TestCreateConfluence:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         assert call_kwargs["source_type"] == "confluenceCloud"
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
@@ -291,7 +292,7 @@ class TestCreateConfluence:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         assert call_kwargs["source_type"] == "confluence"
 
     @patch("indexed.knowledge.commands.create.execute_create_command")

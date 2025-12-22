@@ -381,7 +381,6 @@ class TestPromptCredentialField:
         assert result == "secret_token"
         mock_prompt.assert_called_once()
         # Should set ATLASSIAN_TOKEN env var
-        import os
         assert os.getenv("ATLASSIAN_TOKEN") == "secret_token"
 
     @patch("indexed.utils.credentials.Prompt.ask")
@@ -401,7 +400,6 @@ class TestPromptCredentialField:
         )
 
         assert result == "jira_token"
-        import os
         assert os.getenv("JIRA_TOKEN") == "jira_token"
 
     @patch("indexed.utils.credentials.Prompt.ask")
@@ -421,7 +419,6 @@ class TestPromptCredentialField:
         )
 
         assert result == "conf_token"
-        import os
         assert os.getenv("CONF_TOKEN") == "conf_token"
 
     @patch("indexed.utils.credentials.console")
@@ -441,7 +438,6 @@ class TestPromptCredentialField:
         )
 
         assert result == "testuser"
-        import os
         assert os.getenv("JIRA_LOGIN") == "testuser"
 
     @patch("indexed.utils.credentials.Prompt.ask")
@@ -461,7 +457,6 @@ class TestPromptCredentialField:
         )
 
         assert result == "secretpass"
-        import os
         assert os.getenv("JIRA_PASSWORD") == "secretpass"
 
     @patch("indexed.utils.credentials.console")

@@ -13,6 +13,7 @@ from indexed.mcp.server import (
     get_search_config,
     _get_mcp_config,
     _get_search_config,
+    lifespan,
 )
 
 
