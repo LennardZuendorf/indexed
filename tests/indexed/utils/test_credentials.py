@@ -338,3 +338,328 @@ class TestEdgeCases:
         # Results should be independent
         assert result1["email"] == "user1@example.com"
         assert result2["email"] == "user2@example.com"
+
+
+class TestPromptCredentialField:
+    """Test prompt_credential_field function."""
+
+    @patch("indexed.utils.credentials.console")
+    def test_prompts_for_email(self, mock_console):
+        """Should prompt for email field."""
+        mock_config = Mock()
+        mock_console.input.return_value = "test@example.com"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "email",
+            {"sensitive": False},
+            mock_config,
+            "sources.jira",
+            "jiraCloud",
+        )
+
+        assert result == "test@example.com"
+        mock_config.set_value.assert_called_once()
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    def test_prompts_for_api_token(self, mock_prompt):
+        """Should prompt for API token with password input."""
+        mock_config = Mock()
+        mock_prompt.return_value = "secret_token"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "api_token",
+            {"sensitive": True},
+            mock_config,
+            "sources.jira",
+            "jiraCloud",
+        )
+
+        assert result == "secret_token"
+        mock_prompt.assert_called_once()
+        # Should set ATLASSIAN_TOKEN env var
+        import os
+        assert os.getenv("ATLASSIAN_TOKEN") == "secret_token"
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    def test_prompts_for_jira_token(self, mock_prompt):
+        """Should prompt for Jira server token."""
+        mock_config = Mock()
+        mock_prompt.return_value = "jira_token"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "token",
+            {"sensitive": True},
+            mock_config,
+            "sources.jira",
+            "jira",
+        )
+
+        assert result == "jira_token"
+        import os
+        assert os.getenv("JIRA_TOKEN") == "jira_token"
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    def test_prompts_for_confluence_token(self, mock_prompt):
+        """Should prompt for Confluence server token."""
+        mock_config = Mock()
+        mock_prompt.return_value = "conf_token"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "token",
+            {"sensitive": True},
+            mock_config,
+            "sources.confluence",
+            "confluence",
+        )
+
+        assert result == "conf_token"
+        import os
+        assert os.getenv("CONF_TOKEN") == "conf_token"
+
+    @patch("indexed.utils.credentials.console")
+    def test_prompts_for_login(self, mock_console):
+        """Should prompt for login/username."""
+        mock_config = Mock()
+        mock_console.input.return_value = "testuser"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "login",
+            {"sensitive": False},
+            mock_config,
+            "sources.jira",
+            "jira",
+        )
+
+        assert result == "testuser"
+        import os
+        assert os.getenv("JIRA_LOGIN") == "testuser"
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    def test_prompts_for_password(self, mock_prompt):
+        """Should prompt for password with password input."""
+        mock_config = Mock()
+        mock_prompt.return_value = "secretpass"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "password",
+            {"sensitive": True},
+            mock_config,
+            "sources.jira",
+            "jira",
+        )
+
+        assert result == "secretpass"
+        import os
+        assert os.getenv("JIRA_PASSWORD") == "secretpass"
+
+    @patch("indexed.utils.credentials.console")
+    @patch("indexed.utils.credentials.print_error")
+    def test_exits_on_empty_email(self, mock_print_error, mock_console):
+        """Should exit when email is empty."""
+        mock_config = Mock()
+        mock_console.input.return_value = ""
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        with pytest.raises(typer.Exit):
+            prompt_credential_field(
+                "email",
+                {"sensitive": False},
+                mock_config,
+                "sources.jira",
+                "jiraCloud",
+            )
+
+        mock_print_error.assert_called()
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.utils.credentials.print_error")
+    def test_exits_on_empty_token(self, mock_print_error, mock_prompt):
+        """Should exit when token is empty."""
+        mock_config = Mock()
+        mock_prompt.return_value = ""
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        with pytest.raises(typer.Exit):
+            prompt_credential_field(
+                "api_token",
+                {"sensitive": True},
+                mock_config,
+                "sources.jira",
+                "jiraCloud",
+            )
+
+        mock_print_error.assert_called()
+
+    @patch("indexed.utils.credentials.Prompt.ask")
+    def test_handles_unknown_field_sensitive(self, mock_prompt):
+        """Should handle unknown sensitive fields."""
+        mock_config = Mock()
+        mock_prompt.return_value = "secret"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "unknown_field",
+            {"sensitive": True},
+            mock_config,
+            "sources.jira",
+            None,
+        )
+
+        assert result == "secret"
+        mock_prompt.assert_called_once()
+
+    @patch("indexed.utils.credentials.console")
+    def test_handles_unknown_field_non_sensitive(self, mock_console):
+        """Should handle unknown non-sensitive fields."""
+        mock_config = Mock()
+        mock_console.input.return_value = "value"
+
+        from indexed.utils.credentials import prompt_credential_field
+
+        result = prompt_credential_field(
+            "unknown_field",
+            {"sensitive": False},
+            mock_config,
+            "sources.jira",
+            None,
+        )
+
+        assert result == "value"
+        mock_console.input.assert_called_once()
+
+
+class TestIsCredentialField:
+    """Test is_credential_field function."""
+
+    def test_recognizes_credential_fields(self):
+        """Should recognize standard credential field names."""
+        from indexed.utils.credentials import is_credential_field
+
+        assert is_credential_field("email") is True
+        assert is_credential_field("api_token") is True
+        assert is_credential_field("token") is True
+        assert is_credential_field("login") is True
+        assert is_credential_field("password") is True
+
+    def test_rejects_non_credential_fields(self):
+        """Should return False for non-credential fields."""
+        from indexed.utils.credentials import is_credential_field
+
+        assert is_credential_field("url") is False
+        assert is_credential_field("query") is False
+        assert is_credential_field("path") is False
+        assert is_credential_field("collection") is False
+        assert is_credential_field("") is False
+
+
+class TestCheckServerAuthPresent:
+    """Test check_server_auth_present function."""
+
+    def test_returns_true_when_token_present(self):
+        """Should return True when token is in validation_present."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        result = check_server_auth_present(
+            {"token": "test_token"},
+            "JIRA_TOKEN",
+            "JIRA_LOGIN",
+            "JIRA_PASSWORD",
+        )
+
+        assert result is True
+
+    def test_returns_true_when_token_in_env(self):
+        """Should return True when token is in environment."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        with patch.dict(os.environ, {"JIRA_TOKEN": "env_token"}):
+            result = check_server_auth_present(
+                {},
+                "JIRA_TOKEN",
+                "JIRA_LOGIN",
+                "JIRA_PASSWORD",
+            )
+
+        assert result is True
+
+    def test_returns_true_when_login_password_present(self):
+        """Should return True when login and password are present."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        result = check_server_auth_present(
+            {"login": "user", "password": "pass"},
+            "JIRA_TOKEN",
+            "JIRA_LOGIN",
+            "JIRA_PASSWORD",
+        )
+
+        assert result is True
+
+    def test_returns_true_when_login_password_in_env(self):
+        """Should return True when login and password are in environment."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        with patch.dict(os.environ, {"JIRA_LOGIN": "user", "JIRA_PASSWORD": "pass"}):
+            result = check_server_auth_present(
+                {},
+                "JIRA_TOKEN",
+                "JIRA_LOGIN",
+                "JIRA_PASSWORD",
+            )
+
+        assert result is True
+
+    def test_returns_false_when_no_auth_present(self):
+        """Should return False when no auth credentials are present."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = check_server_auth_present(
+                {},
+                "JIRA_TOKEN",
+                "JIRA_LOGIN",
+                "JIRA_PASSWORD",
+            )
+
+        assert result is False
+
+    def test_returns_false_when_only_login_present(self):
+        """Should return False when only login (without password) is present."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        result = check_server_auth_present(
+            {"login": "user"},
+            "JIRA_TOKEN",
+            "JIRA_LOGIN",
+            "JIRA_PASSWORD",
+        )
+
+        assert result is False
+
+    def test_returns_false_when_only_password_present(self):
+        """Should return False when only password (without login) is present."""
+        from indexed.utils.credentials import check_server_auth_present
+
+        result = check_server_auth_present(
+            {"password": "pass"},
+            "JIRA_TOKEN",
+            "JIRA_LOGIN",
+            "JIRA_PASSWORD",
+        )
+
+        assert result is False

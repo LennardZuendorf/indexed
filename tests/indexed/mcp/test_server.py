@@ -437,3 +437,201 @@ class TestResourceRegistration:
         )
         assert template is not None
         assert template.name == "CollectionsStatusList"
+
+
+class TestLifespan:
+    """Tests for server lifespan context manager."""
+
+    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_search_config")
+    def test_lifespan_yields_config(self, mock_get_search, mock_get_mcp) -> None:
+        """Test that lifespan yields configuration state."""
+        from core.v1.config_models import MCPConfig, CoreV1SearchConfig
+
+        mock_mcp_config = MCPConfig()
+        mock_search_config = CoreV1SearchConfig()
+        mock_get_mcp.return_value = mock_mcp_config
+        mock_get_search.return_value = mock_search_config
+
+        # Run lifespan as async context manager
+        async def run_lifespan():
+            async with lifespan(mcp) as state:
+                return state
+
+        result = run_async(run_lifespan())
+
+        assert "mcp_config" in result
+        assert "search_config" in result
+        assert result["mcp_config"] == mock_mcp_config
+        assert result["search_config"] == mock_search_config
+
+
+class TestContextHandling:
+    """Tests for context handling in tools and resources."""
+
+    @patch.object(server_module, "svc_search")
+    @patch.object(server_module, "get_search_config")
+    def test_search_uses_lifespan_context_when_available(
+        self, mock_get_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        """Test that search tool uses lifespan context when available."""
+        from core.v1.config_models import CoreV1SearchConfig
+
+        mock_config = CoreV1SearchConfig()
+        mock_config.max_docs = 5
+        mock_config.max_chunks = 3
+        mock_config.score_threshold = 0.8
+        mock_config.include_full_text = True
+        mock_config.include_all_chunks = False
+        mock_config.include_matched_chunks = True
+
+        # Create a mock context with lifespan state
+        mock_context = MagicMock()
+        mock_fastmcp_context = MagicMock()
+        mock_fastmcp_context.lifespan_context = {
+            "search_config": mock_config
+        }
+        mock_context.fastmcp_context = mock_fastmcp_context
+
+        mock_search.return_value = {"collection1": []}
+
+        search_tool = mcp._tool_manager._tools.get("search")
+        assert search_tool is not None
+        result = search_tool.fn("test query", ctx=mock_context)
+
+        # Should use config from lifespan context
+        mock_search.assert_called_once()
+        # get_search_config should not be called when context is available
+        mock_get_config.assert_not_called()
+
+    @patch.object(server_module, "svc_search")
+    @patch.object(server_module, "get_search_config")
+    def test_search_falls_back_to_getter_when_context_unavailable(
+        self, mock_get_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        """Test that search falls back to getter when context unavailable."""
+        from core.v1.config_models import CoreV1SearchConfig
+
+        mock_config = CoreV1SearchConfig()
+        mock_get_config.return_value = mock_config
+        mock_search.return_value = {"collection1": []}
+
+        search_tool = mcp._tool_manager._tools.get("search")
+        assert search_tool is not None
+        result = search_tool.fn("test query", ctx=None)
+
+        mock_search.assert_called_once()
+        mock_get_config.assert_called_once()
+
+    @patch.object(server_module, "svc_status")
+    @patch.object(server_module, "get_mcp_config")
+    def test_collections_status_uses_lifespan_context(
+        self, mock_get_config: MagicMock, mock_status: MagicMock
+    ) -> None:
+        """Test that collections_status_list uses lifespan context."""
+        from core.v1.config_models import MCPConfig
+
+        mock_config = MCPConfig()
+        mock_config.include_index_size = True
+
+        mock_context = MagicMock()
+        mock_fastmcp_context = MagicMock()
+        mock_fastmcp_context.lifespan_context = {
+            "mcp_config": mock_config
+        }
+        mock_context.fastmcp_context = mock_fastmcp_context
+
+        mock_status_item = MagicMock()
+        mock_status_item.name = "test_collection"
+        mock_status_item.number_of_documents = 10
+        mock_status_item.number_of_chunks = 50
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status_item.last_modified_document_time = "2024-01-01T00:00:00"
+        mock_status_item.indexers = ["default"]
+        mock_status_item.index_size = 1024
+        mock_status_item.source_type = "files"
+        mock_status_item.relative_path = "./docs"
+        mock_status_item.disk_size_bytes = 2048
+        mock_status.return_value = [mock_status_item]
+
+        template = mcp._resource_manager._templates.get(
+            "resource://collections/status/{_all}"
+        )
+        assert template is not None
+        result = run_async(template.fn(_all="all", ctx=mock_context))
+
+        mock_status.assert_called_once_with(include_index_size=True)
+        mock_get_config.assert_not_called()
+
+
+class TestMainFunction:
+    """Tests for main entry point."""
+
+    @patch.object(server_module, "get_mcp_config")
+    @patch.object(server_module, "mcp")
+    @patch("indexed.mcp.server.argparse.ArgumentParser")
+    def test_main_parses_arguments(
+        self, mock_parser_class, mock_mcp, mock_get_config
+    ) -> None:
+        """Test that main function parses command line arguments."""
+        from core.v1.config_models import MCPConfig
+
+        mock_config = MCPConfig()
+        mock_config.host = "0.0.0.0"
+        mock_config.port = 8000
+        mock_config.log_level = "INFO"
+        mock_get_config.return_value = mock_config
+
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.host = "127.0.0.1"
+        mock_args.port = 9000
+        mock_args.log_level = "DEBUG"
+        mock_parser.parse_args.return_value = mock_args
+        mock_parser_class.return_value = mock_parser
+
+        server_module.main()
+
+        mock_parser.add_argument.assert_any_call(
+            "--host",
+            default="0.0.0.0",
+            help="Host to bind to (default: 0.0.0.0)",
+        )
+        mock_parser.add_argument.assert_any_call(
+            "--port",
+            type=int,
+            default=8000,
+            help="Port to bind to (default: 8000)",
+        )
+        mock_mcp.run.assert_called_once_with(
+            host="127.0.0.1", port=9000, log_level="DEBUG"
+        )
+
+    @patch.object(server_module, "get_mcp_config")
+    @patch.object(server_module, "mcp")
+    @patch("indexed.mcp.server.argparse.ArgumentParser")
+    def test_main_uses_config_defaults(
+        self, mock_parser_class, mock_mcp, mock_get_config
+    ) -> None:
+        """Test that main function uses config defaults when args not provided."""
+        from core.v1.config_models import MCPConfig
+
+        mock_config = MCPConfig()
+        mock_config.host = "localhost"
+        mock_config.port = 8080
+        mock_config.log_level = "WARNING"
+        mock_get_config.return_value = mock_config
+
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.host = "localhost"  # Same as default
+        mock_args.port = 8080  # Same as default
+        mock_args.log_level = "WARNING"  # Same as default
+        mock_parser.parse_args.return_value = mock_args
+        mock_parser_class.return_value = mock_parser
+
+        server_module.main()
+
+        mock_mcp.run.assert_called_once_with(
+            host="localhost", port=8080, log_level="WARNING"
+        )
