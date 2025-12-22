@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indexed-config"
+version = "1.0.0"
+description = "Unversioned configuration management for indexed"
+authors = [{name = "Indexed Team"}]
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5.0",
+    "platformdirs>=4.2.0",
+    "python-dotenv>=1.0.0",
+    "tomlkit>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.17.1",
+    "ruff>=0.12.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
