@@ -35,13 +35,13 @@ flowchart TB
 
     coll_svc --> creator
     search_svc --> searcher
-    
+
     creator --> embedder
     creator --> indexer
     creator --> persister
-    
+
     searcher --> indexer
-    
+
     indexer --> faiss_idx
     persister --> docs
     indexer <--> embedder
@@ -56,7 +56,7 @@ The `DocumentCollectionCreator` orchestrates the indexing pipeline:
 
 class DocumentCollectionCreator:
     """Creates and indexes a document collection."""
-    
+
     def __init__(
         self,
         collection_name: str,
@@ -70,24 +70,24 @@ class DocumentCollectionCreator:
         self.reader = document_reader
         self.converter = document_converter
         self.use_cache = use_cache
-    
+
     def run(self) -> None:
         """Execute the indexing pipeline."""
         # 1. Read documents from source
         documents = list(self.reader.read_all_documents())
-        
+
         # 2. Convert to chunks
         all_chunks = []
         for doc in documents:
             chunks = self.converter.convert(doc)
             all_chunks.extend(chunks)
-        
+
         # 3. Index chunks
         indexer = self._get_indexer()
         ids = [c["id"] for c in all_chunks]
         texts = [c["text"] for c in all_chunks]
         indexer.index_texts(ids, texts)
-        
+
         # 4. Persist to disk
         self._persist(documents, all_chunks, indexer)
 ```
@@ -108,11 +108,11 @@ sequenceDiagram
         Creator->>Converter: convert(document)
         Converter-->>Creator: List[Chunk]
     end
-    
+
     Creator->>Indexer: index_texts(ids, texts)
     Note over Indexer: Generate embeddings
     Note over Indexer: Build FAISS index
-    
+
     Creator->>Persister: save_documents()
     Creator->>Persister: save_index()
     Creator->>Persister: save_manifest()
@@ -127,7 +127,7 @@ The `FaissIndexer` wraps FAISS for vector storage and similarity search:
 
 class FaissIndexer:
     """FAISS-based vector indexer with sentence-transformer embeddings."""
-    
+
     def __init__(
         self,
         embedder: SentenceEmbedder,
@@ -137,21 +137,21 @@ class FaissIndexer:
         self.index_type = index_type
         self.index = None
         self.id_to_idx = {}  # Map document IDs to index positions
-    
+
     def index_texts(self, ids: List[str], texts: List[str]) -> None:
         """Index texts with their IDs."""
         # Generate embeddings
         embeddings = self.embedder.embed_batch(texts)
-        
+
         # Create FAISS index
         dimension = embeddings.shape[1]
         self.index = faiss.IndexFlatL2(dimension)
         self.index.add(embeddings)
-        
+
         # Store ID mapping
         for i, id_ in enumerate(ids):
             self.id_to_idx[id_] = i
-    
+
     def search(
         self,
         query: str,
@@ -161,10 +161,10 @@ class FaissIndexer:
         # Embed query
         query_embedding = self.embedder.embed_text(query)
         query_embedding = query_embedding.reshape(1, -1)
-        
+
         # FAISS search
         distances, indices = self.index.search(query_embedding, k)
-        
+
         return distances[0], indices[0]
 ```
 
@@ -185,11 +185,11 @@ Wraps sentence-transformers for text embedding:
 
 class SentenceEmbedder:
     """Sentence-transformer based text embedder."""
-    
+
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
         self._model = None
-    
+
     @property
     def model(self):
         """Lazy load model on first use."""
@@ -197,11 +197,11 @@ class SentenceEmbedder:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
         return self._model
-    
+
     def embed_text(self, text: str) -> np.ndarray:
         """Embed a single text."""
         return self.model.encode(text, convert_to_numpy=True)
-    
+
     def embed_batch(self, texts: List[str]) -> np.ndarray:
         """Embed multiple texts efficiently."""
         return self.model.encode(
@@ -229,12 +229,12 @@ Handles search operations with caching:
 
 class DocumentCollectionSearcher:
     """Searches an indexed document collection."""
-    
+
     def __init__(self, collection_path: Path):
         self.collection_path = collection_path
         self._indexer = None
         self._documents = None
-    
+
     def search(
         self,
         query: str,
@@ -243,10 +243,10 @@ class DocumentCollectionSearcher:
         """Search for documents matching query."""
         # Get cached indexer
         indexer = self._get_indexer()
-        
+
         # Perform search
         distances, indices = indexer.search(query, k=max_results)
-        
+
         # Build results
         results = []
         for dist, idx in zip(distances, indices):
@@ -258,7 +258,7 @@ class DocumentCollectionSearcher:
                     score=1.0 / (1.0 + dist),  # Convert distance to similarity
                     metadata=chunk["metadata"],
                 ))
-        
+
         return results
 ```
 
@@ -309,10 +309,10 @@ Stateful service with cached searchers:
 
 class SearchService:
     """Search service with cached searchers."""
-    
+
     def __init__(self):
         self._searchers: Dict[str, DocumentCollectionSearcher] = {}
-    
+
     def search(
         self,
         query: str,
@@ -324,14 +324,14 @@ class SearchService:
         # Discover collections if not specified
         if configs is None:
             configs = discover_all_collections()
-        
+
         results = {}
         for cfg in configs:
             searcher = self._get_or_create_searcher(cfg.name)
             results[cfg.name] = searcher.search(query, max_chunks)
-        
+
         return results
-    
+
     def _get_or_create_searcher(self, name: str) -> DocumentCollectionSearcher:
         """Get cached searcher or create new one."""
         if name not in self._searchers:
@@ -349,7 +349,7 @@ Collection inspection and status:
 
 class InspectService:
     """Inspect collections and retrieve metadata."""
-    
+
     def status(
         self,
         collection_names: List[str] = None
@@ -357,7 +357,7 @@ class InspectService:
         """Get status of collections."""
         if collection_names is None:
             collection_names = discover_all_collection_names()
-        
+
         statuses = []
         for name in collection_names:
             manifest = self._load_manifest(name)
@@ -369,7 +369,7 @@ class InspectService:
                 connector_type=manifest.get("connector_type"),
                 created_at=manifest.get("created_at"),
             ))
-        
+
         return statuses
 ```
 
@@ -382,11 +382,11 @@ High-level API for library users:
 
 class Index:
     """Main interface for indexed document search."""
-    
+
     def __init__(self, config: IndexConfig = None):
         self.config = config or IndexConfig()
         self._collections: Dict[str, BaseConnector] = {}
-    
+
     def add_collection(self, name: str, connector: BaseConnector) -> None:
         """Add and index a new collection."""
         creator = create_collection_creator(
@@ -397,7 +397,7 @@ class Index:
         )
         creator.run()
         self._collections[name] = connector
-    
+
     def search(
         self,
         query: str,
@@ -410,12 +410,12 @@ class Index:
             configs=self._get_configs(collection),
             max_docs=max_results,
         )
-    
+
     def status(self, collection: str = None):
         """Get collection status."""
         names = [collection] if collection else None
         return status(names)
-    
+
     def remove(self, collection: str) -> None:
         """Remove a collection."""
         clear([collection])
@@ -496,7 +496,7 @@ def create_collection_updater(
     """Create an updater from existing collection manifest."""
     manifest = load_manifest(collection_name)
     connector = rebuild_connector_from_manifest(manifest)
-    
+
     return DocumentCollectionUpdater(
         collection_name=collection_name,
         document_reader=connector.reader,
@@ -528,8 +528,3 @@ DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 The default configuration uses:
 - **FAISS IndexFlatL2** - Exact L2 distance search
 - **all-MiniLM-L6-v2** - 384-dimension embeddings, good balance of speed/quality
-
-
-
-
-

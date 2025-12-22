@@ -181,12 +181,12 @@ class BaseConnector(Protocol):
     def reader(self) -> DocumentReader:
         """Document reader instance for fetching documents."""
         ...
-    
+
     @property
     def converter(self) -> DocumentConverter:
         """Document converter for format transformation."""
         ...
-    
+
     @property
     def connector_type(self) -> str:
         """String identifier (e.g., 'jira', 'confluence', 'files')."""

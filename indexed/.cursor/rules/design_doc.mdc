@@ -1,7 +1,7 @@
 # CLI Final Design - Complete Specification
 
-**Date:** 2025-10-08  
-**Status:** ✅ FINAL DESIGN  
+**Date:** 2025-10-08
+**Status:** ✅ FINAL DESIGN
 **Version:** 2.0
 
 ## Design Philosophy
@@ -247,7 +247,7 @@ Choice: 1
 Name for this collection: docs
 Path to files or folder [.]: ./documentation
 Include patterns (optional, e.g., *.md, *.txt): *.md
-Exclude patterns (optional): 
+Exclude patterns (optional):
 
 ✓ Found 13 markdown files
 
@@ -274,7 +274,7 @@ Path: ./docs (from --path)
 
 Name for this collection: documentation
 Include patterns (optional): *.md
-Exclude patterns (optional): 
+Exclude patterns (optional):
 
 ✓ Found 13 files
 Continue? (Y/n): y
@@ -465,9 +465,9 @@ indexed init --storage /custom/path
 
 Set up your local document search index.
 
-Storage location [~/.indexed/data]: 
-Embedding model [all-MiniLM-L6-v2]: 
-Chunk size [512]: 
+Storage location [~/.indexed/data]:
+Embedding model [all-MiniLM-L6-v2]:
+Chunk size [512]:
 
 ✓ Created storage directory
 ✓ Initialized configuration
@@ -687,7 +687,7 @@ def setup_logging(verbose=False, debug=False):
         level = logging.INFO
     else:
         level = logging.WARNING
-    
+
     logging.basicConfig(
         level=level,
         format="%(message)s",

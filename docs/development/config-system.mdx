@@ -191,21 +191,21 @@ from typing import Optional
 
 class JiraCloudConfig(BaseModel):
     """Jira Cloud connector configuration."""
-    
+
     # Required fields
     url: str = Field(..., description="Jira Cloud URL")
     email: str = Field(..., description="Atlassian account email")
     query: str = Field(..., description="JQL query")
-    
+
     # Optional with default
     max_results: int = Field(50, description="Max results per page")
-    
+
     # Sensitive field (auto-routed to .env)
     api_token: Optional[str] = Field(
         None,
         description="API token (env: ATLASSIAN_TOKEN)"
     )
-    
+
     def get_api_token(self) -> str:
         """Get API token from config or environment."""
         import os
@@ -294,11 +294,11 @@ class MyConnector:
     def from_config(cls, config_service: ConfigService) -> "MyConnector":
         # 1. Register config spec
         config_service.register(MyConnectorConfig, path="sources.my_connector")
-        
+
         # 2. Bind and get typed config
         provider = config_service.bind()
         cfg = provider.get(MyConnectorConfig)
-        
+
         # 3. Create instance
         return cls(
             url=cfg.url,
@@ -342,7 +342,7 @@ flowchart TB
     end
 
     CLI[CLI Command]
-    
+
     CLI -->|--global flag| Global
     CLI -->|--local flag| Local
     CLI -->|storage.mode=global| Global
@@ -401,4 +401,3 @@ config.set_value(
 3. **Use environment variables for secrets** - Never commit tokens
 4. **Validate early** - Call `validate()` after registration
 5. **Use typed access** - Prefer `provider.get(Type)` over raw dict access
-

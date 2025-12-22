@@ -2,7 +2,7 @@
   <img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
   <h3>
     Index Institutional Knowledge
-    and Make it Available for AI Agents and LLMs! 
+    and Make it Available for AI Agents and LLMs!
   </h3>
 </p>
 

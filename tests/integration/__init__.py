@@ -5,4 +5,3 @@ This package contains integration tests that verify complex interactions between
 - Full indexing and search pipelines
 - Service integrations (storage, embedding)
 """
-

@@ -8,14 +8,14 @@ alwaysApply: false
 
 The core library is the foundation of the Indexed system, providing document indexing, vector storage, and semantic search capabilities. It's designed to be used by the CLI and any future applications (server, API, etc.).
 
-**Location:** `packages/indexed-core/`  
+**Location:** `packages/indexed-core/`
 **Import Name:** `index` (from `indexed_core.src.index`)
 
 ## Current State: Dual Architecture
 
 ### Legacy Implementation (`index/legacy/`)
 
-**Status:** Fully functional, battle-tested  
+**Status:** Fully functional, battle-tested
 **Usage:** Currently used by CLI commands
 
 **Structure:**
@@ -47,7 +47,7 @@ index/legacy/
 
 ### New Implementation (Phase 2) (`index/`)
 
-**Status:** Core architecture complete (13 of 15 steps)  
+**Status:** Core architecture complete (13 of 15 steps)
 **Usage:** Ready for CLI integration
 
 **Structure:**
@@ -284,7 +284,7 @@ class ServiceFactory:
         embedding_service = EmbeddingService(...)
         storage_service = StorageService(...)
         connectors = [FileSystemConnector(...)]
-        
+
         # 2. Create services
         indexing_service = IndexingService(
             connectors=connectors,
@@ -292,16 +292,16 @@ class ServiceFactory:
             storage_service=storage_service,
             ...
         )
-        
+
         search_service = SearchService(
             embedding_service=embedding_service,
             storage_service=storage_service
         )
-        
+
         # 3. Create controllers
         index_controller = IndexController(indexing_service, ...)
         search_controller = SearchController(search_service)
-        
+
         return index_controller, search_controller
 ```
 
@@ -314,10 +314,10 @@ class ServiceFactory:
 class DocumentConnector(Protocol):
     def discover_documents(self, source: str) -> Iterator[Path]:
         """Find documents in source."""
-        
+
     def read_document(self, path: Path) -> Document:
         """Read and parse document."""
-        
+
     def supports_path(self, path: Path) -> bool:
         """Check if connector handles this path."""
 ```
@@ -413,7 +413,7 @@ class OpenAIEmbeddingService:
     def __init__(self, api_key: str, model: str):
         self.client = OpenAI(api_key=api_key)
         self.model = model
-    
+
     def embed_text(self, text: str) -> np.ndarray:
         response = self.client.embeddings.create(
             input=text, model=self.model
@@ -433,7 +433,7 @@ class GitConnector:
     def discover_documents(self, source: str) -> Iterator[Path]:
         # Clone repo, list files
         pass
-        
+
     def read_document(self, path: Path) -> Document:
         # Read from git tree
         pass
@@ -451,7 +451,7 @@ class QdrantStorageService:
     def add_vectors(self, vectors, ids):
         # Use Qdrant client
         pass
-    
+
     def search(self, query_vector, top_k):
         # Query Qdrant
         pass
@@ -520,12 +520,12 @@ def test_storage_service():
     storage = StorageService(dimension=384)
     vectors = np.random.rand(10, 384)
     ids = [f"chunk-{i}" for i in range(10)]
-    
+
     storage.add_vectors(vectors, ids)
-    
+
     query = np.random.rand(384)
     results = storage.search(query, top_k=5)
-    
+
     assert len(results) == 5
     assert all(chunk_id in ids for chunk_id, _ in results)
 ```
@@ -539,7 +539,7 @@ def test_indexing_pipeline(tmp_path):
     doc_dir = tmp_path / "docs"
     doc_dir.mkdir()
     (doc_dir / "test.md").write_text("# Test Document\nContent here")
-    
+
     # Create config
     config = IndexedConfig(
         workspace=WorkspaceConfig(
@@ -547,13 +547,13 @@ def test_indexing_pipeline(tmp_path):
             root_path=tmp_path
         )
     )
-    
+
     # Index and search
     index_controller, search_controller = ServiceFactory.create_from_config(config)
-    
+
     stats = index_controller.create_index([str(doc_dir)])
     assert stats['documents_processed'] == 1
-    
+
     results = search_controller.search("test content", top_k=1)
     assert len(results) > 0
 ```
@@ -659,14 +659,14 @@ Both implementations use compatible storage:
 
 The core library is the foundation of the Indexed system, providing document indexing, vector storage, and semantic search capabilities. It's designed to be used by the CLI and any future applications (server, API, etc.).
 
-**Location:** `packages/indexed-core/`  
+**Location:** `packages/indexed-core/`
 **Import Name:** `index` (from `indexed_core.src.index`)
 
 ## Current State: Dual Architecture
 
 ### Legacy Implementation (`index/legacy/`)
 
-**Status:** Fully functional, battle-tested  
+**Status:** Fully functional, battle-tested
 **Usage:** Currently used by CLI commands
 
 **Structure:**
@@ -698,7 +698,7 @@ index/legacy/
 
 ### New Implementation (Phase 2) (`index/`)
 
-**Status:** Core architecture complete (13 of 15 steps)  
+**Status:** Core architecture complete (13 of 15 steps)
 **Usage:** Ready for CLI integration
 
 **Structure:**
@@ -935,7 +935,7 @@ class ServiceFactory:
         embedding_service = EmbeddingService(...)
         storage_service = StorageService(...)
         connectors = [FileSystemConnector(...)]
-        
+
         # 2. Create services
         indexing_service = IndexingService(
             connectors=connectors,
@@ -943,16 +943,16 @@ class ServiceFactory:
             storage_service=storage_service,
             ...
         )
-        
+
         search_service = SearchService(
             embedding_service=embedding_service,
             storage_service=storage_service
         )
-        
+
         # 3. Create controllers
         index_controller = IndexController(indexing_service, ...)
         search_controller = SearchController(search_service)
-        
+
         return index_controller, search_controller
 ```
 
@@ -965,10 +965,10 @@ class ServiceFactory:
 class DocumentConnector(Protocol):
     def discover_documents(self, source: str) -> Iterator[Path]:
         """Find documents in source."""
-        
+
     def read_document(self, path: Path) -> Document:
         """Read and parse document."""
-        
+
     def supports_path(self, path: Path) -> bool:
         """Check if connector handles this path."""
 ```
@@ -1064,7 +1064,7 @@ class OpenAIEmbeddingService:
     def __init__(self, api_key: str, model: str):
         self.client = OpenAI(api_key=api_key)
         self.model = model
-    
+
     def embed_text(self, text: str) -> np.ndarray:
         response = self.client.embeddings.create(
             input=text, model=self.model
@@ -1084,7 +1084,7 @@ class GitConnector:
     def discover_documents(self, source: str) -> Iterator[Path]:
         # Clone repo, list files
         pass
-        
+
     def read_document(self, path: Path) -> Document:
         # Read from git tree
         pass
@@ -1102,7 +1102,7 @@ class QdrantStorageService:
     def add_vectors(self, vectors, ids):
         # Use Qdrant client
         pass
-    
+
     def search(self, query_vector, top_k):
         # Query Qdrant
         pass
@@ -1171,12 +1171,12 @@ def test_storage_service():
     storage = StorageService(dimension=384)
     vectors = np.random.rand(10, 384)
     ids = [f"chunk-{i}" for i in range(10)]
-    
+
     storage.add_vectors(vectors, ids)
-    
+
     query = np.random.rand(384)
     results = storage.search(query, top_k=5)
-    
+
     assert len(results) == 5
     assert all(chunk_id in ids for chunk_id, _ in results)
 ```
@@ -1190,7 +1190,7 @@ def test_indexing_pipeline(tmp_path):
     doc_dir = tmp_path / "docs"
     doc_dir.mkdir()
     (doc_dir / "test.md").write_text("# Test Document\nContent here")
-    
+
     # Create config
     config = IndexedConfig(
         workspace=WorkspaceConfig(
@@ -1198,13 +1198,13 @@ def test_indexing_pipeline(tmp_path):
             root_path=tmp_path
         )
     )
-    
+
     # Index and search
     index_controller, search_controller = ServiceFactory.create_from_config(config)
-    
+
     stats = index_controller.create_index([str(doc_dir)])
     assert stats['documents_processed'] == 1
-    
+
     results = search_controller.search("test content", top_k=1)
     assert len(results) > 0
 ```
