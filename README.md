@@ -6,7 +6,8 @@
   </h3>
 </p>
 
-[![Python Build, Check, Test](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml) [![codecov](https://codecov.io/github/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/github/LennardZuendorf/indexed) ![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/lennard.zuendorf/indexed)
+[![Python Build, Check, Test](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
+
 
 
 A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Integrates with AI agents via MCP (Model Context Protocol).
