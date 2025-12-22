@@ -5,6 +5,9 @@ from typing import List, Optional, Dict, Any
 import typer
 from loguru import logger
 
+# Import ConfigService at module level so tests can patch
+from indexed_config import ConfigService
+
 # Import constants
 from core.v1.constants import DEFAULT_INDEXER
 
@@ -99,7 +102,6 @@ def create_files(
     ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
-    from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig
     from connectors.files import LocalFilesConfig
 
@@ -282,7 +284,6 @@ def create_jira(
     ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
-    from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig
     from connectors.jira import JiraCloudConfig, JiraConfig
 
@@ -497,7 +498,6 @@ def create_confluence(
 
     Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
     """
-    from indexed_config import ConfigService
     from core.v1.engine.services import SourceConfig
     from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
 

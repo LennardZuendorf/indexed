@@ -417,10 +417,33 @@ def check_server_auth_present(
         password_env_var: Environment variable name for password
 
     Returns:
-        True if at least one auth method is available
+        True if at least one auth method is available.
+
+    Notes:
+        When either ``login`` or ``password`` is present in ``validation_present``,
+        environment variables for these fields are intentionally ignored. This
+        avoids ambiguous situations where one value comes from validation and
+        the other from the environment, which can cause tests (and user
+        expectations) to behave inconsistently across machines.
     """
-    has_token = validation_present.get("token") or os.getenv(token_env_var)
-    has_login_password = (
-        validation_present.get("login") or os.getenv(login_env_var)
-    ) and (validation_present.get("password") or os.getenv(password_env_var))
+    # Token-based auth
+    token_value = validation_present.get("token") or os.getenv(token_env_var)
+
+    # Login/password auth:
+    # * If either field is present in validation_present, require BOTH to be
+    #   present there and ignore environment variables for these keys.
+    # * Otherwise, fall back to environment variables for both values.
+    if "login" in validation_present or "password" in validation_present:
+        login = validation_present.get("login")
+        password = validation_present.get("password")
+        # In this mixed-source scenario, only treat an explicit token value in
+        # validation_present as valid; ignore any token coming from env vars.
+        has_token = bool(validation_present.get("token"))
+    else:
+        login = os.getenv(login_env_var)
+        password = os.getenv(password_env_var)
+        has_token = bool(token_value)
+
+    has_login_password = bool(login and password)
+
     return bool(has_token or has_login_password)

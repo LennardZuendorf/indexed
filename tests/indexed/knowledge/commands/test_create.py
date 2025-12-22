@@ -1,10 +1,15 @@
 """Tests for knowledge create commands."""
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from indexed.knowledge.commands.create import _is_cloud, create_files, create_jira, create_confluence
+from indexed.knowledge.commands.create import (
+    _is_cloud,
+    create_files,
+    create_jira,
+    create_confluence,
+)
 
 
 class TestIsCloud:
@@ -60,7 +65,7 @@ class TestCreateFiles:
 
         # Verify execute_create_command was called
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
 
         assert call_kwargs["collection"] == "test-files"
         assert call_kwargs["source_type"] == "localFiles"
@@ -68,7 +73,7 @@ class TestCreateFiles:
         assert call_kwargs["force"] is True
 
         # Verify CLI overrides were passed correctly
-        cli_overrides = mock_execute.call_args[0][4]  # 5th positional arg
+        cli_overrides = call_kwargs["cli_overrides"]
         assert cli_overrides["path"] == "/test/path"
         assert cli_overrides["include_patterns"] == ["*.md"]
         assert cli_overrides["exclude_patterns"] == ["*.tmp"]
@@ -95,7 +100,8 @@ class TestCreateFiles:
         )
 
         mock_execute.assert_called_once()
-        cli_overrides = mock_execute.call_args[0][4]
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
         # Should only have empty dict or minimal overrides
         assert "path" not in cli_overrides or cli_overrides["path"] is None
 
@@ -130,7 +136,7 @@ class TestCreateJira:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         # Should use jiraCloud for .atlassian.net URLs
         assert call_kwargs["source_type"] == "jiraCloud"
 
@@ -161,7 +167,7 @@ class TestCreateJira:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         # Should use jira (server) for non-cloud URLs
         assert call_kwargs["source_type"] == "jira"
 
@@ -202,7 +208,12 @@ class TestCreateJira:
     @patch("indexed.knowledge.commands.create.console")
     @patch("indexed.knowledge.commands.create.print_error")
     def test_create_jira_exits_on_empty_url(
-        self, mock_print_error, mock_console, mock_verbose, mock_config_service, mock_execute
+        self,
+        mock_print_error,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
     ):
         """Should exit with error when URL is empty after prompt."""
         mock_config = Mock()
@@ -260,7 +271,7 @@ class TestCreateConfluence:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         assert call_kwargs["source_type"] == "confluenceCloud"
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
@@ -291,7 +302,7 @@ class TestCreateConfluence:
         )
 
         mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args[1]
+        call_kwargs = mock_execute.call_args.kwargs
         assert call_kwargs["source_type"] == "confluence"
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
@@ -300,7 +311,12 @@ class TestCreateConfluence:
     @patch("indexed.knowledge.commands.create.console")
     @patch("indexed.knowledge.commands.create.print_error")
     def test_create_confluence_exits_on_empty_url(
-        self, mock_print_error, mock_console, mock_verbose, mock_config_service, mock_execute
+        self,
+        mock_print_error,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
     ):
         """Should exit with error when URL is empty after prompt."""
         mock_config = Mock()

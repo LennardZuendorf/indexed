@@ -110,7 +110,8 @@ def execute_create_command(
     if is_verbose_mode():
         logger.info("Configuration resolved:")
         for field_name, value in validation["present"].items():
-            if validation["field_info"][field_name].get("sensitive"):
+            field_meta = validation["field_info"].get(field_name, {})
+            if field_meta.get("sensitive"):
                 logger.info("  %s: ******** (sensitive)", field_name)
             else:
                 logger.info("  %s: %s", field_name, value)

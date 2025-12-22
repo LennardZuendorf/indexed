@@ -13,6 +13,7 @@ from indexed.mcp.server import (
     get_search_config,
     _get_mcp_config,
     _get_search_config,
+    lifespan,
 )
 
 
@@ -488,16 +489,14 @@ class TestContextHandling:
         # Create a mock context with lifespan state
         mock_context = MagicMock()
         mock_fastmcp_context = MagicMock()
-        mock_fastmcp_context.lifespan_context = {
-            "search_config": mock_config
-        }
+        mock_fastmcp_context.lifespan_context = {"search_config": mock_config}
         mock_context.fastmcp_context = mock_fastmcp_context
 
         mock_search.return_value = {"collection1": []}
 
         search_tool = mcp._tool_manager._tools.get("search")
         assert search_tool is not None
-        result = search_tool.fn("test query", ctx=mock_context)
+        search_tool.fn("test query", ctx=mock_context)
 
         # Should use config from lifespan context
         mock_search.assert_called_once()
@@ -518,7 +517,7 @@ class TestContextHandling:
 
         search_tool = mcp._tool_manager._tools.get("search")
         assert search_tool is not None
-        result = search_tool.fn("test query", ctx=None)
+        search_tool.fn("test query", ctx=None)
 
         mock_search.assert_called_once()
         mock_get_config.assert_called_once()
@@ -536,9 +535,7 @@ class TestContextHandling:
 
         mock_context = MagicMock()
         mock_fastmcp_context = MagicMock()
-        mock_fastmcp_context.lifespan_context = {
-            "mcp_config": mock_config
-        }
+        mock_fastmcp_context.lifespan_context = {"mcp_config": mock_config}
         mock_context.fastmcp_context = mock_fastmcp_context
 
         mock_status_item = MagicMock()
@@ -558,7 +555,7 @@ class TestContextHandling:
             "resource://collections/status/{_all}"
         )
         assert template is not None
-        result = run_async(template.fn(_all="all", ctx=mock_context))
+        run_async(template.fn(_all="all", ctx=mock_context))
 
         mock_status.assert_called_once_with(include_index_size=True)
         mock_get_config.assert_not_called()

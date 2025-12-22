@@ -7,6 +7,7 @@ Uses FastMCP 2.13+ features including server lifespan and response caching middl
 # Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
 # Must be done before any faiss imports occur
 import warnings
+import argparse
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
 
@@ -267,7 +268,7 @@ def collections_list(_all: str = "all") -> List[str]:
     description="Return detailed status information for all collections.",
 )
 def collections_status_list(
-    _all: str = "all", ctx: Optional[Context] = None
+    _all: str = "all", ctx: Optional[Any] = None
 ) -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
@@ -331,7 +332,7 @@ def collections_status_list(
     name="CollectionStatus",
     description="Return detailed status information for a specific collection.",
 )
-def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+def collection_status(name: str, ctx: Optional[Any] = None) -> Dict[str, Any]:
     """
     Get detailed status information for a named collection.
 
@@ -392,7 +393,6 @@ def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any
 
 def main():
     """Main entry point for the MCP server."""
-    import argparse
 
     # Get MCP config for defaults
     mcp_cfg = get_mcp_config()
