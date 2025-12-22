@@ -6,10 +6,9 @@
 [tool.ruff]
 
 [tool.ruff.lint.per-file-ignores]
-"src/main/sources/confluence/confluence_cloud_document_reader.py" = ["E731"]
-"src/main/sources/confluence/confluence_document_reader.py" = ["E731"]
-"src/main/sources/jira/jira_cloud_document_reader.py" = ["E731"]
-"src/main/sources/jira/jira_document_reader.py" = ["E731"]
+# Connector reader files that use lambdas for tqdm callbacks
+"packages/indexed-connectors/src/connectors/confluence/*_document_reader.py" = ["E731"]
+"packages/indexed-connectors/src/connectors/jira/*_document_reader.py" = ["E731"]
 
 # Pytest configuration
 [tool.pytest.ini_options]
@@ -22,8 +21,27 @@ addopts = [
     "--strict-config",
     "--cov=indexed/src/indexed",
     "--cov=packages/indexed-core/src/core",
+    "--cov=packages/indexed-connectors/src/connectors",
+    "--cov=packages/utils/src/utils",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov"
+]
+markers = [
+    # Package markers (existing)
+    "indexed: Main indexed application tests",
+    "connectors: Tests for indexed-connectors package",
+    "core: Tests for indexed-core package",
+    "utils: Tests for indexed-utils package",
+    
+    # Test type markers (integration testing)
+    "integration: Integration tests requiring external services",
+    "unit: Fast unit tests",
+    "slow: Tests that take > 1 second",
+    "api: Tests that interact with external APIs",
+    
+    # Environment markers (integration testing)
+    "requires_api: Tests requiring real API credentials",
+    "requires_network: Tests requiring network access",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)
@@ -46,15 +64,20 @@ members = [
     "packages/utils",
     "packages/indexed-connectors",
     "packages/indexed-core",
+    "packages/indexed-config",
     "indexed"
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.17.1",
+    "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.14.1",
+    "pytest-httpserver>=1.0.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-rerunfailures>=12.0",
     "ruff>=0.12.10",
 ]
 
