@@ -45,30 +45,23 @@ def _get_env_var(var_name: str) -> Optional[str]:
 
 
 def indexed_toml_source(settings_cls):
-    """Custom TOML source for indexed.toml in project root."""
+    """DEPRECATED: Custom TOML source for indexed.toml in project root.
+
+    This source is kept for backwards compatibility but no longer loads from indexed.toml.
+    Configuration is now loaded from global and workspace configs via ConfigService.
+    Returns empty dict to avoid loading from deprecated indexed.toml location.
+    """
 
     class FilteredTomlConfigSettingsSource(TomlConfigSettingsSource):
         def _read_file(self, file_path):
-            """Read TOML file and filter out profiles and unknown root keys."""
-            data = super()._read_file(file_path)
-            if not data:
-                return data
-            # Remove profiles section to avoid validation errors
-            if "profiles" in data:
-                data = {k: v for k, v in data.items() if k != "profiles"}
-            # Whitelist known top-level sections only
-            allowed = {
-                "paths",
-                "search",
-                "index",
-                "sources",
-                "mcp",
-                "performance",
-                "flags",
-                "logging",
-            }
-            data = {k: v for k, v in data.items() if k in allowed}
-            return data
+            """Read TOML file and filter out profiles and unknown root keys.
+
+            DEPRECATED: Returns empty dict as indexed.toml is no longer used.
+            Config is now loaded from ~/.config/indexed/config.toml and
+            <workspace>/.indexed/config.toml via ConfigService.
+            """
+            # Return empty dict - config is now loaded via ConfigService from new locations
+            return {}
 
     return FilteredTomlConfigSettingsSource(
         settings_cls, toml_file=Path("indexed.toml")
@@ -296,8 +289,11 @@ class IndexedSettings(BaseSettings):
     1. CLI/MCP overrides (highest precedence)
     2. Environment variables (INDEXED__*)
     3. .env file
-    4. indexed.toml (project root)
+    4. Global config (~/.config/indexed/config.toml) and workspace config (<workspace>/.indexed/config.toml)
+       - Loaded via ConfigService, not directly by this class
     5. Built-in defaults (lowest precedence)
+
+    Note: indexed.toml in project root is deprecated. Use global and workspace configs instead.
     """
 
     model_config = SettingsConfigDict(

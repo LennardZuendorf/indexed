@@ -29,7 +29,7 @@ Shared utility functions for the indexed project including logging, retry logic,
 - **Progress integration** with batch processing
 
 ### Progress Tracking
-- **Progress bars** using tqdm
+- **Progress bars** using rich
 - **Generator wrapping** for lazy evaluation
 - **Iterator support** for known-size collections
 - **Customizable labels** and display
@@ -172,4 +172,3 @@ uv run pytest packages/utils
 ## License
 
 See LICENSE file in the project root.
-

@@ -31,6 +31,7 @@ def _clear_env(monkeypatch):
 
 
 def test_search_slice_env_and_overrides(monkeypatch):
+    # Using sandboxed config paths provided by tests/conftest.py
     # Env-provided defaults
     monkeypatch.setenv("INDEXED__SEARCH__MAX_DOCS", "7")
     monkeypatch.setenv("INDEXED__SEARCH__MAX_CHUNKS", "50")

@@ -32,9 +32,16 @@ def test_environment_variable_loading(tmp_path, monkeypatch):
 
 
 def test_toml_loading(tmp_path, monkeypatch):
-    """Test that TOML file values are loaded correctly."""
-    # Create temporary TOML file
-    toml_file = tmp_path / "indexed.toml"
+    """Test that TOML workspace config values are loaded via ConfigService."""
+    from core.v1.config.store import get_workspace_config_path, atomic_write_toml
+    from core.v1.engine.services.config_service import ConfigService
+
+    # Ensure we operate inside an isolated tmp dir
+    monkeypatch.chdir(tmp_path)
+
+    toml_file = get_workspace_config_path(tmp_path)
+    toml_file.parent.mkdir(parents=True, exist_ok=True)
+
     config_data = {
         "search": {"max_docs": 50, "include_full_text": True},
         "index": {"embedding_model": "sentence-transformers/all-mpnet-base-v2"},
@@ -47,11 +54,10 @@ def test_toml_loading(tmp_path, monkeypatch):
         },
     }
 
-    # Change to temp directory and write config
-    monkeypatch.chdir(tmp_path)
     atomic_write_toml(config_data, toml_file)
 
-    settings = IndexedSettings()
+    # Load through ConfigService which merges global+workspace config
+    settings = ConfigService.get_instance().get()
 
     assert settings.search.max_docs == 50
     assert settings.search.include_full_text is True
@@ -63,7 +69,9 @@ def test_toml_loading(tmp_path, monkeypatch):
 def test_precedence_env_over_toml(tmp_path, monkeypatch):
     """Test that environment variables override TOML values."""
     # Create TOML with one value
-    toml_file = tmp_path / "indexed.toml"
+    from core.v1.config.store import get_config_path
+
+    toml_file = get_config_path()
     config_data = {"search": {"max_docs": 30}}
 
     monkeypatch.chdir(tmp_path)

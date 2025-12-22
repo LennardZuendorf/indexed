@@ -9,7 +9,37 @@ from core.v1.config.store import atomic_write_toml, get_config_path
 def clean_service(tmp_path, monkeypatch):
     """Provide a clean ConfigService instance in isolated directory."""
     monkeypatch.chdir(tmp_path)
-    # Reset singleton
+
+    # Redirect config paths to isolated temp files to avoid interference
+    import core.v1.config.store as store_module
+    import core.v1.engine.services.config_service as cs_module
+
+    # Isolated global config file
+    tmp_global_config = tmp_path / "global_config.toml"
+    monkeypatch.setattr(
+        store_module, "get_global_config_path", lambda: tmp_global_config
+    )
+    monkeypatch.setattr(cs_module, "get_global_config_path", lambda: tmp_global_config)
+
+    # Isolated workspace config file (.indexed/config.toml)
+    tmp_workspace_config = tmp_path / ".indexed" / "config.toml"
+    tmp_workspace_config.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        store_module, "get_workspace_config_path", lambda wp=None: tmp_workspace_config
+    )
+    # Legacy get_config_path() used by some tests
+    monkeypatch.setattr(store_module, "get_config_path", lambda: tmp_workspace_config)
+
+    # Patch the imported symbol in this test module so explicit calls use temp config
+    import sys
+
+    current_test_module = sys.modules[__name__]
+    if hasattr(current_test_module, "get_config_path"):
+        monkeypatch.setattr(
+            current_test_module, "get_config_path", lambda: tmp_workspace_config
+        )
+
+    # Reset singleton and cache
     ConfigService._instance = None
     ConfigService._settings_cache = None
     return ConfigService.get_instance()
@@ -262,3 +292,69 @@ def test_profile_update_and_delete(clean_service):
     settings = clean_service.get(profile="test")
     assert settings.search.max_docs == 10  # Back to default
     assert settings.search.include_full_text is True  # Still in profile
+
+
+# -----------------------------------------------------------------------------
+# New tests for global/workspace merge precedence
+# -----------------------------------------------------------------------------
+
+
+def test_workspace_only_config(clean_service):
+    """When only workspace config exists, its values should be loaded."""
+    from core.v1.config.store import atomic_write_toml, get_workspace_config_path
+
+    workspace_cfg = {"search": {"max_docs": 42, "include_full_text": True}}
+    atomic_write_toml(workspace_cfg, get_workspace_config_path())
+
+    settings = clean_service.get()
+    assert settings.search.max_docs == 42
+    assert settings.search.include_full_text is True
+
+
+def test_global_and_workspace_merge(clean_service):
+    """Workspace config should override duplicates while preserving global-only keys."""
+    from core.v1.config.store import (
+        atomic_write_toml,
+        get_workspace_config_path,
+        get_global_config_path,
+    )
+
+    global_cfg = {
+        "search": {"max_docs": 5},
+        "index": {"use_gpu": False},
+        "paths": {"collections_dir": "./global-collections"},
+    }
+    atomic_write_toml(global_cfg, get_global_config_path())
+
+    workspace_cfg = {
+        "search": {"max_docs": 55},  # overrides
+        "paths": {"temp_dir": "./ws-temp"},  # new key
+    }
+    atomic_write_toml(workspace_cfg, get_workspace_config_path())
+
+    settings = clean_service.get()
+    assert settings.search.max_docs == 55  # overridden
+    assert settings.index.use_gpu is False  # global-only key retained
+    assert (
+        settings.paths.collections_dir == "./global-collections"
+    )  # global-only key retained
+    assert settings.paths.temp_dir == "./ws-temp"  # workspace-only key added
+
+
+def test_global_only_config(clean_service):
+    """When only global config exists, its values should be used."""
+    from core.v1.config.store import atomic_write_toml, get_global_config_path
+
+    cfg = {"index": {"embedding_batch_size": 128}}
+    atomic_write_toml(cfg, get_global_config_path())
+
+    # Ensure workspace config exists but is empty to prevent scaffold defaults overriding
+    from core.v1.config.store import (
+        get_workspace_config_path,
+        atomic_write_toml as write_ws,
+    )
+
+    write_ws({}, get_workspace_config_path())
+
+    settings = clean_service.get()
+    assert settings.index.embedding_batch_size == 128

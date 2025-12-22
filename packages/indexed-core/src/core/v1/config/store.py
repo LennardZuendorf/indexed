@@ -8,10 +8,11 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import tomllib
 import tomli_w
 import portalocker
+from platformdirs import user_config_dir
 
 
 # Fields that should never be persisted (contain secrets)
@@ -21,19 +22,38 @@ SECRET_FIELDS = {"api_token", "password", "token", "secret", "key", "credential"
 ENV_VAR_FIELDS = {"api_token_env", "password_env", "token_env"}
 
 
+def get_global_config_path() -> Path:
+    """Get path to global config file in user config directory."""
+    config_dir = Path(user_config_dir("indexed", "indexed"))
+    return config_dir / "config.toml"
+
+
+def get_workspace_config_path(workspace_path: Optional[Path] = None) -> Path:
+    """Get path to workspace config file (.indexed/config.toml).
+
+    Args:
+        workspace_path: Workspace root path. If None, uses current working directory.
+
+    Returns:
+        Path to workspace config file.
+    """
+    if workspace_path is None:
+        workspace_path = Path.cwd()
+    return workspace_path / ".indexed" / "config.toml"
+
+
 def get_config_path() -> Path:
-    """Get path to indexed.toml in project root."""
+    """DEPRECATED: Get path to indexed.toml in project root.
+
+    This function is kept for backwards compatibility but should not be used
+    in new code. Use get_global_config_path() or get_workspace_config_path() instead.
+    """
     return Path("indexed.toml")
 
 
 def get_backup_path() -> Path:
     """Get path to backup file."""
     return Path("indexed.toml.bak")
-
-
-def get_lock_path() -> Path:
-    """Get path to lock file."""
-    return Path("indexed.toml.lock")
 
 
 def _is_secret_field(key_path: str) -> bool:
@@ -80,7 +100,7 @@ def read_toml(path: Path | None = None) -> Dict[str, Any]:
     file_path = path or get_config_path()
     if not file_path.exists():
         return {}
-    with portalocker.Lock(get_lock_path(), timeout=5):
+    with portalocker.Lock(file_path.with_suffix(file_path.suffix + ".lock"), timeout=5):
         with file_path.open("rb") as f:
             return tomllib.load(f)
 
@@ -90,7 +110,7 @@ def atomic_write_toml(data: Dict[str, Any], path: Path | None = None) -> None:
     file_path = path or get_config_path()
     filtered = _filter_secrets(data)
     tmp_fd = None
-    with portalocker.Lock(get_lock_path(), timeout=5):
+    with portalocker.Lock(file_path.with_suffix(file_path.suffix + ".lock"), timeout=5):
         try:
             with tempfile.NamedTemporaryFile("wb", delete=False) as tmp:
                 tmp_fd = tmp.name
@@ -134,17 +154,10 @@ REQUIRED_ENV_VARS: List[str] = [
 ]
 
 
-def ensure_indexed_toml_exists() -> None:
-    """Ensure that an indexed.toml file exists with a full commented scaffold.
-
-    Creates a safe, non-secret scaffold if missing, including notes on required/optional fields.
-    """
-    path = get_config_path()
-    if path.exists():
-        return
-
-    template = """
-# Indexed configuration (indexed.toml)
+def _get_config_template() -> str:
+    """Get the configuration template content."""
+    return """
+# Indexed configuration
 # Notes:
 # - These are explicit defaults so you can see and edit the configuration
 # - Do NOT put secrets here; use environment variables referenced by *_env fields
@@ -162,7 +175,7 @@ include_full_text = false
 include_all_chunks = false
 include_matched_chunks = false
 # Set to a number 0.0..1.0 to filter by similarity; leave empty for no threshold
-# score_threshold = 
+# score_threshold =
 
 [index]
 default_indexer = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
@@ -215,8 +228,59 @@ level = "WARNING"  # one of: DEBUG, INFO, WARNING, ERROR, CRITICAL
 as_json = false     # set true for JSON (structured) logs
 """.lstrip()
 
+
+def ensure_global_config_exists() -> None:
+    """Ensure that a global config file exists with a full commented scaffold.
+
+    Creates a safe, non-secret scaffold if missing in ~/.config/indexed/config.toml.
+    """
+    path = get_global_config_path()
+    if path.exists():
+        return
+
+    # Ensure directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     # Write template directly (no secrets and comments preserved)
-    path.write_text(template, encoding="utf-8")
+    path.write_text(_get_config_template(), encoding="utf-8")
+
+
+def ensure_workspace_config_exists(workspace_path: Optional[Path] = None) -> None:
+    """Ensure that a workspace config file exists with a full commented scaffold.
+
+    Creates a safe, non-secret scaffold if missing in <workspace>/.indexed/config.toml.
+
+    Args:
+        workspace_path: Workspace root path. If None, uses current working directory.
+    """
+    if workspace_path is None:
+        workspace_path = Path.cwd()
+
+    path = get_workspace_config_path(workspace_path)
+    if path.exists():
+        return
+
+    # Ensure directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write template directly (no secrets and comments preserved)
+    path.write_text(_get_config_template(), encoding="utf-8")
+
+
+def ensure_indexed_toml_exists() -> None:
+    """DEPRECATED: Ensure that an indexed.toml file exists with a full commented scaffold.
+
+    This function is kept for backwards compatibility but should not be used
+    in new code. Use ensure_global_config_exists() or ensure_workspace_config_exists() instead.
+
+    Creates a safe, non-secret scaffold if missing, including notes on required/optional fields.
+    """
+    path = get_config_path()
+    if path.exists():
+        return
+
+    # Write template directly (no secrets and comments preserved)
+    path.write_text(_get_config_template(), encoding="utf-8")
 
 
 def ensure_env_example(required_vars: List[str] | None = None) -> None:

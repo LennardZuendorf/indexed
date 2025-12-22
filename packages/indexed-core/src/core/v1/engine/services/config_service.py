@@ -8,13 +8,16 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 from enum import Enum, auto
 
+from pathlib import Path
 from core.v1.config.settings import IndexedSettings
 from core.v1.config.store import (
     read_toml,
     atomic_write_toml,
-    get_config_path,
+    get_global_config_path,
+    get_workspace_config_path,
     validate_no_secrets,
-    ensure_indexed_toml_exists,
+    ensure_global_config_exists,
+    ensure_workspace_config_exists,
     ensure_env_example,
 )
 
@@ -85,12 +88,44 @@ class ConfigService:
             )
         return {k: v for k, v in data.items() if k in allowed}
 
+    def _load_merged_config(
+        self, workspace_path: Optional[Path] = None
+    ) -> Dict[str, Any]:
+        """Load and merge global and workspace configs.
+
+        Args:
+            workspace_path: Workspace root path. If None, uses current working directory.
+
+        Returns:
+            Merged configuration dictionary (workspace overrides global).
+        """
+        if workspace_path is None:
+            workspace_path = Path.cwd()
+
+        # Load global config
+        global_path = get_global_config_path()
+        global_config = read_toml(global_path)
+        global_config = self._filter_known_top_level(global_config)
+
+        # Load workspace config
+        workspace_path_obj = get_workspace_config_path(workspace_path)
+        workspace_config = read_toml(workspace_path_obj)
+        workspace_config = self._filter_known_top_level(workspace_config)
+
+        # Merge (workspace overrides global)
+        merged = self._deep_merge(global_config, workspace_config)
+        return merged
+
     def get(
         self, profile: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None
     ) -> IndexedSettings:
         """Load configuration with optional profile and runtime overrides."""
-        # Ensure configuration scaffolding exists
-        ensure_indexed_toml_exists()
+        # Determine workspace path (current working directory)
+        workspace_path = Path.cwd()
+
+        # Ensure configuration scaffolds exist for first-time users/tests
+        ensure_global_config_exists()
+        ensure_workspace_config_exists(workspace_path)
         ensure_env_example(None)
 
         # Use cache if possible
@@ -101,46 +136,56 @@ class ConfigService:
         ):
             return ConfigService._settings_cache
 
+        # Load merged config from global + workspace
+        merged_config = self._load_merged_config(workspace_path)
+
         if profile:
-            # Manual merge of profile into base TOML; exclude profiles from validation
-            toml_data = read_toml(get_config_path())
-            base_config = {k: v for k, v in toml_data.items() if k != "profiles"}
-            # Filter unknown top-level keys (avoid extra fields)
-            base_config = self._filter_known_top_level(base_config)
+            # Manual merge of profile into base config; exclude profiles from validation
+            # Profiles are stored in workspace config
+            workspace_path_obj = get_workspace_config_path(workspace_path)
+            toml_data = read_toml(workspace_path_obj)
             if "profiles" in toml_data and profile in toml_data["profiles"]:
-                base_config = self._deep_merge(
-                    base_config, toml_data["profiles"][profile]
+                merged_config = self._deep_merge(
+                    merged_config, toml_data["profiles"][profile]
                 )
             if overrides:
-                base_config = self._deep_merge(base_config, overrides)
+                merged_config = self._deep_merge(merged_config, overrides)
             try:
-                return IndexedSettings.model_validate(base_config)
+                return IndexedSettings.model_validate(merged_config)
             except Exception as exc:
                 raise ValueError(
                     f"Invalid configuration with profile '{profile}': {exc}"
                 ) from exc
 
-        # Normal path: load via pydantic sources
+        # Normal path: load defaults, then apply merged config, then overrides
         base_settings = IndexedSettings()
+        base_dict = base_settings.model_dump()
+
+        # Apply merged config (global + workspace)
+        base_dict = self._deep_merge(base_dict, merged_config)
+
+        # Apply runtime overrides if provided
         if overrides:
-            merged = self._deep_merge(base_settings.model_dump(), overrides)
-            try:
-                result = IndexedSettings.model_validate(merged)
-            except Exception as exc:
-                raise ValueError(
-                    f"Invalid configuration with overrides: {exc}"
-                ) from exc
-        else:
-            result = base_settings
+            base_dict = self._deep_merge(base_dict, overrides)
+
+        try:
+            result = IndexedSettings.model_validate(base_dict)
+        except Exception as exc:
+            raise ValueError(f"Invalid configuration: {exc}") from exc
 
         if profile is None and overrides is None:
             ConfigService._settings_cache = result
         return result
 
     def set(self, settings: Dict[str, Any], profile: Optional[str] = None) -> None:
-        """Overwrite configuration (or a profile section)."""
+        """Overwrite configuration (or a profile section) in workspace config."""
         validate_no_secrets(settings)
-        config_path = get_config_path()
+        workspace_path = Path.cwd()
+        config_path = get_workspace_config_path(workspace_path)
+
+        # Ensure workspace config exists
+        ensure_workspace_config_exists(workspace_path)
+
         if profile:
             existing = read_toml(config_path)
             if "profiles" not in existing:
@@ -152,9 +197,14 @@ class ConfigService:
         self._invalidate_cache()
 
     def update(self, patch: Dict[str, Any], profile: Optional[str] = None) -> None:
-        """Deep-merge a patch into existing configuration."""
+        """Deep-merge a patch into existing workspace configuration."""
         validate_no_secrets(patch)
-        config_path = get_config_path()
+        workspace_path = Path.cwd()
+        config_path = get_workspace_config_path(workspace_path)
+
+        # Ensure workspace config exists
+        ensure_workspace_config_exists(workspace_path)
+
         existing = read_toml(config_path)
         if profile:
             if "profiles" not in existing:
@@ -174,8 +224,13 @@ class ConfigService:
         self._invalidate_cache()
 
     def delete(self, keys: List[str], profile: Optional[str] = None) -> None:
-        """Delete one or more keys from base config or a profile."""
-        config_path = get_config_path()
+        """Delete one or more keys from workspace config or a profile."""
+        workspace_path = Path.cwd()
+        config_path = get_workspace_config_path(workspace_path)
+
+        if not config_path.exists():
+            return
+
         existing = read_toml(config_path)
         if profile:
             if "profiles" not in existing or profile not in existing["profiles"]:
@@ -193,7 +248,10 @@ class ConfigService:
         self._invalidate_cache()
 
     def list_profiles(self) -> List[str]:
-        config_data = read_toml(get_config_path())
+        """List profiles from workspace config."""
+        workspace_path = Path.cwd()
+        config_path = get_workspace_config_path(workspace_path)
+        config_data = read_toml(config_path)
         return list(config_data.get("profiles", {}).keys())
 
     def create_profile(self, name: str, config: Dict[str, Any]) -> None:

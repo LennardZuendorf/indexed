@@ -1,24 +1,24 @@
-"""Validate auto-creation behavior for indexed.toml and .env.example."""
+"""Validate auto-creation behavior for workspace config and .env.example."""
 
 from pathlib import Path
 from typing import Dict, Any
 import json
 
 from core.v1.config.store import (
-    ensure_indexed_toml_exists,
+    ensure_workspace_config_exists,
     ensure_env_example,
     read_toml,
-    get_config_path,
+    get_workspace_config_path,
 )
 from core.v1.engine.services.config_service import ConfigService
 
 
-def test_ensure_indexed_toml_exists_creates_minimal(tmp_path, monkeypatch):
+def test_ensure_workspace_config_exists_creates_minimal(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    cfg_path = get_config_path()
+    cfg_path = get_workspace_config_path(tmp_path)
     assert not cfg_path.exists()
 
-    ensure_indexed_toml_exists()
+    ensure_workspace_config_exists(tmp_path)
 
     assert cfg_path.exists()
     data: Dict[str, Any] = read_toml(cfg_path)
@@ -71,17 +71,35 @@ def test_config_service_get_triggers_creation(tmp_path, monkeypatch):
     ConfigService._instance = None
     ConfigService._settings_cache = None
 
-    cfg_path = get_config_path()
+    # Use a temp directory for global config to avoid conflicts with existing config
+    temp_global_config_dir = tmp_path / "global_config"
+    temp_global_config_dir.mkdir(parents=True)
+    temp_global_config_path = temp_global_config_dir / "config.toml"
+
+    # Mock the global config path to use temp directory
+    from core.v1.config import store
+
+    def mock_get_global_config_path():
+        return temp_global_config_path
+
+    monkeypatch.setattr(store, "get_global_config_path", mock_get_global_config_path)
+
+    workspace_cfg_path = get_workspace_config_path(tmp_path)
     env_example = Path(".env.example")
 
-    assert not cfg_path.exists()
+    assert not workspace_cfg_path.exists()
+    assert not temp_global_config_path.exists()
     assert not env_example.exists()
 
     # Calling get should create files
     service = ConfigService.get_instance()
     settings = service.get()
 
-    assert cfg_path.exists()
+    # Workspace config should be created
+    assert workspace_cfg_path.exists()
+    # Global config should be created
+    assert temp_global_config_path.exists()
+    # .env.example should be created
     assert env_example.exists()
 
     # Basic sanity on loaded settings
