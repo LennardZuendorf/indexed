@@ -94,5 +94,3 @@ volumes:
   # Persistent storage for collections and configuration
   indexed-data:
     name: indexed-data
-
-

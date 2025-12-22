@@ -43,24 +43,24 @@ from typing import Protocol, runtime_checkable, ClassVar
 @runtime_checkable
 class BaseConnector(Protocol):
     """Protocol for document source connectors."""
-    
+
     META: ClassVar[Any]  # Optional metadata
-    
+
     @property
     def reader(self):
         """Document reader instance."""
         ...
-    
+
     @property
     def converter(self):
         """Document converter instance."""
         ...
-    
+
     @property
     def connector_type(self) -> str:
         """Unique identifier (e.g., 'jira', 'confluence', 'files')."""
         ...
-    
+
     @classmethod
     def from_config(cls, config_service: Any) -> "BaseConnector":
         """Create instance from ConfigService."""
@@ -92,7 +92,7 @@ class JiraDocumentReader:
     def get_number_of_documents(self) -> int:
         """Return total document count for progress tracking."""
         ...
-    
+
     def read_all_documents(self) -> Iterator[dict]:
         """Yield raw documents from source."""
         for issue in self._fetch_issues():
@@ -116,7 +116,7 @@ class JiraDocumentConverter:
     def convert(self, document: dict) -> list[dict]:
         """Convert raw document to list of chunks."""
         chunks = []
-        
+
         # Create main chunk from description
         if document.get("content"):
             chunks.append({
@@ -124,7 +124,7 @@ class JiraDocumentConverter:
                 "text": document["content"],
                 "metadata": document["metadata"],
             })
-        
+
         # Create chunk from comments
         for i, comment in enumerate(document.get("comments", [])):
             chunks.append({
@@ -132,7 +132,7 @@ class JiraDocumentConverter:
                 "text": comment["body"],
                 "metadata": {**document["metadata"], "type": "comment"},
             })
-        
+
         return chunks
 ```
 
@@ -233,14 +233,14 @@ from pydantic import BaseModel, Field
 
 class MyConnectorConfig(BaseModel):
     """Configuration for MyConnector."""
-    
+
     url: str = Field(..., description="API endpoint URL")
     query: str = Field(..., description="Query filter")
     api_key: str = Field(
         None,
         description="API key (env: MY_API_KEY)"
     )
-    
+
     def get_api_key(self) -> str:
         import os
         return self.api_key or os.getenv("MY_API_KEY", "")
@@ -258,15 +258,15 @@ class MyDocumentReader:
         self.query = query
         self.api_key = api_key
         self._client = self._create_client()
-    
+
     def _create_client(self):
         # Initialize your API client
         ...
-    
+
     def get_number_of_documents(self) -> int:
         """Return total document count."""
         return self._client.count(self.query)
-    
+
     def read_all_documents(self) -> Iterator[dict]:
         """Yield raw documents."""
         for item in self._client.search(self.query):
@@ -289,12 +289,12 @@ from typing import List
 class MyDocumentConverter:
     def __init__(self, chunk_size: int = 512):
         self.chunk_size = chunk_size
-    
+
     def convert(self, document: dict) -> List[dict]:
         """Convert raw document to chunks."""
         content = document.get("content", "")
         chunks = []
-        
+
         # Simple chunking by size
         for i in range(0, len(content), self.chunk_size):
             chunk_text = content[i:i + self.chunk_size]
@@ -303,7 +303,7 @@ class MyDocumentConverter:
                 "text": chunk_text,
                 "metadata": document["metadata"],
             })
-        
+
         return chunks
 ```
 
@@ -322,7 +322,7 @@ from .converter import MyDocumentConverter
 
 class MyConnector:
     """Connector for MyService."""
-    
+
     META: ClassVar[ConnectorMetadata] = ConnectorMetadata(
         name="my_connector",
         display_name="My Service",
@@ -330,30 +330,30 @@ class MyConnector:
         config_class=MyConnectorConfig,
         version="1.0.0",
     )
-    
+
     def __init__(self, url: str, query: str, api_key: str):
         self._reader = MyDocumentReader(url, query, api_key)
         self._converter = MyDocumentConverter()
-    
+
     @property
     def reader(self) -> MyDocumentReader:
         return self._reader
-    
+
     @property
     def converter(self) -> MyDocumentConverter:
         return self._converter
-    
+
     @property
     def connector_type(self) -> str:
         return "my_connector"
-    
+
     @classmethod
     def from_config(cls, config_service: ConfigService) -> "MyConnector":
         """Create connector from ConfigService."""
         config_service.register(MyConnectorConfig, path="sources.my_connector")
         provider = config_service.bind()
         cfg = provider.get(MyConnectorConfig)
-        
+
         return cls(
             url=cfg.url,
             query=cfg.query,
@@ -406,17 +406,17 @@ def test_my_connector_reads_documents():
     mock_client.search.return_value = [
         {"id": "1", "body": "content", "title": "Test", "created_at": "2024-01-01"}
     ]
-    
+
     reader = MyDocumentReader(
         url="https://api.example.com",
         query="test",
         api_key="key"
     )
     reader._client = mock_client
-    
+
     # Act
     docs = list(reader.read_all_documents())
-    
+
     # Assert
     assert len(docs) == 1
     assert docs[0]["id"] == "1"
@@ -429,10 +429,10 @@ def test_my_connector_converts_to_chunks():
         "content": "x" * 250,
         "metadata": {"title": "Test"}
     }
-    
+
     # Act
     chunks = converter.convert(document)
-    
+
     # Assert
     assert len(chunks) == 3
     assert all(c["metadata"]["title"] == "Test" for c in chunks)
@@ -446,8 +446,3 @@ def test_my_connector_converts_to_chunks():
 4. **Provide Progress Info** - Implement `get_number_of_documents()` accurately
 5. **Use Config Models** - Define Pydantic models for type safety
 6. **Document Environment Variables** - Note required env vars in field descriptions
-
-
-
-
-

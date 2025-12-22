@@ -282,18 +282,17 @@ from your.module import YourClass
 @pytest.mark.slow  # If applicable
 def test_component_functionality(clean_config, temp_workspace):
     """Test specific functionality with clear description.
-    
+
     This test verifies that [component] correctly [behavior]
     when [conditions].
     """
     # Arrange
     component = YourClass(config=clean_config)
-    
+
     # Act
     result = component.do_something()
-    
+
     # Assert
     assert result is not None
     assert result.status == "expected"
 ```
-

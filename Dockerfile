@@ -86,5 +86,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Default command: mcp (starts MCP server in stdio mode)
 ENTRYPOINT ["indexed"]
 CMD ["mcp"]
-
-

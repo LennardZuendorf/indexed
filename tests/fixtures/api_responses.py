@@ -17,22 +17,15 @@ CONFLUENCE_PAGE_RESPONSE = {
                 }
             },
             "space": {"key": "DEV"},
-            "_links": {
-                "webui": "/display/DEV/Authentication+Guide"
-            }
+            "_links": {"webui": "/display/DEV/Authentication+Guide"},
         }
     ],
     "size": 1,
     "limit": 25,
-    "start": 0
+    "start": 0,
 }
 
-CONFLUENCE_EMPTY_RESPONSE = {
-    "results": [],
-    "size": 0,
-    "limit": 25,
-    "start": 0
-}
+CONFLUENCE_EMPTY_RESPONSE = {"results": [], "size": 0, "limit": 25, "start": 0}
 
 # Jira API responses
 JIRA_ISSUE_RESPONSE = {
@@ -46,19 +39,13 @@ JIRA_ISSUE_RESPONSE = {
                 "issuetype": {"name": "Story"},
                 "status": {"name": "In Progress"},
                 "priority": {"name": "High"},
-                "assignee": {"displayName": "John Doe"}
-            }
+                "assignee": {"displayName": "John Doe"},
+            },
         }
     ],
     "total": 1,
     "maxResults": 50,
-    "startAt": 0
+    "startAt": 0,
 }
 
-JIRA_EMPTY_RESPONSE = {
-    "issues": [],
-    "total": 0,
-    "maxResults": 50,
-    "startAt": 0
-}
-
+JIRA_EMPTY_RESPONSE = {"issues": [], "total": 0, "maxResults": 50, "startAt": 0}

@@ -42,5 +42,3 @@ class ConnectorMetadata:
 
 
 __all__ = ["ConnectorMetadata"]
-
-

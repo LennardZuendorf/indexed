@@ -5,4 +5,3 @@ This package contains integration tests for:
 - Jira connector (Server/DC and Cloud)
 - FileSystem connector
 """
-

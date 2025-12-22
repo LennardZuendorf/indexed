@@ -65,7 +65,7 @@ def _init_app(
 ) -> None:
     """Initialize logging and storage mode."""
     setup_root_logger(level_str=log_level or ("INFO" if verbose else None))
-    
+
     # Resolve storage mode
     config_service = ConfigService.instance(
         workspace=Path.cwd(),
@@ -89,11 +89,11 @@ Commands:
   index inspect   Inspect Collections
   index update    Update a Collection
   index remove    Remove one or more Collections
-  
+
   config inspect  Inspect Configuration Settings
   config set      Set Configuration Values
   config validate Validate Configuration
-  
+
   mcp run         Run The MCP Server
   mcp dev         Run MCP Server In Development Mode
 ```
@@ -128,10 +128,10 @@ def _parse_early_storage_flags() -> tuple[bool, bool]:
     """Parse --local and --global flags from sys.argv early."""
     use_local = "--local" in sys.argv
     use_global = "--global" in sys.argv
-    
+
     # Remove flags from argv so Typer doesn't complain
     sys.argv = [a for a in sys.argv if a not in ("--local", "--global")]
-    
+
     return use_local, use_global
 ```
 
@@ -140,15 +140,15 @@ def _parse_early_storage_flags() -> tuple[bool, bool]:
 ```mermaid
 flowchart TB
     Start[Command Invoked] --> CheckFlags{--local or --global?}
-    
+
     CheckFlags -->|--local| UseLocal[Use ./.indexed/]
     CheckFlags -->|--global| UseGlobal[Use ~/.indexed/]
     CheckFlags -->|Neither| CheckConfig{storage.mode in config?}
-    
+
     CheckConfig -->|local| UseLocal
     CheckConfig -->|global| UseGlobal
     CheckConfig -->|Not set| CheckExists{.indexed/ exists?}
-    
+
     CheckExists -->|Yes| UseLocal
     CheckExists -->|No| UseGlobal
 ```
@@ -275,13 +275,13 @@ def setup_root_logger(
 ) -> None:
     """Configure Loguru root logger."""
     from loguru import logger
-    
+
     # Remove default handler
     logger.remove()
-    
+
     # Determine level
     level = level_str.upper() if level_str else "WARNING"
-    
+
     # Add handler with appropriate format
     if json_mode:
         logger.add(sys.stderr, format="{message}", serialize=True, level=level)
@@ -322,32 +322,32 @@ def create_jira(
 ) -> None:
     """Create a Jira collection."""
     config = typer.Context.obj["config_service"]
-    
+
     # Override config with CLI args
     if url:
         config.set("sources.jira.url", url)
     if jql:
         config.set("sources.jira.query", jql)
-    
+
     # Validate requirements
     validation = config.validate_requirements(
         config_class=JiraCloudConfig,
         namespace="sources.jira",
         cli_overrides={"url": url, "jql": jql},
     )
-    
+
     if validation["missing"]:
         # Prompt for missing values
         for field in validation["missing"]:
             value = typer.prompt(f"Enter {field}")
             config.set_value(f"sources.jira.{field}", value)
-    
+
     # Create collection
     connector = JiraCloudConnector.from_config(config)
     with create_progress() as progress:
         task = progress.add_task("Indexing...", total=None)
         svc_create([SourceConfig(name=collection, ...)], config_service=config)
-    
+
     console.print(success(f"Collection '{collection}' created"))
 ```
 
@@ -365,7 +365,7 @@ def search(
 ) -> None:
     """Search indexed collections."""
     results = svc_search(query, configs=configs, max_docs=limit)
-    
+
     if json_output:
         console.print_json(data=results)
     else:
@@ -475,4 +475,3 @@ indexed mcp inspect
 2. **Verbose shows progress** - What's happening step by step
 3. **Debug for developers** - Technical details, timings
 4. **No print statements** - Always use logger or Rich console
-
