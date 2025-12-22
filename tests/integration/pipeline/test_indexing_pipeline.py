@@ -18,20 +18,27 @@ TEST_INDEXER = build_indexer_name("all-MiniLM-L6-v2")
 def test_filesystem_indexing_pipeline(
     clean_config, sample_documents, temp_collections_path
 ):
-    """Test complete indexing pipeline end-to-end with filesystem connector."""
+    """Test complete indexing pipeline end-to-end with filesystem connector.
+
+    Uses an isolated temporary collections directory to avoid touching real data.
+    """
     source_config = SourceConfig(
         name="test-collection",
         type="localFiles",
         base_url_or_path=str(sample_documents),
         indexer=TEST_INDEXER,
-        reader_opts={"includePatterns": [r".*\.md$"], "excludePatterns": []},
+        reader_opts={"includePatterns": [".*\\.md$"], "excludePatterns": []},
     )
 
-    # Execute pipeline
-    create([source_config])
+    # Execute pipeline using isolated storage
+    create(
+        [source_config],
+        config_service=clean_config,
+        collections_path=temp_collections_path,
+    )
 
-    # Verify results (collections are stored in ./data/collections by default)
-    index_path = Path("./data/collections") / "test-collection"
+    # Verify results in the temp collections path
+    index_path = Path(temp_collections_path) / "test-collection"
     assert index_path.exists(), "Collection directory should be created"
 
     # Check for expected files
@@ -46,7 +53,7 @@ def test_filesystem_indexing_pipeline(
 def test_multiple_document_indexing(
     clean_config, temp_workspace, temp_collections_path
 ):
-    """Test indexing pipeline with multiple documents."""
+    """Test indexing pipeline with multiple documents using isolated storage."""
     # Create test documents
     docs_dir = temp_workspace / "multi_docs"
     docs_dir.mkdir()
@@ -63,14 +70,18 @@ def test_multiple_document_indexing(
         type="localFiles",
         base_url_or_path=str(docs_dir),
         indexer=TEST_INDEXER,
-        reader_opts={"includePatterns": [r".*\.md$"], "excludePatterns": []},
+        reader_opts={"includePatterns": [".*\\.md$"], "excludePatterns": []},
     )
 
-    # Execute pipeline
-    create([source_config])
+    # Execute pipeline using isolated storage
+    create(
+        [source_config],
+        config_service=clean_config,
+        collections_path=temp_collections_path,
+    )
 
-    # Verify collection was created (collections are stored in ./data/collections by default)
-    index_path = Path("./data/collections") / "multi-collection"
+    # Verify collection was created in the temp collections path
+    index_path = Path(temp_collections_path) / "multi-collection"
     assert index_path.exists()
     assert (index_path / "manifest.json").exists()
 
@@ -80,20 +91,26 @@ def test_multiple_document_indexing(
 def test_indexing_with_cache(
     clean_config, sample_documents, temp_collections_path, temp_caches_path
 ):
-    """Test indexing pipeline with caching enabled."""
+    """Test indexing pipeline with caching enabled using isolated storage."""
     source_config = SourceConfig(
         name="cached-collection",
         type="localFiles",
         base_url_or_path=str(sample_documents),
         indexer=TEST_INDEXER,
-        reader_opts={"includePatterns": [r".*\.md$"], "excludePatterns": []},
+        reader_opts={"includePatterns": [".*\\.md$"], "excludePatterns": []},
     )
 
-    # First indexing run with cache
-    create([source_config], use_cache=True)
+    # First indexing run with cache using isolated storage paths
+    create(
+        [source_config],
+        config_service=clean_config,
+        use_cache=True,
+        collections_path=temp_collections_path,
+        caches_path=temp_caches_path,
+    )
 
-    # Verify collection was created (collections are stored in ./data/collections by default)
-    index_path = Path("./data/collections") / "cached-collection"
+    # Verify collection was created in the temp collections path
+    index_path = Path(temp_collections_path) / "cached-collection"
     assert index_path.exists()
 
 
@@ -102,23 +119,35 @@ def test_indexing_with_cache(
 def test_indexing_with_force_recreate(
     clean_config, sample_documents, temp_collections_path
 ):
-    """Test indexing pipeline with force flag to recreate existing collection."""
+    """Test indexing pipeline with force flag to recreate existing collection.
+
+    Uses an isolated collections directory so repeated runs don't touch real data.
+    """
     source_config = SourceConfig(
         name="force-collection",
         type="localFiles",
         base_url_or_path=str(sample_documents),
         indexer=TEST_INDEXER,
-        reader_opts={"includePatterns": [r".*\.md$"], "excludePatterns": []},
+        reader_opts={"includePatterns": [".*\\.md$"], "excludePatterns": []},
     )
 
-    # First indexing run
-    create([source_config])
+    # First indexing run using isolated storage
+    create(
+        [source_config],
+        config_service=clean_config,
+        collections_path=temp_collections_path,
+    )
 
-    index_path = Path("./data/collections") / "force-collection"
+    index_path = Path(temp_collections_path) / "force-collection"
     assert index_path.exists()
 
-    # Second indexing run with force=True
-    create([source_config], force=True)
+    # Second indexing run with force=True against the same isolated path
+    create(
+        [source_config],
+        config_service=clean_config,
+        force=True,
+        collections_path=temp_collections_path,
+    )
 
     # Collection should still exist
     assert index_path.exists()
@@ -131,7 +160,7 @@ def test_indexing_empty_directory(clean_config, temp_workspace, temp_collections
 
     Expected behavior: Collections with no documents are NOT created.
     This test verifies that the system handles empty directories gracefully
-    without creating empty collections.
+    without creating empty collections, using an isolated collections path.
     """
     empty_dir = temp_workspace / "empty"
     empty_dir.mkdir(exist_ok=True)
@@ -141,13 +170,17 @@ def test_indexing_empty_directory(clean_config, temp_workspace, temp_collections
         type="localFiles",
         base_url_or_path=str(empty_dir),
         indexer=TEST_INDEXER,
-        reader_opts={"includePatterns": [r".*\.md$"], "excludePatterns": []},
+        reader_opts={"includePatterns": [".*\\.md$"], "excludePatterns": []},
     )
 
-    # Execute pipeline with empty directory
+    # Execute pipeline with empty directory using isolated storage
     # This should complete without error but not create a collection
-    create([source_config])
+    create(
+        [source_config],
+        config_service=clean_config,
+        collections_path=temp_collections_path,
+    )
 
     # Collection directory should NOT be created when there are no documents
-    index_path = Path("./data/collections") / "empty-collection"
+    index_path = Path(temp_collections_path) / "empty-collection"
     assert not index_path.exists(), "Empty collections should not be created"
