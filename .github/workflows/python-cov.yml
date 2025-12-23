@@ -1,4 +1,4 @@
-name: Pythong Test and Upload Coverage
+name: Python Test and Upload Coverage
 
 on:
   workflow_dispatch:
