@@ -1,6 +1,6 @@
 # Root workspace configuration for indexed monorepo
 # This file manages the workspace and shared development dependencies
-# Individual packages are in packages/indexed-core and packages/indexed-cli
+# Applications are in apps/ and shared packages are in packages/
 
 # Ruff configuration
 [tool.ruff]
@@ -19,7 +19,7 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=indexed/src/indexed",
+    "--cov=apps/indexed/src/indexed",
     "--cov=packages/indexed-core/src/core",
     "--cov=packages/indexed-connectors/src/connectors",
     "--cov=packages/utils/src/utils",
@@ -60,11 +60,8 @@ ignore_missing_imports = true
 
 [tool.uv.workspace]
 members = [
-    "packages/utils",
-    "packages/indexed-connectors",
-    "packages/indexed-core",
-    "packages/indexed-config",
-    "indexed"
+    "apps/*",
+    "packages/*"
 ]
 
 [dependency-groups]

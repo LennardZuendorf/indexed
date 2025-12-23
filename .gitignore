@@ -58,5 +58,4 @@ tmp/
 .pytest_cache/
 .coverage
 htmlcov/
-
-.indexed/
+*.bak

@@ -102,7 +102,7 @@ def test_search_with_max_results(clean_config, temp_workspace, temp_collections_
 
     for i in range(10):
         (docs_dir / f"doc{i}.md").write_text(
-            f"# Document {i}\n\n" f"Content about topic {i} and testing."
+            f"# Document {i}\n\nContent about topic {i} and testing."
         )
 
     source_config = SourceConfig(

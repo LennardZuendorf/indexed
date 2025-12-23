@@ -377,7 +377,7 @@ class TomlStore:
                 if seg in cur and not isinstance(cur[seg], dict):
                     raise ValueError(
                         f"Environment variable conflict: '{k}' conflicts with existing scalar value at '{seg}'. "
-                        f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix):]}"
+                        f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix) :]}"
                     )
                 cur = cur.setdefault(seg, {})  # type: ignore[assignment]
             cur[parts[-1].lower()] = v
