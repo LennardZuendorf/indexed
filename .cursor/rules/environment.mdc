@@ -1,185 +1,372 @@
----
-alwaysApply: true
----
-# Development Environment Rules: Using `uv`
+# 🛠️ DEVELOPMENT ENVIRONMENT RULES
 
-This project requires **Python 3.11+** and standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.
-You **must not manually activate Python virtual environments** (e.g., `source venv/bin/activate`).
-Instead, always use `uv run <command>` to ensure commands are executed inside the managed environment.
+**CRITICAL: These environment rules MUST be followed WITHOUT EXCEPTION.**
 
-The project uses [una](https://github.com/carderne/una) with [hatch-una](https://pypi.org/project/hatch-una/) for building distributable wheels that bundle all workspace packages.
+This project requires **Python 3.11+** and standardizes on [uv](https://github.com/astral-sh/uv) for environment management, dependency synchronization, and command execution.
+
+You **MUST NOT manually activate Python virtual environments**. **ALWAYS use `uv run <command>`**.
 
 ---
 
-## 1. Environment Setup
+## 1. CORE DEPENDENCIES & TECHNOLOGY STACK
 
-### Install runtime dependencies only
+### Runtime Dependencies (Production)
+
+| Dependency | Purpose |
+|-----------|---------|
+| **FAISS** | Vector similarity search (IndexFlatL2, IndexIVFFlat, IndexHNSW) |
+| **Sentence Transformers** | Text embeddings (all-MiniLM-L6-v2 default, 384-dim) |
+| **Unstructured** | Multi-format document parsing (PDF, DOCX, PPTX, MD, TXT) |
+| **Typer** | Modern CLI framework |
+| **Rich** | Terminal output and UI components |
+| **FastMCP** | Model Context Protocol server |
+| **Pydantic** | Configuration validation |
+| **python-dotenv** | Environment file loading |
+| **requests** | HTTP client for connectors |
+| **Loguru** | Structured logging |
+
+### Development Dependencies
+
+| Tool | Purpose |
+|------|---------|
+| **pytest** + **pytest-cov** | Testing and coverage |
+| **ruff** | Linting, formatting, import sorting |
+| **mypy** | Static type checking |
+| **pre-commit** | Git hooks for quality gates |
+| **build** | PEP 517 wheel building |
+
+### Build & Distribution
+
+- **uv** - Package manager and environment management
+- **una** - Monorepo workspace tool
+- **hatch-una** - Bundled workspace wheel plugin
+- **pyproject-build** - PEP 517 build tool
+
+---
+
+## 2. MONOREPO STRUCTURE
+
+The project uses a **uv workspace monorepo** with independent packages bundled into a single distributable wheel.
+
+### Workspace Layout
+
+```
+indexed/
+├── pyproject.toml                 # Root workspace config
+├── uv.lock                        # Locked dependencies (commit this!)
+│
+├── apps/indexed/                  # Main CLI application
+│   ├── src/indexed/              # CLI commands, MCP server
+│   └── pyproject.toml
+│
+├── packages/                      # Bundled packages
+│   ├── indexed-core/             # Engine, indexing, search
+│   ├── indexed-config/           # Configuration management
+│   ├── indexed-connectors/       # Jira, Confluence, Files connectors
+│   └── utils/                    # Shared utilities
+│
+├── tests/                         # Unit and integration tests
+├── docs/                          # Development documentation
+└── .cursor/rules/                # Context rules for AI agents
+```
+
+### Workspace Configuration
+
+```toml
+[tool.uv.workspace]
+members = [
+    "apps/indexed",
+    "packages/indexed-core",
+    "packages/indexed-config",
+    "packages/indexed-connectors",
+    "packages/utils",
+]
+```
+
+Each package has its own `pyproject.toml` with independent dependencies and tests.
+
+---
+
+## 3. ENVIRONMENT SETUP
+
+### Install Runtime Dependencies
+
 ```bash
 uv sync
 ```
 
-### Install with development dependencies
-This installs tools such as **pytest**, **ruff**, **mypy**, and other dev tools:
+### Install with Development Dependencies
+
 ```bash
 uv sync --all-groups
 ```
 
-> ⚠️ Always run `uv sync` (or `uv sync --all-groups`) after modifying `pyproject.toml` or dependency groups.
+Installs pytest, ruff, mypy, pre-commit, and build tools.
+
+**⚠️ MANDATORY:** Always run `uv sync` after modifying any `pyproject.toml`.
 
 ---
 
-## 2. Running the CLI
+## 4. TESTING
 
-The main command-line interface for this project is `indexed-cli`. Always run it with `uv run`.
+### Run Full Test Suite
 
-### General help
-```bash
-uv run indexed-cli --help
-```
-
-### Create collections
-```bash
-uv run indexed-cli create jira -c my-issues -u https://company.atlassian.net --jql "project = PROJ"
-uv run indexed-cli create confluence -c wiki -u https://company.atlassian.net --cql "space = DEV" --readOnlyFirstLevelComments
-uv run indexed-cli create files -c docs --basePath ./documents --includePatterns ".*\.md$"
-```
-
-### Search collections
-```bash
-uv run indexed-cli search "auth methods" -c api-docs --json --maxNumberOfDocuments 5
-```
-
-### Update or delete
-```bash
-uv run indexed-cli update
-uv run indexed-cli delete -c docs --yes
-```
-
-### Inspect and list
-```bash
-uv run indexed-cli inspect --json --include-index-size
-uv run indexed-cli list
-```
-
-### Legacy commands
-These are kept for backwards compatibility and should only be used when strictly necessary:
-```bash
-uv run indexed-cli legacy collection-search ...
-uv run indexed-cli legacy collection-update ...
-uv run indexed-cli legacy collection-mcp ...
-```
-
-### MCP Server
-```bash
-uv run indexed-mcp
-```
-
----
-
-## 3. Testing (pytest)
-
-All tests are executed with `pytest` inside the uv-managed environment.
-
-### Run full test suite with coverage
 ```bash
 uv run pytest -q
 ```
 
-### Run specific tests
+Runs all tests across all packages with coverage tracking.
+
+### Run Specific Package Tests
+
 ```bash
-uv run pytest tests/cli/test_app.py -q
-uv run pytest tests/cli/test_app.py::test_create_jira_calls_service -q
-uv run pytest -k "search and json" -q
+uv run pytest tests/packages/indexed-core/ -q
+uv run pytest tests/packages/indexed-config/ -q
+uv run pytest tests/apps/indexed_app/ -q
 ```
 
-### Disable coverage temporarily
+### Run with Coverage Report
+
 ```bash
-uv run pytest -q -o addopts=
+uv run pytest -q --cov=src --cov-report=html
 ```
 
-### Coverage report
-After running tests with coverage enabled, open the HTML report:
-```
-htmlcov/index.html
-```
+View report at `htmlcov/index.html`.
+
+### Test Organization
+
+- `tests/apps/indexed_app/` - CLI application tests
+- `tests/packages/` - Individual package tests
+- `tests/integration/` - End-to-end tests
+- `tests/fixtures/` - Shared test data
 
 ---
 
-## 4. Linting & Formatting (ruff)
+## 5. CODE QUALITY (ruff)
 
-We use [ruff](https://docs.astral.sh/ruff/) for linting and formatting.
+[ruff](https://docs.astral.sh/ruff/) handles linting, formatting, and import sorting across the entire monorepo.
 
-### Run linter
+### Run Linter
+
 ```bash
 uv run ruff check .
 ```
 
-### Auto-fix linting issues
+### Auto-Fix Issues
+
 ```bash
 uv run ruff check . --fix
 ```
 
-### Run formatter
+Fixes unused imports, whitespace, line length, and import sorting issues.
+
+### Format Code
+
 ```bash
 uv run ruff format
 ```
 
+### Quality Workflow
+
+```bash
+uv run ruff check . --fix
+uv run ruff format
+uv run ruff check .
+```
+
+### Configuration
+
+Configured in root `pyproject.toml`:
+- **Line length:** 100 characters
+- **Target Python:** 3.11+
+- **Rules:** F (Pyflakes), E (pycodestyle errors), W (warnings), I (isort)
+
 ---
 
-## 5. Building Distributable Wheels
+## 6. TYPE CHECKING (mypy)
 
-The project uses **una/hatch-una** for building distributable wheels that bundle all workspace packages into a single installable wheel.
+```bash
+uv run mypy src/
+```
 
-### Build the indexed application wheel
+Check entire monorepo or specific packages.
+
+---
+
+## 7. BUILDING DISTRIBUTABLE WHEELS
+
+The project uses **una/hatch-una** to bundle all workspace packages into a single wheel.
+
+### Build Complete Wheel
+
+**From project root:**
+
 ```bash
 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 ```
 
-This produces a wheel file in `dist/` that contains:
-- The main `indexed` application
-- All bundled workspace packages (`indexed-core`, `indexed-connectors`, `indexed-config`, `indexed-utils`)
+Produces `dist/indexed-{version}-py3-none-any.whl` containing:
+- Main `indexed` CLI application
+- All bundled workspace packages (indexed-core, indexed-config, indexed-connectors, utils)
 
-### Install the wheel
+### Test Wheel Installation
+
 ```bash
-pip install dist/[wheel path]
+pip install dist/indexed-*.whl
+indexed-cli --help
+pip uninstall indexed
 ```
 
-### Simple Dockerfile with pre-built wheel
+### Important Notes
+
+- **ALWAYS build from project ROOT**, not from package directory
+- The wheel is completely self-contained (no repo required for installation)
+- **NEVER use `una sync`** (causes dependency resolution issues)
+
+### Docker Deployment
+
 ```dockerfile
 FROM python:3.11-slim
 COPY dist dist
 RUN pip install dist/*.whl
-ENTRYPOINT ["indexed"]
+ENTRYPOINT ["indexed-mcp"]
 ```
 
-### Pre-push Hooks
-The project has pre-commit hooks configured to run before pushing:
-- **build-check**: Builds the wheel to verify the package is buildable
-- **pytest**: Runs the test suite
+---
 
-Install hooks with:
+## 8. GIT HOOKS
+
+Pre-commit and pre-push hooks run automatically:
+
+**Pre-commit hooks:**
+- ruff linting
+- ruff formatting
+
+**Pre-push hooks:**
+- Full test suite verification
+- Wheel build verification
+
+Install hooks:
+
 ```bash
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
-> **Note**: `una sync` is not used because it misinterprets internal submodule imports within packages as external workspace dependencies. The build works correctly without it.
+Hooks run across entire monorepo. They will block commits/pushes if violations are detected.
 
 ---
 
-## 6. Best Practices & Tips
+## 9. DEPENDENCY MANAGEMENT
 
-- Always use `uv run <command>` for any tool (pytest, ruff, mypy, custom scripts, etc.).
-- Keep environments in sync by re-running `uv sync` after dependency changes.
-- Source code is installed from the `src/` directory using hatchling, which means imports like:
-  ```python
-  from indexed.app import app
-  from core.v1 import Index
-  from connectors import FileSystemConnector
-  ```
-  will work correctly inside `uv run`.
-- Use `uvx --from build pyproject-build` to build distributable wheels with bundled dependencies.
-- Install pre-commit hooks to catch issues before pushing: `uv run pre-commit install --hook-type pre-commit --hook-type pre-push`
+### Update Dependencies
+
+```bash
+# Update all dependencies
+uv sync --upgrade
+
+# Update specific dependency
+uv sync --upgrade-package pytest
+```
+
+### Add Dependencies
+
+Edit relevant `pyproject.toml`, add to `[project.dependencies]`, then run:
+
+```bash
+uv sync --all-groups
+```
+
+### Workspace Package Dependencies
+
+Packages can depend on other workspace packages:
+
+```toml
+[project.dependencies]
+indexed-core = { path = "../packages/indexed-core", editable = true }
+```
+
+### Lock File
+
+`uv.lock` contains exact pinned versions for reproducible builds.
+
+- **MUST commit** `uv.lock` to version control
+- **MUST NOT** manually edit
+- Automatically updated when `pyproject.toml` changes
 
 ---
 
-✅ By following these rules, developers ensure that all environments remain reproducible and consistent, avoiding conflicts with system Python installations or unmanaged virtual environments.
+## 10. BEST PRACTICES & MANDATORY RULES
+
+### Environment Execution
+- ✅ **MUST** use `uv run <command>` for ALL tools (pytest, ruff, mypy)
+- ✅ **MUST** run `uv sync` after ANY `pyproject.toml` change
+- ✅ **MUST** commit `uv.lock` with dependency changes
+- ✅ **MUST NOT** manually activate virtual environments
+
+### Code Quality
+- ✅ **MUST** run full test suite before push: `uv run pytest -q`
+- ✅ **MUST** fix linting: `uv run ruff check . --fix`
+- ✅ **MUST** format code: `uv run ruff format`
+- ✅ **MUST** achieve > 85% test coverage for new code
+
+### Monorepo Operations
+- ✅ **MUST** run tests/quality checks from PROJECT ROOT
+- ✅ **MUST** build wheels from PROJECT ROOT
+- ✅ **MUST** run FULL test suite (all packages) before push
+- ✅ **MUST NOT** use `una sync` (dependency conflicts)
+- ✅ **MUST** keep workspace packages loosely coupled
+
+### Builds & Distribution
+- ✅ **MUST** bundle all packages in single wheel
+- ✅ **MUST** test wheels build successfully
+- ✅ **MUST** verify wheels install and work
+- ✅ **MUST** support Docker deployment with pre-built wheels
+
+---
+
+## 11. TROUBLESHOOTING
+
+### "Command not found: pytest"
+✅ Use `uv run pytest`, not `pytest` directly.
+
+### "ModuleNotFoundError: No module named 'indexed'"
+✅ Run `uv sync --all-groups` to install packages in editable mode.
+
+### "Wheel build failed"
+✅ Build from PROJECT ROOT: `uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed`
+
+### "Module not found when importing workspace package"
+✅ Verify package in root `pyproject.toml` workspace members list.
+
+### "Tests pass locally, fail in CI"
+✅ Ensure FULL test suite runs: `uv run pytest -q` (not partial subset).
+
+### "Ruff misses issues"
+✅ Run ruff from PROJECT ROOT: `uv run ruff check .` (not from package directory).
+
+### "Dependency resolution conflicts"
+✅ Update lock file: `rm uv.lock && uv sync --all-groups`
+
+---
+
+## 12. CRITICAL REMINDERS
+
+**🚨 NON-NEGOTIABLE:**
+
+1. **ALWAYS use `uv run`** - Never run commands directly outside environment
+2. **ALWAYS commit `uv.lock`** - Ensures reproducible builds
+3. **ALWAYS run from PROJECT ROOT** - Build, tests, quality checks
+4. **ALWAYS run FULL test suite before push** - All packages tested
+5. **ALWAYS follow code quality standards** - ruff + 85% coverage
+6. **NEVER use `una sync`** - Causes dependency resolution issues
+7. **NEVER manually edit `uv.lock`** - Let uv manage it
+8. **NEVER skip pre-commit/pre-push hooks** - They prevent broken builds
+
+---
+
+✅ **By following these rules:**
+- Reproducible development environments across all machines
+- Consistent tool versions and dependency resolution
+- Zero conflicts with system Python installations
+- Reliable builds and wheel distribution
+- Monorepo coherence and package isolation

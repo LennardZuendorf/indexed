@@ -1,0 +1,404 @@
+---
+alwaysApply: true
+---
+## CORE COMPONENTS & RESPONSIBILITIES
+
+### CLI Layer (`indexed/src/indexed/`)
+
+**Responsibility:** User interface, command parsing, output formatting, user interactions.
+
+#### Components
+
+| Component | Purpose |
+|-----------|---------|
+| `app.py` | Main Typer application, global flags, logging initialization |
+| `knowledge/commands/` | Index operations: create, search, inspect, update, remove |
+| `config/cli.py` | Configuration management: get, set, validate, delete |
+| `mcp/server.py` | FastMCP server implementation for AI agent integration |
+| `utils/` | Rich UI components, progress bars, theming, logging |
+
+#### Responsibilities
+
+- Parse user commands and options
+- Initialize logging and configuration
+- Format and display results (plain text, JSON, tables)
+- Handle storage mode resolution (global vs. local)
+- Provide Rich UI with progress indicators and error feedback
+- Support both verbose and quiet modes
+
+### Service Layer (`packages/indexed-core/src/core/v1/`)
+
+**Responsibility:** Business logic, orchestration, high-level operations.
+
+#### Components
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `collection_service` | Functions | Stateless operations: create(), update(), clear() |
+| `SearchService` | Class | Semantic search with cached searcher instances |
+| `InspectService` | Class | Collection metadata and status inspection |
+| `Index` | Facade | High-level API for library users |
+
+#### Responsibilities
+
+- Orchestrate collection creation with config validation
+- Manage searcher caching to avoid redundant index loading
+- Provide collection status and metadata inspection
+- Support both single and multi-collection search
+- Implement validation and error handling
+- Enable library usage via Index facade
+
+### Engine Layer (`packages/indexed-core/src/core/v1/engine/`)
+
+**Responsibility:** Core indexing, search algorithms, persistence.
+
+#### Components
+
+| Component | Purpose |
+|-----------|---------|
+| `DocumentCollectionCreator` | Orchestrate indexing pipeline |
+| `DocumentCollectionSearcher` | Handle search operations with cached indexes |
+| `FaissIndexer` | Vector storage and similarity search |
+| `SentenceEmbedder` | Text embedding with sentence-transformers |
+| `DiskPersister` | Save collections to disk |
+
+#### Responsibilities
+
+- Read documents from sources (via Connectors)
+- Convert raw documents to searchable chunks
+- Generate vector embeddings for texts
+- Create and manage FAISS indexes
+- Persist collections and metadata to disk
+- Perform similarity search on indexed collections
+
+### Infrastructure
+
+| Component | Package | Responsibility |
+|-----------|---------|-----------------|
+| `ConfigService` | indexed-config | TOML config loading, validation, merging |
+| `Connectors` | indexed-connectors | Document reading from Jira, Confluence, files |
+| `FAISS Indexes` | indexed-core | Vector storage and similarity search |
+| `Disk Storage` | indexed-core | Collection directory structure and files |
+
+---
+
+## DATA FLOW PATTERNS
+
+### Indexing Pipeline (Collection Creation)
+
+```
+CLI Command
+    ↓
+ConfigService (load and validate config)
+    ↓
+CollectionService.create()
+    ↓
+Connector.from_config() (build appropriate connector)
+    ↓
+DocumentCollectionCreator.run()
+    ├─ Connector.reader.read_all_documents() (fetch raw docs)
+    ├─ Connector.converter.convert() (chunk documents)
+    ├─ FaissIndexer.index_texts() (generate embeddings, create index)
+    └─ DiskPersister (save documents, index, manifest)
+    ↓
+Collection ready for search
+```
+
+**Key Steps:**
+1. Load TOML config, merge with environment variables and CLI overrides
+2. Validate config with Pydantic models
+3. Build connector instance from config (Jira, Confluence, Files, or custom)
+4. Read raw documents from data source (iterator-based for memory efficiency)
+5. Convert documents to chunks with metadata
+6. Generate vector embeddings using sentence-transformers
+7. Create FAISS index with embeddings
+8. Persist documents, metadata, and index to disk
+
+### Search Pipeline
+
+```
+User Query
+    ↓
+CLI: SearchService.search()
+    ↓
+For each collection:
+    ├─ SearchService._get_or_create_searcher() (load or retrieve cached)
+    ├─ Searcher loads FAISS index and document metadata
+    ├─ FaissIndexer.search()
+    │   ├─ Embed query text
+    │   ├─ FAISS similarity search (L2 distance)
+    │   └─ Return (scores, indices)
+    ├─ Map indices back to document chunks
+    └─ Return SearchResult objects with text and metadata
+    ↓
+Format results (table, JSON, or cards)
+    ↓
+Display to user
+```
+
+**Key Steps:**
+1. Parse query and target collections
+2. Get or create cached searcher for each collection
+3. Load FAISS index and metadata from disk (memory-mapped for efficiency)
+4. Generate embedding for query text using same model as indexing
+5. Perform similarity search in FAISS
+6. Convert distances to similarity scores
+7. Map result indices back to original document chunks
+8. Format results for display
+
+### Storage Architecture
+
+```
+~/.indexed/ (or ./.indexed/ for local mode)
+├── config.toml              # Global/workspace configuration
+├── .env                     # Sensitive credentials
+└── data/
+    └── collections/
+        └── {collection_name}/
+            ├── manifest.json                    # Collection metadata
+            ├── documents/                       # Document metadata
+            │   ├── chunk_001.json
+            │   ├── chunk_002.json
+            │   └── ...
+            └── indexes/
+                ├── index_info.json              # Index configuration
+                ├── index_document_mapping.json  # ID to index mapping
+                └── indexer_FAISS_*/
+                    └── indexer                  # FAISS binary index
+```
+
+**Storage Modes:**
+- **Global:** `~/.indexed/` (default, shared across projects)
+- **Local:** `./.indexed/` (project-specific)
+- **Resolution Order:** CLI flags > config file > auto-detect
+
+---
+
+## DESIGN PATTERNS & PRINCIPLES
+
+### Facade Pattern
+
+The `Index` class provides a simplified API wrapping the service layer, enabling both CLI and library usage without code duplication.
+
+```
+Library User → Index Facade → Service Layer → Engine Layer
+CLI Command  → Service Layer → Engine Layer
+```
+
+### Protocol-Based Extensibility
+
+All connectors implement the `BaseConnector` protocol, enabling plugin-style extensions without core code modifications.
+
+**Benefits:**
+- Core layer knows only about the protocol, not specific implementations
+- New connectors can be added as separate packages
+- Testing connectors is isolated and independent
+- Type safety through @runtime_checkable
+
+### Configuration-Driven Behavior
+
+All behavior is controlled by configuration files (TOML), environment variables, and Pydantic models, not hardcoded values.
+
+**Hierarchy (increasing priority):**
+1. Pydantic model defaults (lowest)
+2. Global config (`~/.indexed/config.toml`)
+3. Workspace config (`./.indexed/config.toml`)
+4. Environment variables (`INDEXED__section__key`)
+5. CLI arguments (highest)
+
+**Benefits:**
+- Easy to customize without code changes
+- Enables environment-specific configuration
+- Secrets can be injected via environment variables
+- Configuration is version-controlled (except secrets)
+
+### Reader/Converter Pattern
+
+Each connector separates concerns into two components:
+
+- **DocumentReader:** Fetches raw documents from data source (iterator-based)
+- **DocumentConverter:** Transforms documents into searchable chunks
+
+**Benefits:**
+- Clear separation of concerns
+- Memory-efficient (streaming documents)
+- Easy to test each component independently
+- Easy to swap implementations
+
+---
+
+## TECHNOLOGY STACK
+
+### Core Engine
+- **Python 3.11+:** Minimum required for modern type hints and performance
+- **FAISS:** Vector similarity search with IndexFlatL2, IndexIVFFlat, IndexHNSW support
+- **Sentence Transformers:** Pre-trained embedding models (all-MiniLM-L6-v2 default)
+- **Unstructured:** Multi-format document parsing (PDF, DOCX, PPTX, MD, TXT, etc.)
+
+### CLI & User Interface
+- **Typer:** Modern CLI framework with type hints
+- **Rich:** Beautiful terminal output, tables, progress bars, panels
+- **Loguru:** Structured logging with color support
+
+### AI Agent Integration
+- **FastMCP:** Model Context Protocol server implementation
+- **MCP Spec:** Standard protocol for AI agent tool integration
+
+### Configuration & Validation
+- **TOML:** Human-readable configuration files
+- **Pydantic:** Configuration validation and serialization
+- **python-dotenv:** Environment file loading for secrets
+
+### Build & Distribution
+- **uv:** Fast Python package manager and environment management
+- **una/hatch-una:** Monorepo wheel packaging with dependency bundling
+- **pyproject.toml:** Modern Python project configuration
+
+### Workspace Structure
+- **uv workspace:** Monorepo with multiple packages (indexed-core, indexed-config, indexed-connectors, utils)
+- **pytest:** Test framework with coverage tracking
+- **ruff:** Linting and formatting
+
+---
+
+## INTEGRATION POINTS
+
+### MCP (Model Context Protocol) Server
+
+**Responsibility:** Expose indexed collections to AI agents (Claude, Cursor, Cline).
+
+**Tools Provided:**
+- `search(query: str, collection: Optional[str])` - Search collections
+- `list_collections() → List[str]` - List available collections
+- `collection_status(name: str)` - Get collection metadata
+
+**Transport Modes:**
+- **Stdio (default):** For Claude Desktop pipe integration
+- **HTTP:** For network-based integration
+- **SSE:** For streaming integration
+
+### Connector System
+
+**Architecture:** Plugin-based via BaseConnector protocol.
+
+**Built-in Connectors:**
+- `JiraConnector` / `JiraCloudConnector` - Jira issues
+- `ConfluenceConnector` / `ConfluenceCloudConnector` - Confluence pages
+- `FileSystemConnector` - Local files
+
+**Custom Connector Requirements:**
+- Implement BaseConnector protocol (reader, converter, connector_type)
+- Create Pydantic config model for configuration
+- Register with ConfigService
+
+### Configuration System
+
+**ConfigService** provides unified configuration management:
+
+- **Registration:** Components register config specs at usage point
+- **Binding:** Load and validate all registered specs
+- **Merging:** Hierarchical merge (defaults → global → workspace → env)
+- **Type Safety:** Pydantic validation throughout
+- **Sensitivity Routing:** Automatic routing of secrets to .env
+
+---
+
+## PERFORMANCE & SCALABILITY TARGETS
+
+### Indexing Performance
+- **Throughput:** 100+ documents per minute on standard hardware
+- **Batch Embedding:** Process texts in batches of 32 for efficiency
+- **Lazy Loading:** Load embedding model only on first use
+- **Memory Management:** Stream documents to avoid loading entire collection
+
+### Search Performance
+- **Query Latency:** < 1 second for typical queries (10K-50K documents)
+- **Searcher Caching:** Cache loaded indexes per collection to avoid reloading
+- **Memory Mapping:** Use mmap for large FAISS indexes
+- **Index Types:** Support exact (IndexFlatL2) and approximate search
+
+### Scale Targets
+- **Maximum Collection Size:** 100,000 documents per collection on single machine
+- **Concurrent Collections:** Support dozens of collections simultaneously
+- **Query Throughput:** Support 10+ queries per second per collection
+
+### Optimization Strategies
+- Batch processing for embeddings
+- Lazy model initialization (load on first use)
+- Searcher instance caching (avoid reloading indexes)
+- Memory-mapped FAISS indexes
+- Iterator-based document reading (stream processing)
+
+---
+
+## DESIGN CONSTRAINTS & MANDATORY REQUIREMENTS
+
+### Privacy & Security
+
+- **MUST** maintain privacy-first architecture with all processing local
+- **MUST** NOT make external calls during indexing or search (except config validation)
+- **MUST** use only local embedding models (sentence-transformers)
+- **MUST** support offline operation after initial setup
+
+### Architecture & Design
+
+- **MUST** follow three-layer architecture (CLI, Service, Engine)
+- **MUST** support protocol-based connector extension
+- **MUST** use configuration-driven behavior instead of hardcoding
+- **MUST** maintain clear separation of concerns across layers
+- **MUST** support both CLI and library usage patterns
+
+### Extensibility
+
+- **MUST** enable new connectors without modifying core code
+- **MUST** maintain backward compatibility with existing collections
+- **MUST** use Pydantic for all configuration validation
+- **MUST** implement graceful error handling and recovery
+
+### Storage & Persistence
+
+- **MUST** support both global (~/.indexed/) and local (./.indexed/) storage modes
+- **MUST** maintain consistent storage structure across versions
+- **MUST** use manifest files for collection metadata
+- **MUST** persist FAISS indexes in binary format for efficiency
+
+### Quality & Maintainability
+
+- **MUST** maintain test coverage above 85%
+- **MUST** document all major components and design decisions
+- **MUST** follow consistent design patterns across modules
+- **MUST** provide clear error messages with actionable guidance
+
+---
+
+## DEPLOYMENT & DISTRIBUTION
+
+### Build Target
+- Distributable wheel via `una` that bundles all workspace packages
+- Supports both development (`uv sync --all-groups`) and runtime (`uv sync`) installation
+- Single-file wheel for easy installation and distribution
+
+### Docker Support
+- Multi-stage Docker builds with pre-built wheels
+- Volume mounting for persistent ~/.indexed/ storage
+- Support for stdio, HTTP, and SSE transports
+
+### CLI Entry Points
+- `indexed-cli` - Main CLI application
+- `indexed-mcp` - MCP server
+- Both use `uv run` for environment management
+
+---
+
+## VERSION & COMPATIBILITY
+
+### Versioning
+- **Core Version:** 1.0+ (stable API)
+- **Config Namespace:** `core.v1.*` supports future versioning
+- **Breaking Changes:** Require major version bump
+
+### Compatibility
+- **Python:** 3.11+ required
+- **Operating Systems:** Linux, macOS, Windows
+- **FAISS:** Supports IndexFlatL2 (default), IndexIVFFlat, IndexHNSW
+- **Embedding Models:** Sentence Transformers models compatible with library

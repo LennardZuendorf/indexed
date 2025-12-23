@@ -1,0 +1,294 @@
+---
+description: when working on pythong performance optimization
+alwaysApply: false
+---
+
+# Python CLI Performance Optimization
+
+This document captures best practices for optimizing Python CLI application startup time and runtime performance, based on learnings from optimizing the Indexed CLI from 11s to 0.4s (~26x improvement).
+
+## Core Principles
+
+### 1. Lazy Loading Heavy Dependencies
+
+**Problem**: Importing ML libraries (torch, transformers, sentence_transformers) at module level adds 3-4 seconds to startup.
+
+**Solution**: Use lazy imports inside functions/methods that actually need them.
+
+```python
+# ❌ BAD - Eager import at module level
+from torch import nn
+from transformers import AutoModel
+
+def my_command():
+    model = AutoModel.from_pretrained("...")
+```
+
+```python
+# ✅ GOOD - Lazy import inside function
+def my_command():
+    from transformers import AutoModel
+    model = AutoModel.from_pretrained("...")
+```
+
+**For module-level exports**, use `__getattr__`:
+
+```python
+# module/__init__.py
+def __getattr__(name: str):
+    if name == "heavy_function":
+        from .heavy_module import heavy_function
+        return heavy_function
+    raise AttributeError(f"module has no attribute '{name}'")
+```
+
+### 2. Defer Service Initialization
+
+**Problem**: Services like ConfigService can take 60-100ms to initialize, even for `--help` commands.
+
+**Solution**: Move initialization from app callbacks into individual commands.
+
+```python
+# ❌ BAD - Initialize in app callback
+@app.callback()
+def init_app():
+    config = ConfigService.instance()  # Runs for --help too!
+
+# ✅ GOOD - Initialize in commands
+@app.command()
+def my_command():
+    config = ConfigService.instance()  # Only runs when command executes
+```
+
+### 3. Minimize Import Overhead
+
+**Problem**: Importing many modules at startup adds milliseconds per module.
+
+**Solution**:
+- Remove unnecessary imports
+- Consolidate related imports
+- Defer non-essential imports to function scope
+- Use `TYPE_CHECKING` for type hints
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from expensive_module import ExpensiveClass  # Not imported at runtime
+
+def my_function(obj: "ExpensiveClass"):  # String annotation
+    pass
+```
+
+### 4. Optimize Configuration Loading
+
+**Techniques**:
+- Read only what's needed (don't parse entire config for `--help`)
+- Cache config reads
+- Use lazy property patterns for computed values
+- Defer environment variable reads
+
+```python
+# ✅ GOOD - Lazy property
+class Config:
+    @property
+    def expensive_value(self):
+        if not hasattr(self, '_expensive_value'):
+            self._expensive_value = compute_expensive_value()
+        return self._expensive_value
+```
+
+## CLI-Specific Optimizations
+
+### 1. Command Registration
+
+Register commands efficiently without loading implementations:
+
+```python
+# ✅ GOOD - Typer command registration
+from . import commands  # Module with __getattr__ for lazy loading
+
+app.command("search")(commands.search.search)  # Function ref, not executed
+```
+
+### 2. Help Command Fast Path
+
+Detect `--help` early and skip unnecessary initialization:
+
+```python
+@app.callback(invoke_without_command=True)
+def init_app(ctx: typer.Context):
+    if ctx.invoked_subcommand is None and "--help" in sys.argv:
+        # Show help and exit early
+        return
+
+    # Heavy initialization only for real commands
+    initialize_services()
+```
+
+### 3. Parallel Command Structure
+
+Support both flat and grouped command styles without duplication:
+
+```python
+# Register to hidden group for 'indexed index inspect'
+app.add_typer(group_app, name="index", hidden=True)
+
+# Also register as flat command for 'indexed "index inspect"'
+app.command("index inspect")(commands.inspect)
+```
+
+## Code Structure Best Practices
+
+### 1. Reduce Verbosity
+
+**Before (455 lines)**:
+```python
+# Excessive comments explaining obvious code
+# This function does X by calling Y
+# It takes parameters A, B, C and returns D
+# The algorithm works by...
+def function():
+    # Step 1: Initialize
+    x = []
+    # Step 2: Process
+    for item in items:
+        # Add to list
+        x.append(item)
+    # Step 3: Return
+    return x
+```
+
+**After (185 lines)**:
+```python
+def function():
+    return [item for item in items]
+```
+
+**Guidelines**:
+- Remove obvious comments
+- Use clear variable names instead of comments
+- Consolidate repeated patterns
+- Keep docstrings concise (1 line summary is often enough)
+
+### 2. Consolidate Repetitive Code
+
+**Before**:
+```python
+app.command("cmd1", help="Help 1", rich_help_panel="Panel")(func1)
+app.command("cmd2", help="Help 2", rich_help_panel="Panel")(func2)
+app.command("cmd3", help="Help 3", rich_help_panel="Panel")(func3)
+```
+
+**After**:
+```python
+PANEL = "Panel"
+app.command("cmd1", help="Help 1", rich_help_panel=PANEL)(func1)
+app.command("cmd2", help="Help 2", rich_help_panel=PANEL)(func2)
+app.command("cmd3", help="Help 3", rich_help_panel=PANEL)(func3)
+```
+
+### 3. Simplify Logic Flow
+
+**Before**:
+```python
+if condition:
+    result = True
+else:
+    result = False
+return result
+```
+
+**After**:
+```python
+return condition
+```
+
+## Profiling & Measurement
+
+### 1. Use -X importtime
+
+Profile import times to find slow modules:
+
+```bash
+python -X importtime -m myapp --help 2>&1 | grep "import time:" | sort -k3 -n | tail -20
+```
+
+Look for imports taking >100ms.
+
+### 2. Time Commands
+
+```bash
+time myapp --help  # Should be <1s for good UX
+time myapp command  # Measure actual command performance
+```
+
+### 3. Benchmark Iterations
+
+Run multiple times to account for caching:
+
+```bash
+for i in {1..5}; do time myapp --help 2>&1 | grep total; done
+```
+
+## Common Pitfalls
+
+### ❌ Don't: Import at Module Level for Convenience
+```python
+# Heavy imports affect --help performance
+from transformers import pipeline
+from torch import nn
+```
+
+### ❌ Don't: Initialize Services in App Callback
+```python
+@app.callback()
+def init():
+    db = Database()  # Runs even for --help
+```
+
+### ❌ Don't: Load Entire Config for Simple Operations
+```python
+config = load_complete_config()  # Parses everything
+value = config["simple_key"]
+```
+
+### ❌ Don't: Use Synchronous Calls in Import Chain
+```python
+# Module level
+API_KEY = os.getenv("API_KEY")
+validate_api_key(API_KEY)  # Blocks import!
+```
+
+## Results to Expect
+
+Following these practices:
+- **CLI help**: <0.5s (was 11s)
+- **Simple commands**: <2s (was 15s+)
+- **Code reduction**: 40-60% fewer lines
+- **Maintainability**: Improved (less noise, clearer intent)
+
+## Testing Performance
+
+Add performance tests to CI:
+
+```python
+def test_help_performance():
+    """Help command should complete in <1s"""
+    start = time.time()
+    result = subprocess.run(["myapp", "--help"], capture_output=True)
+    duration = time.time() - start
+    assert duration < 1.0, f"Help took {duration}s (should be <1s)"
+```
+
+## Summary
+
+1. **Lazy load** heavy dependencies (ML libraries, etc.)
+2. **Defer initialization** until commands run
+3. **Minimize imports** at module level
+4. **Remove verbosity** - code should be self-documenting
+5. **Consolidate patterns** to reduce repetition
+6. **Profile regularly** to catch regressions
+7. **Test performance** in CI
+
+With these techniques, Python CLIs can achieve sub-second startup times even with heavy dependencies like PyTorch and Transformers.
