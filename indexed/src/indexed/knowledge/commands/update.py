@@ -36,16 +36,16 @@ app = typer.Typer(help="Update collections")
 def _format_source_type(source_type: str) -> str:
     """
     Convert an internal source type identifier into a human-readable display name.
-    
+
     Parameters:
         source_type (str): Internal source type identifier (may be falsy).
-    
+
     Returns:
         str: A friendly display name for the source type (returns "Unknown" if `source_type` is falsy; falls back to a capitalized form if the type is unrecognized).
     """
     if not source_type:
         return "Unknown"
-    
+
     type_map = {
         "jira": "Jira",
         "jiraCloud": "Jira Cloud",
@@ -59,7 +59,7 @@ def _format_source_type(source_type: str) -> str:
 def _config_existed_before(config_service: ConfigService) -> bool:
     """
     Determine whether a configuration file existed prior to an operation based on the ConfigService's resolved storage mode.
-    
+
     Returns:
         bool: `True` if a local config file exists when storage mode is "local", or `True` if a global config file exists when storage mode is not "local"; `False` otherwise.
     """
@@ -73,10 +73,10 @@ def _config_existed_before(config_service: ConfigService) -> bool:
 def _get_config_path(config_service: ConfigService) -> str:
     """
     Return the path to the active configuration file based on the resolved storage mode.
-    
+
     Parameters:
         config_service (ConfigService): Service used to determine storage mode and access configured paths.
-    
+
     Returns:
         str: The configuration file path — the workspace path when storage mode is "local", otherwise the global path.
     """
@@ -90,12 +90,12 @@ def _get_config_path(config_service: ConfigService) -> str:
 def _format_update_comparison(before, after):
     """
     Display a detail card comparing collection metadata before and after an update.
-    
+
     Parameters:
         before: An object representing the collection state prior to the update. Expected attributes (when present) include
             `name`, `source_type`, `number_of_documents`, `number_of_chunks`, `disk_size_bytes`, and `updated_time`.
         after: An object representing the collection state after the update. Expected attributes match those of `before`.
-    
+
     Description:
         Prints a formatted "Updated Collection" detail card to the console containing any of the following rows when data
         is available: Collection name, Type (friendly display of `source_type`), Documents (with delta), Chunks (with delta),
@@ -118,7 +118,7 @@ def _format_update_comparison(before, after):
     def format_size_change(before_bytes, after_bytes):
         """Format size change with proper units."""
         from indexed.utils.format import format_size
-        
+
         if before_bytes is None or after_bytes is None:
             return f"{before_bytes} → {after_bytes}"
 
@@ -128,9 +128,13 @@ def _format_update_comparison(before, after):
         if before_bytes is not None and after_bytes is not None:
             delta = after_bytes - before_bytes
             if delta > 0:
-                return f"{before_str} → {after_str} ([green]+{format_size(delta)}[/green])"
+                return (
+                    f"{before_str} → {after_str} ([green]+{format_size(delta)}[/green])"
+                )
             elif delta < 0:
-                return f"{before_str} → {after_str} ([red]{format_size(abs(delta))}[/red])"
+                return (
+                    f"{before_str} → {after_str} ([red]{format_size(abs(delta))}[/red])"
+                )
             else:
                 return f"{before_str} → {after_str} [{get_dim_style()}](no change)[/{get_dim_style()}]"
 
@@ -206,15 +210,15 @@ def update(
 ):
     """Refresh and re-index a collection or all collections."""
     from ...utils.logging import setup_root_logger
-    
+
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
-    
+
     # Initialize ConfigService and check if config existed before
     config_service = ConfigService.instance()
     config_existed = _config_existed_before(config_service)
-    
+
     # Determine collections to update
     if collection is None:
         # Update all collections
@@ -258,16 +262,16 @@ def update(
             print_error(f"Collection '{coll_name}' not found during update")
             continue
         coll_status = coll_statuses[0]
-        
+
         # Ensure credentials are available for this source type
         source_type = getattr(coll_status, "source_type", None)
         if source_type:
             ensure_credentials_for_source(source_type, config_service)
-        
+
         if not coll_status.indexers:
             print_error(f"Collection '{coll_name}' has no indexers configured")
             continue
-        
+
         source_config = SourceConfig(
             name=coll_name,
             type="localFiles",  # Default type, not used in update
@@ -287,7 +291,9 @@ def update(
         else:
             # Normal mode: use OperationStatus for live updates
             console.print()
-            with OperationStatus(console, f"Updating {coll_name}", capture_logs=False) as status:
+            with OperationStatus(
+                console, f"Updating {coll_name}", capture_logs=False
+            ) as status:
                 # Show initial status with force_render to ensure spinner is visible
                 status.update("Checking for updates...", force_render=True)
                 callback = create_progress_update_callback(status)
@@ -305,12 +311,12 @@ def update(
                     )
                     update_error = e
                     break
-    
+
     # If update failed, show error and exit
     if update_error:
         print_error(f"Failed to update collection: {str(update_error)}")
         raise typer.Exit(1)
-    
+
     # Check if config was created during updates
     if not config_existed:
         config_was_created = _config_existed_before(config_service)
@@ -338,18 +344,18 @@ def update(
             raise typer.Exit(1)
         after_info = inspect_result[0]
         before_info = before_data[coll_name]
-        
+
         total_docs += after_info.number_of_documents
         total_chunks += after_info.number_of_chunks
         docs_delta += after_info.number_of_documents - before_info.number_of_documents
         chunks_delta += after_info.number_of_chunks - before_info.number_of_chunks
-        
+
         _format_update_comparison(before_info, after_info)
 
     # Generate dynamic summary based on changes
     num_collections = len(collections_to_update)
     coll_word = "Collection" if num_collections == 1 else "Collections"
-    
+
     if docs_delta == 0 and chunks_delta == 0:
         # No changes
         result_text = f"Checked {num_collections} {coll_word} - all up to date ({total_docs} documents, {total_chunks} chunks)"
@@ -360,12 +366,12 @@ def update(
             changes.append(f"+{docs_delta} documents")
         elif docs_delta < 0:
             changes.append(f"{docs_delta} documents")
-        
+
         if chunks_delta > 0:
             changes.append(f"+{chunks_delta} chunks")
         elif chunks_delta < 0:
             changes.append(f"{chunks_delta} chunks")
-        
+
         change_str = ", ".join(changes) if changes else "metadata updated"
         result_text = f"Updated {num_collections} {coll_word}: {change_str} (now {total_docs} documents, {total_chunks} chunks)"
 

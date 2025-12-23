@@ -54,16 +54,16 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
 
 def get_connector_class(connector_type: str) -> Type[Any]:
     """Get connector class by type identifier.
-    
+
     Args:
         connector_type: Connector type string (e.g., "jiraCloud", "localFiles")
-        
+
     Returns:
         Connector class that can be instantiated
-        
+
     Raises:
         ValueError: If connector_type is not registered
-        
+
     Examples:
         >>> cls = get_connector_class("jiraCloud")
         >>> connector = cls.from_dto(config)
@@ -79,13 +79,13 @@ def get_connector_class(connector_type: str) -> Type[Any]:
 
 def get_config_class(connector_type: str) -> Type[Any]:
     """Get config DTO class by connector type.
-    
+
     Args:
         connector_type: Connector type string
-        
+
     Returns:
         Pydantic config class for the connector
-        
+
     Raises:
         ValueError: If connector_type is not registered
     """
@@ -100,13 +100,13 @@ def get_config_class(connector_type: str) -> Type[Any]:
 
 def get_config_namespace(connector_type: str) -> str:
     """Get config namespace path by connector type.
-    
+
     Args:
         connector_type: Connector type string
-        
+
     Returns:
         Config namespace path (e.g., "sources.jira")
-        
+
     Raises:
         ValueError: If connector_type is not registered
     """
@@ -121,9 +121,8 @@ def get_config_namespace(connector_type: str) -> str:
 
 def list_connector_types() -> list[str]:
     """List all registered connector types.
-    
+
     Returns:
         List of connector type identifiers
     """
     return list(CONNECTOR_REGISTRY.keys())
-

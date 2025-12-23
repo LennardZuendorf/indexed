@@ -1,4 +1,5 @@
 """Basic tests for Jira connectors."""
+
 import os
 from unittest.mock import patch
 import pytest
@@ -14,14 +15,15 @@ pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector 
 def test_jira_connector_init():
     """Test JiraConnector initialization with token auth."""
     connector = JiraConnector(
-        url="https://jira.example.com",
-        query="project = TEST",
-        token="test-token"
+        url="https://jira.example.com", query="project = TEST", token="test-token"
     )
-    
+
     assert connector.connector_type == "jira"
     assert isinstance(connector.reader, JiraDocumentReader)
-    assert str(connector) == "JiraConnector(url='https://jira.example.com', query='project = TEST')"
+    assert (
+        str(connector)
+        == "JiraConnector(url='https://jira.example.com', query='project = TEST')"
+    )
 
 
 def test_jira_connector_basic_auth():
@@ -30,20 +32,20 @@ def test_jira_connector_basic_auth():
         url="https://jira.example.com",
         query="project = TEST",
         login="user",
-        password="pass"
+        password="pass",
     )
-    
+
     assert isinstance(connector.reader, JiraDocumentReader)
     assert connector.connector_type == "jira"
 
 
 def test_jira_connector_missing_auth():
     """Test JiraConnector raises error when no auth provided."""
-    with pytest.raises(ValueError, match="Either 'token' or both 'login' and 'password' must be provided"):
-        JiraConnector(
-            url="https://jira.example.com",
-            query="project = TEST"
-        )
+    with pytest.raises(
+        ValueError,
+        match="Either 'token' or both 'login' and 'password' must be provided",
+    ):
+        JiraConnector(url="https://jira.example.com", query="project = TEST")
 
 
 @patch.dict(os.environ, {"JIRA_TOKEN": "test-token"})
@@ -54,7 +56,7 @@ def test_jira_connector_from_config_dto():
         query="project = TEST",
         token="test-token",
     )
-    
+
     # Use constructor directly (from_config requires full ConfigService)
     connector = JiraConnector(
         url=config_dto.url,
@@ -72,12 +74,15 @@ def test_jira_cloud_type_connector_init():
         url="https://company.atlassian.net",
         query="project = TEST",
         email="test@example.com",
-        api_token="test-token"
+        api_token="test-token",
     )
-    
+
     assert connector.connector_type == "jiraCloud"
     assert isinstance(connector.reader, JiraCloudDocumentReader)
-    assert str(connector) == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
+    assert (
+        str(connector)
+        == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
+    )
 
 
 def test_jira_cloud_type_connector_from_config_dto():
@@ -86,9 +91,9 @@ def test_jira_cloud_type_connector_from_config_dto():
         url="https://company.atlassian.net",
         query="project = TEST",
         email="test@example.com",
-        api_token="test-token"
+        api_token="test-token",
     )
-    
+
     # Use constructor directly (from_config requires full ConfigService)
     connector = JiraCloudConnector(
         url=config_dto.url,
@@ -104,7 +109,7 @@ def test_jira_cloud_type_connector_from_config_dto():
 def test_jira_connector_config_spec():
     """Test JiraConnector.config_spec() returns correct specification."""
     spec = JiraConnector.config_spec()
-    
+
     assert "url" in spec
     assert spec["url"]["required"] is True
     assert "query" in spec
@@ -116,7 +121,7 @@ def test_jira_connector_config_spec():
 def test_jira_cloud_type_connector_config_spec():
     """Test JiraCloudConnector.config_spec() returns correct specification."""
     spec = JiraCloudConnector.config_spec()
-    
+
     assert "url" in spec
     assert spec["url"]["required"] is True
     assert "query" in spec

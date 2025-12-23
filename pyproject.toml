@@ -31,6 +31,16 @@ markers = [
     "connectors: Tests for indexed-connectors package",
     "core: Tests for indexed-core package",
     "utils: Tests for indexed-utils package",
+
+    # Test type markers (integration testing)
+    "integration: Integration tests requiring external services",
+    "unit: Fast unit tests",
+    "slow: Tests that take > 1 second",
+    "api: Tests that interact with external APIs",
+
+    # Environment markers (integration testing)
+    "requires_api: Tests requiring real API credentials",
+    "requires_network: Tests requiring network access",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)
@@ -64,6 +74,8 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.14.1",
+    "pytest-httpserver>=1.0.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-rerunfailures>=12.0",
     "ruff>=0.12.10",
 ]
-

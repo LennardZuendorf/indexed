@@ -1,20 +1,49 @@
-# Pre-commit configuration for indexed
-# Install with: uv run pre-commit install --hook-type pre-push
 repos:
+  # General file checks (run on pre-commit)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        stages: [pre-commit]
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+      - id: check-yaml
+        stages: [pre-commit]
+      - id: check-toml
+        stages: [pre-commit]
+      - id: check-json
+        stages: [pre-commit]
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+        stages: [pre-commit]
+      - id: check-merge-conflict
+        stages: [pre-commit]
+      - id: check-case-conflict
+        stages: [pre-commit]
+      - id: detect-private-key
+        stages: [pre-commit]
+
+  # Ruff for linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run the linter on pre-commit (with auto-fix) and pre-push
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+        stages: [pre-commit, pre-push]
+      # Run the formatter on pre-commit and pre-push
+      - id: ruff-format
+        name: ruff (format)
+        stages: [pre-commit, pre-push]
+
+  # Pytest (run on pre-push)
   - repo: local
     hooks:
-      - id: ruff-check
-        name: ruff check
-        entry: uv run ruff check .
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-      
       - id: pytest
         name: pytest
-        entry: uv run pytest
+        entry: uv run pytest -q
         language: system
+        stages: [pre-push]
         pass_filenames: false
         always_run: true
-        stages: [pre-push]

@@ -32,13 +32,13 @@ ConflictChoice = Literal["global", "local", "global_remember", "local_remember"]
 def format_value(value: Any, max_length: int = 40) -> str:
     """
     Convert a value to a display string and truncate it to a maximum length.
-    
+
     Parameters:
         value (Any): The value to convert to a string for display.
         max_length (int): Maximum allowed length of the returned string. If the
             string representation of `value` exceeds this length, it will be
             truncated and end with an ellipsis ("...").
-    
+
     Returns:
         str: The string representation of `value`, truncated to at most
         `max_length` characters with "..." appended when truncation occurs.
@@ -54,7 +54,7 @@ def show_config_differences(
     console: Console,
 ) -> None:
     """Display a table showing config differences between local and global.
-    
+
     Args:
         differences: Dict mapping dot-paths to (local_value, global_value) tuples.
         console: Rich Console to print to.
@@ -62,7 +62,7 @@ def show_config_differences(
     if not differences:
         console.print("[dim]No differences found.[/dim]")
         return
-    
+
     table = Table(
         title="Config Differences",
         box=box.ROUNDED,
@@ -70,18 +70,18 @@ def show_config_differences(
         show_header=True,
         header_style=get_heading_style(),
     )
-    
+
     table.add_column("Setting", style=get_label_style())
     table.add_column("Local Value", style="yellow")
     table.add_column("Global Value", style="cyan")
-    
+
     for path, (local_val, global_val) in differences.items():
         table.add_row(
             path,
             format_value(local_val),
             format_value(global_val),
         )
-    
+
     console.print()
     console.print(table)
     console.print()
@@ -94,20 +94,20 @@ def prompt_storage_choice(
 ) -> ConflictChoice:
     """
     Prompt the user to select whether to store data in global or local storage for a workspace.
-    
+
     If `differences` is provided, displays them before presenting four options:
     1) global, 2) local, 3) global and remember for this directory, 4) local and remember for this directory.
     Prompts until a valid choice is entered.
-    
+
     Parameters:
         differences (Optional[Dict[str, tuple[Any, Any]]]): Mapping of config keys to (local_value, global_value) to display; if omitted no differences are shown.
         workspace_path (Optional[Path]): Path to the workspace shown in the prompt; if omitted "current directory" is used.
-    
+
     Returns:
         One of `"global"`, `"local"`, `"global_remember"`, or `"local_remember"` indicating the selected storage mode and whether the choice should be remembered.
     """
     workspace_display = str(workspace_path) if workspace_path else "current directory"
-    
+
     # Show header
     console.print()
     console.print(
@@ -118,20 +118,30 @@ def prompt_storage_choice(
             padding=(1, 2),
         )
     )
-    
+
     # Show differences if provided
     if differences:
         show_config_differences(differences, console)
-    
+
     # Show options
-    console.print(f"[{get_heading_style()}]Choose where to store data for:[/] {workspace_display}")
+    console.print(
+        f"[{get_heading_style()}]Choose where to store data for:[/] {workspace_display}"
+    )
     console.print()
-    console.print(f"  [{get_accent_style()}]1[/] - Use [bold]global[/bold] storage (~/.indexed)")
-    console.print(f"  [{get_accent_style()}]2[/] - Use [bold]local[/bold] storage (./.indexed)")
-    console.print(f"  [{get_accent_style()}]3[/] - Use [bold]global[/bold] and remember for this directory")
-    console.print(f"  [{get_accent_style()}]4[/] - Use [bold]local[/bold] and remember for this directory")
+    console.print(
+        f"  [{get_accent_style()}]1[/] - Use [bold]global[/bold] storage (~/.indexed)"
+    )
+    console.print(
+        f"  [{get_accent_style()}]2[/] - Use [bold]local[/bold] storage (./.indexed)"
+    )
+    console.print(
+        f"  [{get_accent_style()}]3[/] - Use [bold]global[/bold] and remember for this directory"
+    )
+    console.print(
+        f"  [{get_accent_style()}]4[/] - Use [bold]local[/bold] and remember for this directory"
+    )
     console.print()
-    
+
     # Prompt for choice
     while True:
         choice = Prompt.ask(
@@ -139,7 +149,7 @@ def prompt_storage_choice(
             choices=["1", "2", "3", "4"],
             default="1",
         )
-        
+
         if choice == "1":
             return "global"
         elif choice == "2":
@@ -157,19 +167,19 @@ def show_storage_mode_info(
 ) -> None:
     """
     Display a brief message describing the chosen storage mode and whether the preference was saved.
-    
+
     Parameters:
         console (Console): Rich Console used for printing the message.
         mode (Literal["global", "local"]): Selected storage mode; determines the path shown ("~/.indexed" for global, "./.indexed" for local).
         remembered (bool): If True, indicates the choice was persisted and the message will state that the preference was saved.
     """
     location = "~/.indexed" if mode == "global" else "./.indexed"
-    
+
     if remembered:
         message = f"Using [{get_success_style()}]{mode}[/] storage ({location}) - preference saved"
     else:
         message = f"Using [{get_success_style()}]{mode}[/] storage ({location})"
-    
+
     console.print()
     console.print(f"[{get_dim_style()}]→[/] {message}")
     console.print()
@@ -182,12 +192,12 @@ def handle_storage_conflict(
 ) -> tuple[Literal["global", "local"], bool]:
     """
     Resolve a storage-mode conflict by prompting the user and return the selected mode and whether the choice should be remembered.
-    
+
     Parameters:
         console (Console): Rich Console used to render the prompt and outputs.
         differences (Optional[Dict[str, tuple[Any, Any]]]): Optional mapping of config keys to (local_value, global_value) to display during the prompt.
         workspace_path (Optional[Path]): Optional path used to describe the workspace in the prompt (defaults to current directory if not provided).
-    
+
     Returns:
         tuple[Literal["global", "local"], bool]: A tuple where the first element is the chosen mode ("global" or "local") and the second element is `True` if the user asked to remember the choice for this workspace, `False` otherwise.
     """
@@ -196,7 +206,7 @@ def handle_storage_conflict(
         differences=differences,
         workspace_path=workspace_path,
     )
-    
+
     # Parse the choice
     if choice == "global":
         return ("global", False)
@@ -206,6 +216,6 @@ def handle_storage_conflict(
         return ("global", True)
     elif choice == "local_remember":
         return ("local", True)
-    
+
     # Default fallback (shouldn't reach here)
     return ("global", False)

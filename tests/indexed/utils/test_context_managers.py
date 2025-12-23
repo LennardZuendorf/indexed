@@ -50,13 +50,13 @@ class TestNoOpContext:
     def test_multiple_uses(self):
         """Should be reusable multiple times."""
         ctx = NoOpContext()
-        
+
         with ctx:
             pass
-        
+
         with ctx:
             pass
-        
+
         # Should not raise
 
 
@@ -67,11 +67,11 @@ class TestSuppressCoreOutput:
         """Should suppress standard logging output."""
         root_logger = logging.getLogger()
         original_level = root_logger.level
-        
+
         with suppress_core_output():
             # Logging should be suppressed - root logger level should be CRITICAL
             assert root_logger.level == logging.CRITICAL
-        
+
         # Should restore original level
         assert root_logger.level == original_level
 
@@ -80,13 +80,13 @@ class TestSuppressCoreOutput:
         root_logger = logging.getLogger()
         original_level = root_logger.level
         root_logger.setLevel(logging.DEBUG)
-        
+
         with suppress_core_output():
             pass
-        
+
         # Should restore to DEBUG
         assert root_logger.level == logging.DEBUG
-        
+
         # Cleanup
         root_logger.setLevel(original_level)
 
@@ -97,21 +97,21 @@ class TestSuppressCoreOutput:
             warnings.warn("test warning", DeprecationWarning)
         # Should not raise or print
 
-    @patch('indexed.utils.context_managers.loguru_logger')
+    @patch("indexed.utils.context_managers.loguru_logger")
     def test_disables_loguru(self, mock_loguru):
         """Should disable loguru logging."""
         with suppress_core_output():
             mock_loguru.disable.assert_called_once_with("")
-        
+
         # Should re-enable after exit
         mock_loguru.enable.assert_called_once_with("")
 
-    @patch('indexed.utils.context_managers.loguru_logger')
+    @patch("indexed.utils.context_managers.loguru_logger")
     def test_reenables_loguru_after_exit(self, mock_loguru):
         """Should re-enable loguru after exiting context."""
         with suppress_core_output():
             pass
-        
+
         mock_loguru.enable.assert_called_with("")
 
     def test_redirect_streams_false_allows_rich_output(self):
@@ -131,7 +131,7 @@ class TestSuppressCoreOutput:
     def test_redirect_streams_true_captures_stderr(self):
         """Should redirect stderr when redirect_streams=True."""
         import sys
-        
+
         with suppress_core_output(redirect_streams=True):
             sys.stderr.write("Error message\n")
         # Error should have been captured (not displayed)
@@ -139,21 +139,21 @@ class TestSuppressCoreOutput:
     def test_restores_state_on_exception(self):
         """Should restore logging state even if exception occurs."""
         original_level = logging.getLogger().level
-        
+
         with pytest.raises(ValueError):
             with suppress_core_output():
                 raise ValueError("test error")
-        
+
         # Should have restored original level
         assert logging.getLogger().level == original_level
 
-    @patch('indexed.utils.context_managers.loguru_logger')
+    @patch("indexed.utils.context_managers.loguru_logger")
     def test_reenables_loguru_on_exception(self, mock_loguru):
         """Should re-enable loguru even if exception occurs."""
         with pytest.raises(ValueError):
             with suppress_core_output():
                 raise ValueError("test error")
-        
+
         # Should have called enable
         mock_loguru.enable.assert_called_with("")
 
@@ -164,15 +164,15 @@ class TestSuppressCoreOutputIntegration:
     def test_nested_suppression(self):
         """Should handle nested suppression contexts."""
         original_level = logging.getLogger().level
-        
+
         with suppress_core_output():
             assert logging.getLogger().level == logging.CRITICAL
-            
+
             with suppress_core_output():
                 assert logging.getLogger().level == logging.CRITICAL
-            
+
             assert logging.getLogger().level == logging.CRITICAL
-        
+
         # Should restore original
         assert logging.getLogger().level == original_level
 
@@ -182,10 +182,10 @@ class TestSuppressCoreOutputIntegration:
         handler = logging.StreamHandler()
         root_logger.addHandler(handler)
         handler_count = len(root_logger.handlers)
-        
+
         with suppress_core_output():
             pass
-        
+
         # Handlers should still be present
         assert len(root_logger.handlers) == handler_count
         root_logger.removeHandler(handler)
@@ -194,28 +194,28 @@ class TestSuppressCoreOutputIntegration:
         """Should suppress all loggers, not just root."""
         specific_logger = logging.getLogger("my.specific.logger")
         specific_logger.setLevel(logging.DEBUG)
-        
+
         with suppress_core_output():
             # Root logger should be CRITICAL
             assert logging.getLogger().level == logging.CRITICAL
-        
+
         # Specific logger level unchanged (suppression is at root)
         assert specific_logger.level == logging.DEBUG
 
-    @patch('indexed.utils.context_managers.loguru_logger')
+    @patch("indexed.utils.context_managers.loguru_logger")
     def test_loguru_disable_enable_called_correctly(self, mock_loguru):
         """Should call loguru disable/enable in correct order."""
         with suppress_core_output():
             pass
-        
+
         # Verify call order
         assert mock_loguru.disable.called
         assert mock_loguru.enable.called
-        
+
         # disable should be called before enable
         calls = [call[0] for call in mock_loguru.method_calls]
-        disable_idx = calls.index('disable')
-        enable_idx = calls.index('enable')
+        disable_idx = calls.index("disable")
+        enable_idx = calls.index("enable")
         assert disable_idx < enable_idx
 
 
@@ -228,8 +228,8 @@ class TestEdgeCases:
         mock_loguru = Mock()
         mock_loguru.disable = Mock()
         mock_loguru.enable = Mock()
-        
-        with patch('indexed.utils.context_managers.loguru_logger', mock_loguru):
+
+        with patch("indexed.utils.context_managers.loguru_logger", mock_loguru):
             # Should not raise even if loguru is mocked
             with suppress_core_output():
                 pass
@@ -267,8 +267,8 @@ class TestEdgeCases:
         """Should handle context managers from different threads safely."""
         # Note: This is a basic test; true thread safety would need more complex testing
         results = []
-        
+
         with suppress_core_output():
             results.append(logging.getLogger().level)
-        
+
         assert logging.CRITICAL in results

@@ -336,4 +336,3 @@ uv run mypy packages/indexed-config/src/
 ## License
 
 See LICENSE file in the project root.
-

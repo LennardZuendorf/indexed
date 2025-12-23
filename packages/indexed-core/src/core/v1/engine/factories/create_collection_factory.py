@@ -16,6 +16,7 @@ def _get_default_collections_path() -> str:
     """Get the default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_collections_path())
     except ImportError:
@@ -27,11 +28,13 @@ def _get_default_caches_path() -> str:
     """Get the default caches path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_caches_path())
     except ImportError:
         # Fallback if indexed_config not available
         from pathlib import Path
+
         return str(Path.home() / ".indexed" / "data" / "caches")
 
 
@@ -46,7 +49,7 @@ def create_collection_creator(
     caches_path: Optional[str] = None,
 ):
     """Create a collection creator instance.
-    
+
     Args:
         collection_name: Name of the collection to create.
         indexers: List of indexer names to use.
@@ -54,7 +57,7 @@ def create_collection_creator(
         document_converter: Document converter instance.
         use_cache: Whether to use caching for document reading.
         progress_callback: Optional callback for progress updates.
-        collections_path: Optional path for collections storage. 
+        collections_path: Optional path for collections storage.
                          Defaults to resolved path from storage config.
         caches_path: Optional path for caches storage.
                     Defaults to resolved path from storage config.
@@ -87,7 +90,7 @@ def __create_collection_creator(
     # Resolve paths
     resolved_collections_path = collections_path or _get_default_collections_path()
     resolved_caches_path = caches_path or _get_default_caches_path()
-    
+
     if use_cache:
         cache_disk_persister = DiskPersister(base_path=resolved_caches_path)
         result_document_reader = CacheReaderDecorator(

@@ -14,4 +14,3 @@ AVAILABLE_INDEXERS = [
     "indexer_FAISS_IndexFlatL2__embeddings_all-mpnet-base-v2",
     "indexer_FAISS_IndexFlatL2__embeddings_multi-qa-distilbert-cos-v1",
 ]
-

@@ -109,7 +109,7 @@ class TestTomlStoreRead:
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
-            
+
             store = TomlStore(workspace=workspace)
             result = store.read()
             assert result.get("test", {}).get("key") == "local_value"
@@ -122,7 +122,7 @@ class TestTomlStoreRead:
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
-            
+
             store = TomlStore(workspace=workspace, mode_override="local")
             result = store.read()
             assert result.get("test", {}).get("key") == "local_value"
@@ -136,9 +136,9 @@ class TestTomlStoreWrite:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             store = TomlStore(workspace=workspace)
-            
+
             store.write({"test": {"key": "value"}})
-            
+
             config_path = workspace / ".indexed" / "config.toml"
             assert config_path.exists()
             content = config_path.read_text()
@@ -149,20 +149,20 @@ class TestTomlStoreWrite:
         """write() with to_global=True writes to global config."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Mock home directory
-            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+            with patch.object(Path, "home", return_value=Path(tmpdir)):
                 store = TomlStore()
                 store.write({"test": {"key": "global_value"}}, to_global=True)
-                
+
                 global_path = Path(tmpdir) / ".indexed" / "config.toml"
                 assert global_path.exists()
 
     def test_write_with_global_mode_override(self):
         """write() with mode_override='global' writes to global config."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+            with patch.object(Path, "home", return_value=Path(tmpdir)):
                 store = TomlStore(mode_override="global")
                 store.write({"test": {"key": "value"}})
-                
+
                 global_path = Path(tmpdir) / ".indexed" / "config.toml"
                 assert global_path.exists()
 
@@ -184,7 +184,7 @@ class TestTomlStoreConflictDetection:
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "value"')
-            
+
             store = TomlStore(workspace=workspace)
             assert store.has_local_config() is True
 
@@ -196,7 +196,7 @@ class TestTomlStoreConflictDetection:
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "value"')
-            
+
             store = TomlStore(workspace=workspace)
             assert store.configs_differ() is False
 
@@ -204,19 +204,19 @@ class TestTomlStoreConflictDetection:
         """configs_differ returns True when configs have different values."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            
+
             # Create local config
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
-            
+
             # Mock home for global config
             global_home = Path(tmpdir) / "home"
             global_dir = global_home / ".indexed"
             global_dir.mkdir(parents=True)
             (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
-            
-            with patch.object(Path, 'home', return_value=global_home):
+
+            with patch.object(Path, "home", return_value=global_home):
                 store = TomlStore(workspace=workspace)
                 assert store.configs_differ() is True
 
@@ -224,19 +224,19 @@ class TestTomlStoreConflictDetection:
         """configs_differ returns False when configs are identical."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            
+
             # Create local config
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "same_value"')
-            
+
             # Mock home for global config with same content
             global_home = Path(tmpdir) / "home"
             global_dir = global_home / ".indexed"
             global_dir.mkdir(parents=True)
             (global_dir / "config.toml").write_text('[test]\nkey = "same_value"')
-            
-            with patch.object(Path, 'home', return_value=global_home):
+
+            with patch.object(Path, "home", return_value=global_home):
                 store = TomlStore(workspace=workspace)
                 assert store.configs_differ() is False
 
@@ -244,22 +244,26 @@ class TestTomlStoreConflictDetection:
         """get_config_differences returns dict of differing values."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            
+
             # Create local config
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
-            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"\nother = "same"')
-            
+            (local_dir / "config.toml").write_text(
+                '[test]\nkey = "local_value"\nother = "same"'
+            )
+
             # Mock home for global config
             global_home = Path(tmpdir) / "home"
             global_dir = global_home / ".indexed"
             global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"\nother = "same"')
-            
-            with patch.object(Path, 'home', return_value=global_home):
+            (global_dir / "config.toml").write_text(
+                '[test]\nkey = "global_value"\nother = "same"'
+            )
+
+            with patch.object(Path, "home", return_value=global_home):
                 store = TomlStore(workspace=workspace)
                 differences = store.get_config_differences()
-                
+
                 # Should only contain the differing key
                 assert "test.key" in differences
                 assert differences["test.key"] == ("local_value", "global_value")
@@ -270,19 +274,18 @@ class TestTomlStoreConflictDetection:
         """get_config_differences returns empty dict when configs match."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            
+
             # Create identical configs
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "same"')
-            
+
             global_home = Path(tmpdir) / "home"
             global_dir = global_home / ".indexed"
             global_dir.mkdir(parents=True)
             (global_dir / "config.toml").write_text('[test]\nkey = "same"')
-            
-            with patch.object(Path, 'home', return_value=global_home):
+
+            with patch.object(Path, "home", return_value=global_home):
                 store = TomlStore(workspace=workspace)
                 differences = store.get_config_differences()
                 assert differences == {}
-

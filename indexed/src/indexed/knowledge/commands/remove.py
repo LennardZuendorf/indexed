@@ -58,11 +58,11 @@ def remove(
         indexed remove my-collection -f   # Remove without confirmation
     """
     from ...utils.logging import setup_root_logger
-    
+
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
-    
+
     index = Index()
 
     # Fetch all collections to validate

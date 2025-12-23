@@ -1,6 +1,10 @@
 """Tests for Jira document readers."""
+
 import pytest
-from connectors.jira.unified_jira_document_reader import UnifiedJiraDocumentReader, JiraAuthType
+from connectors.jira.unified_jira_document_reader import (
+    UnifiedJiraDocumentReader,
+    JiraAuthType,
+)
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 
@@ -15,11 +19,18 @@ class FakeJiraCloud:
 
     def jql(self, jql, fields=None, start=0, limit=50, expand=None, **kwargs):
         batch = self._issues[start : start + limit] if limit else self._issues[start:]
-        return {"issues": batch, "total": len(self._issues), "startAt": start, "maxResults": limit}
+        return {
+            "issues": batch,
+            "total": len(self._issues),
+            "startAt": start,
+            "maxResults": limit,
+        }
 
 
 class FakeJiraServer:
-    def __init__(self, url=None, token=None, username=None, password=None, cloud=None, **kwargs):
+    def __init__(
+        self, url=None, token=None, username=None, password=None, cloud=None, **kwargs
+    ):
         self._issues = [
             {"key": "S-1", "fields": {"updated": "2024-02-01T00:00:00.000+0000"}},
             {"key": "S-2", "fields": {"updated": "2024-02-02T00:00:00.000+0000"}},
@@ -27,7 +38,12 @@ class FakeJiraServer:
 
     def jql(self, jql, fields=None, start=0, limit=50, expand=None, **kwargs):
         batch = self._issues[start : start + limit] if limit else self._issues[start:]
-        return {"issues": batch, "total": len(self._issues), "startAt": start, "maxResults": limit}
+        return {
+            "issues": batch,
+            "total": len(self._issues),
+            "startAt": start,
+            "maxResults": limit,
+        }
 
 
 def test_cloud_reader_count_and_pagination(monkeypatch):
@@ -78,7 +94,9 @@ def test_server_reader_count_and_pagination(monkeypatch):
 
 def test_reader_validation_cloud_requires_email_and_token():
     """Test cloud auth validation."""
-    with pytest.raises(ValueError, match="Cloud authentication requires both 'email' and 'api_token'"):
+    with pytest.raises(
+        ValueError, match="Cloud authentication requires both 'email' and 'api_token'"
+    ):
         UnifiedJiraDocumentReader(
             base_url="https://acme.atlassian.net",
             query="project = TEST",
@@ -100,7 +118,10 @@ def test_reader_validation_server_token_requires_token():
 
 def test_reader_validation_server_creds_requires_login_password():
     """Test server credentials auth validation."""
-    with pytest.raises(ValueError, match="Credential authentication requires both 'login' and 'password'"):
+    with pytest.raises(
+        ValueError,
+        match="Credential authentication requires both 'login' and 'password'",
+    ):
         UnifiedJiraDocumentReader(
             base_url="https://jira.example.com",
             query="project = TEST",
@@ -123,7 +144,9 @@ def test_reader_url_validation_cloud():
 
 def test_reader_url_validation_server():
     """Test server URL validation."""
-    with pytest.raises(ValueError, match="Server/DC URLs should not end with .atlassian.net"):
+    with pytest.raises(
+        ValueError, match="Server/DC URLs should not end with .atlassian.net"
+    ):
         UnifiedJiraDocumentReader(
             base_url="https://acme.atlassian.net",  # Wrong URL for server
             query="project = TEST",
@@ -148,7 +171,7 @@ def test_reader_details(monkeypatch):
     )
 
     details = reader.get_reader_details()
-    
+
     assert details["type"] == "jiraCloud"
     assert details["baseUrl"] == "https://acme.atlassian.net"
     assert details["query"] == "project = TEST"

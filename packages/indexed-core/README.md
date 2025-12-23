@@ -182,12 +182,12 @@ class BaseConnector(Protocol):
     def reader(self) -> DocumentReader:
         """Returns document reader for fetching documents."""
         ...
-    
+
     @property
     def converter(self) -> DocumentConverter:
         """Returns converter for format transformation."""
         ...
-    
+
     @property
     def connector_type(self) -> str:
         """Returns type identifier (e.g., 'jira', 'files')."""

@@ -17,7 +17,7 @@ class Provider:
     ) -> None:
         """
         Initialize the Provider with typed configuration slices, the merged raw configuration, and an optional mapping from dot-paths to model types.
-        
+
         Parameters:
             slices (Dict[type, BaseModel]): Mapping from Pydantic model types to their corresponding configuration instances; treated as the immutable typed view.
             raw (Dict[str, Any]): The raw merged configuration dictionary.
@@ -30,13 +30,13 @@ class Provider:
     def get(self, spec: Type[T]) -> T:
         """
         Retrieve the configuration instance associated with the given Pydantic model type.
-        
+
         Parameters:
             spec: Pydantic model class whose registered configuration instance to return.
-        
+
         Returns:
             The configuration instance corresponding to `spec`.
-        
+
         Raises:
             KeyError: If `spec` is not registered in this provider.
         """
@@ -49,13 +49,13 @@ class Provider:
 
     def get_by_path(self, path: str) -> BaseModel:
         """Get config instance by dot path.
-        
+
         Args:
             path: Dot-separated path (e.g., 'sources.jira').
-            
+
         Returns:
             Validated config instance.
-            
+
         Raises:
             KeyError: If path not registered or not found in config.
         """
@@ -71,7 +71,7 @@ class Provider:
     def raw(self) -> Dict[str, Any]:
         """
         Return the underlying merged configuration dictionary.
-        
+
         Returns:
             Dict[str, Any]: The raw merged configuration mapping.
         """

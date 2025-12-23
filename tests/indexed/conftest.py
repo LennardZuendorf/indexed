@@ -1,4 +1,5 @@
 """Test configuration for main app tests."""
+
 import pytest
 
 

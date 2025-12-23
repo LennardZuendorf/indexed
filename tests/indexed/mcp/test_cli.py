@@ -73,9 +73,7 @@ class TestBuildFastmcpCommand:
 
     def test_run_command_excludes_inspect_options(self) -> None:
         """Test that run command does not include inspect-specific options."""
-        cmd = _build_fastmcp_command(
-            "run", format="mcp", output="manifest.json"
-        )
+        cmd = _build_fastmcp_command("run", format="mcp", output="manifest.json")
         assert "--format" not in cmd
         assert "-o" not in cmd
         assert "mcp" not in cmd
@@ -139,9 +137,7 @@ class TestDevCommand:
 
     def test_dev_command_excludes_inspect_options(self) -> None:
         """Test that dev command does not include inspect-specific options."""
-        cmd = _build_fastmcp_command(
-            "dev", format="mcp", output="manifest.json"
-        )
+        cmd = _build_fastmcp_command("dev", format="mcp", output="manifest.json")
         assert "--format" not in cmd
         assert "-o" not in cmd
 
@@ -213,9 +209,7 @@ class TestCliCommands:
     """Tests for CLI command invocation."""
 
     @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_mcp_without_subcommand_runs_server(
-        self, mock_execute: MagicMock
-    ) -> None:
+    def test_mcp_without_subcommand_runs_server(self, mock_execute: MagicMock) -> None:
         """Test that 'indexed mcp' without subcommand runs the server."""
         runner.invoke(app, [])
         mock_execute.assert_called_once()
@@ -302,7 +296,9 @@ class TestCliCommands:
         assert cmd == ["fastmcp", "version"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_mcp_fastmcp_subcommand_with_args_help(self, mock_execute: MagicMock) -> None:
+    def test_mcp_fastmcp_subcommand_with_args_help(
+        self, mock_execute: MagicMock
+    ) -> None:
         """Test that 'indexed mcp fastmcp run args=--help' works."""
         runner.invoke(app, ["fastmcp", "run", "args=--help"])
         mock_execute.assert_called_once()
@@ -318,9 +314,7 @@ class TestCliCommands:
         assert cmd == ["fastmcp", "install", "cursor"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_mcp_dev_with_inspector_options(
-        self, mock_execute: MagicMock
-    ) -> None:
+    def test_mcp_dev_with_inspector_options(self, mock_execute: MagicMock) -> None:
         """Test dev command with inspector-specific options."""
         runner.invoke(app, ["dev", "--ui-port", "3000", "--server-port", "8001"])
         mock_execute.assert_called_once()
@@ -348,4 +342,3 @@ class TestGetServerPath:
         """Test that server path contains mcp directory."""
         path = _get_server_path()
         assert "mcp" in path
-

@@ -26,6 +26,7 @@ def _get_default_collections_path() -> str:
     """Get the default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_collections_path())
     except ImportError:
@@ -53,7 +54,7 @@ class InspectService:
 
     def __init__(self, collections_path: Optional[str] = None):
         """Initialize the inspect service with empty cache and default persister.
-        
+
         Args:
             collections_path: Optional path for collections storage.
                              Defaults to resolved path from storage config.

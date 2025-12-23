@@ -1,4 +1,5 @@
 """Tests for search service."""
+
 from unittest.mock import Mock, patch
 
 from core.v1.engine.services.search_service import SearchService, search
@@ -67,14 +68,14 @@ class TestSearchService:
                 "collection1/data.json",
                 "collection2/manifest.json",
                 "collection2/data.json",
-                "not-a-collection/data.json"
+                "not-a-collection/data.json",
             ]
         )
-        
+
         # Mock is_path_exists to return True for manifests
         def mock_is_path_exists(path):
             return path in ["collection1/manifest.json", "collection2/manifest.json"]
-        
+
         service._persister.is_path_exists = Mock(side_effect=mock_is_path_exists)
 
         result = service._discover_collections()
@@ -191,7 +192,10 @@ class TestSearchService:
         mock_factory.assert_called_once()
         call_kwargs = mock_factory.call_args.kwargs
         assert call_kwargs["collection_name"] == "collection1"
-        assert call_kwargs["index_name"] == "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+        assert (
+            call_kwargs["index_name"]
+            == "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+        )
 
         # Verify search parameters (implementation uses 'text' not 'query')
         mock_searcher.search.assert_called_once_with(

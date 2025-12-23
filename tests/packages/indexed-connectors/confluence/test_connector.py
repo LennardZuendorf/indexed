@@ -1,4 +1,5 @@
 """Basic KISS tests for Confluence connectors."""
+
 import os
 from unittest.mock import patch
 import pytest
@@ -18,6 +19,7 @@ pytestmark = pytest.mark.connectors
 
 
 # --- Confluence Server/DC ---
+
 
 def test_confluence_connector_init_token():
     """Instantiate ConfluenceConnector with token auth."""
@@ -111,7 +113,7 @@ def test_confluence_connector_read_all_comments_flag():
 def test_confluence_connector_config_spec():
     """Test ConfluenceConnector.config_spec() returns correct specification."""
     spec = ConfluenceConnector.config_spec()
-    
+
     assert "base_url" in spec
     assert spec["base_url"]["required"] is True
     assert "query" in spec
@@ -123,6 +125,7 @@ def test_confluence_connector_config_spec():
 
 
 # --- Confluence Cloud ---
+
 
 def test_confluence_cloud_type_connector_init():
     """Instantiate ConfluenceCloudConnector with direct email+token (confluenceCloud type)."""
@@ -177,7 +180,7 @@ def test_confluence_cloud_type_connector_read_all_comments_flag():
 def test_confluence_cloud_type_connector_config_spec():
     """Test ConfluenceCloudConnector.config_spec() returns correct specification."""
     spec = ConfluenceCloudConnector.config_spec()
-    
+
     assert "base_url" in spec
     assert spec["base_url"]["required"] is True
     assert "query" in spec

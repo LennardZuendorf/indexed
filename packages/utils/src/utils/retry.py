@@ -18,10 +18,12 @@ def execute_with_retry(func, func_identifier, retries=3, delay=1):
                 f'Attempt of "{func_identifier}" number {attempt + 1} failed: {e}'
             )
             if attempt < retries - 1:
-                sleep_time = delay * (2 ** attempt)
+                sleep_time = delay * (2**attempt)
                 # Try to respect rate limiting if present
                 try:
-                    status = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+                    status = getattr(e, "status_code", None) or getattr(
+                        getattr(e, "response", None), "status_code", None
+                    )
                     if status == 429:
                         retry_after = None
                         resp = getattr(e, "response", None)

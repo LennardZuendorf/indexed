@@ -31,10 +31,10 @@ def _get_server_path() -> str:
 def _parse_fastmcp_inspect_json(json_output: str) -> Optional[Dict[str, Any]]:
     """
     Parse FastMCP `inspect` CLI output and return the contained JSON as a dictionary if present.
-    
+
     Parameters:
         json_output (str): Raw stdout produced by `fastmcp inspect --format fastmcp`.
-    
+
     Returns:
         dict: Parsed JSON object extracted from the output.
         None: If no valid JSON object can be found or parsed.
@@ -63,10 +63,10 @@ def _parse_fastmcp_inspect_json(json_output: str) -> Optional[Dict[str, Any]]:
 def _extract_inspect_summary(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create a concise summary of FastMCP inspect output containing server metadata, reported versions, and counts of components.
-    
+
     Parameters:
         data (Dict[str, Any]): Parsed FastMCP inspect JSON.
-    
+
     Returns:
         summary (Dict[str, Any]): Dictionary with the following keys:
             - name (str): Server name or "Unknown" if not provided.
@@ -102,7 +102,9 @@ def _display_mcp_inspect(data: Dict[str, Any]) -> None:
     summary = _extract_inspect_summary(data)
 
     console.print()
-    console.print(f"[{get_heading_style()}]MCP Server Inspection[/{get_heading_style()}]")
+    console.print(
+        f"[{get_heading_style()}]MCP Server Inspection[/{get_heading_style()}]"
+    )
     console.print()
 
     # Server Info Panel - use 3-column with empty middle to get blue keys
@@ -151,9 +153,9 @@ def _display_mcp_inspect(data: Dict[str, Any]) -> None:
 def _display_mcp_inspect_json(data: Dict[str, Any]) -> None:
     """
     Render a concise JSON-formatted summary of MCP server inspection to the console.
-    
+
     Formats a distilled summary extracted from the full FastMCP inspect output, pretty-prints it as indented JSON with syntax highlighting, and writes it to the configured console.
-    
+
     Parameters:
         data: The full parsed FastMCP `inspect` output; only the extracted summary fields are displayed.
     """
@@ -162,7 +164,9 @@ def _display_mcp_inspect_json(data: Dict[str, Any]) -> None:
     summary = _extract_inspect_summary(data)
 
     console.print()
-    console.print(f"[{get_heading_style()}]MCP Server Inspection[/{get_heading_style()}]")
+    console.print(
+        f"[{get_heading_style()}]MCP Server Inspection[/{get_heading_style()}]"
+    )
     console.print()
 
     json_str = json.dumps(summary, indent=2)
@@ -194,12 +198,12 @@ def _build_fastmcp_command(
 ) -> List[str]:
     """
     Constructs the FastMCP CLI argument list for a specific subcommand using the provided options.
-    
+
     Builds an argv-style list beginning with "fastmcp", the subcommand, and the local server path, then appends flags appropriate to the chosen subcommand:
     - For "run" and "dev": transport, host, port, path, log level, environment/project options, and banner control.
     - For "dev": additionally supports inspector version, UI port, and server port.
     - For "inspect": supports only format and output options.
-    
+
     Parameters:
         subcommand (str): FastMCP subcommand to invoke (e.g., "run", "dev", "inspect").
         transport (str): Transport type for run/dev (default "stdio").
@@ -220,7 +224,7 @@ def _build_fastmcp_command(
         format (Optional[str]): Output format for "inspect" (passed via `--format`).
         output (Optional[str]): Output file/path for "inspect" (passed via `-o`).
         **kwargs: Ignored additional keyword arguments.
-    
+
     Returns:
         List[str]: The assembled command and arguments ready to be executed (e.g., via subprocess).
     """
@@ -278,10 +282,10 @@ def _build_fastmcp_command(
 def _execute_fastmcp(cmd: List[str]) -> None:
     """
     Run the FastMCP CLI command and exit the application on failure.
-    
+
     This executes the provided command list using subprocess.run and, on error,
     reports a user-facing message and terminates the CLI with a non-zero exit code.
-    
+
     Raises:
         typer.Exit: Exit with code 1 if the FastMCP command returns a non-zero status
             or if the FastMCP executable is not found.
@@ -292,7 +296,9 @@ def _execute_fastmcp(cmd: List[str]) -> None:
         print_error(f"Error running FastMCP CLI: {e}")
         raise typer.Exit(1)
     except FileNotFoundError:
-        print_error("FastMCP CLI not found. Please install it with: pip install fastmcp")
+        print_error(
+            "FastMCP CLI not found. Please install it with: pip install fastmcp"
+        )
         raise typer.Exit(1)
 
 
@@ -808,7 +814,9 @@ def dev(
 @app.command("inspect")
 def inspect(
     format: Optional[str] = typer.Option(
-        None, "--format", help="Output format: text, fastmcp, or mcp (bypasses custom display)"
+        None,
+        "--format",
+        help="Output format: text, fastmcp, or mcp (bypasses custom display)",
     ),
     output: Optional[str] = typer.Option(
         None, "-o", "--output", help="Output file path"
@@ -822,9 +830,9 @@ def inspect(
 ):
     """
     Inspect MCP server capabilities and present a report using either a custom panel view or raw/JSON output.
-    
+
     If `format`, `output`, or `raw` is provided, this command delegates directly to the FastMCP CLI and returns its output (optionally writing to `output`). When run without those options, it captures FastMCP's JSON inspection output and either displays a concise panel-based summary or a formatted JSON summary when `json_output` is true. If parsing the FastMCP JSON fails, the command falls back to displaying FastMCP's text output.
-    
+
     Parameters:
         format (Optional[str]): Output format to request from FastMCP ("text", "fastmcp", or "mcp"). When provided, the CLI call is passed through to FastMCP.
         output (Optional[str]): File path to write FastMCP output; when set, the CLI call is passed through to FastMCP.
@@ -874,7 +882,9 @@ def inspect(
             console.print(e.stderr)
         raise typer.Exit(1)
     except FileNotFoundError:
-        print_error("FastMCP CLI not found. Please install it with: pip install fastmcp")
+        print_error(
+            "FastMCP CLI not found. Please install it with: pip install fastmcp"
+        )
         raise typer.Exit(1)
 
 
@@ -883,7 +893,7 @@ def inspect(
 def fastmcp(
     args: List[str] = typer.Argument(
         None,
-        help='Arguments to pass to FastMCP CLI. Use quotes or prefix patterns like arg=, args=, arguments=',
+        help="Arguments to pass to FastMCP CLI. Use quotes or prefix patterns like arg=, args=, arguments=",
     ),
 ):
     """Direct passthrough to FastMCP CLI.
@@ -902,7 +912,9 @@ def fastmcp(
         indexed mcp fastmcp "install" "cursor"     # Same as above
     """
     if not args:
-        print_error("No arguments provided. Use 'indexed mcp fastmcp args=--help' to see FastMCP help.")
+        print_error(
+            "No arguments provided. Use 'indexed mcp fastmcp args=--help' to see FastMCP help."
+        )
         raise typer.Exit(1)
 
     # Process arguments - extract values from prefix patterns
@@ -927,9 +939,9 @@ def fastmcp(
 def docs() -> None:
     """
     Open the MCP server documentation URL in the user's default web browser.
-    
+
     If the browser cannot be opened, prints a manual URL instruction and exits with code 1 by raising typer.Exit.
-    
+
     Raises:
         typer.Exit: with exit code 1 if the browser could not be opened.
     """

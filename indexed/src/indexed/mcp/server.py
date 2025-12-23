@@ -7,6 +7,7 @@ Uses FastMCP 2.13+ features including server lifespan and response caching middl
 # Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
 # Must be done before any faiss imports occur
 import warnings
+import argparse
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
 
@@ -15,6 +16,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict  # noqa: 
 
 from fastmcp import FastMCP  # noqa: E402
 from fastmcp.server.middleware.caching import ResponseCachingMiddleware  # noqa: E402
+
 try:
     from fastmcp import Context  # noqa: E402
 except ImportError:
@@ -43,9 +45,9 @@ class LifespanState(TypedDict):
 def _get_mcp_config() -> MCPConfig:
     """
     Load the MCP configuration from the application's configuration service.
-    
+
     Attempts to read the MCPConfig from the configuration hierarchy (defaults -> global TOML -> workspace TOML -> environment); if the configuration service is unavailable or an error occurs, returns a default MCPConfig instance.
-    
+
     Returns:
         MCPConfig: The resolved MCP configuration, or a default MCPConfig on failure.
     """
@@ -62,7 +64,7 @@ def _get_mcp_config() -> MCPConfig:
 def _get_search_config() -> CoreV1SearchConfig:
     """
     Load the search configuration from the configuration service, falling back to defaults if unavailable.
-    
+
     Returns:
         CoreV1SearchConfig: Configuration values from the "core.v1.search" path, or a default CoreV1SearchConfig if retrieval fails.
     """
@@ -112,7 +114,7 @@ _search_config: Optional[CoreV1SearchConfig] = None
 def get_mcp_config() -> MCPConfig:
     """
     Return the cached MCP configuration, initializing it from the configuration service if not already loaded (used as a fallback outside lifespan).
-    
+
     Returns:
         MCPConfig: The cached MCP configuration instance.
     """
@@ -125,7 +127,7 @@ def get_mcp_config() -> MCPConfig:
 def get_search_config() -> CoreV1SearchConfig:
     """
     Return the cached CoreV1SearchConfig, loading it from the configuration service on first access.
-    
+
     Returns:
         CoreV1SearchConfig: The active search configuration used by the server.
     """
@@ -139,18 +141,18 @@ def get_search_config() -> CoreV1SearchConfig:
 def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
     """
     Search all available document collections for semantically similar content to the provided query.
-    
+
     Parameters:
         query (str): The search query text.
         ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
-    
+
     Returns:
         dict: Mapping of collection name to its search results. On error, returns a dictionary with a single `"error"` key containing the error message.
     """
     # Try to get config from lifespan state, fallback to cached getter
-    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+    if ctx is not None and hasattr(ctx, "fastmcp_context"):
         try:
-            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            lifespan_state = getattr(ctx.fastmcp_context, "lifespan_context", None)
             if lifespan_state:
                 search_cfg = lifespan_state.get("search_config")
             else:
@@ -178,7 +180,9 @@ def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
 
 
 @mcp.tool
-def search_collection(collection: str, query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+def search_collection(
+    collection: str, query: str, ctx: Optional[Context] = None
+) -> Dict[str, Any]:
     """
     Search within a specific document collection using semantic similarity.
 
@@ -193,9 +197,9 @@ def search_collection(collection: str, query: str, ctx: Optional[Context] = None
         Dictionary with search results for the specified collection
     """
     # Try to get config from lifespan state, fallback to cached getter
-    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+    if ctx is not None and hasattr(ctx, "fastmcp_context"):
         try:
-            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            lifespan_state = getattr(ctx.fastmcp_context, "lifespan_context", None)
             if lifespan_state:
                 search_cfg = lifespan_state.get("search_config")
             else:
@@ -263,15 +267,17 @@ def collections_list(_all: str = "all") -> List[str]:
     name="CollectionsStatusList",
     description="Return detailed status information for all collections.",
 )
-def collections_status_list(_all: str = "all", ctx: Optional[Context] = None) -> List[Dict[str, Any]]:
+def collections_status_list(
+    _all: str = "all", ctx: Optional[Any] = None
+) -> List[Dict[str, Any]]:
     """
     Return detailed status information for all collections.
-    
+
     Each item is a mapping of collection attributes (name, document and chunk counts, timestamps, indexer names, index size, source type, relative path, and disk usage). The `include_index_size` flag from the MCP configuration controls whether index size is populated.
-    
+
     Parameters:
         ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
-    
+
     Returns:
         List[Dict[str, Any]]: A list of collection status dictionaries with keys:
             - name: collection name
@@ -287,9 +293,9 @@ def collections_status_list(_all: str = "all", ctx: Optional[Context] = None) ->
         On error, returns a single-item list containing {"error": "<error message>"}.
     """
     # Try to get config from lifespan state, fallback to cached getter
-    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+    if ctx is not None and hasattr(ctx, "fastmcp_context"):
         try:
-            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            lifespan_state = getattr(ctx.fastmcp_context, "lifespan_context", None)
             if lifespan_state:
                 mcp_cfg = lifespan_state.get("mcp_config")
             else:
@@ -298,7 +304,7 @@ def collections_status_list(_all: str = "all", ctx: Optional[Context] = None) ->
             mcp_cfg = get_mcp_config()
     else:
         mcp_cfg = get_mcp_config()
-    
+
     try:
         statuses = svc_status(include_index_size=mcp_cfg.include_index_size)
         # Convert CollectionStatus objects to dictionaries
@@ -326,16 +332,16 @@ def collections_status_list(_all: str = "all", ctx: Optional[Context] = None) ->
     name="CollectionStatus",
     description="Return detailed status information for a specific collection.",
 )
-def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+def collection_status(name: str, ctx: Optional[Any] = None) -> Dict[str, Any]:
     """
     Get detailed status information for a named collection.
-    
+
     Uses the same configuration as collections_status_list.
-    
+
     Parameters:
         name (str): Collection name to query.
         ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
-    
+
     Returns:
         dict: A mapping with the collection's status fields:
             - name: collection name
@@ -351,9 +357,9 @@ def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any
         If the collection is not found or an error occurs, returns {'error': <message>}.
     """
     # Try to get config from lifespan state, fallback to cached getter
-    if ctx is not None and hasattr(ctx, 'fastmcp_context'):
+    if ctx is not None and hasattr(ctx, "fastmcp_context"):
         try:
-            lifespan_state = getattr(ctx.fastmcp_context, 'lifespan_context', None)
+            lifespan_state = getattr(ctx.fastmcp_context, "lifespan_context", None)
             if lifespan_state:
                 mcp_cfg = lifespan_state.get("mcp_config")
             else:
@@ -362,7 +368,7 @@ def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any
             mcp_cfg = get_mcp_config()
     else:
         mcp_cfg = get_mcp_config()
-    
+
     try:
         statuses = svc_status([name], include_index_size=mcp_cfg.include_index_size)
         if not statuses:
@@ -387,17 +393,21 @@ def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any
 
 def main():
     """Main entry point for the MCP server."""
-    import argparse
 
     # Get MCP config for defaults
     mcp_cfg = get_mcp_config()
-    
+
     parser = argparse.ArgumentParser(description="MCP Server for indexed collections")
     parser.add_argument(
-        "--host", default=mcp_cfg.host, help=f"Host to bind to (default: {mcp_cfg.host})"
+        "--host",
+        default=mcp_cfg.host,
+        help=f"Host to bind to (default: {mcp_cfg.host})",
     )
     parser.add_argument(
-        "--port", type=int, default=mcp_cfg.port, help=f"Port to bind to (default: {mcp_cfg.port})"
+        "--port",
+        type=int,
+        default=mcp_cfg.port,
+        help=f"Port to bind to (default: {mcp_cfg.port})",
     )
     parser.add_argument(
         "--log-level",

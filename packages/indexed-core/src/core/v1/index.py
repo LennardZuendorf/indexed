@@ -13,10 +13,11 @@ DEFAULT_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 @dataclass
 class IndexConfig:
     """Simple configuration for the Index class.
-    
+
     Attributes:
         default_indexer: Name of the default FAISS indexer configuration.
     """
+
     default_indexer: str = DEFAULT_INDEXER
 
 
@@ -176,8 +177,10 @@ class Index:
             >>> # Update all collections
             >>> index.update()
         """
-        from .engine.factories.update_collection_factory import create_collection_updater
-        
+        from .engine.factories.update_collection_factory import (
+            create_collection_updater,
+        )
+
         if collection:
             if collection in self._collections:
                 # For tracked collections, create SourceConfig from connector
@@ -190,7 +193,7 @@ class Index:
                 )
                 update([cfg])
             else:
-                # Collection exists but not tracked - use update factory 
+                # Collection exists but not tracked - use update factory
                 # which reads configuration from manifest
                 statuses = status([collection])
                 if statuses:
@@ -209,7 +212,7 @@ class Index:
                     for name in self._collections
                 ]
                 update(cfgs)
-            
+
             # Also update any discovered collections not tracked
             statuses = status()
             for s in statuses:

@@ -8,7 +8,7 @@ for descriptions and comments, while Server uses plain text or HTML. This unifie
 handles both formats automatically.
 """
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class UnifiedJiraDocumentConverter:
@@ -112,7 +112,9 @@ class UnifiedJiraDocumentConverter:
 
         Handles both ADF (Cloud) and plain text (Server) formats.
         """
-        comments_data = document.get("fields", {}).get("comment", {}).get("comments", [])
+        comments_data = (
+            document.get("fields", {}).get("comment", {}).get("comments", [])
+        )
         comments = []
 
         for comment in comments_data:
@@ -149,7 +151,9 @@ class UnifiedJiraDocumentConverter:
         content = adf_doc.get("content", [])
         return self.__parse_adf_nodes(content)
 
-    def __parse_adf_nodes(self, nodes: list, depth: int = 0, block_level: bool = True) -> str:
+    def __parse_adf_nodes(
+        self, nodes: list, depth: int = 0, block_level: bool = True
+    ) -> str:
         """Parse ADF nodes recursively.
 
         Args:

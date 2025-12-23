@@ -86,9 +86,9 @@ class TestShowConfigDifferences:
             "setting1": ("local_value", "global_value"),
             "setting2": (123, 456),
         }
-        
+
         show_config_differences(differences, mock_console)
-        
+
         # Should print table
         assert mock_console.print.called
         call_args = [str(call) for call in mock_console.print.call_args_list]
@@ -99,9 +99,9 @@ class TestShowConfigDifferences:
         """Should show message when no differences exist."""
         mock_console = Mock(spec=Console)
         differences = {}
-        
+
         show_config_differences(differences, mock_console)
-        
+
         # Should print message about no differences
         assert mock_console.print.called
 
@@ -111,9 +111,9 @@ class TestShowConfigDifferences:
         differences = {
             "long_setting": ("a" * 100, "b" * 100),
         }
-        
+
         show_config_differences(differences, mock_console)
-        
+
         # Should have called format (implicitly tested via no errors)
         assert mock_console.print.called
 
@@ -123,9 +123,9 @@ class TestShowConfigDifferences:
         differences = {
             "section.subsection.key": ("local", "global"),
         }
-        
+
         show_config_differences(differences, mock_console)
-        
+
         assert mock_console.print.called
 
     def test_handles_none_values(self):
@@ -135,104 +135,104 @@ class TestShowConfigDifferences:
             "nullable": (None, "value"),
             "unset": ("value", None),
         }
-        
+
         show_config_differences(differences, mock_console)
-        
+
         assert mock_console.print.called
 
 
 class TestPromptStorageChoice:
     """Test prompt_storage_choice function."""
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_prompts_user_for_choice(self, mock_prompt):
         """Should prompt user to choose storage mode."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "1"
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         mock_prompt.assert_called_once()
         assert result in ["global", "local", "global_remember", "local_remember"]
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_returns_global_for_choice_1(self, mock_prompt):
         """Should return 'global' when user selects option 1."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "1"
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         assert result == "global"
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_returns_local_for_choice_2(self, mock_prompt):
         """Should return 'local' when user selects option 2."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "2"
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         assert result == "local"
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_returns_global_remember_for_choice_3(self, mock_prompt):
         """Should return 'global_remember' when user selects option 3."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "3"
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         assert result == "global_remember"
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_returns_local_remember_for_choice_4(self, mock_prompt):
         """Should return 'local_remember' when user selects option 4."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "4"
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         assert result == "local_remember"
 
-    @patch('indexed.utils.conflict_prompt.show_config_differences')
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.show_config_differences")
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_shows_differences_when_provided(self, mock_prompt, mock_show_diff):
         """Should display differences when provided."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "1"
         differences = {"key": ("local", "global")}
-        
+
         prompt_storage_choice(mock_console, differences=differences)
-        
+
         mock_show_diff.assert_called_once_with(differences, mock_console)
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_shows_workspace_path_when_provided(self, mock_prompt):
         """Should display workspace path in prompt."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "1"
         workspace = Path("/home/user/project")
-        
+
         prompt_storage_choice(mock_console, workspace_path=workspace)
-        
+
         # Should have printed workspace info
         assert mock_console.print.called
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_handles_invalid_choice_reprompts(self, mock_prompt):
         """Should handle invalid choices gracefully."""
         mock_console = Mock(spec=Console)
         # First invalid, then valid
         mock_prompt.side_effect = ["invalid", "1"]
-        
+
         result = prompt_storage_choice(mock_console)
-        
+
         # Should have prompted at least twice
         assert mock_prompt.call_count >= 1
         assert result in ["global", "local", "global_remember", "local_remember"]
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_handles_numeric_string_choices(self, mock_prompt):
         """Should handle choices as strings."""
         mock_console = Mock(spec=Console)
@@ -245,12 +245,12 @@ class TestPromptStorageChoice:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_handles_keyboard_interrupt(self, mock_prompt):
         """Should handle user cancellation (Ctrl+C)."""
         mock_console = Mock(spec=Console)
         mock_prompt.side_effect = KeyboardInterrupt()
-        
+
         with pytest.raises(KeyboardInterrupt):
             prompt_storage_choice(mock_console)
 
@@ -279,16 +279,16 @@ class TestEdgeCases:
             "path": ("/some/path/with/$pecial", "/another/path"),
             "url": ("https://example.com?q=test&x=1", "https://other.com"),
         }
-        
+
         show_config_differences(differences, mock_console)
         assert mock_console.print.called
 
-    @patch('indexed.utils.conflict_prompt.Prompt.ask')
+    @patch("indexed.utils.conflict_prompt.Prompt.ask")
     def test_prompt_with_none_workspace_path(self, mock_prompt):
         """Should handle None workspace_path."""
         mock_console = Mock(spec=Console)
         mock_prompt.return_value = "1"
-        
+
         result = prompt_storage_choice(mock_console, workspace_path=None)
-        
+
         assert result in ["global", "local", "global_remember", "local_remember"]

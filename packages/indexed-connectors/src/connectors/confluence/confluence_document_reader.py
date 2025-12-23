@@ -13,7 +13,7 @@ class ConfluenceAPIError(Exception):
     def __init__(self, status_code: int, reason: str, message: str, url: str):
         """
         Initialize the ConfluenceAPIError with HTTP response details and produce a formatted error message.
-        
+
         Parameters:
             status_code (int): HTTP status code returned by the Confluence API.
             reason (str): Short HTTP reason phrase or error reason.
@@ -29,7 +29,7 @@ class ConfluenceAPIError(Exception):
     def _format_message(self) -> str:
         """
         Format a detailed, human-readable message describing this Confluence API error.
-        
+
         Returns:
             str: A multi-line string containing the HTTP status code and reason, the request URL, and the error message.
         """
@@ -57,7 +57,7 @@ class ConfluenceDocumentReader:
         # "token" or "login" and "password" must be provided
         """
         Initialize the ConfluenceDocumentReader with connection, query, batching, retry, and comment-read configuration.
-        
+
         Parameters:
             base_url (str): Base URL of the Confluence instance (e.g., "https://confluence.example.com").
             query (str): User CQL query used to find pages; will be normalized to include "type=page" when appropriate.
@@ -69,7 +69,7 @@ class ConfluenceDocumentReader:
             retry_delay (int|float, optional): Delay in seconds between retry attempts; defaults to 1.
             max_skipped_items_in_row (int, optional): Maximum consecutive skipped items tolerated when reading batches; defaults to 5.
             read_all_comments (bool, optional): If True, the reader will fetch all nested comments for a page (requires additional requests); if False, only the first-level comment bodies are expanded in the main page request.
-        
+
         Raises:
             ValueError: If neither `token` nor both `login` and `password` are provided.
         """
@@ -122,16 +122,16 @@ class ConfluenceDocumentReader:
     def build_page_query(user_query):
         """
         Constructs a Confluence CQL query that ensures results are pages.
-        
+
         If `user_query` is empty returns a query that selects pages only. If `user_query`
         already contains a `type=page` clause (case-insensitive, flexible spacing) it is
         returned unchanged; otherwise the function wraps the provided fragment with
         `type=page AND (...)`.
-        
+
         Parameters:
             user_query (str): A CQL fragment provided by the user; may be empty or already
                 include a `type=page` clause.
-        
+
         Returns:
             str: A CQL query string that restricts results to pages according to
             `user_query`.
@@ -140,7 +140,7 @@ class ConfluenceDocumentReader:
             return "type=page"
 
         # Check if user query already contains type=page (with various spacing)
-        if re.search(r'\btype\s*=\s*page\b', user_query, re.IGNORECASE):
+        if re.search(r"\btype\s*=\s*page\b", user_query, re.IGNORECASE):
             return user_query
 
         return f"type=page AND ({user_query})"
@@ -148,10 +148,10 @@ class ConfluenceDocumentReader:
     def __add_url_prefix(self, relative_path):
         """
         Prepend the reader's base URL to a relative path.
-        
+
         Parameters:
             relative_path (str): Relative URL path to append to the reader's base_url.
-        
+
         Returns:
             full_url (str): Absolute URL formed by concatenating base_url and relative_path.
         """
@@ -210,17 +210,18 @@ class ConfluenceDocumentReader:
     def __request(self, url, params):
         """
         Perform an HTTP GET against the given Confluence API URL with the provided query parameters and return the parsed JSON response.
-        
+
         Parameters:
             url (str): Full request URL to call.
             params (dict): Query parameters to include in the request.
-        
+
         Returns:
             dict: The parsed JSON body of the successful response.
-        
+
         Raises:
             ConfluenceAPIError: If the request fails (non-2xx status); error includes status code, reason, message, and URL.
         """
+
         def do_request():
             response = requests.get(
                 url=url,
@@ -247,7 +248,9 @@ class ConfluenceDocumentReader:
                     error_reason = error_body.get("reason", error_reason)
                 except Exception:
                     # If JSON parsing fails, use the response text
-                    error_message = response.text[:500] if response.text else error_message
+                    error_message = (
+                        response.text[:500] if response.text else error_message
+                    )
                 raise ConfluenceAPIError(
                     status_code=response.status_code,
                     reason=error_reason,

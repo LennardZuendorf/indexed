@@ -31,9 +31,9 @@ class JiraCloudDocumentReader:
     ):
         """
         Deprecated wrapper that configures a Jira Cloud document reader for backward compatibility.
-        
+
         This initializer emits a DeprecationWarning and constructs an internal UnifiedJiraDocumentReader configured for Jira Cloud authentication; the instance exposes compatibility attributes from the internal reader. Prefer using UnifiedJiraDocumentReader with auth_type set to JiraAuthType.CLOUD.
-        
+
         Parameters:
             base_url (str): Base URL of the Jira instance (e.g., "https://your-domain.atlassian.net").
             query (str): JQL query used to select issues/documents.
@@ -46,11 +46,11 @@ class JiraCloudDocumentReader:
         """
         # Emit deprecation warning
         warnings.warn(
-            'JiraCloudDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.',
+            "JiraCloudDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
-        
+
         # Delegate to unified reader
         self._reader = UnifiedJiraDocumentReader(
             base_url=base_url,
@@ -79,7 +79,7 @@ class JiraCloudDocumentReader:
     def read_all_documents(self):
         """
         Read all documents matching the configured JQL query.
-        
+
         Returns:
             documents (list[dict]): Documents extracted from Jira for issues that match the reader's query.
         """
@@ -88,7 +88,7 @@ class JiraCloudDocumentReader:
     def get_number_of_documents(self):
         """
         Get the total number of documents that match the reader's query.
-        
+
         Returns:
             int: Total count of matching documents.
         """
@@ -97,7 +97,7 @@ class JiraCloudDocumentReader:
     def get_reader_details(self) -> dict:
         """
         Return a dictionary describing the reader's configuration and runtime details.
-        
+
         Returns:
             details (dict): Mapping containing reader configuration and metadata (for example: base_url, query, auth_type, email/api token presence, batch_size, number_of_retries, retry_delay, max_skipped_items_in_row, and client information).
         """

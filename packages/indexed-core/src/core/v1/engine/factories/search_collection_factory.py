@@ -12,6 +12,7 @@ def _get_default_collections_path() -> str:
     """Get the default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_collections_path())
     except ImportError:
@@ -25,7 +26,7 @@ def create_collection_searcher(
     collections_path: Optional[str] = None,
 ):
     """Create a collection searcher instance.
-    
+
     Args:
         collection_name: Name of the collection to search.
         index_name: Name of the index to use.

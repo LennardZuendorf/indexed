@@ -9,7 +9,11 @@ import typer
 from loguru import logger
 
 from indexed_config import ConfigService
-from core.v1.engine.services import SourceConfig, create as svc_create, status as svc_status
+from core.v1.engine.services import (
+    SourceConfig,
+    create as svc_create,
+    status as svc_status,
+)
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -38,7 +42,7 @@ def execute_create_command(
     verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> None:
     """Common execution flow for all create commands.
-    
+
     This function encapsulates the shared logic for creating collections:
     1. Setup logging
     2. Initialize ConfigService
@@ -47,7 +51,7 @@ def execute_create_command(
     5. Build SourceConfig
     6. Execute with progress display
     7. Verify and display result
-    
+
     Args:
         collection: Name of the collection to create
         source_type: Type of source (e.g., 'localFiles', 'jiraCloud', 'confluence')
@@ -71,47 +75,51 @@ def execute_create_command(
 
     # Get ConfigService singleton (auto-loads .env)
     config = ConfigService.instance()
-    
+
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")
         logger.info("Using source type: %s", source_type)
-        logger.info("Validating configuration requirements for %s...", config_class.__name__)
-    
+        logger.info(
+            "Validating configuration requirements for %s...", config_class.__name__
+        )
+
     # Validate requirements using ConfigService
-    
+
     validation = config.validate_requirements(
-        config_class=config_class,
-        namespace=namespace,
-        cli_overrides=cli_overrides
+        config_class=config_class, namespace=namespace, cli_overrides=cli_overrides
     )
-    
+
     if is_verbose_mode():
-        logger.info("Validation result: %d fields present, %d missing", 
-                    len(validation["present"]), len(validation["missing"]))
-    
+        logger.info(
+            "Validation result: %d fields present, %d missing",
+            len(validation["present"]),
+            len(validation["missing"]),
+        )
+
     # Phase 1: Prompt for missing values using connector-specific callback
     if validation["missing"]:
         prompt_missing_fields(validation, config, namespace)
-    
+
     # Also set CLI overrides in config for connector to read
     for key, value in cli_overrides.items():
         field_info = validation["field_info"].get(key)
         config.set_value(f"{namespace}.{key}", value, field_info=field_info)
-    
+
     # Log resolved configuration in verbose mode
     if is_verbose_mode():
         logger.info("Configuration resolved:")
         for field_name, value in validation["present"].items():
-            if validation["field_info"][field_name].get("sensitive"):
+            field_meta = validation["field_info"].get(field_name, {})
+            if field_meta.get("sensitive"):
                 logger.info("  %s: ******** (sensitive)", field_name)
             else:
                 logger.info("  %s: %s", field_name, value)
         logger.info("  Collection: %s", collection)
-    
+
     # Build source config using connector-specific callback
     cfg = build_source_config(validation["present"], collection)
-    
+
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
     try:
@@ -121,7 +129,9 @@ def execute_create_command(
                 if verbose_pre_creation_log:
                     verbose_pre_creation_log(validation["present"])
                 logger.info("Creating collection '%s'...", collection)
-                svc_create([cfg], config_service=config, use_cache=use_cache, force=force)
+                svc_create(
+                    [cfg], config_service=config, use_cache=use_cache, force=force
+                )
         else:
             # Normal mode: show header and spinner with clean output
             console.print()
@@ -131,47 +141,57 @@ def execute_create_command(
                 f"[/{get_heading_style()}]"
             )
             console.print()
-            
+
             progress_msg = progress_message or f"Creating {collection}"
             with OperationStatus(console, progress_msg, capture_logs=False) as status:
                 callback = create_progress_update_callback(status)
                 try:
                     with suppress_core_output():
-                        svc_create([cfg], config_service=config, use_cache=use_cache, force=force, progress_callback=callback)
+                        svc_create(
+                            [cfg],
+                            config_service=config,
+                            use_cache=use_cache,
+                            force=force,
+                            progress_callback=callback,
+                        )
                     status.complete(success=True)
                 except Exception as e:
                     status.complete(success=False)
                     creation_error = e
-    
+
     except Exception as e:
         creation_error = e
-    
+
     # If creation failed, show error and exit
     if creation_error:
         print_error(f"Failed to create collection: {str(creation_error)}")
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
-    
+
     # Phase 3: Verify collection was created by checking if manifest exists
     try:
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
-        
+
         collections = svc_status([collection])
-        
+
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set
         if collections and len(collections) > 0 and collections[0].updated_time:
             doc_count = collections[0].number_of_documents
             if is_verbose_mode():
-                logger.info("Collection created successfully with %d documents", doc_count)
-            
-            print_success(f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}")
+                logger.info(
+                    "Collection created successfully with %d documents", doc_count
+                )
+
+            print_success(
+                f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}"
+            )
         else:
             print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)
-    
+
     except typer.Exit:
         # Re-raise typer.Exit to preserve exit code
         raise
@@ -180,6 +200,3 @@ def execute_create_command(
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
-
-
-

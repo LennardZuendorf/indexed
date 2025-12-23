@@ -19,7 +19,7 @@ class TestGetStorageIndicator:
         """Should return global indicator with globe icon."""
         path = Path.home() / ".indexed"
         result = get_storage_indicator("global", path)
-        
+
         assert "🌐" in result
         assert "Global" in result
         assert "~/.indexed" in result
@@ -28,7 +28,7 @@ class TestGetStorageIndicator:
         """Should return local indicator with folder icon."""
         path = Path.cwd() / ".indexed"
         result = get_storage_indicator("local", path)
-        
+
         assert "📁" in result
         assert "Local" in result
 
@@ -36,7 +36,7 @@ class TestGetStorageIndicator:
         """Should replace home directory with tilde in path."""
         path = Path.home() / "some" / "nested" / "path"
         result = get_storage_indicator("global", path)
-        
+
         assert "~" in result
         assert str(Path.home()) not in result
 
@@ -45,7 +45,7 @@ class TestGetStorageIndicator:
         path = Path.home() / ".indexed"
         reason = "via config setting"
         result = get_storage_indicator("global", path, reason=reason)
-        
+
         assert reason in result
         assert " - " in result
 
@@ -53,14 +53,14 @@ class TestGetStorageIndicator:
         """Should not include separator when reason is None."""
         path = Path.home() / ".indexed"
         result = get_storage_indicator("global", path, reason=None)
-        
+
         assert " - " not in result
 
     def test_local_path_not_replaced(self):
         """Should not replace tilde for non-home paths."""
         path = Path("/opt/indexed")
         result = get_storage_indicator("local", path)
-        
+
         assert "/opt/indexed" in result
         assert "~" not in result
 
@@ -68,7 +68,7 @@ class TestGetStorageIndicator:
         """Should treat empty string reason like None."""
         path = Path.home() / ".indexed"
         result = get_storage_indicator("global", path, reason="")
-        
+
         # Empty reason might still show separator; behavior depends on implementation
         assert "Global" in result
 
@@ -81,7 +81,7 @@ class TestPrintStorageInfo:
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path)
-        
+
         assert mock_console.print.called
 
     def test_newline_before_when_specified(self):
@@ -89,7 +89,7 @@ class TestPrintStorageInfo:
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, newline_before=True)
-        
+
         # Should have multiple print calls
         assert mock_console.print.call_count >= 2
 
@@ -98,15 +98,17 @@ class TestPrintStorageInfo:
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, newline_after=True)
-        
+
         assert mock_console.print.call_count >= 2
 
     def test_no_newlines_when_both_false(self):
         """Should print only indicator when both newline options are False."""
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
-        print_storage_info(mock_console, "global", path, newline_before=False, newline_after=False)
-        
+        print_storage_info(
+            mock_console, "global", path, newline_before=False, newline_after=False
+        )
+
         # Should print once (just the indicator)
         assert mock_console.print.call_count == 1
 
@@ -116,7 +118,7 @@ class TestPrintStorageInfo:
         path = Path.home() / ".indexed"
         reason = "via --global flag"
         print_storage_info(mock_console, "global", path, reason=reason)
-        
+
         # Check that printed string contains reason
         call_args = str(mock_console.print.call_args_list)
         assert "via --global flag" in call_args or mock_console.print.called
@@ -126,7 +128,7 @@ class TestPrintStorageInfo:
         mock_console = Mock(spec=Console)
         path = Path.cwd() / ".indexed"
         print_storage_info(mock_console, "local", path)
-        
+
         assert mock_console.print.called
 
 
@@ -141,7 +143,7 @@ class TestGetStorageModeAndReason:
             config_mode="global",
             workspace_pref="global",
         )
-        
+
         assert mode == "local"
         assert "via --local flag" in reason
 
@@ -153,7 +155,7 @@ class TestGetStorageModeAndReason:
             config_mode="local",
             workspace_pref="local",
         )
-        
+
         assert mode == "global"
         assert "via --global flag" in reason
 
@@ -165,7 +167,7 @@ class TestGetStorageModeAndReason:
             config_mode="local",
             workspace_pref="global",
         )
-        
+
         assert mode == "local"
         assert "via config setting" in reason
 
@@ -177,7 +179,7 @@ class TestGetStorageModeAndReason:
             config_mode=None,
             workspace_pref="global",
         )
-        
+
         assert mode == "global"
         assert "saved preference" in reason
 
@@ -189,7 +191,7 @@ class TestGetStorageModeAndReason:
             config_mode=None,
             workspace_pref=None,
         )
-        
+
         assert mode == "local"
         assert "local .indexed found" in reason
 
@@ -201,7 +203,7 @@ class TestGetStorageModeAndReason:
             config_mode=None,
             workspace_pref=None,
         )
-        
+
         assert mode == "global"
         assert "default" in reason
 
@@ -213,7 +215,7 @@ class TestGetStorageModeAndReason:
             config_mode=None,
             workspace_pref=None,
         )
-        
+
         assert mode == "global"
         assert reason == "default"
 
@@ -225,7 +227,7 @@ class TestGetStorageModeAndReason:
             config_mode="global",
             workspace_pref="local",
         )
-        
+
         assert mode == "global"
         assert "via config setting" in reason
 
@@ -237,7 +239,7 @@ class TestGetStorageModeAndReason:
             config_mode=None,
             workspace_pref="global",
         )
-        
+
         assert mode == "global"
         assert "saved preference" in reason
 
@@ -249,7 +251,7 @@ class TestEdgeCases:
         """Should handle very long paths."""
         long_path = Path("/very/long/nested/path/structure/that/goes/on/and/on")
         result = get_storage_indicator("local", long_path)
-        
+
         assert "Local" in result
         assert str(long_path) in result
 
@@ -257,7 +259,7 @@ class TestEdgeCases:
         """Should handle special characters in paths."""
         special_path = Path("/path/with spaces/and-dashes/under_scores")
         result = get_storage_indicator("global", special_path)
-        
+
         assert "Global" in result
 
     def test_print_with_none_reason(self):
@@ -265,13 +267,13 @@ class TestEdgeCases:
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
         print_storage_info(mock_console, "global", path, reason=None)
-        
+
         assert mock_console.print.called
 
     def test_storage_mode_resolution_precedence_order(self):
         """Should verify complete precedence order."""
         # CLI override > config > workspace pref > detected local > default
-        
+
         # Test each level
         cases = [
             # (has_local, override, config, pref, expected_mode, expected_reason_keyword)
@@ -281,9 +283,11 @@ class TestEdgeCases:
             (True, None, None, None, "local", "found"),
             (False, None, None, None, "global", "default"),
         ]
-        
+
         for has_local, override, config, pref, expected_mode, reason_keyword in cases:
-            mode, reason = get_storage_mode_and_reason(has_local, override, config, pref)
+            mode, reason = get_storage_mode_and_reason(
+                has_local, override, config, pref
+            )
             assert mode == expected_mode
             assert reason_keyword in reason
 
@@ -291,7 +295,7 @@ class TestEdgeCases:
         """Should not crash if console printing fails."""
         mock_console = Mock(spec=Console)
         mock_console.print.side_effect = Exception("Console error")
-        
+
         path = Path.home() / ".indexed"
         # Should raise the exception (no suppression in this function)
         with pytest.raises(Exception):

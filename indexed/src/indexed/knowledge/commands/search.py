@@ -349,11 +349,11 @@ def search(
         indexed search "error handling" --no-content  # Hide content previews
     """
     from ...utils.logging import setup_root_logger
-    
+
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
-    
+
     Index()
 
     # Determine collections to search

@@ -1,4 +1,5 @@
 """Tests for Jira document converters."""
+
 import pytest
 from connectors.jira.unified_jira_document_converter import UnifiedJiraDocumentConverter
 
@@ -25,20 +26,17 @@ class TestUnifiedJiraDocumentConverter:
                         {
                             "type": "paragraph",
                             "content": [
-                                {
-                                    "type": "text",
-                                    "text": "This is a simple description"
-                                }
-                            ]
+                                {"type": "text", "text": "This is a simple description"}
+                            ],
                         }
-                    ]
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
-        
+
         assert len(result) == 1
         doc = result[0]
         assert doc["id"] == "TEST-123"
@@ -46,7 +44,7 @@ class TestUnifiedJiraDocumentConverter:
         assert doc["modifiedTime"] == "2024-01-01T12:00:00.000+0000"
         assert "TEST-123 : Simple test issue" in doc["text"]
         assert "This is a simple description" in doc["text"]
-        
+
         # Verify chunks
         chunks = doc["chunks"]
         assert len(chunks) >= 1
@@ -66,20 +64,16 @@ class TestUnifiedJiraDocumentConverter:
                     "content": [
                         {
                             "type": "paragraph",
-                            "content": [
-                                {"type": "text", "text": "First paragraph"}
-                            ]
+                            "content": [{"type": "text", "text": "First paragraph"}],
                         },
                         {
                             "type": "paragraph",
-                            "content": [
-                                {"type": "text", "text": "Second paragraph"}
-                            ]
-                        }
-                    ]
+                            "content": [{"type": "text", "text": "Second paragraph"}],
+                        },
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
@@ -102,21 +96,17 @@ class TestUnifiedJiraDocumentConverter:
                         {
                             "type": "heading",
                             "attrs": {"level": 1},
-                            "content": [
-                                {"type": "text", "text": "Main Heading"}
-                            ]
+                            "content": [{"type": "text", "text": "Main Heading"}],
                         },
                         {
                             "type": "heading",
                             "attrs": {"level": 3},
-                            "content": [
-                                {"type": "text", "text": "Sub Heading"}
-                            ]
-                        }
-                    ]
+                            "content": [{"type": "text", "text": "Sub Heading"}],
+                        },
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
@@ -146,9 +136,9 @@ class TestUnifiedJiraDocumentConverter:
                                             "type": "paragraph",
                                             "content": [
                                                 {"type": "text", "text": "First item"}
-                                            ]
+                                            ],
                                         }
-                                    ]
+                                    ],
                                 },
                                 {
                                     "type": "listItem",
@@ -157,16 +147,16 @@ class TestUnifiedJiraDocumentConverter:
                                             "type": "paragraph",
                                             "content": [
                                                 {"type": "text", "text": "Second item"}
-                                            ]
+                                            ],
                                         }
-                                    ]
-                                }
-                            ]
+                                    ],
+                                },
+                            ],
                         }
-                    ]
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
@@ -192,26 +182,26 @@ class TestUnifiedJiraDocumentConverter:
                                 {
                                     "type": "text",
                                     "text": "Bold text",
-                                    "marks": [{"type": "strong"}]
+                                    "marks": [{"type": "strong"}],
                                 },
                                 {"type": "text", "text": " and "},
                                 {
                                     "type": "text",
                                     "text": "italic text",
-                                    "marks": [{"type": "em"}]
+                                    "marks": [{"type": "em"}],
                                 },
                                 {"type": "text", "text": " and "},
                                 {
                                     "type": "text",
                                     "text": "code",
-                                    "marks": [{"type": "code"}]
-                                }
-                            ]
+                                    "marks": [{"type": "code"}],
+                                },
+                            ],
                         }
-                    ]
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
@@ -236,12 +226,12 @@ class TestUnifiedJiraDocumentConverter:
                             "type": "codeBlock",
                             "content": [
                                 {"type": "text", "text": "console.log('Hello World');"}
-                            ]
+                            ],
                         }
-                    ]
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
@@ -263,15 +253,22 @@ class TestUnifiedJiraDocumentConverter:
                         {
                             "type": "heading",
                             "attrs": {"level": 2},
-                            "content": [{"type": "text", "text": "Bug Report"}]
+                            "content": [{"type": "text", "text": "Bug Report"}],
                         },
                         {
                             "type": "paragraph",
                             "content": [
-                                {"type": "text", "text": "The following issue occurs when "},
-                                {"type": "text", "text": "authentication fails", "marks": [{"type": "strong"}]},
-                                {"type": "text", "text": ":"}
-                            ]
+                                {
+                                    "type": "text",
+                                    "text": "The following issue occurs when ",
+                                },
+                                {
+                                    "type": "text",
+                                    "text": "authentication fails",
+                                    "marks": [{"type": "strong"}],
+                                },
+                                {"type": "text", "text": ":"},
+                            ],
                         },
                         {
                             "type": "bulletList",
@@ -281,36 +278,49 @@ class TestUnifiedJiraDocumentConverter:
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [{"type": "text", "text": "User gets redirected"}]
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "User gets redirected",
+                                                }
+                                            ],
                                         }
-                                    ]
+                                    ],
                                 },
                                 {
                                     "type": "listItem",
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [{"type": "text", "text": "Session is cleared"}]
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "Session is cleared",
+                                                }
+                                            ],
                                         }
-                                    ]
-                                }
-                            ]
+                                    ],
+                                },
+                            ],
                         },
                         {
                             "type": "codeBlock",
                             "content": [
-                                {"type": "text", "text": "if (auth.failed) {\n  redirect('/login');\n}"}
-                            ]
-                        }
-                    ]
+                                {
+                                    "type": "text",
+                                    "text": "if (auth.failed) {\n  redirect('/login');\n}",
+                                }
+                            ],
+                        },
+                    ],
                 },
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
         text = result[0]["text"]
-        
+
         # Verify structure is preserved
         assert "## Bug Report" in text
         assert "The following issue occurs when **authentication fails**:" in text
@@ -331,9 +341,9 @@ class TestUnifiedJiraDocumentConverter:
                     "content": [
                         {
                             "type": "paragraph",
-                            "content": [{"type": "text", "text": "Main description"}]
+                            "content": [{"type": "text", "text": "Main description"}],
                         }
-                    ]
+                    ],
                 },
                 "comment": {
                     "comments": [
@@ -344,9 +354,11 @@ class TestUnifiedJiraDocumentConverter:
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [{"type": "text", "text": "First comment"}]
+                                        "content": [
+                                            {"type": "text", "text": "First comment"}
+                                        ],
                                     }
-                                ]
+                                ],
                             }
                         },
                         {
@@ -356,19 +368,21 @@ class TestUnifiedJiraDocumentConverter:
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [{"type": "text", "text": "Second comment"}]
+                                        "content": [
+                                            {"type": "text", "text": "Second comment"}
+                                        ],
                                     }
-                                ]
+                                ],
                             }
-                        }
+                        },
                     ]
-                }
-            }
+                },
+            },
         }
 
         result = self.converter.convert(document)
         doc = result[0]
-        
+
         # Verify all content is included
         assert "Main description" in doc["text"]
         assert "First comment" in doc["text"]
@@ -382,13 +396,13 @@ class TestUnifiedJiraDocumentConverter:
                 "summary": "Empty issue",
                 "updated": "2024-01-03T12:00:00.000+0000",
                 "description": None,
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
         doc = result[0]
-        
+
         assert doc["id"] == "EMPTY-1"
         assert "Empty issue" in doc["text"]
         # Should not crash on empty/null description
@@ -402,13 +416,13 @@ class TestUnifiedJiraDocumentConverter:
                 "summary": "Server issue",
                 "updated": "2024-01-01T12:00:00.000+0000",
                 "description": "This is a plain text description from Jira Server",
-                "comment": {"comments": []}
-            }
+                "comment": {"comments": []},
+            },
         }
 
         result = self.converter.convert(document)
         doc = result[0]
-        
+
         assert doc["id"] == "SRV-1"
         assert "This is a plain text description from Jira Server" in doc["text"]
 
@@ -426,12 +440,12 @@ class TestUnifiedJiraDocumentConverter:
                         {"body": "Plain text comment 1"},
                         {"body": "Plain text comment 2"},
                     ]
-                }
-            }
+                },
+            },
         }
 
         result = self.converter.convert(document)
         doc = result[0]
-        
+
         assert "Plain text comment 1" in doc["text"]
         assert "Plain text comment 2" in doc["text"]

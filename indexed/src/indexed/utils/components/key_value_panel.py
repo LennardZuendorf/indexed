@@ -22,11 +22,11 @@ from .theme import (
 def _truncate(value: str, max_len: int) -> str:
     """
     Truncates a string to a maximum length, appending "..." when truncation occurs.
-    
+
     Parameters:
         value (str): The input string to truncate.
         max_len (int): Maximum allowed length of the returned string. When truncation occurs, the returned string's length will equal `max_len` (including the appended ellipsis).
-    
+
     Returns:
         str: The original string if its length is less than or equal to `max_len`, otherwise a truncated string ending with "...".
     """
@@ -54,7 +54,7 @@ def create_key_value_panel(
 ) -> Panel:
     """
     Render a Rich Panel showing aligned key/value rows with an optional category column and optional headers.
-    
+
     Parameters:
         title (str): Panel title displayed on the top border.
         rows (Sequence[tuple[str, str, str] | tuple[str, str]]): Iterable of row tuples. In 3-column mode each row is (category, key, value); in 2-column mode each row is (key, value). When show_category is True a 2-tuple is treated as (key, value) with an empty category; when show_category is False a 3-tuple ignores the category.
@@ -65,12 +65,12 @@ def create_key_value_panel(
         show_headers (bool): Render a muted header row above the data when True.
         headers (tuple[str, ...] | None): Custom header labels. Expected length is 3 for three-column mode or 2 for two-column mode; defaults to ("source", "key", "value") or ("key", "value") respectively.
         expand (bool): Whether the panel should expand to fill available width.
-    
+
     Returns:
         Panel: A styled Rich Panel containing a fixed-width, non-wrapping grid of the provided rows with applied heading, label, and border styles.
     """
     grid = Table.grid(padding=(0, 2), expand=expand)
-    
+
     if show_category:
         # Category column: blue
         grid.add_column(style=get_label_style(), width=category_width, no_wrap=True)
@@ -78,14 +78,14 @@ def create_key_value_panel(
     grid.add_column(style=get_heading_style(), width=key_width, no_wrap=True)
     # Value column: white (not muted)
     grid.add_column(style=get_value_style(), no_wrap=True)
-    
+
     # Add header row if enabled (using Text objects to fully override column styles)
     if show_headers and rows:
         from rich.text import Text
-        
+
         # Grey color for headers - must set explicit color to override column style
         header_style = get_secondary_style()
-        
+
         if show_category:
             default_headers = ("source", "key", "value")
             h = headers if headers and len(headers) == 3 else default_headers
@@ -106,7 +106,7 @@ def create_key_value_panel(
             )
             # Empty separator row
             grid.add_row("", "")
-    
+
     for row in rows:
         if show_category:
             if len(row) == 3:
@@ -125,7 +125,7 @@ def create_key_value_panel(
                 key, value = row
             truncated = _truncate(str(value), value_max_len)
             grid.add_row(key, truncated)
-    
+
     return Panel(
         grid,
         title=title,
@@ -147,9 +147,9 @@ def create_simple_key_value_panel(
     expand: bool = True,
 ) -> Panel:
     """Create a simple 2-column key-value panel.
-    
+
     A convenience wrapper for create_key_value_panel with show_category=False.
-    
+
     Args:
         title: Panel title
         rows: List of (key, value) tuples
@@ -158,10 +158,10 @@ def create_simple_key_value_panel(
         show_headers: Whether to show column headers
         headers: Custom header labels (key, value)
         expand: Whether to expand to fill width
-        
+
     Returns:
         Rich Panel with 2-column layout
-        
+
     Example:
         >>> rows = [
         ...     ("/Users/dev/project", "local"),

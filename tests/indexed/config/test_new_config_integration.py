@@ -7,22 +7,22 @@ from indexed_config import ConfigService
 @pytest.fixture
 def isolated_config(tmp_path, monkeypatch):
     """Create an isolated ConfigService that uses a temp directory.
-    
+
     This prevents tests from polluting the real .indexed/config.toml.
     """
     # Reset singleton before each test
     ConfigService.reset()
-    
+
     # Create the config in temp directory
     config_dir = tmp_path / ".indexed"
     config_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Change to temp directory so ConfigService uses it
     monkeypatch.chdir(tmp_path)
-    
+
     config = ConfigService(workspace=tmp_path)
     yield config
-    
+
     # Reset singleton after test
     ConfigService.reset()
 
@@ -101,7 +101,7 @@ def test_config_service_validate(tmp_path, monkeypatch):
     # Reset and create isolated config
     ConfigService.reset()
     monkeypatch.chdir(tmp_path)
-    
+
     # Create a temporary test directory
     test_dir = tmp_path / "test"
     test_dir.mkdir()
@@ -117,7 +117,7 @@ def test_config_service_validate(tmp_path, monkeypatch):
     # Validate should return empty errors
     errors = config.validate()
     assert len(errors) == 0
-    
+
     ConfigService.reset()
 
 
@@ -125,7 +125,7 @@ def test_config_merging_priority(tmp_path, monkeypatch):
     """Test that config sources are merged correctly."""
     ConfigService.reset()
     monkeypatch.chdir(tmp_path)
-    
+
     config = ConfigService(workspace=tmp_path)
 
     # Set workspace config
@@ -135,7 +135,7 @@ def test_config_merging_priority(tmp_path, monkeypatch):
 
     # Workspace should override defaults
     assert raw["sources"]["files"]["path"] == "./workspace"
-    
+
     ConfigService.reset()
 
 
@@ -149,13 +149,17 @@ def test_collection_service_with_config():
         type="localFiles",
         base_url_or_path="./test",
         indexer="indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2",
-        reader_opts={"includePatterns": ["*.txt"], "excludePatterns": [], "failFast": False},
+        reader_opts={
+            "includePatterns": ["*.txt"],
+            "excludePatterns": [],
+            "failFast": False,
+        },
     )
 
     # Verify the source config was created successfully
     assert source_cfg.name == "test-collection"
     assert source_cfg.type == "localFiles"
-    
+
     # Note: We're not actually creating the collection here
     # Just verifying that the API is compatible with the new config system
 

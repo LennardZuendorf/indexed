@@ -9,12 +9,13 @@ from typing import Dict, NamedTuple, List
 
 class IndexerConfig(NamedTuple):
     """Configuration for an indexer.
-    
+
     Attributes:
         model_name: Full sentence-transformers model name
         embedding_dim: Embedding dimension for FAISS index
         short_name: Short name for the embedding model (used in indexer name)
     """
+
     model_name: str
     embedding_dim: int
     short_name: str
@@ -46,16 +47,16 @@ INDEXER_PREFIX = "indexer_FAISS_IndexFlatL2__embeddings_"
 
 def get_indexer_config(indexer_name: str) -> IndexerConfig:
     """Get indexer configuration by full indexer name.
-    
+
     Args:
         indexer_name: Full indexer name (e.g., "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2")
-        
+
     Returns:
         IndexerConfig for the specified indexer
-        
+
     Raises:
         ValueError: If indexer name is not recognized
-        
+
     Examples:
         >>> config = get_indexer_config("indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2")
         >>> config.model_name
@@ -63,26 +64,26 @@ def get_indexer_config(indexer_name: str) -> IndexerConfig:
     """
     # Extract model short name from full indexer name
     short_name = extract_model_name(indexer_name)
-    
+
     if short_name not in INDEXER_CONFIGS:
         available = list_available_indexers()
         raise ValueError(
             f"Unknown indexer: '{indexer_name}'. "
             f"Available indexers: {', '.join(available)}"
         )
-    
+
     return INDEXER_CONFIGS[short_name]
 
 
 def extract_model_name(indexer_name: str) -> str:
     """Extract the model short name from a full indexer name.
-    
+
     Args:
         indexer_name: Full indexer name
-        
+
     Returns:
         Model short name (e.g., "all-MiniLM-L6-v2")
-        
+
     Raises:
         ValueError: If indexer name doesn't match expected pattern
     """
@@ -91,19 +92,19 @@ def extract_model_name(indexer_name: str) -> str:
             f"Invalid indexer name format: '{indexer_name}'. "
             f"Expected prefix: '{INDEXER_PREFIX}'"
         )
-    
-    return indexer_name[len(INDEXER_PREFIX):]
+
+    return indexer_name[len(INDEXER_PREFIX) :]
 
 
 def build_indexer_name(short_name: str) -> str:
     """Build full indexer name from model short name.
-    
+
     Args:
         short_name: Model short name (e.g., "all-MiniLM-L6-v2")
-        
+
     Returns:
         Full indexer name
-        
+
     Examples:
         >>> build_indexer_name("all-MiniLM-L6-v2")
         'indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2'
@@ -113,7 +114,7 @@ def build_indexer_name(short_name: str) -> str:
 
 def list_available_indexers() -> List[str]:
     """List all available full indexer names.
-    
+
     Returns:
         List of full indexer names
     """
@@ -122,7 +123,7 @@ def list_available_indexers() -> List[str]:
 
 def list_available_models() -> List[str]:
     """List all available model short names.
-    
+
     Returns:
         List of model short names
     """
@@ -131,10 +132,10 @@ def list_available_models() -> List[str]:
 
 def is_valid_indexer(indexer_name: str) -> bool:
     """Check if an indexer name is valid.
-    
+
     Args:
         indexer_name: Full indexer name to check
-        
+
     Returns:
         True if the indexer is registered, False otherwise
     """
@@ -143,4 +144,3 @@ def is_valid_indexer(indexer_name: str) -> bool:
         return True
     except ValueError:
         return False
-

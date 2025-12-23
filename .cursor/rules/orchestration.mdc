@@ -161,7 +161,7 @@ Before applying standard mode selection, evaluate for immediate execution:
 **Decision Priority (in order):**
 1. **If qualifies for immediate execution** → CODE MODE (with immediate execution flag)
 2. **If missing requirements** → PLAN MODE
-3. **If requirements exist but no technical plan** → ARCHITECT MODE  
+3. **If requirements exist but no technical plan** → ARCHITECT MODE
 4. **If both requirements and plan exist** → CODE MODE
 5. **If user request conflicts with current state** → Escalate to user
 

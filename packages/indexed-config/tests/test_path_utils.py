@@ -1,4 +1,5 @@
 """Tests for path_utils module."""
+
 import pytest
 from indexed_config.path_utils import (
     get_by_path,
@@ -132,6 +133,3 @@ def test_deep_merge_overwrites_non_dict():
     overlay = {"a": {"x": 1}}
     result = deep_merge(base, overlay)
     assert result == {"a": {"x": 1}}
-
-
-

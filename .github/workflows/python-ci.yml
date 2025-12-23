@@ -4,7 +4,10 @@
 name: Python Build, Check, Test
 
 on:
+  workflow_dispatch:
   pull_request:
+    branches: [ "main", "building*" ]
+  push:
     branches: [ "main", "building*" ]
 
 jobs:

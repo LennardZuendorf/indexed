@@ -35,7 +35,7 @@ class OperationStatus:
     ):
         """
         Create an OperationStatus tied to a Rich console, a human-facing operation label, and optional INFO-log capture.
-        
+
         Parameters:
             console (Console): Rich Console instance used to render the live status.
             operation_desc (str): Short description of the operation shown before status messages (e.g., "Searching", "Indexing").
@@ -52,15 +52,15 @@ class OperationStatus:
     def __enter__(self) -> "OperationStatus":
         """
         Enter the context manager and start the live status spinner and message updates.
-        
+
         Sets the start timestamp, creates and enters the Rich status spinner initialized with the current message, and registers INFO log capture for status updates when enabled.
-        
+
         Returns:
             self (OperationStatus): The context manager instance.
         """
         # Track when we started for minimum display time
         self._start_time = time.time()
-        
+
         # Start spinner with initial message
         self._status = self.console.status(
             self._format_status_message(self._current_message),
@@ -89,7 +89,7 @@ class OperationStatus:
     def _update_display(self) -> None:
         """
         Refreshes the active status line to show the current formatted message.
-        
+
         No-op if the status display is not active.
         """
         if self._status:
@@ -99,7 +99,7 @@ class OperationStatus:
     def update(self, message: str, force_render: bool = False) -> None:
         """
         Set the current status message and refresh the live spinner display.
-        
+
         Parameters:
             message (str): Status text to show (exclude the operation label).
             force_render (bool): If True, pause briefly after updating to ensure the change is visible on fast operations.
@@ -107,7 +107,7 @@ class OperationStatus:
         # Store the new message and update display
         self._current_message = message.strip()
         self._update_display()
-        
+
         # Force render to ensure the spinner is visible for fast operations
         if force_render and self._status:
             time.sleep(0.15)  # Brief pause to ensure spinner is visible
@@ -120,9 +120,9 @@ class OperationStatus:
     ) -> None:
         """
         Stop the status spinner, ensure it met the minimum display time, disable log capture, and print a final completion message.
-        
+
         Ensures the spinner was visible for at least MIN_DISPLAY_TIME, disables INFO log capture if enabled, stops the spinner display, prints either the success or failure message, and then emits a blank line.
-        
+
         Parameters:
             success (bool): If True, print `success_message`; if False, print `failure_message`.
             success_message (str): Message to print when `success` is True.
@@ -133,7 +133,7 @@ class OperationStatus:
             elapsed = time.time() - self._start_time
             if elapsed < self.MIN_DISPLAY_TIME:
                 time.sleep(self.MIN_DISPLAY_TIME - elapsed)
-        
+
         # Disable log capture first
         if self._sink_id is not None:
             disable_status_capture()
@@ -155,9 +155,9 @@ class OperationStatus:
     def __exit__(self, *args) -> None:
         """
         Exit the OperationStatus context and stop the live status display.
-        
+
         Disables INFO log capture if it is active and forwards any context-manager exit arguments to the underlying Rich status object's __exit__ to stop the spinner and clean up.
-        
+
         Parameters:
             *args: Exception information (exc_type, exc_value, traceback) from the context-manager protocol, forwarded to the underlying status __exit__.
         """

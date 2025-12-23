@@ -130,7 +130,7 @@ class ConfluenceConnector:
     def __repr__(self) -> str:
         """
         Provide a concise developer-focused string identifying this connector instance.
-        
+
         Returns:
             str: Representation containing the connector type along with its configured base URL and CQL query.
         """
@@ -141,7 +141,7 @@ class ConfluenceConnector:
     def config_spec(cls) -> dict:
         """
         Configuration specification for the Confluence Server/Data Center connector.
-        
+
         Returns:
             dict: Mapping of configuration option names to their schema. Includes:
                 - "base_url": Confluence base URL (required).
@@ -199,22 +199,22 @@ class ConfluenceConnector:
     def from_config(cls, config_service) -> "ConfluenceConnector":
         """
         Create a ConfluenceConnector using values from a ConfigService.
-        
+
         Registers the ConfluenceConfig schema at "sources.confluence", binds the provider to retrieve the configured ConfluenceConfig, and constructs a ConfluenceConnector populated from that configuration.
-        
+
         Parameters:
             config_service: ConfigService that provides access to registered configuration values.
-        
+
         Returns:
             ConfluenceConnector: An instance configured with values from ConfluenceConfig.
         """
         # Register our config spec
         config_service.register(ConfluenceConfig, path="sources.confluence.server")
-        
+
         # Bind and get our config
         provider = config_service.bind()
         cfg = provider.get(ConfluenceConfig)
-        
+
         # Create instance with config values
         return cls(
             url=cfg.url,
@@ -315,7 +315,7 @@ class ConfluenceCloudConnector:
     def __repr__(self) -> str:
         """
         Provide a developer-focused string identifying the connector by base URL and CQL query.
-        
+
         Returns:
             str: Representation in the form "ConfluenceCloudConnector(url='<base_url>', query='<cql_query>')".
         """
@@ -326,9 +326,9 @@ class ConfluenceCloudConnector:
     def config_spec(cls) -> dict:
         """
         Return the configuration specification for Confluence Cloud connector options.
-        
+
         The returned dictionary maps configuration keys to their metadata: expected type, whether the key is required, whether it is secret, default value when applicable, and a short description.
-        
+
         Returns:
             dict: Specification with these keys:
                 - "base_url" (str): Confluence Cloud base URL (required).
@@ -376,20 +376,20 @@ class ConfluenceCloudConnector:
     def from_config(cls, config_service) -> "ConfluenceCloudConnector":
         """
         Create a ConfluenceCloudConnector from a ConfigService.
-        
+
         Parameters:
             config_service (ConfigService): Config service providing a ConfluenceCloudConfig (expected under "sources.confluence").
-        
+
         Returns:
             ConfluenceCloudConnector: Connector instance configured from the retrieved ConfluenceCloudConfig.
         """
         # Register our config spec using unified namespace
         config_service.register(ConfluenceCloudConfig, path="sources.confluence.cloud")
-        
+
         # Bind and get our config
         provider = config_service.bind()
         cfg = provider.get(ConfluenceCloudConfig)
-        
+
         # Create instance with config values
         return cls(
             url=cfg.url,

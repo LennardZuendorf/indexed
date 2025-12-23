@@ -136,4 +136,3 @@ __all__ = [
     "ICON_WARNING",
     "ICON_INFO",
 ]
-

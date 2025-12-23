@@ -72,18 +72,19 @@ app = typer.Typer(
 # These flags need to be parsed early because they affect ConfigService
 # initialization which must happen before any command runs.
 
+
 def _parse_early_storage_flags() -> tuple[bool, bool]:
     """
     Detects presence of top-level --local and --global flags and removes them from the process argv.
-    
+
     Both flags are recognized anywhere on the command line, are removed from sys.argv to avoid interfering with downstream parsing, and do not consume any additional arguments.
-    
+
     Returns:
         (use_local, use_global) (tuple[bool, bool]): `use_local` is `True` if `--local` was present, `use_global` is `True` if `--global` was present.
     """
     use_local = False
     use_global = False
-    
+
     # Check for flags and remove them from argv
     new_argv = [sys.argv[0]]
     i = 1
@@ -96,10 +97,10 @@ def _parse_early_storage_flags() -> tuple[bool, bool]:
         else:
             new_argv.append(arg)
         i += 1
-    
+
     # Update sys.argv with flags removed
     sys.argv[:] = new_argv
-    
+
     return use_local, use_global
 
 
@@ -138,13 +139,13 @@ def _init_app(
 ) -> None:
     """
     Initialize CLI logging and resolve storage mode for the invoked command.
-    
+
     This callback configures the root logger (respecting --verbose, --log-level, and --json-logs),
     prints the banner when top-level help is requested, resolves whether the application will
     use local or global storage (honoring early-parsed --local / --global flags and existing
     local configuration), creates a local .indexed directory when requested, and stores the
     resolved storage context on the Typer context for subcommands.
-    
+
     Parameters:
         ctx (typer.Context): Typer context for the current invocation; used to detect subcommands
             and to store resolved storage/service objects.
@@ -152,12 +153,12 @@ def _init_app(
         log_level (Optional[str]): Explicit logging level string (e.g., "DEBUG", "INFO"); overrides
             `verbose` and environment-configured level when provided.
         json_logs (bool): If true, enable JSON-formatted structured logging.
-    
+
     Raises:
         typer.Exit: Exits with code 1 when mutually exclusive flags `--local` and `--global` are both used.
     """
     global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-    
+
     # Show banner before help if main command help is requested
     # This only triggers when no subcommand is invoked
     if ctx.invoked_subcommand is None and not ctx.resilient_parsing:
@@ -177,11 +178,11 @@ def _init_app(
     # Default is WARNING (set in setup_root_logger)
     json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     setup_root_logger(level_str=level, json_mode=json_mode)
-    
+
     # ─────────────────────────────────────────────────────────────────────────
     # Storage Mode Resolution (using early-parsed flags)
     # ─────────────────────────────────────────────────────────────────────────
-    
+
     # Import here to avoid circular imports
     from indexed_config import (
         ConfigService,
@@ -189,21 +190,21 @@ def _init_app(
         get_local_root,
         ensure_storage_dirs,
     )
-    
+
     # Use the early-parsed flags
     use_local = _EARLY_USE_LOCAL
     use_global = _EARLY_USE_GLOBAL
-    
+
     # Validate mutually exclusive flags
     if use_local and use_global:
         _prompt_console.print(
             "[red]Error:[/red] Cannot use both --local and --global flags together."
         )
         raise typer.Exit(1)
-    
+
     workspace = Path.cwd()
     local_exists = has_local_config(workspace)
-    
+
     # If --local flag used but no local .indexed exists, create it
     if use_local and not local_exists:
         local_root = get_local_root(workspace)
@@ -218,11 +219,11 @@ def _init_app(
         )
         print_success(f"Created local .indexed folder at {local_root}")
         local_exists = True
-    
+
     # Determine mode override from flags or local existence
     mode_override: Optional[StorageMode] = None
     config_mode: Optional[str] = None
-    
+
     if use_local:
         mode_override = "local"
     elif use_global:
@@ -230,12 +231,13 @@ def _init_app(
     elif local_exists:
         # If local .indexed exists, prefer it by default
         mode_override = "local"
-    
+
     # Optionally read storage.mode from config before full initialization
     # to avoid double-init in the common case
     if not use_local and not use_global:
         # Read storage.mode from config files without full initialization
         from indexed_config.store import TomlStore
+
         temp_store = TomlStore(workspace=workspace, mode_override=None)
         try:
             config_data = temp_store.read()
@@ -246,14 +248,14 @@ def _init_app(
         except Exception:
             # If config read fails, proceed with auto-detected mode
             pass
-    
+
     # Initialize ConfigService with resolved mode (only once)
     config_service = ConfigService.instance(
         workspace=workspace,
         mode_override=mode_override,
         reset=True,  # Reset to ensure fresh state with new settings
     )
-    
+
     # Handle storage mode display and context setup (only if running a command)
     if ctx.invoked_subcommand is not None and not ctx.resilient_parsing:
         _resolve_and_display_storage_mode(
@@ -280,7 +282,7 @@ def _resolve_and_display_storage_mode(
 ) -> None:
     """
     Resolve the effective storage mode, display a storage indicator to the user, and record the resolved mode, path, and config service in the Typer context.
-    
+
     Parameters:
         ctx (typer.Context): Typer context in which `storage_mode`, `storage_path`, and `config_service` will be stored.
         config_service (ConfigService): Configuration service used to read workspace preferences.
@@ -292,21 +294,23 @@ def _resolve_and_display_storage_mode(
         config_mode (Optional[str]): `storage.mode` value read from configuration, if present (expected "local" or "global").
     """
     from indexed_config import get_local_root, get_global_root
-    
+
     # Determine the reason for using this mode
     mode, reason = get_storage_mode_and_reason(
         has_local=local_exists,
-        mode_override="local" if use_local_flag else ("global" if use_global_flag else None),
+        mode_override="local"
+        if use_local_flag
+        else ("global" if use_global_flag else None),
         config_mode=config_mode if config_mode in ("local", "global") else None,
         workspace_pref=config_service.get_workspace_preference(workspace),
     )
-    
+
     # Get the actual path being used
     if mode == "local":
         storage_path = get_local_root(workspace)
     else:
         storage_path = get_global_root()
-    
+
     # Always display storage mode indicator
     print_storage_info(
         console=_prompt_console,
@@ -316,7 +320,7 @@ def _resolve_and_display_storage_mode(
         newline_before=False,
         newline_after=True,
     )
-    
+
     # Store in context for commands to access
     ctx.ensure_object(dict)
     ctx.obj["storage_mode"] = mode
@@ -465,6 +469,7 @@ app.command(
 # Migration Command
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @app.command(
     "migrate",
     rich_help_panel="Configuration Management",
@@ -479,23 +484,23 @@ def migrate_data(
 ) -> None:
     """
     Migrate legacy local data from ./data/ to the configured global storage location.
-    
+
     If legacy data exists, copy it into the global storage root while preserving the original files.
     If no legacy data is present, the command exits without making changes.
-    
+
     Parameters:
         dry_run (bool): When True, show what would be migrated without performing any copy operations.
     """
     from indexed_config import get_global_root
     from .utils.migration import migrate_legacy_data, has_legacy_data
     from .utils.console import console
-    
+
     if not has_legacy_data():
         console.print("[dim]No legacy data found at ./data/[/dim]")
         console.print()
         console.print("[dim]Nothing to migrate.[/dim]")
         return
-    
+
     target_root = get_global_root()
     migrate_legacy_data(target_root, console, dry_run=dry_run)
 
@@ -517,15 +522,15 @@ __all__ = [
 def main() -> None:
     """
     Initialize the CLI: parse early storage flags, print the banner for top-level help, and invoke the Typer application.
-    
+
     Parses `--local` and `--global` from argv before Typer processes arguments so those flags apply to any subcommand. If the process was called with only `--help` or `-h`, prints the banner prior to showing help. Then launches the Typer app.
     """
     global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-    
+
     # Parse storage flags early (before Typer processes args)
     # This allows --local and --global to work with any subcommand
     _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = _parse_early_storage_flags()
-    
+
     # Show banner if --help is the only argument (main help, not subcommand help)
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()

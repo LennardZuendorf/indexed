@@ -23,6 +23,7 @@ def _get_default_collections_path() -> str:
     """Get the default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_collections_path())
     except ImportError:
@@ -50,7 +51,7 @@ class SearchService:
 
     def __init__(self, collections_path: Optional[str] = None):
         """Initialize the search service with empty cache and default persister.
-        
+
         Args:
             collections_path: Optional path for collections storage.
                              Defaults to resolved path from storage config.
@@ -289,11 +290,11 @@ class SearchService:
                     include_all_chunks_content=include_all_chunks,
                     include_matched_chunks_content=include_matched_chunks,
                 )
-                
+
                 # Apply score threshold filtering if specified
                 if score_threshold is not None and isinstance(result, dict):
                     result = self._filter_by_score(result, score_threshold)
-                
+
                 results[cfg.name] = result
                 num_docs = (
                     len(result.get("results", [])) if isinstance(result, dict) else 0

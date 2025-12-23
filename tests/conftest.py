@@ -1,37 +1,60 @@
-"""Test configuration and shared fixtures."""
-import sys
+"""Session-wide fixtures for isolated configuration.
+
+This autouse fixture redirects global/workspace config paths used by
+ConfigService so that tests cannot interact with real user or repository
+configuration files. All tests run against temporary, empty TOML files
+created inside a sandbox dir.
+"""
+
+from __future__ import annotations
+
 from pathlib import Path
 
-# Add source directories to Python path for test imports
-indexed_src = str(Path(__file__).parent.parent / "indexed" / "src")
-if indexed_src not in sys.path:
-    sys.path.insert(0, indexed_src)
+import pytest
+from pytest import MonkeyPatch
 
-core_src = str(Path(__file__).parent.parent / "packages" / "indexed-core" / "src")
-if core_src not in sys.path:
-    sys.path.insert(0, core_src)
-
-connectors_src = str(Path(__file__).parent.parent / "packages" / "indexed-connectors" / "src")
-if connectors_src not in sys.path:
-    sys.path.insert(0, connectors_src)
+from indexed_config import ConfigService
 
 
-def pytest_configure(config):
-    """Configure custom markers."""
-    config.addinivalue_line(
-        "markers",
-        "indexed: Tests for the main indexed application"
-    )
-    config.addinivalue_line(
-        "markers",
-        "connectors: Tests for the indexed-connectors package"
-    )
-    config.addinivalue_line(
-        "markers",
-        "core: Tests for the indexed-core package"
-    )
-    config.addinivalue_line(
-        "markers",
-        "utils: Tests for the indexed-utils package"
-    )
-    # Add more markers for other packages as needed
+@pytest.fixture(scope="session", autouse=True)
+def isolate_config_paths(tmp_path_factory: pytest.TempPathFactory):
+    """Redirect config helper paths for the entire test session without using the
+    function-scoped ``monkeypatch`` fixture (avoids ScopeMismatch errors).
+    """
+
+    mp = MonkeyPatch()
+
+    sandbox_root = tmp_path_factory.mktemp("indexed_config_sandbox")
+
+    # Create a fake HOME inside sandbox and point Path.home() to it
+    sandbox_home = sandbox_root / "home"
+    sandbox_home.mkdir(parents=True, exist_ok=True)
+
+    # Create sandbox global root at ~/.indexed
+    global_root = sandbox_home / ".indexed"
+    global_root.mkdir(parents=True, exist_ok=True)
+    (global_root / "config.toml").touch()
+
+    # Also prepare a local root template (not overriding default behavior)
+    local_template = sandbox_root / "local"
+    local_template.mkdir(parents=True, exist_ok=True)
+    (local_template / "config.toml").touch()
+
+    # Patch Path.home to return sandbox_home so code using Path.home() is isolated
+    mp.setattr(Path, "home", lambda: sandbox_home)
+
+    # Reset ConfigService singleton for clean test state
+    ConfigService.reset()
+
+    yield  # run the test session
+
+    # Teardown: undo monkeypatches and reset ConfigService singleton
+    mp.undo()
+    ConfigService.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_config_service():
+    """Ensure ConfigService cache is cleared between individual tests."""
+    yield
+    ConfigService.reset()

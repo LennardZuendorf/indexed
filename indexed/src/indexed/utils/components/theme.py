@@ -119,7 +119,7 @@ def get_title_style() -> str:
 def get_dim_style() -> str:
     """
     Return the style used for dim (less prominent) text.
-    
+
     Returns:
         style (str): Console style string for dim text (uses the dim color with non-bold formatting).
     """
@@ -129,7 +129,7 @@ def get_dim_style() -> str:
 def get_info_style() -> str:
     """
     Provide the style string used for informational messages.
-    
+
     Returns:
         style (str): The style string applied to info/status text.
     """
@@ -139,7 +139,7 @@ def get_info_style() -> str:
 def get_heading_style() -> str:
     """
     Style used for section headings and main titles.
-    
+
     Returns:
         str: The style string applied to headings and primary titles.
     """

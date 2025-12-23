@@ -120,9 +120,9 @@ class TestEnsureStorageDirs:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "test_root"
             assert not root.exists()
-            
+
             ensure_storage_dirs(root)
-            
+
             assert root.exists()
             assert (root / "data").exists()
             assert (root / "data" / "collections").exists()
@@ -132,11 +132,11 @@ class TestEnsureStorageDirs:
         """ensure_storage_dirs can be called multiple times safely."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "test_root"
-            
+
             # Call twice - should not raise
             ensure_storage_dirs(root)
             ensure_storage_dirs(root)
-            
+
             assert root.exists()
 
 
@@ -235,7 +235,7 @@ class TestStorageResolver:
             local_dir = workspace / ".indexed"
             local_dir.mkdir()
             (local_dir / "config.toml").write_text("[test]\nkey = 'value'")
-            
+
             resolver = StorageResolver(workspace=workspace)
             # Mock has_global_config to isolate the test from real global config
             with patch("indexed_config.storage.has_global_config", return_value=False):
@@ -272,4 +272,3 @@ class TestResolverSingleton:
         reset_resolver()
         resolver2 = get_resolver()
         assert resolver1 is not resolver2
-

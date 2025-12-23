@@ -150,10 +150,14 @@ class UnifiedJiraDocumentReader:
                 "Cloud URLs must end with .atlassian.net (e.g., https://example.atlassian.net)"
             )
 
-        if auth_type in (
-            JiraAuthType.SERVER_TOKEN,
-            JiraAuthType.SERVER_CREDENTIALS,
-        ) and is_cloud_url:
+        if (
+            auth_type
+            in (
+                JiraAuthType.SERVER_TOKEN,
+                JiraAuthType.SERVER_CREDENTIALS,
+            )
+            and is_cloud_url
+        ):
             raise ValueError(
                 "Server/DC URLs should not end with .atlassian.net. "
                 "Use your on-premise Jira URL instead."
@@ -199,9 +203,7 @@ class UnifiedJiraDocumentReader:
 
         def do_request():
             # Use jql with limit=1 to get total count efficiently
-            result = self._client.jql(
-                self.query, fields=self.fields, start=0, limit=1
-            )
+            result = self._client.jql(self.query, fields=self.fields, start=0, limit=1)
             return result.get("total", 0)
 
         return execute_with_retry(

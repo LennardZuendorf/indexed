@@ -32,9 +32,9 @@ class JiraDocumentReader:
     ):
         """
         Create a deprecated Jira Server/DC document reader wrapper that delegates functionality to UnifiedJiraDocumentReader.
-        
+
         This constructor emits a DeprecationWarning and instantiates an underlying UnifiedJiraDocumentReader using the provided parameters. Authentication type is chosen by precedence: if `token` is provided, server token authentication is used; else if both `login` and `password` are provided, server credentials authentication is used; otherwise it defaults to server token and defers validation to the unified reader. Common reader attributes (base_url, query, token, login, password, batch_size, number_of_retries, retry_delay, max_skipped_items_in_row, fields, and _client) are exposed on the wrapper for compatibility.
-        
+
         Parameters:
             base_url (str): Base URL of the Jira Server/DC instance.
             query (str): JQL or query string used to select issues/documents.
@@ -48,11 +48,11 @@ class JiraDocumentReader:
         """
         # Emit deprecation warning
         warnings.warn(
-            'JiraDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.',
+            "JiraDocumentReader is deprecated. Use UnifiedJiraDocumentReader instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
-        
+
         # Determine auth type based on provided credentials
         if token:
             auth_type = JiraAuthType.SERVER_TOKEN
@@ -92,7 +92,7 @@ class JiraDocumentReader:
     def read_all_documents(self):
         """
         Return an iterator of documents that match the configured JQL query.
-        
+
         Returns:
             iterator (Iterator[dict]): An iterator over document records (each record represented as a dict) that match the reader's JQL query.
         """
@@ -101,7 +101,7 @@ class JiraDocumentReader:
     def get_number_of_documents(self):
         """
         Return the total number of documents that match the reader's query.
-        
+
         Returns:
             int: Total matching document count.
         """
@@ -110,7 +110,7 @@ class JiraDocumentReader:
     def get_reader_details(self) -> dict:
         """
         Retrieve reader configuration details.
-        
+
         Returns:
             details (dict): Configuration values for the reader, such as connection and query parameters and runtime settings (for example base URL, query, authentication info, batch size, retry settings, and configured fields).
         """

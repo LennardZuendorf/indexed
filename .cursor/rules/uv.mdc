@@ -3,8 +3,8 @@ alwaysApply: true
 ---
 # Development Environment Rules: Using `uv`
 
-This project standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.  
-You **must not manually activate Python virtual environments** (e.g., `source venv/bin/activate`).  
+This project standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.
+You **must not manually activate Python virtual environments** (e.g., `source venv/bin/activate`).
 Instead, always use `uv run <command>` to ensure commands are executed inside the managed environment.
 
 ---

@@ -26,7 +26,7 @@ class NoOpContext:
     def __enter__(self):
         """
         Provide the context manager instance without performing any action.
-        
+
         Returns:
             self: The same NoOpContext instance to be used within the `with` statement.
         """
@@ -41,9 +41,9 @@ class NoOpContext:
 def suppress_core_output(redirect_streams: bool = False):
     """
     Temporarily suppress core logging, disable loguru logging, and ignore Python warnings; optionally redirect stdout and stderr for the duration of the context.
-    
+
     When used as a context manager, sets the root logging level to CRITICAL, disables loguru, and suppresses warnings; on exit it restores the original logging level and re-enables loguru.
-    
+
     Parameters:
         redirect_streams (bool): If True, redirect stdout and stderr to in-memory buffers for the duration of the context. Defaults to False to allow Rich console output (spinners, progress bars).
     """
@@ -60,7 +60,7 @@ def suppress_core_output(redirect_streams: bool = False):
         # Suppress Python warnings (deprecation warnings, etc.)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            
+
             if redirect_streams:
                 # Optionally redirect stdout and stderr
                 stdout_capture = StringIO()

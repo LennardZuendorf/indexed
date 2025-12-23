@@ -43,7 +43,8 @@ DOC_URLS = {
 @app.command("docs")
 def docs(
     topic: Optional[str] = typer.Argument(
-        None, help="Specific command or topic (index, config, mcp, confluence, files, jira)"
+        None,
+        help="Specific command or topic (index, config, mcp, confluence, files, jira)",
     ),
 ) -> None:
     """Open documentation in web browser.
@@ -72,12 +73,16 @@ def docs(
             console.print()
             print_error(f"Unknown documentation topic: {topic}")
             console.print()
-            console.print(f"[{get_accent_style()}]Available topics:[/{get_accent_style()}]")
+            console.print(
+                f"[{get_accent_style()}]Available topics:[/{get_accent_style()}]"
+            )
             console.print()
             for topic_name in sorted(DOC_URLS.keys()):
                 console.print(f"  • {topic_name}")
             console.print()
-            console.print(f"[{get_secondary_style()}]Usage: indexed docs [TOPIC][/{get_secondary_style()}]")
+            console.print(
+                f"[{get_secondary_style()}]Usage: indexed docs [TOPIC][/{get_secondary_style()}]"
+            )
             console.print()
             raise typer.Exit(1)
 
@@ -91,7 +96,9 @@ def docs(
     except Exception as e:
         console.print()
         print_error(f"Failed to open browser: {e}")
-        console.print(f"[{get_secondary_style()}]Visit manually: {url}[/{get_secondary_style()}]")
+        console.print(
+            f"[{get_secondary_style()}]Visit manually: {url}[/{get_secondary_style()}]"
+        )
         console.print()
         raise typer.Exit(1)
 
@@ -100,14 +107,14 @@ def docs(
 def license_terms() -> None:
     """
     Display the Indexed software license in a scrollable Markdown pager.
-    
+
     Attempts to load the LICENSE text from the project's GitHub repository and, if that fails, falls back to a local LICENSE file in known locations. Prints a header and a source indicator ("Loaded from GitHub repository" or "Using local copy - may not reflect latest version") before opening a scrollable pager showing the license content.
-    
+
     Exits with code 1 if the license cannot be fetched or read, or if the license content cannot be displayed.
     """
     # Remote LICENSE URL (always up-to-date from GitHub)
     license_url = "https://raw.githubusercontent.com/LennardZuendorf/indexed/refs/heads/main/LICENSE"
-    
+
     license_content = None
     source = None
 
@@ -125,7 +132,11 @@ def license_terms() -> None:
         # Try importlib.resources first (for installed packages)
         try:
             # Attempt to read from package if LICENSE is included in package data
-            license_content = resources.files("indexed").joinpath("LICENSE").read_text(encoding="utf-8")
+            license_content = (
+                resources.files("indexed")
+                .joinpath("LICENSE")
+                .read_text(encoding="utf-8")
+            )
             source = "package"
         except (FileNotFoundError, ModuleNotFoundError, AttributeError):
             # Fall back to file system paths
@@ -174,7 +185,7 @@ def license_terms() -> None:
         console.print(
             f"[{get_accent_style()}]Indexed Software License[/{get_accent_style()}]"
         )
-        
+
         # Show source indicator
         if source == "remote":
             console.print(
@@ -184,7 +195,7 @@ def license_terms() -> None:
             console.print(
                 f"[{get_dim_style()}](Using local copy - may not reflect latest version)[/{get_dim_style()}]"
             )
-        
+
         console.print()
 
         # Use pager context manager for scrollable view

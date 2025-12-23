@@ -11,9 +11,9 @@ class CacheReaderDecorator:
     def read_all_documents(self):
         """
         Iterates over all documents from the underlying reader, yielding each document and using a persister-backed cache to avoid re-reading or re-computing on subsequent calls.
-        
+
         On a cache hit, documents are yielded from the persister's stored files; on a cache miss, documents are read from the underlying reader, saved into the persister for future calls, and yielded as they are produced.
-        
+
         Returns:
             iterator: An iterator that yields each document as a deserialized JSON object (typically a dict).
         """
@@ -45,7 +45,7 @@ class CacheReaderDecorator:
     def get_number_of_documents(self):
         """
         Return the number of documents available for the underlying reader, using a completed cache when present.
-        
+
         Returns:
             int: Number of documents; taken from the completed cache directory if a valid cache exists, otherwise obtained from the wrapped reader.
         """

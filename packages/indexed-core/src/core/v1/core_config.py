@@ -2,7 +2,7 @@
 
 ⚠️  DEPRECATED: This Config class is deprecated.
     Use `from indexed_config import ConfigService, Provider` instead.
-    
+
     Migration:
     - Old: config = Config.load()
     - New: provider = ConfigService.instance().bind()
@@ -19,6 +19,7 @@ def _get_default_storage_path() -> Path:
     """Get default storage path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return resolver.get_collections_path()
     except ImportError:
@@ -97,7 +98,7 @@ class Config(BaseModel):
         warnings.warn(
             "core.v1.Config is deprecated. Use 'from indexed_config import ConfigService' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         # TODO: Implement TOML file loading
         # For now, return defaults

@@ -15,6 +15,7 @@ import pkgutil
 
 import connectors as connectors_pkg
 
+
 def _discover_connectors() -> List[Type]:
     """Discover connector classes dynamically.
 
@@ -25,7 +26,9 @@ def _discover_connectors() -> List[Type]:
     """
     discovered: List[Type] = []
 
-    for module_info in pkgutil.iter_modules(connectors_pkg.__path__, connectors_pkg.__name__ + "."):
+    for module_info in pkgutil.iter_modules(
+        connectors_pkg.__path__, connectors_pkg.__name__ + "."
+    ):
         if not module_info.ispkg:
             continue
 
@@ -144,5 +147,3 @@ __all__ = [
     "validate_connector_compatibility",
     "check_all_connectors_compatibility",
 ]
-
-

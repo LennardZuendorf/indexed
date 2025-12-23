@@ -23,6 +23,7 @@ def _get_default_collections_path() -> str:
     """Get the default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_collections_path())
     except ImportError:
@@ -34,6 +35,7 @@ def _get_default_caches_path() -> str:
     """Get the default caches path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return str(resolver.get_caches_path())
     except ImportError:
@@ -101,9 +103,13 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
     elif cfg.type == "localFiles":
         config_service.set("sources.files.path", cfg.base_url_or_path)
         if "includePatterns" in cfg.reader_opts:
-            config_service.set("sources.files.include_patterns", cfg.reader_opts["includePatterns"])
+            config_service.set(
+                "sources.files.include_patterns", cfg.reader_opts["includePatterns"]
+            )
         if "excludePatterns" in cfg.reader_opts:
-            config_service.set("sources.files.exclude_patterns", cfg.reader_opts["excludePatterns"])
+            config_service.set(
+                "sources.files.exclude_patterns", cfg.reader_opts["excludePatterns"]
+            )
         if "failFast" in cfg.reader_opts:
             config_service.set("sources.files.fail_fast", cfg.reader_opts["failFast"])
         return FileSystemConnector.from_config(config_service)
@@ -174,8 +180,10 @@ def _update_one(
     """
     # Lazy import to avoid circular dependency:
     # connectors -> core.v1 -> collection_service -> update_collection_factory -> connectors
-    from core.v1.engine.factories.update_collection_factory import create_collection_updater
-    
+    from core.v1.engine.factories.update_collection_factory import (
+        create_collection_updater,
+    )
+
     updater = create_collection_updater(
         cfg.name, progress_callback, collections_path=collections_path
     )
@@ -215,6 +223,7 @@ def create(
     """
     if config_service is None:
         from indexed_config import ConfigService
+
         config_service = ConfigService()
 
     # Resolve paths

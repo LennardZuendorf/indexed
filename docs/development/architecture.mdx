@@ -43,25 +43,25 @@ flowchart TB
     app --> knowledge
     app --> config_cli
     app --> mcp_cli
-    
+
     knowledge --> coll_svc
     knowledge --> search_svc
     knowledge --> inspect_svc
-    
+
     index_facade --> coll_svc
     index_facade --> search_svc
-    
+
     coll_svc --> creator
     search_svc --> searcher
-    
+
     creator --> connectors
     creator --> indexer
     creator --> persister
-    
+
     searcher --> indexer
     indexer --> storage
     persister --> storage
-    
+
     config_svc -.->|config| app
     config_svc -.->|config| connectors
 ```
@@ -120,28 +120,28 @@ sequenceDiagram
     User->>CLI: indexed index create jira -c issues
     CLI->>ConfigService: Load & validate config
     ConfigService-->>CLI: Merged config + credentials
-    
+
     CLI->>CollectionService: create([config])
     CollectionService->>Connector: Build from config
     Connector-->>CollectionService: JiraConnector instance
-    
+
     CollectionService->>Creator: create_collection_creator()
-    
+
     loop For each document
         Creator->>Connector: reader.read_all_documents()
         Connector-->>Creator: Document
         Creator->>Connector: converter.convert(doc)
         Connector-->>Creator: List[Chunk]
     end
-    
+
     Creator->>Indexer: index_texts(ids, texts)
     Note over Indexer: Embed with sentence-transformers
     Note over Indexer: Store in FAISS index
-    
+
     Creator->>Persister: save_documents()
     Creator->>Persister: save_index()
     Persister-->>Creator: Written to disk
-    
+
     CLI-->>User: ✓ Collection created
 ```
 
@@ -168,19 +168,19 @@ sequenceDiagram
 
     User->>CLI: indexed index search "auth methods"
     CLI->>SearchService: search(query, collections)
-    
+
     SearchService->>Searcher: get_or_create_searcher()
     Searcher->>Storage: Load FAISS index
     Storage-->>Searcher: Index + metadata
-    
+
     SearchService->>Indexer: search(query_text, k)
     Note over Indexer: Embed query
     Note over Indexer: FAISS similarity search
     Indexer-->>SearchService: (scores, indices)
-    
+
     SearchService->>Searcher: Build SearchResult objects
     Searcher-->>SearchService: List[SearchResult]
-    
+
     CLI-->>User: Formatted results
 ```
 
@@ -275,10 +275,10 @@ Connectors implement the `BaseConnector` protocol, enabling plugin-style extensi
 class BaseConnector(Protocol):
     @property
     def reader(self): ...
-    
+
     @property
     def converter(self): ...
-    
+
     @property
     def connector_type(self) -> str: ...
 ```
@@ -304,4 +304,3 @@ All behavior is controlled by configuration files, not hardcoded values:
 | **I/O** | Lazy loading of indexes on demand |
 
 Current scale targets: Up to 100K documents per collection on a single machine.
-

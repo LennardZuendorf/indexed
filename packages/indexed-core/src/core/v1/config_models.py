@@ -50,7 +50,8 @@ class CoreV1EmbeddingConfig(BaseModel):
         default=64, ge=1, description="Batch size for embedding generation"
     )
     device: Optional[str] = Field(
-        default=None, description="Device for embeddings (cpu, cuda, mps, or None for auto)"
+        default=None,
+        description="Device for embeddings (cpu, cuda, mps, or None for auto)",
     )
     api_key_env: Optional[str] = Field(
         default=None, description="Environment variable name for API key (if needed)"
@@ -61,9 +62,7 @@ class CoreV1StorageConfig(BaseModel):
     """Vector storage configuration for core.v1."""
 
     type: str = Field(default="faiss", description="Storage backend type")
-    index_type: str = Field(
-        default="IndexFlatL2", description="FAISS index type"
-    )
+    index_type: str = Field(default="IndexFlatL2", description="FAISS index type")
     persistence_enabled: bool = Field(
         default=True, description="Enable persistence to disk"
     )
@@ -107,6 +106,7 @@ def _get_default_collections_path() -> Path:
     """Get default collections path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return resolver.get_collections_path()
     except ImportError:
@@ -117,6 +117,7 @@ def _get_default_caches_path() -> Path:
     """Get default caches path from storage config."""
     try:
         from indexed_config import get_resolver
+
         resolver = get_resolver()
         return resolver.get_caches_path()
     except ImportError:
@@ -125,7 +126,7 @@ def _get_default_caches_path() -> Path:
 
 class PathsConfig(BaseModel):
     """File system paths configuration.
-    
+
     Paths default to the global storage location (~/.indexed/data/...)
     unless explicitly configured otherwise.
     """
@@ -155,9 +156,7 @@ class MCPConfig(BaseModel):
     """MCP server configuration."""
 
     host: str = Field(default="localhost", description="MCP server host")
-    port: int = Field(
-        default=8000, ge=1, le=65535, description="MCP server port"
-    )
+    port: int = Field(default=8000, ge=1, le=65535, description="MCP server port")
     log_level: str = Field(
         default="WARNING",
         description="MCP server log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
@@ -173,9 +172,7 @@ class MCPConfig(BaseModel):
 class PerformanceConfig(BaseModel):
     """Performance and caching configuration."""
 
-    enable_cache: bool = Field(
-        default=True, description="Enable search result caching"
-    )
+    enable_cache: bool = Field(default=True, description="Enable search result caching")
     cache_max_entries: int = Field(
         default=32, ge=1, description="Maximum cache entries"
     )
@@ -191,9 +188,7 @@ class LoggingConfig(BaseModel):
         default="WARNING",
         description="Global log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     )
-    as_json: bool = Field(
-        default=False, description="Emit JSON-formatted logs"
-    )
+    as_json: bool = Field(default=False, description="Emit JSON-formatted logs")
 
 
 __all__ = [
@@ -206,4 +201,3 @@ __all__ = [
     "PerformanceConfig",
     "LoggingConfig",
 ]
-
