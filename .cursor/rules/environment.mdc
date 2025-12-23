@@ -141,7 +141,7 @@ This produces a wheel file in `dist/` that contains:
 
 ### Install the wheel
 ```bash
-pip install dist/indexed-0.1.0-py3-none-any.whl
+pip install dist/[wheel path]
 ```
 
 ### Simple Dockerfile with pre-built wheel
