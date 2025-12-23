@@ -19,13 +19,13 @@ Shared utility functions for the indexed project including logging, retry logic,
 
 ## Installation
 
-This package is part of the indexed monorepo workspace:
+This package is part of the indexed monorepo workspace. Requires **Python 3.11+**.
 
 ```bash
 # Install with workspace
 uv sync
 
-# Or standalone
+# Or standalone (for development)
 cd packages/utils
 uv pip install -e .
 ```

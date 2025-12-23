@@ -52,7 +52,7 @@ FastMCP-based server providing tools and resources for AI agents:
 
 ## Installation
 
-This package is part of the indexed monorepo workspace. Use `uv` for dependency management:
+This package is part of the indexed monorepo workspace. Requires **Python 3.11+**.
 
 ```bash
 # Install all dependencies including development tools
@@ -60,6 +60,9 @@ uv sync --all-groups
 
 # Install production dependencies only
 uv sync
+
+# Build a standalone distributable wheel
+uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 ```
 
 ## CLI Usage

@@ -50,7 +50,7 @@ Configuration is loaded and merged from multiple sources (later sources override
 
 ## Installation
 
-This package is part of the indexed monorepo workspace:
+This package is part of the indexed monorepo workspace. Requires **Python 3.11+**.
 
 ```bash
 # Install with workspace

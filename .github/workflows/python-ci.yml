@@ -33,5 +33,5 @@ jobs:
       run: |
         uv run pytest -q
 
-    - name: Build Package with UV
-      run: uv build
+    - name: Build Distributable Wheel (apps/indexed with bundled packages)
+      run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
