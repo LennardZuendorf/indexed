@@ -71,8 +71,7 @@ def get_connector_class(connector_type: str) -> Type[Any]:
     if connector_type not in CONNECTOR_REGISTRY:
         available = ", ".join(CONNECTOR_REGISTRY.keys())
         raise ValueError(
-            f"Unknown connector type: '{connector_type}'. "
-            f"Available types: {available}"
+            f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return CONNECTOR_REGISTRY[connector_type]
 
@@ -92,8 +91,7 @@ def get_config_class(connector_type: str) -> Type[Any]:
     if connector_type not in CONFIG_REGISTRY:
         available = ", ".join(CONFIG_REGISTRY.keys())
         raise ValueError(
-            f"Unknown connector type: '{connector_type}'. "
-            f"Available types: {available}"
+            f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return CONFIG_REGISTRY[connector_type]
 
@@ -113,8 +111,7 @@ def get_config_namespace(connector_type: str) -> str:
     if connector_type not in NAMESPACE_REGISTRY:
         available = ", ".join(NAMESPACE_REGISTRY.keys())
         raise ValueError(
-            f"Unknown connector type: '{connector_type}'. "
-            f"Available types: {available}"
+            f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return NAMESPACE_REGISTRY[connector_type]
 

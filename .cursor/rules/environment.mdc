@@ -3,9 +3,11 @@ alwaysApply: true
 ---
 # Development Environment Rules: Using `uv`
 
-This project standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.
+This project requires **Python 3.11+** and standardizes on [uv](https://github.com/astral-sh/uv) for **environment management, dependency synchronization, and command execution**.
 You **must not manually activate Python virtual environments** (e.g., `source venv/bin/activate`).
 Instead, always use `uv run <command>` to ensure commands are executed inside the managed environment.
+
+The project uses [una](https://github.com/carderne/una) with [hatch-una](https://pypi.org/project/hatch-una/) for building distributable wheels that bundle all workspace packages.
 
 ---
 
@@ -124,15 +126,59 @@ uv run ruff format
 
 ---
 
-## 5. Best Practices & Tips
+## 5. Building Distributable Wheels
+
+The project uses **una/hatch-una** for building distributable wheels that bundle all workspace packages into a single installable wheel.
+
+### Build the indexed application wheel
+```bash
+uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+```
+
+This produces a wheel file in `dist/` that contains:
+- The main `indexed` application
+- All bundled workspace packages (`indexed-core`, `indexed-connectors`, `indexed-config`, `indexed-utils`)
+
+### Install the wheel
+```bash
+pip install dist/[wheel path]
+```
+
+### Simple Dockerfile with pre-built wheel
+```dockerfile
+FROM python:3.11-slim
+COPY dist dist
+RUN pip install dist/*.whl
+ENTRYPOINT ["indexed"]
+```
+
+### Pre-push Hooks
+The project has pre-commit hooks configured to run before pushing:
+- **build-check**: Builds the wheel to verify the package is buildable
+- **pytest**: Runs the test suite
+
+Install hooks with:
+```bash
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+> **Note**: `una sync` is not used because it misinterprets internal submodule imports within packages as external workspace dependencies. The build works correctly without it.
+
+---
+
+## 6. Best Practices & Tips
 
 - Always use `uv run <command>` for any tool (pytest, ruff, mypy, custom scripts, etc.).
 - Keep environments in sync by re-running `uv sync` after dependency changes.
-- Source code is installed from the `src/` directory using setuptools, which means imports like:
+- Source code is installed from the `src/` directory using hatchling, which means imports like:
   ```python
-  from cli.app import app
+  from indexed.app import app
+  from core.v1 import Index
+  from connectors import FileSystemConnector
   ```
   will work correctly inside `uv run`.
+- Use `uvx --from build pyproject-build` to build distributable wheels with bundled dependencies.
+- Install pre-commit hooks to catch issues before pushing: `uv run pre-commit install --hook-type pre-commit --hook-type pre-push`
 
 ---
 

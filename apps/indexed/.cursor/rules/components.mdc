@@ -1,3 +1,7 @@
+---
+globs: apps/indexed/**
+alwaysApply: false
+---
 # CLI Components Summary
 
 ## Centralized Design System Implementation

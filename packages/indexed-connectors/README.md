@@ -52,13 +52,13 @@ Supports multiple document formats via [Unstructured](https://github.com/Unstruc
 
 ## Installation
 
-This package is part of the indexed monorepo workspace:
+This package is part of the indexed monorepo workspace. Requires **Python 3.11+**.
 
 ```bash
 # Install with workspace
 uv sync
 
-# Or standalone
+# Or standalone (for development)
 cd packages/indexed-connectors
 uv pip install -e .
 ```

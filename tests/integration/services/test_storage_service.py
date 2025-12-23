@@ -35,7 +35,7 @@ def test_storage_service_persistence(temp_workspace):
 
     vectors = np.random.rand(10, 384).astype("float32")
     ids = [f"chunk-{i:04d}" for i in range(10)]
-    metadata = [{"doc_id": f"doc-{i//3}", "chunk_idx": i % 3} for i in range(10)]
+    metadata = [{"doc_id": f"doc-{i // 3}", "chunk_idx": i % 3} for i in range(10)]
 
     storage1.add_vectors(vectors, ids, metadata)
 
@@ -64,7 +64,7 @@ def test_storage_service_search(temp_workspace):
     np.random.seed(42)  # For reproducibility
     vectors = np.random.rand(20, 384).astype("float32")
     ids = [f"chunk-{i:04d}" for i in range(20)]
-    metadata = [{"text": f"chunk {i}", "doc_id": f"doc-{i//5}"} for i in range(20)]
+    metadata = [{"text": f"chunk {i}", "doc_id": f"doc-{i // 5}"} for i in range(20)]
 
     storage.add_vectors(vectors, ids, metadata)
 

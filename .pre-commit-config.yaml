@@ -37,12 +37,20 @@ repos:
         name: ruff (format)
         stages: [pre-commit, pre-push]
 
-  # Pytest (run on pre-push)
+  # Local hooks (run on pre-push)
   - repo: local
     hooks:
       - id: pytest
         name: pytest
         entry: uv run pytest -q
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+
+      - id: build-check
+        name: build wheel (verify buildable)
+        entry: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
         language: system
         stages: [pre-push]
         pass_filenames: false

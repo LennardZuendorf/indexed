@@ -89,12 +89,14 @@ For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 - **[Typer](https://typer.tiangolo.com/)** – Modern CLI framework
 - **[Rich](https://rich.readthedocs.io/)** – Beautiful terminal output
 - **[FastMCP](https://github.com/jlowin/fastmcp)** – Model Context Protocol server
+- **[uv](https://docs.astral.sh/uv/)** – Fast Python package manager with workspace support
+- **[una](https://github.com/carderne/una)** – Monorepo build tooling for distributable wheels
 
 ## Installation
 
 ### Prerequisites
 
-1. **Python 3.10+**
+1. **Python 3.11+**
 2. **[uv](https://docs.astral.sh/uv/)** – Fast Python package manager
 
 ### Setup
@@ -226,6 +228,34 @@ Add to your Cursor MCP settings:
 
 See [MCP Server Documentation](./indexed/README.md#mcp-server-examples) for more details.
 
+## Building
+
+The project uses [una](https://github.com/carderne/una) for monorepo wheel packaging with [hatch-una](https://pypi.org/project/hatch-una/).
+
+### Build a Distributable Wheel
+
+```bash
+# Build the wheel (bundles all workspace packages)
+uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+
+# The wheel contains all code and can be installed standalone
+pip install dist/indexed-0.1.0-py3-none-any.whl
+```
+
+### Development Setup
+
+```bash
+# Install all dependencies including dev tools
+uv sync --all-groups
+
+# Run tests
+uv run pytest -q
+
+# Lint and format
+uv run ruff check .
+uv run ruff format .
+```
+
 ## Docker
 
 Run indexed in a Docker container for isolated, reproducible deployments.
@@ -233,7 +263,21 @@ Run indexed in a Docker container for isolated, reproducible deployments.
 ### Building the Image
 
 ```bash
+# Option 1: Build wheel first, then Docker (recommended for CI/CD)
+uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 docker build -t indexed .
+
+# Option 2: Build directly with Docker (multi-stage build)
+docker build -t indexed .
+```
+
+### Simple Dockerfile with Pre-built Wheel
+
+```dockerfile
+FROM python:3.11-slim
+COPY dist dist
+RUN pip install dist/*.whl
+ENTRYPOINT ["indexed"]
 ```
 
 ### Running the MCP Server
@@ -292,7 +336,7 @@ docker run -e INDEXED__mcp__log_level=DEBUG indexed mcp
 
 ## Project Structure
 
-The project uses a monorepo structure with independent packages:
+The project uses a **uv workspace monorepo** with [una](https://github.com/carderne/una) for building distributable wheels:
 
 ```
 indexed/

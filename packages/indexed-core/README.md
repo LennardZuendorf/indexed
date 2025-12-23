@@ -19,13 +19,13 @@ Core library for document indexing and semantic search using FAISS and sentence-
 
 ## Installation
 
-This package is part of the indexed monorepo workspace:
+This package is part of the indexed monorepo workspace. Requires **Python 3.11+**.
 
 ```bash
 # Install with workspace
 uv sync
 
-# Or standalone
+# Or standalone (for development)
 cd packages/indexed-core
 uv pip install -e .
 ```

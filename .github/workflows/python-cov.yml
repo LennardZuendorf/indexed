@@ -1,9 +1,11 @@
-name: Python Setup, Test and Build
+name: Python Test and Upload Coverage
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [ "main", "building*" ]
+  push:
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -12,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.14"]
+        python-version: ["3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -27,9 +29,15 @@ jobs:
         python -m uv sync
         # Ruff and pytest should be installed via project dependencies, not as standalone tools
 
+    - name: Run Ruff Linter
+      run: |
+        uv run ruff check
+
     - name: Run Tests with Pytest
       run: |
-        uv run pytest -q
+        uv run pytest --cov --cov-branch --cov-report=xml
 
-    - name: Build Distributable Wheel (apps/indexed with bundled packages)
-      run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}

@@ -6,14 +6,21 @@ readme = "README.md"
 authors = [
     { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "loguru>=0.7.0",
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-una"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.hooks.una-build]
+
+[tool.hatch.metadata.hooks.una-meta]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/utils"]

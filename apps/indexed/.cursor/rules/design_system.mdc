@@ -1,8 +1,7 @@
 ---
-globs: indexed/src/**/*.py
+globs: apps/indexed/**
 alwaysApply: false
 ---
-
 # CLI Design System
 
 ## Overview
