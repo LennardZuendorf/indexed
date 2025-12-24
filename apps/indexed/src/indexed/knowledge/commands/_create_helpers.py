@@ -4,16 +4,14 @@ This module contains common logic extracted from create_files, create_jira,
 and create_confluence commands to eliminate code duplication.
 """
 
-from typing import Optional, Dict, Any, Callable, Type
+from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
 import typer
 from loguru import logger
 
+if TYPE_CHECKING:
+    from core.v1.engine.services import SourceConfig
+
 from indexed_config import ConfigService
-from core.v1.engine.services import (
-    SourceConfig,
-    create as svc_create,
-    status as svc_status,
-)
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -31,7 +29,7 @@ def execute_create_command(
     namespace: str,
     cli_overrides: Dict[str, Any],
     prompt_missing_fields: Callable[[Dict[str, Any], ConfigService, str], None],
-    build_source_config: Callable[[Dict[str, Any], str], SourceConfig],
+    build_source_config: Callable[[Dict[str, Any], str], "SourceConfig"],
     success_message_suffix: str,
     verbose: bool,
     json_logs: bool,
@@ -76,6 +74,12 @@ def execute_create_command(
     # Get ConfigService singleton (auto-loads .env)
     config = ConfigService.instance()
 
+    # Display storage mode indicator (not in verbose mode, to keep logs clean)
+    if not is_verbose_mode():
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")
@@ -116,6 +120,12 @@ def execute_create_command(
             else:
                 logger.info("  %s: %s", field_name, value)
         logger.info("  Collection: %s", collection)
+
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import _create_helpers as this_module
+
+    svc_create = this_module.svc_create
+    svc_status = this_module.svc_status
 
     # Build source config using connector-specific callback
     cfg = build_source_config(validation["present"], collection)
@@ -200,3 +210,16 @@ def execute_create_command(
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "svc_create":
+        from core.v1.engine.services import create
+
+        return create
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+
+        return status
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

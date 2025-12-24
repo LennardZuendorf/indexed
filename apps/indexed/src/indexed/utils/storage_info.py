@@ -113,3 +113,74 @@ def get_storage_mode_and_reason(
         return ("local", "local .indexed found")
 
     return ("global", "default")
+
+
+def display_storage_mode_for_command(console: Console) -> None:
+    """
+    Display the storage mode indicator for the current command.
+
+    This should be called by commands after they initialize ConfigService.
+    It determines the storage mode based on ConfigService state and displays
+    a brief indicator to the user.
+
+    Parameters:
+        console (Console): Rich Console to print to.
+    """
+    from indexed_config import (
+        ConfigService,
+        has_local_config,
+        get_local_root,
+        get_global_root,
+    )
+
+    # Get ConfigService instance (should already be initialized by command)
+    config_service = ConfigService.instance()
+    workspace = Path.cwd()
+
+    # Determine mode from ConfigService
+    storage_mode = config_service.resolve_storage_mode()
+    local_exists = has_local_config(workspace)
+
+    # Get path
+    if storage_mode == "local":
+        storage_path = get_local_root(workspace)
+    else:
+        storage_path = get_global_root()
+
+    # Try to read config mode
+    config_mode = None
+    try:
+        config_data = config_service.store.read()
+        config_mode = config_data.get("storage", {}).get("mode")
+    except Exception:
+        pass
+
+    # Get mode override from global flags (set in app.py)
+    from ..app import _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
+
+    mode_override = None
+    if _EARLY_USE_LOCAL:
+        mode_override = "local"
+    elif _EARLY_USE_GLOBAL:
+        mode_override = "global"
+
+    # Get workspace preference
+    workspace_pref = config_service.get_workspace_preference(workspace)
+
+    # Determine reason
+    mode, reason = get_storage_mode_and_reason(
+        has_local=local_exists,
+        mode_override=mode_override,
+        config_mode=config_mode if config_mode in ("local", "global") else None,
+        workspace_pref=workspace_pref,
+    )
+
+    # Display
+    print_storage_info(
+        console=console,
+        mode=mode,
+        path=storage_path,
+        reason=reason,
+        newline_before=False,
+        newline_after=True,
+    )

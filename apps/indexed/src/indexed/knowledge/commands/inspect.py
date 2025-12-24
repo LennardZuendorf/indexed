@@ -7,7 +7,7 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 
 import typer
 import json
-from typing import List
+from typing import List, TYPE_CHECKING
 from rich.panel import Panel
 from rich.console import Group
 from rich.columns import Columns
@@ -21,14 +21,16 @@ from ...utils.components import (
     get_heading_style,
     create_summary,
 )
-from core.v1.engine.services import inspect, CollectionInfo
+
+if TYPE_CHECKING:
+    from core.v1.engine.services import CollectionInfo
 
 # ---- Use format_size and format_time from @format.py ----
 from ...utils.format import format_size, format_time
 
 
 def format_collection_list(
-    collections: List[CollectionInfo], verbose: bool = False
+    collections: List["CollectionInfo"], verbose: bool = False
 ) -> None:
     """Display a list of collections with optional verbose detail."""
     if verbose:
@@ -37,7 +39,7 @@ def format_collection_list(
         _show_brief_list(collections)
 
 
-def _show_brief_list(collections: List[CollectionInfo]) -> None:
+def _show_brief_list(collections: List["CollectionInfo"]) -> None:
     """Show minimal collection info in compact cards."""
     console.print()
     # Headline showing number of collections
@@ -90,7 +92,7 @@ def _show_brief_list(collections: List[CollectionInfo]) -> None:
     console.print()
 
 
-def _show_verbose_list(collections: List[CollectionInfo]) -> None:
+def _show_verbose_list(collections: List["CollectionInfo"]) -> None:
     """Show detailed collection info for all collections with unified design."""
     console.print()
     # Headline showing number of collections
@@ -148,7 +150,7 @@ def _show_verbose_list(collections: List[CollectionInfo]) -> None:
     console.print()
 
 
-def format_collection_detail(info: CollectionInfo) -> None:
+def format_collection_detail(info: "CollectionInfo") -> None:
     """Display detailed information about a specific collection."""
     console.print()
     # Headline showing collection name
@@ -185,7 +187,7 @@ def format_collection_detail(info: CollectionInfo) -> None:
     console.print()
 
 
-def format_collection_json(info: CollectionInfo) -> None:
+def format_collection_json(info: "CollectionInfo") -> None:
     """Display collection info as JSON."""
     output = {
         "name": info.name,
@@ -201,7 +203,7 @@ def format_collection_json(info: CollectionInfo) -> None:
     console.print(json.dumps(output, indent=2))
 
 
-def format_collections_json(collections: List[CollectionInfo]) -> None:
+def format_collections_json(collections: List["CollectionInfo"]) -> None:
     """Display a list of collections in JSON."""
     output = [
         {
@@ -238,15 +240,20 @@ def inspect_collections(
         indexed inspect --verbose          # Detailed info about all collections
         indexed inspect my-collection --json
     """
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import inspect as this_module
+
+    inspect_svc = this_module.inspect
+
     # Fetch collection info from core - this is connection-agnostic
     if name:
         # Inspect specific collection (no progress bar)
-        collections = inspect([name])
+        collections = inspect_svc([name])
 
         # Check if collection exists and has valid data
         if not collections or collections[0].number_of_documents == 0:
             # Check if it truly doesn't exist vs just being empty
-            all_collections = inspect()
+            all_collections = inspect_svc()
             exists = any(c.name == name for c in all_collections)
 
             if not exists:
@@ -265,7 +272,7 @@ def inspect_collections(
             format_collection_detail(collections[0])
     else:
         # List all collections (no progress bar)
-        collections = inspect()
+        collections = inspect_svc()
 
         if not collections:
             console.print("\nNo collections found")
@@ -277,6 +284,15 @@ def inspect_collections(
             format_collections_json(collections)
         else:
             format_collection_list(collections, verbose=verbose)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 # For Typer command registration

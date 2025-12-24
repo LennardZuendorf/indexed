@@ -1,14 +1,12 @@
 """Update command for refreshing collections."""
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import typer
-from core.v1.engine.services import (
-    update as update_service,
-    SourceConfig,
-    status as svc_status,
-    inspect,
-)
+
+if TYPE_CHECKING:
+    pass
+
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
 from ...utils.context_managers import NoOpContext, suppress_core_output
@@ -209,15 +207,28 @@ def update(
     ),
 ):
     """Refresh and re-index a collection or all collections."""
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import update as this_module
+
+    update_service = this_module.update_service
+    source_config_class = this_module.SourceConfig
+    svc_status = this_module.svc_status
+    inspect_svc = this_module.inspect
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
     # Initialize ConfigService and check if config existed before
     config_service = ConfigService.instance()
     config_existed = _config_existed_before(config_service)
+
+    # Display storage mode indicator (not in verbose mode, to keep logs clean)
+    if not is_verbose_mode():
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
 
     # Determine collections to update
     if collection is None:
@@ -246,7 +257,7 @@ def update(
     # Capture before state for all collections
     before_data = {}
     for coll_name in collections_to_update:
-        inspect_result = inspect([coll_name])
+        inspect_result = inspect_svc([coll_name])
         if not inspect_result:
             print_error(f"Cannot inspect collection '{coll_name}' before update")
             raise typer.Exit(1)
@@ -272,7 +283,7 @@ def update(
             print_error(f"Collection '{coll_name}' has no indexers configured")
             continue
 
-        source_config = SourceConfig(
+        source_config = source_config_class(
             name=coll_name,
             type="localFiles",  # Default type, not used in update
             base_url_or_path="",  # Not used in update
@@ -338,7 +349,7 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
-        inspect_result = inspect([coll_name])
+        inspect_result = inspect_svc([coll_name])
         if not inspect_result:
             print_error(f"Cannot inspect collection '{coll_name}' after update")
             raise typer.Exit(1)
@@ -380,3 +391,28 @@ def update(
     summary = create_summary("Result", result_text)
     console.print(summary)
     console.print()
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "update_service":
+        from core.v1.engine.services import update
+
+        return update
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+
+        return status
+    elif name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

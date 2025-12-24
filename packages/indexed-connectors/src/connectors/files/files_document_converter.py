@@ -1,8 +1,9 @@
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-
 class FilesDocumentConverter:
     def __init__(self):
+        # Lazy import to avoid loading heavy ML dependencies (torch, transformers)
+        # when they're not needed (e.g., during CLI help)
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=100,

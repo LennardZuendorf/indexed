@@ -1,14 +1,15 @@
 """Remove command for removing collections."""
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import typer
 from rich.prompt import Confirm
 from rich.panel import Panel
 from rich.console import Group
 
-from core.v1 import Index
-from core.v1.engine.services import inspect
+if TYPE_CHECKING:
+    pass
+
 from ...utils.console import console
 from ...utils.components import (
     create_info_row,
@@ -57,16 +58,21 @@ def remove(
         indexed remove my-collection      # Remove with confirmation
         indexed remove my-collection -f   # Remove without confirmation
     """
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import remove as this_module
+
+    index_svc = this_module.Index
+    inspect_svc = this_module.inspect
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    index = Index()
+    index = index_svc()
 
     # Fetch all collections to validate
-    all_collections = inspect()
+    all_collections = inspect_svc()
 
     if not all_collections:
         console.print("\n[dim]No collections found[/dim]")
@@ -153,3 +159,20 @@ def remove(
     except Exception as e:
         print_error(f"Failed to remove '{collection}': {e}")
         raise typer.Exit(1)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "Index":
+        from core.v1 import Index
+
+        return Index
+    elif name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

@@ -1,15 +1,15 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.v1.engine.services import SourceConfig
 
 import typer
 from loguru import logger
 
 # Import ConfigService at module level so tests can patch
 from indexed_config import ConfigService
-
-# Import constants
-from core.v1.constants import DEFAULT_INDEXER
 
 # Import utilities for progress and logging
 from ...utils.logging import is_verbose_mode
@@ -102,12 +102,14 @@ def create_files(
     ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
-    from core.v1.engine.services import SourceConfig
-    from connectors.files import LocalFilesConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    local_files_config_class = this_module.LocalFilesConfig
 
     # Files connector (no cloud/server split)
     source_type = "localFiles"
-    config_class = LocalFilesConfig
+    config_class = local_files_config_class
     namespace = "sources.files"
 
     # Build CLI overrides (map CLI params to schema fields)
@@ -188,13 +190,16 @@ def create_files(
 
     def build_files_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Files connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["path"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={
                 "includePatterns": present.get("include_patterns", [".*"]),
                 "excludePatterns": present.get("exclude_patterns", []),
@@ -284,8 +289,11 @@ def create_jira(
     ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
-    from core.v1.engine.services import SourceConfig
-    from connectors.jira import JiraCloudConfig, JiraConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    jira_cloud_config_class = this_module.JiraCloudConfig
+    jira_config_class = this_module.JiraConfig
 
     # Use a single namespace for Jira config - detect Cloud vs Server from URL at runtime
     namespace = "sources.jira"
@@ -319,10 +327,10 @@ def create_jira(
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
     if _is_cloud(resolved_url):
         source_type = "jiraCloud"
-        config_class = JiraCloudConfig
+        config_class = jira_cloud_config_class
     else:
         source_type = "jira"
-        config_class = JiraConfig
+        config_class = jira_config_class
 
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
@@ -388,14 +396,17 @@ def create_jira(
 
     def build_jira_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Jira connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["url"],
             query=present["query"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={},  # Credentials are read from ConfigService by connector
         )
 
@@ -498,8 +509,11 @@ def create_confluence(
 
     Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
     """
-    from core.v1.engine.services import SourceConfig
-    from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    confluence_cloud_config_class = this_module.ConfluenceCloudConfig
+    confluence_config_class = this_module.ConfluenceConfig
 
     # Use a single namespace for Confluence config - detect Cloud vs Server from URL at runtime
     namespace = "sources.confluence"
@@ -533,10 +547,10 @@ def create_confluence(
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
     if _is_cloud(resolved_url):
         source_type = "confluenceCloud"
-        config_class = ConfluenceCloudConfig
+        config_class = confluence_cloud_config_class
     else:
         source_type = "confluence"
-        config_class = ConfluenceConfig
+        config_class = confluence_config_class
 
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
@@ -621,14 +635,17 @@ def create_confluence(
 
     def build_confluence_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Confluence connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["url"],
             query=present["query"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={"readAllComments": present.get("read_all_comments", True)},
         )
 
@@ -655,3 +672,36 @@ def create_confluence(
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_confluence_log,
     )
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "DEFAULT_INDEXER":
+        from core.v1.constants import DEFAULT_INDEXER
+
+        return DEFAULT_INDEXER
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "LocalFilesConfig":
+        from connectors.files import LocalFilesConfig
+
+        return LocalFilesConfig
+    elif name == "JiraCloudConfig":
+        from connectors.jira import JiraCloudConfig
+
+        return JiraCloudConfig
+    elif name == "JiraConfig":
+        from connectors.jira import JiraConfig
+
+        return JiraConfig
+    elif name == "ConfluenceCloudConfig":
+        from connectors.confluence import ConfluenceCloudConfig
+
+        return ConfluenceCloudConfig
+    elif name == "ConfluenceConfig":
+        from connectors.confluence import ConfluenceConfig
+
+        return ConfluenceConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

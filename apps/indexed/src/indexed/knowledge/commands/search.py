@@ -5,10 +5,12 @@ results beautifully with the card-based design system.
 """
 
 import typer
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
 from rich.panel import Panel
-from core.v1 import Index
-from core.v1.engine.services import search as search_service, SourceConfig, status
+
+if TYPE_CHECKING:
+    pass
+
 from ...utils.logging import is_verbose_mode
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
@@ -348,18 +350,25 @@ def search(
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
     """
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import search as this_module
+
+    index_class = this_module.Index
+    svc_search = this_module.svc_search
+    source_config_class = this_module.SourceConfig
+    status_svc = this_module.status
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    Index()
+    index_class()
 
     # Determine collections to search
     if collection is None:
         # Search all collections
-        all_statuses = status()
+        all_statuses = status_svc()
         if not all_statuses:
             console.print("\nNo collections found to search")
             return
@@ -370,7 +379,7 @@ def search(
         )
     else:
         # Search specific collection
-        statuses = status([collection])
+        statuses = status_svc([collection])
         if not statuses:
             print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
@@ -383,8 +392,8 @@ def search(
     # Build search configs for all collections
     search_configs = []
     for coll_name in collections_to_search:
-        coll_status = status([coll_name])[0]
-        config = SourceConfig(
+        coll_status = status_svc([coll_name])[0]
+        config = source_config_class(
             name=coll_name,
             type="localFiles",  # Default type, not used in search
             base_url_or_path="",  # Not used in search
@@ -396,8 +405,8 @@ def search(
     results = {}
     for coll_name in collections_to_search:
         # Get collection status to build proper SourceConfig
-        coll_status = status([coll_name])[0]
-        config = SourceConfig(
+        coll_status = status_svc([coll_name])[0]
+        config = source_config_class(
             name=coll_name,
             type="localFiles",  # Default type, not used in search
             base_url_or_path="",  # Not used in search
@@ -409,7 +418,7 @@ def search(
         if is_verbose_mode():
             # Verbose mode: show core logs directly
             with NoOpContext():
-                result = search_service(
+                result = svc_search(
                     query,
                     configs=[config],
                     max_docs=limit,
@@ -426,7 +435,7 @@ def search(
             ):
                 # Suppress all core output and call search service
                 with suppress_core_output():
-                    result = search_service(
+                    result = svc_search(
                         query,
                         configs=[config],
                         max_docs=limit,
@@ -441,3 +450,28 @@ def search(
         format_search_results_compact(query, results, limit=limit)
     else:
         format_search_results(query, results, limit=limit, show_content=not no_content)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "Index":
+        from core.v1 import Index
+
+        return Index
+    elif name == "svc_search":
+        from core.v1.engine.services import search
+
+        return search
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "status":
+        from core.v1.engine.services import status
+
+        return status
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
