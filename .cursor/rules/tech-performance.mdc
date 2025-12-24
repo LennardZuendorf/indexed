@@ -31,15 +31,32 @@ def my_command():
     model = AutoModel.from_pretrained("...")
 ```
 
-**For module-level exports**, use `__getattr__`:
+**For module-level exports**, use `__getattr__` with testability in mind:
 
 ```python
-# module/__init__.py
+# ✅ GOOD - Module with __getattr__ for lazy loading
+# commands/my_command.py
+def my_command():
+    # Access through module to support mocking in tests
+    from . import my_command as this_module
+    heavy_service = this_module.heavy_service
+    heavy_service.do_work()
+
 def __getattr__(name: str):
-    if name == "heavy_function":
-        from .heavy_module import heavy_function
-        return heavy_function
-    raise AttributeError(f"module has no attribute '{name}'")
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "heavy_service":
+        from core.services import HeavyService
+        return HeavyService
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+```
+
+**Why this pattern?** Tests can mock module attributes:
+```python
+# ✅ Tests can mock module-level attributes
+@patch("commands.my_command.heavy_service")
+def test_my_command(mock_service):
+    my_command()
+    mock_service.do_work.assert_called_once()
 ```
 
 ### 2. Defer Service Initialization
@@ -260,6 +277,239 @@ API_KEY = os.getenv("API_KEY")
 validate_api_key(API_KEY)  # Blocks import!
 ```
 
+### ❌ Don't: Direct Import Inside Functions (Breaks Testability)
+```python
+# ❌ BAD - Direct import breaks mocking
+def my_command():
+    from core.services import heavy_service  # Can't be mocked!
+    heavy_service.do_work()
+```
+
+```python
+# ✅ GOOD - Access through module for testability
+def my_command():
+    from . import my_command as this_module
+    heavy_service = this_module.heavy_service  # Can be mocked!
+    heavy_service.do_work()
+```
+
+### ❌ Don't: Forget __getattr__ When Using Module-Level Lazy Loading
+```python
+# ❌ BAD - Attribute doesn't exist until accessed, breaks tests
+# commands/search.py
+def search():
+    from core.v1.engine.services import search as svc_search
+    svc_search(...)
+```
+
+```python
+# ✅ GOOD - __getattr__ makes attribute available for mocking
+# commands/search.py
+def search():
+    from . import search as this_module
+    svc_search = this_module.svc_search
+    svc_search(...)
+
+def __getattr__(name: str):
+    if name == "svc_search":
+        from core.v1.engine.services import search
+        return search
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+```
+
+## Common Mistakes with Lazy Loading
+
+### 1. Breaking Testability with Direct Imports
+
+**Problem**: Direct imports inside functions prevent mocking in tests.
+
+```python
+# ❌ BAD - Tests can't mock this
+def execute_command():
+    from core.services import create, status  # Direct import
+    create(...)
+    status(...)
+```
+
+**Solution**: Access through module-level attributes:
+
+```python
+# ✅ GOOD - Tests can mock module attributes
+def execute_command():
+    from . import _helpers as this_module
+    svc_create = this_module.svc_create
+    svc_status = this_module.svc_status
+    svc_create(...)
+    svc_status(...)
+
+def __getattr__(name: str):
+    if name == "svc_create":
+        from core.v1.engine.services import create
+        return create
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+        return status
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+```
+
+### 2. Missing __getattr__ Implementation
+
+**Problem**: Tests fail with `AttributeError: module has no attribute 'X'` when trying to mock.
+
+**Error**:
+```
+AttributeError: <module 'commands.search'> does not have the attribute 'svc_search'
+```
+
+**Solution**: Always implement `__getattr__` when using module-level lazy loading:
+
+```python
+# ✅ REQUIRED - Enables both lazy loading AND testability
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "svc_search":
+        from core.v1.engine.services import search
+        return search
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+```
+
+### 3. Inconsistent Access Patterns
+
+**Problem**: Mixing direct imports and module-level access confuses tests and breaks mocking.
+
+```python
+# ❌ BAD - Inconsistent pattern
+def command1():
+    from core.services import service  # Direct import
+    service.do()
+
+def command2():
+    from . import commands as this_module
+    service = this_module.service  # Module access
+    service.do()
+```
+
+**Solution**: Use consistent pattern throughout:
+
+```python
+# ✅ GOOD - Consistent module-level access
+def command1():
+    from . import commands as this_module
+    service = this_module.service
+    service.do()
+
+def command2():
+    from . import commands as this_module
+    service = this_module.service
+    service.do()
+```
+
+### 4. Forgetting TYPE_CHECKING for Type Hints
+
+**Problem**: Type hints with lazy-loaded classes cause import errors or break lazy loading.
+
+```python
+# ❌ BAD - Imports at runtime even though it's just a type hint
+from core.v1.engine.services import SourceConfig
+
+def build_config() -> SourceConfig:
+    ...
+```
+
+**Solution**: Use `TYPE_CHECKING` for type-only imports:
+
+```python
+# ✅ GOOD - Type hint doesn't trigger import
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.v1.engine.services import SourceConfig
+
+def build_config() -> "SourceConfig":
+    ...
+```
+
+## NoGo Patterns - Never Do This
+
+### ❌ Never: Mix Direct Imports with Module-Level Lazy Loading
+
+```python
+# ❌ NEVER - Breaks testability
+def my_function():
+    # Sometimes direct import
+    from core.services import service1
+
+    # Sometimes module access
+    from . import my_module as this_module
+    service2 = this_module.service2
+
+    # Inconsistent and confusing!
+```
+
+### ❌ Never: Access Lazy-Loaded Attributes Without __getattr__
+
+```python
+# ❌ NEVER - Attribute doesn't exist, breaks tests
+# commands/search.py
+def search():
+    # No __getattr__ defined!
+    from . import search as this_module
+    svc = this_module.svc_search  # AttributeError in tests!
+```
+
+### ❌ Never: Import Heavy Dependencies in Helper Functions
+
+```python
+# ❌ NEVER - Helper called from multiple places loads heavy deps
+def _helper_function():
+    from transformers import AutoModel  # Loads on every call!
+    model = AutoModel.from_pretrained("...")
+    return model
+
+def command1():
+    return _helper_function()  # Loads transformers
+
+def command2():
+    return _helper_function()  # Loads transformers again!
+```
+
+```python
+# ✅ GOOD - Load once at module level with __getattr__
+def _helper_function():
+    from . import helpers as this_module
+    model = this_module.model  # Loaded once, cached
+    return model
+
+def __getattr__(name: str):
+    if name == "model":
+        from transformers import AutoModel
+        model = AutoModel.from_pretrained("...")
+        return model
+    raise AttributeError(...)
+```
+
+### ❌ Never: Initialize Services in Module Scope
+
+```python
+# ❌ NEVER - Runs on import, even for --help
+# commands/update.py
+from core.v1 import Index
+
+index = Index()  # Initialized on import!
+
+def update():
+    index.update(...)
+```
+
+```python
+# ✅ GOOD - Lazy initialization
+def update():
+    from . import update as this_module
+    Index = this_module.Index
+    index = Index()  # Only initialized when command runs
+    index.update(...)
+```
+
 ## Results to Expect
 
 Following these practices:
@@ -283,12 +533,38 @@ def test_help_performance():
 
 ## Summary
 
-1. **Lazy load** heavy dependencies (ML libraries, etc.)
-2. **Defer initialization** until commands run
-3. **Minimize imports** at module level
-4. **Remove verbosity** - code should be self-documenting
-5. **Consolidate patterns** to reduce repetition
-6. **Profile regularly** to catch regressions
-7. **Test performance** in CI
+1. **Lazy load** heavy dependencies (ML libraries, etc.) using `__getattr__` pattern
+2. **Access through module** (`this_module.attribute`) to support testability
+3. **Always implement `__getattr__`** when using module-level lazy loading
+4. **Use `TYPE_CHECKING`** for type hints to avoid runtime imports
+5. **Defer initialization** until commands run (not in callbacks)
+6. **Minimize imports** at module level
+7. **Remove verbosity** - code should be self-documenting
+8. **Consolidate patterns** to reduce repetition
+9. **Profile regularly** to catch regressions
+10. **Test performance** in CI
 
-With these techniques, Python CLIs can achieve sub-second startup times even with heavy dependencies like PyTorch and Transformers.
+### Critical Pattern for Lazy Loading + Testability
+
+```python
+# ✅ The correct pattern for lazy loading with testability
+def my_command():
+    from . import my_command as this_module
+    service = this_module.service  # Access through module
+    service.do_work()
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "service":
+        from core.services import Service
+        return Service
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+```
+
+**Why this works:**
+- ✅ Lazy loading: Service only imported when accessed
+- ✅ Testable: Tests can mock `my_command.service` with `@patch`
+- ✅ Consistent: Same pattern across all commands
+- ✅ Type-safe: Use `TYPE_CHECKING` for type hints
+
+With these techniques, Python CLIs can achieve sub-second startup times even with heavy dependencies like PyTorch and Transformers, while maintaining full testability.
