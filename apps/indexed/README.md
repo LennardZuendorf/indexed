@@ -269,13 +269,13 @@ The CLI features a modern, card-based design system with:
 
 ```bash
 # Run all CLI tests
-uv run pytest tests/indexed -v
+uv run pytest tests/unit/indexed -v
 
 # Run specific test file
-uv run pytest tests/indexed/mcp/test_server.py -v
+uv run pytest tests/unit/indexed/mcp/test_server.py -v
 
 # Run with coverage
-uv run pytest tests/indexed --cov=indexed
+uv run pytest tests/unit/indexed --cov=indexed
 ```
 
 ### Code Quality

@@ -27,20 +27,11 @@ addopts = [
     "--cov-report=html:htmlcov"
 ]
 markers = [
-    "indexed: Main indexed application tests",
-    "connectors: Tests for indexed-connectors package",
-    "core: Tests for indexed-core package",
-    "utils: Tests for indexed-utils package",
-
-    # Test type markers (integration testing)
-    "integration: Integration tests requiring external services",
-    "unit: Fast unit tests",
-    "slow: Tests that take > 1 second",
-    "api: Tests that interact with external APIs",
-
-    # Environment markers (integration testing)
-    "requires_api: Tests requiring real API credentials",
-    "requires_network: Tests requiring network access",
+    "integration: Integration tests testing entire modules.",
+    "unit: Unit tests, testing single functions or classes.",
+    "unit_api: API unit tests, testing single functions or classes with mocked API responses.",
+    "system: System tests, testing entire user flows.",
+    "benchmark: System tests marked as performance benchmarks.",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)
@@ -72,6 +63,7 @@ dev = [
     "mypy>=1.17.1",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
+    "pytest-benchmark>=4.0.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.14.1",
     "pytest-httpserver>=1.0.0",

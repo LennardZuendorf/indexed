@@ -9,7 +9,6 @@ import numpy as np
 from core.v1.engine.service.embedding import EmbeddingService
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_initialization():
     """Test EmbeddingService initialization and model loading."""
@@ -24,7 +23,6 @@ def test_embedding_service_initialization():
     assert service.dimension == 384  # all-MiniLM-L6-v2 has 384 dimensions
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_single_text():
     """Test embedding a single text."""
@@ -40,7 +38,6 @@ def test_embedding_service_single_text():
     assert embedding.dtype == np.float32
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_batch():
     """Test embedding multiple texts in batch."""
@@ -62,7 +59,6 @@ def test_embedding_service_batch():
     assert embeddings.dtype == np.float32
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_empty_batch():
     """Test embedding empty batch."""
@@ -75,7 +71,6 @@ def test_embedding_service_empty_batch():
     assert embeddings.shape == (0, 384)
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_similarity():
     """Test that similar texts produce similar embeddings."""
@@ -104,7 +99,6 @@ def test_embedding_service_similarity():
     assert sim_similar > 0.7  # Should be quite similar
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_consistency():
     """Test that same text produces same embedding."""
@@ -119,7 +113,6 @@ def test_embedding_service_consistency():
     np.testing.assert_allclose(emb1, emb2, rtol=1e-5)
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_batch_size():
     """Test embedding with different batch sizes."""
@@ -134,7 +127,6 @@ def test_embedding_service_batch_size():
         assert embeddings.shape == (20, 384)
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_long_text():
     """Test embedding longer text."""
@@ -158,7 +150,6 @@ def test_embedding_service_long_text():
     assert embedding.shape == (384,)
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_special_characters():
     """Test embedding text with special characters."""
@@ -173,7 +164,6 @@ def test_embedding_service_special_characters():
     assert embedding.shape == (384,)
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 def test_embedding_service_dimension_property():
     """Test the dimension property."""

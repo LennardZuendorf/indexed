@@ -8,8 +8,7 @@ import pytest
 from connectors.jira import JiraConnector
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_jira_connector_basic(mock_jira_server):
     """Test Jira connector with mocked API server."""
     connector = JiraConnector(
@@ -35,8 +34,7 @@ def test_jira_connector_basic(mock_jira_server):
     assert first_doc["key"] == "TEST-1"
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_jira_connector_conversion(mock_jira_server):
     """Test Jira connector document conversion."""
     connector = JiraConnector(
@@ -63,8 +61,7 @@ def test_jira_connector_conversion(mock_jira_server):
     assert len(first_converted["chunks"]) > 0
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_jira_connector_with_token_auth(mock_jira_server):
     """Test Jira connector with token authentication."""
     connector = JiraConnector(
@@ -82,8 +79,7 @@ def test_jira_connector_with_token_auth(mock_jira_server):
     assert len(documents) > 0
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_jira_connector_with_basic_auth(mock_jira_server):
     """Test Jira connector with username/password authentication."""
     connector = JiraConnector(
@@ -101,7 +97,6 @@ def test_jira_connector_with_basic_auth(mock_jira_server):
     assert len(documents) > 0
 
 
-@pytest.mark.integration
 def test_jira_connector_requires_auth():
     """Test that Jira connector requires authentication."""
     with pytest.raises(

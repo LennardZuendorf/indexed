@@ -8,8 +8,7 @@ import pytest
 from connectors.confluence import ConfluenceConnector
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_confluence_connector_basic(mock_confluence_server):
     """Test Confluence connector with mocked API server."""
     connector = ConfluenceConnector(
@@ -34,8 +33,7 @@ def test_confluence_connector_basic(mock_confluence_server):
     assert first_doc["page"]["id"] == "123"
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_confluence_connector_conversion(mock_confluence_server):
     """Test Confluence connector document conversion."""
     connector = ConfluenceConnector(
@@ -62,8 +60,7 @@ def test_confluence_connector_conversion(mock_confluence_server):
     assert len(first_converted["chunks"]) > 0
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_confluence_connector_with_comments(mock_confluence_server):
     """Test Confluence connector with comment reading enabled."""
     connector = ConfluenceConnector(
@@ -81,8 +78,7 @@ def test_confluence_connector_with_comments(mock_confluence_server):
     assert len(documents) > 0
 
 
-@pytest.mark.integration
-@pytest.mark.api
+@pytest.mark.unit_api
 def test_confluence_connector_without_all_comments(mock_confluence_server):
     """Test Confluence connector with only top-level comments."""
     connector = ConfluenceConnector(

@@ -1,51 +1,15 @@
 """Integration test fixtures.
 
 This module provides fixtures for integration testing:
-- Session-scoped fixtures for expensive operations (temp workspace, embedding models)
 - Function-scoped fixtures for isolated test state (clean config, mock servers)
-- Test data fixtures (sample documents, collections paths)
+- Test isolation fixtures (config, search service)
+
+Note: Shared fixtures (temp_workspace, sample_documents, temp_collections_path,
+temp_caches_path) are provided by tests/fixtures/conftest.py
 """
 
-import os
-
-# CRITICAL: Disable tqdm BEFORE any imports that might use it
-# sentence-transformers uses tqdm internally when loading models, and its monitor
-# threads cause segfaults when not properly cleaned up during test teardown.
-# This must be set before sentence-transformers is imported anywhere.
-if "TQDM_DISABLE" not in os.environ:
-    os.environ["TQDM_DISABLE"] = "1"
-
 import pytest
-import tempfile
-from pathlib import Path
 from pytest_httpserver import HTTPServer
-
-
-def pytest_configure(config):
-    """Pytest hook to ensure TQDM_DISABLE is set before any test imports."""
-    # Force set TQDM_DISABLE before any tests run
-    os.environ["TQDM_DISABLE"] = "1"
-
-
-# ============================================================================
-# Session-Scoped Fixtures (shared across test session)
-# ============================================================================
-
-
-@pytest.fixture(scope="session")
-def temp_workspace():
-    """Create temporary workspace directory for entire test session.
-
-    This directory is reused across all tests in the session for efficiency.
-    Each test should create its own subdirectories to avoid conflicts.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
-
-
-# ============================================================================
-# Function-Scoped Fixtures (fresh for each test)
-# ============================================================================
 
 
 @pytest.fixture
@@ -54,6 +18,9 @@ def clean_config(temp_workspace):
 
     This fixture ensures each test gets an isolated ConfigService instance
     with the singleton pattern properly reset before and after the test.
+
+    Args:
+        temp_workspace: Session-scoped temporary workspace fixture from fixtures/
     """
     from indexed_config import ConfigService
 
@@ -67,70 +34,6 @@ def clean_config(temp_workspace):
 
     # Cleanup singleton after test
     ConfigService.reset()
-
-
-@pytest.fixture
-def sample_documents(temp_workspace):
-    """Create sample document structure for testing.
-
-    Creates a temporary directory with sample markdown documents
-    that can be used for testing file-based indexing.
-
-    Returns:
-        Path: Directory containing sample documents
-    """
-    docs_dir = temp_workspace / "docs"
-    docs_dir.mkdir(exist_ok=True)
-
-    # Create sample markdown documents
-    (docs_dir / "test1.md").write_text(
-        "# Test Document 1\n\n"
-        "This is a test document with some content about authentication methods.\n"
-        "It includes information about OAuth and JWT tokens."
-    )
-
-    (docs_dir / "test2.md").write_text(
-        "# Test Document 2\n\n"
-        "More content about API testing and integration patterns.\n"
-        "This document covers REST APIs and GraphQL endpoints."
-    )
-
-    (docs_dir / "test3.txt").write_text(
-        "Plain text document for testing different file formats.\n"
-        "Contains information about deployment strategies."
-    )
-
-    return docs_dir
-
-
-@pytest.fixture
-def temp_collections_path(temp_workspace):
-    """Provide isolated collections storage path.
-
-    Creates a temporary directory for storing collection data
-    during tests. This ensures tests don't interfere with real data.
-
-    Returns:
-        str: Path to temporary collections directory
-    """
-    collections_path = temp_workspace / "collections"
-    collections_path.mkdir(parents=True, exist_ok=True)
-    return str(collections_path)
-
-
-@pytest.fixture
-def temp_caches_path(temp_workspace):
-    """Provide isolated caches storage path.
-
-    Creates a temporary directory for storing cache data
-    during tests.
-
-    Returns:
-        str: Path to temporary caches directory
-    """
-    caches_path = temp_workspace / "caches"
-    caches_path.mkdir(parents=True, exist_ok=True)
-    return str(caches_path)
 
 
 # ============================================================================
