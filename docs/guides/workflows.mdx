@@ -1,0 +1,116 @@
+---
+title: Capabilities & Workflows
+description: Practical scenarios for searching files, Jira, Confluence, and using AI agents
+---
+
+# Capabilities & Workflows
+
+This guide covers the most common ways to use Indexed. Whether you are organizing local notes or connecting to enterprise knowledge bases, the workflow follows a similar pattern: **Configure → Create → Search**.
+
+## Scenario 1: Searching Local Project Documentation
+
+If you have a repository with Markdown, text, or PDF files, you can turn it into a knowledge base.
+
+### The Goal
+Index a specific project folder, ignoring build artifacts and temporary files.
+
+### The Command
+```bash
+indexed index create files \
+  --name project-alpha \
+  --path ~/projects/alpha/docs \
+  --include "*.md" \
+  --include "*.txt" \
+  --exclude "node_modules/*" \
+  --exclude "_site/*"
+```
+
+### Key Flags
+-   `--path`: The root directory to start scanning.
+-   `--include`: Glob patterns for files to keep. You can use this flag multiple times.
+-   `--exclude`: Glob patterns for files or directories to ignore.
+
+## Scenario 2: Finding Answers in Jira
+
+Indexed allows you to search across Jira issues without waiting for the slow web interface.
+
+### The Goal
+Index all high-priority bugs from the "Backend" project updated in the last 30 days.
+
+### The Command
+First, ensure your credentials are set (see [Configuration](./configuration.mdx)). Then run:
+
+```bash
+indexed index create jira \
+  --name urgent-bugs \
+  --url https://your-company.atlassian.net \
+  --query "project = BACKEND AND priority = High AND updated > -30d"
+```
+
+### Key Flags
+-   `--url`: Your Jira instance URL (Cloud or Server).
+-   `--query`: A standard JQL (Jira Query Language) string. This is powerful—it lets you slice your data exactly how you want.
+
+## Scenario 3: Querying Confluence Knowledge Bases
+
+Confluence often holds long-form documentation that is hard to find.
+
+### The Goal
+Index the "Engineering" space to make technical specs searchable.
+
+### The Command
+```bash
+indexed index create confluence \
+  --name engineering-wiki \
+  --url https://your-company.atlassian.net/wiki \
+  --query "space = ENG AND type = page"
+```
+
+### Key Flags
+-   `--query`: A CQL (Confluence Query Language) string.
+-   `--read-all-comments`: (Optional) Set to `false` if you want to skip indexing comment threads to save time.
+
+## Scenario 4: AI Agent Integration (MCP)
+
+This is the most powerful feature of Indexed. It bridges your local documents with AI tools like Claude Desktop, Cursor, or Cline.
+
+### The Goal
+Let your AI assistant answer questions like *"Based on the engineering wiki, how do I deploy to staging?"*
+
+### How It Works
+Indexed implements the **Model Context Protocol (MCP)**. This allows AI agents to "call" Indexed as a tool to retrieve information.
+
+### Running the Server
+To start the MCP server manually (for testing or HTTP transport):
+```bash
+indexed mcp run
+```
+
+### Connecting to Claude Desktop
+Add the following to your Claude Desktop configuration file:
+
+```json
+{
+  "mcpServers": {
+    "indexed": {
+      "command": "uv",
+      "args": ["tool", "run", "indexed-cli", "mcp", "run"]
+    }
+  }
+}
+```
+
+Once connected, you can simply ask Claude:
+> "Search the engineering-wiki collection for deployment instructions."
+
+Claude will query your local index and use the retrieved context to answer your question.
+
+## Keeping Data Fresh
+
+Indexes are static snapshots. To update a collection with new data, simply run:
+
+```bash
+indexed index update --collection my-docs
+```
+
+This will re-scan the source, add new documents, update modified ones, and remove deleted ones.

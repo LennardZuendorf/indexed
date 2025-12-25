@@ -1,0 +1,60 @@
+---
+title: Introduction to Indexed
+description: Overview of Indexed - privacy-first semantic search for your institutional knowledge
+---
+
+# Introduction
+
+**Indexed** is a privacy-first, local semantic search engine that helps you make your institutional knowledge searchable and accessible to AI agents.
+
+By indexing your documents locally, you can find information by meaning—not just keywords—and give your AI assistants (like Claude or Cursor) the context they need to give better answers, all without sending your private data to the cloud.
+
+---
+
+## Why Indexed?
+
+### 🔒 Privacy First
+Your data never leaves your machine. All indexing, embedding generation, and storage happens locally. There are no cloud dependencies and zero external data transmission.
+
+### 🧠 Semantic Understanding
+Unlike traditional keyword search (`grep` or Spotlight), Indexed uses vector embeddings to understand the *meaning* of your query. Searching for "deployment issues" will find documents discussing "release failures" even if the exact words don't match.
+
+### 🤖 AI Ready (MCP)
+Indexed implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io), allowing it to plug directly into AI tools like Claude Desktop, Cursor, and Cline. This gives your AI agent "long-term memory" of your specific projects and documentation.
+
+### 🔌 Multi-Source
+Connect to the tools you already use:
+-   **Local Files:** Markdown, Text, PDF, DOCX, etc.
+-   **Jira:** Issues, comments, and tickets (Cloud & Server).
+-   **Confluence:** Pages, blogs, and documentation spaces (Cloud & Server).
+
+---
+
+## How It Works
+
+Indexed runs as a command-line tool on your machine.
+
+1.  **Index:** You create "Collections" pointing to your data sources.
+2.  **Process:** Indexed reads documents, splits them into chunks, and generates vector embeddings locally using `sentence-transformers`.
+3.  **Search:** You (or your AI agent) send queries. Indexed finds the most relevant text chunks using FAISS similarity search.
+
+---
+
+## Key Features
+
+-   **Zero Config Start:** Get running in minutes with smart defaults.
+-   **Rich CLI:** Beautiful, easy-to-use terminal interface.
+-   **Configuration Management:** Flexible config via TOML files or environment variables.
+-   **Secure Credentials:** API tokens are stored safely in `.env` files, never in version control.
+-   **Offline Capable:** Once installed, no internet connection is required for searching local or cached data.
+
+---
+
+## Getting Started
+
+Ready to dive in?
+
+-   [**Getting Started Guide**](./getting-started.mdx): Install and create your first index in 5 minutes.
+-   [**Workflows**](./workflows.mdx): Learn common patterns for indexing Jira, Confluence, and files.
+-   [**Configuration**](./configuration.mdx): Set up your API tokens and customize behavior.
+-   [**FAQ**](./faq.mdx): Frequently asked questions and answers.

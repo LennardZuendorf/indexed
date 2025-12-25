@@ -1,0 +1,399 @@
+---
+title: Frequently Asked Questions
+description: Common questions and answers about Indexed
+---
+
+# Frequently Asked Questions
+
+## Installation & Setup
+
+### How much disk space do I need?
+
+Disk space requirements depend on your collection size:
+
+- **Base installation:** ~500MB (includes Python dependencies and embedding models)
+- **Per collection:** Approximately 10-50MB per 1,000 documents
+- **General rule:** Plan for 2-3x your source data size to account for indexes, embeddings, and metadata
+
+For example, if you're indexing 10,000 documents totaling 1GB, expect to use roughly 2-3GB of disk space for the complete collection.
+
+### Can I use Indexed without internet?
+
+Yes! After the initial installation and first-time model download, Indexed works completely offline:
+
+- **First run:** Requires internet to download the embedding model (~100MB)
+- **Subsequent use:** All operations (indexing, searching) work offline
+- **No cloud dependencies:** All processing happens locally on your machine
+
+The embedding model is cached locally after the first download.
+
+### What Python version do I need?
+
+Indexed requires **Python 3.11 or higher**. This version is required for:
+- Modern type hints and performance features
+- Built-in TOML support (`tomllib`)
+- Optimal FAISS performance
+
+Check your version with `python --version`. If you need to upgrade, use [python.org](https://www.python.org/downloads/) or a version manager like `pyenv`.
+
+### Do I need to install uv?
+
+No, `uv` is optional but recommended. You can install Indexed with:
+- `uv tool install indexed-cli` (recommended, faster)
+- `pip install indexed-cli` (standard Python package manager)
+
+Both methods work equally well for end users.
+
+## Collections
+
+### Can I index multiple Jira projects?
+
+Yes! You can create separate collections for different Jira projects:
+
+```bash
+# Create collection for Project A
+indexed index create jira --name project-a --query "project = PROJA"
+
+# Create collection for Project B
+indexed index create jira --name project-b --query "project = PROJB"
+```
+
+Then search across all collections or target a specific one:
+
+```bash
+# Search all collections
+indexed index search "bug fix"
+
+# Search only Project A
+indexed index search "bug fix" --collection project-a
+```
+
+### How do I update a collection?
+
+Use the `index update` command:
+
+```bash
+# Update a specific collection
+indexed index update my-docs
+
+# Update all collections
+indexed index update
+```
+
+This will:
+- Re-scan the source for new documents
+- Update modified documents
+- Remove deleted documents
+- Rebuild the index with changes
+
+### What file formats are supported?
+
+Indexed supports 20+ file formats through the Unstructured library:
+
+**Text formats:**
+- Markdown (`.md`)
+- Plain text (`.txt`)
+- CSV (`.csv`)
+
+**Office documents:**
+- Microsoft Word (`.docx`)
+- Microsoft PowerPoint (`.pptx`)
+- Microsoft Excel (`.xlsx`)
+
+**PDFs:**
+- PDF documents (`.pdf`)
+
+**Code files:**
+- Python, JavaScript, TypeScript, Java, and many more
+
+**Other:**
+- HTML (`.html`)
+- RTF (`.rtf`)
+
+Unsupported formats are automatically skipped during indexing.
+
+### How long does indexing take?
+
+Indexing speed depends on several factors:
+
+- **Document count:** ~100-200 documents per minute on average hardware
+- **Document size:** Larger files take longer to process
+- **File format:** PDFs and complex documents take longer than plain text
+- **Hardware:** CPU and RAM affect embedding generation speed
+
+For example:
+- 1,000 small Markdown files: ~5-10 minutes
+- 100 large PDF documents: ~10-20 minutes
+- 10,000 Jira issues: ~30-60 minutes
+
+Use `--verbose` to see progress during indexing.
+
+### Can I index files from multiple directories?
+
+Yes, but you'll need to create separate collections for each directory, or use a parent directory that contains all the subdirectories you want to index:
+
+```bash
+# Option 1: Index parent directory (includes all subdirectories)
+indexed index create files --name all-docs --path /path/to/parent
+
+# Option 2: Create separate collections
+indexed index create files --name docs-a --path /path/to/docs-a
+indexed index create files --name docs-b --path /path/to/docs-b
+```
+
+Then search across all collections to find documents from any directory.
+
+## Search
+
+### Why are my search results not relevant?
+
+Several factors can affect search relevance:
+
+1. **Query specificity:** More specific queries tend to return better results
+   - Better: "authentication token expiration"
+   - Less specific: "auth"
+
+2. **Collection size:** Very small collections (< 10 documents) may have limited context
+
+3. **Document quality:** Well-structured documents with clear headings index better
+
+4. **Chunking settings:** Adjust `chunk_size` in configuration if results seem fragmented
+
+Try refining your query or checking the collection with `indexed index inspect` to see what was indexed.
+
+### How do I search across multiple collections?
+
+By default, `index search` searches all collections:
+
+```bash
+# Search all collections
+indexed index search "deployment process"
+```
+
+To search a specific collection:
+
+```bash
+# Search only one collection
+indexed index search "deployment process" --collection my-docs
+```
+
+### Can I filter search results?
+
+Currently, search results are ranked by relevance. You can:
+
+- **Limit results:** Use `--limit` to control how many results per collection
+  ```bash
+  indexed index search "query" --limit 3
+  ```
+
+- **Compact view:** Use `--compact` for a simpler list format
+  ```bash
+  indexed index search "query" --compact
+  ```
+
+- **Hide content:** Use `--no-content` to see only titles and sources
+  ```bash
+  indexed index search "query" --no-content
+  ```
+
+Advanced filtering (by date, source, etc.) may be added in future versions.
+
+### Why does search return no results?
+
+If search returns no results, check:
+
+1. **Collection exists:** Run `indexed index inspect` to see available collections
+2. **Collection has documents:** Verify the collection was created successfully
+3. **Query relevance:** Try a more general query or different keywords
+4. **Collection name:** If using `--collection`, ensure the name matches exactly
+
+Use `--verbose` to see which collections are being searched.
+
+## Configuration
+
+### Where is my configuration stored?
+
+Indexed uses two storage modes:
+
+**Global (default):**
+- Location: `~/.indexed/`
+- Config: `~/.indexed/config.toml`
+- Data: `~/.indexed/data/collections/`
+- Credentials: `~/.indexed/.env`
+
+**Local (per-project):**
+- Location: `./.indexed/` (in your current directory)
+- Config: `./.indexed/config.toml`
+- Data: `./.indexed/data/collections/`
+- Credentials: `./.indexed/.env`
+
+Use `--local` flag to force local mode, or `--global` for global mode.
+
+### How do I reset to defaults?
+
+To reset configuration:
+
+1. **Delete config file:**
+   ```bash
+   rm ~/.indexed/config.toml  # Global
+   # or
+   rm ./.indexed/config.toml   # Local
+   ```
+
+2. **Reinitialize:**
+   ```bash
+   indexed config init
+   ```
+
+This creates a fresh config with default values. Your collections and data are not affected.
+
+### Can I use environment variables?
+
+Yes! Environment variables override config file settings. Use the format:
+
+```bash
+INDEXED__section__key=value
+```
+
+Examples:
+
+```bash
+# Set chunk size
+export INDEXED__core__v1__indexing__chunk_size=1024
+
+# Set Jira URL
+export INDEXED__sources__jira__url=https://company.atlassian.net
+
+# Set storage mode
+export INDEXED__storage__mode=local
+```
+
+Environment variables are useful for CI/CD, temporary overrides, or sensitive settings.
+
+### How do I see my current configuration?
+
+Use the inspect command:
+
+```bash
+# View all configuration
+indexed config inspect
+
+# View specific section
+indexed config inspect sources
+
+# JSON output
+indexed config inspect --json
+```
+
+This shows the merged configuration from all sources (global, local, environment variables).
+
+## MCP Integration
+
+### How do I verify MCP is working?
+
+Test the MCP server:
+
+```bash
+# Start MCP server in dev mode with inspector
+indexed mcp dev
+
+# Or inspect capabilities
+indexed mcp inspect
+```
+
+For Claude Desktop, check the MCP server logs in Claude Desktop's settings. The server should appear in the list of connected servers.
+
+### What AI tools are supported?
+
+Indexed's MCP server works with any tool that supports the Model Context Protocol:
+
+- **Claude Desktop** (recommended)
+- **Cursor** (AI code editor)
+- **Cline** (VS Code extension)
+- Any MCP-compatible client
+
+The MCP server exposes these tools to AI agents:
+- `search(query, collection?)` - Search collections
+- `list_collections()` - List available collections
+- `collection_status(name)` - Get collection metadata
+
+### How do I connect Indexed to Claude Desktop?
+
+Add this to your Claude Desktop configuration file:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "indexed": {
+      "command": "uv",
+      "args": ["tool", "run", "indexed-cli", "mcp", "run"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. You should see "indexed" in the connected servers list.
+
+## Troubleshooting
+
+### My index is corrupted, what do I do?
+
+If a collection appears corrupted:
+
+1. **Inspect the collection:**
+   ```bash
+   indexed index inspect --collection problematic-collection
+   ```
+
+2. **Remove and recreate:**
+   ```bash
+   indexed index remove --collection problematic-collection
+   indexed index create files --name problematic-collection --path /original/path
+   ```
+
+3. **Check disk space:** Low disk space can cause corruption
+
+4. **Check file permissions:** Ensure you have read/write access to `~/.indexed/data/`
+
+### How do I backup my collections?
+
+Collections are stored in `~/.indexed/data/collections/` (or `./.indexed/data/collections/` for local mode).
+
+To backup:
+
+```bash
+# Backup global collections
+cp -r ~/.indexed/data/collections /backup/location/
+
+# Backup local collections
+cp -r ./.indexed/data/collections /backup/location/
+```
+
+To restore, copy the collections back to the same location and restart Indexed.
+
+### Can I move collections between machines?
+
+Yes! Collections are portable:
+
+1. **Copy the collection directory:**
+   ```bash
+   # From source machine
+   cp -r ~/.indexed/data/collections/my-collection /transfer/location/
+   ```
+
+2. **Copy to destination:**
+   ```bash
+   # On destination machine
+   cp -r /transfer/location/my-collection ~/.indexed/data/collections/
+   ```
+
+3. **Verify:**
+   ```bash
+   indexed index inspect
+   ```
+
+The collection should appear and be searchable. Note: The embedding model version must match between machines.
