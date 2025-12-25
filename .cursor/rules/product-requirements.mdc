@@ -1,0 +1,214 @@
+# 📋 PRODUCT REQUIREMENTS DOCUMENT
+
+**Indexed: Index Institutional Knowledge and Make it Available for AI Agents and LLMs**
+
+---
+
+## PRODUCT VISION & MISSION
+
+**Core Purpose:** Indexed is a privacy-first document indexing and semantic search platform that enables AI agents and LLMs to understand and access institutional knowledge from multiple data sources without compromising data privacy.
+
+**Mission:** Make institutional knowledge from Jira, Confluence, and local files immediately available to AI agents through semantic search, while maintaining strict privacy guarantees where all processing and storage remains local.
+
+**Key Principle:** Privacy-first, local-first architecture with zero data sent to third parties (during indexing).
+
+---
+
+## PRODUCT GOALS & OBJECTIVES
+
+### Primary Goals
+
+1. **Enable Semantic Search Across Institutional Knowledge**
+   - MUST support natural language queries that understand meaning, not just keywords
+   - MUST return contextually relevant results from indexed documents
+   - MUST support searching across multiple collections simultaneously
+
+2. **Provide Privacy-First Document Indexing**
+   - MUST process all documents locally with no cloud dependencies
+   - MUST store all data locally (global or workspace-specific)
+   - MUST support zero external data transmission for indexing or search
+
+3. **Integrate Seamlessly with AI Agents and LLMs**
+   - MUST expose MCP (Model Context Protocol) server for AI agent integration
+   - MUST work with Claude, Cursor, Cline, and other MCP-compatible tools
+   - MUST provide both CLI and programmatic library interfaces
+
+4. **Support Multiple Data Sources**
+   - MUST index from Jira (Cloud and Server/Data Center)
+   - MUST index from Confluence (Cloud and Server/Data Center)
+   - MUST index from local files (20+ formats via Unstructured)
+   - MUST support easy addition of new data sources through plugin architecture
+
+### Success Metrics
+
+- **Privacy:** 100% of data processing and storage remains local, zero third-party data transmission
+- **Usability:** Users can create, search, and manage collections with intuitive CLI commands
+- **Extensibility:** New data sources can be added without modifying core code
+
+---
+
+## CORE VALUE PROPOSITIONS
+
+### For Data Privacy Conscious Users
+- **Zero Cloud Dependency:** All processing happens on your machine
+- **Data Sovereignty:** Full control over where institutional knowledge is stored
+- **Compliance-Friendly:** No data leaves your infrastructure
+
+### For Knowledge Workers
+- **Semantic Understanding:** Find information by meaning, not just keywords
+- **Multi-Source Unified Search:** Search across Jira, Confluence, and files in one query
+- **Quick Setup:** Simple installation and intuitive CLI commands
+- **Clear Results:** Relevant document chunks with context and scoring
+
+### For AI Agent Developers
+- **MCP Integration:** Out-of-the-box integration with AI agents via Model Context Protocol
+- **Library API:** Can be used as a Python library for custom applications
+- **Plugin Architecture:** Easily extend with custom data sources
+- **Deterministic Behavior:** Configuration-driven behavior enables predictable integration
+
+---
+
+## PRODUCT SCOPE
+
+### In Scope
+
+- **Document Indexing:** Creating searchable collections from Jira, Confluence, and files
+- **Semantic Search:** Vector-based similarity search with natural language queries
+- **Collection Management:** Creating, updating, deleting, and inspecting collections
+- **CLI Interface:** Command-line commands for all operations
+- **MCP Server:** Model Context Protocol server for AI agent integration
+- **Plugin Architecture:** Connector system for adding new data sources
+- **Configuration Management:** Hierarchical config system with TOML, environment variables, and CLI overrides
+- **Storage Modes:** Global (~/.indexed/) and local (./.indexed/) storage options
+- **Multi-format Support:** PDF, DOCX, PPTX, Markdown, plain text, and more
+
+### Out of Scope
+
+- **Cloud Hosting:** Indexed is a local application, not a cloud service
+- **User Authentication:** Single-user local application, no built-in auth
+- **Web UI:** CLI and MCP interfaces only (no web dashboard)
+- **Real-time Sync:** One-way indexing with manual refresh
+- **Encryption:** Relies on filesystem permissions (user's responsibility)
+- **Advanced Analytics:** No usage tracking or analytics features
+- **Custom Embedding Models:** Uses pre-trained sentence-transformers models only
+- **Fine-tuning:** Models cannot be fine-tuned on user data
+
+---
+
+## NON-FUNCTIONAL REQUIREMENTS
+
+### Privacy & Security
+- MUST process all documents locally without any external API calls for indexing
+- MUST NOT send document content to any third-party service (including embedding providers)
+- MUST support offline operation after initial setup
+- MUST use local embedding models only (sentence-transformers)
+- MUST provide option to store sensitive credentials in .env files
+
+### Reliability & Maintainability
+- MUST maintain clear separation of concerns across CLI, Service, and Engine layers
+- MUST use protocol-based design enabling plugin architecture
+- MUST provide comprehensive error messages with actionable guidance
+- MUST implement graceful degradation (skip problematic documents, continue indexing)
+- MUST maintain backward compatibility with existing collections
+
+### Extensibility
+- MUST support easy addition of new data source connectors via plugin architecture
+- MUST not require core code modifications to add new connectors
+- MUST use configuration-driven behavior instead of hardcoded logic
+- MUST support both library usage and CLI usage without duplication
+
+### Usability
+- MUST provide clear, intuitive CLI commands with consistent structure
+- MUST show progress indicators for long-running operations
+- MUST provide helpful error messages when operations fail
+- MUST support JSON output for scripting and automation
+- MUST implement smart defaults to minimize required configuration
+
+---
+
+## FEATURE PRIORITIES
+
+### MVP (Minimum Viable Product)
+1. Index local files and display search results
+2. Basic semantic search functionality
+3. Simple CLI commands for create/search/inspect
+4. ConfigService for configuration management
+
+### Phase 1
+1. Jira connector (Cloud and Server)
+2. Confluence connector (Cloud and Server)
+3. MCP server for AI agent integration
+4. Collection update operations
+
+### Phase 2
+1. Advanced search options (filtering, limiting)
+2. Collection metadata and status inspection
+3. Performance optimizations
+4. Extended file format support
+
+### Phase 3
+1. Custom connector examples and documentation
+2. Advanced configuration options
+3. Collection archival and cleanup tools
+4. Performance monitoring and profiling
+
+---
+
+## CONSTRAINTS & DEPENDENCIES
+
+### Technical Constraints
+- **Python 3.11+:** Minimum required version for modern type hints and performance
+- **Local Processing:** Cannot use cloud-based embedding services
+- **Single Machine:** Not designed for distributed deployments
+- **FAISS Indexes:** Limited to IndexFlatL2, IndexIVFFlat, or IndexHNSW
+
+### Business Constraints
+- **Partly Open Source Source:** Distributed under Faire Use license
+- **No Commercial Dependencies:** Avoid requiring paid services
+- **Community Driven:** Extensible for community contributions
+
+### External Dependencies
+- **FAISS:** For vector similarity search (built on PyTorch)
+- **Sentence Transformers:** For text embeddings
+- **Unstructured:** For multi-format document parsing
+- **FastMCP:** For Model Context Protocol server implementation
+- **Pydantic:** For configuration validation
+
+---
+
+## ACCEPTANCE CRITERIA
+
+The product MUST meet these criteria to be considered complete:
+
+### Functional Criteria
+- Semantic search returns relevant results from indexed documents
+- Collections can be created, updated, and deleted without errors
+- CLI commands execute reliably with clear output
+- MCP server successfully connects to Claude, Cursor, and Cline
+- Multiple connector types work without core code modifications
+
+### Non-Functional Criteria
+- Search responses complete in < 1 second for typical collections
+- All data remains local with zero external data transmission
+- Application functions offline after initial setup
+- Configuration system supports TOML, environment variables, and CLI overrides
+- Plugin architecture enables community connector contributions
+
+### Quality Criteria
+- Code maintains high test coverage (target: > 85%)
+- All major components have clear documentation
+- Error messages provide actionable guidance
+- Design patterns are consistently applied across modules
+- Architecture remains maintainable as codebase grows
+
+---
+
+## WHAT SUCCESS LOOKS LIKE
+
+Indexed succeeds when:
+
+1. **Users can quickly index their institutional knowledge** from multiple sources
+2. **AI agents can understand and search user documents** for context in conversations
+3. **Users maintain complete privacy** with zero data leaving their machine
+4. **Developers can easily extend the system** with new data sources
+5. **The codebase remains maintainable and coherent** as features are added
