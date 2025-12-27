@@ -86,6 +86,7 @@ def save_baseline(
     # Write the benchmark data with baseline info to baseline location
     with open(baseline_path, "w") as f:
         json.dump(benchmark_data, f, indent=2)
+        f.write("\n")  # Add trailing newline for pre-commit hooks
 
     return baseline_path
 
