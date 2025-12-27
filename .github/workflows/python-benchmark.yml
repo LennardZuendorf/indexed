@@ -1,0 +1,239 @@
+name: Performance Benchmarks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "main", "building*" ]
+  push:
+    # Run on all branch pushes to enable baseline commits for all branches
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]  # Use single version for consistent benchmarks
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # Fetch full history to find latest benchmark
+        fetch-depth: 0
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install uv
+        python -m uv sync
+
+    - name: Determine branch names
+      id: branch-info
+      run: |
+        # Get current branch name
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          CURRENT_BRANCH="${{ github.head_ref }}"
+        else
+          CURRENT_BRANCH="${{ github.ref_name }}"
+        fi
+        echo "current_branch=$CURRENT_BRANCH" >> $GITHUB_OUTPUT
+        echo "main_branch=main" >> $GITHUB_OUTPUT
+        echo "Current branch: $CURRENT_BRANCH"
+        echo "Main branch: main"
+
+    - name: Fetch all branches for baseline access
+      run: |
+        # Fetch all branches to access baselines from any branch
+        git fetch --all --depth=100
+
+    - name: Load baselines from repository
+      id: load-baselines
+      run: |
+        mkdir -p .benchmarks/baselines
+        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+
+        # Try to get main baseline from main branch
+        echo "📥 Loading main branch baseline from repository..."
+        # Check if origin/main exists first
+        if git ls-remote --heads origin main | grep -q main; then
+          if git show origin/main:.benchmarks/baselines/main.json > .benchmarks/baselines/main.json 2>/dev/null; then
+            echo "✅ Found main branch baseline"
+            echo "main_baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️  No main branch baseline found in repository (file doesn't exist)"
+            echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "ℹ️  Main branch doesn't exist yet - skipping main baseline comparison"
+          echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
+        fi
+
+        # Try to get current branch baseline from current branch's history
+        if [ "$CURRENT_BRANCH" != "main" ]; then
+          echo "📥 Loading current branch baseline from repository..."
+          BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
+          BASELINE_NAME=$(basename "$BASELINE_PATH")
+          # Try multiple locations: previous commit, origin branch, or current HEAD
+          if git show HEAD~1:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
+             git show origin/"$CURRENT_BRANCH":.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
+             git show HEAD:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null; then
+            echo "✅ Found current branch baseline"
+            echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️  No current branch baseline found in repository"
+            echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          # For main branch, try to get previous commit's baseline
+          echo "📥 Loading previous main branch baseline from repository..."
+          if git show HEAD~1:.benchmarks/baselines/main.json > .benchmarks/baselines/main_previous.json 2>/dev/null; then
+            echo "✅ Found previous main branch baseline"
+            echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️  No previous main branch baseline found"
+            echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+    - name: Run benchmarks
+      id: run-benchmarks
+      run: |
+        uv run pytest tests/system \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json \
+          --benchmark-autosave \
+          -v
+
+    - name: Compare with main baseline (if exists)
+      id: compare-main-baseline
+      if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.main_baseline_exists == 'true'
+      run: |
+        MAIN_BASELINE=".benchmarks/baselines/main.json"
+        if [ ! -f "$MAIN_BASELINE" ]; then
+          echo "❌ Error: Main baseline file not found at $MAIN_BASELINE"
+          exit 1
+        fi
+        echo "📊 Comparing against main branch baseline (20% tolerance)..."
+        if ! python .benchmarks/benchmark_compare.py compare-json \
+          "$MAIN_BASELINE" \
+          benchmark-results.json \
+          --tolerance=20; then
+          echo "❌ Main baseline comparison failed - performance regression detected!"
+          exit 1
+        fi
+        echo "✅ Main baseline comparison passed"
+
+    - name: Compare with current branch baseline (if exists)
+      id: compare-current-baseline
+      if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.current_baseline_exists == 'true'
+      run: |
+        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+        if [ "$CURRENT_BRANCH" == "main" ]; then
+          # For main, compare against previous commit
+          CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
+        else
+          CURRENT_BASELINE=$(python scripts/benchmark_baseline.py path "$CURRENT_BRANCH")
+        fi
+        if [ ! -f "$CURRENT_BASELINE" ]; then
+          echo "❌ Error: Current branch baseline file not found at $CURRENT_BASELINE"
+          exit 1
+        fi
+        echo "📊 Comparing against current branch baseline (20% tolerance)..."
+        if ! python .benchmarks/benchmark_compare.py compare-json \
+          "$CURRENT_BASELINE" \
+          benchmark-results.json \
+          --tolerance=20; then
+          echo "❌ Current branch baseline comparison failed - performance regression detected!"
+          exit 1
+        fi
+        echo "✅ Current branch baseline comparison passed"
+
+    - name: Summary of baseline comparisons
+      if: always() && steps.run-benchmarks.outcome == 'success'
+      run: |
+        echo "## 📊 Benchmark Comparison Summary"
+        echo ""
+        if [ "${{ steps.load-baselines.outputs.main_baseline_exists }}" == "true" ]; then
+          echo "✅ Compared against main branch baseline"
+        else
+          echo "ℹ️  No main branch baseline available (first run or main branch doesn't exist)"
+        fi
+        if [ "${{ steps.load-baselines.outputs.current_baseline_exists }}" == "true" ]; then
+          echo "✅ Compared against current branch baseline"
+        else
+          echo "ℹ️  No current branch baseline available (first run for this branch)"
+        fi
+        if [ "${{ steps.load-baselines.outputs.main_baseline_exists }}" != "true" ] && \
+           [ "${{ steps.load-baselines.outputs.current_baseline_exists }}" != "true" ]; then
+          echo ""
+          echo "⚠️  This appears to be the first benchmark run - no baselines to compare against."
+          echo "   Future runs will compare against this baseline."
+        fi
+
+    - name: Store benchmark results
+      uses: actions/upload-artifact@v5
+      with:
+        name: benchmark-results-${{ matrix.python-version }}-${{ github.run_number }}
+        path: benchmark-results.json
+        retention-days: 30
+
+    - name: Save baseline for current branch
+      if: always() && steps.run-benchmarks.outcome == 'success'
+      run: |
+        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+        echo "💾 Saving baseline for branch: $CURRENT_BRANCH"
+        python .benchmarks/benchmark_baseline.py save "$CURRENT_BRANCH" benchmark-results.json
+
+    - name: Commit and push baseline for all branches
+      if: github.event_name == 'push' && steps.run-benchmarks.outcome == 'success'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+        BASELINE_PATH=$(python scripts/benchmark_baseline.py path "$CURRENT_BRANCH")
+        BASELINE_NAME=$(basename "$BASELINE_PATH")
+
+        # Add baseline file
+        git add "$BASELINE_PATH"
+
+        # Check if there are changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          # Create branch-specific commit message
+          git commit -m "chore(benchmark): update baseline for branch '$CURRENT_BRANCH' [skip ci]"
+          git push
+          echo "✅ Committed and pushed baseline for branch: $CURRENT_BRANCH"
+        fi
+
+    - name: Comment benchmark results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const results = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
+
+          let comment = '## 📊 Performance Benchmark Results\n\n';
+          comment += '| Test | Mean Time | Threshold | Status |\n';
+          comment += '|------|-----------|-----------|--------|\n';
+
+          results.benchmarks.forEach(bench => {
+            const mean = bench.stats.mean;
+            const threshold = bench.name.includes('help') || bench.name.includes('inspect') ? 0.5 : 1.0;
+            const status = mean < threshold ? '✅ PASS' : '❌ FAIL';
+            comment += `| ${bench.name} | ${mean.toFixed(3)}s | <${threshold}s | ${status} |\n`;
+          });
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
