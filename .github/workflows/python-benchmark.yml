@@ -1,4 +1,4 @@
-name: Performance Benchmarks
+name: Python Performance Benchmarks
 
 on:
   workflow_dispatch:
@@ -137,7 +137,7 @@ jobs:
           # For main, compare against previous commit
           CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
         else
-          CURRENT_BASELINE=$(python scripts/benchmark_baseline.py path "$CURRENT_BRANCH")
+          CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
         fi
         if [ ! -f "$CURRENT_BASELINE" ]; then
           echo "❌ Error: Current branch baseline file not found at $CURRENT_BASELINE"
@@ -196,7 +196,7 @@ jobs:
         git config --local user.name "GitHub Action"
 
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        BASELINE_PATH=$(python scripts/benchmark_baseline.py path "$CURRENT_BRANCH")
+        BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
         BASELINE_NAME=$(basename "$BASELINE_PATH")
 
         # Add baseline file
