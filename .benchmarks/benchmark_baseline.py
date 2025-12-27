@@ -53,7 +53,9 @@ def get_baseline_path(branch: str, node: Optional[str] = None) -> Path:
 def save_baseline(
     branch: str, benchmark_json_path: Path, node: Optional[str] = None
 ) -> Path:
-    """Save a benchmark result as baseline for a branch and optionally a specific node.
+    """Save a benchmark result as baseline for a branch.
+
+    Always saves to {branch}.json regardless of node, but includes node info in metadata.
 
     Args:
         branch: Branch name
@@ -71,8 +73,8 @@ def save_baseline(
     if node is None:
         node = benchmark_data.get("machine_info", {}).get("node")
 
-    # Get the appropriate baseline path
-    baseline_path = get_baseline_path(branch, node)
+    # Get the baseline path (without node-specific naming)
+    baseline_path = get_baseline_path(branch, node=None)
 
     # Add metadata about when this baseline was created
     benchmark_data["baseline_info"] = {

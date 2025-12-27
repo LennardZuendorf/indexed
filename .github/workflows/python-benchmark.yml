@@ -61,19 +61,16 @@ jobs:
       run: |
         mkdir -p .benchmarks/baselines
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        # Note: We'll load node-specific baselines after we know the node from benchmark results
-        # For now, we'll try to load any available baselines (legacy or node-specific)
 
         # Try to get main baseline from main branch
-        # We'll load node-specific baselines after we know the node from benchmark results
         echo "📥 Loading main branch baseline from repository..."
-        # Check if origin/main exists first
         if git ls-remote --heads origin main | grep -q main; then
-          # Try legacy baseline first (will be replaced with node-specific after benchmarks)
-          if git show origin/main:.benchmarks/baselines/main.json > .benchmarks/baselines/main.json 2>/dev/null; then
-            echo "✅ Found main branch baseline (will check for node-specific after benchmarks)"
+          if git show origin/main:.benchmarks/baselines/main.json 2>/dev/null > .benchmarks/baselines/main.json.tmp && [ -s .benchmarks/baselines/main.json.tmp ]; then
+            mv .benchmarks/baselines/main.json.tmp .benchmarks/baselines/main.json
+            echo "✅ Found main branch baseline"
             echo "main_baseline_exists=true" >> $GITHUB_OUTPUT
           else
+            rm -f .benchmarks/baselines/main.json.tmp
             echo "ℹ️  No main branch baseline found in repository"
             echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
           fi
@@ -85,13 +82,19 @@ jobs:
         # Try to get current branch baseline from current branch's history
         if [ "$CURRENT_BRANCH" != "main" ]; then
           echo "📥 Loading current branch baseline from repository..."
-          BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
-          BASELINE_NAME=$(basename "$BASELINE_PATH")
-          # Try multiple locations: previous commit, origin branch, or current HEAD
-          if git show HEAD~1:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
-             git show origin/"$CURRENT_BRANCH":.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
-             git show HEAD:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null; then
-            echo "✅ Found current branch baseline (will check for node-specific after benchmarks)"
+          BASELINE_FILE="${CURRENT_BRANCH}.json"
+          FOUND=false
+          for SOURCE in "HEAD~1" "origin/$CURRENT_BRANCH" "HEAD"; do
+            if git show "$SOURCE:.benchmarks/baselines/$BASELINE_FILE" 2>/dev/null > ".benchmarks/baselines/$BASELINE_FILE.tmp" && [ -s ".benchmarks/baselines/$BASELINE_FILE.tmp" ]; then
+              mv ".benchmarks/baselines/$BASELINE_FILE.tmp" ".benchmarks/baselines/$BASELINE_FILE"
+              FOUND=true
+              break
+            fi
+            rm -f ".benchmarks/baselines/$BASELINE_FILE.tmp"
+          done
+
+          if [ "$FOUND" = true ]; then
+            echo "✅ Found current branch baseline"
             echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
           else
             echo "ℹ️  No current branch baseline found in repository"
@@ -100,10 +103,12 @@ jobs:
         else
           # For main branch, try to get previous commit's baseline
           echo "📥 Loading previous main branch baseline from repository..."
-          if git show HEAD~1:.benchmarks/baselines/main.json > .benchmarks/baselines/main_previous.json 2>/dev/null; then
-            echo "✅ Found previous main branch baseline (will check for node-specific after benchmarks)"
+          if git show HEAD~1:.benchmarks/baselines/main.json 2>/dev/null > .benchmarks/baselines/main_previous.json.tmp && [ -s .benchmarks/baselines/main_previous.json.tmp ]; then
+            mv .benchmarks/baselines/main_previous.json.tmp .benchmarks/baselines/main_previous.json
+            echo "✅ Found previous main branch baseline"
             echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
           else
+            rm -f .benchmarks/baselines/main_previous.json.tmp
             echo "ℹ️  No previous main branch baseline found"
             echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
           fi
@@ -118,12 +123,10 @@ jobs:
           --benchmark-autosave \
           -v
 
-    - name: Extract node information and load node-specific baselines
+    - name: Extract node information
       id: extract-node
       if: always() && steps.run-benchmarks.outcome == 'success'
       run: |
-        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-
         if [ -f benchmark-results.json ]; then
           NODE=$(python -c "import json; print(json.load(open('benchmark-results.json')).get('machine_info', {}).get('node', ''))")
           if [ -z "$NODE" ]; then
@@ -132,65 +135,15 @@ jobs:
           fi
           echo "node=$NODE" >> $GITHUB_OUTPUT
           echo "📊 Running on node: $NODE"
-
-          # Now try to load node-specific baselines
-          echo "📥 Loading node-specific baselines for node: $NODE..."
-
-          # Try to get main baseline for this specific node
-          if git ls-remote --heads origin main | grep -q main; then
-            MAIN_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node main "$NODE")
-            MAIN_BASELINE_NAME=$(basename "$MAIN_BASELINE_PATH")
-            if git show origin/main:.benchmarks/baselines/"$MAIN_BASELINE_NAME" > "$MAIN_BASELINE_PATH" 2>/dev/null; then
-              echo "✅ Found node-specific main branch baseline for $NODE"
-              echo "main_baseline_node_specific=true" >> $GITHUB_OUTPUT
-            else
-              echo "ℹ️  No node-specific main baseline found, will use legacy if available"
-              echo "main_baseline_node_specific=false" >> $GITHUB_OUTPUT
-            fi
-          fi
-
-          # Try to get current branch baseline for this specific node
-          if [ "$CURRENT_BRANCH" != "main" ]; then
-            BRANCH_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$NODE")
-            BRANCH_BASELINE_NAME=$(basename "$BRANCH_BASELINE_PATH")
-            if git show HEAD~1:.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null || \
-               git show origin/"$CURRENT_BRANCH":.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null || \
-               git show HEAD:.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null; then
-              echo "✅ Found node-specific current branch baseline for $NODE"
-              echo "current_baseline_node_specific=true" >> $GITHUB_OUTPUT
-            else
-              echo "ℹ️  No node-specific current branch baseline found, will use legacy if available"
-              echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            # For main branch, try previous commit's node-specific baseline
-            PREV_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node main "$NODE")
-            PREV_BASELINE_NAME=$(basename "$PREV_BASELINE_PATH")
-            if git show HEAD~1:.benchmarks/baselines/"$PREV_BASELINE_NAME" > "$PREV_BASELINE_PATH" 2>/dev/null; then
-              echo "✅ Found node-specific previous main branch baseline for $NODE"
-              echo "current_baseline_node_specific=true" >> $GITHUB_OUTPUT
-            else
-              echo "ℹ️  No node-specific previous main baseline found, will use legacy if available"
-              echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
-            fi
-          fi
         else
           echo "node=unknown" >> $GITHUB_OUTPUT
-          echo "main_baseline_node_specific=false" >> $GITHUB_OUTPUT
-          echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Compare with main baseline (if exists)
       id: compare-main-baseline
       if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.main_baseline_exists == 'true'
       run: |
-        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
-        # Try node-specific baseline first, fallback to legacy
-        if [ "${{ steps.extract-node.outputs.main_baseline_node_specific }}" == "true" ]; then
-          MAIN_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node main "$CURRENT_NODE")
-        else
-          MAIN_BASELINE=".benchmarks/baselines/main.json"
-        fi
+        MAIN_BASELINE=".benchmarks/baselines/main.json"
         if [ ! -f "$MAIN_BASELINE" ]; then
           echo "❌ Error: Main baseline file not found"
           exit 1
@@ -215,21 +168,10 @@ jobs:
       if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.current_baseline_exists == 'true'
       run: |
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
         if [ "$CURRENT_BRANCH" == "main" ]; then
-          # For main, try node-specific previous baseline first, fallback to legacy
-          if [ "${{ steps.extract-node.outputs.current_baseline_node_specific }}" == "true" ]; then
-            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node main "$CURRENT_NODE")
-          else
-            CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
-          fi
+          CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
         else
-          # Try node-specific baseline first, fallback to legacy
-          if [ "${{ steps.extract-node.outputs.current_baseline_node_specific }}" == "true" ]; then
-            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$CURRENT_NODE")
-          else
-            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
-          fi
+          CURRENT_BASELINE=".benchmarks/baselines/${CURRENT_BRANCH}.json"
         fi
         if [ ! -f "$CURRENT_BASELINE" ]; then
           echo "❌ Error: Current branch baseline file not found"
