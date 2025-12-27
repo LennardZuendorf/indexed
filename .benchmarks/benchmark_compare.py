@@ -63,6 +63,29 @@ def compare_json_files(
     with open(current_path) as f:
         current = json.load(f)
 
+    # Check that both benchmarks are from the same node
+    baseline_node = baseline.get("machine_info", {}).get("node")
+    current_node = current.get("machine_info", {}).get("node")
+
+    if baseline_node and current_node and baseline_node != current_node:
+        print(
+            "❌ ERROR: Cannot compare benchmarks from different nodes!",
+            file=sys.stderr,
+        )
+        print(
+            f"   Baseline node: {baseline_node}",
+            file=sys.stderr,
+        )
+        print(
+            f"   Current node:   {current_node}",
+            file=sys.stderr,
+        )
+        print(
+            "   Benchmarks must be run on the same machine for accurate comparison.",
+            file=sys.stderr,
+        )
+        return False
+
     # Create a map of benchmark names to their stats
     baseline_map = {b["name"]: b["stats"] for b in baseline.get("benchmarks", [])}
     current_map = {b["name"]: b["stats"] for b in current.get("benchmarks", [])}

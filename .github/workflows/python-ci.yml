@@ -3,7 +3,10 @@ name: Python Build and System Tests
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ "main", "building*" ]
+    branches: [ "main", "building" ]
+    types: [synchronize, opened, reopened, ready_for_review]
+  push:
+    branches: [ "main", "building" ]
 
 jobs:
   unit-tests:

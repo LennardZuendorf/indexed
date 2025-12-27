@@ -3,9 +3,10 @@ name: Python Performance Benchmarks
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ "main", "building*" ]
+    branches: [ "main", "building" ]
+    types: [synchronize, opened, reopened, ready_for_review]
   push:
-    # Run on all branch pushes to enable baseline commits for all branches
+    branches: [ "main", "building" ]
 
 jobs:
   benchmark:
@@ -56,16 +57,20 @@ jobs:
       run: |
         mkdir -p .benchmarks/baselines
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+        # Note: We'll load node-specific baselines after we know the node from benchmark results
+        # For now, we'll try to load any available baselines (legacy or node-specific)
 
         # Try to get main baseline from main branch
+        # We'll load node-specific baselines after we know the node from benchmark results
         echo "📥 Loading main branch baseline from repository..."
         # Check if origin/main exists first
         if git ls-remote --heads origin main | grep -q main; then
+          # Try legacy baseline first (will be replaced with node-specific after benchmarks)
           if git show origin/main:.benchmarks/baselines/main.json > .benchmarks/baselines/main.json 2>/dev/null; then
-            echo "✅ Found main branch baseline"
+            echo "✅ Found main branch baseline (will check for node-specific after benchmarks)"
             echo "main_baseline_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "ℹ️  No main branch baseline found in repository (file doesn't exist)"
+            echo "ℹ️  No main branch baseline found in repository"
             echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
           fi
         else
@@ -82,7 +87,7 @@ jobs:
           if git show HEAD~1:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
              git show origin/"$CURRENT_BRANCH":.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null || \
              git show HEAD:.benchmarks/baselines/"$BASELINE_NAME" > "$BASELINE_PATH" 2>/dev/null; then
-            echo "✅ Found current branch baseline"
+            echo "✅ Found current branch baseline (will check for node-specific after benchmarks)"
             echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
           else
             echo "ℹ️  No current branch baseline found in repository"
@@ -92,7 +97,7 @@ jobs:
           # For main branch, try to get previous commit's baseline
           echo "📥 Loading previous main branch baseline from repository..."
           if git show HEAD~1:.benchmarks/baselines/main.json > .benchmarks/baselines/main_previous.json 2>/dev/null; then
-            echo "✅ Found previous main branch baseline"
+            echo "✅ Found previous main branch baseline (will check for node-specific after benchmarks)"
             echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
           else
             echo "ℹ️  No previous main branch baseline found"
@@ -109,49 +114,137 @@ jobs:
           --benchmark-autosave \
           -v
 
+    - name: Extract node information and load node-specific baselines
+      id: extract-node
+      if: always() && steps.run-benchmarks.outcome == 'success'
+      run: |
+        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+
+        if [ -f benchmark-results.json ]; then
+          NODE=$(python -c "import json; print(json.load(open('benchmark-results.json')).get('machine_info', {}).get('node', ''))")
+          if [ -z "$NODE" ]; then
+            echo "⚠️  Warning: Could not extract node from benchmark results"
+            NODE="unknown"
+          fi
+          echo "node=$NODE" >> $GITHUB_OUTPUT
+          echo "📊 Running on node: $NODE"
+
+          # Now try to load node-specific baselines
+          echo "📥 Loading node-specific baselines for node: $NODE..."
+
+          # Try to get main baseline for this specific node
+          if git ls-remote --heads origin main | grep -q main; then
+            MAIN_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node main "$NODE")
+            MAIN_BASELINE_NAME=$(basename "$MAIN_BASELINE_PATH")
+            if git show origin/main:.benchmarks/baselines/"$MAIN_BASELINE_NAME" > "$MAIN_BASELINE_PATH" 2>/dev/null; then
+              echo "✅ Found node-specific main branch baseline for $NODE"
+              echo "main_baseline_node_specific=true" >> $GITHUB_OUTPUT
+            else
+              echo "ℹ️  No node-specific main baseline found, will use legacy if available"
+              echo "main_baseline_node_specific=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          # Try to get current branch baseline for this specific node
+          if [ "$CURRENT_BRANCH" != "main" ]; then
+            BRANCH_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$NODE")
+            BRANCH_BASELINE_NAME=$(basename "$BRANCH_BASELINE_PATH")
+            if git show HEAD~1:.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null || \
+               git show origin/"$CURRENT_BRANCH":.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null || \
+               git show HEAD:.benchmarks/baselines/"$BRANCH_BASELINE_NAME" > "$BRANCH_BASELINE_PATH" 2>/dev/null; then
+              echo "✅ Found node-specific current branch baseline for $NODE"
+              echo "current_baseline_node_specific=true" >> $GITHUB_OUTPUT
+            else
+              echo "ℹ️  No node-specific current branch baseline found, will use legacy if available"
+              echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For main branch, try previous commit's node-specific baseline
+            PREV_BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node main "$NODE")
+            PREV_BASELINE_NAME=$(basename "$PREV_BASELINE_PATH")
+            if git show HEAD~1:.benchmarks/baselines/"$PREV_BASELINE_NAME" > "$PREV_BASELINE_PATH" 2>/dev/null; then
+              echo "✅ Found node-specific previous main branch baseline for $NODE"
+              echo "current_baseline_node_specific=true" >> $GITHUB_OUTPUT
+            else
+              echo "ℹ️  No node-specific previous main baseline found, will use legacy if available"
+              echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+        else
+          echo "node=unknown" >> $GITHUB_OUTPUT
+          echo "main_baseline_node_specific=false" >> $GITHUB_OUTPUT
+          echo "current_baseline_node_specific=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Compare with main baseline (if exists)
       id: compare-main-baseline
       if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.main_baseline_exists == 'true'
       run: |
-        MAIN_BASELINE=".benchmarks/baselines/main.json"
+        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
+        # Try node-specific baseline first, fallback to legacy
+        if [ "${{ steps.extract-node.outputs.main_baseline_node_specific }}" == "true" ]; then
+          MAIN_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node main "$CURRENT_NODE")
+        else
+          MAIN_BASELINE=".benchmarks/baselines/main.json"
+        fi
         if [ ! -f "$MAIN_BASELINE" ]; then
-          echo "❌ Error: Main baseline file not found at $MAIN_BASELINE"
+          echo "❌ Error: Main baseline file not found"
           exit 1
         fi
         echo "📊 Comparing against main branch baseline (20% tolerance)..."
-        if ! python .benchmarks/benchmark_compare.py compare-json \
+        python .benchmarks/benchmark_compare.py compare-json \
           "$MAIN_BASELINE" \
           benchmark-results.json \
-          --tolerance=20; then
+          --tolerance=20 > main_comparison.txt 2>&1 || true
+        COMPARISON_EXIT_CODE=$?
+        if [ $COMPARISON_EXIT_CODE -eq 0 ]; then
+          echo "✅ Main baseline comparison passed"
+          echo "main_comparison_passed=true" >> $GITHUB_OUTPUT
+        else
           echo "❌ Main baseline comparison failed - performance regression detected!"
+          echo "main_comparison_passed=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        echo "✅ Main baseline comparison passed"
 
     - name: Compare with current branch baseline (if exists)
       id: compare-current-baseline
       if: always() && steps.run-benchmarks.outcome == 'success' && steps.load-baselines.outputs.current_baseline_exists == 'true'
       run: |
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
+        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
         if [ "$CURRENT_BRANCH" == "main" ]; then
-          # For main, compare against previous commit
-          CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
+          # For main, try node-specific previous baseline first, fallback to legacy
+          if [ "${{ steps.extract-node.outputs.current_baseline_node_specific }}" == "true" ]; then
+            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node main "$CURRENT_NODE")
+          else
+            CURRENT_BASELINE=".benchmarks/baselines/main_previous.json"
+          fi
         else
-          CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
+          # Try node-specific baseline first, fallback to legacy
+          if [ "${{ steps.extract-node.outputs.current_baseline_node_specific }}" == "true" ]; then
+            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$CURRENT_NODE")
+          else
+            CURRENT_BASELINE=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
+          fi
         fi
         if [ ! -f "$CURRENT_BASELINE" ]; then
-          echo "❌ Error: Current branch baseline file not found at $CURRENT_BASELINE"
+          echo "❌ Error: Current branch baseline file not found"
           exit 1
         fi
         echo "📊 Comparing against current branch baseline (20% tolerance)..."
-        if ! python .benchmarks/benchmark_compare.py compare-json \
+        python .benchmarks/benchmark_compare.py compare-json \
           "$CURRENT_BASELINE" \
           benchmark-results.json \
-          --tolerance=20; then
+          --tolerance=20 > current_comparison.txt 2>&1 || true
+        COMPARISON_EXIT_CODE=$?
+        if [ $COMPARISON_EXIT_CODE -eq 0 ]; then
+          echo "✅ Current branch baseline comparison passed"
+          echo "current_comparison_passed=true" >> $GITHUB_OUTPUT
+        else
           echo "❌ Current branch baseline comparison failed - performance regression detected!"
+          echo "current_comparison_passed=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        echo "✅ Current branch baseline comparison passed"
 
     - name: Summary of baseline comparisons
       if: always() && steps.run-benchmarks.outcome == 'success'
@@ -186,7 +279,9 @@ jobs:
       if: always() && steps.run-benchmarks.outcome == 'success'
       run: |
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        echo "💾 Saving baseline for branch: $CURRENT_BRANCH"
+        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
+        echo "💾 Saving baseline for branch: $CURRENT_BRANCH (node: $CURRENT_NODE)"
+        # Node will be automatically extracted from benchmark-results.json
         python .benchmarks/benchmark_baseline.py save "$CURRENT_BRANCH" benchmark-results.json
 
     - name: Commit and push baseline for all branches
@@ -196,7 +291,8 @@ jobs:
         git config --local user.name "GitHub Action"
 
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path "$CURRENT_BRANCH")
+        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
+        BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$CURRENT_NODE")
         BASELINE_NAME=$(basename "$BASELINE_PATH")
 
         # Add baseline file
@@ -206,21 +302,41 @@ jobs:
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          # Create branch-specific commit message
-          git commit -m "chore(benchmark): update baseline for branch '$CURRENT_BRANCH' [skip ci]"
+          # Create branch-specific commit message with node info
+          git commit -m "chore(benchmark): update baseline for branch '$CURRENT_BRANCH' (node: $CURRENT_NODE) [skip ci]"
           git push
-          echo "✅ Committed and pushed baseline for branch: $CURRENT_BRANCH"
+          echo "✅ Committed and pushed baseline for branch: $CURRENT_BRANCH (node: $CURRENT_NODE)"
         fi
 
     - name: Comment benchmark results on PR
-      if: github.event_name == 'pull_request'
+      if: always() && github.event_name == 'pull_request' && steps.run-benchmarks.outcome == 'success'
       uses: actions/github-script@v7
       with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
           const fs = require('fs');
-          const results = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
 
+          // Read benchmark results
+          let results;
+          try {
+            results = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
+          } catch (error) {
+            console.error('Failed to read benchmark results:', error);
+            return;
+          }
+
+          // Extract node information
+          const node = results.machine_info?.node || 'unknown';
+          const pythonVersion = results.machine_info?.python_version || 'unknown';
+
+          // Build comment
           let comment = '## 📊 Performance Benchmark Results\n\n';
+          comment += `**Node:** ${node}  \n`;
+          comment += `**Python Version:** ${pythonVersion}  \n`;
+          comment += `**Branch:** ${{ steps.branch-info.outputs.current_branch }}  \n\n`;
+
+          // Add benchmark results table
+          comment += '### Benchmark Results\n\n';
           comment += '| Test | Mean Time | Threshold | Status |\n';
           comment += '|------|-----------|-----------|--------|\n';
 
@@ -231,9 +347,81 @@ jobs:
             comment += `| ${bench.name} | ${mean.toFixed(3)}s | <${threshold}s | ${status} |\n`;
           });
 
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
+          // Add comparison results if available
+          comment += '\n### Baseline Comparisons\n\n';
+
+          // Check for main baseline comparison
+          const mainComparisonExists = '${{ steps.load-baselines.outputs.main_baseline_exists }}' === 'true';
+          const mainComparisonPassed = '${{ steps.compare-main-baseline.outputs.main_comparison_passed }}' === 'true';
+
+          if (mainComparisonExists) {
+            try {
+              const mainComparison = fs.readFileSync('main_comparison.txt', 'utf8');
+              comment += '#### vs Main Branch Baseline (20% tolerance)\n\n';
+              comment += '```\n' + mainComparison + '\n```\n\n';
+              if (mainComparisonPassed) {
+                comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
+              } else {
+                comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
+              }
+            } catch (error) {
+              comment += '⚠️ Main baseline comparison was attempted but results are not available.\n\n';
+            }
+          } else {
+            comment += 'ℹ️ No main branch baseline available for comparison.\n\n';
+          }
+
+          // Check for current branch baseline comparison
+          const currentComparisonExists = '${{ steps.load-baselines.outputs.current_baseline_exists }}' === 'true';
+          const currentComparisonPassed = '${{ steps.compare-current-baseline.outputs.current_comparison_passed }}' === 'true';
+
+          if (currentComparisonExists) {
+            try {
+              const currentComparison = fs.readFileSync('current_comparison.txt', 'utf8');
+              comment += '#### vs Current Branch Baseline (20% tolerance)\n\n';
+              comment += '```\n' + currentComparison + '\n```\n\n';
+              if (currentComparisonPassed) {
+                comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
+              } else {
+                comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
+              }
+            } catch (error) {
+              comment += '⚠️ Current branch baseline comparison was attempted but results are not available.\n\n';
+            }
+          } else {
+            comment += 'ℹ️ No current branch baseline available for comparison (first run for this branch).\n\n';
+          }
+
+          // Add footer
+          comment += '---\n';
+          comment += '*This comment was automatically generated by the benchmark workflow.*\n';
+
+          // Find and delete previous benchmark comments to avoid spam
+          try {
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            for (const oldComment of comments.data) {
+              if (oldComment.user.type === 'Bot' &&
+                  oldComment.body.includes('## 📊 Performance Benchmark Results')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: oldComment.id,
+                });
+              }
+            }
+          } catch (error) {
+            console.log('Could not delete previous comments:', error.message);
+          }
+
+          // Create new comment
+          await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
+            issue_number: context.issue.number,
             body: comment
           });
