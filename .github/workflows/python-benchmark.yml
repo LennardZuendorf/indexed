@@ -331,43 +331,52 @@ jobs:
           // Check for main baseline comparison
           const mainComparisonExists = '${{ steps.load-baselines.outputs.main_baseline_exists }}' === 'true';
           const mainComparisonPassed = '${{ steps.compare-main-baseline.outputs.main_comparison_passed }}' === 'true';
-
-          if (mainComparisonExists) {
-            try {
-              const mainComparison = fs.readFileSync('main_comparison.txt', 'utf8');
-              comment += '#### vs Main Branch Baseline (20% tolerance)\n\n';
-              comment += '```\n' + mainComparison + '\n```\n\n';
-              if (mainComparisonPassed) {
-                comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
-              } else {
-                comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
-              }
-            } catch (error) {
-              comment += '⚠️ Main baseline comparison was attempted but results are not available.\n\n';
-            }
-          } else {
-            comment += 'ℹ️ No main branch baseline available for comparison.\n\n';
-          }
-
-          // Check for current branch baseline comparison
           const currentComparisonExists = '${{ steps.load-baselines.outputs.current_baseline_exists }}' === 'true';
           const currentComparisonPassed = '${{ steps.compare-current-baseline.outputs.current_comparison_passed }}' === 'true';
 
-          if (currentComparisonExists) {
-            try {
-              const currentComparison = fs.readFileSync('current_comparison.txt', 'utf8');
-              comment += '#### vs Current Branch Baseline (20% tolerance)\n\n';
-              comment += '```\n' + currentComparison + '\n```\n\n';
-              if (currentComparisonPassed) {
-                comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
-              } else {
-                comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
-              }
-            } catch (error) {
-              comment += '⚠️ Current branch baseline comparison was attempted but results are not available.\n\n';
-            }
+          // Check if we have any baselines at all
+          const hasAnyBaseline = mainComparisonExists || currentComparisonExists;
+
+          if (!hasAnyBaseline) {
+            comment += '> ℹ️ **No baseline available for comparison**  \n';
+            comment += '> This appears to be the first benchmark run for this PR.  \n';
+            comment += '> Future benchmark runs will compare against this baseline.  \n\n';
           } else {
-            comment += 'ℹ️ No current branch baseline available for comparison (first run for this branch).\n\n';
+            // Main baseline comparison
+            if (mainComparisonExists) {
+              try {
+                const mainComparison = fs.readFileSync('main_comparison.txt', 'utf8');
+                comment += '#### vs Main Branch Baseline (20% tolerance)\n\n';
+                comment += '```\n' + mainComparison + '\n```\n\n';
+                if (mainComparisonPassed) {
+                  comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
+                } else {
+                  comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
+                }
+              } catch (error) {
+                comment += '⚠️ Main baseline comparison was attempted but results are not available.\n\n';
+              }
+            } else {
+              comment += 'ℹ️ No main branch baseline available for comparison.\n\n';
+            }
+
+            // Current branch baseline comparison
+            if (currentComparisonExists) {
+              try {
+                const currentComparison = fs.readFileSync('current_comparison.txt', 'utf8');
+                comment += '#### vs Current Branch Baseline (20% tolerance)\n\n';
+                comment += '```\n' + currentComparison + '\n```\n\n';
+                if (currentComparisonPassed) {
+                  comment += '✅ **Comparison passed** - No significant performance regression detected.\n\n';
+                } else {
+                  comment += '❌ **Comparison failed** - Performance regression detected!\n\n';
+                }
+              } catch (error) {
+                comment += '⚠️ Current branch baseline comparison was attempted but results are not available.\n\n';
+              }
+            } else {
+              comment += 'ℹ️ No current branch baseline available for comparison (first run for this branch).\n\n';
+            }
           }
 
           // Add footer

@@ -11,6 +11,7 @@ on:
 jobs:
   full-test-suite:
     runs-on: ubuntu-latest
+    name: Full Test Suite with Coverage
     strategy:
       fail-fast: false
       matrix:

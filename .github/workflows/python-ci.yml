@@ -10,6 +10,7 @@ on:
 
 jobs:
   build-and-system-tests:
+    name: Build and System Tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

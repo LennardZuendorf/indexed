@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build:
+    name: Build Distribution
     runs-on: ubuntu-latest
     if: github.event.release.target_commitish == 'main'
 
@@ -40,7 +41,7 @@ jobs:
         path: dist/
 
   publish-to-pypi:
-    name: Publish to PyPI
+    name: Publish Distribution to PyPI
     needs: build
     runs-on: ubuntu-latest
     if: github.event.release.target_commitish == 'main'
