@@ -4,13 +4,12 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ "main", "building" ]
-    types: [synchronize, opened, reopened, ready_for_review]
+    types: [ready_for_review]
   push:
     branches: [ "main", "building" ]
 
 jobs:
-  benchmark:
-    name: Performance Benchmarks
+  performance-benchmarks:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -286,27 +285,13 @@ jobs:
 
     - name: Commit and push baseline for all branches
       if: github.event_name == 'push' && steps.run-benchmarks.outcome == 'success'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-
-        CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
-        CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
-        BASELINE_PATH=$(python .benchmarks/benchmark_baseline.py path-for-node "$CURRENT_BRANCH" "$CURRENT_NODE")
-        BASELINE_NAME=$(basename "$BASELINE_PATH")
-
-        # Add baseline file
-        git add "$BASELINE_PATH"
-
-        # Check if there are changes to commit
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          # Create branch-specific commit message with node info
-          git commit -m "chore(benchmark): update baseline for branch '$CURRENT_BRANCH' (node: $CURRENT_NODE) [skip ci]"
-          git push
-          echo "✅ Committed and pushed baseline for branch: $CURRENT_BRANCH (node: $CURRENT_NODE)"
-        fi
+      uses: EndBug/add-and-commit@v9
+      with:
+        add: '.benchmarks/baselines/'
+        default_author: github_actions
+        message: 'chore(benchmark): update baseline for branch "${{ steps.branch-info.outputs.current_branch }}" (node: ${{ steps.extract-node.outputs.node }}) [skip ci]'
+        pathspec_error_handling: exitImmediately
+        push: true
 
     - name: Comment benchmark results on PR
       if: always() && github.event_name == 'pull_request' && steps.run-benchmarks.outcome == 'success'
