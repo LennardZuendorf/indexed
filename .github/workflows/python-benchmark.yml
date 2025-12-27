@@ -9,18 +9,23 @@ on:
     branches: [ "main", "building" ]
 
 jobs:
-  performance-benchmarks:
+  benchmark:
+    name: Performance Benchmarks
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to push commits
+      pull-requests: write  # Required to comment on PRs
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]  # Use single version for consistent benchmarks
+        python-version: ["3.14"]  # Use single version for consistent benchmarks
 
     steps:
     - uses: actions/checkout@v4
       with:
         # Fetch full history to find latest benchmark
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
