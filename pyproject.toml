@@ -22,9 +22,11 @@ addopts = [
     "--cov=apps/indexed/src/indexed",
     "--cov=packages/indexed-core/src/core",
     "--cov=packages/indexed-connectors/src/connectors",
+    "--cov=packages/indexed-config/src/indexed_config",
     "--cov=packages/utils/src/utils",
     "--cov-report=term-missing",
-    "--cov-report=html:htmlcov"
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml"
 ]
 markers = [
     "integration: Integration tests testing entire modules.",

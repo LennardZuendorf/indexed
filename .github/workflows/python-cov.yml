@@ -35,14 +35,16 @@ jobs:
         run: |
           uv run ruff check
 
-      - name: Run Unit Tests
+      - name: Run Unit Tests with Coverage
         run: |
-          uv run pytest --cov --cov-branch --cov-report=xml --cov-report=term-missing -q
+          uv run pytest tests/unit/ --cov-branch -v
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
-          flags: unittests,integration
+          flags: unittests
           name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true

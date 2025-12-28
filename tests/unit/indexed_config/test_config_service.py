@@ -102,7 +102,13 @@ def test_config_file_creation(config_service, temp_workspace):
 
 def test_validation_with_specs(config_service):
     """Test validation against registered specs."""
-    # Should pass - using defaults
+    # Initially empty/missing sections are skipped (treated as optional)
+    errors = config_service.validate()
+    assert len(errors) == 0
+
+    # Force the section to exist but be invalid (missing required field)
+    # We add an unknown field so the payload is not empty/None
+    config_service.set("test.required.unknown_field", "value")
     errors = config_service.validate()
     assert len(errors) == 1  # RequiredSpec missing required field
 
