@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ "main", "building" ]
-    types: [ready_for_review]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-ci.yml'
+      - 'tests/system/**'
   push:
     branches: [ "main", "building" ]
 
 jobs:
   build-and-system-tests:
+    if: github.event.pull_request.draft == false
     name: Build and System Tests
     runs-on: ubuntu-latest
     strategy:
