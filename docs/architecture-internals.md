@@ -1,8 +1,3 @@
----
-title: Architecture & Internals
-description: Comprehensive guide to Indexed system architecture, core engine, packages, and extensibility
----
-
 # Architecture & Internals
 
 Welcome to the Indexed developer documentation. This guide covers the architecture, design decisions, and internal workings of the Indexed document search system.

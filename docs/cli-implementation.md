@@ -1,8 +1,3 @@
----
-title: CLI Implementation
-description: Command structure, Rich UI design, and implementation details of the CLI
----
-
 # CLI Implementation
 
 The Indexed CLI is built with **Typer** and **Rich**, providing a polished terminal experience with consistent styling and clear feedback. This document details the implementation patterns used in the `indexed` package.
