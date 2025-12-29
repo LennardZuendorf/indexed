@@ -19,11 +19,13 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=apps/indexed/src/indexed",
-    "--cov=packages/indexed-core/src/core",
-    "--cov=packages/indexed-connectors/src/connectors",
-    "--cov=packages/indexed-config/src/indexed_config",
-    "--cov=packages/utils/src/utils",
+    # Use package names (installed packages) instead of source paths
+    # This works better with uv workspace where packages are installed in .venv
+    "--cov=indexed",
+    "--cov=core",
+    "--cov=connectors",
+    "--cov=indexed_config",
+    "--cov=utils",
     "--cov-report=term",
 ]
 filterwarnings = [
@@ -36,7 +38,16 @@ filterwarnings = [
 
 # Coverage configuration
 [tool.coverage.run]
-# Include these source directories
+# Measure coverage for installed packages (not source paths)
+# In uv workspace, packages are installed in .venv, so we use package names
+source_pkgs = [
+    "indexed",      # apps/indexed/src/indexed
+    "core",         # packages/indexed-core/src/core
+    "connectors",   # packages/indexed-connectors/src/connectors
+    "indexed_config",  # packages/indexed-config/src/indexed_config
+    "utils",        # packages/utils/src/utils
+]
+# Also include source directories for file path matching
 source = [
     "apps/indexed/src/indexed",
     "packages/indexed-core/src/core",
