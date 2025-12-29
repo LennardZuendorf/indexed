@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ "main", "building" ]
-    types: [ready_for_review]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-cov.yml'
+      - 'tests/**'
   push:
     branches: [ "main", "building" ]
 
 jobs:
   full-test-suite:
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     name: Full Test Suite with Coverage
     strategy:
@@ -35,14 +41,16 @@ jobs:
         run: |
           uv run ruff check
 
-      - name: Run Unit Tests
+      - name: Run Unit Tests with Coverage
         run: |
-          uv run pytest --cov --cov-branch --cov-report=xml --cov-report=term-missing -q
+          uv run pytest tests/unit/ --cov=indexed --cov=core --cov=connectors --cov=indexed_config --cov=utils --cov-branch --cov-report=xml --cov-report=term-missing -v
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
-          flags: unittests,integration
+          flags: unittests
           name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true
