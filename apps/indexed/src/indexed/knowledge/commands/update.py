@@ -31,12 +31,12 @@ from ...utils.credentials import ensure_credentials_for_source
 app = typer.Typer(help="Update collections")
 
 
-def _format_source_type(source_type: str) -> str:
+def _format_source_type(source_type: Optional[str]) -> str:
     """
     Convert an internal source type identifier into a human-readable display name.
 
     Parameters:
-        source_type (str): Internal source type identifier (may be falsy).
+        source_type (Optional[str]): Internal source type identifier (may be None or falsy).
 
     Returns:
         str: A friendly display name for the source type (returns "Unknown" if `source_type` is falsy; falls back to a capitalized form if the type is unrecognized).

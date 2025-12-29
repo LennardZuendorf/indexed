@@ -15,7 +15,7 @@ on:
 
 jobs:
   build-and-system-tests:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
     name: Build and System Tests
     runs-on: ubuntu-latest
     strategy:

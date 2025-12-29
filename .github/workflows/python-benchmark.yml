@@ -21,7 +21,7 @@ on:
 
 jobs:
   benchmark:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
     name: Performance Benchmarks
     runs-on: ubuntu-latest
     permissions:

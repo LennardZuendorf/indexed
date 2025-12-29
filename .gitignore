@@ -27,7 +27,8 @@ build/
 # Testing
 .pytest_cache/
 .coverage
-htmlcov/
+htmlcov*/
+coverage.xml
 .tox/
 
 # Type checking
@@ -46,19 +47,9 @@ dmypy.json
 .dccache
 .cursor/mcp.json
 .memory/
+*.bak
 
 # Project data
 data/
 tmp/
 .indexed/
-
-#Python Package Stuff
-*.egg-info/
-.dist
-.ruff_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-htmlcov-*/
-coverage.xml
-*.bak

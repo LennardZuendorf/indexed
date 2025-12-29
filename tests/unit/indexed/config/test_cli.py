@@ -295,18 +295,83 @@ class TestInitConfig:
     @patch("indexed.config.cli.print_warning")
     def test_init_creates_files(self, mock_warning, mock_success, mock_path):
         """Should create config.toml and .env.example."""
-        mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = False
-        mock_path_obj.parent.mkdir = Mock()
-        mock_path_obj.write_text = Mock()
-        mock_path.cwd.return_value = mock_path_obj
-        mock_path.return_value = mock_path_obj
+        from pathlib import Path as RealPath
+
+        # Mock current working directory
+        mock_cwd = MagicMock(spec=RealPath)
+
+        # Mock workspace directory (.indexed)
+        mock_workspace_dir = MagicMock(spec=RealPath)
+        mock_workspace_dir.exists.return_value = False
+        mock_workspace_dir.mkdir = Mock()
+
+        # Mock config.toml file
+        mock_config_file = MagicMock(spec=RealPath)
+        mock_config_file.exists.return_value = False
+        mock_config_file.write_text = Mock()
+        mock_config_file.name = "config.toml"
+
+        # Mock .env.example file
+        mock_env_example = MagicMock(spec=RealPath)
+        mock_env_example.exists.return_value = False
+        mock_env_example.write_text = Mock()
+        mock_env_example.name = ".env.example"
+
+        # Set up Path.cwd() to return mock_cwd
+        mock_path.cwd.return_value = mock_cwd
+
+        # Set up the / operator: cwd / ".indexed" -> workspace_dir
+        # workspace_dir / "config.toml" -> config_file
+        # workspace_dir / ".env.example" -> env_example
+        def truediv_side_effect(self, other):
+            if self == mock_cwd and other == ".indexed":
+                return mock_workspace_dir
+            elif self == mock_workspace_dir and other == "config.toml":
+                return mock_config_file
+            elif self == mock_workspace_dir and other == ".env.example":
+                return mock_env_example
+            return MagicMock(spec=RealPath)
+
+        # Make the / operator work by setting __truediv__ on the class
+        type(mock_cwd).__truediv__ = truediv_side_effect
+        type(mock_workspace_dir).__truediv__ = truediv_side_effect
 
         from indexed.app import app
 
         result = runner.invoke(app, ["config", "init"])
-        # Should succeed or show warning about already initialized
-        assert result.exit_code in [0, 1]
+
+        # Verify the command succeeded
+        assert result.exit_code == 0
+
+        # Verify workspace directory was created with correct arguments
+        mock_workspace_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+
+        # Verify both files were written
+        assert mock_config_file.write_text.called, "config.toml should be written"
+        assert mock_env_example.write_text.called, ".env.example should be written"
+
+        # Verify write_text was called with expected content
+        config_call_args = mock_config_file.write_text.call_args
+        assert (
+            config_call_args is not None
+        ), "write_text should be called on config.toml"
+        config_content = config_call_args[0][0] if config_call_args[0] else ""
+        assert (
+            "# Indexed Configuration" in config_content
+        ), "config.toml should contain expected header"
+        assert (
+            "[core.v1.indexing]" in config_content
+        ), "config.toml should contain indexing config"
+
+        env_call_args = mock_env_example.write_text.call_args
+        assert env_call_args is not None, "write_text should be called on .env.example"
+        env_content = env_call_args[0][0] if env_call_args[0] else ""
+        assert (
+            "# Indexed Environment Variables" in env_content
+        ), ".env.example should contain expected header"
+        assert (
+            "ATLASSIAN_EMAIL" in env_content
+        ), ".env.example should contain environment variable examples"
 
     @patch("indexed.config.cli.Path")
     @patch("indexed.config.cli.print_warning")

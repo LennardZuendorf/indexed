@@ -74,19 +74,8 @@ class TestInitApp:
     """Test _init_app callback."""
 
     @patch("indexed.app.setup_root_logger")
-    @patch("indexed.app.os.getenv")
-    def test_init_app_sets_up_logging(self, mock_getenv, mock_setup_logger):
+    def test_init_app_sets_up_logging(self, mock_setup_logger, mock_getenv_defaults):
         """Should set up logging with correct parameters."""
-
-        # Mock getenv to return None for INDEXED_LOG_LEVEL and "false" for INDEXED_LOG_JSON
-        def getenv_side_effect(key, default=None):
-            if key == "INDEXED_LOG_LEVEL":
-                return None
-            elif key == "INDEXED_LOG_JSON":
-                return default if default else "false"
-            return default
-
-        mock_getenv.side_effect = getenv_side_effect
 
         ctx = Mock()
         ctx.invoked_subcommand = "search"
@@ -98,19 +87,8 @@ class TestInitApp:
         mock_setup_logger.assert_called_once()
 
     @patch("indexed.app.setup_root_logger")
-    @patch("indexed.app.os.getenv")
-    def test_init_app_verbose_mode(self, mock_getenv, mock_setup_logger):
+    def test_init_app_verbose_mode(self, mock_setup_logger, mock_getenv_defaults):
         """Should set INFO logging level in verbose mode."""
-
-        # Mock getenv to return None for INDEXED_LOG_LEVEL and "false" for INDEXED_LOG_JSON
-        def getenv_side_effect(key, default=None):
-            if key == "INDEXED_LOG_LEVEL":
-                return None
-            elif key == "INDEXED_LOG_JSON":
-                return default if default else "false"
-            return default
-
-        mock_getenv.side_effect = getenv_side_effect
 
         ctx = Mock()
         ctx.invoked_subcommand = "search"
@@ -123,19 +101,8 @@ class TestInitApp:
         assert call_kwargs["level_str"] == "INFO"
 
     @patch("indexed.app.setup_root_logger")
-    @patch("indexed.app.os.getenv")
-    def test_init_app_json_logs(self, mock_getenv, mock_setup_logger):
+    def test_init_app_json_logs(self, mock_setup_logger, mock_getenv_defaults):
         """Should enable JSON logging when --json-logs flag provided."""
-
-        # Mock getenv to return None for INDEXED_LOG_LEVEL and "false" for INDEXED_LOG_JSON
-        def getenv_side_effect(key, default=None):
-            if key == "INDEXED_LOG_LEVEL":
-                return None
-            elif key == "INDEXED_LOG_JSON":
-                return default if default else "false"
-            return default
-
-        mock_getenv.side_effect = getenv_side_effect
 
         ctx = Mock()
         ctx.invoked_subcommand = "search"
@@ -149,21 +116,10 @@ class TestInitApp:
 
     @patch("indexed.app._prompt_console")
     @patch("indexed.app.setup_root_logger")
-    @patch("indexed.app.os.getenv")
     def test_init_app_both_flags_error(
-        self, mock_getenv, mock_setup_logger, mock_console
+        self, mock_setup_logger, mock_console, mock_getenv_defaults
     ):
         """Should error when both --local and --global flags provided."""
-
-        # Mock getenv to return None for INDEXED_LOG_LEVEL and "false" for INDEXED_LOG_JSON
-        def getenv_side_effect(key, default=None):
-            if key == "INDEXED_LOG_LEVEL":
-                return None
-            elif key == "INDEXED_LOG_JSON":
-                return default if default else "false"
-            return default
-
-        mock_getenv.side_effect = getenv_side_effect
 
         # Simulate both flags being set globally
         from indexed import app as app_module

@@ -1,5 +1,6 @@
 """Tests for progress bar utilities."""
 
+import pytest
 from unittest.mock import Mock, patch
 
 from indexed.utils.progress_bar import (
@@ -12,6 +13,13 @@ from indexed.utils.progress_bar import (
     create_operation_progress,
     create_simple_spinner,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_cli_progress():
+    """Ensure CLI progress globals are reset after each test."""
+    yield
+    clear_cli_progress()
 
 
 class TestCliProgressGlobals:

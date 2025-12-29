@@ -15,7 +15,7 @@ on:
 
 jobs:
   full-test-suite:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     name: Full Test Suite with Coverage
     strategy:
