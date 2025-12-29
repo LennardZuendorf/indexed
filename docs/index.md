@@ -1,8 +1,3 @@
----
-title: Development Guide
-description: Getting started with Indexed development - environment setup, monorepo structure, and workflows
----
-
 # Development Guide
 
 This guide covers everything you need to know to set up your development environment, understand the codebase structure, and contribute to Indexed.

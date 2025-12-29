@@ -19,19 +19,14 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=apps/indexed/src/indexed",
-    "--cov=packages/indexed-core/src/core",
-    "--cov=packages/indexed-connectors/src/connectors",
-    "--cov=packages/utils/src/utils",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov"
-]
-markers = [
-    "integration: Integration tests testing entire modules.",
-    "unit: Unit tests, testing single functions or classes.",
-    "unit_api: API unit tests, testing single functions or classes with mocked API responses.",
-    "system: System tests, testing entire user flows.",
-    "benchmark: System tests marked as performance benchmarks.",
+    # Use package names (installed packages) instead of source paths
+    # This works better with uv workspace where packages are installed in .venv
+    "--cov=indexed",
+    "--cov=core",
+    "--cov=connectors",
+    "--cov=indexed_config",
+    "--cov=utils",
+    "--cov-report=term",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)
@@ -39,6 +34,46 @@ filterwarnings = [
     "ignore:.*builtin type SwigPyPacked has no __module__ attribute.*:DeprecationWarning",
     "ignore:.*builtin type SwigPyObject has no __module__ attribute.*:DeprecationWarning",
     "ignore:.*builtin type swigvarlink has no __module__ attribute.*:DeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+# Measure coverage for installed packages (not source paths)
+# In uv workspace, packages are installed in .venv, so we use package names
+source_pkgs = [
+    "indexed",      # apps/indexed/src/indexed
+    "core",         # packages/indexed-core/src/core
+    "connectors",   # packages/indexed-connectors/src/connectors
+    "indexed_config",  # packages/indexed-config/src/indexed_config
+    "utils",        # packages/utils/src/utils
+]
+# Also include source directories for file path matching
+source = [
+    "apps/indexed/src/indexed",
+    "packages/indexed-core/src/core",
+    "packages/indexed-connectors/src/connectors",
+    "packages/indexed-config/src/indexed_config",
+    "packages/utils/src/utils",
+]
+# Exclude test files and directories
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py",
+    "*/setup.py",
+]
+
+[tool.coverage.report]
+# Exclude patterns from coverage reports
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
 ]
 
 # MyPy configuration

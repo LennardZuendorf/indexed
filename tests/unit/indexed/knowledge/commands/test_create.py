@@ -109,12 +109,26 @@ class TestCreateFiles:
 class TestCreateJira:
     """Test create_jira command."""
 
+    @pytest.mark.parametrize(
+        "url,expected_source_type",
+        [
+            ("https://company.atlassian.net", "jiraCloud"),
+            ("https://jira.company.com", "jira"),
+        ],
+        ids=["cloud_detection", "server_detection"],
+    )
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
     @patch("indexed.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.knowledge.commands.create.console")
-    def test_create_jira_cloud_detection(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    def test_create_jira_detects_cloud_vs_server(
+        self,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
+        url,
+        expected_source_type,
     ):
         """Should detect cloud vs server based on URL."""
         mock_config = Mock()
@@ -124,7 +138,7 @@ class TestCreateJira:
 
         create_jira(
             collection="test-jira",
-            url="https://company.atlassian.net",
+            url=url,
             jql="project = TEST",
             email=None,
             token=None,
@@ -137,39 +151,7 @@ class TestCreateJira:
 
         mock_execute.assert_called_once()
         call_kwargs = mock_execute.call_args.kwargs
-        # Should use jiraCloud for .atlassian.net URLs
-        assert call_kwargs["source_type"] == "jiraCloud"
-
-    @patch("indexed.knowledge.commands.create.execute_create_command")
-    @patch("indexed.knowledge.commands.create.ConfigService")
-    @patch("indexed.knowledge.commands.create.is_verbose_mode")
-    @patch("indexed.knowledge.commands.create.console")
-    def test_create_jira_server_detection(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
-    ):
-        """Should detect server deployment for non-cloud URLs."""
-        mock_config = Mock()
-        mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
-        mock_verbose.return_value = False
-
-        create_jira(
-            collection="test-jira",
-            url="https://jira.company.com",
-            jql="project = TEST",
-            email=None,
-            token=None,
-            use_cache=True,
-            force=False,
-            verbose=False,
-            json_logs=False,
-            log_level=None,
-        )
-
-        mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args.kwargs
-        # Should use jira (server) for non-cloud URLs
-        assert call_kwargs["source_type"] == "jira"
+        assert call_kwargs["source_type"] == expected_source_type
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
@@ -243,12 +225,26 @@ class TestCreateJira:
 class TestCreateConfluence:
     """Test create_confluence command."""
 
+    @pytest.mark.parametrize(
+        "url,expected_source_type",
+        [
+            ("https://company.atlassian.net", "confluenceCloud"),
+            ("https://confluence.company.com", "confluence"),
+        ],
+        ids=["cloud_detection", "server_detection"],
+    )
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
     @patch("indexed.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.knowledge.commands.create.console")
-    def test_create_confluence_cloud_detection(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    def test_create_confluence_detects_cloud_vs_server(
+        self,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
+        url,
+        expected_source_type,
     ):
         """Should detect cloud vs server based on URL."""
         mock_config = Mock()
@@ -258,7 +254,7 @@ class TestCreateConfluence:
 
         create_confluence(
             collection="test-confluence",
-            url="https://company.atlassian.net",
+            url=url,
             cql="type=page",
             email=None,
             token=None,
@@ -272,38 +268,7 @@ class TestCreateConfluence:
 
         mock_execute.assert_called_once()
         call_kwargs = mock_execute.call_args.kwargs
-        assert call_kwargs["source_type"] == "confluenceCloud"
-
-    @patch("indexed.knowledge.commands.create.execute_create_command")
-    @patch("indexed.knowledge.commands.create.ConfigService")
-    @patch("indexed.knowledge.commands.create.is_verbose_mode")
-    @patch("indexed.knowledge.commands.create.console")
-    def test_create_confluence_server_detection(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
-    ):
-        """Should detect server deployment for non-cloud URLs."""
-        mock_config = Mock()
-        mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
-        mock_verbose.return_value = False
-
-        create_confluence(
-            collection="test-confluence",
-            url="https://confluence.company.com",
-            cql="type=page",
-            email=None,
-            token=None,
-            read_all_comments=False,
-            use_cache=True,
-            force=False,
-            verbose=False,
-            json_logs=False,
-            log_level=None,
-        )
-
-        mock_execute.assert_called_once()
-        call_kwargs = mock_execute.call_args.kwargs
-        assert call_kwargs["source_type"] == "confluence"
+        assert call_kwargs["source_type"] == expected_source_type
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
