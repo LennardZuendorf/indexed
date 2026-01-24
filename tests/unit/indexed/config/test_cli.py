@@ -352,26 +352,26 @@ class TestInitConfig:
 
         # Verify write_text was called with expected content
         config_call_args = mock_config_file.write_text.call_args
-        assert (
-            config_call_args is not None
-        ), "write_text should be called on config.toml"
+        assert config_call_args is not None, (
+            "write_text should be called on config.toml"
+        )
         config_content = config_call_args[0][0] if config_call_args[0] else ""
-        assert (
-            "# Indexed Configuration" in config_content
-        ), "config.toml should contain expected header"
-        assert (
-            "[core.v1.indexing]" in config_content
-        ), "config.toml should contain indexing config"
+        assert "# Indexed Configuration" in config_content, (
+            "config.toml should contain expected header"
+        )
+        assert "[core.v1.indexing]" in config_content, (
+            "config.toml should contain indexing config"
+        )
 
         env_call_args = mock_env_example.write_text.call_args
         assert env_call_args is not None, "write_text should be called on .env.example"
         env_content = env_call_args[0][0] if env_call_args[0] else ""
-        assert (
-            "# Indexed Environment Variables" in env_content
-        ), ".env.example should contain expected header"
-        assert (
-            "ATLASSIAN_EMAIL" in env_content
-        ), ".env.example should contain environment variable examples"
+        assert "# Indexed Environment Variables" in env_content, (
+            ".env.example should contain expected header"
+        )
+        assert "ATLASSIAN_EMAIL" in env_content, (
+            ".env.example should contain environment variable examples"
+        )
 
     @patch("indexed.config.cli.Path")
     @patch("indexed.config.cli.print_warning")
