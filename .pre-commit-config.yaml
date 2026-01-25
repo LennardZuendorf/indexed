@@ -1,7 +1,7 @@
 repos:
   # General file checks (run on pre-commit)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         stages: [pre-commit]
@@ -25,7 +25,7 @@ repos:
 
   # Ruff for linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.14.13
     hooks:
       # Run the linter on pre-commit (with auto-fix) and pre-push
       - id: ruff
