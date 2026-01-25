@@ -1,23 +1,31 @@
 """Indexed CLI application - stateless commands backed by services."""
 
+# Fix OpenMP threading issues on macOS before any imports
+# Must be set before PyTorch/sentence-transformers are loaded
+import os
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import warnings
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
-
-import os  # noqa: E402
 import sys  # noqa: E402
-import typer  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Optional  # noqa: E402
+
+import typer  # noqa: E402
+import typer.rich_utils  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
-from .utils.logging import setup_root_logger  # noqa: E402
-from .utils.components.theme import get_help_theme_styles, get_accent_style  # noqa: E402
-from .utils.components import print_success  # noqa: E402
 from .utils.banner import print_indexed_banner  # noqa: E402
-
-import typer.rich_utils  # noqa: E402
+from .utils.components import print_success  # noqa: E402
+from .utils.components.theme import (  # noqa: E402
+    get_accent_style,
+    get_help_theme_styles,
+)
+from .utils.logging import setup_root_logger  # noqa: E402
 
 typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"
@@ -106,7 +114,7 @@ def _init_app(
         raise typer.Exit(1)
 
     if use_local:
-        from indexed_config import has_local_config, get_local_root, ensure_storage_dirs
+        from indexed_config import ensure_storage_dirs, get_local_root, has_local_config
 
         workspace = Path.cwd()
         if not has_local_config(workspace):
@@ -121,7 +129,7 @@ def _init_app(
             print_success(f"Created local .indexed folder at {local_root}")
 
 
-from . import knowledge, config, mcp, info  # noqa: E402
+from . import config, info, knowledge, mcp  # noqa: E402
 
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
 CONFIG_PANEL = "Configuration Management"
@@ -241,8 +249,9 @@ def migrate_data(
 ) -> None:
     """Migrate legacy local data from ./data/ to global storage."""
     from indexed_config import get_global_root
-    from .utils.migration import migrate_legacy_data, has_legacy_data
+
     from .utils.console import console
+    from .utils.migration import has_legacy_data, migrate_legacy_data
 
     if not has_legacy_data():
         console.print(

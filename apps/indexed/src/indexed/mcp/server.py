@@ -6,8 +6,8 @@ Uses FastMCP 2.13+ features including server lifespan and response caching middl
 
 # Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
 # Must be done before any faiss imports occur
-import warnings
 import argparse
+import warnings
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
 
@@ -24,15 +24,13 @@ except ImportError:
     Context = None  # type: ignore
 
 # Import ConfigService for configuration
-from indexed_config import ConfigService  # noqa: E402
-from core.v1.config_models import MCPConfig, CoreV1SearchConfig  # noqa: E402
-
-# Import our service layer
+from core.v1.config_models import CoreV1SearchConfig, MCPConfig  # noqa: E402
 from core.v1.engine.services import (  # noqa: E402
+    SourceConfig,
     search as svc_search,
     status as svc_status,
-    SourceConfig,
 )
+from indexed_config import ConfigService  # noqa: E402
 
 
 class LifespanState(TypedDict):
@@ -137,17 +135,116 @@ def get_search_config() -> CoreV1SearchConfig:
     return _search_config
 
 
+def _format_search_results_for_llm(
+    raw_results: Dict[str, Any], query: str
+) -> Dict[str, Any]:
+    """
+    Transform raw search results into an LLM-optimized format.
+
+    Flattens nested structures, extracts content directly, and provides
+    clear context for each result with relevance ranking.
+
+    Args:
+        raw_results: Raw search results from search service
+        query: Original search query
+
+    Returns:
+        LLM-friendly dictionary with ranked results and clear metadata
+    """
+    formatted = {
+        "query": query,
+        "total_collections_searched": 0,
+        "total_documents_found": 0,
+        "total_chunks_found": 0,
+        "results": [],
+    }
+
+    # Collect all chunks from all collections with metadata
+    all_chunks = []
+
+    for collection_name, collection_data in raw_results.items():
+        if isinstance(collection_data, dict) and "error" in collection_data:
+            continue
+
+        formatted["total_collections_searched"] += 1
+
+        if not isinstance(collection_data, dict) or "results" not in collection_data:
+            continue
+
+        documents = collection_data.get("results", [])
+        formatted["total_documents_found"] += len(documents)
+
+        for doc in documents:
+            doc_id = doc.get("id", "unknown")
+            doc_url = doc.get("url", "")
+            matched_chunks = doc.get("matchedChunks", [])
+
+            for chunk_data in matched_chunks:
+                chunk_number = chunk_data.get("chunkNumber", 0)
+                score = chunk_data.get("score", 999.0)
+
+                # Extract actual text content from nested structure
+                content_text = ""
+                if "content" in chunk_data:
+                    content = chunk_data["content"]
+                    if isinstance(content, dict) and "indexedData" in content:
+                        content_text = content["indexedData"]
+                    elif isinstance(content, str):
+                        content_text = content
+
+                # Only include chunks with actual content
+                if content_text:
+                    all_chunks.append(
+                        {
+                            "rank": 0,  # Will be set after sorting
+                            "relevance_score": score,
+                            "collection": collection_name,
+                            "document_id": doc_id,
+                            "document_url": doc_url,
+                            "chunk_number": chunk_number,
+                            "text": content_text,
+                        }
+                    )
+
+    # Sort by relevance (lower score = more relevant for L2 distance)
+    all_chunks.sort(key=lambda x: x["relevance_score"])
+
+    # Assign ranks and add to results
+    for idx, chunk in enumerate(all_chunks, 1):
+        chunk["rank"] = idx
+        formatted["results"].append(chunk)
+
+    formatted["total_chunks_found"] = len(all_chunks)
+
+    return formatted
+
+
 @mcp.tool
 def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
     """
     Search all available document collections for semantically similar content to the provided query.
+
+    Returns results in an LLM-optimized format with flat structure and direct text access.
+    Results are ranked by relevance with the most relevant chunks first.
 
     Parameters:
         query (str): The search query text.
         ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
     Returns:
-        dict: Mapping of collection name to its search results. On error, returns a dictionary with a single `"error"` key containing the error message.
+        dict: LLM-friendly search results with structure:
+            - query: The original search query
+            - total_collections_searched: Number of collections searched
+            - total_documents_found: Number of documents with matches
+            - total_chunks_found: Total number of matching text chunks
+            - results: List of ranked results, each containing:
+                - rank: Relevance ranking (1 = most relevant)
+                - relevance_score: Similarity score (lower = more similar)
+                - collection: Collection name
+                - document_id: Document identifier
+                - document_url: Source document URL
+                - chunk_number: Chunk position in document
+                - text: Actual text content
     """
     # Try to get config from lifespan state, fallback to cached getter
     if ctx is not None and hasattr(ctx, "fastmcp_context"):
@@ -164,7 +261,7 @@ def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
 
     try:
         # Use auto-discovery mode (configs=None) to search all collections
-        results = svc_search(
+        raw_results = svc_search(
             query,
             configs=None,
             max_docs=search_cfg.max_docs,
@@ -174,7 +271,9 @@ def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
             include_all_chunks=search_cfg.include_all_chunks,
             include_matched_chunks=search_cfg.include_matched_chunks,
         )
-        return results
+
+        # Transform to LLM-friendly format
+        return _format_search_results_for_llm(raw_results, query)
     except Exception as e:
         return {"error": str(e)}
 
@@ -186,7 +285,7 @@ def search_collection(
     """
     Search within a specific document collection using semantic similarity.
 
-    Uses the same configuration as the search tool from ConfigService.
+    Returns results in the same LLM-optimized format as the general search tool.
 
     Args:
         collection: Name of the collection to search
@@ -194,7 +293,7 @@ def search_collection(
         ctx: FastMCP Context (optional, for accessing lifespan state)
 
     Returns:
-        Dictionary with search results for the specified collection
+        dict: LLM-friendly search results with the same structure as search() tool
     """
     # Try to get config from lifespan state, fallback to cached getter
     if ctx is not None and hasattr(ctx, "fastmcp_context"):
@@ -233,7 +332,7 @@ def search_collection(
             indexer=default_indexer,
         )
 
-        results = svc_search(
+        raw_results = svc_search(
             query,
             configs=[source_config],
             max_docs=search_cfg.max_docs,
@@ -243,7 +342,9 @@ def search_collection(
             include_all_chunks=search_cfg.include_all_chunks,
             include_matched_chunks=search_cfg.include_matched_chunks,
         )
-        return results
+
+        # Transform to LLM-friendly format
+        return _format_search_results_for_llm(raw_results, query)
     except Exception as e:
         return {"error": str(e)}
 

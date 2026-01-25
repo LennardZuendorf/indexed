@@ -114,9 +114,42 @@ class TestSearchToolFunction:
         mock_config.include_matched_chunks = True
         mock_get_config.return_value = mock_config
 
+        # Mock search to return data in the expected format
         mock_search.return_value = {
-            "collection1": [{"doc": "result1"}],
-            "collection2": [{"doc": "result2"}],
+            "collection1": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "url": "file://doc1.md",
+                        "matchedChunks": [
+                            {
+                                "chunkNumber": 0,
+                                "score": 0.5,
+                                "content": {
+                                    "indexedData": "test content from collection1"
+                                },
+                            }
+                        ],
+                    }
+                ]
+            },
+            "collection2": {
+                "results": [
+                    {
+                        "id": "doc2",
+                        "url": "file://doc2.md",
+                        "matchedChunks": [
+                            {
+                                "chunkNumber": 0,
+                                "score": 0.6,
+                                "content": {
+                                    "indexedData": "test content from collection2"
+                                },
+                            }
+                        ],
+                    }
+                ]
+            },
         }
 
         # Access the underlying function through the tool's fn attribute
@@ -124,8 +157,16 @@ class TestSearchToolFunction:
         assert search_tool is not None
         result = search_tool.fn("test query")
 
-        assert "collection1" in result
-        assert "collection2" in result
+        # Assert on the formatted output structure
+        assert result["query"] == "test query"
+        assert result["total_collections_searched"] == 2
+        assert result["total_documents_found"] == 2
+        assert result["total_chunks_found"] == 2
+        assert len(result["results"]) == 2
+        # Check that results contain chunks from both collections
+        collections_in_results = {r["collection"] for r in result["results"]}
+        assert "collection1" in collections_in_results
+        assert "collection2" in collections_in_results
         mock_search.assert_called_once()
 
     @patch.object(server_module, "svc_search")
@@ -172,13 +213,36 @@ class TestSearchCollectionToolFunction:
         mock_status_item.indexers = ["default_indexer"]
         mock_status.return_value = [mock_status_item]
 
-        mock_search.return_value = {"my_collection": [{"doc": "result"}]}
+        # Mock search to return data in the expected format
+        mock_search.return_value = {
+            "my_collection": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "url": "file://doc1.md",
+                        "matchedChunks": [
+                            {
+                                "chunkNumber": 0,
+                                "score": 0.5,
+                                "content": {"indexedData": "test content"},
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
 
         search_collection_tool = mcp._tool_manager._tools.get("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("my_collection", "test query")
 
-        assert "my_collection" in result
+        # Assert on the formatted output structure
+        assert result["query"] == "test query"
+        assert result["total_collections_searched"] == 1
+        assert result["total_documents_found"] == 1
+        assert result["total_chunks_found"] == 1
+        assert len(result["results"]) == 1
+        assert result["results"][0]["collection"] == "my_collection"
         mock_search.assert_called_once()
 
     @patch.object(server_module, "svc_status")

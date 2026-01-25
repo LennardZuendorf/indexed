@@ -80,7 +80,12 @@ class CoreV1StorageConfig(BaseModel):
 
 
 class CoreV1SearchConfig(BaseModel):
-    """Search configuration for core.v1."""
+    """Search configuration for core.v1.
+
+    Default values are optimized for LLM consumption via MCP:
+    - include_matched_chunks=True ensures text content is returned
+    - max_docs=10 and max_chunks=30 provide comprehensive results
+    """
 
     max_docs: int = Field(
         default=10, ge=1, le=100, description="Maximum documents to return"
@@ -95,7 +100,8 @@ class CoreV1SearchConfig(BaseModel):
         default=False, description="Include all document chunks"
     )
     include_matched_chunks: bool = Field(
-        default=False, description="Include only matched chunks"
+        default=True,
+        description="Include matched chunk content (required for LLM usage)",
     )
     score_threshold: Optional[float] = Field(
         default=None, ge=0.0, le=1.0, description="Minimum similarity score threshold"
