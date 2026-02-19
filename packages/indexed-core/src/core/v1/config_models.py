@@ -108,7 +108,7 @@ class CoreV1SearchConfig(BaseModel):
     )
 
 
-def _get_default_collections_path() -> Path:
+def get_default_collections_path() -> Path:
     """Get default collections path from storage config."""
     try:
         from indexed_config import get_resolver
@@ -119,7 +119,7 @@ def _get_default_collections_path() -> Path:
         return Path.home() / ".indexed" / "data" / "collections"
 
 
-def _get_default_caches_path() -> Path:
+def get_default_caches_path() -> Path:
     """Get default caches path from storage config."""
     try:
         from indexed_config import get_resolver
@@ -138,11 +138,11 @@ class PathsConfig(BaseModel):
     """
 
     collections_dir: Path = Field(
-        default_factory=_get_default_collections_path,
+        default_factory=get_default_collections_path,
         description="Directory for collections storage",
     )
     caches_dir: Path = Field(
-        default_factory=_get_default_caches_path,
+        default_factory=get_default_caches_path,
         description="Directory for document caches",
     )
     temp_dir: Path = Field(
@@ -206,4 +206,6 @@ __all__ = [
     "MCPConfig",
     "PerformanceConfig",
     "LoggingConfig",
+    "get_default_collections_path",
+    "get_default_caches_path",
 ]

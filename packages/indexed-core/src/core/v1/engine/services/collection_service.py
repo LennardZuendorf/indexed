@@ -5,42 +5,18 @@ from various sources including Confluence, Jira, and local files. It handles the
 orchestration of readers, converters, and persisters to build searchable collections.
 """
 
-from pathlib import Path
 from typing import List, Any, Optional
 from dataclasses import dataclass
 from .models import SourceConfig, ProgressCallback
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
+from core.v1.config_models import get_default_collections_path, get_default_caches_path
 
 # NOTE: update_collection_factory is imported lazily in _update_one() to avoid
 # circular import: connectors -> core.v1 -> collection_service -> update_collection_factory -> connectors
 
 setup_root_logger()
-
-
-def _get_default_collections_path() -> str:
-    """Get the default collections path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_collections_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "collections")
-
-
-def _get_default_caches_path() -> str:
-    """Get the default caches path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_caches_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "caches")
 
 
 def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
@@ -128,7 +104,7 @@ def _collection_exists(name: str, collections_path: Optional[str] = None) -> boo
     Returns:
         bool: True if collection exists, False otherwise.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     persister = DiskPersister(base_path=resolved_path)
     return persister.is_path_exists(name)
 
@@ -227,8 +203,8 @@ def create(
         config_service = ConfigService()
 
     # Resolve paths
-    resolved_collections = collections_path or _get_default_collections_path()
-    resolved_caches = caches_path or _get_default_caches_path()
+    resolved_collections = collections_path or str(get_default_collections_path())
+    resolved_caches = caches_path or str(get_default_caches_path())
 
     for cfg in configs:
         if force and _collection_exists(cfg.name, resolved_collections):
@@ -262,7 +238,7 @@ def update(
     Raises:
         ValueError: If source configuration is invalid or collection doesn't exist.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     for cfg in configs:
         _update_one(cfg, progress_callback, collections_path=resolved_path)
 
@@ -283,7 +259,7 @@ def clear(
     Warning:
         This operation permanently deletes collection data and cannot be undone.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     persister = DiskPersister(base_path=resolved_path)
     for name in collection_names:
         persister.remove_folder(name)

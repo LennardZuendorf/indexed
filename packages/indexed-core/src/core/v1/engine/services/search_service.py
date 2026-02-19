@@ -7,7 +7,6 @@ and caching of search indexes for optimal performance.
 """
 
 import json
-from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from loguru import logger
@@ -17,18 +16,7 @@ from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
     create_collection_searcher,
 )
-
-
-def _get_default_collections_path() -> str:
-    """Get the default collections path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_collections_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "collections")
+from core.v1.config_models import get_default_collections_path
 
 
 class SearchService:
@@ -57,7 +45,7 @@ class SearchService:
                              Defaults to resolved path from storage config.
         """
         self._searcher_cache: Dict[str, Any] = {}
-        self._collections_path = collections_path or _get_default_collections_path()
+        self._collections_path = collections_path or str(get_default_collections_path())
         self._persister = DiskPersister(base_path=self._collections_path)
 
     def _get_searcher(self, collection_name: str, index_name: str):
