@@ -12,7 +12,6 @@ Examples:
 """
 
 from .index import Index, IndexConfig
-from .core_config import Config  # Keep for backward compatibility
 
 # Register core v1 config specs (lazy, best-effort)
 try:
@@ -38,4 +37,4 @@ except Exception:
 # Semantic version of the core v1 API. Used for connector compatibility checks.
 __version__ = "1.0.0"
 
-__all__ = ["Index", "IndexConfig", "Config", "__version__"]
+__all__ = ["Index", "IndexConfig", "__version__"]
