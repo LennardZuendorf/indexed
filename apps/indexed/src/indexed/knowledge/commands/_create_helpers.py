@@ -97,24 +97,24 @@ def execute_create_command(
     if is_verbose_mode():
         logger.info(
             "Validation result: %d fields present, %d missing",
-            len(validation["present"]),
-            len(validation["missing"]),
+            len(validation.present),
+            len(validation.missing),
         )
 
     # Phase 1: Prompt for missing values using connector-specific callback
-    if validation["missing"]:
+    if validation.missing:
         prompt_missing_fields(validation, config, namespace)
 
     # Also set CLI overrides in config for connector to read
     for key, value in cli_overrides.items():
-        field_info = validation["field_info"].get(key)
+        field_info = validation.field_info.get(key)
         config.set_value(f"{namespace}.{key}", value, field_info=field_info)
 
     # Log resolved configuration in verbose mode
     if is_verbose_mode():
         logger.info("Configuration resolved:")
-        for field_name, value in validation["present"].items():
-            field_meta = validation["field_info"].get(field_name, {})
+        for field_name, value in validation.present.items():
+            field_meta = validation.field_info.get(field_name, {})
             if field_meta.get("sensitive"):
                 logger.info("  %s: ******** (sensitive)", field_name)
             else:
@@ -128,7 +128,7 @@ def execute_create_command(
     svc_status = this_module.svc_status
 
     # Build source config using connector-specific callback
-    cfg = build_source_config(validation["present"], collection)
+    cfg = build_source_config(validation.present, collection)
 
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
@@ -137,7 +137,7 @@ def execute_create_command(
             # Verbose mode: show all logs, no spinner
             with NoOpContext():
                 if verbose_pre_creation_log:
-                    verbose_pre_creation_log(validation["present"])
+                    verbose_pre_creation_log(validation.present)
                 logger.info("Creating collection '%s'...", collection)
                 svc_create(
                     [cfg], config_service=config, use_cache=use_cache, force=force

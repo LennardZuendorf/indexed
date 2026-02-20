@@ -1,5 +1,8 @@
 """Tests for config CLI commands."""
 
+import os
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from typer.testing import CliRunner
 
@@ -7,7 +10,14 @@ from indexed.config.cli import (
     _coerce_value,
     _flatten_dict,
     _format_config_value,
+    _group_config_by_section,
     _is_sensitive_key,
+    _merge_with_defaults,
+    _value_to_default_str,
+    _get_sensitive_env_value,
+    _load_external_toml,
+    _backup_config,
+    _group_keys_by_prefix,
 )
 
 runner = CliRunner()
@@ -387,3 +397,210 @@ class TestInitConfig:
         result = runner.invoke(app, ["config", "init"])
         # Should exit with warning about already initialized
         assert result.exit_code == 1
+
+
+class TestValueToDefaultStr:
+    """Test _value_to_default_str function."""
+
+    def test_bool_true(self):
+        """Should convert True to 'true'."""
+        assert _value_to_default_str(True) == "true"
+
+    def test_bool_false(self):
+        """Should convert False to 'false'."""
+        assert _value_to_default_str(False) == "false"
+
+    def test_none(self):
+        """Should convert None to empty string."""
+        assert _value_to_default_str(None) == ""
+
+    def test_list(self):
+        """Should convert lists to JSON string."""
+        assert _value_to_default_str([1, 2]) == "[1, 2]"
+
+    def test_dict(self):
+        """Should convert dicts to JSON string."""
+        assert _value_to_default_str({"a": 1}) == '{"a": 1}'
+
+    def test_integer(self):
+        """Should convert integers to string."""
+        assert _value_to_default_str(42) == "42"
+
+    def test_string(self):
+        """Should return strings unchanged."""
+        assert _value_to_default_str("hello") == "hello"
+
+
+class TestGroupConfigBySection:
+    """Test _group_config_by_section function."""
+
+    def test_flat_config(self):
+        """Should group flat keys by first segment."""
+        result = _group_config_by_section({"sources": {"jira": {"url": "x"}}})
+        assert "sources" in result
+        assert "jira.url" in result["sources"]
+
+    def test_nested_config(self):
+        """Should flatten nested config into dot-paths grouped by section."""
+        config = {"core": {"v1": {"search": {"max_docs": 10}}}}
+        result = _group_config_by_section(config)
+        assert "core" in result
+        assert "v1.search.max_docs" in result["core"]
+
+    def test_empty_config(self):
+        """Should return empty dict for empty config."""
+        assert _group_config_by_section({}) == {}
+
+    def test_multiple_sections(self):
+        """Should separate keys into their respective sections."""
+        config = {
+            "sources": {"files": {"path": "/data"}},
+            "logging": {"level": "INFO"},
+        }
+        result = _group_config_by_section(config)
+        assert set(result.keys()) == {"sources", "logging"}
+
+
+class TestMergeWithDefaults:
+    """Test _merge_with_defaults function."""
+
+    def test_manual_values_marked_correctly(self):
+        """Manual values should have is_default=False."""
+        raw = {"core": {"v1": {"search": {"max_docs": 20}}}}
+        defaults = {"core": {"v1": {"search": {"max_docs": 10}}}}
+        result = _merge_with_defaults(raw, defaults)
+        assert result["core"]["v1.search.max_docs"]["is_default"] is False
+        assert result["core"]["v1.search.max_docs"]["value"] == 20
+
+    def test_default_values_marked_correctly(self):
+        """Default-only values should have is_default=True."""
+        raw = {}
+        defaults = {"core": {"v1": {"search": {"max_docs": 10}}}}
+        result = _merge_with_defaults(raw, defaults)
+        assert result["core"]["v1.search.max_docs"]["is_default"] is True
+        assert result["core"]["v1.search.max_docs"]["value"] == 10
+
+    def test_empty_inputs(self):
+        """Should handle empty raw and defaults."""
+        assert _merge_with_defaults({}, {}) == {}
+
+    def test_workspace_section_skipped(self):
+        """Workspace section should be excluded from output."""
+        raw = {"workspace": {"mode": "local"}, "logging": {"level": "INFO"}}
+        defaults = {}
+        result = _merge_with_defaults(raw, defaults)
+        assert "workspace" not in result
+        assert "logging" in result
+
+
+class TestGetSensitiveEnvValue:
+    """Test _get_sensitive_env_value function."""
+
+    def test_returns_masked_when_env_set(self):
+        """Should return masked value when corresponding env var is set."""
+        os.environ["ATLASSIAN_TOKEN"] = "secret"
+        try:
+            result = _get_sensitive_env_value("api_token")
+            assert result == "*****"
+        finally:
+            del os.environ["ATLASSIAN_TOKEN"]
+
+    def test_returns_none_when_env_not_set(self):
+        """Should return None when no corresponding env var is set."""
+        # Ensure env vars are not set
+        for var in ["ATLASSIAN_TOKEN", "JIRA_TOKEN", "CONF_TOKEN"]:
+            os.environ.pop(var, None)
+        result = _get_sensitive_env_value("api_token")
+        assert result is None
+
+    def test_non_sensitive_key_returns_none(self):
+        """Should return None for non-sensitive keys."""
+        assert _get_sensitive_env_value("url") is None
+
+    def test_dotpath_key_extracts_last_segment(self):
+        """Should use last segment of dot-path for lookup."""
+        os.environ["ATLASSIAN_EMAIL"] = "test@example.com"
+        try:
+            result = _get_sensitive_env_value("sources.jira.email")
+            assert result == "*****"
+        finally:
+            del os.environ["ATLASSIAN_EMAIL"]
+
+
+class TestGroupKeysByPrefix:
+    """Test _group_keys_by_prefix function."""
+
+    def test_groups_dotted_keys(self):
+        """Should group keys by first part before dot."""
+        keys = ["files.path", "files.include_patterns", "jira.url"]
+        result = _group_keys_by_prefix(keys)
+        assert set(result.keys()) == {"files", "jira"}
+        assert len(result["files"]) == 2
+        assert len(result["jira"]) == 1
+
+    def test_simple_keys_go_to_general(self):
+        """Keys without dots should go to 'general' group."""
+        keys = ["level", "mode"]
+        result = _group_keys_by_prefix(keys)
+        assert "general" in result
+        assert len(result["general"]) == 2
+
+    def test_empty_list(self):
+        """Should return empty dict for empty input."""
+        assert _group_keys_by_prefix([]) == {}
+
+
+class TestLoadExternalToml:
+    """Test _load_external_toml function."""
+
+    def test_loads_valid_toml(self):
+        """Should parse valid TOML file."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write('[test]\nkey = "value"\n')
+            f.flush()
+            result = _load_external_toml(f.name)
+            assert result == {"test": {"key": "value"}}
+        os.unlink(f.name)
+
+    def test_returns_none_for_missing_file(self):
+        """Should return None when file does not exist."""
+        result = _load_external_toml("/nonexistent/path/config.toml")
+        assert result is None
+
+    def test_returns_none_for_invalid_toml(self):
+        """Should return None for malformed TOML."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("this is not valid toml [[[")
+            f.flush()
+            result = _load_external_toml(f.name)
+            assert result is None
+        os.unlink(f.name)
+
+    def test_returns_none_for_directory(self):
+        """Should return None when path is a directory, not a file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = _load_external_toml(tmpdir)
+            assert result is None
+
+
+class TestBackupConfig:
+    """Test _backup_config function."""
+
+    def test_creates_backup_file(self):
+        """Should create a timestamped backup of existing config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text('[test]\nkey = "value"\n')
+
+            result = _backup_config(config_path)
+            assert result is True
+
+            # Should have created a backup file
+            backups = list(Path(tmpdir).glob("config.toml.backup.*"))
+            assert len(backups) == 1
+            assert backups[0].read_text() == '[test]\nkey = "value"\n'
+
+    def test_returns_true_when_no_file(self):
+        """Should return True (nothing to backup) when file doesn't exist."""
+        result = _backup_config(Path("/nonexistent/config.toml"))
+        assert result is True

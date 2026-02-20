@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from indexed_config.storage import (
     StorageResolver,
+    _ensure_gitignore,
     get_global_root,
     get_local_root,
     get_config_path,
@@ -20,8 +21,6 @@ from indexed_config.storage import (
     has_local_storage,
     has_local_config,
     ensure_storage_dirs,
-    get_resolver,
-    reset_resolver,
 )
 
 
@@ -164,9 +163,11 @@ class TestStorageResolver:
 
     def test_resolve_root_defaults_to_global(self):
         """resolve_root defaults to global when no override or preference."""
-        resolver = StorageResolver()
-        result = resolver.resolve_root()
-        assert result == resolver.global_root
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            resolver = StorageResolver(workspace=workspace)
+            result = resolver.resolve_root()
+            assert result == resolver.global_root
 
     def test_resolve_root_with_local_override(self):
         """resolve_root returns local when mode_override is 'local'."""
@@ -241,34 +242,88 @@ class TestStorageResolver:
             with patch("indexed_config.storage.has_global_config", return_value=False):
                 assert resolver.has_conflict() is False
 
+    def test_ensure_dirs_creates_gitignore_for_local(self):
+        """ensure_dirs creates .gitignore when resolved root is local."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            resolver = StorageResolver(workspace=workspace, mode_override="local")
+            resolver.ensure_dirs()
+            gitignore = workspace / ".indexed" / ".gitignore"
+            assert gitignore.exists()
+            assert ".env" in gitignore.read_text().splitlines()
 
-class TestResolverSingleton:
-    """Test the module-level resolver singleton."""
+    def test_ensure_dirs_no_gitignore_for_global(self):
+        """ensure_dirs does NOT create .gitignore for global root."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, "home", return_value=Path(tmpdir)):
+                resolver = StorageResolver(mode_override="global")
+                resolver.ensure_dirs()
+                gitignore = Path(tmpdir) / ".indexed" / ".gitignore"
+                assert not gitignore.exists()
 
-    def test_get_resolver_creates_singleton(self):
-        """get_resolver returns a StorageResolver instance."""
-        reset_resolver()
-        resolver = get_resolver()
-        assert isinstance(resolver, StorageResolver)
 
-    def test_get_resolver_returns_same_instance(self):
-        """get_resolver returns same instance on subsequent calls."""
-        reset_resolver()
-        resolver1 = get_resolver()
-        resolver2 = get_resolver()
-        assert resolver1 is resolver2
+class TestEnsureGitignore:
+    """Test the _ensure_gitignore function."""
 
-    def test_get_resolver_with_reset(self):
-        """get_resolver with reset=True creates new instance."""
-        reset_resolver()
-        resolver1 = get_resolver()
-        resolver2 = get_resolver(reset=True)
-        assert resolver1 is not resolver2
+    def test_creates_gitignore_with_env_entry(self):
+        """Creates .gitignore with .env if it doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _ensure_gitignore(root)
+            gitignore = root / ".gitignore"
+            assert gitignore.exists()
+            assert gitignore.read_text() == ".env\n"
 
-    def test_reset_resolver_clears_singleton(self):
-        """reset_resolver clears the singleton."""
-        reset_resolver()
-        resolver1 = get_resolver()
-        reset_resolver()
-        resolver2 = get_resolver()
-        assert resolver1 is not resolver2
+    def test_appends_env_to_existing_gitignore(self):
+        """Appends .env to existing .gitignore that doesn't have it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            gitignore = root / ".gitignore"
+            gitignore.write_text("*.pyc\n")
+
+            _ensure_gitignore(root)
+            lines = gitignore.read_text().splitlines()
+            assert "*.pyc" in lines
+            assert ".env" in lines
+
+    def test_does_not_duplicate_env_entry(self):
+        """Does not add .env if it's already in .gitignore."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            gitignore = root / ".gitignore"
+            gitignore.write_text(".env\n*.pyc\n")
+
+            _ensure_gitignore(root)
+            content = gitignore.read_text()
+            assert content.count(".env") == 1
+
+    def test_does_not_duplicate_env_entry_with_comment(self):
+        """Does not add .env if it's already listed with an inline comment."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            gitignore = root / ".gitignore"
+            gitignore.write_text(".env  # keep secrets safe\n")
+
+            _ensure_gitignore(root)
+            content = gitignore.read_text()
+            assert content.count(".env") == 1
+
+    def test_appends_newline_if_missing(self):
+        """Appends newline before .env if existing file doesn't end with one."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            gitignore = root / ".gitignore"
+            gitignore.write_text("*.pyc")  # no trailing newline
+
+            _ensure_gitignore(root)
+            content = gitignore.read_text()
+            assert content == "*.pyc\n.env\n"
+
+    def test_creates_parent_dirs_if_needed(self):
+        """Creates root directory if it doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "nested" / "dir"
+            assert not root.exists()
+
+            _ensure_gitignore(root)
+            assert (root / ".gitignore").exists()

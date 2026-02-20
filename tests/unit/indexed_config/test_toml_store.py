@@ -3,6 +3,7 @@
 Tests the config file reading, writing, and conflict detection.
 """
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -24,7 +25,7 @@ class TestTomlStorePaths:
         """Global root should be ~/.indexed."""
         store = TomlStore()
         expected = Path.home() / ".indexed"
-        assert store.global_root == expected
+        assert store._global_root == expected
 
     def test_workspace_path_is_cwd_indexed(self):
         """Workspace path should be ./.indexed/config.toml."""
@@ -46,47 +47,47 @@ class TestTomlStorePaths:
             workspace = Path(tmpdir)
             store = TomlStore(workspace=workspace)
             expected = workspace / ".indexed"
-            assert store.local_root == expected
+            assert store._local_root == expected
 
 
 class TestTomlStoreEnvPaths:
     """Test TomlStore .env file path properties."""
 
     def test_env_path_defaults_to_local(self):
-        """Default env_path is the local .env file."""
+        """Default _env_path is the local .env file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             store = TomlStore(workspace=workspace)
             expected = workspace / ".indexed" / ".env"
-            assert store.env_path == expected
+            assert store._env_path == expected
 
     def test_env_path_with_global_mode(self):
-        """env_path with global mode_override points to global .env."""
+        """_env_path with global mode_override points to global .env."""
         store = TomlStore(mode_override="global")
         expected = Path.home() / ".indexed" / ".env"
-        assert store.env_path == expected
+        assert store._env_path == expected
 
     def test_env_path_with_local_mode(self):
-        """env_path with local mode_override points to local .env."""
+        """_env_path with local mode_override points to local .env."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             store = TomlStore(workspace=workspace, mode_override="local")
             expected = workspace / ".indexed" / ".env"
-            assert store.env_path == expected
+            assert store._env_path == expected
 
     def test_global_env_path(self):
-        """global_env_path always returns global .env."""
+        """_global_env_path always returns global .env."""
         store = TomlStore()
         expected = Path.home() / ".indexed" / ".env"
-        assert store.global_env_path == expected
+        assert store._global_env_path == expected
 
     def test_local_env_path(self):
-        """local_env_path always returns local .env."""
+        """_local_env_path always returns local .env."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             store = TomlStore(workspace=workspace)
             expected = workspace / ".indexed" / ".env"
-            assert store.local_env_path == expected
+            assert store._local_env_path == expected
 
 
 class TestTomlStoreRead:
@@ -99,7 +100,8 @@ class TestTomlStoreRead:
             # Use mode_override="local" to avoid reading global config
             store = TomlStore(workspace=workspace, mode_override="local")
             result = store.read()
-            assert result == {}
+            # _schema_version is always injected by read()
+            assert result == {"_schema_version": "1"}
 
     def test_read_local_only(self):
         """read() returns local config when only local exists."""
@@ -289,3 +291,163 @@ class TestTomlStoreConflictDetection:
                 store = TomlStore(workspace=workspace)
                 differences = store.get_config_differences()
                 assert differences == {}
+
+
+class TestReadForMode:
+    """Test TomlStore.read_for_mode()."""
+
+    def test_read_for_mode_global_reads_only_global(self):
+        """read_for_mode('global') reads only global config, not local."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            workspace.mkdir()
+            global_home = Path(tmpdir) / "home"
+
+            # Create both configs with different values
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
+
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                result = store.read_for_mode("global")
+                assert result["test"]["key"] == "global_value"
+
+    def test_read_for_mode_local_reads_only_local(self):
+        """read_for_mode('local') reads only local config, not global."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            workspace.mkdir()
+            global_home = Path(tmpdir) / "home"
+
+            # Create both configs with different values
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
+
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                result = store.read_for_mode("local")
+                assert result["test"]["key"] == "local_value"
+
+    def test_read_for_mode_loads_cwd_dotenv(self):
+        """read_for_mode() loads CWD/.env to fill gaps."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text("[test]")
+
+            # Create CWD/.env with a value
+            (workspace / ".env").write_text("MY_CWD_VAR=from_cwd\n")
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                store.read_for_mode("global")
+                assert os.environ.get("MY_CWD_VAR") == "from_cwd"
+
+            # Cleanup
+            os.environ.pop("MY_CWD_VAR", None)
+
+    def test_read_for_mode_indexed_env_overrides_cwd_env(self):
+        """.indexed/.env values take priority over CWD/.env values."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text("[test]")
+
+            # .indexed/.env sets a value
+            (global_dir / ".env").write_text("SHARED_VAR=from_indexed\n")
+            # CWD/.env sets the same value differently
+            (workspace / ".env").write_text("SHARED_VAR=from_cwd\n")
+
+            # Remove from env to ensure clean test
+            os.environ.pop("SHARED_VAR", None)
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                store.read_for_mode("global")
+                # .indexed/.env is loaded first, so its value wins
+                assert os.environ.get("SHARED_VAR") == "from_indexed"
+
+            # Cleanup
+            os.environ.pop("SHARED_VAR", None)
+
+    def test_read_for_mode_real_env_overrides_both_dotenvs(self):
+        """Real env vars already set override both .env files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text("[test]")
+
+            (global_dir / ".env").write_text("REAL_ENV_TEST=from_indexed\n")
+            (workspace / ".env").write_text("REAL_ENV_TEST=from_cwd\n")
+
+            # Set real env var before loading
+            os.environ["REAL_ENV_TEST"] = "from_real_env"
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                store.read_for_mode("global")
+                # Real env var wins (override=False in load_dotenv)
+                assert os.environ["REAL_ENV_TEST"] == "from_real_env"
+
+            # Cleanup
+            os.environ.pop("REAL_ENV_TEST", None)
+
+    def test_read_for_mode_includes_schema_version(self):
+        """read_for_mode() injects _schema_version."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace, mode_override="local")
+            result = store.read_for_mode("local")
+            assert "_schema_version" in result
+
+    def test_read_for_mode_env_vars_override_toml(self):
+        """INDEXED__* env vars override TOML values in read_for_mode."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[test]\nkey = "toml_value"')
+
+            os.environ["INDEXED__test__key"] = "env_value"
+            try:
+                store = TomlStore(workspace=workspace)
+                result = store.read_for_mode("local")
+                assert result["test"]["key"] == "env_value"
+            finally:
+                del os.environ["INDEXED__test__key"]
+
+
+class TestGetResolvedEnvPath:
+    """Test TomlStore.get_resolved_env_path()."""
+
+    def test_global_mode_returns_global_env_path(self):
+        """get_resolved_env_path('global') returns global .env path."""
+        store = TomlStore()
+        result = store.get_resolved_env_path("global")
+        expected = str(Path.home() / ".indexed" / ".env")
+        assert result == expected
+
+    def test_local_mode_returns_local_env_path(self):
+        """get_resolved_env_path('local') returns local .env path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace)
+            result = store.get_resolved_env_path("local")
+            expected = str(workspace / ".indexed" / ".env")
+            assert result == expected

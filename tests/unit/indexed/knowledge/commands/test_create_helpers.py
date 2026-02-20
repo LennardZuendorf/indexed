@@ -5,6 +5,7 @@ import pytest
 import typer
 
 from indexed.knowledge.commands._create_helpers import execute_create_command
+from indexed_config import ValidationResult
 from core.v1.engine.services import SourceConfig
 
 
@@ -28,11 +29,11 @@ class TestExecuteCreateCommand:
     ):
         """Should create collection when all required fields are present."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"path": "/test", "include_patterns": [".*"]},
-            "missing": [],
-            "field_info": {},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test", "include_patterns": [".*"]},
+            missing=[],
+            field_info={},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
 
@@ -86,11 +87,11 @@ class TestExecuteCreateCommand:
     ):
         """Should prompt for missing fields."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {},
-            "missing": ["path"],
-            "field_info": {"path": {"sensitive": False}},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={},
+            missing=["path"],
+            field_info={"path": {"sensitive": False}},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
 
@@ -98,8 +99,8 @@ class TestExecuteCreateCommand:
 
         def prompt_missing_fields(validation, config, namespace):
             prompt_called.append(True)
-            validation["present"]["path"] = "/prompted/path"
-            validation["missing"] = []
+            validation.present["path"] = "/prompted/path"
+            validation.missing.clear()
 
         def build_source_config(present, coll_name):
             return SourceConfig(
@@ -148,11 +149,11 @@ class TestExecuteCreateCommand:
     ):
         """Should handle creation errors gracefully."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"path": "/test"},
-            "missing": [],
-            "field_info": {},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"},
+            missing=[],
+            field_info={},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
         mock_create.side_effect = Exception("Creation failed")
@@ -201,11 +202,11 @@ class TestExecuteCreateCommand:
     ):
         """Should handle invalid collection verification."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"path": "/test"},
-            "missing": [],
-            "field_info": {},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"},
+            missing=[],
+            field_info={},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
 
@@ -256,11 +257,11 @@ class TestExecuteCreateCommand:
     ):
         """Should handle collection without updated_time."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"path": "/test"},
-            "missing": [],
-            "field_info": {},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"},
+            missing=[],
+            field_info={},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
 
@@ -315,11 +316,11 @@ class TestExecuteCreateCommand:
     ):
         """Should log verbose information in verbose mode."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"path": "/test"},
-            "missing": [],
-            "field_info": {"path": {"sensitive": False}},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"},
+            missing=[],
+            field_info={"path": {"sensitive": False}},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = True
 
@@ -372,11 +373,11 @@ class TestExecuteCreateCommand:
     ):
         """Should call verbose_pre_creation_log callback when provided."""
         mock_config = Mock()
-        mock_config.validate_requirements.return_value = {
-            "present": {"url": "https://test.com", "query": "test"},
-            "missing": [],
-            "field_info": {},
-        }
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"url": "https://test.com", "query": "test"},
+            missing=[],
+            field_info={},
+        )
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = True
 

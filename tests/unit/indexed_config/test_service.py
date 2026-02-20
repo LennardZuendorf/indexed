@@ -1,7 +1,12 @@
 """Tests for ConfigService class."""
 
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from pydantic import BaseModel, Field
+from indexed_config.errors import ConfigValidationError
 from indexed_config.service import ConfigService
 
 
@@ -56,7 +61,9 @@ def test_config_service_bind_validation_error():
     # Set invalid value (missing required field)
     service.set("test.path", {"wrong": "value"})
 
-    with pytest.raises(ValueError, match="Invalid config for 'test.path'"):
+    with pytest.raises(
+        (ValueError, ConfigValidationError), match="Invalid config for 'test.path'"
+    ):
         service.bind()
 
 
@@ -114,3 +121,92 @@ def test_config_service_instance_singleton():
 
     assert instance1 is instance2
     assert isinstance(instance1, ConfigService)
+
+
+class TestLoadRawModeResolution:
+    """Test that load_raw() resolves the storage mode correctly."""
+
+    def test_load_raw_with_mode_override_uses_store_read(self):
+        """load_raw() delegates to store.read() when mode_override is set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            result = service.load_raw()
+            assert result.get("test", {}).get("key") == "local_value"
+
+    def test_load_raw_without_override_resolves_mode(self):
+        """load_raw() resolves mode via WorkspaceManager when no override."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+
+            # Create only global config
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
+
+            # No local config exists → should resolve to global
+            with patch.object(Path, "home", return_value=global_home):
+                service = ConfigService(workspace=workspace)
+                result = service.load_raw()
+                assert result.get("test", {}).get("key") == "global_value"
+
+    def test_load_raw_without_override_uses_local_when_exists(self):
+        """load_raw() uses local mode when local config exists and no override."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+
+            # Create both configs
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
+
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
+
+            # Local config exists → resolve_storage_mode returns "local"
+            with patch.object(Path, "home", return_value=global_home):
+                service = ConfigService(workspace=workspace)
+                result = service.load_raw()
+                # Should read ONLY local, not merge
+                assert result.get("test", {}).get("key") == "local_value"
+
+
+class TestResolvedEnvPath:
+    """Test that EnvFileWriter gets the correct env path."""
+
+    def test_env_writer_uses_resolved_mode_path(self):
+        """EnvFileWriter path resolves based on storage mode."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+
+            with patch.object(Path, "home", return_value=global_home):
+                # No local config → resolves to global
+                service = ConfigService(workspace=workspace)
+                env_path = service._resolved_env_path()
+                expected = str(global_home / ".indexed" / ".env")
+                assert env_path == expected
+
+    def test_env_writer_uses_local_when_local_config_exists(self):
+        """EnvFileWriter path resolves to local when local config exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            global_home = Path(tmpdir) / "home"
+
+            # Create local config
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text("[test]")
+
+            with patch.object(Path, "home", return_value=global_home):
+                service = ConfigService(workspace=workspace)
+                env_path = service._resolved_env_path()
+                expected = str(workspace / ".indexed" / ".env")
+                assert env_path == expected

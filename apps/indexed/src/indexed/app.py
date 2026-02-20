@@ -20,7 +20,7 @@ from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_success  # noqa: E402
+from .utils.components import print_error, print_info, print_success  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_help_theme_styles,
@@ -44,30 +44,21 @@ app = typer.Typer(
 )
 
 
-def _parse_early_storage_flags() -> tuple[bool, bool]:
-    """Parse and remove --local/--global flags from sys.argv before Typer processes them."""
-    use_local, use_global = False, False
-    new_argv = [sys.argv[0]]
-
-    for arg in sys.argv[1:]:
-        if arg == "--local":
-            use_local = True
-        elif arg == "--global":
-            use_global = True
-        else:
-            new_argv.append(arg)
-
-    sys.argv[:] = new_argv
-    return use_local, use_global
-
-
-_EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = False, False
-from .utils.console import console as _prompt_console  # noqa: E402
-
-
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Use local .indexed/ storage",
+        rich_help_panel="Storage",
+    ),
+    global_: bool = typer.Option(
+        False,
+        "--global",
+        help="Use global ~/.indexed/ storage",
+        rich_help_panel="Storage",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -87,8 +78,6 @@ def _init_app(
     ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
-    global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-
     if (
         ctx.invoked_subcommand is None
         and not ctx.resilient_parsing
@@ -105,15 +94,20 @@ def _init_app(
     json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     setup_root_logger(level_str=level, json_mode=json_mode)
 
-    use_local, use_global = _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-
-    if use_local and use_global:
-        _prompt_console.print(
-            "[red]Error:[/red] Cannot use both --local and --global flags together."
-        )
+    if local and global_:
+        print_error("Cannot use both --local and --global flags together.")
         raise typer.Exit(1)
 
-    if use_local:
+    # Store resolved mode_override on ctx.obj for subcommands to access
+    ctx.ensure_object(dict)
+    if local:
+        ctx.obj["mode_override"] = "local"
+    elif global_:
+        ctx.obj["mode_override"] = "global"
+    else:
+        ctx.obj["mode_override"] = None
+
+    if local:
         from indexed_config import ensure_storage_dirs, get_local_root, has_local_config
 
         workspace = Path.cwd()
@@ -254,9 +248,7 @@ def migrate_data(
     from .utils.migration import has_legacy_data, migrate_legacy_data
 
     if not has_legacy_data():
-        console.print(
-            "[dim]No legacy data found at ./data/[/dim]\n[dim]Nothing to migrate.[/dim]"
-        )
+        print_info("No legacy data found at ./data/ — nothing to migrate.")
         return
 
     migrate_legacy_data(get_global_root(), console, dry_run=dry_run)
@@ -309,10 +301,7 @@ def __getattr__(name: str):
 
 
 def main() -> None:
-    """Initialize CLI, parse storage flags, and run app."""
-    global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-    _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = _parse_early_storage_flags()
-
+    """CLI entry point."""
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()
     app()

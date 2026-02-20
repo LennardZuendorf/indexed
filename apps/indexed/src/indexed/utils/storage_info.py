@@ -6,6 +6,7 @@ is being used for the current command.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -14,6 +15,8 @@ from rich.console import Console
 from .components.theme import (
     get_dim_style,
 )
+
+logger = logging.getLogger(__name__)
 
 
 StorageMode = Literal["global", "local"]
@@ -153,19 +156,21 @@ def display_storage_mode_for_command(console: Console) -> None:
         config_data = config_service.store.read()
         config_mode = config_data.get("storage", {}).get("mode")
     except Exception:
-        pass
+        logger.debug("Failed to read config mode from store", exc_info=True)
 
-    # Get mode override from global flags (set in app.py)
-    from ..app import _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-
+    # Get mode override from Typer context (set in app.py callback)
     mode_override = None
-    if _EARLY_USE_LOCAL:
-        mode_override = "local"
-    elif _EARLY_USE_GLOBAL:
-        mode_override = "global"
+    try:
+        import typer
+
+        ctx = typer.get_current_context(silent=True)
+        if ctx and ctx.obj:
+            mode_override = ctx.obj.get("mode_override")
+    except Exception:
+        logger.debug("Failed to get mode override from Typer context", exc_info=True)
 
     # Get workspace preference
-    workspace_pref = config_service.get_workspace_preference(workspace)
+    workspace_pref = config_service.get_workspace_preference()
 
     # Determine reason
     mode, reason = get_storage_mode_and_reason(

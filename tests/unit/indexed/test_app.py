@@ -8,66 +8,11 @@ import typer
 from typer.testing import CliRunner
 
 from indexed.app import (
-    _parse_early_storage_flags,
     _init_app,
     app,
 )
 
 runner = CliRunner()
-
-
-class TestParseEarlyStorageFlags:
-    """Test _parse_early_storage_flags function."""
-
-    def test_parse_no_flags(self):
-        """Should return (False, False) when no storage flags provided."""
-        # Save original argv
-        original_argv = sys.argv.copy()
-        try:
-            sys.argv = ["indexed", "index", "search", "test"]
-            use_local, use_global = _parse_early_storage_flags()
-            assert use_local is False
-            assert use_global is False
-        finally:
-            sys.argv = original_argv
-
-    def test_parse_local_flag(self):
-        """Should extract --local flag."""
-        original_argv = sys.argv.copy()
-        try:
-            sys.argv = ["indexed", "--local", "index", "search", "test"]
-            use_local, use_global = _parse_early_storage_flags()
-            assert use_local is True
-            assert use_global is False
-            # Flag should be removed from argv
-            assert "--local" not in sys.argv
-        finally:
-            sys.argv = original_argv
-
-    def test_parse_global_flag(self):
-        """Should extract --global flag."""
-        original_argv = sys.argv.copy()
-        try:
-            sys.argv = ["indexed", "--global", "index", "search", "test"]
-            use_local, use_global = _parse_early_storage_flags()
-            assert use_local is False
-            assert use_global is True
-            # Flag should be removed from argv
-            assert "--global" not in sys.argv
-        finally:
-            sys.argv = original_argv
-
-    def test_parse_both_flags_raises(self):
-        """Should error when both --local and --global are provided."""
-        original_argv = sys.argv.copy()
-        try:
-            sys.argv = ["indexed", "--local", "--global", "index", "search", "test"]
-            use_local, use_global = _parse_early_storage_flags()
-            # Both should be parsed, but error is handled in _init_app
-            assert use_local is True
-            assert use_global is True
-        finally:
-            sys.argv = original_argv
 
 
 class TestInitApp:
@@ -80,10 +25,18 @@ class TestInitApp:
         ctx = Mock()
         ctx.invoked_subcommand = "search"
         ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
 
-        _init_app(ctx, verbose=False, log_level=None, json_logs=False)
+        _init_app(
+            ctx,
+            local=False,
+            global_=False,
+            verbose=False,
+            log_level=None,
+            json_logs=False,
+        )
 
-        # Should have called setup_root_logger
         mock_setup_logger.assert_called_once()
 
     @patch("indexed.app.setup_root_logger")
@@ -93,10 +46,18 @@ class TestInitApp:
         ctx = Mock()
         ctx.invoked_subcommand = "search"
         ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
 
-        _init_app(ctx, verbose=True, log_level=None, json_logs=False)
+        _init_app(
+            ctx,
+            local=False,
+            global_=False,
+            verbose=True,
+            log_level=None,
+            json_logs=False,
+        )
 
-        # Should have called setup_root_logger with INFO level
         call_kwargs = mock_setup_logger.call_args.kwargs
         assert call_kwargs["level_str"] == "INFO"
 
@@ -107,42 +68,109 @@ class TestInitApp:
         ctx = Mock()
         ctx.invoked_subcommand = "search"
         ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
 
-        _init_app(ctx, verbose=False, log_level=None, json_logs=True)
+        _init_app(
+            ctx,
+            local=False,
+            global_=False,
+            verbose=False,
+            log_level=None,
+            json_logs=True,
+        )
 
-        # Should have called setup_root_logger with json_mode=True
         call_kwargs = mock_setup_logger.call_args.kwargs
         assert call_kwargs["json_mode"] is True
 
-    @patch("indexed.app._prompt_console")
+    @patch("indexed.app.print_error")
     @patch("indexed.app.setup_root_logger")
     def test_init_app_both_flags_error(
-        self, mock_setup_logger, mock_console, mock_getenv_defaults
+        self, mock_setup_logger, mock_print_error, mock_getenv_defaults
     ):
         """Should error when both --local and --global flags provided."""
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
 
-        # Simulate both flags being set globally
-        from indexed import app as app_module
+        with pytest.raises(typer.Exit):
+            _init_app(
+                ctx,
+                local=True,
+                global_=True,
+                verbose=False,
+                log_level=None,
+                json_logs=False,
+            )
 
-        original_local = app_module._EARLY_USE_LOCAL
-        original_global = app_module._EARLY_USE_GLOBAL
+        mock_print_error.assert_called_once()
 
-        try:
-            app_module._EARLY_USE_LOCAL = True
-            app_module._EARLY_USE_GLOBAL = True
+    @patch("indexed.app.setup_root_logger")
+    def test_init_app_local_sets_mode_override(
+        self, mock_setup_logger, mock_getenv_defaults
+    ):
+        """Should set mode_override to 'local' on ctx.obj when --local is passed."""
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
 
-            ctx = Mock()
-            ctx.invoked_subcommand = "search"
-            ctx.resilient_parsing = False
+        with patch("indexed_config.has_local_config", return_value=True):
+            _init_app(
+                ctx,
+                local=True,
+                global_=False,
+                verbose=False,
+                log_level=None,
+                json_logs=False,
+            )
 
-            with pytest.raises(typer.Exit):
-                _init_app(ctx, verbose=False, log_level=None, json_logs=False)
+        assert ctx.obj["mode_override"] == "local"
 
-            # Should have printed error message
-            mock_console.print.assert_called()
-        finally:
-            app_module._EARLY_USE_LOCAL = original_local
-            app_module._EARLY_USE_GLOBAL = original_global
+    @patch("indexed.app.setup_root_logger")
+    def test_init_app_global_sets_mode_override(
+        self, mock_setup_logger, mock_getenv_defaults
+    ):
+        """Should set mode_override to 'global' on ctx.obj when --global is passed."""
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
+
+        _init_app(
+            ctx,
+            local=False,
+            global_=True,
+            verbose=False,
+            log_level=None,
+            json_logs=False,
+        )
+
+        assert ctx.obj["mode_override"] == "global"
+
+    @patch("indexed.app.setup_root_logger")
+    def test_init_app_no_flags_sets_none(self, mock_setup_logger, mock_getenv_defaults):
+        """Should set mode_override to None when no storage flags provided."""
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        ctx.ensure_object = Mock()
+        ctx.obj = {}
+
+        _init_app(
+            ctx,
+            local=False,
+            global_=False,
+            verbose=False,
+            log_level=None,
+            json_logs=False,
+        )
+
+        assert ctx.obj["mode_override"] is None
 
 
 class TestAppCommands:
@@ -184,7 +212,6 @@ class TestMigrateCommand:
 
         result = runner.invoke(app, ["migrate"])
 
-        # Should complete without error
         assert result.exit_code == 0
         assert "legacy" in result.stdout.lower() or "no" in result.stdout.lower()
         mock_migrate.assert_not_called()
@@ -201,7 +228,6 @@ class TestMigrateCommand:
 
         result = runner.invoke(app, ["migrate"])
 
-        # Should complete successfully
         assert result.exit_code == 0
         mock_migrate.assert_called_once()
 
@@ -215,9 +241,7 @@ class TestMigrateCommand:
 
         result = runner.invoke(app, ["migrate", "--dry-run"])
 
-        # Should complete successfully
         assert result.exit_code == 0
-        # Verify migrate was called with dry_run=True
         call_kwargs = mock_migrate.call_args.kwargs
         assert call_kwargs.get("dry_run") is True
 
@@ -226,13 +250,9 @@ class TestMainFunction:
     """Test main entry point function."""
 
     @patch("indexed.app.app")
-    @patch("indexed.app._parse_early_storage_flags")
     @patch("indexed.app.print_indexed_banner")
-    def test_main_calls_parse_early_flags(
-        self, mock_banner, mock_parse_flags, mock_app
-    ):
-        """Should call _parse_early_storage_flags in main."""
-        mock_parse_flags.return_value = (False, False)
+    def test_main_calls_app(self, mock_banner, mock_app):
+        """Should call app() in main."""
         original_argv = sys.argv.copy()
         try:
             sys.argv = ["indexed", "--help"]
@@ -240,7 +260,6 @@ class TestMainFunction:
 
             main()
 
-            # Should have parsed early flags
-            mock_parse_flags.assert_called_once()
+            mock_app.assert_called_once()
         finally:
             sys.argv = original_argv

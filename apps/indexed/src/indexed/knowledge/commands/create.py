@@ -127,7 +127,7 @@ def create_files(
         validation: Dict[str, Any], config: ConfigService, ns: str
     ) -> None:
         """Prompt for missing Files-specific fields."""
-        if not validation["missing"]:
+        if not validation.missing:
             return
 
         if not is_verbose_mode():
@@ -137,8 +137,8 @@ def create_files(
             )
             console.print()
 
-        for field_name in validation["missing"]:
-            field_info = validation["field_info"][field_name]
+        for field_name in validation.missing:
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -179,7 +179,7 @@ def create_files(
 
             # Save using ConfigService
             config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(
@@ -346,7 +346,7 @@ def create_jira(
     ) -> None:
         """Prompt for missing Jira-specific fields."""
         # URL already handled above, exclude it from missing fields
-        missing_fields = [f for f in validation["missing"] if f != "url"]
+        missing_fields = [f for f in validation.missing if f != "url"]
         if not missing_fields:
             return
 
@@ -359,7 +359,7 @@ def create_jira(
             console.print()
 
         for field_name in missing_fields:
-            field_info = validation["field_info"][field_name]
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -385,7 +385,7 @@ def create_jira(
                 )
                 config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
 
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(
@@ -568,14 +568,14 @@ def create_confluence(
     ) -> None:
         """Prompt for missing Confluence-specific fields."""
         # URL already handled above, exclude it from missing fields
-        missing_fields = [f for f in validation["missing"] if f != "url"]
+        missing_fields = [f for f in validation.missing if f != "url"]
 
         # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
         # but at least one auth method is required by the connector.
         # Check if we need to prompt for auth credentials using shared function.
         if source_type == "confluence":
             if not check_server_auth_present(
-                validation["present"],
+                validation.present,
                 token_env_var="CONF_TOKEN",
                 login_env_var="CONF_LOGIN",
                 password_env_var="CONF_PASSWORD",
@@ -598,7 +598,7 @@ def create_confluence(
             console.print()
 
         for field_name in missing_fields:
-            field_info = validation["field_info"][field_name]
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -624,7 +624,7 @@ def create_confluence(
                 )
                 config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
 
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(

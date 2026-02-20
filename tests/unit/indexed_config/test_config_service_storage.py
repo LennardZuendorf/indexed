@@ -86,88 +86,6 @@ class TestWorkspacePreferences:
                 pref = service.get_workspace_preference()
                 assert pref is None
 
-    def test_set_workspace_preference_local(self):
-        """set_workspace_preference saves 'local' preference."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir) / "my_project"
-            workspace.mkdir()
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                service.set_workspace_preference("local")
-
-                # Read back the preference
-                pref = service.get_workspace_preference()
-                assert pref == "local"
-
-    def test_set_workspace_preference_global(self):
-        """set_workspace_preference saves 'global' preference."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir) / "my_project"
-            workspace.mkdir()
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                service.set_workspace_preference("global")
-
-                pref = service.get_workspace_preference()
-                assert pref == "global"
-
-    def test_clear_workspace_preference(self):
-        """clear_workspace_preference removes the preference."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir) / "my_project"
-            workspace.mkdir()
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                # Set then clear
-                service.set_workspace_preference("local")
-                assert service.get_workspace_preference() == "local"
-
-                result = service.clear_workspace_preference()
-                assert result is True
-                assert service.get_workspace_preference() is None
-
-    def test_clear_workspace_preference_returns_false_when_not_set(self):
-        """clear_workspace_preference returns False when no preference exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir) / "my_project"
-            workspace.mkdir()
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                result = service.clear_workspace_preference()
-                assert result is False
-
     def test_get_workspace_config(self):
         """get_workspace_config returns workspace configuration."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,7 +101,7 @@ class TestWorkspacePreferences:
                 ConfigService.reset()
 
                 service = ConfigService(workspace=workspace)
-                service.set_workspace_preference("local")
+                service.workspace_manager.set_preference("local")
 
                 # Get workspace config
                 config = service.get_workspace_config()
@@ -260,110 +178,7 @@ class TestStorageModeResolution:
             with patch.object(Path, "home", return_value=global_home):
                 ConfigService.reset()
                 service = ConfigService(workspace=workspace)
-                service.set_workspace_preference("local")
+                service.workspace_manager.set_preference("local")
 
                 mode = service.resolve_storage_mode()
                 assert mode == "local"
-
-
-class TestConflictDetection:
-    """Test config conflict detection."""
-
-    def test_has_config_conflict_false_when_no_local(self):
-        """has_config_conflict returns False when no local config."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text('[test]\nkey = "value"')
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-                assert service.has_config_conflict() is False
-
-    def test_has_config_conflict_true_when_different(self):
-        """has_config_conflict returns True when configs differ."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-
-            # Create local config
-            local_dir = workspace / ".indexed"
-            local_dir.mkdir(parents=True)
-            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
-
-            # Create global config with different value
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text('[test]\nkey = "global_value"')
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-                assert service.has_config_conflict() is True
-
-
-class TestPathAccessors:
-    """Test path accessor methods."""
-
-    def test_get_collections_path(self):
-        """get_collections_path returns resolved collections path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                path = service.get_collections_path()
-                # Default is global
-                expected = global_home / ".indexed" / "data" / "collections"
-                assert path == expected
-
-    def test_get_caches_path(self):
-        """get_caches_path returns resolved caches path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                path = service.get_caches_path()
-                expected = global_home / ".indexed" / "data" / "caches"
-                assert path == expected
-
-    def test_ensure_storage_dirs_creates_directories(self):
-        """ensure_storage_dirs creates the storage directories."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-
-            global_home = Path(tmpdir) / "home"
-            global_dir = global_home / ".indexed"
-            global_dir.mkdir(parents=True)
-            (global_dir / "config.toml").write_text("")
-
-            with patch.object(Path, "home", return_value=global_home):
-                ConfigService.reset()
-                service = ConfigService(workspace=workspace)
-
-                service.ensure_storage_dirs()
-
-                # Check directories were created
-                collections_path = global_home / ".indexed" / "data" / "collections"
-                caches_path = global_home / ".indexed" / "data" / "caches"
-                assert collections_path.exists()
-                assert caches_path.exists()

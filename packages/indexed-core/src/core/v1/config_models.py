@@ -111,9 +111,9 @@ class CoreV1SearchConfig(BaseModel):
 def get_default_collections_path() -> Path:
     """Get default collections path from storage config."""
     try:
-        from indexed_config import get_resolver
+        from indexed_config import ConfigService
 
-        resolver = get_resolver()
+        resolver = ConfigService.instance().resolver
         return resolver.get_collections_path()
     except ImportError:
         return Path.home() / ".indexed" / "data" / "collections"
@@ -122,9 +122,9 @@ def get_default_collections_path() -> Path:
 def get_default_caches_path() -> Path:
     """Get default caches path from storage config."""
     try:
-        from indexed_config import get_resolver
+        from indexed_config import ConfigService
 
-        resolver = get_resolver()
+        resolver = ConfigService.instance().resolver
         return resolver.get_caches_path()
     except ImportError:
         return Path.home() / ".indexed" / "data" / "caches"
