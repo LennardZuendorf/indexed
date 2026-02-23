@@ -9,6 +9,8 @@ from indexed.utils.conflict_prompt import (
     format_value,
     show_config_differences,
     prompt_storage_choice,
+    show_storage_mode_info,
+    handle_storage_conflict,
 )
 
 
@@ -240,6 +242,98 @@ class TestPromptStorageChoice:
             mock_prompt.return_value = choice
             result = prompt_storage_choice(mock_console)
             assert result in ["global", "local", "global_remember", "local_remember"]
+
+
+class TestShowStorageModeInfo:
+    """Test show_storage_mode_info function."""
+
+    def test_global_mode_not_remembered(self):
+        """Should show global storage path without 'preference saved'."""
+        mock_console = Mock(spec=Console)
+        show_storage_mode_info(mock_console, mode="global", remembered=False)
+        assert mock_console.print.called
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "~/.indexed" in printed
+        assert "preference saved" not in printed
+
+    def test_local_mode_not_remembered(self):
+        """Should show local storage path without 'preference saved'."""
+        mock_console = Mock(spec=Console)
+        show_storage_mode_info(mock_console, mode="local", remembered=False)
+        assert mock_console.print.called
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "./.indexed" in printed
+
+    def test_global_mode_remembered(self):
+        """Should show 'preference saved' when remembered=True."""
+        mock_console = Mock(spec=Console)
+        show_storage_mode_info(mock_console, mode="global", remembered=True)
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "preference saved" in printed
+
+    def test_local_mode_remembered(self):
+        """Should show local path with 'preference saved' when remembered=True."""
+        mock_console = Mock(spec=Console)
+        show_storage_mode_info(mock_console, mode="local", remembered=True)
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "./.indexed" in printed
+        assert "preference saved" in printed
+
+
+class TestHandleStorageConflict:
+    """Test handle_storage_conflict function."""
+
+    @patch("indexed.utils.conflict_prompt.prompt_storage_choice")
+    def test_global_choice_returns_global_false(self, mock_prompt):
+        """Choice 'global' → ('global', False)."""
+        mock_console = Mock(spec=Console)
+        mock_prompt.return_value = "global"
+        mode, remember = handle_storage_conflict(mock_console)
+        assert mode == "global"
+        assert remember is False
+
+    @patch("indexed.utils.conflict_prompt.prompt_storage_choice")
+    def test_local_choice_returns_local_false(self, mock_prompt):
+        """Choice 'local' → ('local', False)."""
+        mock_console = Mock(spec=Console)
+        mock_prompt.return_value = "local"
+        mode, remember = handle_storage_conflict(mock_console)
+        assert mode == "local"
+        assert remember is False
+
+    @patch("indexed.utils.conflict_prompt.prompt_storage_choice")
+    def test_global_remember_returns_global_true(self, mock_prompt):
+        """Choice 'global_remember' → ('global', True)."""
+        mock_console = Mock(spec=Console)
+        mock_prompt.return_value = "global_remember"
+        mode, remember = handle_storage_conflict(mock_console)
+        assert mode == "global"
+        assert remember is True
+
+    @patch("indexed.utils.conflict_prompt.prompt_storage_choice")
+    def test_local_remember_returns_local_true(self, mock_prompt):
+        """Choice 'local_remember' → ('local', True)."""
+        mock_console = Mock(spec=Console)
+        mock_prompt.return_value = "local_remember"
+        mode, remember = handle_storage_conflict(mock_console)
+        assert mode == "local"
+        assert remember is True
+
+    @patch("indexed.utils.conflict_prompt.prompt_storage_choice")
+    def test_passes_differences_and_workspace_path(self, mock_prompt):
+        """Should forward differences and workspace_path to prompt_storage_choice."""
+        mock_console = Mock(spec=Console)
+        mock_prompt.return_value = "global"
+        diffs = {"key": ("a", "b")}
+        ws = Path("/home/user/proj")
+
+        handle_storage_conflict(mock_console, differences=diffs, workspace_path=ws)
+
+        mock_prompt.assert_called_once_with(
+            console=mock_console,
+            differences=diffs,
+            workspace_path=ws,
+        )
 
 
 class TestEdgeCases:

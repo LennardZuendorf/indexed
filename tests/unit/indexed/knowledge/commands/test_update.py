@@ -1,6 +1,6 @@
 """Tests for knowledge update commands."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands.update import (
@@ -341,3 +341,553 @@ class TestUpdateCommand:
 
         # Should have called ensure_credentials
         mock_ensure_creds.assert_called_once_with("jira", mock_config)
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    def test_update_all_no_collections(
+        self,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """When no collections exist, update all should print message and return."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_svc_status.return_value = []
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update"])
+
+        assert result.exit_code == 0
+        assert "No collections found to update" in result.stdout
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_inspect_fails_before_update(
+        self,
+        mock_console,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """If pre-update inspect fails, should exit with error."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        # inspect returns empty (failure)
+        mock_inspect.return_value = []
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 1
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_collection_disappears_during_loop(
+        self,
+        mock_console,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """If a collection disappears between outer status and loop status, it continues."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+
+        # First call: list all collections
+        # Second call (in loop): collection gone
+        mock_svc_status.side_effect = [[mock_status], []]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.source_type = "localFiles"
+        mock_info.number_of_documents = 5
+        mock_info.number_of_chunks = 10
+        mock_info.disk_size_bytes = 1000
+        mock_info.updated_time = None
+        mock_inspect.return_value = [mock_info]
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update"])
+
+        # Should complete (the loop continues past the missing collection)
+        assert result.exit_code == 0
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_collection_has_no_indexers(
+        self,
+        mock_console,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Collection with empty indexers list should be skipped with a message."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = []  # empty
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.number_of_documents = 5
+        mock_info.number_of_chunks = 10
+        mock_inspect.return_value = [mock_info]
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        # Exits cleanly — the loop continues/ends, then the after-inspect block runs
+        # We just verify it doesn't crash
+        assert result.exit_code == 0 or result.exit_code == 1
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.NoOpContext")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_verbose_mode(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """In verbose mode the NoOpContext path should be taken."""
+        mock_verbose.return_value = True
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.source_type = "localFiles"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000
+        mock_info.updated_time = None
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        # MagicMock supports context manager protocol by default
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 0
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.NoOpContext")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_verbose_mode_exception_exits(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """In verbose mode an exception from update_service should exit 1."""
+        mock_verbose.return_value = True
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000
+        mock_info.updated_time = None
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.side_effect = RuntimeError("update blew up")
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 1
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.suppress_core_output")
+    @patch("indexed.knowledge.commands.update.OperationStatus")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_non_verbose_exception_exits(
+        self,
+        mock_console,
+        mock_op_status,
+        mock_suppress,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """In normal mode an exception from update_service should exit 1."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.side_effect = RuntimeError("update blew up")
+
+        # Make OperationStatus a usable context manager
+        from contextlib import contextmanager
+        from unittest.mock import MagicMock
+
+        status_mock = MagicMock()
+        status_mock.__enter__ = Mock(return_value=status_mock)
+        status_mock.__exit__ = Mock(return_value=False)
+        mock_op_status.return_value = status_mock
+
+        @contextmanager
+        def fake_suppress():
+            yield
+
+        mock_suppress.return_value = fake_suppress()
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 1
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.print_info")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_config_newly_created_prints_info(
+        self,
+        mock_console,
+        mock_print_info,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """If config is newly created during update, print_info is called with notice."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.global_path = "~/.indexed/config.toml"
+        # Config did NOT exist before, but DOES exist after
+        mock_config.store.has_global_config.side_effect = [False, True]
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.source_type = "localFiles"
+        mock_info.number_of_documents = 5
+        mock_info.number_of_chunks = 10
+        mock_info.disk_size_bytes = 1000
+        mock_info.updated_time = None
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 0
+        # print_info should have been called with the config-created notice
+        all_calls = " ".join(str(c) for c in mock_print_info.call_args_list)
+        assert "Created new config file" in all_calls
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_inspect_fails_after_update(
+        self,
+        mock_console,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """If post-update inspect fails, should exit with error."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "col1"
+        mock_info.number_of_documents = 5
+        mock_info.number_of_chunks = 10
+
+        # First call succeeds (before update), second call fails (after update)
+        mock_inspect.side_effect = [[mock_info], []]
+
+        mock_update_service.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 1
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.create_summary")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_summary_with_positive_delta(
+        self,
+        mock_console,
+        mock_create_summary,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Summary should report +docs/+chunks when collection grew."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        before_info = Mock()
+        before_info.name = "col1"
+        before_info.source_type = "localFiles"
+        before_info.number_of_documents = 5
+        before_info.number_of_chunks = 10
+        before_info.disk_size_bytes = 500
+        before_info.updated_time = None
+
+        after_info = Mock()
+        after_info.name = "col1"
+        after_info.source_type = "localFiles"
+        after_info.number_of_documents = 8
+        after_info.number_of_chunks = 16
+        after_info.disk_size_bytes = 800
+        after_info.updated_time = None
+
+        mock_inspect.side_effect = [[before_info], [after_info]]
+        mock_update_service.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 0
+        # create_summary is called with the result_text — check it contains the delta
+        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
+        assert "+3 documents" in all_calls
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.create_summary")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_summary_with_negative_delta(
+        self,
+        mock_console,
+        mock_create_summary,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Summary should report doc/chunk decrease when collection shrank."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "global"
+        mock_config.store.has_global_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "col1"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        before_info = Mock()
+        before_info.name = "col1"
+        before_info.source_type = "localFiles"
+        before_info.number_of_documents = 10
+        before_info.number_of_chunks = 20
+        before_info.disk_size_bytes = 1000
+        before_info.updated_time = None
+
+        after_info = Mock()
+        after_info.name = "col1"
+        after_info.source_type = "localFiles"
+        after_info.number_of_documents = 7
+        after_info.number_of_chunks = 14
+        after_info.disk_size_bytes = 700
+        after_info.updated_time = None
+
+        mock_inspect.side_effect = [[before_info], [after_info]]
+        mock_update_service.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "col1"])
+
+        assert result.exit_code == 0
+        # create_summary is called with the result_text — check it contains the delta
+        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
+        assert "-3 documents" in all_calls

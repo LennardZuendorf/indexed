@@ -248,6 +248,23 @@ class TestPromptMigration:
 
         assert result is True  # Returns True when no legacy data
 
+    @patch("indexed.utils.migration.has_legacy_data", return_value=True)
+    def test_target_already_has_data_skips_prompt(self, mock_has_legacy, tmp_path):
+        """Should inform user and return True when target already has collections."""
+        mock_console = Mock(spec=Console)
+        target_root = tmp_path / "target"
+        target_collections = target_root / "data" / "collections"
+        target_collections.mkdir(parents=True)
+        # Put something in the target so any() returns True
+        (target_collections / "existing-coll").mkdir()
+
+        result = prompt_migration(mock_console, target_root)
+
+        assert result is True
+        # Should have printed a note about existing data (no Confirm.ask called)
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "already has collections" in printed
+
 
 class TestMigrateLegacyData:
     """Test migrate_legacy_data function."""
@@ -414,6 +431,135 @@ class TestMigrateLegacyData:
 
         # Should have printed progress
         assert mock_console.print.called
+
+    def test_dry_run_returns_true_without_copying(self, tmp_path):
+        """dry_run=True should print message and return True without copying files."""
+        legacy_collections = tmp_path / "legacy" / "collections"
+        legacy_collections.mkdir(parents=True)
+        coll_dir = legacy_collections / "coll1"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{}")
+
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
+
+        with patch(
+            "indexed.utils.migration._get_legacy_collections_path",
+            return_value=legacy_collections,
+        ):
+            with patch(
+                "indexed.utils.migration.get_legacy_collections",
+                return_value=["coll1"],
+            ):
+                result = migrate_legacy_data(new_root, mock_console, dry_run=True)
+
+        assert result is True
+        # Target collections should NOT have been created
+        assert not (new_root / "data" / "collections").exists()
+        # Should have printed dry run message
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "ry run" in printed
+
+    @patch("indexed.utils.migration.print_warning")
+    def test_skips_collection_already_at_target(self, mock_warn, tmp_path):
+        """Should skip and warn when collection already exists at target."""
+        legacy_collections = tmp_path / "legacy" / "collections"
+        legacy_collections.mkdir(parents=True)
+        coll_dir = legacy_collections / "existing"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{}")
+        (coll_dir / "data.txt").write_text("data")
+
+        new_root = tmp_path / "new"
+        # Pre-create the target so the skip branch is taken
+        target_coll = new_root / "data" / "collections" / "existing"
+        target_coll.mkdir(parents=True)
+
+        mock_console = Mock(spec=Console)
+
+        with patch(
+            "indexed.utils.migration._get_legacy_collections_path",
+            return_value=legacy_collections,
+        ):
+            with patch(
+                "indexed.utils.migration.get_legacy_collections",
+                return_value=["existing"],
+            ):
+                result = migrate_legacy_data(new_root, mock_console)
+
+        assert result is True
+        mock_warn.assert_called_once()
+        assert "existing" in str(mock_warn.call_args)
+
+    def test_copies_cache_directory_items(self, tmp_path):
+        """Should copy directory and file items from legacy caches directory."""
+        legacy_collections = tmp_path / "legacy" / "collections"
+        legacy_collections.mkdir(parents=True)
+        coll_dir = legacy_collections / "coll"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{}")
+
+        # Legacy caches as directory with mixed contents
+        legacy_caches = tmp_path / "legacy" / "caches"
+        legacy_caches.mkdir(parents=True)
+        cache_subdir = legacy_caches / "cache_dir"
+        cache_subdir.mkdir()
+        (cache_subdir / "cache.dat").write_text("cache data")
+        (legacy_caches / "cache_file.dat").write_text("file cache")
+
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
+
+        with patch(
+            "indexed.utils.migration._get_legacy_collections_path",
+            return_value=legacy_collections,
+        ):
+            with patch(
+                "indexed.utils.migration._get_legacy_caches_path",
+                return_value=legacy_caches,
+            ):
+                with patch(
+                    "indexed.utils.migration.get_legacy_collections",
+                    return_value=["coll"],
+                ):
+                    result = migrate_legacy_data(new_root, mock_console)
+
+        assert result is True
+        target_caches = new_root / "data" / "caches"
+        assert (target_caches / "cache_dir").exists()
+        assert (target_caches / "cache_file.dat").exists()
+
+    def test_copies_cache_file_directly(self, tmp_path):
+        """Should copy legacy caches file directly when caches path is a file."""
+        legacy_collections = tmp_path / "legacy" / "collections"
+        legacy_collections.mkdir(parents=True)
+        coll_dir = legacy_collections / "coll"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{}")
+
+        # Legacy caches is a FILE (not a directory)
+        legacy_caches = tmp_path / "legacy" / "caches.dat"
+        legacy_caches.write_text("cache file data")
+
+        new_root = tmp_path / "new"
+        mock_console = Mock(spec=Console)
+
+        with patch(
+            "indexed.utils.migration._get_legacy_collections_path",
+            return_value=legacy_collections,
+        ):
+            with patch(
+                "indexed.utils.migration._get_legacy_caches_path",
+                return_value=legacy_caches,
+            ):
+                with patch(
+                    "indexed.utils.migration.get_legacy_collections",
+                    return_value=["coll"],
+                ):
+                    result = migrate_legacy_data(new_root, mock_console)
+
+        assert result is True
+        assert (new_root / "data" / "caches" / "caches.dat").exists()
 
 
 class TestEdgeCases:

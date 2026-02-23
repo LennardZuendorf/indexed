@@ -419,3 +419,57 @@ class TestExecuteCreateCommand:
 
         assert len(pre_creation_log_called) == 1
         assert pre_creation_log_called[0]["url"] == "https://test.com"
+
+    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    def test_execute_handles_status_exception(
+        self,
+        mock_print_error,
+        mock_status,
+        mock_create,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Should handle Exception raised by svc_status during verification."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"},
+            missing=[],
+            field_info={},
+        )
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_status.side_effect = Exception("Status lookup failed")
+
+        def build_source_config(present, coll_name):
+            return SourceConfig(
+                name=coll_name,
+                type="localFiles",
+                base_url_or_path=present["path"],
+                indexer="default",
+            )
+
+        with pytest.raises(typer.Exit):
+            execute_create_command(
+                collection="test-collection",
+                source_type="localFiles",
+                config_class=Mock,
+                namespace="sources.files",
+                cli_overrides={},
+                prompt_missing_fields=lambda v, c, n: None,
+                build_source_config=build_source_config,
+                success_message_suffix="from files",
+                verbose=False,
+                json_logs=False,
+                log_level=None,
+                use_cache=True,
+                force=False,
+            )
+
+        mock_print_error.assert_called()
+        assert "Failed to verify" in str(mock_print_error.call_args)

@@ -307,3 +307,325 @@ class TestCreateConfluence:
 
         mock_print_error.assert_called()
         mock_execute.assert_not_called()
+
+
+
+def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execute):
+    """Helper: call a create command, capture the prompt_missing_fields callback."""
+    captured = {}
+
+    def capture_kwargs(**kwargs):
+        captured.update(kwargs)
+
+    mock_execute.side_effect = capture_kwargs
+    mock_config = Mock()
+    mock_config_service.instance.return_value = mock_config
+    create_fn(**create_kwargs)
+    return captured.get("prompt_missing_fields"), mock_config
+
+
+class TestPromptMissingFilesFields:
+    """Test the prompt_missing_files_fields callback's output behaviour.
+
+    The function receives a validation object with .missing fields and
+    populates validation.present with user-supplied values. We test what
+    ends up in validation.present for various field types — that is the
+    observable contract: given the user types X, the result is Y.
+    """
+
+    _default_kwargs = dict(
+        collection="test", path=None, include=None, exclude=None,
+        fail_fast=False, use_cache=True, force=False,
+        verbose=False, json_logs=False, log_level=None,
+    )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_no_missing_fields_leaves_present_unchanged(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        """When validation.missing is empty, present stays empty."""
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(missing=[], field_info={}, present={})
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present == {}
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_user_input_for_path_stored_in_present(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "/my/path"
+        validation = SimpleNamespace(missing=["path"], field_info={"path": {}}, present={})
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["path"] == "/my/path"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_include_patterns_split_by_comma(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "*.md, *.py"
+        validation = SimpleNamespace(
+            missing=["include_patterns"], field_info={"include_patterns": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["include_patterns"] == ["*.md", "*.py"]
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_empty_include_patterns_defaults_to_match_all(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = ""
+        validation = SimpleNamespace(
+            missing=["include_patterns"], field_info={"include_patterns": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["include_patterns"] == [".*"]
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_exclude_patterns_split_by_comma(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "*.log, *.tmp"
+        validation = SimpleNamespace(
+            missing=["exclude_patterns"], field_info={"exclude_patterns": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["exclude_patterns"] == ["*.log", "*.tmp"]
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_empty_exclude_patterns_defaults_to_empty_list(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = ""
+        validation = SimpleNamespace(
+            missing=["exclude_patterns"], field_info={"exclude_patterns": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["exclude_patterns"] == []
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_yes_input_for_fail_fast_sets_true(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "yes"
+        validation = SimpleNamespace(
+            missing=["fail_fast"], field_info={"fail_fast": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["fail_fast"] is True
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_no_input_for_fail_fast_sets_false(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "no"
+        validation = SimpleNamespace(
+            missing=["fail_fast"], field_info={"fail_fast": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["fail_fast"] is False
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_unknown_field_uses_generic_prompt(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "custom_value"
+        validation = SimpleNamespace(
+            missing=["some_field"], field_info={"some_field": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["some_field"] == "custom_value"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    def test_verbose_mode_still_populates_present(
+        self, mock_verbose, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        mock_verbose.return_value = True
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "/verbose/path"
+        validation = SimpleNamespace(
+            missing=["path"], field_info={"path": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert validation.present["path"] == "/verbose/path"
+
+
+class TestPromptMissingJiraFields:
+    """Test prompt_missing_jira_fields callback: given user input, result is stored correctly."""
+
+    _jira_kwargs = dict(
+        collection="test-jira", url="https://company.atlassian.net", jql=None,
+        email=None, token=None, use_cache=True, force=False,
+        verbose=False, json_logs=False, log_level=None,
+    )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_only_url_missing_leaves_present_empty(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        """url is handled separately; if it's the only missing field, nothing is prompted."""
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_jira, self._jira_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(missing=["url"], field_info={}, present={})
+        prompt_fn(validation, mock_config, "sources.jira")
+        assert validation.present == {}
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.is_credential_field")
+    def test_jql_query_input_stored_in_present(
+        self, mock_is_credential, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        mock_is_credential.return_value = False
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_jira, self._jira_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "project = PROJ"
+        validation = SimpleNamespace(
+            missing=["query"], field_info={"query": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.jira")
+        assert validation.present["query"] == "project = PROJ"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.is_credential_field")
+    def test_unknown_field_uses_generic_prompt(
+        self, mock_is_credential, mock_console, mock_config_service, mock_execute
+    ):
+        from types import SimpleNamespace
+
+        mock_is_credential.return_value = False
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_jira, self._jira_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "some_value"
+        validation = SimpleNamespace(
+            missing=["custom_field"], field_info={"custom_field": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.jira")
+        assert validation.present["custom_field"] == "some_value"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.is_credential_field")
+    @patch("indexed.knowledge.commands.create.prompt_credential_field")
+    def test_credential_field_value_stored_in_present(
+        self, mock_prompt_cred, mock_is_credential, mock_console,
+        mock_config_service, mock_execute,
+    ):
+        from types import SimpleNamespace
+
+        mock_is_credential.return_value = True
+        mock_prompt_cred.return_value = "secret-token"
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_jira, self._jira_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(
+            missing=["api_token"], field_info={"api_token": {"sensitive": True}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.jira")
+        assert validation.present["api_token"] == "secret-token"
+
+
+class TestCreateModuleGetattr:
+    """Lazy __getattr__ in create module returns the correctly loaded object."""
+
+    def test_default_indexer_lazy_load_returns_value(self):
+        import sys
+        import indexed.knowledge.commands.create as create_mod
+
+        mock_constants = Mock()
+        mock_constants.DEFAULT_INDEXER = "flat"
+        with patch.dict(sys.modules, {"core.v1.constants": mock_constants}):
+            result = create_mod.__getattr__("DEFAULT_INDEXER")
+        assert result == "flat"
+
+    def test_source_config_lazy_load_returns_class(self):
+        import sys
+        import indexed.knowledge.commands.create as create_mod
+
+        MockSourceConfig = Mock()
+        mock_services = Mock()
+        mock_services.SourceConfig = MockSourceConfig
+        with patch.dict(sys.modules, {"core.v1.engine.services": mock_services}):
+            result = create_mod.__getattr__("SourceConfig")
+        assert result is MockSourceConfig

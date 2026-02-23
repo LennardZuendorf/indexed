@@ -120,3 +120,76 @@ class TestInspectCollectionsCommand:
         # Should show a JSON array with at least one of the names
         assert result.stdout.strip().startswith("[")
         assert '"docs"' in result.stdout or '"jira"' in result.stdout
+
+    def test_inspect_specific_collection_rich_output(self, monkeypatch):
+        """Inspecting a specific collection without --json shows rich panel output."""
+        coll = _make_collection("docs")
+
+        def fake_inspect(names=None):
+            return [coll]
+
+        monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0
+        assert "docs" in result.stdout
+
+    def test_list_all_collections_verbose(self, monkeypatch):
+        """Listing with --verbose shows verbose detail for each collection."""
+        collections = [
+            _make_collection("docs", docs=3, chunks=5),
+            _make_collection("jira", source_type="jira", docs=2, chunks=4),
+        ]
+
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: collections)
+
+        result = runner.invoke(inspect_cmd.app, ["--verbose"])
+
+        assert result.exit_code == 0
+        assert "docs" in result.stdout
+        assert "jira" in result.stdout
+
+    def test_verbose_list_single_collection(self, monkeypatch):
+        """Verbose list with one collection uses singular 'Collection'."""
+        collections = [_make_collection("docs")]
+
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: collections)
+
+        result = runner.invoke(inspect_cmd.app, ["--verbose"])
+
+        assert result.exit_code == 0
+        assert "docs" in result.stdout
+
+    def test_inspect_specific_collection_found_with_documents(self, monkeypatch):
+        """Inspecting a found collection with documents should display it."""
+        coll = _make_collection("docs", docs=5, chunks=10)
+
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0
+
+    def test_verbose_list_with_size_info(self, monkeypatch):
+        """Verbose listing should include size information when disk_size_bytes is set."""
+        from core.v1.engine.services import CollectionInfo
+
+        coll = CollectionInfo(
+            name="sized-collection",
+            source_type="localFiles",
+            relative_path="/data",
+            number_of_documents=10,
+            number_of_chunks=20,
+            disk_size_bytes=2048,
+            index_size_bytes=1024,
+            created_time="2025-01-01T00:00:00Z",
+            updated_time="2025-01-02T00:00:00Z",
+        )
+
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["--verbose"])
+
+        assert result.exit_code == 0
+        assert "sized-collection" in result.stdout

@@ -6,6 +6,8 @@ from unittest.mock import Mock, patch
 from indexed.utils.progress_bar import (
     set_cli_progress,
     clear_cli_progress,
+    wrap_generator_with_progress_bar,
+    wrap_iterator_with_progress_bar,
     create_progress_callback,
     create_progress_update_callback,
     create_standard_progress,
@@ -314,3 +316,127 @@ class TestProgressBarIntegration:
 
         # Should have called update for each progress report
         assert mock_status.update.call_count == 4
+
+
+class TestWrapGeneratorWithProgressBar:
+    """Test wrap_generator_with_progress_bar generator function."""
+
+    def test_cli_integrated_path_yields_items(self):
+        """Should yield all items using CLI-integrated progress when available."""
+        mock_progress = Mock()
+        mock_progress.add_task.return_value = 0
+        mock_console = Mock()
+
+        set_cli_progress(mock_progress, mock_console)
+
+        result = list(wrap_generator_with_progress_bar(iter([10, 20, 30]), 3))
+
+        assert result == [10, 20, 30]
+        mock_progress.add_task.assert_called_once()
+        assert mock_progress.update.call_count == 3
+
+    def test_cli_integrated_path_adds_named_task(self):
+        """Should add task with given name when CLI progress is set."""
+        mock_progress = Mock()
+        mock_progress.add_task.return_value = 0
+        mock_console = Mock()
+
+        set_cli_progress(mock_progress, mock_console)
+
+        list(wrap_generator_with_progress_bar(iter([1, 2]), 2, progress_bar_name="Indexing"))
+
+        mock_progress.add_task.assert_called_once_with("Indexing", total=2)
+
+    def test_fallback_path_yields_items(self):
+        """Should yield all items using standalone progress when CLI not set."""
+        clear_cli_progress()
+
+        result = list(wrap_generator_with_progress_bar(iter([1, 2, 3, 4]), 4))
+
+        assert result == [1, 2, 3, 4]
+
+    def test_fallback_path_empty_generator(self):
+        """Should handle empty generator without error."""
+        clear_cli_progress()
+
+        result = list(wrap_generator_with_progress_bar(iter([]), 0))
+
+        assert result == []
+
+
+class TestWrapIteratorWithProgressBar:
+    """Test wrap_iterator_with_progress_bar generator function."""
+
+    def test_cli_integrated_path_yields_items(self):
+        """Should yield all items using CLI-integrated progress when available."""
+        mock_progress = Mock()
+        mock_progress.add_task.return_value = 0
+        mock_console = Mock()
+
+        set_cli_progress(mock_progress, mock_console)
+
+        items = [10, 20, 30]
+        result = list(wrap_iterator_with_progress_bar(items))
+
+        assert result == [10, 20, 30]
+        mock_progress.add_task.assert_called_once()
+        assert mock_progress.update.call_count == 3
+
+    def test_cli_integrated_uses_len_if_available(self):
+        """Should use len() for total when iterator supports it."""
+        mock_progress = Mock()
+        mock_progress.add_task.return_value = 0
+        mock_console = Mock()
+
+        set_cli_progress(mock_progress, mock_console)
+
+        items = [1, 2, 3]  # list has __len__
+        list(wrap_iterator_with_progress_bar(items, "Loading"))
+
+        _, kwargs = mock_progress.add_task.call_args
+        assert kwargs.get("total") == 3
+
+    def test_fallback_path_yields_items(self):
+        """Should yield all items using standalone progress when CLI not set."""
+        clear_cli_progress()
+
+        result = list(wrap_iterator_with_progress_bar([5, 6, 7]))
+
+        assert result == [5, 6, 7]
+
+    def test_fallback_path_empty_iterator(self):
+        """Should handle empty iterator without error."""
+        clear_cli_progress()
+
+        result = list(wrap_iterator_with_progress_bar([]))
+
+        assert result == []
+
+
+class TestCreateOperationProgressExtended:
+    """Additional tests for create_operation_progress context manager."""
+
+    @patch("indexed.utils.progress_bar.time")
+    def test_slow_path_updates_progress_to_complete(self, mock_time):
+        """When operation is slow (elapsed >= 0.2s), should update progress to completed."""
+        mock_time.time.side_effect = [0.0, 1.0]
+
+        with create_operation_progress("slow-op") as (progress, task_id, callback):
+            pass
+
+        # slow path calls sleep(0.2)
+        mock_time.sleep.assert_called_with(0.2)
+
+    @patch("indexed.utils.progress_bar.set_cli_progress")
+    @patch("indexed.utils.progress_bar.clear_cli_progress")
+    def test_brackets_no_quotes_extracts_name(self, mock_clear, mock_set):
+        """Should extract name from styled text without quotes via bracket fallback."""
+        # Operation desc has brackets but no quoted text → uses bracket regex fallback
+        with create_operation_progress("[bold]my-collection[/bold]", total=100) as (
+            progress,
+            task_id,
+            callback,
+        ):
+            pass
+
+        mock_clear.assert_called()

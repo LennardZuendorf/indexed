@@ -159,3 +159,295 @@ class TestFormatSearchResults:
         assert "(1 results)" in joined
         # And a total summary line
         assert "Total:" in joined or "Total" in joined
+
+    def test_format_search_results_no_content_calls_compact(self, monkeypatch):
+        """show_content=False should use the compact display path."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {"results": [{"id": "doc1"}]},
+        }
+
+        search_cmd.format_search_results("query", results=results, show_content=False)
+
+        joined = "\n".join(outputs)
+        # The compact path should list the collection
+        assert "coll1" in joined
+
+    def test_show_top_result_split_cards_non_dict_content(self, monkeypatch):
+        """When chunk content is not a dict, it should be coerced to string."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(str(args))
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        chunk_info = search_cmd.ChunkInfo(
+            collection="col",
+            doc_id="doc1",
+            path="/p",
+            chunk={"score": 0.1, "content": "plain string content"},
+            chunk_index=1,
+        )
+        # Should not raise even with string content
+        search_cmd._show_top_result_split_cards(chunk_info)
+
+    def test_show_compact_match_non_float_score(self, monkeypatch):
+        """_show_compact_match with a non-float score should not raise."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        chunk_info = search_cmd.ChunkInfo(
+            collection="col",
+            doc_id="doc1",
+            path="/p",
+            chunk={"score": "high", "content": {"indexedData": "text"}},
+            chunk_index=1,
+        )
+        search_cmd._show_compact_match(chunk_info)
+
+        joined = "\n".join(outputs)
+        assert "col" in joined
+        assert "high" in joined
+
+    def test_show_all_results_compact_skips_error_and_empty(self, monkeypatch):
+        """Collections with errors or empty results should be skipped."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "error-coll": {"error": "unavailable"},
+            "empty-coll": {"results": []},
+        }
+        search_cmd._show_all_results_compact(results, limit=10)
+
+        joined = "\n".join(outputs)
+        # Neither collection should appear as a header
+        assert "error-coll" not in joined
+        assert "empty-coll" not in joined
+        # Should show no results message
+        assert "No results found" in joined
+
+    def test_format_search_results_compact_with_results(self, monkeypatch):
+        """format_search_results_compact should list docs with scores and show total."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {"id": "doc-a", "score": 0.75},
+                    {"id": "doc-b"},  # no score
+                ]
+            },
+        }
+        search_cmd.format_search_results_compact("query", results=results, limit=10)
+
+        joined = "\n".join(outputs)
+        assert "coll1" in joined
+        assert "doc-a" in joined
+        assert "doc-b" in joined
+        assert "0.7500" in joined
+        assert "Total:" in joined
+
+
+class TestSearchCommandExecution:
+    """Tests covering the search command's execution loop."""
+
+    def _make_status(self, name: str):
+        """Return a minimal mock status object."""
+        from unittest.mock import Mock
+
+        s = Mock()
+        s.name = name
+        s.indexers = ["default"]
+        return s
+
+    def test_search_all_collections_runs_and_formats(self, monkeypatch):
+        """Searching all collections should call svc_search and display results."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("col1"), self._make_status("col2")]
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+
+        fake_source_config = Mock()
+        monkeypatch.setattr(
+            search_cmd,
+            "SourceConfig",
+            lambda **kw: fake_source_config,
+        )
+
+        search_results: Dict[str, Any] = {
+            "col1": {"results": []},
+            "col2": {"results": []},
+        }
+
+        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+            return search_results
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        # suppress_core_output and create_operation_progress need to be contexts
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_suppress():
+            yield
+
+        @contextmanager
+        def fake_progress(desc):
+            progress = Mock()
+            task_id = 0
+            callback = lambda *a, **kw: None
+            yield progress, task_id, callback
+
+        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
+        monkeypatch.setattr(
+            search_cmd, "create_operation_progress", fake_progress
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+        assert "Searching for" in result.stdout
+
+    def test_search_specific_collection_compact_output(self, monkeypatch):
+        """--compact flag should use compact formatter path."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("myCol")]
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+
+        fake_source_config = Mock()
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
+
+        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+            return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_suppress():
+            yield
+
+        @contextmanager
+        def fake_progress(desc):
+            yield Mock(), 0, lambda *a, **kw: None
+
+        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
+        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
+
+        result = runner.invoke(
+            search_cmd.app, ["my-query", "--collection", "myCol", "--compact"]
+        )
+
+        assert result.exit_code == 0
+
+    def test_search_verbose_mode_uses_noop_context(self, monkeypatch):
+        """In verbose mode the NoOpContext path should be taken."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("col1")]
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: True)
+
+        fake_source_config = Mock()
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
+
+        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_noop():
+            yield
+
+        monkeypatch.setattr(search_cmd, "NoOpContext", fake_noop)
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+
+    def test_search_no_content_flag(self, monkeypatch):
+        """--no-content flag should pass show_content=False to formatter."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("col1")]
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+
+        fake_source_config = Mock()
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
+
+        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+            return {"col1": {"results": [{"id": "d1"}]}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_suppress():
+            yield
+
+        @contextmanager
+        def fake_progress(desc):
+            yield Mock(), 0, lambda *a, **kw: None
+
+        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
+        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])
+
+        assert result.exit_code == 0
