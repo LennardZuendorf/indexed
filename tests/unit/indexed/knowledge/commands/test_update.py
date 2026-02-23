@@ -645,7 +645,6 @@ class TestUpdateCommand:
 
         # Make OperationStatus a usable context manager
         from contextlib import contextmanager
-        from unittest.mock import MagicMock
 
         status_mock = MagicMock()
         status_mock.__enter__ = Mock(return_value=status_mock)

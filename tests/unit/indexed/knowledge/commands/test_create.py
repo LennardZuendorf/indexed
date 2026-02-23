@@ -309,7 +309,6 @@ class TestCreateConfluence:
         mock_execute.assert_not_called()
 
 
-
 def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execute):
     """Helper: call a create command, capture the prompt_missing_fields callback."""
     captured = {}
@@ -334,9 +333,16 @@ class TestPromptMissingFilesFields:
     """
 
     _default_kwargs = dict(
-        collection="test", path=None, include=None, exclude=None,
-        fail_fast=False, use_cache=True, force=False,
-        verbose=False, json_logs=False, log_level=None,
+        collection="test",
+        path=None,
+        include=None,
+        exclude=None,
+        fail_fast=False,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
     )
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
@@ -367,7 +373,9 @@ class TestPromptMissingFilesFields:
             create_files, self._default_kwargs, mock_config_service, mock_execute
         )
         mock_console.input.return_value = "/my/path"
-        validation = SimpleNamespace(missing=["path"], field_info={"path": {}}, present={})
+        validation = SimpleNamespace(
+            missing=["path"], field_info={"path": {}}, present={}
+        )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["path"] == "/my/path"
 
@@ -384,7 +392,9 @@ class TestPromptMissingFilesFields:
         )
         mock_console.input.return_value = "*.md, *.py"
         validation = SimpleNamespace(
-            missing=["include_patterns"], field_info={"include_patterns": {}}, present={}
+            missing=["include_patterns"],
+            field_info={"include_patterns": {}},
+            present={},
         )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["include_patterns"] == ["*.md", "*.py"]
@@ -402,7 +412,9 @@ class TestPromptMissingFilesFields:
         )
         mock_console.input.return_value = ""
         validation = SimpleNamespace(
-            missing=["include_patterns"], field_info={"include_patterns": {}}, present={}
+            missing=["include_patterns"],
+            field_info={"include_patterns": {}},
+            present={},
         )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["include_patterns"] == [".*"]
@@ -420,7 +432,9 @@ class TestPromptMissingFilesFields:
         )
         mock_console.input.return_value = "*.log, *.tmp"
         validation = SimpleNamespace(
-            missing=["exclude_patterns"], field_info={"exclude_patterns": {}}, present={}
+            missing=["exclude_patterns"],
+            field_info={"exclude_patterns": {}},
+            present={},
         )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["exclude_patterns"] == ["*.log", "*.tmp"]
@@ -438,7 +452,9 @@ class TestPromptMissingFilesFields:
         )
         mock_console.input.return_value = ""
         validation = SimpleNamespace(
-            missing=["exclude_patterns"], field_info={"exclude_patterns": {}}, present={}
+            missing=["exclude_patterns"],
+            field_info={"exclude_patterns": {}},
+            present={},
         )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["exclude_patterns"] == []
@@ -522,9 +538,16 @@ class TestPromptMissingJiraFields:
     """Test prompt_missing_jira_fields callback: given user input, result is stored correctly."""
 
     _jira_kwargs = dict(
-        collection="test-jira", url="https://company.atlassian.net", jql=None,
-        email=None, token=None, use_cache=True, force=False,
-        verbose=False, json_logs=False, log_level=None,
+        collection="test-jira",
+        url="https://company.atlassian.net",
+        jql=None,
+        email=None,
+        token=None,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
     )
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
@@ -589,8 +612,12 @@ class TestPromptMissingJiraFields:
     @patch("indexed.knowledge.commands.create.is_credential_field")
     @patch("indexed.knowledge.commands.create.prompt_credential_field")
     def test_credential_field_value_stored_in_present(
-        self, mock_prompt_cred, mock_is_credential, mock_console,
-        mock_config_service, mock_execute,
+        self,
+        mock_prompt_cred,
+        mock_is_credential,
+        mock_console,
+        mock_config_service,
+        mock_execute,
     ):
         from types import SimpleNamespace
 
@@ -600,7 +627,9 @@ class TestPromptMissingJiraFields:
             create_jira, self._jira_kwargs, mock_config_service, mock_execute
         )
         validation = SimpleNamespace(
-            missing=["api_token"], field_info={"api_token": {"sensitive": True}}, present={}
+            missing=["api_token"],
+            field_info={"api_token": {"sensitive": True}},
+            present={},
         )
         prompt_fn(validation, mock_config, "sources.jira")
         assert validation.present["api_token"] == "secret-token"

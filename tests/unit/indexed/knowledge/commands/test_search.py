@@ -318,7 +318,14 @@ class TestSearchCommandExecution:
             "col2": {"results": []},
         }
 
-        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+        ):
             return search_results
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
@@ -338,9 +345,7 @@ class TestSearchCommandExecution:
             yield progress, task_id, callback
 
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        monkeypatch.setattr(
-            search_cmd, "create_operation_progress", fake_progress
-        )
+        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
 
         result = runner.invoke(search_cmd.app, ["my-query"])
 
@@ -361,7 +366,14 @@ class TestSearchCommandExecution:
         fake_source_config = Mock()
         monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
 
-        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+        ):
             return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
@@ -399,7 +411,14 @@ class TestSearchCommandExecution:
         fake_source_config = Mock()
         monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
 
-        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+        ):
             return {"col1": {"results": []}}
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
@@ -430,7 +449,14 @@ class TestSearchCommandExecution:
         fake_source_config = Mock()
         monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
 
-        def fake_svc_search(query, configs, max_docs, max_chunks, include_matched_chunks, progress_callback=None):
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+        ):
             return {"col1": {"results": [{"id": "d1"}]}}
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)

@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from indexed.utils.format import format_time, format_size, _try_parse_to_datetime
 
@@ -86,7 +85,9 @@ class TestFormatTime:
 
     def test_no_timezone_assumes_utc(self):
         # Use UTC now then strip timezone to simulate a naive UTC timestamp
-        dt_naive = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=30)
+        dt_naive = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+            seconds=30
+        )
         ts = dt_naive.strftime("%Y-%m-%dT%H:%M:%S")
         result = format_time(ts)
         assert result == "just now"

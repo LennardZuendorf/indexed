@@ -5,7 +5,6 @@ import warnings
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from indexed.connectors import (
     validate_connector_compatibility,

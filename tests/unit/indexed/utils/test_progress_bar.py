@@ -343,7 +343,11 @@ class TestWrapGeneratorWithProgressBar:
 
         set_cli_progress(mock_progress, mock_console)
 
-        list(wrap_generator_with_progress_bar(iter([1, 2]), 2, progress_bar_name="Indexing"))
+        list(
+            wrap_generator_with_progress_bar(
+                iter([1, 2]), 2, progress_bar_name="Indexing"
+            )
+        )
 
         mock_progress.add_task.assert_called_once_with("Indexing", total=2)
 
