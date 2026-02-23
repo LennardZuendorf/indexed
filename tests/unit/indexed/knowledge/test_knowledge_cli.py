@@ -1,6 +1,5 @@
 """Tests for knowledge CLI docs command."""
 
-import pytest
 from unittest.mock import patch
 from typer.testing import CliRunner
 

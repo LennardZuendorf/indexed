@@ -513,9 +513,7 @@ class TestInspectCommandErrors:
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     @patch("indexed.mcp.cli.subprocess.run")
-    def test_inspect_parse_failure_falls_back(
-        self, mock_run, mock_execute
-    ) -> None:
+    def test_inspect_parse_failure_falls_back(self, mock_run, mock_execute) -> None:
         """When JSON parse fails, inspect falls back to FastMCP text output."""
         mock_run.return_value = MagicMock(
             stdout="not valid json output",

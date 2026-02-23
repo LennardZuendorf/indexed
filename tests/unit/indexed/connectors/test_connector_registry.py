@@ -5,7 +5,6 @@ import warnings
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from indexed.connectors import (
     validate_connector_compatibility,
@@ -66,7 +65,7 @@ class TestValidateConnectorCompatibility:
     def test_unparseable_version_returns_compatible_with_warning(self):
         cls = _make_connector("myconn", min_core_version="not-semver")
         with patch.dict(sys.modules, {"core.v1": _core_mock("also-not-semver")}):
-            with warnings.catch_warnings(record=True) as w:
+            with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
                 is_compat, _ = validate_connector_compatibility(cls)
         assert is_compat is True
