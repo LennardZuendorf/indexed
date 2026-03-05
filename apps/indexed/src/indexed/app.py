@@ -167,6 +167,13 @@ app.command(
     help="Remove one or more Collections",
 )(knowledge.remove.remove)
 
+# Short aliases (hidden — not shown in help)
+app.add_typer(knowledge.create.app, name="create", hidden=True)
+app.command("search", hidden=True)(knowledge.search.search)
+app.command("inspect", hidden=True)(knowledge.inspect.inspect_collections)
+app.command("update", hidden=True)(knowledge.update.update)
+app.command("remove", hidden=True)(knowledge.remove.remove)
+
 app.add_typer(
     config.app,
     name="config",

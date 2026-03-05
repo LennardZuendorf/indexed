@@ -57,11 +57,25 @@ class DocumentCollectionCreator:
         )
 
         if len(document_ids) == 0:
-            logger.warning(
-                "No documents found for collection creation, so it will be not created."
-            )
             self.persister.remove_folder(self.collection_name)
-            return
+            reader = self.document_reader
+            if hasattr(reader, "reader"):
+                reader = reader.reader
+            details = []
+            base_path = getattr(reader, "base_path", None)
+            include_patterns = getattr(reader, "include_patterns", None)
+            exclude_patterns = getattr(reader, "exclude_patterns", None)
+            if base_path:
+                details.append(f"source path: {base_path}")
+            if include_patterns is not None:
+                details.append(f"include patterns: {include_patterns}")
+            if exclude_patterns is not None:
+                details.append(f"exclude patterns: {exclude_patterns}")
+            detail_str = f" ({', '.join(details)})" if details else ""
+            raise ValueError(
+                f"No documents found for collection '{self.collection_name}'{detail_str}. "
+                "Check that the source path exists and contains readable files."
+            )
 
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_new_collection(document_ids),

@@ -276,7 +276,7 @@ def inspect_collections(
 
         if not collections:
             console.print("\nNo collections found")
-            console.print("\n[dim]Get started: indexed add[/dim]")
+            console.print("\n[dim]Get started: indexed index create [source][/dim]")
             return
 
         # Format and display list
