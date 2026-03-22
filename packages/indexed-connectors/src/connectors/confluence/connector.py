@@ -18,8 +18,8 @@ from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
 from .confluence_document_reader import ConfluenceDocumentReader
 from .confluence_document_converter import ConfluenceDocumentConverter
-from .confluence_cloud_document_reader import ConfluenceCloudDocumentReader
 from .confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
+from .async_confluence_cloud_reader import AsyncConfluenceCloudDocumentReader
 from .schema import ConfluenceConfig, ConfluenceCloudConfig
 
 
@@ -287,8 +287,8 @@ class ConfluenceCloudConnector:
         self._query = query
         self._read_all_comments = read_all_comments
 
-        # Initialize reader and converter
-        self._reader = ConfluenceCloudDocumentReader(
+        # Use async reader for concurrent comment fetching
+        self._reader = AsyncConfluenceCloudDocumentReader(
             base_url=url,
             query=query,
             email=email,
@@ -298,7 +298,7 @@ class ConfluenceCloudConnector:
         self._converter = ConfluenceCloudDocumentConverter()
 
     @property
-    def reader(self) -> ConfluenceCloudDocumentReader:
+    def reader(self) -> AsyncConfluenceCloudDocumentReader:
         """Return the document reader instance."""
         return self._reader
 
