@@ -89,8 +89,6 @@ class AsyncJiraCloudDocumentReader:
 
     async def _read_all_async(self) -> list:
         """Fetch all issues using concurrent batch requests."""
-        # First, get total count
-        total = 0
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
 
         async with httpx.AsyncClient(

@@ -34,7 +34,6 @@ class SentenceEmbedder:
             texts,
             batch_size=batch_size,
             show_progress_bar=len(texts) > 100,
-            normalize_embeddings=True,
             convert_to_numpy=True,
         )
 

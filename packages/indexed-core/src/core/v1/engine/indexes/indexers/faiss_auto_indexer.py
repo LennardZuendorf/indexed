@@ -8,6 +8,8 @@ Selects the optimal FAISS index type:
 
 import numpy as np
 
+from .faiss_indexer import FaissIndexer
+
 
 def _create_faiss_index(dimension: int, num_vectors: int = 0):
     """Select optimal FAISS index type based on expected collection size."""
@@ -41,28 +43,24 @@ def _set_search_params(index):
         index.hnsw.efSearch = 128
 
 
-class FaissAutoIndexer:
+class FaissAutoIndexer(FaissIndexer):
     """FAISS indexer that auto-selects the best index type based on data size.
 
-    For new collections, call `build_index(ids, texts)` to create an optimized
-    index. For loaded collections, the existing index type is preserved.
+    Inherits search/serialize/remove from FaissIndexer. Overrides __init__
+    to defer index creation until data size is known, and index_texts to
+    select the optimal index type on first call.
     """
 
     def __init__(self, name, embedder, serialized_index=None):
-        import faiss
-
-        self.name = name
-        self.embedder = embedder
         if serialized_index is not None:
-            self.faiss_index = faiss.deserialize_index(serialized_index)
+            super().__init__(name, embedder, serialized_index)
             _set_search_params(self.faiss_index)
         else:
-            # Defer index creation until we know the data size
+            # Skip parent __init__ to defer index creation
+            self.name = name
+            self.embedder = embedder
             self.faiss_index = None
             self._dimension = embedder.get_number_of_dimensions()
-
-    def get_name(self):
-        return self.name
 
     def index_texts(self, ids, texts):
         import faiss
@@ -70,30 +68,11 @@ class FaissAutoIndexer:
         embeddings = self.embedder.embed_batch(texts, batch_size=64)
 
         if self.faiss_index is None:
-            num_vectors = len(ids)
-            inner_index = _create_faiss_index(self._dimension, num_vectors)
+            inner_index = _create_faiss_index(self._dimension, len(ids))
 
-            # IVF indexes require training
-            if hasattr(inner_index, "train"):
-                if not inner_index.is_trained:
-                    inner_index.train(embeddings)
+            if hasattr(inner_index, "train") and not inner_index.is_trained:
+                inner_index.train(embeddings)
 
             self.faiss_index = faiss.IndexIDMap(inner_index)
 
         self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
-
-    def remove_ids(self, ids):
-        self.faiss_index.remove_ids(ids)
-
-    def serialize(self):
-        import faiss
-
-        return faiss.serialize_index(self.faiss_index)
-
-    def search(self, text, number_of_results=10):
-        return self.faiss_index.search(
-            np.expand_dims(self.embedder.embed(text), axis=0), number_of_results
-        )
-
-    def get_size(self):
-        return self.faiss_index.ntotal

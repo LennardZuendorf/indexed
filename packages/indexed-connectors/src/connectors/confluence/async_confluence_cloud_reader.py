@@ -5,21 +5,26 @@ instances with many pages containing comments.
 """
 
 import asyncio
-import re
-import urllib.parse
 from typing import Optional
 
 import httpx
 from loguru import logger
 
-from .confluence_cloud_document_reader import ConfluenceCloudAPIError
+from .confluence_cloud_document_reader import (
+    ConfluenceCloudAPIError,
+    ConfluenceCloudDocumentReader,
+)
+
+# Window size for concurrent comment fetching to limit memory usage
+_COMMENT_FETCH_WINDOW = 100
 
 
 class AsyncConfluenceCloudDocumentReader:
     """Confluence Cloud reader that uses async HTTP for concurrent comment fetching.
 
     The page listing is done sequentially (Confluence API requires cursor-based
-    pagination), but comment fetching for multiple pages is done concurrently.
+    pagination), but comment fetching for multiple pages is done concurrently
+    in windows to limit memory usage.
     """
 
     def __init__(
@@ -46,7 +51,7 @@ class AsyncConfluenceCloudDocumentReader:
             )
 
         self.base_url = base_url
-        self.query = self._build_page_query(query)
+        self.query = ConfluenceCloudDocumentReader.build_page_query(query)
         self.email = email
         self.api_token = api_token
         self.batch_size = batch_size
@@ -62,14 +67,19 @@ class AsyncConfluenceCloudDocumentReader:
         self.max_concurrent_requests = max_concurrent_requests
 
     def read_all_documents(self):
-        """Read all documents, using async for concurrent comment fetching."""
-        pages = list(self._read_pages_sync())
-        if not pages:
-            return
+        """Read all documents, fetching comments concurrently in windows."""
+        window = []
+        for page in self._read_pages_sync():
+            window.append(page)
+            if len(window) >= _COMMENT_FETCH_WINDOW:
+                yield from self._yield_pages_with_comments(window)
+                window = []
+        if window:
+            yield from self._yield_pages_with_comments(window)
 
-        # Fetch comments for all pages concurrently
+    def _yield_pages_with_comments(self, pages: list):
+        """Fetch comments for a window of pages and yield results."""
         comments_map = asyncio.run(self._fetch_all_comments_async(pages))
-
         for i, page in enumerate(pages):
             yield {"page": page, "comments": comments_map.get(i, [])}
 
@@ -150,11 +160,9 @@ class AsyncConfluenceCloudDocumentReader:
             if start_at >= total:
                 break
 
-            # Parse cursor for next page
-            cursor = self._parse_cursor(result)
-            if cursor is None and start_at < total:
-                # No cursor but still more pages - use offset pagination
-                continue
+            cursor = ConfluenceCloudDocumentReader.parse_url_params(
+                result.get("_links", {}).get("next", "")
+            ).get("cursor", [None])[0]
 
     async def _fetch_all_comments_async(self, pages: list) -> dict:
         """Fetch comments for all pages concurrently using httpx."""
@@ -169,9 +177,9 @@ class AsyncConfluenceCloudDocumentReader:
                 max_keepalive_connections=5,
             ),
         ) as client:
-            tasks = []
-            for i, page in enumerate(pages):
-                tasks.append(self._fetch_comments_for_page(client, semaphore, page, i))
+            tasks = [
+                self._fetch_comments_for_page(client, semaphore, page) for page in pages
+            ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -189,7 +197,6 @@ class AsyncConfluenceCloudDocumentReader:
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
         page: dict,
-        index: int,
     ) -> list:
         """Fetch comments for a single page."""
         comment_size = (
@@ -209,7 +216,6 @@ class AsyncConfluenceCloudDocumentReader:
                 .get("results", [])
             )
 
-        # Fetch all comments with depth=all
         content_id = page["content"]["id"]
         all_comments = []
         start = 0
@@ -251,22 +257,3 @@ class AsyncConfluenceCloudDocumentReader:
                 break
 
         return all_comments
-
-    @staticmethod
-    def _build_page_query(user_query: str) -> str:
-        if not user_query:
-            return "type=page"
-        if re.search(r"\btype\s*=\s*page\b", user_query, re.IGNORECASE):
-            return user_query
-        return f"type=page AND ({user_query})"
-
-    @staticmethod
-    def _parse_cursor(result: dict) -> Optional[str]:
-        links = result.get("_links", {})
-        next_link = links.get("next")
-        if not next_link:
-            return None
-        parsed = urllib.parse.urlparse(next_link)
-        params = urllib.parse.parse_qs(parsed.query)
-        cursors = params.get("cursor", [])
-        return cursors[0] if cursors else None
