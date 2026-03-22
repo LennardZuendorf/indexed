@@ -19,9 +19,7 @@ class FaissIndexer:
 
     def index_texts(self, ids, texts):
         embeddings = self.embedder.embed_batch(texts, batch_size=64)
-        self.faiss_index.add_with_ids(
-            embeddings, np.array(ids, dtype=np.int64)
-        )
+        self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
 
     def remove_ids(self, ids):
         self.faiss_index.remove_ids(ids)
