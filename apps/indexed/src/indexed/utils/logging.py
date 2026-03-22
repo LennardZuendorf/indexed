@@ -14,11 +14,11 @@ Configures logging levels based on CLI flags:
 - --debug: DEBUG (everything)
 """
 
+import logging
 import sys
 from typing import Callable, Optional
 
 from loguru import logger as loguru_logger
-import logging
 
 from .console import console
 

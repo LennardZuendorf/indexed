@@ -7,7 +7,6 @@ from typing import (
     Any,
     Callable,
     Protocol,
-    runtime_checkable,
 )
 from dataclasses import dataclass
 
@@ -129,7 +128,6 @@ class ProgressUpdate:
 ProgressCallback = Optional[Callable[[ProgressUpdate], None]]
 
 
-@runtime_checkable
 class PhasedProgressCallback(Protocol):
     """Protocol for phased progress reporting.
 
@@ -158,19 +156,3 @@ class PhasedProgressCallback(Protocol):
     def log(self, message: str) -> None:
         """Display a log message within the progress context."""
         ...
-
-
-class NoOpProgress:
-    """No-op implementation of PhasedProgressCallback for non-interactive use."""
-
-    def start_phase(self, name: str, total: Optional[int] = None) -> None:
-        pass
-
-    def advance(self, name: str, amount: int = 1) -> None:
-        pass
-
-    def finish_phase(self, name: str) -> None:
-        pass
-
-    def log(self, message: str) -> None:
-        pass

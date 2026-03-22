@@ -8,7 +8,6 @@ from .models import (
     ProgressUpdate,
     ProgressCallback,
     PhasedProgressCallback,
-    NoOpProgress,
 )
 from .collection_service import create, update, clear
 from .search_service import search, SearchService
@@ -23,7 +22,6 @@ __all__ = [
     "ProgressUpdate",
     "ProgressCallback",
     "PhasedProgressCallback",
-    "NoOpProgress",
     # Collection operations
     "create",
     "update",

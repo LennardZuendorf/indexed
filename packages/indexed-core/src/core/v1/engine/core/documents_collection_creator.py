@@ -4,7 +4,7 @@ from enum import Enum
 import numpy as np
 from loguru import logger
 
-# Progress bars removed - core services should be pure logic without UI concerns
+# Core accepts optional progress callbacks for CLI/UI visibility into long-running operations.
 from utils.performance import log_execution_duration
 from core.v1.engine.services.models import (
     ProgressUpdate,
@@ -58,17 +58,10 @@ class DocumentCollectionCreator:
 
         update_time = datetime.now(timezone.utc)
 
-        # Phase: Fetching documents
-        if self.phased_progress:
-            self.phased_progress.start_phase("Fetching documents")
-
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Fetching documents")
 
         if len(document_ids) == 0:
             self.persister.remove_folder(self.collection_name)
@@ -104,9 +97,6 @@ class DocumentCollectionCreator:
 
         if self.phased_progress:
             self.phased_progress.finish_phase("Generating embeddings")
-
-        # Phase: Writing to disk
-        if self.phased_progress:
             self.phased_progress.start_phase("Writing to disk")
 
         manifest = self.__create_manifest_file(
@@ -137,16 +127,10 @@ class DocumentCollectionCreator:
 
         update_time = datetime.now(timezone.utc)
 
-        if self.phased_progress:
-            self.phased_progress.start_phase("Fetching documents")
-
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Fetching documents")
 
         if len(document_ids) == 0:
             logger.info(
@@ -169,8 +153,6 @@ class DocumentCollectionCreator:
 
         if self.phased_progress:
             self.phased_progress.finish_phase("Generating embeddings")
-
-        if self.phased_progress:
             self.phased_progress.start_phase("Writing to disk")
 
         manifest = self.__create_manifest_file(
@@ -207,10 +189,12 @@ class DocumentCollectionCreator:
                 )
             )
 
-        # Update phased progress with known total now that we have it
-        if self.phased_progress and number_of_expected_documents:
+        if self.phased_progress:
             self.phased_progress.start_phase(
-                "Fetching documents", total=number_of_expected_documents
+                "Fetching documents",
+                total=number_of_expected_documents
+                if number_of_expected_documents
+                else None,
             )
 
         for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
@@ -234,6 +218,9 @@ class DocumentCollectionCreator:
 
             if self.phased_progress:
                 self.phased_progress.advance("Fetching documents")
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Fetching documents")
 
         return document_ids, number_of_expected_documents
 

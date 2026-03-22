@@ -330,7 +330,7 @@ class TestSearchCommandExecution:
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
 
-        # suppress_core_output and create_operation_progress need to be contexts
+        # suppress_core_output and console.status need to be contexts
         from contextlib import contextmanager
 
         @contextmanager

@@ -150,8 +150,6 @@ def execute_create_command(
             )
 
             with create_phased_progress(title=title) as phased:
-                # Pre-register phases so they show as "waiting..."
-                phased.start_phase("Loading embedding model")
                 try:
                     with suppress_core_output():
                         svc_create(
@@ -161,8 +159,6 @@ def execute_create_command(
                             force=force,
                             phased_progress=phased,
                         )
-                    # Mark loading model as done (it happens during factory setup)
-                    phased.finish_phase("Loading embedding model")
                 except Exception as e:
                     creation_error = e
 
