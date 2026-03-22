@@ -348,7 +348,14 @@ class TestSearchCommandExecution:
             yield progress, task_id, callback
 
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
+        from unittest.mock import MagicMock
+
+        mock_status_ctx = MagicMock()
+        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
+        mock_status_ctx.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+        )
 
         result = runner.invoke(search_cmd.app, ["my-query"])
 
@@ -392,7 +399,14 @@ class TestSearchCommandExecution:
             yield Mock(), 0, lambda *a, **kw: None
 
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
+        from unittest.mock import MagicMock
+
+        mock_status_ctx = MagicMock()
+        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
+        mock_status_ctx.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+        )
 
         result = runner.invoke(
             search_cmd.app, ["my-query", "--collection", "myCol", "--compact"]
@@ -475,7 +489,14 @@ class TestSearchCommandExecution:
             yield Mock(), 0, lambda *a, **kw: None
 
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        monkeypatch.setattr(search_cmd, "create_operation_progress", fake_progress)
+        from unittest.mock import MagicMock
+
+        mock_status_ctx = MagicMock()
+        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
+        mock_status_ctx.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+        )
 
         result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])
 
