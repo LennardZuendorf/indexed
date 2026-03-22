@@ -1,9 +1,10 @@
-import faiss
 import numpy as np
 
 
 class FaissIndexer:
     def __init__(self, name, embedder, serialized_index=None):
+        import faiss
+
         self.name = name
         self.embedder = embedder
         if serialized_index is not None:
@@ -25,6 +26,8 @@ class FaissIndexer:
         self.faiss_index.remove_ids(ids)
 
     def serialize(self):
+        import faiss
+
         return faiss.serialize_index(self.faiss_index)
 
     def search(self, text, number_of_results=10):

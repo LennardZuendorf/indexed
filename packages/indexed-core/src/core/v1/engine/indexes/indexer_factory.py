@@ -6,12 +6,10 @@ existing ones from disk. It uses the indexer registry for configuration.
 
 from typing import Optional
 
-from .indexers.faiss_indexer import FaissIndexer
-from .embeddings.sentence_embeder import SentenceEmbedder
 from .indexer_registry import get_indexer_config
 
 
-def create_indexer(indexer_name: str) -> FaissIndexer:
+def create_indexer(indexer_name: str):
     """Create a new FAISS indexer with the specified configuration.
 
     Args:
@@ -27,6 +25,9 @@ def create_indexer(indexer_name: str) -> FaissIndexer:
         >>> indexer = create_indexer("indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2")
         >>> indexer.index_texts([0, 1], ["Hello world", "Test document"])
     """
+    from .indexers.faiss_indexer import FaissIndexer
+    from .embeddings.sentence_embeder import SentenceEmbedder
+
     config = get_indexer_config(indexer_name)
 
     embedder = SentenceEmbedder(model_name=config.model_name)
@@ -39,7 +40,7 @@ def load_indexer(
     collection_name: str,
     persister,
     serialized_index: Optional[bytes] = None,
-) -> FaissIndexer:
+):
     """Load an existing FAISS indexer from disk.
 
     Args:
@@ -63,6 +64,9 @@ def load_indexer(
         ...     persister
         ... )
     """
+    from .indexers.faiss_indexer import FaissIndexer
+    from .embeddings.sentence_embeder import SentenceEmbedder
+
     config = get_indexer_config(indexer_name)
 
     # Load serialized index from disk if not provided
