@@ -16,10 +16,9 @@ from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.components.status import OperationStatus
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import print_success, print_error
-from ...utils.progress_bar import create_progress_update_callback
+from ...utils.progress_bar import create_phased_progress
 
 
 def execute_create_command(
@@ -143,18 +142,16 @@ def execute_create_command(
                     [cfg], config_service=config, use_cache=use_cache, force=force
                 )
         else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
+            # Normal mode: phased progress display
+            title = (
                 f"[{get_heading_style()}]Creating {source_type} collection: "
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
-            console.print()
 
-            progress_msg = progress_message or f"Creating {collection}"
-            with OperationStatus(console, progress_msg, capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
+            with create_phased_progress(title=title) as phased:
+                # Pre-register phases so they show as "waiting..."
+                phased.start_phase("Loading embedding model")
                 try:
                     with suppress_core_output():
                         svc_create(
@@ -162,11 +159,11 @@ def execute_create_command(
                             config_service=config,
                             use_cache=use_cache,
                             force=force,
-                            progress_callback=callback,
+                            phased_progress=phased,
                         )
-                    status.complete(success=True)
+                    # Mark loading model as done (it happens during factory setup)
+                    phased.finish_phase("Loading embedding model")
                 except Exception as e:
-                    status.complete(success=False)
                     creation_error = e
 
     except Exception as e:

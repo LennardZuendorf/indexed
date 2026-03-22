@@ -12,8 +12,7 @@ from ...utils.logging import is_verbose_mode
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
 from ...utils.console import console
-from ...utils.progress_bar import create_progress_update_callback
-from ...utils.components.status import OperationStatus
+from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import (
     get_heading_style,
     get_dim_style,
@@ -300,25 +299,18 @@ def update(
                 update_error = e
                 break
         else:
-            # Normal mode: use OperationStatus for live updates
-            console.print()
-            with OperationStatus(
-                console, f"Updating {coll_name}", capture_logs=False
-            ) as status:
-                # Show initial status with force_render to ensure spinner is visible
-                status.update("Checking for updates...", force_render=True)
-                callback = create_progress_update_callback(status)
+            # Normal mode: phased progress display
+            title = f"  [{get_accent_style()}]{coll_name}[/{get_accent_style()}]"
+            with create_phased_progress(title=title) as phased:
                 try:
                     with suppress_core_output():
-                        update_service([source_config], progress_callback=callback)
-                    status.complete(
-                        success=True,
-                        success_message=f"{ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated",
+                        update_service([source_config], phased_progress=phased)
+                    console.print(
+                        f"  {ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated"
                     )
                 except Exception as e:
-                    status.complete(
-                        success=False,
-                        failure_message=f"{ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed",
+                    console.print(
+                        f"  {ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed"
                     )
                     update_error = e
                     break
