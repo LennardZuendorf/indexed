@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 from ...utils.logging import is_verbose_mode
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.progress_bar import create_operation_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -22,7 +21,6 @@ from ...utils.components import (
     get_card_border_style,
     get_card_padding,
     get_secondary_style,
-    get_default_style,
     print_error,
 )
 from ...utils.components.theme import get_detail_card_width
@@ -96,7 +94,8 @@ def format_search_results(
 
     if not all_chunks:
         console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
+            f'[yellow]⚠[/yellow] No results found for [bold]"{query}"[/bold]. '
+            f"Try broadening your search terms or checking collection contents."
         )
         console.print()
         return
@@ -401,22 +400,19 @@ def search(
         )
         search_configs.append(config)
 
-    # Search each collection with individual progress
+    # Search each collection with status spinner
     results = {}
-    for coll_name in collections_to_search:
-        # Get collection status to build proper SourceConfig
-        coll_status = status_svc([coll_name])[0]
-        config = source_config_class(
-            name=coll_name,
-            type="localFiles",  # Default type, not used in search
-            base_url_or_path="",  # Not used in search
-            indexer=coll_status.indexers[0],  # Get from collection status
-        )
 
-        operation_desc = f"[{get_default_style()}]Searching collection: [{get_accent_style()}]{coll_name}[/{get_accent_style()}][/{get_default_style()}]"
-
-        if is_verbose_mode():
-            # Verbose mode: show core logs directly
+    if is_verbose_mode():
+        # Verbose mode: show core logs directly
+        for coll_name in collections_to_search:
+            coll_status = status_svc([coll_name])[0]
+            config = source_config_class(
+                name=coll_name,
+                type="localFiles",
+                base_url_or_path="",
+                indexer=coll_status.indexers[0],
+            )
             with NoOpContext():
                 result = svc_search(
                     query,
@@ -426,14 +422,24 @@ def search(
                     include_matched_chunks=True,
                 )
                 results.update(result)
-        else:
-            # Normal mode: use centralized progress tracking
-            with create_operation_progress(operation_desc) as (
-                progress,
-                task_id,
-                callback,
-            ):
-                # Suppress all core output and call search service
+    else:
+        # Normal mode: single status spinner for all collections
+        num_colls = len(collections_to_search)
+        with console.status(
+            "[bold #2581C4]Loading model...[/bold #2581C4]",
+            spinner="dots",
+        ) as status:
+            for idx, coll_name in enumerate(collections_to_search, 1):
+                status.update(
+                    f"[bold #2581C4]Searching {idx}/{num_colls}: {coll_name}[/bold #2581C4]"
+                )
+                coll_status = status_svc([coll_name])[0]
+                config = source_config_class(
+                    name=coll_name,
+                    type="localFiles",
+                    base_url_or_path="",
+                    indexer=coll_status.indexers[0],
+                )
                 with suppress_core_output():
                     result = svc_search(
                         query,
@@ -441,7 +447,6 @@ def search(
                         max_docs=limit,
                         max_chunks=limit * 3,
                         include_matched_chunks=True,
-                        progress_callback=callback,
                     )
                     results.update(result)
 
