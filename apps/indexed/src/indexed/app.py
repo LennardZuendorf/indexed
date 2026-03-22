@@ -124,11 +124,18 @@ def _init_app(
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
+from .init import init as init_command  # noqa: E402
 
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
 CONFIG_PANEL = "Configuration Management"
 MCP_PANEL = "MCP Server"
 RESOURCES_PANEL = "Resources"
+
+app.command(
+    "init",
+    rich_help_panel="Setup",
+    help="Initialize Indexed: download models and create directories",
+)(init_command)
 
 app.add_typer(
     knowledge.app,
