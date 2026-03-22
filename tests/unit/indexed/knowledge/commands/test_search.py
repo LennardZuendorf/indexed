@@ -50,23 +50,18 @@ class TestSearchCommand:
 class TestFormatSearchResults:
     """Tests for the search result formatting helpers."""
 
-    def test_format_search_results_no_results_prints_message(self, monkeypatch):
-        """If no results are present, a friendly message should be shown."""
-        outputs: List[str] = []
-
-        def fake_print(*args, **kwargs):
-            text = " ".join(str(a) for a in args)
-            outputs.append(text)
+    def test_format_search_results_no_results_prints_warning(self, monkeypatch):
+        """If no results are present, print_warning should be called."""
+        from unittest.mock import patch
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_cmd, "console", type("C", (), {"print": lambda *a, **kw: None})()
         )
 
-        # Empty results dict
-        search_cmd.format_search_results("query", results={})
-
-        # Expect a "No results found" style message in one of the lines
-        assert any("No results found" in line for line in outputs)
+        with patch.object(search_cmd, "print_warning") as mock_warn:
+            search_cmd.format_search_results("query", results={})
+            mock_warn.assert_called_once()
+            assert "No results found" in mock_warn.call_args[0][0]
 
     def test_format_search_results_skips_error_collections_and_uses_scores(
         self, monkeypatch
@@ -157,8 +152,8 @@ class TestFormatSearchResults:
         assert "(2 results)" in joined
         assert "coll2" in joined
         assert "(1 results)" in joined
-        # And a total summary line
-        assert "Total:" in joined or "Total" in joined
+        # And a summary line
+        assert "Search Result" in joined
 
     def test_format_search_results_no_content_calls_compact(self, monkeypatch):
         """show_content=False should use the compact display path."""
@@ -280,7 +275,7 @@ class TestFormatSearchResults:
         assert "doc-a" in joined
         assert "doc-b" in joined
         assert "0.7500" in joined
-        assert "Total:" in joined
+        assert "Search Result" in joined
 
 
 class TestSearchCommandExecution:

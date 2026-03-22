@@ -17,7 +17,7 @@ from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.theme import get_heading_style, get_accent_style
-from ...utils.components import print_success, print_error
+from ...utils.components import print_success, print_error, create_summary
 from ...utils.progress_bar import create_phased_progress
 
 
@@ -191,6 +191,16 @@ def execute_create_command(
             print_success(
                 f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}"
             )
+
+            # Summary
+            console.print()
+            console.print(
+                create_summary(
+                    "Created",
+                    f"{collection} collection with {doc_count} documents",
+                )
+            )
+            console.print()
         else:
             print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)

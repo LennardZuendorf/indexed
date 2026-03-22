@@ -21,7 +21,10 @@ from ...utils.components import (
     get_card_border_style,
     get_card_padding,
     get_secondary_style,
+    get_dim_style,
     print_error,
+    print_warning,
+    OperationStatus,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -93,8 +96,8 @@ def format_search_results(
                 )
 
     if not all_chunks:
-        console.print(
-            f'[yellow]⚠[/yellow] No results found for [bold]"{query}"[/bold]. '
+        print_warning(
+            f'No results found for "{query}". '
             f"Try broadening your search terms or checking collection contents."
         )
         console.print()
@@ -176,9 +179,9 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
 
     # Use a subtle dim/muted style for the excerpt card with same width as meta card
     excerpt_panel = Panel(
-        f"[dim]{display_excerpt}[/dim]"
+        f"[{get_dim_style()}]{display_excerpt}[/{get_dim_style()}]"
         if excerpt
-        else "[dim][No excerpt available][/dim]",
+        else f"[{get_dim_style()}][No excerpt available][/{get_dim_style()}]",
         title="Top Result Excerpt",
         border_style=get_card_border_style(),
         padding=get_card_padding(),
@@ -204,8 +207,8 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
     console.print(
         f"  • [{get_accent_style()}]{collection}[/{get_accent_style()}] / "
         f"{doc_id} / "
-        f"[dim]Chunk {chunk_index}[/dim] / "
-        f"[dim]{chunk_score}[/dim]"
+        f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
+        f"[{get_dim_style()}]{chunk_score}[/{get_dim_style()}]"
     )
 
 
@@ -225,7 +228,7 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
         # Collection header
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [dim]({len(documents)} results)[/dim]"
+            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -236,14 +239,11 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
         console.print()
 
     # Summary
+    console.print()
     if total_results > 0:
-        console.print(
-            f"[{get_accent_style()}]Total:[/{get_accent_style()}] {total_results} results"
-        )
+        console.print(create_summary("Search Result", f"{total_results} results"))
     else:
-        console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
-        )
+        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
 
@@ -275,7 +275,7 @@ def format_search_results_compact(
 
         # Collection header
         console.print(
-            f"[bold]{collection_name}[/bold] [dim]({len(documents)} results)[/dim]"
+            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -287,21 +287,20 @@ def format_search_results_compact(
                 score_str = (
                     f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
                 )
-                console.print(f"  {i}. {doc_id}[dim]{score_str}[/dim]")
+                console.print(
+                    f"  {i}. {doc_id}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
+                )
             else:
                 console.print(f"  {i}. {doc_id}")
 
         console.print()
 
     # Summary
+    console.print()
     if total_results > 0:
-        console.print(
-            f"[{get_accent_style()}]Total:[/{get_accent_style()}] {total_results} results"
-        )
+        console.print(create_summary("Search Result", f"{total_results} results"))
     else:
-        console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
-        )
+        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
 
@@ -369,12 +368,17 @@ def search(
         # Search all collections
         all_statuses = status_svc()
         if not all_statuses:
-            console.print("\nNo collections found to search")
+            console.print(
+                f"\n[{get_dim_style()}]No collections found to search[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
             return
 
         collections_to_search = [s.name for s in all_statuses]
         console.print(
-            f'\n[{get_heading_style()}]Searching for [bold {get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
+            f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
         )
     else:
         # Search specific collection
@@ -423,16 +427,12 @@ def search(
                 )
                 results.update(result)
     else:
-        # Normal mode: single status spinner for all collections
+        # Normal mode: OperationStatus spinner for all collections
         num_colls = len(collections_to_search)
-        with console.status(
-            "[bold #2581C4]Loading model...[/bold #2581C4]",
-            spinner="dots",
-        ) as status:
+        with OperationStatus(console, "Searching", capture_logs=False) as op_status:
+            op_status.update("Loading model...")
             for idx, coll_name in enumerate(collections_to_search, 1):
-                status.update(
-                    f"[bold #2581C4]Searching {idx}/{num_colls}: {coll_name}[/bold #2581C4]"
-                )
+                op_status.update(f"Searching {idx}/{num_colls}: {coll_name}")
                 coll_status = status_svc([coll_name])[0]
                 config = source_config_class(
                     name=coll_name,

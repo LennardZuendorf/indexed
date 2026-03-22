@@ -16,6 +16,8 @@ from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import (
     get_heading_style,
     get_dim_style,
+    get_success_style,
+    get_error_style,
 )
 from ...utils.components import (
     create_detail_card,
@@ -104,13 +106,16 @@ def _format_update_comparison(before, after):
         if before_val is None or after_val is None:
             return f"{before_val} → {after_val}"
 
+        success = get_success_style()
+        error = get_error_style()
+        dim = get_dim_style()
         delta = after_val - before_val
         if delta > 0:
-            return f"{before_val} → {after_val} ([green]+{delta}[/green])"
+            return f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
         elif delta < 0:
-            return f"{before_val} → {after_val} ([red]{delta}[/red])"
+            return f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
         else:
-            return f"{before_val} → {after_val} [{get_dim_style()}](no change)[/{get_dim_style()}]"
+            return f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
 
     def format_size_change(before_bytes, after_bytes):
         """Format size change with proper units."""
@@ -123,17 +128,16 @@ def _format_update_comparison(before, after):
         after_str = format_size(after_bytes)
 
         if before_bytes is not None and after_bytes is not None:
+            success = get_success_style()
+            error = get_error_style()
+            dim = get_dim_style()
             delta = after_bytes - before_bytes
             if delta > 0:
-                return (
-                    f"{before_str} → {after_str} ([green]+{format_size(delta)}[/green])"
-                )
+                return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
             elif delta < 0:
-                return (
-                    f"{before_str} → {after_str} ([red]{format_size(abs(delta))}[/red])"
-                )
+                return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
             else:
-                return f"{before_str} → {after_str} [{get_dim_style()}](no change)[/{get_dim_style()}]"
+                return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
 
         return f"{before_str} → {after_str}"
 
@@ -234,7 +238,12 @@ def update(
         # Update all collections
         all_statuses = svc_status()
         if not all_statuses:
-            console.print("\nNo collections found to update")
+            console.print(
+                f"\n[{get_dim_style()}]No collections found to update[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
             return
 
         collections_to_update = [s.name for s in all_statuses]
