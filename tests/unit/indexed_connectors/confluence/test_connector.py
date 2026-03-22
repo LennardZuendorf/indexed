@@ -10,8 +10,8 @@ from connectors.confluence.connector import (
 )
 from connectors.confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
 from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
-from connectors.confluence.confluence_cloud_document_reader import (
-    ConfluenceCloudDocumentReader,
+from connectors.confluence.async_confluence_cloud_reader import (
+    AsyncConfluenceCloudDocumentReader,
 )
 
 
@@ -137,7 +137,7 @@ def test_confluence_cloud_type_connector_init():
     )
 
     assert connector.connector_type == "confluenceCloud"
-    assert isinstance(connector.reader, ConfluenceCloudDocumentReader)
+    assert isinstance(connector.reader, AsyncConfluenceCloudDocumentReader)
     assert (
         str(connector)
         == "ConfluenceCloudConnector(url='https://company.atlassian.net', query='space = DEV')"
@@ -161,7 +161,7 @@ def test_confluence_cloud_type_connector_from_config_dto():
         api_token=config_dto.get_api_token(),
     )
     assert isinstance(connector, ConfluenceCloudConnector)
-    assert isinstance(connector.reader, ConfluenceCloudDocumentReader)
+    assert isinstance(connector.reader, AsyncConfluenceCloudDocumentReader)
 
 
 def test_confluence_cloud_type_connector_read_all_comments_flag():

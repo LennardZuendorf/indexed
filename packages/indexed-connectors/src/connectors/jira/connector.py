@@ -9,8 +9,8 @@ from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
 from .jira_document_reader import JiraDocumentReader
 from .jira_document_converter import JiraDocumentConverter
-from .jira_cloud_document_reader import JiraCloudDocumentReader
 from .jira_cloud_document_converter import JiraCloudDocumentConverter
+from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from .schema import JiraConfig, JiraCloudConfig
 
 
@@ -241,14 +241,14 @@ class JiraCloudConnector:
         self._url = url
         self._query = query
 
-        # Initialize reader and converter
-        self._reader = JiraCloudDocumentReader(
+        # Use async reader for concurrent batch fetching
+        self._reader = AsyncJiraCloudDocumentReader(
             base_url=url, query=query, email=email, api_token=api_token
         )
         self._converter = JiraCloudDocumentConverter()
 
     @property
-    def reader(self) -> JiraCloudDocumentReader:
+    def reader(self) -> AsyncJiraCloudDocumentReader:
         """Return the document reader instance."""
         return self._reader
 

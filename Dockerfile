@@ -39,6 +39,10 @@ COPY packages/utils/src packages/utils/src
 # Install dependencies (production only, no dev dependencies)
 RUN uv sync --frozen --no-dev
 
+# Pre-download embedding model into HuggingFace cache
+ENV HF_HUB_CACHE=/app/.cache/huggingface/hub
+RUN uv run indexed init || true
+
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - Minimal image with installed packages
 # -----------------------------------------------------------------------------
@@ -74,6 +78,7 @@ RUN mkdir -p /root/.indexed/data/collections /root/.indexed/data/caches
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV HF_HUB_CACHE=/app/.cache/huggingface/hub
 
 # Default MCP server port (for HTTP/SSE transports)
 EXPOSE 8000

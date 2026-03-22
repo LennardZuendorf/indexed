@@ -6,7 +6,7 @@ import pytest
 from connectors.jira.connector import JiraConnector, JiraCloudConnector
 from connectors.jira.schema import JiraConfig, JiraCloudConfig
 from connectors.jira.jira_document_reader import JiraDocumentReader
-from connectors.jira.jira_cloud_document_reader import JiraCloudDocumentReader
+from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
@@ -78,7 +78,7 @@ def test_jira_cloud_type_connector_init():
     )
 
     assert connector.connector_type == "jiraCloud"
-    assert isinstance(connector.reader, JiraCloudDocumentReader)
+    assert isinstance(connector.reader, AsyncJiraCloudDocumentReader)
     assert (
         str(connector)
         == "JiraCloudConnector(url='https://company.atlassian.net', query='project = TEST')"
@@ -102,7 +102,7 @@ def test_jira_cloud_type_connector_from_config_dto():
         api_token=config_dto.get_api_token(),
     )
     assert isinstance(connector, JiraCloudConnector)
-    assert isinstance(connector.reader, JiraCloudDocumentReader)
+    assert isinstance(connector.reader, AsyncJiraCloudDocumentReader)
     assert connector.connector_type == "jiraCloud"
 
 
