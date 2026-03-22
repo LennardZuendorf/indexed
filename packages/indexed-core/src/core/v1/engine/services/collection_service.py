@@ -114,6 +114,7 @@ def _create_one(
     config_service: Any,
     use_cache: bool,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ) -> None:
@@ -124,6 +125,7 @@ def _create_one(
         config_service: ConfigService instance from indexed_config
         use_cache (bool): Whether to enable on-disk read-cache decorator.
         progress_callback (ProgressCallback): Optional callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
         caches_path: Optional path for caches storage.
     """
@@ -136,6 +138,7 @@ def _create_one(
         document_converter=connector.converter,
         use_cache=use_cache,
         progress_callback=progress_callback,
+        phased_progress=phased_progress,
         collections_path=collections_path,
         caches_path=caches_path,
     )
@@ -145,6 +148,7 @@ def _create_one(
 def _update_one(
     cfg: SourceConfig,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ) -> None:
     """Update a single collection.
@@ -152,6 +156,7 @@ def _update_one(
     Args:
         cfg (SourceConfig): Source configuration for the collection to update.
         progress_callback (ProgressCallback): Optional callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
     """
     # Lazy import to avoid circular dependency:
@@ -161,7 +166,10 @@ def _update_one(
     )
 
     updater = create_collection_updater(
-        cfg.name, progress_callback, collections_path=collections_path
+        cfg.name,
+        progress_callback,
+        phased_progress=phased_progress,
+        collections_path=collections_path,
     )
     updater.run()
 
@@ -173,6 +181,7 @@ def create(
     use_cache: bool = True,
     force: bool = False,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ) -> None:
@@ -214,6 +223,7 @@ def create(
             config_service,
             use_cache,
             progress_callback,
+            phased_progress=phased_progress,
             collections_path=resolved_collections,
             caches_path=resolved_caches,
         )
@@ -222,6 +232,7 @@ def create(
 def update(
     configs: List[SourceConfig],
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ) -> None:
     """Update collections from source configurations.
@@ -233,6 +244,7 @@ def update(
         configs (List[SourceConfig]): List of source configurations for collections
             to update.
         progress_callback (ProgressCallback, optional): Callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
 
     Raises:
@@ -240,7 +252,12 @@ def update(
     """
     resolved_path = collections_path or str(get_default_collections_path())
     for cfg in configs:
-        _update_one(cfg, progress_callback, collections_path=resolved_path)
+        _update_one(
+            cfg,
+            progress_callback,
+            phased_progress=phased_progress,
+            collections_path=resolved_path,
+        )
 
 
 def clear(

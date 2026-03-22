@@ -27,6 +27,7 @@ from utils.performance import log_execution_duration
 def create_collection_updater(
     collection_name: str,
     progress_callback=None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ):
     """Create a collection updater for incremental updates.
@@ -34,6 +35,7 @@ def create_collection_updater(
     Args:
         collection_name: Name of the collection to update
         progress_callback: Optional callback for progress updates
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
                          Defaults to resolved path from storage config.
 
@@ -42,7 +44,7 @@ def create_collection_updater(
     """
     return log_execution_duration(
         lambda: _create_collection_updater(
-            collection_name, progress_callback, collections_path
+            collection_name, progress_callback, phased_progress, collections_path
         ),
         identifier="Preparing collection updater",
     )
@@ -51,6 +53,7 @@ def create_collection_updater(
 def _create_collection_updater(
     collection_name: str,
     progress_callback=None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ):
     """Internal implementation of collection updater creation."""
@@ -79,6 +82,7 @@ def _create_collection_updater(
         persister=disk_persister,
         operation_type=OPERATION_TYPE.UPDATE,
         progress_callback=progress_callback,
+        phased_progress=phased_progress,
     )
 
 

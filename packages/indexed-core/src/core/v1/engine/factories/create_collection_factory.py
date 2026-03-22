@@ -19,6 +19,7 @@ def create_collection_creator(
     document_converter,
     use_cache=True,
     progress_callback=None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ):
@@ -30,7 +31,8 @@ def create_collection_creator(
         document_reader: Document reader instance.
         document_converter: Document converter instance.
         use_cache: Whether to use caching for document reading.
-        progress_callback: Optional callback for progress updates.
+        progress_callback: Optional callback for progress updates (legacy).
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
                          Defaults to resolved path from storage config.
         caches_path: Optional path for caches storage.
@@ -44,6 +46,7 @@ def create_collection_creator(
             document_converter,
             use_cache,
             progress_callback,
+            phased_progress,
             collections_path,
             caches_path,
         ),
@@ -58,6 +61,7 @@ def __create_collection_creator(
     document_converter,
     use_cache,
     progress_callback=None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ):
@@ -85,4 +89,5 @@ def __create_collection_creator(
         persister=disk_persister,
         operation_type=OPERATION_TYPE.CREATE,
         progress_callback=progress_callback,
+        phased_progress=phased_progress,
     )
