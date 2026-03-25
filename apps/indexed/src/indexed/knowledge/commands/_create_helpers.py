@@ -16,10 +16,9 @@ from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.components.status import OperationStatus
 from ...utils.components.theme import get_heading_style, get_accent_style
-from ...utils.components import print_success, print_error
-from ...utils.progress_bar import create_progress_update_callback
+from ...utils.components import print_success, print_error, create_summary
+from ...utils.progress_bar import create_phased_progress
 
 
 def execute_create_command(
@@ -143,18 +142,14 @@ def execute_create_command(
                     [cfg], config_service=config, use_cache=use_cache, force=force
                 )
         else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
+            # Normal mode: phased progress display
+            title = (
                 f"[{get_heading_style()}]Creating {source_type} collection: "
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
-            console.print()
 
-            progress_msg = progress_message or f"Creating {collection}"
-            with OperationStatus(console, progress_msg, capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
+            with create_phased_progress(title=title) as phased:
                 try:
                     with suppress_core_output():
                         svc_create(
@@ -162,11 +157,9 @@ def execute_create_command(
                             config_service=config,
                             use_cache=use_cache,
                             force=force,
-                            progress_callback=callback,
+                            phased_progress=phased,
                         )
-                    status.complete(success=True)
                 except Exception as e:
-                    status.complete(success=False)
                     creation_error = e
 
     except Exception as e:
@@ -198,6 +191,16 @@ def execute_create_command(
             print_success(
                 f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}"
             )
+
+            # Summary
+            console.print()
+            console.print(
+                create_summary(
+                    "Created",
+                    f"{collection} collection with {doc_count} documents",
+                )
+            )
+            console.print()
         else:
             print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)

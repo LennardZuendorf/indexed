@@ -150,55 +150,6 @@ class TestOperationStatus:
         assert elapsed >= 0.4  # Allow some tolerance
 
 
-class TestProgressCallback:
-    """Test progress callback handling for OperationStatus updates."""
-
-    def test_callback_handles_total_zero(self):
-        """Test callback shows 'No changes detected' when total=0."""
-        from indexed.utils.progress_bar import create_progress_update_callback
-        from core.v1.engine.services.models import ProgressUpdate
-
-        mock_status = Mock()
-        callback = create_progress_update_callback(mock_status)
-
-        update = ProgressUpdate(
-            stage="reading", current=0, total=0, message="Reading documents..."
-        )
-        callback(update)
-
-        mock_status.update.assert_called_once_with("No changes detected")
-
-    def test_callback_formats_progress_message(self):
-        """Test callback formats message with counts when total > 0."""
-        from indexed.utils.progress_bar import create_progress_update_callback
-        from core.v1.engine.services.models import ProgressUpdate
-
-        mock_status = Mock()
-        callback = create_progress_update_callback(mock_status)
-
-        update = ProgressUpdate(
-            stage="reading", current=5, total=10, message="Reading documents..."
-        )
-        callback(update)
-
-        mock_status.update.assert_called_once_with("Reading: 5/10 documents")
-
-    def test_callback_uses_message_when_no_total(self):
-        """Test callback uses provided message when total is None."""
-        from indexed.utils.progress_bar import create_progress_update_callback
-        from core.v1.engine.services.models import ProgressUpdate
-
-        mock_status = Mock()
-        callback = create_progress_update_callback(mock_status)
-
-        update = ProgressUpdate(
-            stage="processing", current=0, total=None, message="Processing data..."
-        )
-        callback(update)
-
-        mock_status.update.assert_called_once_with("Processing data...")
-
-
 class TestSuppressCoreOutput:
     """Test suppress_core_output context manager."""
 

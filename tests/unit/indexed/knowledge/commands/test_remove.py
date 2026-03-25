@@ -40,7 +40,7 @@ class TestRemoveCommand:
 
         assert result.exit_code == 0
         assert "No collections found" in result.stdout
-        assert "Create collections" in result.stdout
+        assert "Get started" in result.stdout
 
     def test_missing_collection_shows_available_and_exits_1(self, monkeypatch):
         """Trying to remove a missing collection should list available ones and exit 1."""

@@ -4,18 +4,14 @@ from typing import Optional, TYPE_CHECKING
 
 import typer
 from rich.prompt import Confirm
-from rich.panel import Panel
-from rich.console import Group
 
 if TYPE_CHECKING:
     pass
 
 from ...utils.console import console
 from ...utils.components import (
-    create_info_row,
+    create_detail_card,
     create_summary,
-    get_card_border_style,
-    get_card_padding,
     get_heading_style,
     get_error_style,
     get_accent_style,
@@ -75,8 +71,10 @@ def remove(
     all_collections = inspect_svc()
 
     if not all_collections:
-        console.print("\n[dim]No collections found[/dim]")
-        console.print("[dim]Create collections with: indexed index create[/dim]\n")
+        console.print(f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]")
+        console.print(
+            f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+        )
         return
 
     # Find the target collection
@@ -87,9 +85,11 @@ def remove(
             break
 
     if not target_collection:
-        console.print(f"[red]Collection '{collection}' not found[/red]")
+        print_error(f"Collection '{collection}' not found")
         if all_collections:
-            console.print("\n[dim]Available collections:[/dim]")
+            console.print(
+                f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+            )
             for coll in all_collections:
                 console.print(f"  • {coll.name}")
         console.print()
@@ -102,33 +102,20 @@ def remove(
     )
     console.print()
 
-    lines = []
+    rows = []
     if target_collection.source_type:
-        lines.append(create_info_row("Type", target_collection.source_type))
+        rows.append(("Type", target_collection.source_type))
     if target_collection.relative_path:
-        lines.append(create_info_row("Path", target_collection.relative_path))
-    lines.append(
-        create_info_row("Documents", str(target_collection.number_of_documents))
-    )
-    lines.append(create_info_row("Chunks", str(target_collection.number_of_chunks)))
+        rows.append(("Path", target_collection.relative_path))
+    rows.append(("Documents", str(target_collection.number_of_documents)))
+    rows.append(("Chunks", str(target_collection.number_of_chunks)))
     if target_collection.disk_size_bytes:
-        lines.append(
-            create_info_row("Size", format_size(target_collection.disk_size_bytes))
-        )
+        rows.append(("Size", format_size(target_collection.disk_size_bytes)))
     if target_collection.updated_time:
-        lines.append(
-            create_info_row("Updated", format_time(target_collection.updated_time))
-        )
+        rows.append(("Updated", format_time(target_collection.updated_time)))
 
-    content = Group(*lines)
-    panel = Panel(
-        content,
-        title=f"[bold]{collection}[/bold]",
-        title_align="left",
-        border_style=get_card_border_style(),
-        padding=get_card_padding(),
-    )
-    console.print(panel)
+    card = create_detail_card(title=collection, rows=rows)
+    console.print(card)
 
     # Show confirmation dialog
     if not force:

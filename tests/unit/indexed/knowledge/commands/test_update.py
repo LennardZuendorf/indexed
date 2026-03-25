@@ -607,12 +607,12 @@ class TestUpdateCommand:
     @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
     @patch("indexed.knowledge.commands.update.update_service")
     @patch("indexed.knowledge.commands.update.suppress_core_output")
-    @patch("indexed.knowledge.commands.update.OperationStatus")
+    @patch("indexed.knowledge.commands.update.create_phased_progress")
     @patch("indexed.knowledge.commands.update.console")
     def test_update_non_verbose_exception_exits(
         self,
         mock_console,
-        mock_op_status,
+        mock_phased_progress,
         mock_suppress,
         mock_update_service,
         mock_ensure_creds,
@@ -643,13 +643,13 @@ class TestUpdateCommand:
 
         mock_update_service.side_effect = RuntimeError("update blew up")
 
-        # Make OperationStatus a usable context manager
-        from contextlib import contextmanager
+        # Make create_phased_progress a usable context manager
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
+        mock_phased_progress.return_value = phased_mock
 
-        status_mock = MagicMock()
-        status_mock.__enter__ = Mock(return_value=status_mock)
-        status_mock.__exit__ = Mock(return_value=False)
-        mock_op_status.return_value = status_mock
+        from contextlib import contextmanager
 
         @contextmanager
         def fake_suppress():
