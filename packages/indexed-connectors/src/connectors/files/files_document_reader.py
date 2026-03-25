@@ -1,3 +1,4 @@
+import fnmatch
 import os
 import json
 import datetime
@@ -119,12 +120,8 @@ class FilesDocumentReader:
 
         self.include_patterns = include_patterns
         self.exclude_patterns = exclude_patterns
-        self.compiled_include_patterns = [
-            re.compile(pattern) for pattern in include_patterns
-        ]
-        self.compiled_exclude_patterns = [
-            re.compile(pattern) for pattern in exclude_patterns
-        ]
+        self.compiled_include_patterns = [self._compile(p) for p in include_patterns]
+        self.compiled_exclude_patterns = [self._compile(p) for p in exclude_patterns]
 
         self.fail_fast = fail_fast
         self.start_from_time = start_from_time
@@ -133,6 +130,14 @@ class FilesDocumentReader:
             ".json": self.__read_text_file,  # By some reason unstructured lib tries to read json files as ndjson and fails
         }
         self.default_reader = self.__read_file_by_unstructured_lib
+
+    @staticmethod
+    def _compile(pattern: str) -> re.Pattern:
+        """Compile a pattern as regex, falling back to glob via fnmatch.translate."""
+        try:
+            return re.compile(pattern)
+        except re.error:
+            return re.compile(fnmatch.translate(pattern))
 
     def read_all_documents(self):
         """

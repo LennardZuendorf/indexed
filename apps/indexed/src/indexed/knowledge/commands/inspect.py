@@ -7,28 +7,53 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 
 import typer
 import json
-from typing import List
-from rich.panel import Panel
-from rich.console import Group
+from typing import List, TYPE_CHECKING
 from rich.columns import Columns
 
 from ...utils.console import console
 from ...utils.components import (
-    create_info_row,
-    get_card_border_style,
-    get_card_padding,
-    get_detail_card_width,
+    create_info_card,
+    create_detail_card,
     get_heading_style,
+    get_dim_style,
     create_summary,
+    print_error,
 )
-from core.v1.engine.services import inspect, CollectionInfo
+
+if TYPE_CHECKING:
+    from core.v1.engine.services import CollectionInfo
 
 # ---- Use format_size and format_time from @format.py ----
 from ...utils.format import format_size, format_time
 
 
+def _build_collection_rows(
+    coll: "CollectionInfo", include_index: bool = False, include_created: bool = False
+) -> list[tuple[str, str]]:
+    """Build standard info rows for a collection.
+
+    Centralizes row construction so all views (brief, verbose, detail)
+    use the same labels and formatting.
+    """
+    rows = []
+    rows.append(("Type", coll.source_type or "Unknown"))
+    if coll.relative_path:
+        rows.append(("Path", coll.relative_path))
+    rows.append(("Documents", str(coll.number_of_documents)))
+    rows.append(("Chunks", str(coll.number_of_chunks)))
+    if coll.disk_size_bytes:
+        rows.append(("Size", format_size(coll.disk_size_bytes)))
+    if include_index and coll.index_size_bytes:
+        rows.append(("Index", format_size(coll.index_size_bytes)))
+    if include_created and coll.created_time:
+        rows.append(("Created", format_time(coll.created_time)))
+    if coll.updated_time:
+        rows.append(("Updated", format_time(coll.updated_time)))
+    return rows
+
+
 def format_collection_list(
-    collections: List[CollectionInfo], verbose: bool = False
+    collections: List["CollectionInfo"], verbose: bool = False
 ) -> None:
     """Display a list of collections with optional verbose detail."""
     if verbose:
@@ -37,10 +62,9 @@ def format_collection_list(
         _show_brief_list(collections)
 
 
-def _show_brief_list(collections: List[CollectionInfo]) -> None:
+def _show_brief_list(collections: List["CollectionInfo"]) -> None:
     """Show minimal collection info in compact cards."""
     console.print()
-    # Headline showing number of collections
     count = len(collections)
     plural = "Collection" if count == 1 else "Collections"
     console.print(
@@ -56,33 +80,14 @@ def _show_brief_list(collections: List[CollectionInfo]) -> None:
         total_docs += coll.number_of_documents
         total_chunks += coll.number_of_chunks
 
-        lines = []
-        lines.append(create_info_row("Type", coll.source_type or "Unknown"))
-        if coll.relative_path:
-            lines.append(create_info_row("Path", coll.relative_path))
-        lines.append(create_info_row("Documents", str(coll.number_of_documents)))
-        lines.append(create_info_row("Chunks", str(coll.number_of_chunks)))
-        if coll.disk_size_bytes:
-            lines.append(create_info_row("Size", format_size(coll.disk_size_bytes)))
-        lines.append(create_info_row("Updated", format_time(coll.updated_time)))
+        rows = _build_collection_rows(coll)
+        card = create_info_card(title=coll.name, rows=rows)
+        panels.append(card)
 
-        content = Group(*lines)
-
-        # Wrap in panel with consistent styling
-        panel = Panel(
-            content,
-            title=f"[bold]{coll.name}[/bold]",
-            title_align="left",
-            border_style=get_card_border_style(),
-            padding=get_card_padding(),
-        )
-        panels.append(panel)
-
-    if len(panels) > 0:
+    if panels:
         console.print(Columns(panels, equal=True, expand=True))
 
     # Summary
-
     console.print()
     console.print(
         create_summary("Total", f"{total_docs} documents, {total_chunks} chunks")
@@ -90,14 +95,13 @@ def _show_brief_list(collections: List[CollectionInfo]) -> None:
     console.print()
 
 
-def _show_verbose_list(collections: List[CollectionInfo]) -> None:
+def _show_verbose_list(collections: List["CollectionInfo"]) -> None:
     """Show detailed collection info for all collections with unified design."""
     console.print()
-    # Headline showing number of collections
     count = len(collections)
     plural = "Collection" if count == 1 else "Collections"
     console.print(
-        f"[{get_heading_style()}]{count} {plural} Exist:[/{get_heading_style()}]"
+        f"[{get_heading_style()}]{count} {plural} Details:[/{get_heading_style()}]"
     )
     console.print()
 
@@ -105,87 +109,41 @@ def _show_verbose_list(collections: List[CollectionInfo]) -> None:
     total_chunks = 0
     total_size = 0
 
-    for i, coll in enumerate(collections):
-        if i > 0:
-            console.print()  # Space between collections
-
+    for coll in collections:
         total_docs += coll.number_of_documents
         total_chunks += coll.number_of_chunks
         if coll.disk_size_bytes:
             total_size += coll.disk_size_bytes
 
-        # Create content using consistent info rows
-        lines = [
-            create_info_row("Type", coll.source_type or "Unknown"),
-        ]
-        if coll.relative_path:
-            lines.append(create_info_row("Path", coll.relative_path))
-        lines.append(create_info_row("Documents", str(coll.number_of_documents)))
-        lines.append(create_info_row("Chunks", str(coll.number_of_chunks)))
-        if coll.disk_size_bytes:
-            lines.append(create_info_row("Size", format_size(coll.disk_size_bytes)))
-        lines.append(create_info_row("Updated", format_time(coll.updated_time)))
-
-        content = Group(*lines)
-
-        # Create panel for collection
-        panel = Panel(
-            content,
-            title=f"[bold]{coll.name}[/bold]",
-            title_align="left",
-            border_style=get_card_border_style(),
-            padding=get_card_padding(),
-        )
-        console.print(panel)
+        rows = _build_collection_rows(coll, include_index=True, include_created=True)
+        card = create_detail_card(title=coll.name, rows=rows)
+        console.print(card)
 
     console.print()
     console.print(
         create_summary(
-            f"{count} {plural}",
-            f"{total_docs} total documents, {total_chunks} total chunks, {format_size(total_size)} size.",
+            "Total",
+            f"{total_docs} documents, {total_chunks} chunks, {format_size(total_size)}",
         )
     )
     console.print()
 
 
-def format_collection_detail(info: CollectionInfo) -> None:
+def format_collection_detail(info: "CollectionInfo") -> None:
     """Display detailed information about a specific collection."""
     console.print()
-    # Headline showing collection name
     console.print(
         f"[{get_heading_style()}]{info.name} Collection Details:[/{get_heading_style()}]"
     )
     console.print()
-    # Build content using consistent info rows
-    lines = []
-    if info.source_type:
-        lines.append(create_info_row("Type", info.source_type))
-    if info.relative_path:
-        lines.append(create_info_row("Path", info.relative_path))
-    lines.append(create_info_row("Docs", str(info.number_of_documents)))
-    lines.append(create_info_row("Chunks", str(info.number_of_chunks)))
-    if info.disk_size_bytes:
-        lines.append(create_info_row("Size", format_size(info.disk_size_bytes)))
-    if info.index_size_bytes:
-        lines.append(create_info_row("Index", format_size(info.index_size_bytes)))
-    if info.created_time:
-        lines.append(create_info_row("Created", format_time(info.created_time)))
-    if info.updated_time:
-        lines.append(create_info_row("Updated", format_time(info.updated_time)))
-    content = Group(*lines)
-    panel = Panel(
-        content,
-        title=f"[bold]{info.name}[/bold]",
-        title_align="left",
-        border_style=get_card_border_style(),
-        padding=get_card_padding(),
-        width=get_detail_card_width(),
-    )
-    console.print(panel)
+
+    rows = _build_collection_rows(info, include_index=True, include_created=True)
+    card = create_detail_card(title=info.name, rows=rows)
+    console.print(card)
     console.print()
 
 
-def format_collection_json(info: CollectionInfo) -> None:
+def format_collection_json(info: "CollectionInfo") -> None:
     """Display collection info as JSON."""
     output = {
         "name": info.name,
@@ -201,7 +159,7 @@ def format_collection_json(info: CollectionInfo) -> None:
     console.print(json.dumps(output, indent=2))
 
 
-def format_collections_json(collections: List[CollectionInfo]) -> None:
+def format_collections_json(collections: List["CollectionInfo"]) -> None:
     """Display a list of collections in JSON."""
     output = [
         {
@@ -238,21 +196,28 @@ def inspect_collections(
         indexed inspect --verbose          # Detailed info about all collections
         indexed inspect my-collection --json
     """
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import inspect as this_module
+
+    inspect_svc = this_module.inspect
+
     # Fetch collection info from core - this is connection-agnostic
     if name:
         # Inspect specific collection (no progress bar)
-        collections = inspect([name])
+        collections = inspect_svc([name])
 
         # Check if collection exists and has valid data
         if not collections or collections[0].number_of_documents == 0:
             # Check if it truly doesn't exist vs just being empty
-            all_collections = inspect()
+            all_collections = inspect_svc()
             exists = any(c.name == name for c in all_collections)
 
             if not exists:
-                console.print(f"\n[red]Collection '{name}' not found[/red]")
+                print_error(f"Collection '{name}' not found")
                 if all_collections:
-                    console.print("\n[dim]Available collections:[/dim]")
+                    console.print(
+                        f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+                    )
                     for coll in all_collections:
                         console.print(f"  • {coll.name}")
                 console.print()
@@ -265,11 +230,15 @@ def inspect_collections(
             format_collection_detail(collections[0])
     else:
         # List all collections (no progress bar)
-        collections = inspect()
+        collections = inspect_svc()
 
         if not collections:
-            console.print("\nNo collections found")
-            console.print("\n[dim]Get started: indexed add[/dim]")
+            console.print(
+                f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
             return
 
         # Format and display list
@@ -277,6 +246,15 @@ def inspect_collections(
             format_collections_json(collections)
         else:
             format_collection_list(collections, verbose=verbose)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 # For Typer command registration

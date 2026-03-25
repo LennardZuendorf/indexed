@@ -234,10 +234,10 @@ utils/
 
 ```bash
 # Run utils tests
-uv run pytest tests/packages/utils -v
+uv run pytest tests/unit/utils -v
 
 # With coverage
-uv run pytest tests/packages/utils --cov=utils
+uv run pytest tests/unit/utils --cov=utils
 ```
 
 ### Code Quality

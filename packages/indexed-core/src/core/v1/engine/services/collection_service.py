@@ -5,42 +5,18 @@ from various sources including Confluence, Jira, and local files. It handles the
 orchestration of readers, converters, and persisters to build searchable collections.
 """
 
-from pathlib import Path
 from typing import List, Any, Optional
 from dataclasses import dataclass
 from .models import SourceConfig, ProgressCallback
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
+from core.v1.config_models import get_default_collections_path, get_default_caches_path
 
 # NOTE: update_collection_factory is imported lazily in _update_one() to avoid
 # circular import: connectors -> core.v1 -> collection_service -> update_collection_factory -> connectors
 
 setup_root_logger()
-
-
-def _get_default_collections_path() -> str:
-    """Get the default collections path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_collections_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "collections")
-
-
-def _get_default_caches_path() -> str:
-    """Get the default caches path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_caches_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "caches")
 
 
 def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
@@ -128,7 +104,7 @@ def _collection_exists(name: str, collections_path: Optional[str] = None) -> boo
     Returns:
         bool: True if collection exists, False otherwise.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     persister = DiskPersister(base_path=resolved_path)
     return persister.is_path_exists(name)
 
@@ -138,6 +114,7 @@ def _create_one(
     config_service: Any,
     use_cache: bool,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ) -> None:
@@ -148,6 +125,7 @@ def _create_one(
         config_service: ConfigService instance from indexed_config
         use_cache (bool): Whether to enable on-disk read-cache decorator.
         progress_callback (ProgressCallback): Optional callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
         caches_path: Optional path for caches storage.
     """
@@ -160,6 +138,7 @@ def _create_one(
         document_converter=connector.converter,
         use_cache=use_cache,
         progress_callback=progress_callback,
+        phased_progress=phased_progress,
         collections_path=collections_path,
         caches_path=caches_path,
     )
@@ -169,6 +148,7 @@ def _create_one(
 def _update_one(
     cfg: SourceConfig,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ) -> None:
     """Update a single collection.
@@ -176,6 +156,7 @@ def _update_one(
     Args:
         cfg (SourceConfig): Source configuration for the collection to update.
         progress_callback (ProgressCallback): Optional callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
     """
     # Lazy import to avoid circular dependency:
@@ -185,7 +166,10 @@ def _update_one(
     )
 
     updater = create_collection_updater(
-        cfg.name, progress_callback, collections_path=collections_path
+        cfg.name,
+        progress_callback,
+        phased_progress=phased_progress,
+        collections_path=collections_path,
     )
     updater.run()
 
@@ -197,6 +181,7 @@ def create(
     use_cache: bool = True,
     force: bool = False,
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
 ) -> None:
@@ -227,8 +212,8 @@ def create(
         config_service = ConfigService()
 
     # Resolve paths
-    resolved_collections = collections_path or _get_default_collections_path()
-    resolved_caches = caches_path or _get_default_caches_path()
+    resolved_collections = collections_path or str(get_default_collections_path())
+    resolved_caches = caches_path or str(get_default_caches_path())
 
     for cfg in configs:
         if force and _collection_exists(cfg.name, resolved_collections):
@@ -238,6 +223,7 @@ def create(
             config_service,
             use_cache,
             progress_callback,
+            phased_progress=phased_progress,
             collections_path=resolved_collections,
             caches_path=resolved_caches,
         )
@@ -246,6 +232,7 @@ def create(
 def update(
     configs: List[SourceConfig],
     progress_callback: ProgressCallback = None,
+    phased_progress=None,
     collections_path: Optional[str] = None,
 ) -> None:
     """Update collections from source configurations.
@@ -257,14 +244,20 @@ def update(
         configs (List[SourceConfig]): List of source configurations for collections
             to update.
         progress_callback (ProgressCallback, optional): Callback for progress updates.
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
 
     Raises:
         ValueError: If source configuration is invalid or collection doesn't exist.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     for cfg in configs:
-        _update_one(cfg, progress_callback, collections_path=resolved_path)
+        _update_one(
+            cfg,
+            progress_callback,
+            phased_progress=phased_progress,
+            collections_path=resolved_path,
+        )
 
 
 def clear(
@@ -283,7 +276,7 @@ def clear(
     Warning:
         This operation permanently deletes collection data and cannot be undone.
     """
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     persister = DiskPersister(base_path=resolved_path)
     for name in collection_names:
         persister.remove_folder(name)

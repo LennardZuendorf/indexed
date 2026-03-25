@@ -2,7 +2,7 @@
 
 This module extends the base logger from utils with Rich formatting
 for enhanced CLI output. It provides:
-- Rich-formatted console output with colors and styling
+- Loguru sink that routes through the shared Console instance
 - Status capture for spinner/progress integration
 - CLI-specific logging conveniences
 
@@ -14,12 +14,13 @@ Configures logging levels based on CLI flags:
 - --debug: DEBUG (everything)
 """
 
+import logging
 import sys
 from typing import Callable, Optional
 
 from loguru import logger as loguru_logger
-from rich.logging import RichHandler
-import logging
+
+from .console import console
 
 # Global state for status capture (CLI-specific feature)
 _status_capture_enabled = False
@@ -30,19 +31,43 @@ _status_sink_id: Optional[int] = None
 _cli_log_level = "WARNING"
 
 
-def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) -> None:
-    """
-    Configure CLI root logging with Rich formatting and synchronize Loguru.
+def _loguru_console_sink(message) -> None:
+    """Loguru sink that routes output through the shared Rich Console.
 
-    Sets the module CLI log level (stored in the module's internal state), configures
-    the standard library logging to use a RichHandler for formatted CLI output, and
-    updates Loguru to match the chosen level.
+    This ensures all log output goes through the single Console instance,
+    preventing conflicts with Rich Live/Progress/Status displays.
+    """
+    record = message.record
+    level = record["level"].name
+
+    # Map Loguru levels to Rich styles
+    style_map = {
+        "TRACE": "dim",
+        "DEBUG": "dim",
+        "INFO": "dim",
+        "SUCCESS": "dim green",
+        "WARNING": "yellow",
+        "ERROR": "bold red",
+        "CRITICAL": "bold red reverse",
+    }
+    style = style_map.get(level, "dim")
+
+    # Format: "LEVEL    | message" with dim timestamp in verbose mode
+    text = f"[{style}]{level: <8} | {record['message']}[/{style}]"
+    console.print(text, highlight=False)
+
+
+def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) -> None:
+    """Configure CLI root logging with Rich formatting and synchronize Loguru.
+
+    Routes all Loguru output through the shared Console instance to prevent
+    output conflicts with Rich Live/Progress/Status displays.
 
     Parameters:
-        level_str (Optional[str]): Log level name (e.g., "DEBUG", "INFO", "WARNING", "ERROR").
+        level_str: Log level name (e.g., "DEBUG", "INFO", "WARNING", "ERROR").
             When omitted, "WARNING" is used.
-        json_mode (bool): If True, intended to enable JSON-formatted log output.
-            (Used to select JSON formatting behavior when supported.)
+        json_mode: If True, use plain stderr sink instead of Rich console sink
+            for structured/JSON log output.
     """
     global _cli_log_level
 
@@ -50,31 +75,21 @@ def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) 
     _cli_log_level = effective_level
     level = getattr(logging, effective_level, logging.WARNING)
 
-    # Configure standard logging with Rich handler for beautiful output
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(
-                show_time=False, show_path=False, markup=True, rich_tracebacks=True
-            )
-        ],
-        force=True,
-    )
+    # Suppress standard library logging — we use Loguru exclusively
+    logging.basicConfig(level=level, format="%(message)s", force=True)
+    logging.getLogger().handlers = []
+    logging.getLogger().setLevel(level)
 
-    # Also configure loguru to match
-    _configure_loguru(effective_level)
+    # Configure Loguru to route through shared console
+    _configure_loguru(effective_level, json_mode)
 
 
-def _configure_loguru(level: str) -> None:
-    """
-    Configure Loguru to emit logs to stderr at the given level with a compact, colorized format.
-
-    This replaces any existing Loguru handlers with a single stderr sink that uses the format "LEVEL | message" and enables colorization. Preserves active status capture sink if present.
+def _configure_loguru(level: str, json_mode: bool = False) -> None:
+    """Configure Loguru to route through the shared Console instance.
 
     Parameters:
-        level (str): Log level name (e.g., "INFO", "DEBUG", "WARNING"); case-insensitive.
+        level: Log level name (e.g., "INFO", "DEBUG", "WARNING").
+        json_mode: If True, use plain stderr sink for JSON output.
     """
     global _status_sink_id
 
@@ -85,13 +100,22 @@ def _configure_loguru(level: str) -> None:
     # Remove all handlers (including status sink)
     loguru_logger.remove()
 
-    # Re-add stderr handler with appropriate level
-    loguru_logger.add(
-        sys.stderr,
-        level=level.upper(),
-        format="<level>{level: <8}</level> | {message}",
-        colorize=True,
-    )
+    if json_mode:
+        # JSON mode: plain stderr, no Rich formatting
+        loguru_logger.add(
+            sys.stderr,
+            level=level.upper(),
+            format="<level>{level: <8}</level> | {message}",
+            colorize=True,
+        )
+    else:
+        # Normal mode: route through shared Console to avoid output conflicts
+        loguru_logger.add(
+            _loguru_console_sink,
+            level=level.upper(),
+            format="{message}",
+            colorize=False,
+        )
 
     # Re-register status sink if it was active
     if status_sink_id is not None and status_callback is not None:
@@ -144,16 +168,16 @@ def is_verbose_mode() -> bool:
 
 
 def enable_status_capture(callback: Callable[[str], None]) -> int:
-    """
-    Enable status capture that forwards INFO-level log messages to a callback.
+    """Enable status capture that forwards INFO-level log messages to a callback.
 
-    Registers a temporary Loguru sink that forwards each INFO message's text to the provided callback for use in status displays (e.g., spinners).
+    Registers a temporary Loguru sink that forwards each INFO message's text
+    to the provided callback for use in status displays (e.g., spinners).
 
     Parameters:
-        callback (Callable[[str], None]): Function invoked with the log message string for status updates.
+        callback: Function invoked with the log message string for status updates.
 
     Returns:
-        int: Loguru sink id that can be used to remove the sink later.
+        Loguru sink id that can be used to remove the sink later.
     """
     global _status_capture_enabled, _status_capture_callback, _status_sink_id
 
@@ -161,12 +185,6 @@ def enable_status_capture(callback: Callable[[str], None]) -> int:
     _status_capture_callback = callback
 
     def status_sink(message):
-        """
-        Forward INFO-level log messages received from a Loguru sink to the active status-capture callback.
-
-        Parameters:
-            message: The Loguru sink message object whose `record` mapping contains log metadata and the formatted `message` text. The function invokes the module's `_status_capture_callback` with `record["message"]` when the record level is "INFO" and a callback is set.
-        """
         record = message.record
         if record["level"].name == "INFO" and _status_capture_callback:
             _status_capture_callback(record["message"])

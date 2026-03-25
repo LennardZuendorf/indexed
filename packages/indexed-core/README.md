@@ -273,13 +273,13 @@ Collections are stored in the configured data directory:
 
 ```bash
 # Run core tests
-uv run pytest tests/packages/indexed-core -v
+uv run pytest tests/unit/indexed_core -v
 
 # Run specific test
-uv run pytest tests/packages/indexed-core/test_documents_collection_creator.py -v
+uv run pytest tests/unit/indexed_core/test_documents_collection_creator.py -v
 
 # With coverage
-uv run pytest tests/packages/indexed-core --cov=core
+uv run pytest tests/unit/indexed_core --cov=core
 ```
 
 ### Code Quality

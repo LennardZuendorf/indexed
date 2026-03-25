@@ -1,5 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, Dict, List, Any, Callable
+from typing import (
+    Literal,
+    Optional,
+    Dict,
+    List,
+    Any,
+    Callable,
+    Protocol,
+)
 from dataclasses import dataclass
 
 
@@ -116,5 +124,35 @@ class ProgressUpdate:
     message: str  # Human-readable message
 
 
-# Type alias for progress callback functions
+# Type alias for progress callback functions (simple, legacy)
 ProgressCallback = Optional[Callable[[ProgressUpdate], None]]
+
+
+class PhasedProgressCallback(Protocol):
+    """Protocol for phased progress reporting.
+
+    Supports multi-stage operations where each stage has its own progress
+    indicator (spinner or bar). The CLI implements this with Rich Progress;
+    the MCP server or tests can use a no-op implementation.
+
+    Stages for indexing: "Loading model", "Fetching documents",
+    "Parsing & chunking", "Generating embeddings", "Building FAISS index",
+    "Writing to disk".
+    """
+
+    def start_phase(self, name: str, total: Optional[int] = None) -> None:
+        """Begin a named phase. If total is given, a progress bar is shown;
+        otherwise a spinner is used."""
+        ...
+
+    def advance(self, name: str, amount: int = 1) -> None:
+        """Advance the named phase by amount items."""
+        ...
+
+    def finish_phase(self, name: str) -> None:
+        """Mark the named phase as complete."""
+        ...
+
+    def log(self, message: str) -> None:
+        """Display a log message within the progress context."""
+        ...

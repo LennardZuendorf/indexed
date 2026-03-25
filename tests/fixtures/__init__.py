@@ -1,7 +1,6 @@
-"""Shared test fixtures and data.
+"""Shared test fixtures.
 
-This package contains reusable test fixtures:
-- API response mocks
-- Sample document generators
-- Test data utilities
+This package contains reusable test fixtures for all test types.
+The main fixture is temp_workspace, which provides a temporary directory
+for the entire test session.
 """

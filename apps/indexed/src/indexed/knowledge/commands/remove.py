@@ -1,20 +1,17 @@
 """Remove command for removing collections."""
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import typer
 from rich.prompt import Confirm
-from rich.panel import Panel
-from rich.console import Group
 
-from core.v1 import Index
-from core.v1.engine.services import inspect
+if TYPE_CHECKING:
+    pass
+
 from ...utils.console import console
 from ...utils.components import (
-    create_info_row,
+    create_detail_card,
     create_summary,
-    get_card_border_style,
-    get_card_padding,
     get_heading_style,
     get_error_style,
     get_accent_style,
@@ -57,20 +54,27 @@ def remove(
         indexed remove my-collection      # Remove with confirmation
         indexed remove my-collection -f   # Remove without confirmation
     """
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import remove as this_module
+
+    index_svc = this_module.Index
+    inspect_svc = this_module.inspect
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    index = Index()
+    index = index_svc()
 
     # Fetch all collections to validate
-    all_collections = inspect()
+    all_collections = inspect_svc()
 
     if not all_collections:
-        console.print("\n[dim]No collections found[/dim]")
-        console.print("[dim]Create collections with: indexed index create[/dim]\n")
+        console.print(f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]")
+        console.print(
+            f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+        )
         return
 
     # Find the target collection
@@ -81,9 +85,11 @@ def remove(
             break
 
     if not target_collection:
-        console.print(f"[red]Collection '{collection}' not found[/red]")
+        print_error(f"Collection '{collection}' not found")
         if all_collections:
-            console.print("\n[dim]Available collections:[/dim]")
+            console.print(
+                f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+            )
             for coll in all_collections:
                 console.print(f"  • {coll.name}")
         console.print()
@@ -96,33 +102,20 @@ def remove(
     )
     console.print()
 
-    lines = []
+    rows = []
     if target_collection.source_type:
-        lines.append(create_info_row("Type", target_collection.source_type))
+        rows.append(("Type", target_collection.source_type))
     if target_collection.relative_path:
-        lines.append(create_info_row("Path", target_collection.relative_path))
-    lines.append(
-        create_info_row("Documents", str(target_collection.number_of_documents))
-    )
-    lines.append(create_info_row("Chunks", str(target_collection.number_of_chunks)))
+        rows.append(("Path", target_collection.relative_path))
+    rows.append(("Documents", str(target_collection.number_of_documents)))
+    rows.append(("Chunks", str(target_collection.number_of_chunks)))
     if target_collection.disk_size_bytes:
-        lines.append(
-            create_info_row("Size", format_size(target_collection.disk_size_bytes))
-        )
+        rows.append(("Size", format_size(target_collection.disk_size_bytes)))
     if target_collection.updated_time:
-        lines.append(
-            create_info_row("Updated", format_time(target_collection.updated_time))
-        )
+        rows.append(("Updated", format_time(target_collection.updated_time)))
 
-    content = Group(*lines)
-    panel = Panel(
-        content,
-        title=f"[bold]{collection}[/bold]",
-        title_align="left",
-        border_style=get_card_border_style(),
-        padding=get_card_padding(),
-    )
-    console.print(panel)
+    card = create_detail_card(title=collection, rows=rows)
+    console.print(card)
 
     # Show confirmation dialog
     if not force:
@@ -153,3 +146,20 @@ def remove(
     except Exception as e:
         print_error(f"Failed to remove '{collection}': {e}")
         raise typer.Exit(1)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "Index":
+        from core.v1 import Index
+
+        return Index
+    elif name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

@@ -314,13 +314,13 @@ indexed-connectors/
 
 ```bash
 # Run connector tests
-uv run pytest tests/packages/indexed-connectors -v
+uv run pytest tests/unit/indexed_connectors -v
 
 # Run specific connector
-uv run pytest tests/packages/indexed-connectors/jira -v
+uv run pytest tests/unit/indexed_connectors/jira -v
 
 # With coverage
-uv run pytest tests/packages/indexed-connectors --cov=connectors
+uv run pytest tests/unit/indexed_connectors --cov=connectors
 ```
 
 ### Code Quality

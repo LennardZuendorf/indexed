@@ -27,6 +27,9 @@ from .storage import (
 )
 
 
+CURRENT_SCHEMA_VERSION = "1"
+
+
 class TomlStore:
     """Read/write config with merge: Global, Workspace, ENV.
 
@@ -55,13 +58,8 @@ class TomlStore:
         self._mode_override = mode_override
 
     @property
-    def global_root(self) -> Path:
-        """
-        Provide the path to the global storage root directory (~/.indexed).
-
-        Returns:
-            Path: Path to the global storage root directory.
-        """
+    def _global_root(self) -> Path:
+        """Global storage root directory (~/.indexed)."""
         return get_global_root()
 
     @property
@@ -75,8 +73,8 @@ class TomlStore:
         return get_config_path(get_global_root())
 
     @property
-    def local_root(self) -> Path:
-        """Get the local storage root (./.indexed)."""
+    def _local_root(self) -> Path:
+        """Local storage root (./.indexed)."""
         return get_local_root(self.workspace)
 
     @property
@@ -90,43 +88,25 @@ class TomlStore:
         return get_config_path(get_local_root(self.workspace))
 
     @property
-    def env_path(self) -> Path:
-        """
-        Get the .env file path used for sensitive values.
-
-        When the instance was created with mode_override == "global", returns the global .env path; otherwise returns the workspace/local .env path.
-
-        Returns:
-            Path: The filesystem path to the selected `.env` file.
-        """
+    def _env_path(self) -> Path:
+        """Resolved .env file path (global or workspace)."""
         if self._mode_override == "global":
             return storage_get_env_path(get_global_root())
-        # Default to workspace .env for backward compatibility
         return storage_get_env_path(get_local_root(self.workspace))
 
     @property
-    def global_env_path(self) -> Path:
-        """
-        Get the path to the global .env file under the global storage root.
-
-        Returns:
-            Path: Path to the global `.env` file (e.g., `~/.indexed/.env`).
-        """
+    def _global_env_path(self) -> Path:
+        """Global .env file path (~/.indexed/.env)."""
         return storage_get_env_path(get_global_root())
 
     @property
-    def local_env_path(self) -> Path:
-        """Path to the local .env file (./.indexed/.env)."""
+    def _local_env_path(self) -> Path:
+        """Local .env file path (./.indexed/.env)."""
         return storage_get_env_path(get_local_root(self.workspace))
 
     def get_env_path(self) -> str:
-        """
-        Return the resolved .env file path as a string.
-
-        Returns:
-            The path to the selected `.env` file (global or workspace) as a string.
-        """
-        return str(self.env_path)
+        """Return the resolved .env file path as a string."""
+        return str(self._env_path)
 
     def _read_toml_file(self, path: Path) -> Dict[str, Any]:
         """
@@ -170,23 +150,79 @@ class TomlStore:
         if self._mode_override == "local":
             # Only use local config
             data = self._read_toml_file(self.workspace_path)
-            self._load_dotenv(self.local_env_path)
+            self._load_dotenv(self._local_env_path)
         elif self._mode_override == "global":
             # Only use global config
             data = self._read_toml_file(self.global_path)
-            self._load_dotenv(self.global_env_path)
+            self._load_dotenv(self._global_env_path)
         else:
             # Normal merge: Global -> Workspace
             data = deep_merge(data, self._read_toml_file(self.global_path))
             data = deep_merge(data, self._read_toml_file(self.workspace_path))
             # Load both .env files (global first, then local overrides)
-            self._load_dotenv(self.global_env_path)
-            self._load_dotenv(self.local_env_path)
+            self._load_dotenv(self._global_env_path)
+            self._load_dotenv(self._local_env_path)
 
-        # ENV vars always override
+        return self._apply_env_and_finalize(data)
+
+    def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
+        """Read config for a specific resolved storage mode (no merging).
+
+        Unlike read(), this reads ONE config.toml based on the resolved mode,
+        and loads .env files in priority order:
+        1. .indexed/.env from the resolved root (loaded first → gets set)
+        2. CWD/.env (loaded second → only fills gaps via override=False)
+        3. Real env vars already in os.environ are never overridden
+
+        Args:
+            mode: The resolved storage mode ("global" or "local").
+
+        Returns:
+            Configuration dictionary from the single resolved source.
+        """
+        if mode == "local":
+            data = self._read_toml_file(self.workspace_path)
+            self._load_dotenv(self._local_env_path)
+        else:
+            data = self._read_toml_file(self.global_path)
+            self._load_dotenv(self._global_env_path)
+
+        # Load CWD/.env (fills gaps only, never overrides)
+        self._load_cwd_dotenv()
+
+        return self._apply_env_and_finalize(data)
+
+    def _apply_env_and_finalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply INDEXED__* env overrides and extract schema version."""
         env_data = self._env_to_mapping()
         data = deep_merge(data, env_data)
+
+        schema_version = data.pop("_meta", {}).get("schema_version", "1")
+        data["_schema_version"] = schema_version
+
         return data
+
+    def _load_cwd_dotenv(self) -> None:
+        """Load CWD/.env with override=False (fills gaps only)."""
+        cwd_env = self.workspace / ".env"
+        if cwd_env.exists():
+            load_dotenv(str(cwd_env), override=False)
+
+    def get_resolved_env_path(self, mode: StorageMode) -> str:
+        """Return the .env file path for a specific resolved mode.
+
+        This is used by EnvFileWriter to determine where to write
+        sensitive values based on the resolved storage mode.
+
+        Args:
+            mode: The resolved storage mode ("global" or "local").
+
+        Returns:
+            String path to the .env file for the given mode.
+        """
+        if mode == "local":
+            return str(self._local_env_path)
+        return str(self._global_env_path)
 
     def has_local_config(self) -> bool:
         """
@@ -308,7 +344,7 @@ class TomlStore:
         Parameters:
             env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the store's configured env_path.
         """
-        path = env_path or self.env_path
+        path = env_path or self._env_path
         if not path.exists():
             return
 
@@ -340,9 +376,15 @@ class TomlStore:
             target = self.workspace_path
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Preserve ordering but we just dump mapping
+
+        # Build output dict, stripping internal marker and ensuring _meta
+        out = dict(data)
+        out.pop("_schema_version", None)
+        if "_meta" not in out:
+            out["_meta"] = {"schema_version": CURRENT_SCHEMA_VERSION}
+
         with open(target, "w", encoding="utf-8") as f:
-            tomlkit.dump(dict(data), f)
+            tomlkit.dump(out, f)
 
     def write_to_global(self, data: Mapping[str, Any]) -> None:
         """

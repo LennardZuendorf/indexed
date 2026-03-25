@@ -1,5 +1,7 @@
 """Configuration schema for FileSystem connector."""
 
+import fnmatch
+import re
 from typing import List
 from pathlib import Path
 
@@ -21,6 +23,24 @@ class FileSystemConfig(BaseModel):
     fail_fast: bool = Field(
         default=False, description="Stop indexing on first error (yes/no)"
     )
+
+    @field_validator("include_patterns", "exclude_patterns", mode="before")
+    @classmethod
+    def normalize_patterns(cls, patterns: List[str]) -> List[str]:
+        """Accept both regex and glob patterns.
+
+        Valid regex is kept as-is. Patterns that fail regex compilation are
+        treated as globs and converted via fnmatch.translate, e.g. ``*.md``
+        becomes ``(?s:.*\\.md)\\Z``.
+        """
+        result = []
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+                result.append(pattern)
+            except re.error:
+                result.append(fnmatch.translate(pattern))
+        return result
 
     @field_validator("path")
     @classmethod

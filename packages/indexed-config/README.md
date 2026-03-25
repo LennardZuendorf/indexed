@@ -314,10 +314,10 @@ export INDEXED__SOURCES__JIRA__BASE_URL=https://example.atlassian.net
 
 ```bash
 # Run config package tests
-uv run pytest tests/packages/indexed-config -v
+uv run pytest tests/unit/indexed_config -v
 
 # Run with coverage
-uv run pytest tests/packages/indexed-config --cov=indexed_config
+uv run pytest tests/unit/indexed_config --cov=indexed_config
 ```
 
 ### Code Quality

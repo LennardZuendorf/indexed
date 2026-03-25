@@ -4,9 +4,13 @@ from enum import Enum
 import numpy as np
 from loguru import logger
 
-# Progress bars removed - core services should be pure logic without UI concerns
+# Core accepts optional progress callbacks for CLI/UI visibility into long-running operations.
 from utils.performance import log_execution_duration
-from core.v1.engine.services.models import ProgressUpdate, ProgressCallback
+from core.v1.engine.services.models import (
+    ProgressUpdate,
+    ProgressCallback,
+    PhasedProgressCallback,
+)
 
 
 class OPERATION_TYPE(Enum):
@@ -25,6 +29,7 @@ class DocumentCollectionCreator:
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
         indexing_batch_size=500_000,
         progress_callback: ProgressCallback = None,
+        phased_progress: PhasedProgressCallback = None,
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
@@ -34,6 +39,7 @@ class DocumentCollectionCreator:
         self.persister = persister
         self.indexing_batch_size = indexing_batch_size
         self.progress_callback = progress_callback
+        self.phased_progress = phased_progress
 
     def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
@@ -51,26 +57,54 @@ class DocumentCollectionCreator:
         self.persister.create_folder(self.collection_name)
 
         update_time = datetime.now(timezone.utc)
+
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
         )
 
         if len(document_ids) == 0:
-            logger.warning(
-                "No documents found for collection creation, so it will be not created."
-            )
             self.persister.remove_folder(self.collection_name)
-            return
+            reader = self.document_reader
+            if hasattr(reader, "reader"):
+                reader = reader.reader
+            details = []
+            base_path = getattr(reader, "base_path", None)
+            include_patterns = getattr(reader, "include_patterns", None)
+            exclude_patterns = getattr(reader, "exclude_patterns", None)
+            if base_path:
+                details.append(f"source path: {base_path}")
+            if include_patterns is not None:
+                details.append(f"include patterns: {include_patterns}")
+            if exclude_patterns is not None:
+                details.append(f"exclude patterns: {exclude_patterns}")
+            detail_str = f" ({', '.join(details)})" if details else ""
+            raise ValueError(
+                f"No documents found for collection '{self.collection_name}'{detail_str}. "
+                "Check that the source path exists and contains readable files."
+            )
+
+        # Phase: Generating embeddings / Building FAISS index
+        if self.phased_progress:
+            self.phased_progress.start_phase(
+                "Generating embeddings", total=len(document_ids)
+            )
 
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_new_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
         )
 
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Generating embeddings")
+            self.phased_progress.start_phase("Writing to disk")
+
         manifest = self.__create_manifest_file(
             update_time, last_modified_document_time, number_of_chunks
         )
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -92,6 +126,7 @@ class DocumentCollectionCreator:
         )
 
         update_time = datetime.now(timezone.utc)
+
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
@@ -106,10 +141,19 @@ class DocumentCollectionCreator:
             self.__save_json_file(manifest, self.__build_manifest_path())
             return
 
+        if self.phased_progress:
+            self.phased_progress.start_phase(
+                "Generating embeddings", total=len(document_ids)
+            )
+
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_existing_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
         )
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Generating embeddings")
+            self.phased_progress.start_phase("Writing to disk")
 
         manifest = self.__create_manifest_file(
             update_time,
@@ -117,6 +161,9 @@ class DocumentCollectionCreator:
             number_of_chunks,
             existing_manifest=manifest,
         )
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -142,6 +189,14 @@ class DocumentCollectionCreator:
                 )
             )
 
+        if self.phased_progress:
+            self.phased_progress.start_phase(
+                "Fetching documents",
+                total=number_of_expected_documents
+                if number_of_expected_documents
+                else None,
+            )
+
         for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
             for converted_document in self.document_converter.convert(document):
                 document_path = (
@@ -160,6 +215,12 @@ class DocumentCollectionCreator:
                         message=f"Reading documents: {idx}/{number_of_expected_documents}",
                     )
                 )
+
+            if self.phased_progress:
+                self.phased_progress.advance("Fetching documents")
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Fetching documents")
 
         return document_ids, number_of_expected_documents
 
@@ -264,6 +325,10 @@ class DocumentCollectionCreator:
                         total=total_docs,
                         message=f"Indexing: {processed}/{total_docs} documents",
                     )
+                )
+            if self.phased_progress:
+                self.phased_progress.advance(
+                    "Generating embeddings", amount=len(batch_document_ids)
                 )
 
         for indexer in self.document_indexers:

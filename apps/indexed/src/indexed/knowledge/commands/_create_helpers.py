@@ -4,24 +4,21 @@ This module contains common logic extracted from create_files, create_jira,
 and create_confluence commands to eliminate code duplication.
 """
 
-from typing import Optional, Dict, Any, Callable, Type
+from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
 import typer
 from loguru import logger
 
+if TYPE_CHECKING:
+    from core.v1.engine.services import SourceConfig
+
 from indexed_config import ConfigService
-from core.v1.engine.services import (
-    SourceConfig,
-    create as svc_create,
-    status as svc_status,
-)
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.components.status import OperationStatus
 from ...utils.components.theme import get_heading_style, get_accent_style
-from ...utils.components import print_success, print_error
-from ...utils.progress_bar import create_progress_update_callback
+from ...utils.components import print_success, print_error, create_summary
+from ...utils.progress_bar import create_phased_progress
 
 
 def execute_create_command(
@@ -31,7 +28,7 @@ def execute_create_command(
     namespace: str,
     cli_overrides: Dict[str, Any],
     prompt_missing_fields: Callable[[Dict[str, Any], ConfigService, str], None],
-    build_source_config: Callable[[Dict[str, Any], str], SourceConfig],
+    build_source_config: Callable[[Dict[str, Any], str], "SourceConfig"],
     success_message_suffix: str,
     verbose: bool,
     json_logs: bool,
@@ -76,6 +73,12 @@ def execute_create_command(
     # Get ConfigService singleton (auto-loads .env)
     config = ConfigService.instance()
 
+    # Display storage mode indicator (not in verbose mode, to keep logs clean)
+    if not is_verbose_mode():
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")
@@ -93,32 +96,38 @@ def execute_create_command(
     if is_verbose_mode():
         logger.info(
             "Validation result: %d fields present, %d missing",
-            len(validation["present"]),
-            len(validation["missing"]),
+            len(validation.present),
+            len(validation.missing),
         )
 
     # Phase 1: Prompt for missing values using connector-specific callback
-    if validation["missing"]:
+    if validation.missing:
         prompt_missing_fields(validation, config, namespace)
 
     # Also set CLI overrides in config for connector to read
     for key, value in cli_overrides.items():
-        field_info = validation["field_info"].get(key)
+        field_info = validation.field_info.get(key)
         config.set_value(f"{namespace}.{key}", value, field_info=field_info)
 
     # Log resolved configuration in verbose mode
     if is_verbose_mode():
         logger.info("Configuration resolved:")
-        for field_name, value in validation["present"].items():
-            field_meta = validation["field_info"].get(field_name, {})
+        for field_name, value in validation.present.items():
+            field_meta = validation.field_info.get(field_name, {})
             if field_meta.get("sensitive"):
                 logger.info("  %s: ******** (sensitive)", field_name)
             else:
                 logger.info("  %s: %s", field_name, value)
         logger.info("  Collection: %s", collection)
 
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import _create_helpers as this_module
+
+    svc_create = this_module.svc_create
+    svc_status = this_module.svc_status
+
     # Build source config using connector-specific callback
-    cfg = build_source_config(validation["present"], collection)
+    cfg = build_source_config(validation.present, collection)
 
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
@@ -127,24 +136,20 @@ def execute_create_command(
             # Verbose mode: show all logs, no spinner
             with NoOpContext():
                 if verbose_pre_creation_log:
-                    verbose_pre_creation_log(validation["present"])
+                    verbose_pre_creation_log(validation.present)
                 logger.info("Creating collection '%s'...", collection)
                 svc_create(
                     [cfg], config_service=config, use_cache=use_cache, force=force
                 )
         else:
-            # Normal mode: show header and spinner with clean output
-            console.print()
-            console.print(
+            # Normal mode: phased progress display
+            title = (
                 f"[{get_heading_style()}]Creating {source_type} collection: "
                 f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
                 f"[/{get_heading_style()}]"
             )
-            console.print()
 
-            progress_msg = progress_message or f"Creating {collection}"
-            with OperationStatus(console, progress_msg, capture_logs=False) as status:
-                callback = create_progress_update_callback(status)
+            with create_phased_progress(title=title) as phased:
                 try:
                     with suppress_core_output():
                         svc_create(
@@ -152,11 +157,9 @@ def execute_create_command(
                             config_service=config,
                             use_cache=use_cache,
                             force=force,
-                            progress_callback=callback,
+                            phased_progress=phased,
                         )
-                    status.complete(success=True)
                 except Exception as e:
-                    status.complete(success=False)
                     creation_error = e
 
     except Exception as e:
@@ -188,6 +191,16 @@ def execute_create_command(
             print_success(
                 f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}"
             )
+
+            # Summary
+            console.print()
+            console.print(
+                create_summary(
+                    "Created",
+                    f"{collection} collection with {doc_count} documents",
+                )
+            )
+            console.print()
         else:
             print_error("Collection creation failed - no valid collection found")
             raise typer.Exit(1)
@@ -200,3 +213,16 @@ def execute_create_command(
         if is_verbose_mode():
             logger.exception("Full error details:")
         raise typer.Exit(1)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "svc_create":
+        from core.v1.engine.services import create
+
+        return create
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+
+        return status
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

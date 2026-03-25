@@ -1,389 +1,186 @@
-"""Indexed CLI application.
+"""Indexed CLI application - stateless commands backed by services."""
 
-Provides stateless commands backed by services.
-"""
+# Fix OpenMP threading issues on macOS before any imports
+# Must be set before PyTorch/sentence-transformers are loaded
+import os
 
-# Suppress SWIG deprecation warnings from faiss (upstream issue, not fixed yet)
-# Must be done before any faiss imports occur
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import warnings
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
-
-import os  # noqa: E402
 import sys  # noqa: E402
-import typer  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Optional, TYPE_CHECKING  # noqa: E402
-from rich.console import Console  # noqa: E402
+from typing import Optional  # noqa: E402
 
-if TYPE_CHECKING:
-    from indexed_config import ConfigService
-from rich.theme import Theme  # noqa: E402
-from .utils.logging import setup_root_logger  # noqa: E402
-from .utils.components.theme import get_help_theme_styles, get_accent_style  # noqa: E402
-from .utils.components import print_success  # noqa: E402
-from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.storage_info import (  # noqa: E402
-    print_storage_info,
-    get_storage_mode_and_reason,
-    StorageMode,
-)
-
-# Override Typer's default Rich help colors with our custom accent color
-# This must be done before Typer initializes its help formatting
+import typer  # noqa: E402
 import typer.rich_utils  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.theme import Theme  # noqa: E402
+
+from .utils.banner import print_indexed_banner  # noqa: E402
+from .utils.components import print_error, print_info, print_success  # noqa: E402
+from .utils.components.theme import (  # noqa: E402
+    get_accent_style,
+    get_help_theme_styles,
+)
+from .utils.logging import setup_root_logger  # noqa: E402
 
 typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_COMMANDS_TABLE_COLUMN_WIDTH_RATIO = (None, None)
 
-# Re-export service interfaces for tests and command modules to reference dynamically
-from core.v1.engine.services import (  # noqa: E402
-    SourceConfig,
-    clear as svc_clear,
-    create as svc_create,
-    search as svc_search,
-    status as svc_status,
-    update as svc_update,
-)
-
-# Note: These service functions now accept config_service parameter for new config system
-
-# Configure Rich console with custom theme for help display
 _help_console = Console(theme=Theme(get_help_theme_styles()))
 
-# Main Typer application
 app = typer.Typer(
     add_completion=True,
     help="Index Institutional Knowledge and Make it Available for AI Agents and LLMs!",
     rich_markup_mode="rich",
     pretty_exceptions_enable=True,
-    context_settings={
-        "help_option_names": ["--help"],
-    },
+    context_settings={"help_option_names": ["--help"]},
     rich_help_panel=True,
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Early Flag Parsing for Global Storage Options
-# ─────────────────────────────────────────────────────────────────────────────
-# These flags need to be parsed early because they affect ConfigService
-# initialization which must happen before any command runs.
-
-
-def _parse_early_storage_flags() -> tuple[bool, bool]:
-    """
-    Detects presence of top-level --local and --global flags and removes them from the process argv.
-
-    Both flags are recognized anywhere on the command line, are removed from sys.argv to avoid interfering with downstream parsing, and do not consume any additional arguments.
-
-    Returns:
-        (use_local, use_global) (tuple[bool, bool]): `use_local` is `True` if `--local` was present, `use_global` is `True` if `--global` was present.
-    """
-    use_local = False
-    use_global = False
-
-    # Check for flags and remove them from argv
-    new_argv = [sys.argv[0]]
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg == "--local":
-            use_local = True
-        elif arg == "--global":
-            use_global = True
-        else:
-            new_argv.append(arg)
-        i += 1
-
-    # Update sys.argv with flags removed
-    sys.argv[:] = new_argv
-
-    return use_local, use_global
-
-
-# Parse storage flags early (before Typer processes args)
-_EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = False, False
-
-
-# Import shared console for prompts
-from .utils.console import console as _prompt_console  # noqa: E402
-
-
-# Global logging init via callback (runs before subcommands)
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Use local .indexed/ storage",
+        rich_help_panel="Storage",
+    ),
+    global_: bool = typer.Option(
+        False,
+        "--global",
+        help="Use global ~/.indexed/ storage",
+        rich_help_panel="Storage",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
-        help="Enable verbose (INFO) logging with rich formatting",
+        help="Enable verbose (INFO) logging",
         rich_help_panel="Logging",
     ),
     log_level: Optional[str] = typer.Option(
         None,
         "--log-level",
-        help="Set explicit logging level (DEBUG, INFO, WARNING, ERROR). Overrides --verbose.",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         case_sensitive=False,
         show_choices=True,
         rich_help_panel="Logging",
     ),
     json_logs: bool = typer.Option(
-        False,
-        "--json-logs",
-        help="Output logs as JSON (structured)",
-        rich_help_panel="Logging",
+        False, "--json-logs", help="Output logs as JSON", rich_help_panel="Logging"
     ),
 ) -> None:
-    """
-    Initialize CLI logging and resolve storage mode for the invoked command.
+    """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
+    if (
+        ctx.invoked_subcommand is None
+        and not ctx.resilient_parsing
+        and ("--help" in sys.argv or "-h" in sys.argv)
+    ):
+        print_indexed_banner()
 
-    This callback configures the root logger (respecting --verbose, --log-level, and --json-logs),
-    prints the banner when top-level help is requested, resolves whether the application will
-    use local or global storage (honoring early-parsed --local / --global flags and existing
-    local configuration), creates a local .indexed directory when requested, and stores the
-    resolved storage context on the Typer context for subcommands.
-
-    Parameters:
-        ctx (typer.Context): Typer context for the current invocation; used to detect subcommands
-            and to store resolved storage/service objects.
-        verbose (bool): If true, prefer INFO logging level (overridden by `log_level`).
-        log_level (Optional[str]): Explicit logging level string (e.g., "DEBUG", "INFO"); overrides
-            `verbose` and environment-configured level when provided.
-        json_logs (bool): If true, enable JSON-formatted structured logging.
-
-    Raises:
-        typer.Exit: Exits with code 1 when mutually exclusive flags `--local` and `--global` are both used.
-    """
-    global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-
-    # Show banner before help if main command help is requested
-    # This only triggers when no subcommand is invoked
-    if ctx.invoked_subcommand is None and not ctx.resilient_parsing:
-        # Check if help was requested
-        if "--help" in sys.argv or "-h" in sys.argv:
-            print_indexed_banner()
-
-    # Resolve effective level with precedence: CLI > env > default
-    # --verbose sets INFO level for seeing operation progress
-    # --log-level=DEBUG can be used for deep debugging
     env_level = os.getenv("INDEXED_LOG_LEVEL")
     level = (
         (log_level or ("INFO" if verbose else None) or env_level).upper()
         if (log_level or verbose or env_level)
         else None
     )
-    # Default is WARNING (set in setup_root_logger)
     json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     setup_root_logger(level_str=level, json_mode=json_mode)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Storage Mode Resolution (using early-parsed flags)
-    # ─────────────────────────────────────────────────────────────────────────
-
-    # Import here to avoid circular imports
-    from indexed_config import (
-        ConfigService,
-        has_local_config,
-        get_local_root,
-        ensure_storage_dirs,
-    )
-
-    # Use the early-parsed flags
-    use_local = _EARLY_USE_LOCAL
-    use_global = _EARLY_USE_GLOBAL
-
-    # Validate mutually exclusive flags
-    if use_local and use_global:
-        _prompt_console.print(
-            "[red]Error:[/red] Cannot use both --local and --global flags together."
-        )
+    if local and global_:
+        print_error("Cannot use both --local and --global flags together.")
         raise typer.Exit(1)
 
-    workspace = Path.cwd()
-    local_exists = has_local_config(workspace)
-
-    # If --local flag used but no local .indexed exists, create it
-    if use_local and not local_exists:
-        local_root = get_local_root(workspace)
-        ensure_storage_dirs(local_root)
-        # Create empty config.toml
-        config_path = local_root / "config.toml"
-        config_path.write_text(
-            "# Indexed Local Configuration\n"
-            "# This file was auto-created when using --local flag\n\n"
-            "[storage]\n"
-            'mode = "local"  # Always use local storage for this project\n'
-        )
-        print_success(f"Created local .indexed folder at {local_root}")
-        local_exists = True
-
-    # Determine mode override from flags or local existence
-    mode_override: Optional[StorageMode] = None
-    config_mode: Optional[str] = None
-
-    if use_local:
-        mode_override = "local"
-    elif use_global:
-        mode_override = "global"
-    elif local_exists:
-        # If local .indexed exists, prefer it by default
-        mode_override = "local"
-
-    # Optionally read storage.mode from config before full initialization
-    # to avoid double-init in the common case
-    if not use_local and not use_global:
-        # Read storage.mode from config files without full initialization
-        from indexed_config.store import TomlStore
-
-        temp_store = TomlStore(workspace=workspace, mode_override=None)
-        try:
-            config_data = temp_store.read()
-            config_mode = config_data.get("storage", {}).get("mode")
-            if config_mode in ("local", "global"):
-                # Config setting takes precedence over auto-detection
-                mode_override = config_mode
-        except Exception:
-            # If config read fails, proceed with auto-detected mode
-            pass
-
-    # Initialize ConfigService with resolved mode (only once)
-    config_service = ConfigService.instance(
-        workspace=workspace,
-        mode_override=mode_override,
-        reset=True,  # Reset to ensure fresh state with new settings
-    )
-
-    # Handle storage mode display and context setup (only if running a command)
-    if ctx.invoked_subcommand is not None and not ctx.resilient_parsing:
-        _resolve_and_display_storage_mode(
-            ctx=ctx,
-            config_service=config_service,
-            mode_override=mode_override,
-            workspace=workspace,
-            local_exists=local_exists,
-            use_local_flag=use_local,
-            use_global_flag=use_global,
-            config_mode=config_mode,
-        )
-
-
-def _resolve_and_display_storage_mode(
-    ctx: typer.Context,
-    config_service: "ConfigService",  # type: ignore[name-defined]
-    mode_override: Optional[StorageMode],
-    workspace: Path,
-    local_exists: bool,
-    use_local_flag: bool,
-    use_global_flag: bool,
-    config_mode: Optional[str],
-) -> None:
-    """
-    Resolve the effective storage mode, display a storage indicator to the user, and record the resolved mode, path, and config service in the Typer context.
-
-    Parameters:
-        ctx (typer.Context): Typer context in which `storage_mode`, `storage_path`, and `config_service` will be stored.
-        config_service (ConfigService): Configuration service used to read workspace preferences.
-        mode_override (Optional[StorageMode]): Previously determined override for storage mode, if any.
-        workspace (Path): Current workspace path used to compute a local storage root.
-        local_exists (bool): True if local storage/config already exists for the workspace.
-        use_local_flag (bool): True if the CLI `--local` flag was supplied.
-        use_global_flag (bool): True if the CLI `--global` flag was supplied.
-        config_mode (Optional[str]): `storage.mode` value read from configuration, if present (expected "local" or "global").
-    """
-    from indexed_config import get_local_root, get_global_root
-
-    # Determine the reason for using this mode
-    mode, reason = get_storage_mode_and_reason(
-        has_local=local_exists,
-        mode_override="local"
-        if use_local_flag
-        else ("global" if use_global_flag else None),
-        config_mode=config_mode if config_mode in ("local", "global") else None,
-        workspace_pref=config_service.get_workspace_preference(workspace),
-    )
-
-    # Get the actual path being used
-    if mode == "local":
-        storage_path = get_local_root(workspace)
-    else:
-        storage_path = get_global_root()
-
-    # Always display storage mode indicator
-    print_storage_info(
-        console=_prompt_console,
-        mode=mode,
-        path=storage_path,
-        reason=reason,
-        newline_before=False,
-        newline_after=True,
-    )
-
-    # Store in context for commands to access
+    # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
-    ctx.obj["storage_mode"] = mode
-    ctx.obj["storage_path"] = storage_path
-    ctx.obj["config_service"] = config_service
+    if local:
+        ctx.obj["mode_override"] = "local"
+    elif global_:
+        ctx.obj["mode_override"] = "global"
+    else:
+        ctx.obj["mode_override"] = None
+
+    if local:
+        from indexed_config import ensure_storage_dirs, get_local_root, has_local_config
+
+        workspace = Path.cwd()
+        if not has_local_config(workspace):
+            local_root = get_local_root(workspace)
+            ensure_storage_dirs(local_root)
+            (local_root / "config.toml").write_text(
+                "# Indexed Local Configuration\n"
+                "# Auto-created with --local flag\n\n"
+                "[storage]\n"
+                'mode = "local"\n'
+            )
+            print_success(f"Created local .indexed folder at {local_root}")
 
 
-# Re-export default indexer constant for backward compatibility with tests
-from core.v1.constants import DEFAULT_INDEXER  # noqa: E402
+from . import config, info, knowledge, mcp  # noqa: E402
+from .init import init as init_command  # noqa: E402
 
+KNOWLEDGE_PANEL = "Knowledge / Index Management"
+CONFIG_PANEL = "Configuration Management"
+MCP_PANEL = "MCP Server"
+RESOURCES_PANEL = "Resources"
 
-# Register new commands using plugin architecture
-from . import knowledge  # noqa: E402
-from . import config  # noqa: E402
-from . import mcp  # noqa: E402
-from . import info  # noqa: E402
+app.command(
+    "init",
+    rich_help_panel="Setup",
+    help="Initialize Indexed: download models and create directories",
+)(init_command)
 
-# Knowledge / Index Management - Register hidden group and flat commands
 app.add_typer(
     knowledge.app,
     name="knowledge",
     help="Knowledge & Index Management Commands",
-    rich_help_panel="Knowledge / Index Management",
+    rich_help_panel=KNOWLEDGE_PANEL,
     hidden=True,
 )
-
 app.add_typer(
     knowledge.app,
     name="index",
     help="Knowledge & Index Management Commands",
-    rich_help_panel="Knowledge / Index Management",
+    rich_help_panel=KNOWLEDGE_PANEL,
     hidden=True,
 )
-
-# Show Individual Knowledge Commands In Main Help (Flat Structure)
 app.add_typer(
     knowledge.create.app,
     name="index create",
     help="Create New Collections using Connectors",
-    rich_help_panel="Knowledge / Index Management",
+    rich_help_panel=KNOWLEDGE_PANEL,
 )
 app.command(
     "index search",
-    rich_help_panel="Knowledge / Index Management",
+    rich_help_panel=KNOWLEDGE_PANEL,
     help="Search one or all Collections",
 )(knowledge.search.search)
 app.command(
-    "index inspect",
-    rich_help_panel="Knowledge / Index Management",
-    help="Inspect Collections",
+    "index inspect", rich_help_panel=KNOWLEDGE_PANEL, help="Inspect Collections"
 )(knowledge.inspect.inspect_collections)
 app.command(
-    "index update",
-    rich_help_panel="Knowledge / Index Management",
-    help="Update a Collection",
+    "index update", rich_help_panel=KNOWLEDGE_PANEL, help="Update a Collection"
 )(knowledge.update.update)
 app.command(
     "index remove",
-    rich_help_panel="Knowledge / Index Management",
+    rich_help_panel=KNOWLEDGE_PANEL,
     help="Remove one or more Collections",
 )(knowledge.remove.remove)
 
-# Configuration Management - Hide The Group, Show Only Subcommands
+# Short aliases (hidden — not shown in help)
+app.add_typer(knowledge.create.app, name="create", hidden=True)
+app.command("search", hidden=True)(knowledge.search.search)
+app.command("inspect", hidden=True)(knowledge.inspect.inspect_collections)
+app.command("update", hidden=True)(knowledge.update.update)
+app.command("remove", hidden=True)(knowledge.remove.remove)
+
 app.add_typer(
     config.app,
     name="config",
@@ -391,147 +188,134 @@ app.add_typer(
     rich_help_panel="Config Management",
     hidden=True,
 )
-# Show Individual Config Commands In Main Help
 app.command(
     "config inspect",
-    rich_help_panel="Configuration Management",
+    rich_help_panel=CONFIG_PANEL,
     help="Inspect Configuration Settings",
 )(config.inspect)
 app.command(
     "config update",
-    rich_help_panel="Configuration Management",
+    rich_help_panel=CONFIG_PANEL,
     help="Update Configuration Settings Interactively",
 )(config.update)
 app.command(
-    "config set",
-    rich_help_panel="Configuration Management",
-    help="Set Configuration Values",
+    "config set", rich_help_panel=CONFIG_PANEL, help="Set Configuration Values"
 )(config.set_config)
 app.command(
-    "config validate",
-    rich_help_panel="Configuration Management",
-    help="Validate Configuration",
+    "config validate", rich_help_panel=CONFIG_PANEL, help="Validate Configuration"
 )(config.validate)
 app.command(
-    "config delete",
-    rich_help_panel="Configuration Management",
-    help="Delete Configuration Keys",
+    "config delete", rich_help_panel=CONFIG_PANEL, help="Delete Configuration Keys"
 )(config.delete_config)
 
-# MCP Server - Hide The Group, Show Only Subcommands
 app.add_typer(
     mcp.app,
     name="mcp",
     help="Start MCP Server For AI Integration",
-    rich_help_panel="MCP Server",
+    rich_help_panel=MCP_PANEL,
     hidden=True,
 )
-# Show Individual MCP Commands In Main Help
 app.command(
-    "mcp run", rich_help_panel="MCP Server", help="Run The MCP Server With FastMCP CLI"
+    "mcp run", rich_help_panel=MCP_PANEL, help="Run The MCP Server With FastMCP CLI"
 )(mcp.run)
 app.command(
     "mcp dev",
-    rich_help_panel="MCP Server",
+    rich_help_panel=MCP_PANEL,
     help="Run MCP Server In Development Mode With Inspector",
 )(mcp.dev)
 app.command(
-    "mcp inspect", rich_help_panel="MCP Server", help="Inspect MCP Server Capabilities"
+    "mcp inspect", rich_help_panel=MCP_PANEL, help="Inspect MCP Server Capabilities"
 )(mcp.inspect)
 app.command(
-    "mcp fastmcp",
-    rich_help_panel="MCP Server",
-    help="Direct Passthrough To FastMCP CLI",
+    "mcp fastmcp", rich_help_panel=MCP_PANEL, help="Direct Passthrough To FastMCP CLI"
 )(mcp.fastmcp)
 
-# Resources - Hide The Group, Show Only Subcommands
 app.add_typer(
     info.app,
     name="info",
     help="Resources Commands",
-    rich_help_panel="Resources",
+    rich_help_panel=RESOURCES_PANEL,
     hidden=True,
 )
-# Show Individual Info Commands In Main Help
 app.command(
-    "docs",
-    rich_help_panel="Resources",
-    help="Open Documentation in Browser",
+    "docs", rich_help_panel=RESOURCES_PANEL, help="Open Documentation in Browser"
 )(info.docs)
 app.command(
-    "license",
-    rich_help_panel="Resources",
-    help="Display License and Terms",
+    "license", rich_help_panel=RESOURCES_PANEL, help="Display License and Terms"
 )(info.license_terms)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Migration Command
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 @app.command(
     "migrate",
-    rich_help_panel="Configuration Management",
+    rich_help_panel=CONFIG_PANEL,
     help="Migrate legacy ./data/ to global ~/.indexed/data/",
 )
 def migrate_data(
     dry_run: bool = typer.Option(
-        False,
-        "--dry-run",
-        help="Show what would be migrated without copying",
+        False, "--dry-run", help="Show what would be migrated without copying"
     ),
 ) -> None:
-    """
-    Migrate legacy local data from ./data/ to the configured global storage location.
-
-    If legacy data exists, copy it into the global storage root while preserving the original files.
-    If no legacy data is present, the command exits without making changes.
-
-    Parameters:
-        dry_run (bool): When True, show what would be migrated without performing any copy operations.
-    """
+    """Migrate legacy local data from ./data/ to global storage."""
     from indexed_config import get_global_root
-    from .utils.migration import migrate_legacy_data, has_legacy_data
+
     from .utils.console import console
+    from .utils.migration import has_legacy_data, migrate_legacy_data
 
     if not has_legacy_data():
-        console.print("[dim]No legacy data found at ./data/[/dim]")
-        console.print()
-        console.print("[dim]Nothing to migrate.[/dim]")
+        print_info("No legacy data found at ./data/ — nothing to migrate.")
         return
 
-    target_root = get_global_root()
-    migrate_legacy_data(target_root, console, dry_run=dry_run)
+    migrate_legacy_data(get_global_root(), console, dry_run=dry_run)
 
 
 __all__ = [
     "app",
     "main",
-    "DEFAULT_INDEXER",
-    # Re-exports used by tests for monkeypatching
-    "svc_create",
-    "svc_update",
-    "svc_clear",
-    "svc_search",
-    "svc_status",
-    "SourceConfig",
+    "DEFAULT_INDEXER",  # noqa: F822
+    "svc_create",  # noqa: F822
+    "svc_update",  # noqa: F822
+    "svc_clear",  # noqa: F822
+    "svc_search",  # noqa: F822
+    "svc_status",  # noqa: F822
+    "SourceConfig",  # noqa: F822
 ]
 
 
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests."""
+    if name == "DEFAULT_INDEXER":
+        from core.v1.constants import DEFAULT_INDEXER
+
+        return DEFAULT_INDEXER
+    elif name == "svc_create":
+        from core.v1.engine.services import create
+
+        return create
+    elif name == "svc_update":
+        from core.v1.engine.services import update
+
+        return update
+    elif name == "svc_clear":
+        from core.v1.engine.services import clear
+
+        return clear
+    elif name == "svc_search":
+        from core.v1.engine.services import search
+
+        return search
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+
+        return status
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
 def main() -> None:
-    """
-    Initialize the CLI: parse early storage flags, print the banner for top-level help, and invoke the Typer application.
-
-    Parses `--local` and `--global` from argv before Typer processes arguments so those flags apply to any subcommand. If the process was called with only `--help` or `-h`, prints the banner prior to showing help. Then launches the Typer app.
-    """
-    global _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL
-
-    # Parse storage flags early (before Typer processes args)
-    # This allows --local and --global to work with any subcommand
-    _EARLY_USE_LOCAL, _EARLY_USE_GLOBAL = _parse_early_storage_flags()
-
-    # Show banner if --help is the only argument (main help, not subcommand help)
+    """CLI entry point."""
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()
     app()

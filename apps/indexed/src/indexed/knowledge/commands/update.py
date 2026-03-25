@@ -1,24 +1,23 @@
 """Update command for refreshing collections."""
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import typer
-from core.v1.engine.services import (
-    update as update_service,
-    SourceConfig,
-    status as svc_status,
-    inspect,
-)
+
+if TYPE_CHECKING:
+    pass
+
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
 from ...utils.console import console
-from ...utils.progress_bar import create_progress_update_callback
-from ...utils.components.status import OperationStatus
+from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import (
     get_heading_style,
     get_dim_style,
+    get_success_style,
+    get_error_style,
 )
 from ...utils.components import (
     create_detail_card,
@@ -33,12 +32,12 @@ from ...utils.credentials import ensure_credentials_for_source
 app = typer.Typer(help="Update collections")
 
 
-def _format_source_type(source_type: str) -> str:
+def _format_source_type(source_type: Optional[str]) -> str:
     """
     Convert an internal source type identifier into a human-readable display name.
 
     Parameters:
-        source_type (str): Internal source type identifier (may be falsy).
+        source_type (Optional[str]): Internal source type identifier (may be None or falsy).
 
     Returns:
         str: A friendly display name for the source type (returns "Unknown" if `source_type` is falsy; falls back to a capitalized form if the type is unrecognized).
@@ -107,13 +106,16 @@ def _format_update_comparison(before, after):
         if before_val is None or after_val is None:
             return f"{before_val} → {after_val}"
 
+        success = get_success_style()
+        error = get_error_style()
+        dim = get_dim_style()
         delta = after_val - before_val
         if delta > 0:
-            return f"{before_val} → {after_val} ([green]+{delta}[/green])"
+            return f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
         elif delta < 0:
-            return f"{before_val} → {after_val} ([red]{delta}[/red])"
+            return f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
         else:
-            return f"{before_val} → {after_val} [{get_dim_style()}](no change)[/{get_dim_style()}]"
+            return f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
 
     def format_size_change(before_bytes, after_bytes):
         """Format size change with proper units."""
@@ -126,17 +128,16 @@ def _format_update_comparison(before, after):
         after_str = format_size(after_bytes)
 
         if before_bytes is not None and after_bytes is not None:
+            success = get_success_style()
+            error = get_error_style()
+            dim = get_dim_style()
             delta = after_bytes - before_bytes
             if delta > 0:
-                return (
-                    f"{before_str} → {after_str} ([green]+{format_size(delta)}[/green])"
-                )
+                return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
             elif delta < 0:
-                return (
-                    f"{before_str} → {after_str} ([red]{format_size(abs(delta))}[/red])"
-                )
+                return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
             else:
-                return f"{before_str} → {after_str} [{get_dim_style()}](no change)[/{get_dim_style()}]"
+                return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
 
         return f"{before_str} → {after_str}"
 
@@ -209,22 +210,40 @@ def update(
     ),
 ):
     """Refresh and re-index a collection or all collections."""
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import update as this_module
+
+    update_service = this_module.update_service
+    source_config_class = this_module.SourceConfig
+    svc_status = this_module.svc_status
+    inspect_svc = this_module.inspect
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
     # Initialize ConfigService and check if config existed before
     config_service = ConfigService.instance()
     config_existed = _config_existed_before(config_service)
+
+    # Display storage mode indicator (not in verbose mode, to keep logs clean)
+    if not is_verbose_mode():
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
 
     # Determine collections to update
     if collection is None:
         # Update all collections
         all_statuses = svc_status()
         if not all_statuses:
-            console.print("\nNo collections found to update")
+            console.print(
+                f"\n[{get_dim_style()}]No collections found to update[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
             return
 
         collections_to_update = [s.name for s in all_statuses]
@@ -246,7 +265,7 @@ def update(
     # Capture before state for all collections
     before_data = {}
     for coll_name in collections_to_update:
-        inspect_result = inspect([coll_name])
+        inspect_result = inspect_svc([coll_name])
         if not inspect_result:
             print_error(f"Cannot inspect collection '{coll_name}' before update")
             raise typer.Exit(1)
@@ -272,7 +291,7 @@ def update(
             print_error(f"Collection '{coll_name}' has no indexers configured")
             continue
 
-        source_config = SourceConfig(
+        source_config = source_config_class(
             name=coll_name,
             type="localFiles",  # Default type, not used in update
             base_url_or_path="",  # Not used in update
@@ -289,25 +308,18 @@ def update(
                 update_error = e
                 break
         else:
-            # Normal mode: use OperationStatus for live updates
-            console.print()
-            with OperationStatus(
-                console, f"Updating {coll_name}", capture_logs=False
-            ) as status:
-                # Show initial status with force_render to ensure spinner is visible
-                status.update("Checking for updates...", force_render=True)
-                callback = create_progress_update_callback(status)
+            # Normal mode: phased progress display
+            title = f"  [{get_accent_style()}]{coll_name}[/{get_accent_style()}]"
+            with create_phased_progress(title=title) as phased:
                 try:
                     with suppress_core_output():
-                        update_service([source_config], progress_callback=callback)
-                    status.complete(
-                        success=True,
-                        success_message=f"{ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated",
+                        update_service([source_config], phased_progress=phased)
+                    console.print(
+                        f"  {ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated"
                     )
                 except Exception as e:
-                    status.complete(
-                        success=False,
-                        failure_message=f"{ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed",
+                    console.print(
+                        f"  {ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed"
                     )
                     update_error = e
                     break
@@ -338,7 +350,7 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
-        inspect_result = inspect([coll_name])
+        inspect_result = inspect_svc([coll_name])
         if not inspect_result:
             print_error(f"Cannot inspect collection '{coll_name}' after update")
             raise typer.Exit(1)
@@ -380,3 +392,28 @@ def update(
     summary = create_summary("Result", result_text)
     console.print(summary)
     console.print()
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "update_service":
+        from core.v1.engine.services import update
+
+        return update
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "svc_status":
+        from core.v1.engine.services import status
+
+        return status
+    elif name == "inspect":
+        from core.v1.engine.services import inspect
+
+        return inspect
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
