@@ -916,10 +916,10 @@ def inspect(
     config = ConfigService.instance()
     raw = config.load_raw()
 
-    from ..utils.simple_output import is_simple_output
+    from ..utils.simple_output import is_simple_output, print_json
 
     if is_simple_output():
-        console.print(json.dumps(raw, indent=2, ensure_ascii=False))
+        print_json(raw)
         return
 
     # Normalize section argument

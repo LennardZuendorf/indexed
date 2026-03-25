@@ -6,12 +6,11 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 """
 
 import typer
-import json
 from typing import List, TYPE_CHECKING
 from rich.columns import Columns
 
 from ...utils.console import console
-from ...utils.simple_output import is_simple_output
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.components import (
     create_info_card,
     create_detail_card,
@@ -157,7 +156,7 @@ def format_collection_json(info: "CollectionInfo") -> None:
         "created_time": info.created_time,
         "updated_time": info.updated_time,
     }
-    console.print(json.dumps(output, indent=2))
+    print_json(output)
 
 
 def format_collections_json(collections: List["CollectionInfo"]) -> None:
@@ -176,7 +175,7 @@ def format_collections_json(collections: List["CollectionInfo"]) -> None:
         }
         for c in collections
     ]
-    console.print(json.dumps(output, indent=2))
+    print_json(output)
 
 
 # ---- END FORMATTER LOGIC ----
