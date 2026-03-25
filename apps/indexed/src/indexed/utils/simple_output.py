@@ -15,12 +15,14 @@ import sys
 from typing import Any, Optional
 
 _simple_output_flag: Optional[bool] = None
+_resolved_cache: Optional[bool] = None
 
 
 def set_simple_output(value: bool) -> None:
     """Set simple output mode from CLI --simple-output flag."""
-    global _simple_output_flag
+    global _simple_output_flag, _resolved_cache
     _simple_output_flag = value
+    _resolved_cache = None
 
 
 def is_simple_output() -> bool:
@@ -31,10 +33,23 @@ def is_simple_output() -> bool:
         2. Environment variable INDEXED_SIMPLE_OUTPUT
         3. TOML config output.simple_output
         4. Default: False
+
+    The result from env/config lookup is cached after first resolution.
     """
     if _simple_output_flag is not None:
         return _simple_output_flag
 
+    global _resolved_cache
+    if _resolved_cache is not None:
+        return _resolved_cache
+
+    result = _resolve_from_env_and_config()
+    _resolved_cache = result
+    return result
+
+
+def _resolve_from_env_and_config() -> bool:
+    """Resolve simple output from environment variable and TOML config."""
     env = os.getenv("INDEXED_SIMPLE_OUTPUT", "").lower()
     if env in ("1", "true", "yes"):
         return True
@@ -55,9 +70,10 @@ def is_simple_output() -> bool:
 
 
 def reset_simple_output() -> None:
-    """Reset the flag to None. Used in tests."""
-    global _simple_output_flag
+    """Reset all state. Used in tests."""
+    global _simple_output_flag, _resolved_cache
     _simple_output_flag = None
+    _resolved_cache = None
 
 
 def print_json(data: Any) -> None:

@@ -280,7 +280,11 @@ def update(
     for coll_name in collections_to_update:
         inspect_result = inspect_svc([coll_name])
         if not inspect_result:
-            print_error(f"Cannot inspect collection '{coll_name}' before update")
+            msg = f"Cannot inspect collection '{coll_name}' before update"
+            if simple:
+                print_json({"status": "error", "error": msg})
+            else:
+                print_error(msg)
             raise typer.Exit(1)
         before_data[coll_name] = inspect_result[0]
 
@@ -369,8 +373,11 @@ def update(
     for coll_name in collections_to_update:
         inspect_result = inspect_svc([coll_name])
         if not inspect_result:
-            if not simple:
-                print_error(f"Cannot inspect collection '{coll_name}' after update")
+            msg = f"Cannot inspect collection '{coll_name}' after update"
+            if simple:
+                print_json({"status": "error", "error": msg})
+            else:
+                print_error(msg)
             raise typer.Exit(1)
         after_info = inspect_result[0]
         after_data[coll_name] = after_info

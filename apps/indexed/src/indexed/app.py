@@ -84,7 +84,6 @@ def _init_app(
     ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
-    # Set simple output mode before anything else
     if simple_output:
         from .utils.simple_output import set_simple_output
 
@@ -97,7 +96,6 @@ def _init_app(
     ):
         print_indexed_banner()
 
-    # In simple output mode, force JSON logging to stderr
     from .utils.simple_output import is_simple_output
 
     env_level = os.getenv("INDEXED_LOG_LEVEL")

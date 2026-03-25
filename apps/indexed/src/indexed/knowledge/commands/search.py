@@ -404,16 +404,15 @@ def search(
             )
 
     # Build search configs for all collections
-    search_configs = []
+    search_configs = {}
     for coll_name in collections_to_search:
         coll_status = status_svc([coll_name])[0]
-        config = source_config_class(
+        search_configs[coll_name] = source_config_class(
             name=coll_name,
-            type="localFiles",  # Default type, not used in search
-            base_url_or_path="",  # Not used in search
-            indexer=coll_status.indexers[0],  # Get from collection status
+            type="localFiles",
+            base_url_or_path="",
+            indexer=coll_status.indexers[0],
         )
-        search_configs.append(config)
 
     # Search each collection with status spinner
     results = {}
@@ -421,17 +420,10 @@ def search(
     if simple or is_verbose_mode():
         # Simple output / verbose mode: no spinner
         for coll_name in collections_to_search:
-            coll_status = status_svc([coll_name])[0]
-            config = source_config_class(
-                name=coll_name,
-                type="localFiles",
-                base_url_or_path="",
-                indexer=coll_status.indexers[0],
-            )
             with NoOpContext():
                 result = svc_search(
                     query,
-                    configs=[config],
+                    configs=[search_configs[coll_name]],
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
@@ -444,17 +436,10 @@ def search(
             op_status.update("Loading model...")
             for idx, coll_name in enumerate(collections_to_search, 1):
                 op_status.update(f"Searching {idx}/{num_colls}: {coll_name}")
-                coll_status = status_svc([coll_name])[0]
-                config = source_config_class(
-                    name=coll_name,
-                    type="localFiles",
-                    base_url_or_path="",
-                    indexer=coll_status.indexers[0],
-                )
                 with suppress_core_output():
                     result = svc_search(
                         query,
-                        configs=[config],
+                        configs=[search_configs[coll_name]],
                         max_docs=limit,
                         max_chunks=limit * 3,
                         include_matched_chunks=True,
