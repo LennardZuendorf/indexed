@@ -90,8 +90,10 @@ class TestInspectCollectionsCommand:
         assert "docs" in result.stdout
         assert "jira" in result.stdout
 
-    def test_inspect_specific_collection_json_output(self, monkeypatch):
-        """JSON output for a specific collection should contain core fields."""
+    def test_inspect_specific_collection_simple_output(self, monkeypatch):
+        """Simple output for a specific collection should contain core fields."""
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
         coll = _make_collection("docs")
 
         def fake_inspect(names=None):
@@ -100,26 +102,36 @@ class TestInspectCollectionsCommand:
             return [coll]
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
+        set_simple_output(True)
 
-        result = runner.invoke(inspect_cmd.app, ["docs", "--json"])
+        try:
+            result = runner.invoke(inspect_cmd.app, ["docs"])
 
-        assert result.exit_code == 0
-        assert '"name": "docs"' in result.stdout
-        assert "number_of_documents" in result.stdout
-        assert "number_of_chunks" in result.stdout
+            assert result.exit_code == 0
+            assert '"name": "docs"' in result.stdout
+            assert "number_of_documents" in result.stdout
+            assert "number_of_chunks" in result.stdout
+        finally:
+            reset_simple_output()
 
-    def test_inspect_all_collections_json_output(self, monkeypatch):
-        """JSON output for all collections should be a list of objects."""
+    def test_inspect_all_collections_simple_output(self, monkeypatch):
+        """Simple output for all collections should be a list of objects."""
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
         colls = [_make_collection("docs"), _make_collection("jira")]
 
         monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: colls)
+        set_simple_output(True)
 
-        result = runner.invoke(inspect_cmd.app, ["--json"])
+        try:
+            result = runner.invoke(inspect_cmd.app, [])
 
-        assert result.exit_code == 0
-        # Should show a JSON array with at least one of the names
-        assert result.stdout.strip().startswith("[")
-        assert '"docs"' in result.stdout or '"jira"' in result.stdout
+            assert result.exit_code == 0
+            # Should show a JSON array with at least one of the names
+            assert result.stdout.strip().startswith("[")
+            assert '"docs"' in result.stdout or '"jira"' in result.stdout
+        finally:
+            reset_simple_output()
 
     def test_inspect_specific_collection_rich_output(self, monkeypatch):
         """Inspecting a specific collection without --json shows rich panel output."""

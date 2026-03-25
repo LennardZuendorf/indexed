@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
 from ...utils.console import console
@@ -227,8 +228,10 @@ def update(
     config_service = ConfigService.instance()
     config_existed = _config_existed_before(config_service)
 
-    # Display storage mode indicator (not in verbose mode, to keep logs clean)
-    if not is_verbose_mode():
+    simple = is_simple_output()
+
+    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
+    if not is_verbose_mode() and not simple:
         from ...utils.storage_info import display_storage_mode_for_command
 
         display_storage_mode_for_command(console)
@@ -238,6 +241,9 @@ def update(
         # Update all collections
         all_statuses = svc_status()
         if not all_statuses:
+            if simple:
+                print_json({"error": "No collections found"})
+                return
             console.print(
                 f"\n[{get_dim_style()}]No collections found to update[/{get_dim_style()}]"
             )
@@ -247,20 +253,27 @@ def update(
             return
 
         collections_to_update = [s.name for s in all_statuses]
-        console.print(
-            f"\n[{get_heading_style()}]Updating {len(collections_to_update)} Collections:[/{get_heading_style()}]"
-        )
+        if not simple:
+            console.print(
+                f"\n[{get_heading_style()}]Updating {len(collections_to_update)} Collections:[/{get_heading_style()}]"
+            )
     else:
         # Update specific collection
         statuses = svc_status([collection])
         if not statuses:
-            print_error(f"Collection '{collection}' not found")
+            if simple:
+                print_json(
+                    {"status": "error", "error": f"Collection '{collection}' not found"}
+                )
+            else:
+                print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_update = [collection]
-        console.print(
-            f"\n[{get_heading_style()}]Updating 1 Collection:[/{get_heading_style()}]"
-        )
+        if not simple:
+            console.print(
+                f"\n[{get_heading_style()}]Updating 1 Collection:[/{get_heading_style()}]"
+            )
 
     # Capture before state for all collections
     before_data = {}
@@ -298,13 +311,14 @@ def update(
             indexer=coll_status.indexers[0],  # Get from collection status
         )
 
-        if is_verbose_mode():
-            # Verbose mode: show core logs directly
+        if simple or is_verbose_mode():
+            # Simple output / verbose mode: no progress display
             try:
                 with NoOpContext():
                     update_service([source_config])
             except Exception as e:
-                print_error(f"Failed to update collection '{coll_name}': {str(e)}")
+                if not simple:
+                    print_error(f"Failed to update collection '{coll_name}': {str(e)}")
                 update_error = e
                 break
         else:
@@ -326,7 +340,12 @@ def update(
 
     # If update failed, show error and exit
     if update_error:
-        print_error(f"Failed to update collection: {str(update_error)}")
+        if simple:
+            print_json(
+                {"status": "error", "error": f"Failed to update: {str(update_error)}"}
+            )
+        else:
+            print_error(f"Failed to update collection: {str(update_error)}")
         raise typer.Exit(1)
 
     # Check if config was created during updates
@@ -334,16 +353,14 @@ def update(
         config_was_created = _config_existed_before(config_service)
 
     # Notify user if config was newly created
-    if not config_existed and config_was_created:
+    if not config_existed and config_was_created and not simple:
         config_path = _get_config_path(config_service)
         console.print()
         print_info(f"Created new config file with default settings: {config_path}")
 
-    # Display comparison results
-    console.print(
-        f"\n[{get_heading_style()}]Updated Collection Details:[/{get_heading_style()}] \n"
-    )
-
+    # Gather after-update data
+    after_data = {}
+    updated_collections = []
     total_docs = 0
     total_chunks = 0
     docs_delta = 0
@@ -352,9 +369,11 @@ def update(
     for coll_name in collections_to_update:
         inspect_result = inspect_svc([coll_name])
         if not inspect_result:
-            print_error(f"Cannot inspect collection '{coll_name}' after update")
+            if not simple:
+                print_error(f"Cannot inspect collection '{coll_name}' after update")
             raise typer.Exit(1)
         after_info = inspect_result[0]
+        after_data[coll_name] = after_info
         before_info = before_data[coll_name]
 
         total_docs += after_info.number_of_documents
@@ -362,7 +381,37 @@ def update(
         docs_delta += after_info.number_of_documents - before_info.number_of_documents
         chunks_delta += after_info.number_of_chunks - before_info.number_of_chunks
 
-        _format_update_comparison(before_info, after_info)
+        updated_collections.append(
+            {
+                "name": coll_name,
+                "documents": after_info.number_of_documents,
+                "chunks": after_info.number_of_chunks,
+                "documents_delta": after_info.number_of_documents
+                - before_info.number_of_documents,
+                "chunks_delta": after_info.number_of_chunks
+                - before_info.number_of_chunks,
+            }
+        )
+
+    # Simple output mode: JSON status
+    if simple:
+        print_json(
+            {
+                "status": "updated",
+                "collections": updated_collections,
+                "total_documents": total_docs,
+                "total_chunks": total_chunks,
+            }
+        )
+        return
+
+    # Display comparison results
+    console.print(
+        f"\n[{get_heading_style()}]Updated Collection Details:[/{get_heading_style()}] \n"
+    )
+
+    for coll_name in collections_to_update:
+        _format_update_comparison(before_data[coll_name], after_data[coll_name])
 
     # Generate dynamic summary based on changes
     num_collections = len(collections_to_update)

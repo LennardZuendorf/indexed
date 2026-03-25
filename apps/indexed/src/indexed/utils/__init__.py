@@ -9,7 +9,7 @@ from . import banner
 from . import console
 from . import context_managers
 from . import logging
-from . import output_mode
+from . import simple_output
 from . import components
 from . import format as format_type
 
@@ -18,7 +18,7 @@ __all__ = [
     "console",
     "context_managers",
     "logging",
-    "output_mode",
+    "simple_output",
     "components",
     "format_type",
 ]

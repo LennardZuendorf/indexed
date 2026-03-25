@@ -174,8 +174,10 @@ class TestInspect:
         )
 
     @patch("indexed.config.cli.ConfigService")
-    def test_inspect_json_output(self, mock_config_service):
-        """Should output JSON when --json flag is provided."""
+    def test_inspect_simple_output(self, mock_config_service):
+        """Should output JSON when --simple-output flag is provided."""
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
         mock_config = Mock()
         mock_config.load_raw.return_value = {"sources": {"files": {"path": "/data"}}}
         mock_config.get_workspace_config.return_value = None
@@ -183,9 +185,13 @@ class TestInspect:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["config", "inspect", "--json"])
-        assert result.exit_code == 0
-        assert "{" in result.stdout  # JSON output
+        set_simple_output(True)
+        try:
+            result = runner.invoke(app, ["config", "inspect"])
+            assert result.exit_code == 0
+            assert "{" in result.stdout  # JSON output
+        finally:
+            reset_simple_output()
 
 
 class TestSetConfig:

@@ -76,8 +76,20 @@ def _init_app(
     json_logs: bool = typer.Option(
         False, "--json-logs", help="Output logs as JSON", rich_help_panel="Logging"
     ),
+    simple_output: bool = typer.Option(
+        False,
+        "--simple-output",
+        help="Machine-readable JSON output (for programmatic use)",
+        rich_help_panel="Output",
+    ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
+    # Set simple output mode before anything else
+    if simple_output:
+        from .utils.simple_output import set_simple_output
+
+        set_simple_output(True)
+
     if (
         ctx.invoked_subcommand is None
         and not ctx.resilient_parsing
@@ -85,13 +97,20 @@ def _init_app(
     ):
         print_indexed_banner()
 
+    # In simple output mode, force JSON logging to stderr
+    from .utils.simple_output import is_simple_output
+
     env_level = os.getenv("INDEXED_LOG_LEVEL")
     level = (
         (log_level or ("INFO" if verbose else None) or env_level).upper()
         if (log_level or verbose or env_level)
         else None
     )
-    json_mode = json_logs or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    json_mode = (
+        json_logs
+        or is_simple_output()
+        or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
+    )
     setup_root_logger(level_str=level, json_mode=json_mode)
 
     if local and global_:

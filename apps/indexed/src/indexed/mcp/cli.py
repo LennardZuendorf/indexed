@@ -498,9 +498,6 @@ def inspect(
     output: Optional[str] = typer.Option(
         None, "-o", "--output", help="Output file path"
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output summary as formatted JSON"
-    ),
     raw: bool = typer.Option(
         False, "--raw", help="Output raw FastMCP JSON (full response)"
     ),
@@ -537,7 +534,9 @@ def inspect(
             return
 
         # Display based on requested format
-        if json_output:
+        from ..utils.simple_output import is_simple_output
+
+        if is_simple_output():
             _display_mcp_inspect_json(data)
         else:
             _display_mcp_inspect(data)
