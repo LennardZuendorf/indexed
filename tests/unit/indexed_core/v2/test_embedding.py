@@ -23,7 +23,11 @@ class TestGetEmbedModel:
     def test_prepends_sentence_transformers_prefix(self, mock_cls: MagicMock) -> None:
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             get_embed_model("all-MiniLM-L6-v2")
             mock_cls.assert_called_once_with(
@@ -34,7 +38,11 @@ class TestGetEmbedModel:
     def test_keeps_full_repo_id(self, mock_cls: MagicMock) -> None:
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             get_embed_model("my-org/my-model")
             mock_cls.assert_called_once_with(model_name="my-org/my-model")
@@ -43,7 +51,11 @@ class TestGetEmbedModel:
         mock_cls = MagicMock()
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             model1 = get_embed_model("all-MiniLM-L6-v2")
             model2 = get_embed_model("all-MiniLM-L6-v2")
@@ -55,7 +67,11 @@ class TestGetEmbedModel:
         mock_cls = MagicMock(side_effect=instances)
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             model1 = get_embed_model("all-MiniLM-L6-v2")
             model2 = get_embed_model("all-mpnet-base-v2")
@@ -64,14 +80,20 @@ class TestGetEmbedModel:
 
     def test_raises_embedding_error_on_import_failure(self) -> None:
         with patch.dict("sys.modules", {"llama_index.embeddings.huggingface": None}):
-            with pytest.raises(EmbeddingError, match="llama-index-embeddings-huggingface"):
+            with pytest.raises(
+                EmbeddingError, match="llama-index-embeddings-huggingface"
+            ):
                 get_embed_model()
 
     def test_raises_embedding_error_on_load_failure(self) -> None:
         mock_cls = MagicMock(side_effect=RuntimeError("model not found"))
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             with pytest.raises(EmbeddingError, match="Failed to load"):
                 get_embed_model()
@@ -84,7 +106,11 @@ class TestResetCache:
         mock_cls = MagicMock()
         with patch.dict(
             "sys.modules",
-            {"llama_index.embeddings.huggingface": MagicMock(HuggingFaceEmbedding=mock_cls)},
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
         ):
             get_embed_model("all-MiniLM-L6-v2")
             reset_cache()

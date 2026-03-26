@@ -59,9 +59,7 @@ class TestFormatResults:
         assert len(doc1["matchedChunks"]) == 2
 
     def test_max_docs_truncation(self) -> None:
-        nodes = [
-            _make_node_with_score(source_id=f"doc-{i}") for i in range(5)
-        ]
+        nodes = [_make_node_with_score(source_id=f"doc-{i}") for i in range(5)]
         result = _format_results("col", nodes, max_docs=2, include_matched_chunks=True)
         assert len(result["results"]) == 2
 
@@ -74,14 +72,18 @@ class TestFormatResults:
 
     def test_include_matched_chunks_false(self) -> None:
         nodes = [_make_node_with_score(text="hello world")]
-        result = _format_results("col", nodes, max_docs=10, include_matched_chunks=False)
+        result = _format_results(
+            "col", nodes, max_docs=10, include_matched_chunks=False
+        )
 
         chunk = result["results"][0]["matchedChunks"][0]
         assert "content" not in chunk
 
     def test_score_in_chunk(self) -> None:
         nodes = [_make_node_with_score(score=0.85)]
-        result = _format_results("col", nodes, max_docs=10, include_matched_chunks=False)
+        result = _format_results(
+            "col", nodes, max_docs=10, include_matched_chunks=False
+        )
 
         chunk = result["results"][0]["matchedChunks"][0]
         assert chunk["score"] == pytest.approx(0.85)
@@ -93,5 +95,7 @@ class TestFormatResults:
 
     def test_none_score_defaults_to_zero(self) -> None:
         nodes = [_make_node_with_score(score=None)]
-        result = _format_results("col", nodes, max_docs=10, include_matched_chunks=False)
+        result = _format_results(
+            "col", nodes, max_docs=10, include_matched_chunks=False
+        )
         assert result["results"][0]["matchedChunks"][0]["score"] == 0.0

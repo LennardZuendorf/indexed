@@ -41,7 +41,9 @@ class TestCoreV2IndexingConfig:
         assert cfg.batch_size == 32
 
     def test_overlap_must_be_less_than_chunk_size(self) -> None:
-        with pytest.raises(ValueError, match="chunk_overlap must be less than chunk_size"):
+        with pytest.raises(
+            ValueError, match="chunk_overlap must be less than chunk_size"
+        ):
             CoreV2IndexingConfig(chunk_size=100, chunk_overlap=100)
 
     def test_overlap_less_than_chunk_size_ok(self) -> None:
