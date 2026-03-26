@@ -22,9 +22,10 @@ class TestInitCommand:
     def test_has_own_help(self):
         result = runner.invoke(_get_app(), ["init", "--help"])
         assert result.exit_code == 0
-        assert "--model" in result.output
-        assert "--force" in result.output
-        assert "--skip-model" in result.output
+        # Rich ANSI escapes may split "--" from option name, so check bare names
+        assert "model" in result.output
+        assert "force" in result.output
+        assert "skip-model" in result.output
 
     def test_skips_download_when_cached(self):
         with patch(
