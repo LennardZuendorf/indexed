@@ -35,8 +35,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        # Fetch full history to find latest benchmark
-        fetch-depth: 0
+        # Fetch current + previous commit for baseline comparison
+        fetch-depth: 2
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up Python ${{ matrix.python-version }}
@@ -63,10 +63,10 @@ jobs:
         echo "Current branch: $CURRENT_BRANCH"
         echo "Main branch: main"
 
-    - name: Fetch all branches for baseline access
+    - name: Fetch PR target branch baseline
+      if: github.event_name == 'pull_request'
       run: |
-        # Fetch all branches to access baselines from any branch
-        git fetch --all --depth=100
+        git fetch origin ${{ github.base_ref }} --depth=1
 
     - name: Load baselines from repository
       id: load-baselines
@@ -74,56 +74,37 @@ jobs:
         mkdir -p .benchmarks/baselines
         CURRENT_BRANCH="${{ steps.branch-info.outputs.current_branch }}"
 
-        # Try to get main baseline from main branch
-        echo "📥 Loading main branch baseline from repository..."
-        if git ls-remote --heads origin main | grep -q main; then
-          if git show origin/main:.benchmarks/baselines/main.json 2>/dev/null > .benchmarks/baselines/main.json.tmp && [ -s .benchmarks/baselines/main.json.tmp ]; then
+        # --- Baseline 1: PR target branch (main) for cross-branch comparison ---
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "📥 Loading PR target branch baseline..."
+          if git show "origin/${{ github.base_ref }}:.benchmarks/baselines/${{ github.base_ref }}.json" 2>/dev/null > .benchmarks/baselines/main.json.tmp && [ -s .benchmarks/baselines/main.json.tmp ]; then
             mv .benchmarks/baselines/main.json.tmp .benchmarks/baselines/main.json
-            echo "✅ Found main branch baseline"
+            echo "✅ Found target branch baseline"
             echo "main_baseline_exists=true" >> $GITHUB_OUTPUT
           else
             rm -f .benchmarks/baselines/main.json.tmp
-            echo "ℹ️  No main branch baseline found in repository"
+            echo "ℹ️  No target branch baseline found"
             echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
           fi
         else
-          echo "ℹ️  Main branch doesn't exist yet - skipping main baseline comparison"
           echo "main_baseline_exists=false" >> $GITHUB_OUTPUT
         fi
 
-        # Try to get current branch baseline from current branch's history
-        if [ "$CURRENT_BRANCH" != "main" ]; then
-          echo "📥 Loading current branch baseline from repository..."
-          BASELINE_FILE="${CURRENT_BRANCH}.json"
-          FOUND=false
-          for SOURCE in "HEAD~1" "origin/$CURRENT_BRANCH" "HEAD"; do
-            if git show "$SOURCE:.benchmarks/baselines/$BASELINE_FILE" 2>/dev/null > ".benchmarks/baselines/$BASELINE_FILE.tmp" && [ -s ".benchmarks/baselines/$BASELINE_FILE.tmp" ]; then
-              mv ".benchmarks/baselines/$BASELINE_FILE.tmp" ".benchmarks/baselines/$BASELINE_FILE"
-              FOUND=true
-              break
-            fi
-            rm -f ".benchmarks/baselines/$BASELINE_FILE.tmp"
-          done
-
-          if [ "$FOUND" = true ]; then
-            echo "✅ Found current branch baseline"
-            echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
+        # --- Baseline 2: Previous commit for sequential comparison ---
+        echo "📥 Loading previous commit baseline..."
+        BASELINE_FILE="${CURRENT_BRANCH}.json"
+        if git show "HEAD~1:.benchmarks/baselines/$BASELINE_FILE" 2>/dev/null > ".benchmarks/baselines/${BASELINE_FILE}.tmp" && [ -s ".benchmarks/baselines/${BASELINE_FILE}.tmp" ]; then
+          if [ "$CURRENT_BRANCH" == "main" ]; then
+            mv ".benchmarks/baselines/${BASELINE_FILE}.tmp" .benchmarks/baselines/main_previous.json
           else
-            echo "ℹ️  No current branch baseline found in repository"
-            echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
+            mv ".benchmarks/baselines/${BASELINE_FILE}.tmp" ".benchmarks/baselines/$BASELINE_FILE"
           fi
+          echo "✅ Found previous commit baseline"
+          echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
         else
-          # For main branch, try to get previous commit's baseline
-          echo "📥 Loading previous main branch baseline from repository..."
-          if git show HEAD~1:.benchmarks/baselines/main.json 2>/dev/null > .benchmarks/baselines/main_previous.json.tmp && [ -s .benchmarks/baselines/main_previous.json.tmp ]; then
-            mv .benchmarks/baselines/main_previous.json.tmp .benchmarks/baselines/main_previous.json
-            echo "✅ Found previous main branch baseline"
-            echo "current_baseline_exists=true" >> $GITHUB_OUTPUT
-          else
-            rm -f .benchmarks/baselines/main_previous.json.tmp
-            echo "ℹ️  No previous main branch baseline found"
-            echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
-          fi
+          rm -f ".benchmarks/baselines/${BASELINE_FILE}.tmp"
+          echo "ℹ️  No previous commit baseline found"
+          echo "current_baseline_exists=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Run benchmarks
