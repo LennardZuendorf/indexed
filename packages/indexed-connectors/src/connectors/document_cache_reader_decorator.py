@@ -1,6 +1,23 @@
-import json
 import hashlib
+
 from loguru import logger
+
+try:
+    import orjson
+
+    def _json_loads(data):
+        return orjson.loads(data)
+
+    def _json_dumps(data):
+        return orjson.dumps(data, option=orjson.OPT_INDENT_2).decode("utf-8")
+except ImportError:
+    import json
+
+    def _json_loads(data):
+        return json.loads(data)
+
+    def _json_dumps(data):
+        return json.dumps(data, indent=2, ensure_ascii=False)
 
 
 class CacheReaderDecorator:
@@ -24,7 +41,7 @@ class CacheReaderDecorator:
         ):
             logger.info(f"Cache hit during 'read_all_documents' for {cache_key}")
             for file_name in self.persister.read_folder_files(cache_key):
-                yield json.loads(
+                yield _json_loads(
                     self.persister.read_text_file(f"{cache_key}/{file_name}")
                 )
         else:
@@ -34,7 +51,7 @@ class CacheReaderDecorator:
             for document in self.reader.read_all_documents():
                 document_index += 1
                 self.persister.save_text_file(
-                    json.dumps(document, indent=2, ensure_ascii=False),
+                    _json_dumps(document),
                     f"{cache_key}/{document_index}.json",
                 )
 
@@ -70,6 +87,6 @@ class CacheReaderDecorator:
 
     def __build_cache_key(self):
         hash_object = hashlib.sha256(
-            json.dumps(self.reader.get_reader_details()).encode("utf-8")
+            _json_dumps(self.reader.get_reader_details()).encode("utf-8")
         )
         return hash_object.hexdigest()

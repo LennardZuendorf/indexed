@@ -51,8 +51,11 @@ class FaissAutoIndexer(FaissIndexer):
     select the optimal index type on first call.
     """
 
-    def __init__(self, name, embedder, serialized_index=None):
-        if serialized_index is not None:
+    def __init__(self, name, embedder, serialized_index=None, faiss_index=None):
+        if faiss_index is not None:
+            super().__init__(name, embedder, faiss_index=faiss_index)
+            _set_search_params(self.faiss_index)
+        elif serialized_index is not None:
             super().__init__(name, embedder, serialized_index)
             _set_search_params(self.faiss_index)
         else:

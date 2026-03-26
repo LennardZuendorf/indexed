@@ -129,29 +129,67 @@ def _resolve_snapshot_path(model_name: str) -> str:
     )
 
 
+def _has_onnx_model(model_name: str) -> bool:
+    """Check if an ONNX-exported model exists in the HF cache."""
+    model_dir = _hf_cache_model_dir(model_name)
+    snapshots_dir = model_dir / "snapshots"
+    if not snapshots_dir.exists():
+        return False
+    for snapshot in snapshots_dir.iterdir():
+        if snapshot.is_dir():
+            onnx_dir = snapshot / "onnx"
+            if onnx_dir.exists() and any(onnx_dir.glob("*.onnx")):
+                return True
+            if any(snapshot.glob("*.onnx")):
+                return True
+    return False
+
+
 @lru_cache(maxsize=4)
 def load_model(model_name: str = DEFAULT_MODEL) -> SentenceTransformer:
     """Load an embedding model, leveraging the HuggingFace cache.
 
     Loading strategy:
-    1. If model is in HF cache -> load with local_files_only=True (no network)
-    2. If not cached -> warn user, download, cache for next time
+    1. Try ONNX backend first (faster inference, no PyTorch import needed)
+    2. If ONNX unavailable, fall back to default PyTorch backend
+    3. If model is in HF cache -> load with local_files_only=True (no network)
+    4. If not cached -> warn user, download, cache for next time
 
     The model is cached in memory (lru_cache) for the process lifetime.
     """
     from sentence_transformers import SentenceTransformer
 
     repo_id = _model_repo_id(model_name)
+    cached = is_model_cached(model_name)
 
-    if is_model_cached(model_name):
+    # Try ONNX backend for faster inference (avoids heavy PyTorch overhead)
+    if cached:
         logger.debug(f"Loading '{model_name}' from HuggingFace cache (offline).")
-        return SentenceTransformer(repo_id, local_files_only=True)
+        try:
+            model = SentenceTransformer(
+                repo_id,
+                local_files_only=True,
+                backend="onnx",
+            )
+            logger.debug(f"Loaded '{model_name}' with ONNX backend.")
+            return model
+        except Exception as e:
+            logger.debug(
+                f"ONNX backend unavailable for '{model_name}' ({e}), "
+                f"falling back to default backend."
+            )
+            return SentenceTransformer(repo_id, local_files_only=True)
 
     logger.warning(
         f"Model '{model_name}' not found in cache. "
         f"Downloading now (run 'indexed init' to pre-download models)."
     )
-    return SentenceTransformer(repo_id)
+    try:
+        model = SentenceTransformer(repo_id, backend="onnx")
+        logger.debug(f"Downloaded and loaded '{model_name}' with ONNX backend.")
+        return model
+    except Exception:
+        return SentenceTransformer(repo_id)
 
 
 def get_cache_info() -> dict:

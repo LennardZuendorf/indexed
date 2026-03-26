@@ -234,7 +234,32 @@ class TestLoadModel:
                 return_value=mock_model,
             ) as mock_cls:
                 result = load_model("all-MiniLM-L6-v2")
+                # First call attempts ONNX backend
                 mock_cls.assert_called_once_with(
+                    "sentence-transformers/all-MiniLM-L6-v2",
+                    local_files_only=True,
+                    backend="onnx",
+                )
+                assert result is mock_model
+
+    def test_falls_back_to_default_backend_when_onnx_fails(self, tmp_path):
+        from core.v1.engine.indexes.embeddings.model_manager import load_model
+
+        load_model.cache_clear()
+        _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
+        mock_model = MagicMock()
+        with patch(
+            "core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+            return_value=tmp_path,
+        ):
+            with patch(
+                "sentence_transformers.SentenceTransformer",
+                side_effect=[RuntimeError("ONNX not available"), mock_model],
+            ) as mock_cls:
+                result = load_model("all-MiniLM-L6-v2")
+                assert mock_cls.call_count == 2
+                # Second call falls back to default backend
+                mock_cls.assert_called_with(
                     "sentence-transformers/all-MiniLM-L6-v2",
                     local_files_only=True,
                 )
@@ -258,8 +283,10 @@ class TestLoadModel:
                 with caplog.at_level(logging.WARNING):
                     load_model("not-cached-model")
                 assert "not found in cache" in caplog.text
+                # First attempts ONNX backend for download too
                 mock_cls.assert_called_once_with(
-                    "sentence-transformers/not-cached-model"
+                    "sentence-transformers/not-cached-model",
+                    backend="onnx",
                 )
 
     def test_lru_cache_returns_same_instance(self, tmp_path):

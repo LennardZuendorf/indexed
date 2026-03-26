@@ -12,6 +12,8 @@ dependencies = [
     "indexed-connectors",
     "faiss-cpu>=1.11.0",
     "sentence-transformers>=5.2.0",
+    "onnxruntime>=1.17.0",
+    "orjson>=3.10.0",
     "pydantic>=2.0.0",
 ]
 

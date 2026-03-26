@@ -1,8 +1,27 @@
-import json
 from datetime import datetime, timezone
 from enum import Enum
+
 import numpy as np
 from loguru import logger
+
+try:
+    import orjson
+
+    def _json_loads(data):
+        return orjson.loads(data)
+
+    def _json_dumps(data, indent=False):
+        opts = orjson.OPT_INDENT_2 if indent else 0
+        return orjson.dumps(data, option=opts | orjson.OPT_NON_STR_KEYS).decode("utf-8")
+except ImportError:
+    import json
+
+    def _json_loads(data):
+        return json.loads(data)
+
+    def _json_dumps(data, indent=False):
+        return json.dumps(data, indent=2 if indent else None, ensure_ascii=False)
+
 
 # Core accepts optional progress callbacks for CLI/UI visibility into long-running operations.
 from utils.performance import log_execution_duration
@@ -112,7 +131,7 @@ class DocumentCollectionCreator:
             )
 
         logger.info(
-            f"Collection successfully created: \n{json.dumps(manifest, indent=2, ensure_ascii=False)}"
+            f"Collection successfully created: \n{_json_dumps(manifest, indent=True)}"
         )
 
     def __update_collection(self):
@@ -121,7 +140,7 @@ class DocumentCollectionCreator:
                 f"Collection {self.collection_name} does not exist. Please create it first."
             )
 
-        manifest = json.loads(
+        manifest = _json_loads(
             self.persister.read_text_file(self.__build_manifest_path())
         )
 
@@ -171,7 +190,7 @@ class DocumentCollectionCreator:
             )
 
         logger.info(
-            f"Collection successfully updated: \n{json.dumps(manifest, indent=2, ensure_ascii=False)}"
+            f"Collection successfully updated: \n{_json_dumps(manifest, indent=True)}"
         )
 
     def __read_documents(self):
@@ -234,13 +253,13 @@ class DocumentCollectionCreator:
         )
 
     def __index_documents_for_existing_collection(self, document_ids):
-        index_mapping = json.loads(
+        index_mapping = _json_loads(
             self.persister.read_text_file(self.__build_index_mapping_path())
         )
-        reverse_index_mapping = json.loads(
+        reverse_index_mapping = _json_loads(
             self.persister.read_text_file(self.__build_reverse_index_mapping_path())
         )
-        index_info = json.loads(
+        index_info = _json_loads(
             self.persister.read_text_file(self.__build_index_info_path())
         )
         last_index_item_id = index_info["lastIndexItemId"]
@@ -279,7 +298,7 @@ class DocumentCollectionCreator:
             for document_id in batch_document_ids:
                 document_path = f"{self.collection_name}/documents/{document_id}.json"
 
-                converted_document = json.loads(
+                converted_document = _json_loads(
                     self.persister.read_text_file(document_path)
                 )
 
@@ -332,6 +351,12 @@ class DocumentCollectionCreator:
                 )
 
         for indexer in self.document_indexers:
+            # Save in native FAISS format for memory-mapped loading
+            self.persister.save_faiss_index(
+                indexer.get_faiss_index(),
+                f"{self.__build_index_base_path(indexer)}/indexer.faiss",
+            )
+            # Also save legacy pickle format for backward compatibility
             self.persister.save_bin_file(
                 indexer.serialize(), f"{self.__build_index_base_path(indexer)}/indexer"
             )
@@ -437,6 +462,4 @@ class DocumentCollectionCreator:
         }
 
     def __save_json_file(self, content, file_path):
-        self.persister.save_text_file(
-            json.dumps(content, indent=2, ensure_ascii=False), file_path
-        )
+        self.persister.save_text_file(_json_dumps(content, indent=True), file_path)

@@ -1,4 +1,13 @@
-import json
+try:
+    import orjson
+
+    def _json_loads(data):
+        return orjson.loads(data)
+except ImportError:
+    import json
+
+    def _json_loads(data):
+        return json.loads(data)
 
 
 class DocumentCollectionSearcher:
@@ -6,6 +15,19 @@ class DocumentCollectionSearcher:
         self.collection_name = collection_name
         self.indexer = indexer
         self.persister = persister
+        self._index_document_mapping = None
+        self._document_cache = {}
+
+    def _get_mapping(self):
+        """Lazy-load and cache the index-document mapping."""
+        if self._index_document_mapping is None:
+            indexes_base_path = f"{self.collection_name}/indexes"
+            self._index_document_mapping = _json_loads(
+                self.persister.read_text_file(
+                    f"{indexes_base_path}/index_document_mapping.json"
+                )
+            )
+        return self._index_document_mapping
 
     def search(
         self,
@@ -42,12 +64,7 @@ class DocumentCollectionSearcher:
         include_all_chunks_content,
         include_matched_chunks_content,
     ):
-        indexes_base_path = f"{self.collection_name}/indexes"
-        index_document_mapping = json.loads(
-            self.persister.read_text_file(
-                f"{indexes_base_path}/index_document_mapping.json"
-            )
-        )
+        index_document_mapping = self._get_mapping()
 
         result = {}
 
@@ -108,5 +125,10 @@ class DocumentCollectionSearcher:
             ),
         }
 
-    def __get_document(self, documentPath):
-        return json.loads(self.persister.read_text_file(documentPath))
+    def __get_document(self, document_path):
+        """Load a document with caching to avoid repeated disk I/O."""
+        if document_path not in self._document_cache:
+            self._document_cache[document_path] = _json_loads(
+                self.persister.read_text_file(document_path)
+            )
+        return self._document_cache[document_path]

@@ -47,7 +47,7 @@ class CoreV1EmbeddingConfig(BaseModel):
         default=None, description="Embedding dimension (auto-detected if None)"
     )
     batch_size: int = Field(
-        default=64, ge=1, description="Batch size for embedding generation"
+        default=128, ge=1, description="Batch size for embedding generation"
     )
     device: Optional[str] = Field(
         default=None,
