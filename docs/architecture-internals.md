@@ -104,6 +104,9 @@ indexed/
 │   ├── indexed-core/          # Core library
 │   │   └── src/core/v1/       # Engine, Services, Facade
 │   │
+│   ├── indexed-parsing/       # Document parsing module
+│   │   └── src/parsing/       # Docling, tree-sitter, plaintext
+│   │
 │   ├── indexed-connectors/    # Data source connectors
 │   │   └── src/connectors/    # Jira, Confluence, Files
 │   │
@@ -138,6 +141,8 @@ flowchart TB
     core --> utils
     connectors --> core
     connectors --> config
+    connectors --> parsing[indexed-parsing]
+    parsing --> utils
 ```
 
 ---
@@ -224,7 +229,30 @@ class BaseConnector(Protocol):
 ### Available Connectors
 - **Jira:** Server/DC (`JiraConnector`) and Cloud (`JiraCloudConnector`).
 - **Confluence:** Server/DC (`ConfluenceConnector`) and Cloud (`ConfluenceCloudConnector`).
-- **File System:** Local files (`FileSystemConnector`) using `unstructured`.
+- **File System:** Local files (`FileSystemConnector`) using `indexed-parsing` (Docling + tree-sitter).
+
+### Parsing Module (`indexed-parsing`)
+
+The `indexed-parsing` package is a reusable parsing module shared across connectors. It provides:
+
+- **FileRouter** — Maps file extensions to parsing strategies (Docling, AST, plaintext, or fallback).
+- **DoclingParser** — Rich document parsing for PDF, DOCX, PPTX, HTML, and images via Docling with OCR support (RapidOCR by default).
+- **CodeChunker** — AST-aware code chunking via tree-sitter. Splits at semantic boundaries (functions, classes, methods) for Python, TypeScript, JavaScript, Java, Rust, Go, C, and C++.
+- **PlaintextParser** — Markdown via Docling (structure-aware), other text formats via paragraph-based splitting.
+- **ParsingModule** — Facade that routes files to the correct parser.
+
+Output is a framework-free `ParsedDocument` containing `ParsedChunk` objects with raw text, contextualized text (with heading/path prefix for embedding), metadata, and content hashes.
+
+### Change Tracking
+
+The `FileSystemConnector` supports incremental indexing via `ChangeTracker`:
+
+- **Git strategy** — Uses `git diff --name-status` between commits to detect added, modified, and deleted files.
+- **Content-hash strategy** — xxhash of file contents, compared against stored state.
+- **Mtime strategy** — File modification time comparison (faster, less reliable).
+- **Auto strategy** — Picks git if `.git` exists, otherwise content-hash.
+
+State is persisted as `state.json` and updated after each successful indexing run.
 
 ---
 
