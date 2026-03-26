@@ -1,6 +1,6 @@
 # indexed-parsing
 
-Reusable document parsing module for the indexed project. Provides structure-aware parsing for rich documents, AST-aware code chunking, and plaintext handling.
+Reusable document parsing module for the indexed project. Provides Docling-based document parsing, tree-sitter code chunking, and plaintext parsing.
 
 ## Architecture
 
