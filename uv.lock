@@ -1317,6 +1317,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-text-splitters" },
     { name = "loguru" },
+    { name = "orjson" },
     { name = "requests" },
     { name = "unstructured", extra = ["all-docs"] },
 ]
@@ -1330,6 +1331,7 @@ requires-dist = [
     { name = "langchain", specifier = ">=0.3.26" },
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "loguru", specifier = ">=0.7.0" },
+    { name = "orjson", specifier = ">=3.10.0" },
     { name = "requests", specifier = ">=2.32.0" },
     { name = "unstructured", extras = ["all-docs"], specifier = ">=0.18.5" },
 ]
@@ -1342,6 +1344,8 @@ dependencies = [
     { name = "faiss-cpu" },
     { name = "indexed-connectors" },
     { name = "indexed-utils" },
+    { name = "onnxruntime" },
+    { name = "orjson" },
     { name = "pydantic" },
     { name = "sentence-transformers" },
 ]
@@ -1351,6 +1355,8 @@ requires-dist = [
     { name = "faiss-cpu", specifier = ">=1.11.0" },
     { name = "indexed-connectors", editable = "packages/indexed-connectors" },
     { name = "indexed-utils", editable = "packages/utils" },
+    { name = "onnxruntime", specifier = ">=1.17.0" },
+    { name = "orjson", specifier = ">=3.10.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "sentence-transformers", specifier = ">=5.2.0" },
 ]
