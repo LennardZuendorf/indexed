@@ -51,9 +51,7 @@ class TestCreateCollection:
 
     @patch(_PATCH_VSI)
     @patch(_PATCH_EMBED)
-    def test_calls_vector_store_index(
-        self, mock_get_embed, mock_vsi, tmp_path
-    ) -> None:
+    def test_calls_vector_store_index(self, mock_get_embed, mock_vsi, tmp_path) -> None:
         mock_get_embed.return_value = _mock_embed_model()
         connector = _make_mock_connector(num_docs=1, chunks_per_doc=2)
 
@@ -67,9 +65,7 @@ class TestCreateCollection:
 
     @patch(_PATCH_VSI)
     @patch(_PATCH_EMBED)
-    def test_empty_connector_raises(
-        self, mock_get_embed, mock_vsi, tmp_path
-    ) -> None:
+    def test_empty_connector_raises(self, mock_get_embed, mock_vsi, tmp_path) -> None:
         mock_get_embed.return_value = _mock_embed_model()
         connector = MagicMock()
         connector.reader.read_all_documents.return_value = iter([])
@@ -93,16 +89,12 @@ class TestCreateCollection:
 
     @patch(_PATCH_VSI)
     @patch(_PATCH_EMBED)
-    def test_progress_callback(
-        self, mock_get_embed, mock_vsi, tmp_path
-    ) -> None:
+    def test_progress_callback(self, mock_get_embed, mock_vsi, tmp_path) -> None:
         mock_get_embed.return_value = _mock_embed_model()
         connector = _make_mock_connector(num_docs=1, chunks_per_doc=1)
         progress = MagicMock()
 
-        create_collection(
-            "col", connector, collections_dir=tmp_path, progress=progress
-        )
+        create_collection("col", connector, collections_dir=tmp_path, progress=progress)
 
         phase_names = [call.args[0] for call in progress.start_phase.call_args_list]
         assert "Fetching documents" in phase_names

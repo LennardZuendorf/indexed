@@ -17,7 +17,13 @@ class TestErrorHierarchy:
 
     @pytest.mark.parametrize(
         "exc_class",
-        [CoreV2Error, CollectionNotFoundError, IngestionError, EmbeddingError, VectorStoreError],
+        [
+            CoreV2Error,
+            CollectionNotFoundError,
+            IngestionError,
+            EmbeddingError,
+            VectorStoreError,
+        ],
     )
     def test_inherits_from_indexed_error(self, exc_class: type) -> None:
         assert issubclass(exc_class, IndexedError)
