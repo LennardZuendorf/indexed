@@ -76,6 +76,12 @@ def save_baseline(
     # Get the baseline path (without node-specific naming)
     baseline_path = get_baseline_path(branch, node=None)
 
+    # Strip raw timing data to keep baselines small (~99% size reduction).
+    # Comparison only uses summary stats (mean, median, etc.).
+    for bench in benchmark_data.get("benchmarks", []):
+        if "stats" in bench:
+            bench["stats"].pop("data", None)
+
     # Add metadata about when this baseline was created
     benchmark_data["baseline_info"] = {
         "branch": branch,
