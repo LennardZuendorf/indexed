@@ -24,6 +24,7 @@ addopts = [
     "--cov=indexed",
     "--cov=core",
     "--cov=connectors",
+    "--cov=parsing",
     "--cov=indexed_config",
     "--cov=utils",
     "--cov-report=term",
@@ -44,6 +45,7 @@ source_pkgs = [
     "indexed",      # apps/indexed/src/indexed
     "core",         # packages/indexed-core/src/core
     "connectors",   # packages/indexed-connectors/src/connectors
+    "parsing",      # packages/indexed-parsing/src/parsing
     "indexed_config",  # packages/indexed-config/src/indexed_config
     "utils",        # packages/utils/src/utils
 ]
@@ -52,6 +54,7 @@ source = [
     "apps/indexed/src/indexed",
     "packages/indexed-core/src/core",
     "packages/indexed-connectors/src/connectors",
+    "packages/indexed-parsing/src/parsing",
     "packages/indexed-config/src/indexed_config",
     "packages/utils/src/utils",
 ]

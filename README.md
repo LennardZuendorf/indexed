@@ -62,7 +62,7 @@ For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 
 | Source | Description |
 |--------|-------------|
-| **Local Files** | Index documents: `.pdf`, `.pptx`, `.docx`, `.md`, and more |
+| **Local Files** | Index documents: `.pdf`, `.pptx`, `.docx`, `.md`, code files, images, and more |
 | **Jira** | Index tickets from Cloud and Server/Data Center |
 | **Confluence** | Index pages from Cloud and Server/Data Center |
 
@@ -85,7 +85,8 @@ For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 
 - **[FAISS](https://github.com/facebookresearch/faiss)** – Fast vector similarity search
 - **[Sentence Transformers](https://www.sbert.net/)** – Local embedding models
-- **[Unstructured](https://github.com/Unstructured-IO/unstructured)** – Multi-format document parsing
+- **[Docling](https://github.com/docling-project/docling)** – Rich document parsing (PDF, DOCX, PPTX, HTML, images)
+- **[tree-sitter](https://tree-sitter.github.io/)** – AST-aware code chunking (Python, TypeScript, Java, Rust, Go, C/C++)
 - **[Typer](https://typer.tiangolo.com/)** – Modern CLI framework
 - **[Rich](https://rich.readthedocs.io/)** – Beautiful terminal output
 - **[FastMCP](https://github.com/jlowin/fastmcp)** – Model Context Protocol server
@@ -349,6 +350,9 @@ indexed/
 │   │   ├── src/core/         # Business logic and services
 │   │   └── README.md         # 📖 Core library docs
 │   │
+│   ├── indexed-parsing/      # Document parsing (Docling + tree-sitter)
+│   │   └── src/parsing/      # Parsers, router, code chunker
+│   │
 │   ├── indexed-config/       # Configuration management
 │   │   ├── src/indexed_config/
 │   │   └── README.md         # 📖 Config system docs
@@ -374,6 +378,7 @@ indexed/
 | [CLI Documentation](./indexed/README.md) | Complete usage guide for all commands |
 | [Core Library](./packages/indexed-core/README.md) | Technical architecture and APIs |
 | [Config System](./packages/indexed-config/README.md) | Configuration management |
+| [Parsing](./packages/indexed-parsing/README.md) | Document parsing (Docling, tree-sitter) |
 | [Connectors](./packages/indexed-connectors/README.md) | Source integrations |
 | [Utilities](./packages/utils/README.md) | Shared utilities |
 

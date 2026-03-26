@@ -1,52 +1,51 @@
+"""File-system document converter.
+
+With the parsing upgrade the reader already yields pre-chunked content via
+indexed-parsing.  The converter's job is simplified: it takes the v1 reader
+dict and maps each content part as-is (no more RecursiveCharacterTextSplitter).
+"""
+
+from __future__ import annotations
+
+
 class FilesDocumentConverter:
-    def __init__(self):
-        # Lazy import to avoid loading heavy ML dependencies (torch, transformers)
-        # when they're not needed (e.g., during CLI help)
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    """Convert v1 reader dicts to v1 indexed-document dicts."""
 
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
-        )
-
-    def convert(self, document):
+    def convert(self, document: dict) -> list[dict]:
         return [
             {
                 "id": document["fileRelativePath"],
-                "url": self.__build_url(document),
+                "url": self._build_url(document),
                 "modifiedTime": document["modifiedTime"],
-                "text": self.__build_document_text(document),
-                "chunks": self.__split_to_chunks(document),
+                "text": self._build_document_text(document),
+                "chunks": self._split_to_chunks(document),
             }
         ]
 
-    def __build_document_text(self, document):
-        content = self.__convert_to_text(
+    def _build_document_text(self, document: dict) -> str:
+        content = self._convert_to_text(
             [content_part["text"] for content_part in document["content"]], ""
         )
-        return self.__convert_to_text([document["fileRelativePath"], content])
+        return self._convert_to_text([document["fileRelativePath"], content])
 
-    def __convert_to_text(self, elements, delimiter="\n\n"):
-        return delimiter.join([element for element in elements if element]).strip()
+    @staticmethod
+    def _convert_to_text(elements: list[str], delimiter: str = "\n\n") -> str:
+        return delimiter.join([e for e in elements if e]).strip()
 
-    def __split_to_chunks(self, document):
-        chunks = [{"indexedData": document["fileRelativePath"]}]
+    @staticmethod
+    def _split_to_chunks(document: dict) -> list[dict]:
+        chunks: list[dict] = [{"indexedData": document["fileRelativePath"]}]
 
         for content_part in document["content"]:
-            if content_part["text"].strip():
-                for chunk in self.text_splitter.split_text(content_part["text"]):
-                    chunks.append(
-                        {
-                            **(
-                                {"metadata": content_part["metadata"]}
-                                if "metadata" in content_part
-                                else {}
-                            ),
-                            "indexedData": chunk,
-                        }
-                    )
+            text = content_part["text"].strip()
+            if text:
+                entry: dict = {"indexedData": text}
+                if "metadata" in content_part and content_part["metadata"]:
+                    entry["metadata"] = content_part["metadata"]
+                chunks.append(entry)
 
         return chunks
 
-    def __build_url(self, document):
+    @staticmethod
+    def _build_url(document: dict) -> str:
         return f"file://{document['fileFullPath']}"
