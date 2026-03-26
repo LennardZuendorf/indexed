@@ -1,78 +1,28 @@
-import os
+"""Confluence Cloud document converter (deprecated).
 
-from bs4 import BeautifulSoup
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+Use UnifiedConfluenceDocumentConverter instead. This wrapper is maintained
+for backward compatibility only.
+"""
+
+import warnings
+
+from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 
 
 class ConfluenceCloudDocumentConverter:
-    def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
+    """Confluence Cloud converter (DEPRECATED).
+
+    Delegates to UnifiedConfluenceDocumentConverter(is_cloud=True).
+    """
+
+    def __init__(self) -> None:
+        warnings.warn(
+            "ConfluenceCloudDocumentConverter is deprecated. "
+            "Use UnifiedConfluenceDocumentConverter instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        self._converter = UnifiedConfluenceDocumentConverter(is_cloud=True)
 
-    def convert(self, document):
-        return [
-            {
-                "id": document["page"]["content"]["id"],
-                "url": self.__build_url(document["page"]["content"]),
-                "modifiedTime": document["page"]["content"]["version"]["when"],
-                "text": self.__build_document_text(document),
-                "chunks": self.__split_to_chunks(document),
-            }
-        ]
-
-    def __build_document_text(self, document):
-        title = self.__build_path_of_titles(document["page"]["content"])
-        body_and_comments = self.__fetch_body_and_comments(document)
-
-        return self.__convert_to_text([title, body_and_comments])
-
-    def __split_to_chunks(self, document):
-        chunks = [
-            {
-                "indexedData": self.__build_path_of_titles(document["page"]["content"]),
-            }
-        ]
-
-        body_and_comments = self.__fetch_body_and_comments(document)
-
-        if body_and_comments:
-            for chunk in self.text_splitter.split_text(body_and_comments):
-                chunks.append({"indexedData": chunk})
-
-        return chunks
-
-    def __fetch_body_and_comments(self, document):
-        body = self.__get_cleaned_body(document["page"]["content"])
-        comments = [
-            self.__get_cleaned_body(comment) for comment in document["comments"]
-        ]
-
-        return self.__convert_to_text([body] + comments)
-
-    def __convert_to_text(self, elements, delimiter="\n\n"):
-        return delimiter.join([element for element in elements if element])
-
-    def __get_cleaned_body(self, document):
-        document_text_html = document["body"]["storage"]["value"]
-        if not document_text_html:
-            return ""
-
-        soup = BeautifulSoup(document_text_html, "html.parser")
-        return soup.get_text(separator=os.linesep, strip=True)
-
-    def __build_path_of_titles(self, document):
-        page_title = [document["title"]] if "title" in document else []
-        return " -> ".join(
-            [
-                ancestor["title"]
-                for ancestor in document["ancestors"]
-                if "title" in ancestor
-            ]
-            + page_title
-        )
-
-    def __build_url(self, page):
-        base_url = page["_links"]["self"].split("/rest/api/")[0]
-        return f"{base_url}{page['_links']['webui']}"
+    def convert(self, document: dict) -> list:
+        return self._converter.convert(document)

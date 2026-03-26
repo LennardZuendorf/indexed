@@ -82,6 +82,8 @@ class UnifiedJiraDocumentReader:
         number_of_retries: int = 3,
         retry_delay: int = 1,
         max_skipped_items_in_row: int = 5,
+        include_attachments: bool = False,
+        max_attachment_size_mb: int = 10,
     ):
         """Initialize the unified Jira document reader."""
         # Validate authentication parameters
@@ -103,7 +105,13 @@ class UnifiedJiraDocumentReader:
         self.number_of_retries = number_of_retries
         self.retry_delay = retry_delay
         self.max_skipped_items_in_row = max_skipped_items_in_row
-        self.fields = "summary,description,comment,updated"
+        self.include_attachments = include_attachments
+        self.max_attachment_size_bytes = max_attachment_size_mb * 1024 * 1024
+        self.fields = (
+            "summary,description,comment,attachment,updated"
+            if include_attachments
+            else "summary,description,comment,updated"
+        )
 
         # Initialize Jira client based on auth type
         self._client = self._create_client()
@@ -189,10 +197,66 @@ class UnifiedJiraDocumentReader:
     def read_all_documents(self):
         """Read all documents matching the JQL query.
 
+        When include_attachments is enabled, each issue dict gets an
+        ``attachments`` key with a list of ``{filename, bytes, mimeType}`` dicts.
+
         Returns:
             List of Jira issues as dictionaries
         """
-        return self.__read_items()
+        issues = self.__read_items()
+        if not self.include_attachments:
+            return issues
+
+        enriched = []
+        for issue in issues:
+            att_meta = issue.get("fields", {}).get("attachment", [])
+            downloaded: list[dict] = []
+            for att in att_meta:
+                size = att.get("size", 0)
+                if size > self.max_attachment_size_bytes:
+                    from loguru import logger
+
+                    logger.warning(
+                        f"Skipping attachment {att.get('filename')} "
+                        f"({size / 1024 / 1024:.1f} MB) — exceeds limit"
+                    )
+                    continue
+                data = self._fetch_attachment_bytes(att["content"])
+                if data:
+                    downloaded.append(
+                        {
+                            "filename": att.get("filename", "unknown"),
+                            "bytes": data,
+                            "mimeType": att.get("mimeType", ""),
+                        }
+                    )
+            issue["attachments"] = downloaded
+            enriched.append(issue)
+        return enriched
+
+    def _fetch_attachment_bytes(self, url: str) -> bytes | None:
+        """Download attachment bytes using the Jira client session."""
+        try:
+            import requests as req
+
+            headers = {}
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+            auth = (
+                (self.login, self.password)
+                if self.login and self.password
+                else (self.email, self.api_token)
+                if self.email and self.api_token
+                else None
+            )
+            response = req.get(url, headers=headers, auth=auth, timeout=60)
+            response.raise_for_status()
+            return response.content
+        except Exception:
+            from loguru import logger
+
+            logger.warning(f"Failed to download attachment: {url}")
+            return None
 
     def get_number_of_documents(self) -> int:
         """Get the total count of documents matching the query.

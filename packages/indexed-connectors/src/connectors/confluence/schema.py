@@ -17,6 +17,18 @@ class ConfluenceConfig(BaseModel):
     read_all_comments: bool = Field(
         default=True, description="Read nested comments (yes/no)"
     )
+    include_attachments: bool = Field(
+        default=False, description="Fetch and parse page attachments"
+    )
+    max_chunk_tokens: int = Field(
+        default=512, ge=64, le=2048, description="Max tokens per chunk"
+    )
+    ocr_enabled: bool = Field(
+        default=True, description="Enable OCR for image attachments"
+    )
+    max_attachment_size_mb: int = Field(
+        default=10, ge=1, le=100, description="Max attachment size in MB to download"
+    )
 
     def get_token(self) -> Optional[str]:
         """
@@ -60,6 +72,18 @@ class ConfluenceCloudConfig(BaseModel):
     )
     read_all_comments: bool = Field(
         default=True, description="Read nested comments (yes/no)"
+    )
+    include_attachments: bool = Field(
+        default=False, description="Fetch and parse page attachments"
+    )
+    max_chunk_tokens: int = Field(
+        default=512, ge=64, le=2048, description="Max tokens per chunk"
+    )
+    ocr_enabled: bool = Field(
+        default=True, description="Enable OCR for image attachments"
+    )
+    max_attachment_size_mb: int = Field(
+        default=10, ge=1, le=100, description="Max attachment size in MB to download"
     )
 
     def get_email(self) -> str:

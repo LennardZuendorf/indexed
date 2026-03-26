@@ -29,6 +29,8 @@ class AsyncJiraCloudDocumentReader:
         retry_delay: int = 1,
         max_skipped_items_in_row: int = 5,
         max_concurrent_requests: int = 10,
+        include_attachments: bool = False,
+        max_attachment_size_mb: int = 10,
     ):
         if not email or not api_token:
             raise ValueError(
@@ -46,7 +48,13 @@ class AsyncJiraCloudDocumentReader:
         self.retry_delay = retry_delay
         self.max_skipped_items_in_row = max_skipped_items_in_row
         self.max_concurrent_requests = max_concurrent_requests
-        self.fields = "summary,description,comment,updated"
+        self.include_attachments = include_attachments
+        self.max_attachment_size_bytes = max_attachment_size_mb * 1024 * 1024
+        self.fields = (
+            "summary,description,comment,attachment,updated"
+            if include_attachments
+            else "summary,description,comment,updated"
+        )
         self._auth_header = self._build_auth_header(email, api_token)
 
     @staticmethod
@@ -56,7 +64,10 @@ class AsyncJiraCloudDocumentReader:
 
     def read_all_documents(self):
         """Read all documents using async batch fetching."""
-        return asyncio.run(self._read_all_async())
+        issues = asyncio.run(self._read_all_async())
+        if not self.include_attachments:
+            return issues
+        return asyncio.run(self._enrich_with_attachments(issues))
 
     def get_number_of_documents(self) -> int:
         """Get total count of documents matching the query."""
@@ -178,3 +189,62 @@ class AsyncJiraCloudDocumentReader:
                     )
                     await asyncio.sleep(self.retry_delay * (attempt + 1))
         return []
+
+    async def _enrich_with_attachments(self, issues: list) -> list:
+        """Download attachment bytes for all issues concurrently."""
+        semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+
+        async with httpx.AsyncClient(
+            timeout=60.0,
+            limits=httpx.Limits(
+                max_connections=self.max_concurrent_requests,
+                max_keepalive_connections=5,
+            ),
+        ) as client:
+            for issue in issues:
+                att_meta = issue.get("fields", {}).get("attachment", [])
+                downloaded: list[dict] = []
+                for att in att_meta:
+                    size = att.get("size", 0)
+                    if size > self.max_attachment_size_bytes:
+                        logger.warning(
+                            f"Skipping attachment {att.get('filename')} "
+                            f"({size / 1024 / 1024:.1f} MB) — exceeds limit"
+                        )
+                        continue
+                    data = await self._fetch_attachment_bytes(
+                        client, semaphore, att["content"]
+                    )
+                    if data:
+                        downloaded.append(
+                            {
+                                "filename": att.get("filename", "unknown"),
+                                "bytes": data,
+                                "mimeType": att.get("mimeType", ""),
+                            }
+                        )
+                issue["attachments"] = downloaded
+
+        return issues
+
+    async def _fetch_attachment_bytes(
+        self,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+        url: str,
+    ) -> bytes | None:
+        """Download a single attachment."""
+        async with semaphore:
+            try:
+                response = await client.get(
+                    url,
+                    headers={
+                        "Authorization": self._auth_header,
+                        "Accept": "application/octet-stream",
+                    },
+                )
+                response.raise_for_status()
+                return response.content
+            except Exception as e:
+                logger.warning(f"Failed to download attachment {url}: {e}")
+                return None

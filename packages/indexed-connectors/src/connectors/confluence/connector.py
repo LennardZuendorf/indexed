@@ -17,8 +17,7 @@ Comment depth handling:
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
 from .confluence_document_reader import ConfluenceDocumentReader
-from .confluence_document_converter import ConfluenceDocumentConverter
-from .confluence_cloud_document_converter import ConfluenceCloudDocumentConverter
+from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 from .async_confluence_cloud_reader import AsyncConfluenceCloudDocumentReader
 from .schema import ConfluenceConfig, ConfluenceCloudConfig
 
@@ -70,6 +69,10 @@ class ConfluenceConnector:
         login: Optional[str] = None,
         password: Optional[str] = None,
         read_all_comments: bool = True,
+        include_attachments: bool = False,
+        max_chunk_tokens: int = 512,
+        ocr_enabled: bool = True,
+        max_attachment_size_mb: int = 10,
     ):
         """Initialize Confluence Server/Data Center connector.
 
@@ -79,18 +82,14 @@ class ConfluenceConnector:
             token: Bearer token for authentication (recommended)
             login: Username for basic auth (if token not provided)
             password: Password for basic auth (if token not provided)
-            read_all_comments: If True, read all comments. If False, only
-                              read top-level comments (default: True)
+            read_all_comments: Read all nested comments (default: True).
+            include_attachments: Fetch and parse page attachments.
+            max_chunk_tokens: Max tokens per chunk for ParsingModule.
+            ocr_enabled: Enable OCR for image attachments.
+            max_attachment_size_mb: Max attachment size in MB to download.
 
         Raises:
             ValueError: If neither token nor login/password are provided
-
-        Examples:
-            >>> connector = ConfluenceConnector(
-            ...     url="https://confluence.example.com",
-            ...     query="space = MYSPACE AND type = page",
-            ...     token="bearer-token-here"
-            ... )
         """
         if not token and (not login or not password):
             raise ValueError(
@@ -109,8 +108,15 @@ class ConfluenceConnector:
             login=login,
             password=password,
             read_all_comments=read_all_comments,
+            include_attachments=include_attachments,
+            max_attachment_size_mb=max_attachment_size_mb,
         )
-        self._converter = ConfluenceDocumentConverter()
+        self._converter = UnifiedConfluenceDocumentConverter(
+            is_cloud=False,
+            max_chunk_tokens=max_chunk_tokens,
+            ocr=ocr_enabled,
+            include_attachments=include_attachments,
+        )
 
     @property
     def reader(self) -> ConfluenceDocumentReader:
@@ -118,7 +124,7 @@ class ConfluenceConnector:
         return self._reader
 
     @property
-    def converter(self) -> ConfluenceDocumentConverter:
+    def converter(self) -> UnifiedConfluenceDocumentConverter:
         """Return the document converter instance."""
         return self._converter
 
@@ -223,6 +229,10 @@ class ConfluenceConnector:
             login=cfg.get_login(),
             password=cfg.get_password(),
             read_all_comments=cfg.read_all_comments,
+            include_attachments=cfg.include_attachments,
+            max_chunk_tokens=cfg.max_chunk_tokens,
+            ocr_enabled=cfg.ocr_enabled,
+            max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
 
@@ -263,6 +273,10 @@ class ConfluenceCloudConnector:
         email: str,
         api_token: str,
         read_all_comments: bool = True,
+        include_attachments: bool = False,
+        max_chunk_tokens: int = 512,
+        ocr_enabled: bool = True,
+        max_attachment_size_mb: int = 10,
     ):
         """Initialize Confluence Cloud connector.
 
@@ -270,18 +284,12 @@ class ConfluenceCloudConnector:
             url: Confluence Cloud URL (e.g., https://company.atlassian.net/wiki)
             query: CQL query to filter pages
             email: Atlassian account email
-            api_token: Atlassian API token (generate at
-                      https://id.atlassian.com/manage/api-tokens)
-            read_all_comments: If True, read all comments. If False, only
-                              read top-level comments (default: True)
-
-        Examples:
-            >>> connector = ConfluenceCloudConnector(
-            ...     url="https://mycompany.atlassian.net/wiki",
-            ...     query="space = DOCS",
-            ...     email="me@example.com",
-            ...     api_token="ATATT..."
-            ... )
+            api_token: Atlassian API token
+            read_all_comments: Read all nested comments (default: True).
+            include_attachments: Fetch and parse page attachments.
+            max_chunk_tokens: Max tokens per chunk for ParsingModule.
+            ocr_enabled: Enable OCR for image attachments.
+            max_attachment_size_mb: Max attachment size in MB to download.
         """
         self._url = url
         self._query = query
@@ -294,8 +302,15 @@ class ConfluenceCloudConnector:
             email=email,
             api_token=api_token,
             read_all_comments=read_all_comments,
+            include_attachments=include_attachments,
+            max_attachment_size_mb=max_attachment_size_mb,
         )
-        self._converter = ConfluenceCloudDocumentConverter()
+        self._converter = UnifiedConfluenceDocumentConverter(
+            is_cloud=True,
+            max_chunk_tokens=max_chunk_tokens,
+            ocr=ocr_enabled,
+            include_attachments=include_attachments,
+        )
 
     @property
     def reader(self) -> AsyncConfluenceCloudDocumentReader:
@@ -303,7 +318,7 @@ class ConfluenceCloudConnector:
         return self._reader
 
     @property
-    def converter(self) -> ConfluenceCloudDocumentConverter:
+    def converter(self) -> UnifiedConfluenceDocumentConverter:
         """Return the document converter instance."""
         return self._converter
 
@@ -397,6 +412,10 @@ class ConfluenceCloudConnector:
             email=cfg.get_email(),
             api_token=cfg.get_api_token(),
             read_all_comments=cfg.read_all_comments,
+            include_attachments=cfg.include_attachments,
+            max_chunk_tokens=cfg.max_chunk_tokens,
+            ocr_enabled=cfg.ocr_enabled,
+            max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
 
