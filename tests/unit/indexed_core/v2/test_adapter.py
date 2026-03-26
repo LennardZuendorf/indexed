@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from core.v2.adapter import connector_to_nodes, _converted_doc_to_nodes
 

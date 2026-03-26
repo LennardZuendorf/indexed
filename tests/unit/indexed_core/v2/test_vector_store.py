@@ -1,6 +1,6 @@
 """Tests for core.v2.vector_store — pluggable vector store factory."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

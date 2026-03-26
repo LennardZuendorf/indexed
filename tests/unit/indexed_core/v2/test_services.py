@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from core.v2.services.collection_service import clear, create, update
 from core.v2.services.inspect_service import inspect, status

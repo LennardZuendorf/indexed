@@ -1,6 +1,5 @@
 """Tests for core.v2.storage — collection persistence."""
 
-import json
 from pathlib import Path
 
 import pytest
@@ -73,9 +72,7 @@ class TestReadManifest:
     """read_manifest reads a collection's manifest.json."""
 
     def test_round_trip(self, tmp_path: Path) -> None:
-        write_manifest(
-            "col", num_documents=5, num_chunks=25, collections_dir=tmp_path
-        )
+        write_manifest("col", num_documents=5, num_chunks=25, collections_dir=tmp_path)
         manifest = read_manifest("col", collections_dir=tmp_path)
         assert manifest["name"] == "col"
         assert manifest["num_documents"] == 5
