@@ -6,11 +6,11 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 """
 
 import typer
-import json
 from typing import List, TYPE_CHECKING
 from rich.columns import Columns
 
 from ...utils.console import console
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.components import (
     create_info_card,
     create_detail_card,
@@ -156,7 +156,7 @@ def format_collection_json(info: "CollectionInfo") -> None:
         "created_time": info.created_time,
         "updated_time": info.updated_time,
     }
-    console.print(json.dumps(output, indent=2))
+    print_json(output)
 
 
 def format_collections_json(collections: List["CollectionInfo"]) -> None:
@@ -175,7 +175,7 @@ def format_collections_json(collections: List["CollectionInfo"]) -> None:
         }
         for c in collections
     ]
-    console.print(json.dumps(output, indent=2))
+    print_json(output)
 
 
 # ---- END FORMATTER LOGIC ----
@@ -186,15 +186,14 @@ def inspect_collections(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed information for all collections"
     ),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show all indexed collections or inspect a specific collection.
 
     Examples:
-        indexed inspect                    # List all collections
-        indexed inspect my-collection      # Detailed info about specific collection
-        indexed inspect --verbose          # Detailed info about all collections
-        indexed inspect my-collection --json
+        indexed inspect                            # List all collections
+        indexed inspect my-collection              # Detailed info about specific collection
+        indexed inspect --verbose                  # Detailed info about all collections
+        indexed --simple-output inspect            # JSON output
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import inspect as this_module
@@ -224,7 +223,7 @@ def inspect_collections(
                 raise typer.Exit(1)
 
         # Format and display single collection
-        if json_output:
+        if is_simple_output():
             format_collection_json(collections[0])
         else:
             format_collection_detail(collections[0])
@@ -242,7 +241,7 @@ def inspect_collections(
             return
 
         # Format and display list
-        if json_output:
+        if is_simple_output():
             format_collections_json(collections)
         else:
             format_collection_list(collections, verbose=verbose)

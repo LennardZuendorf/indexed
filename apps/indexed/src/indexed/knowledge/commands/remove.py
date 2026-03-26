@@ -20,6 +20,7 @@ from ...utils.components import (
     print_error,
 )
 from ...utils.format import format_size, format_time
+from ...utils.simple_output import is_simple_output, print_json
 
 app = typer.Typer(help="Remove collections")
 
@@ -94,6 +95,16 @@ def remove(
                 console.print(f"  • {coll.name}")
         console.print()
         raise typer.Exit(1)
+
+    # Simple output mode: skip confirmation, output JSON
+    if is_simple_output():
+        try:
+            index.remove(collection)
+            print_json({"status": "removed", "collection": collection})
+        except Exception as e:
+            print_json({"status": "error", "collection": collection, "error": str(e)})
+            raise typer.Exit(1)
+        return
 
     # Show collection details
     console.print()

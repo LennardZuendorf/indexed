@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     pass
 
 from ...utils.logging import is_verbose_mode
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.theme import get_heading_style, get_accent_style
@@ -363,11 +364,16 @@ def search(
 
     index_class()
 
+    simple = is_simple_output()
+
     # Determine collections to search
     if collection is None:
         # Search all collections
         all_statuses = status_svc()
         if not all_statuses:
+            if simple:
+                print_json({"error": "No collections found"})
+                return
             console.print(
                 f"\n[{get_dim_style()}]No collections found to search[/{get_dim_style()}]"
             )
@@ -377,50 +383,47 @@ def search(
             return
 
         collections_to_search = [s.name for s in all_statuses]
-        console.print(
-            f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
-        )
+        if not simple:
+            console.print(
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
+            )
     else:
         # Search specific collection
         statuses = status_svc([collection])
         if not statuses:
+            if simple:
+                print_json({"error": f"Collection '{collection}' not found"})
+                raise typer.Exit(1)
             print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_search = [collection]
-        console.print(
-            f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
-        )
+        if not simple:
+            console.print(
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
+            )
 
     # Build search configs for all collections
-    search_configs = []
+    search_configs = {}
     for coll_name in collections_to_search:
         coll_status = status_svc([coll_name])[0]
-        config = source_config_class(
+        search_configs[coll_name] = source_config_class(
             name=coll_name,
-            type="localFiles",  # Default type, not used in search
-            base_url_or_path="",  # Not used in search
-            indexer=coll_status.indexers[0],  # Get from collection status
+            type="localFiles",
+            base_url_or_path="",
+            indexer=coll_status.indexers[0],
         )
-        search_configs.append(config)
 
     # Search each collection with status spinner
     results = {}
 
-    if is_verbose_mode():
-        # Verbose mode: show core logs directly
+    if simple or is_verbose_mode():
+        # Simple output / verbose mode: no spinner
         for coll_name in collections_to_search:
-            coll_status = status_svc([coll_name])[0]
-            config = source_config_class(
-                name=coll_name,
-                type="localFiles",
-                base_url_or_path="",
-                indexer=coll_status.indexers[0],
-            )
             with NoOpContext():
                 result = svc_search(
                     query,
-                    configs=[config],
+                    configs=[search_configs[coll_name]],
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
@@ -433,17 +436,10 @@ def search(
             op_status.update("Loading model...")
             for idx, coll_name in enumerate(collections_to_search, 1):
                 op_status.update(f"Searching {idx}/{num_colls}: {coll_name}")
-                coll_status = status_svc([coll_name])[0]
-                config = source_config_class(
-                    name=coll_name,
-                    type="localFiles",
-                    base_url_or_path="",
-                    indexer=coll_status.indexers[0],
-                )
                 with suppress_core_output():
                     result = svc_search(
                         query,
-                        configs=[config],
+                        configs=[search_configs[coll_name]],
                         max_docs=limit,
                         max_chunks=limit * 3,
                         include_matched_chunks=True,
@@ -451,7 +447,11 @@ def search(
                     results.update(result)
 
     # Format and display results
-    if compact:
+    if simple:
+        from ...mcp.formatting import format_search_results_for_llm
+
+        print_json(format_search_results_for_llm(results, query))
+    elif compact:
         format_search_results_compact(query, results, limit=limit)
     else:
         format_search_results(query, results, limit=limit, show_content=not no_content)

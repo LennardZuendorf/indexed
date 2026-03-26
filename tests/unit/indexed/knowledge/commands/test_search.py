@@ -496,3 +496,85 @@ class TestSearchCommandExecution:
         result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])
 
         assert result.exit_code == 0
+
+    def test_search_simple_output_returns_llm_json(self, monkeypatch):
+        """In simple output mode, search should return LLM-formatted JSON."""
+        import json
+
+        from unittest.mock import Mock
+
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        statuses = [self._make_status("col1")]
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+
+        fake_source_config = Mock()
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: fake_source_config)
+
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+        ):
+            return {
+                "col1": {
+                    "results": [
+                        {
+                            "id": "doc1",
+                            "url": "http://example.com/doc1",
+                            "matchedChunks": [
+                                {
+                                    "chunkNumber": 0,
+                                    "score": 0.3,
+                                    "content": {"indexedData": "relevant text"},
+                                },
+                            ],
+                        }
+                    ]
+                }
+            }
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query"])
+
+            assert result.exit_code == 0
+            parsed = json.loads(result.stdout)
+            assert parsed["query"] == "my-query"
+            assert parsed["total_collections_searched"] == 1
+            assert parsed["total_documents_found"] == 1
+            assert len(parsed["results"]) == 1
+            assert parsed["results"][0]["text"] == "relevant text"
+            assert parsed["results"][0]["collection"] == "col1"
+            assert parsed["results"][0]["rank"] == 1
+        finally:
+            reset_simple_output()
+
+    def test_search_simple_output_no_collections(self, monkeypatch):
+        """In simple output mode with no collections, should return JSON error."""
+        import json
+
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query"])
+
+            assert result.exit_code == 0
+            parsed = json.loads(result.stdout)
+            assert "error" in parsed
+        finally:
+            reset_simple_output()

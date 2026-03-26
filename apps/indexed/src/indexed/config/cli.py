@@ -873,7 +873,6 @@ def inspect(
         None,
         help="Section to inspect (sources, core, logging, mcp, performance)",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     show_defaults: bool = typer.Option(
         False,
         "--show-defaults",
@@ -917,8 +916,10 @@ def inspect(
     config = ConfigService.instance()
     raw = config.load_raw()
 
-    if json_output:
-        console.print(json.dumps(raw, indent=2, ensure_ascii=False))
+    from ..utils.simple_output import is_simple_output, print_json
+
+    if is_simple_output():
+        print_json(raw)
         return
 
     # Normalize section argument

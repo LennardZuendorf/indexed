@@ -1,5 +1,6 @@
 """Tests for the `indexed init` CLI command."""
 
+import re
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -13,6 +14,11 @@ def _get_app():
     return app
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 class TestInitCommand:
     def test_appears_in_help(self):
         result = runner.invoke(_get_app(), ["--help"])
@@ -22,9 +28,10 @@ class TestInitCommand:
     def test_has_own_help(self):
         result = runner.invoke(_get_app(), ["init", "--help"])
         assert result.exit_code == 0
-        assert "--model" in result.output
-        assert "--force" in result.output
-        assert "--skip-model" in result.output
+        clean = _strip_ansi(result.output)
+        assert "--model" in clean
+        assert "--force" in clean
+        assert "--skip-model" in clean
 
     def test_skips_download_when_cached(self):
         with patch(
