@@ -1,9 +1,17 @@
 """Tests for unified Confluence document converter."""
 
+import warnings
+
 import pytest
 from unittest.mock import MagicMock
 from connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
+)
+from connectors.confluence.confluence_document_converter import (
+    ConfluenceDocumentConverter,
+)
+from connectors.confluence.confluence_cloud_document_converter import (
+    ConfluenceCloudDocumentConverter,
 )
 
 pytestmark = pytest.mark.connectors
@@ -223,3 +231,79 @@ class TestUnifiedConfluenceDocumentConverter:
 
         # Should still return results without crashing
         assert len(result) == 1
+
+    def test_attachment_without_bytes_skipped(self):
+        """Attachments missing bytes key are skipped."""
+        converter = UnifiedConfluenceDocumentConverter(
+            is_cloud=False, include_attachments=True
+        )
+        mock_parser = MagicMock()
+        mock_parser.parse_bytes.return_value = MagicMock(chunks=[])
+        converter._parsing = mock_parser
+
+        doc = _make_server_doc(attachments=[{"filename": "no_bytes.pdf"}])
+        result = converter.convert(doc)
+        assert len(result) == 1
+
+    def test_chunk_metadata_included(self):
+        """Body chunks with metadata get metadata in output."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        mock_parser = MagicMock()
+        mock_chunk = MagicMock()
+        mock_chunk.contextualized_text = "chunk text"
+        mock_chunk.metadata = {"headings": ["H1"]}
+        mock_parser.parse_bytes.return_value = MagicMock(chunks=[mock_chunk])
+        converter._parsing = mock_parser
+
+        doc = _make_server_doc()
+        result = converter.convert(doc)
+        body_chunks = result[0]["chunks"][1:]
+        assert len(body_chunks) == 1
+        assert body_chunks[0]["metadata"] == {"headings": ["H1"]}
+
+    def test_no_comments_key(self):
+        """Document without comments key should not crash."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        doc = _make_server_doc()
+        del doc["comments"]
+        result = converter.convert(doc)
+        assert result[0]["id"] == "12345"
+
+
+class TestDeprecatedConfluenceConverters:
+    """Test backward-compatible deprecated converter wrappers."""
+
+    def test_server_converter_emits_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ConfluenceDocumentConverter()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_server_converter_converts(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            converter = ConfluenceDocumentConverter()
+
+        doc = _make_server_doc()
+        result = converter.convert(doc)
+        assert result[0]["id"] == "12345"
+        assert "Test Page" in result[0]["text"]
+
+    def test_cloud_converter_emits_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ConfluenceCloudDocumentConverter()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+
+    def test_cloud_converter_converts(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            converter = ConfluenceCloudDocumentConverter()
+
+        doc = _make_cloud_doc()
+        result = converter.convert(doc)
+        assert result[0]["id"] == "12345"
+        assert "Test Page" in result[0]["text"]

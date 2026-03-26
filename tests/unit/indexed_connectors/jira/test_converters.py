@@ -1,7 +1,12 @@
 """Tests for Jira document converters."""
 
+import warnings
+
 import pytest
+from unittest.mock import MagicMock
 from connectors.jira.unified_jira_document_converter import UnifiedJiraDocumentConverter
+from connectors.jira.jira_document_converter import JiraDocumentConverter
+from connectors.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 
@@ -449,3 +454,279 @@ class TestUnifiedJiraDocumentConverter:
 
         assert "Plain text comment 1" in doc["text"]
         assert "Plain text comment 2" in doc["text"]
+
+    def test_attachment_parsing_with_mock(self):
+        """Test attachment bytes are parsed via ParsingModule."""
+        mock_parsed_att = MagicMock()
+        mock_chunk = MagicMock()
+        mock_chunk.contextualized_text = "Attachment content"
+        mock_chunk.metadata = {"page": 1}
+        mock_parsed_att.chunks = [mock_chunk]
+
+        mock_parsed_text = MagicMock()
+        mock_text_chunk = MagicMock()
+        mock_text_chunk.contextualized_text = "Description text"
+        mock_text_chunk.metadata = {}
+        mock_parsed_text.chunks = [mock_text_chunk]
+
+        converter = UnifiedJiraDocumentConverter(include_attachments=True)
+        mock_parser = MagicMock()
+        mock_parser.parse_bytes.side_effect = (
+            lambda data, filename: mock_parsed_att
+            if filename == "doc.pdf"
+            else mock_parsed_text
+        )
+        converter._parsing = mock_parser
+
+        document = {
+            "key": "ATT-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "With attachment",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": "Some description",
+                "comment": {"comments": []},
+            },
+            "attachments": [
+                {
+                    "filename": "doc.pdf",
+                    "bytes": b"pdf data",
+                    "mimeType": "application/pdf",
+                },
+            ],
+        }
+
+        result = converter.convert(document)
+        chunks = result[0]["chunks"]
+        att_chunks = [c for c in chunks if c.get("metadata", {}).get("attachment")]
+        assert len(att_chunks) == 1
+        assert att_chunks[0]["indexedData"] == "Attachment content"
+        assert att_chunks[0]["metadata"]["attachment"] == "doc.pdf"
+
+    def test_attachment_skipped_when_disabled(self):
+        """Attachments ignored when include_attachments=False."""
+        converter = UnifiedJiraDocumentConverter(include_attachments=False)
+        document = {
+            "key": "ATT-2",
+            "self": "https://jira.example.com/rest/api/2/issue/2",
+            "fields": {
+                "summary": "No attachments",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": None,
+                "comment": {"comments": []},
+            },
+            "attachments": [{"filename": "ignored.pdf", "bytes": b"data"}],
+        }
+        result = converter.convert(document)
+        chunks = result[0]["chunks"]
+        att_chunks = [c for c in chunks if c.get("metadata", {}).get("attachment")]
+        assert len(att_chunks) == 0
+
+    def test_attachment_parse_error_handled(self):
+        """Failed attachment parse logs warning and continues."""
+        converter = UnifiedJiraDocumentConverter(include_attachments=True)
+        mock_parser = MagicMock()
+        mock_text = MagicMock()
+        mock_text.chunks = []
+
+        def side_effect(data, filename):
+            if filename == "bad.bin":
+                raise RuntimeError("bad file")
+            return mock_text
+
+        mock_parser.parse_bytes.side_effect = side_effect
+        converter._parsing = mock_parser
+
+        document = {
+            "key": "ATT-3",
+            "self": "https://jira.example.com/rest/api/2/issue/3",
+            "fields": {
+                "summary": "Bad attachment",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": None,
+                "comment": {"comments": []},
+            },
+            "attachments": [{"filename": "bad.bin", "bytes": b"\x00"}],
+        }
+        result = converter.convert(document)
+        assert len(result) == 1
+
+    def test_attachment_without_bytes_skipped(self):
+        """Attachments without bytes key are skipped."""
+        converter = UnifiedJiraDocumentConverter(include_attachments=True)
+        mock_parser = MagicMock()
+        mock_parser.parse_bytes.return_value = MagicMock(chunks=[])
+        converter._parsing = mock_parser
+
+        document = {
+            "key": "ATT-4",
+            "self": "https://jira.example.com/rest/api/2/issue/4",
+            "fields": {
+                "summary": "No bytes",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": None,
+                "comment": {"comments": []},
+            },
+            "attachments": [{"filename": "empty.pdf"}],
+        }
+        result = converter.convert(document)
+        assert len(result) == 1
+        # parse_bytes should not be called for body (no description) or attachment (no bytes)
+
+    def test_chunk_metadata_included(self):
+        """Chunks with metadata get metadata field in output."""
+        converter = UnifiedJiraDocumentConverter()
+        mock_parser = MagicMock()
+        mock_chunk = MagicMock()
+        mock_chunk.contextualized_text = "chunk text"
+        mock_chunk.metadata = {"headings": ["Section"]}
+        mock_parser.parse_bytes.return_value = MagicMock(chunks=[mock_chunk])
+        converter._parsing = mock_parser
+
+        document = {
+            "key": "META-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Metadata test",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": "some text",
+                "comment": {"comments": []},
+            },
+        }
+        result = converter.convert(document)
+        body_chunks = result[0]["chunks"][1:]  # skip title chunk
+        assert len(body_chunks) == 1
+        assert body_chunks[0]["metadata"] == {"headings": ["Section"]}
+
+    def test_comment_with_empty_body_skipped(self):
+        """Comments with empty/None body are skipped."""
+        converter = UnifiedJiraDocumentConverter()
+        document = {
+            "key": "CMT-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Empty comment",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": None,
+                "comment": {"comments": [{"body": None}, {"body": ""}]},
+            },
+        }
+        result = converter.convert(document)
+        assert result[0]["id"] == "CMT-1"
+
+    def test_hardbreak_in_adf(self):
+        """Test hardBreak ADF node."""
+        converter = UnifiedJiraDocumentConverter()
+        document = {
+            "key": "HB-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "HardBreak",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {"type": "text", "text": "line1"},
+                                {"type": "hardBreak"},
+                                {"type": "text", "text": "line2"},
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = converter.convert(document)
+        assert "line1" in result[0]["text"]
+        assert "line2" in result[0]["text"]
+
+    def test_unknown_adf_node_with_content(self):
+        """Unknown ADF node types with content are parsed recursively."""
+        converter = UnifiedJiraDocumentConverter()
+        document = {
+            "key": "UNK-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Unknown node",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "panel",
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [
+                                        {"type": "text", "text": "Inside panel"}
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = converter.convert(document)
+        assert "Inside panel" in result[0]["text"]
+
+
+class TestDeprecatedJiraConverters:
+    """Test backward-compatible deprecated converter wrappers."""
+
+    def test_jira_document_converter_emits_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            JiraDocumentConverter()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_jira_document_converter_converts(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            converter = JiraDocumentConverter()
+
+        document = {
+            "key": "DEP-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Deprecated test",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": "Hello",
+                "comment": {"comments": []},
+            },
+        }
+        result = converter.convert(document)
+        assert result[0]["id"] == "DEP-1"
+
+    def test_jira_cloud_document_converter_emits_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            JiraCloudDocumentConverter()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+
+    def test_jira_cloud_document_converter_converts(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            converter = JiraCloudDocumentConverter()
+
+        document = {
+            "key": "CDR-1",
+            "self": "https://company.atlassian.net/rest/api/3/issue/1",
+            "fields": {
+                "summary": "Cloud deprecated",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": None,
+                "comment": {"comments": []},
+            },
+        }
+        result = converter.convert(document)
+        assert result[0]["id"] == "CDR-1"
