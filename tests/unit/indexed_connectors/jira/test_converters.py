@@ -471,10 +471,8 @@ class TestUnifiedJiraDocumentConverter:
 
         converter = UnifiedJiraDocumentConverter(include_attachments=True)
         mock_parser = MagicMock()
-        mock_parser.parse_bytes.side_effect = (
-            lambda data, filename: mock_parsed_att
-            if filename == "doc.pdf"
-            else mock_parsed_text
+        mock_parser.parse_bytes.side_effect = lambda data, filename: (
+            mock_parsed_att if filename == "doc.pdf" else mock_parsed_text
         )
         converter._parsing = mock_parser
 
