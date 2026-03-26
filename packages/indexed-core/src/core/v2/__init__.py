@@ -12,6 +12,8 @@ Config registration is explicit — call :func:`core.v2.config.register_config`
 from app startup. This module has NO import-time side effects.
 """
 
+from .index import Index, IndexConfig
+
 __version__ = "2.0.0"
 
-__all__ = ["__version__"]
+__all__ = ["Index", "IndexConfig", "__version__"]
