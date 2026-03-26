@@ -1,0 +1,97 @@
+"""Tests for the upgraded FilesDocumentReader."""
+
+from connectors.files.files_document_reader import FilesDocumentReader
+
+
+class TestFilesDocumentReaderParsed:
+    def test_read_all_parsed_yields_documents(self, tmp_path):
+        (tmp_path / "hello.txt").write_text("Hello world")
+        (tmp_path / "data.json").write_text('{"key": "value"}')
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+        assert len(docs) == 2
+
+    def test_read_all_parsed_empty_dir(self, tmp_path):
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+        assert docs == []
+
+    def test_read_all_parsed_nested_dirs(self, tmp_path):
+        sub = tmp_path / "sub" / "deep"
+        sub.mkdir(parents=True)
+        (sub / "nested.txt").write_text("nested content")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+        assert len(docs) == 1
+        assert "modified_time" in docs[0].metadata
+
+    def test_include_patterns(self, tmp_path):
+        (tmp_path / "keep.txt").write_text("keep")
+        (tmp_path / "skip.py").write_text("skip")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+        )
+        docs = list(reader.read_all_parsed())
+        assert len(docs) == 1
+        assert "keep.txt" in docs[0].file_path
+
+    def test_exclude_patterns(self, tmp_path):
+        (tmp_path / "keep.txt").write_text("keep")
+        (tmp_path / "skip.txt").write_text("skip")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            exclude_patterns=[r"skip.*"],
+        )
+        docs = list(reader.read_all_parsed())
+        assert len(docs) == 1
+
+    def test_excluded_extensions(self, tmp_path):
+        (tmp_path / "doc.txt").write_text("doc")
+        (tmp_path / "binary.exe").write_bytes(b"\x00\x01\x02")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+        # .exe is in default excluded extensions
+        assert len(docs) == 1
+
+    def test_fail_fast(self, tmp_path):
+        (tmp_path / "good.txt").write_text("good")
+        reader = FilesDocumentReader(base_path=str(tmp_path), fail_fast=True)
+        docs = list(reader.read_all_parsed())
+        assert len(docs) == 1
+
+
+class TestFilesDocumentReaderV1Compat:
+    def test_read_all_documents_backward_compat(self, tmp_path):
+        (tmp_path / "test.txt").write_text("Hello v1 world")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_documents())
+        assert len(docs) == 1
+        doc = docs[0]
+        assert "fileRelativePath" in doc
+        assert "fileFullPath" in doc
+        assert "modifiedTime" in doc
+        assert "content" in doc
+        assert isinstance(doc["content"], list)
+
+    def test_get_number_of_documents(self, tmp_path):
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.txt").write_text("b")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        assert reader.get_number_of_documents() == 2
+
+    def test_get_reader_details(self, tmp_path):
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.md$"],
+        )
+        details = reader.get_reader_details()
+        assert details["type"] == "localFiles"
+        assert details["basePath"] == str(tmp_path)

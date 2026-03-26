@@ -1,190 +1,127 @@
-import fnmatch
-import os
-import json
-import datetime
-import re
-from loguru import logger
-from unstructured.partition.auto import partition
+"""File-system document reader.
 
-EXCLUDED_FILE_EXTENSIONS = [
-    ".DS_Store",
-    # Archive and compressed formats
-    ".zip",
-    ".tar",
-    ".jar",
-    ".rar",
-    ".gz",
-    ".tgz",
-    ".7z",
-    ".bz2",
-    ".xz",
-    ".lz4",
-    ".zst",
-    ".cab",
-    ".deb",
-    ".rpm",
-    ".pkg",
-    ".dmg",
-    ".iso",
-    ".img",
-    # Executable and binary formats
-    ".exe",
-    ".dll",
-    ".so",
-    ".dylib",
-    ".app",
-    ".msi",
-    ".bin",
-    ".run",
-    ".deb",
-    ".rpm",
-    # Compiled code
-    ".class",
-    ".pyc",
-    ".pyo",
-    ".o",
-    ".obj",
-    ".lib",
-    ".a",
-    ".bundle",
-    # Video formats
-    ".mp4",
-    ".avi",
-    ".mkv",
-    ".mov",
-    ".wmv",
-    ".flv",
-    ".webm",
-    ".m4v",
-    ".3gp",
-    ".mpg",
-    ".mpeg",
-    ".vob",
-    ".ogv",
-    # Audio formats
-    ".mp3",
-    ".wav",
-    ".flac",
-    ".aac",
-    ".ogg",
-    ".wma",
-    ".m4a",
-    ".opus",
-    ".aiff",
-    ".au",
-    ".ra",
-    # Font formats
-    ".ttf",
-    ".otf",
-    ".woff",
-    ".woff2",
-    ".eot",
-    # Database formats
-    ".db",
-    ".sqlite",
-    ".sqlite3",
-    ".mdb",
-    ".accdb",
-    # Virtual machine and disk images
-    ".vmdk",
-    ".vdi",
-    ".qcow2",
-    ".vhd",
-    ".vhdx",
-    # Other binary formats
-    ".swf",
-    ".fla",
-    ".unity3d",
-    ".unitypackage",
-    ".blend",
-    ".max",
-    ".3ds",
-    ".fbx",
-    ".dae",
-    ".obj",
-    ".stl",
-    ".ply",
-]
+Discovers files under a directory tree and parses them via ``indexed-parsing``.
+The primary output is ``ParsedDocument``; a legacy ``read_all_documents()``
+method is kept for backward compatibility with the v1 core contract.
+"""
+
+from __future__ import annotations
+
+import datetime
+import fnmatch
+import json
+import os
+import re
+from pathlib import Path
+from typing import Iterator
+
+from loguru import logger
+from parsing import ParsingModule
+from parsing.schema import ParsedDocument
+
+from .schema import DEFAULT_EXCLUDED_EXTENSIONS
+from .v1_adapter import V1FormatAdapter
 
 
 class FilesDocumentReader:
+    """Read and parse files from a local directory."""
+
     def __init__(
         self,
         base_path: str,
-        include_patterns=[".*"],
-        exclude_patterns=[],
+        include_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
         fail_fast: bool = False,
-        start_from_time=None,
-    ):
+        start_from_time: datetime.datetime | None = None,
+        *,
+        ocr: bool = True,
+        table_structure: bool = True,
+        max_tokens: int = 512,
+        excluded_extensions: list[str] | None = None,
+    ) -> None:
         self.base_path = base_path
-
-        self.include_patterns = include_patterns
-        self.exclude_patterns = exclude_patterns
-        self.compiled_include_patterns = [self._compile(p) for p in include_patterns]
-        self.compiled_exclude_patterns = [self._compile(p) for p in exclude_patterns]
-
+        self.include_patterns = include_patterns or [".*"]
+        self.exclude_patterns = exclude_patterns or []
+        self.compiled_include_patterns = [
+            self._compile(p) for p in self.include_patterns
+        ]
+        self.compiled_exclude_patterns = [
+            self._compile(p) for p in self.exclude_patterns
+        ]
         self.fail_fast = fail_fast
         self.start_from_time = start_from_time
+        self._excluded_extensions = frozenset(
+            excluded_extensions or DEFAULT_EXCLUDED_EXTENSIONS
+        )
 
-        self.file_readers = {
-            ".json": self.__read_text_file,  # By some reason unstructured lib tries to read json files as ndjson and fails
-        }
-        self.default_reader = self.__read_file_by_unstructured_lib
+        # Lazy-init parsing module on first use
+        self._parsing: ParsingModule | None = None
+        self._ocr = ocr
+        self._table_structure = table_structure
+        self._max_tokens = max_tokens
 
     @staticmethod
-    def _compile(pattern: str) -> re.Pattern:
-        """Compile a pattern as regex, falling back to glob via fnmatch.translate."""
+    def _compile(pattern: str) -> re.Pattern[str]:
+        """Compile a pattern as regex, falling back to glob."""
         try:
             return re.compile(pattern)
         except re.error:
             return re.compile(fnmatch.translate(pattern))
 
-    def read_all_documents(self):
-        """
-        Iterate over files selected by the reader configuration and yield a document record for each successfully read file.
+    @property
+    def parsing(self) -> ParsingModule:
+        """Lazily create the parsing module."""
+        if self._parsing is None:
+            self._parsing = ParsingModule(
+                ocr=self._ocr,
+                table_structure=self._table_structure,
+                max_tokens=self._max_tokens,
+            )
+        return self._parsing
 
-        Yields:
-            dict: A document record containing:
-                - fileRelativePath (str): Path relative to the configured base_path.
-                - fileFullPath (str): Absolute path to the file.
-                - modifiedTime (str): File modification time as an ISO 8601 formatted string.
-                - content (list[dict] | list[str] | str): Content produced by the selected file reader (e.g., a list of element dictionaries or a text string).
+    # -- primary API (new) -----------------------------------------------
 
-        Raises:
-            RuntimeError: If `fail_fast` is true and reading any file raises an error.
-        """
-        result_stats = {
+    def read_all_parsed(self) -> Iterator[ParsedDocument]:
+        """Yield a ``ParsedDocument`` for every matching file."""
+        result_stats: dict[str, list[str]] = {
             "successFiles": [],
             "errorFiles": [],
         }
 
-        for file_path in self.__read_file_pathes():
-            file_content, error = self.__read_file(file_path)
-
-            self.__update_result_stats(result_stats, file_path, error)
-
-            if error:
-                if self.fail_fast:
-                    raise RuntimeError(f"Error reading file {file_path}") from error
-
-                logger.opt(exception=error).error("Error reading file {}", file_path)
-                continue
-
-            yield {
-                "fileRelativePath": os.path.relpath(file_path, self.base_path),
-                "fileFullPath": file_path,
-                "modifiedTime": self.__read_file_modification_time(
+        for file_path in self._iter_file_paths():
+            try:
+                doc = self.parsing.parse(Path(file_path))
+                # Populate modified_time in metadata
+                doc.metadata["modified_time"] = self._read_file_modification_time(
                     file_path
-                ).isoformat(),
-                "content": file_content,
-            }
+                ).isoformat()
+                result_stats["successFiles"].append(file_path)
+                yield doc
+            except Exception as exc:
+                result_stats["errorFiles"].append(file_path)
+                if self.fail_fast:
+                    raise RuntimeError(f"Error reading file {file_path}") from exc
+                logger.opt(exception=exc).error("Error reading file {}", file_path)
 
         logger.info(
             f"Files reading stats: \n{json.dumps(result_stats, indent=2, ensure_ascii=False)}"
         )
 
-    def get_number_of_documents(self):
-        return len(self.__read_file_pathes())
+    # -- backward-compat v1 API ------------------------------------------
+
+    def read_all_documents(self) -> Iterator[dict]:
+        """Yield v1-format dicts — backward compatible with core v1.
+
+        Each dict has keys: ``fileRelativePath``, ``fileFullPath``,
+        ``modifiedTime``, ``content``.
+        """
+        for parsed in self.read_all_parsed():
+            yield V1FormatAdapter.reader_output(parsed, self.base_path)
+
+    # -- helpers ----------------------------------------------------------
+
+    def get_number_of_documents(self) -> int:
+        return len(list(self._iter_file_paths()))
 
     def get_reader_details(self) -> dict:
         return {
@@ -195,27 +132,8 @@ class FilesDocumentReader:
             "failFast": self.fail_fast,
         }
 
-    def __update_result_stats(self, result_stats, file_path, error):
-        if error:
-            result_stats["errorFiles"].append(file_path)
-        else:
-            result_stats["successFiles"].append(file_path)
-
-    def __read_file(self, file_path: str):
-        file_extension = os.path.splitext(file_path)[1].lower()
-        file_reader = self.file_readers.get(file_extension, self.default_reader)
-
-        try:
-            return file_reader(file_path), None
-        except Exception as e:
-            return None, e
-
-    def __read_file_modification_time(self, file_path: str):
-        mod_time = os.path.getmtime(file_path)
-        return datetime.datetime.fromtimestamp(mod_time)
-
-    def __read_file_pathes(self):
-        file_paths = []
+    def _iter_file_paths(self) -> Iterator[str]:
+        """Walk the directory and yield matching file paths."""
         for root, _, files in os.walk(self.base_path):
             for file_name in files:
                 full_path = os.path.join(root, file_name)
@@ -223,86 +141,30 @@ class FilesDocumentReader:
 
                 if (
                     os.path.isfile(full_path)
-                    and self.__is_file_included(relative_path)
+                    and self._is_file_included(relative_path)
                     and not any(
-                        relative_path.endswith(ext) for ext in EXCLUDED_FILE_EXTENSIONS
+                        relative_path.endswith(ext) for ext in self._excluded_extensions
                     )
-                    and not self.__is_file_excluded(relative_path)
+                    and not self._is_file_excluded(relative_path)
                     and (
                         self.start_from_time is None
-                        or self.__read_file_modification_time(full_path)
+                        or self._read_file_modification_time(full_path)
                         >= self.start_from_time
                     )
                 ):
-                    file_paths.append(full_path)
+                    yield full_path
 
-        return file_paths
-
-    def __is_file_included(self, file_path: str):
+    def _is_file_included(self, file_path: str) -> bool:
         return any(
             pattern.fullmatch(file_path) for pattern in self.compiled_include_patterns
         )
 
-    def __is_file_excluded(self, file_path: str):
+    def _is_file_excluded(self, file_path: str) -> bool:
         return any(
             pattern.fullmatch(file_path) for pattern in self.compiled_exclude_patterns
         )
 
-    def __read_text_file(self, file_path: str):
-        with open(file_path, "r") as file:
-            file_content = file.read()
-            return [{"text": file_content}]
-
-    def __read_file_by_unstructured_lib(self, file_path: str):
-        """
-        Extract text content from a file using the unstructured partitioner and return one or more document dictionaries.
-
-        Parameters:
-            file_path (str): Path to the file to extract text from.
-
-        Returns:
-            list[dict]: A list of document dictionaries:
-                - If no text content is found, returns an empty list.
-                - If elements lack page numbers, returns a single dict with key `"text"` containing the file's combined text.
-                - If elements include page numbers, returns one dict per page with keys:
-                    - `"metadata"`: `{"pageNumber": <int>}` for the page
-                    - `"text"`: combined text for that page
-        """
-        elements = partition(filename=file_path)
-
-        if not elements:
-            logger.warning(f"No text content found in file: {file_path}")
-            return []
-
-        if elements[0].metadata.page_number is None:
-            return [
-                {
-                    "text": "\n\n".join(
-                        [
-                            element.text
-                            for element in elements
-                            if hasattr(element, "text")
-                        ]
-                    ).strip(),
-                }
-            ]
-
-        return [
-            {
-                "metadata": {"pageNumber": page_number},
-                "text": "\n\n".join(texts).strip(),
-            }
-            for page_number, texts in self.__groud_by_page_number(elements).items()
-        ]
-
-    def __groud_by_page_number(self, elements):
-        grouped_elements = {}
-        for element in elements:
-            page_number = element.metadata.page_number
-            if page_number not in grouped_elements:
-                grouped_elements[page_number] = []
-
-            if hasattr(element, "text"):
-                grouped_elements[page_number].append(element.text)
-
-        return grouped_elements
+    @staticmethod
+    def _read_file_modification_time(file_path: str) -> datetime.datetime:
+        mod_time = os.path.getmtime(file_path)
+        return datetime.datetime.fromtimestamp(mod_time)
