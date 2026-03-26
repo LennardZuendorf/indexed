@@ -165,10 +165,8 @@ class TestUnifiedConfluenceDocumentConverter:
         )
 
         mock_parser = MagicMock()
-        mock_parser.parse_bytes.side_effect = (
-            lambda data, filename: mock_parsed
-            if filename == "report.pdf"
-            else mock_text_parsed
+        mock_parser.parse_bytes.side_effect = lambda data, filename: (
+            mock_parsed if filename == "report.pdf" else mock_text_parsed
         )
         converter._parsing = mock_parser
 
