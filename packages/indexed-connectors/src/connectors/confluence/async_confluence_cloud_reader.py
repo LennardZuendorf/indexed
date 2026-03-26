@@ -39,6 +39,8 @@ class AsyncConfluenceCloudDocumentReader:
         max_skipped_items_in_row: int = 5,
         read_all_comments: bool = False,
         max_concurrent_requests: int = 10,
+        include_attachments: bool = False,
+        max_attachment_size_mb: int = 10,
     ):
         if not email or not api_token:
             raise ValueError(
@@ -65,6 +67,8 @@ class AsyncConfluenceCloudDocumentReader:
         self.max_skipped_items_in_row = max_skipped_items_in_row
         self.read_all_comments = read_all_comments
         self.max_concurrent_requests = max_concurrent_requests
+        self.include_attachments = include_attachments
+        self.max_attachment_size_bytes = max_attachment_size_mb * 1024 * 1024
 
     def read_all_documents(self):
         """Read all documents, fetching comments concurrently in windows."""
@@ -78,10 +82,16 @@ class AsyncConfluenceCloudDocumentReader:
             yield from self._yield_pages_with_comments(window)
 
     def _yield_pages_with_comments(self, pages: list):
-        """Fetch comments for a window of pages and yield results."""
+        """Fetch comments (and optionally attachments) for a window of pages."""
         comments_map = asyncio.run(self._fetch_all_comments_async(pages))
+        attachments_map: dict = {}
+        if self.include_attachments:
+            attachments_map = asyncio.run(self._fetch_all_attachments_async(pages))
         for i, page in enumerate(pages):
-            yield {"page": page, "comments": comments_map.get(i, [])}
+            doc: dict = {"page": page, "comments": comments_map.get(i, [])}
+            if self.include_attachments:
+                doc["attachments"] = attachments_map.get(i, [])
+            yield doc
 
     def get_number_of_documents(self) -> int:
         import requests
@@ -257,3 +267,90 @@ class AsyncConfluenceCloudDocumentReader:
                 break
 
         return all_comments
+
+    async def _fetch_all_attachments_async(self, pages: list) -> dict:
+        """Fetch attachments for all pages concurrently."""
+        semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        attachments_map: dict = {}
+
+        async with httpx.AsyncClient(
+            auth=(self.email, self.api_token),
+            timeout=60.0,
+            limits=httpx.Limits(
+                max_connections=self.max_concurrent_requests,
+                max_keepalive_connections=5,
+            ),
+        ) as client:
+            tasks = [
+                self._fetch_attachments_for_page(client, semaphore, page)
+                for page in pages
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        f"Failed to fetch attachments for page {i}: {result}"
+                    )
+                    attachments_map[i] = []
+                else:
+                    attachments_map[i] = result
+
+        return attachments_map
+
+    async def _fetch_attachments_for_page(
+        self,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+        page: dict,
+    ) -> list[dict]:
+        """Fetch and download attachments for a single page."""
+        content_id = page.get("content", {}).get("id", "")
+        if not content_id:
+            return []
+
+        # List attachments
+        async with semaphore:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/wiki/rest/api/content/{content_id}/child/attachment",
+                    params={"limit": 100},
+                    headers={"Accept": "application/json"},
+                )
+                response.raise_for_status()
+            except Exception as e:
+                logger.warning(f"Failed to list attachments for page {content_id}: {e}")
+                return []
+
+        att_results = response.json().get("results", [])
+        downloaded: list[dict] = []
+
+        for att in att_results:
+            size = att.get("extensions", {}).get("fileSize", 0)
+            if size > self.max_attachment_size_bytes:
+                logger.warning(
+                    f"Skipping attachment {att.get('title')} "
+                    f"({size / 1024 / 1024:.1f} MB) — exceeds limit"
+                )
+                continue
+
+            download_link = att.get("_links", {}).get("download", "")
+            if not download_link:
+                continue
+
+            download_url = f"{self.base_url}/wiki{download_link}"
+            async with semaphore:
+                try:
+                    resp = await client.get(download_url)
+                    resp.raise_for_status()
+                    downloaded.append(
+                        {
+                            "filename": att.get("title", "unknown"),
+                            "bytes": resp.content,
+                            "mimeType": att.get("metadata", {}).get("mediaType", ""),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to download attachment: {e}")
+
+        return downloaded
