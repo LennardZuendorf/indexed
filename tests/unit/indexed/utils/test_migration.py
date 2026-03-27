@@ -488,7 +488,7 @@ class TestMigrateLegacyData:
                 result = migrate_legacy_data(new_root, mock_console)
 
         assert result is True
-        assert mock_warn.call_count >= 2
+        assert mock_warn.call_count == 2
         all_calls = str(mock_warn.call_args_list)
         assert "existing" in all_calls
 
