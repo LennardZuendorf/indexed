@@ -13,11 +13,13 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from loguru import logger
-from parsing import ParsingModule
-from parsing.schema import ParsedDocument
+
+if TYPE_CHECKING:
+    from parsing import ParsingModule
+    from parsing.schema import ParsedDocument
 
 from .schema import DEFAULT_EXCLUDED_EXTENSIONS
 from .v1_adapter import V1FormatAdapter
@@ -72,7 +74,9 @@ class FilesDocumentReader:
     def parsing(self) -> ParsingModule:
         """Lazily create the parsing module."""
         if self._parsing is None:
-            self._parsing = ParsingModule(
+            from parsing import ParsingModule as _ParsingModule
+
+            self._parsing = _ParsingModule(
                 ocr=self._ocr,
                 table_structure=self._table_structure,
                 max_tokens=self._max_tokens,

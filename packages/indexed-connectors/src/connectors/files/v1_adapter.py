@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from parsing.schema import ParsedDocument
+if TYPE_CHECKING:
+    from parsing.schema import ParsedDocument
 
 
 class V1FormatAdapter:
