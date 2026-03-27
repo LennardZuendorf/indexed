@@ -184,7 +184,7 @@ def _build_fastmcp_command(
     **kwargs,
 ) -> List[str]:
     """Build the FastMCP CLI argument list for a subcommand (run, dev, or inspect)."""
-    cmd = ["fastmcp", subcommand, _get_server_path()]
+    cmd = [sys.executable, "-m", "fastmcp", subcommand, _get_server_path()]
 
     # Run and dev commands: transport and server options
     if subcommand in ("run", "dev"):
@@ -243,9 +243,7 @@ def _execute_fastmcp(cmd: List[str]) -> None:
         print_error(f"Error running FastMCP CLI: {e}")
         raise typer.Exit(1)
     except FileNotFoundError:
-        print_error(
-            "FastMCP CLI not found. Please install it with: pip install fastmcp"
-        )
+        print_error("FastMCP module not found. Ensure fastmcp is installed: uv sync")
         raise typer.Exit(1)
 
 
@@ -300,38 +298,19 @@ def run_impl(
     port: int = 8000,
     log_level: str = "INFO",
     json_logs: bool = False,
-    path: Optional[str] = None,
-    python: Optional[str] = None,
-    with_packages: Optional[List[str]] = None,
-    with_requirements: Optional[str] = None,
-    with_editable: Optional[str] = None,
-    project: Optional[str] = None,
-    skip_env: bool = False,
     no_banner: bool = False,
     **kwargs,
 ):
-    """Run the MCP server using FastMCP CLI."""
-    cmd = _build_fastmcp_command(
-        "run",
+    """Run the MCP server using FastMCP Python API directly."""
+    from .server import mcp
+
+    mcp.run(
         transport=transport,
+        show_banner=not no_banner,
         host=host,
         port=port,
         log_level=log_level,
-        path=path,
-        python=python,
-        with_packages=with_packages,
-        with_requirements=with_requirements,
-        with_editable=with_editable,
-        project=project,
-        skip_env=skip_env,
-        no_banner=no_banner,
-        **kwargs,
     )
-
-    if json_logs:
-        cmd.append("--json-logs")
-
-    _execute_fastmcp(cmd)
 
 
 @app.command("run")
@@ -354,44 +333,16 @@ def run(
     json_logs: bool = typer.Option(
         False, "--json-logs", help="Output logs as JSON (structured)"
     ),
-    python: Optional[str] = typer.Option(
-        None, "--python", help="Python version to use (e.g., 3.11)"
-    ),
-    with_packages: Optional[List[str]] = typer.Option(
-        [], "--with", help="Additional packages to install (can be used multiple times)"
-    ),
-    with_requirements: Optional[str] = typer.Option(
-        None,
-        "--with-requirements",
-        help="Requirements file to install dependencies from",
-    ),
-    with_editable: Optional[str] = typer.Option(
-        None,
-        "--with-editable",
-        "-e",
-        help="Directory containing pyproject.toml to install in editable mode",
-    ),
-    project: Optional[str] = typer.Option(
-        None, "--project", help="Run the command within the given project directory"
-    ),
-    skip_env: bool = typer.Option(
-        False,
-        "--skip-env",
-        help="Skip environment setup with uv (use when already in a uv environment)",
-    ),
-    path: Optional[str] = typer.Option(
-        None, "--path", help="Path to bind to when using http transport"
-    ),
     no_banner: bool = typer.Option(
         False, "--no-banner", help="Disable the startup banner display"
     ),
 ):
-    """Run the MCP server with FastMCP CLI.
+    """Run the MCP server.
 
     Examples:
         indexed mcp run
         indexed mcp run --transport http --port 8000
-        indexed mcp run --python 3.11 --with pandas
+        indexed mcp run --log-level DEBUG
     """
     run_impl(
         transport=transport,
@@ -399,13 +350,6 @@ def run(
         port=port,
         log_level=log_level,
         json_logs=json_logs,
-        path=path,
-        python=python,
-        with_packages=with_packages,
-        with_requirements=with_requirements,
-        with_editable=with_editable,
-        project=project,
-        skip_env=skip_env,
         no_banner=no_banner,
     )
 
@@ -548,9 +492,7 @@ def inspect(
             console.print(e.stderr)
         raise typer.Exit(1)
     except FileNotFoundError:
-        print_error(
-            "FastMCP CLI not found. Please install it with: pip install fastmcp"
-        )
+        print_error("FastMCP module not found. Ensure fastmcp is installed: uv sync")
         raise typer.Exit(1)
 
 
@@ -591,7 +533,7 @@ def fastmcp(
         else:
             processed_args.append(arg)
 
-    cmd = ["fastmcp"] + processed_args
+    cmd = [sys.executable, "-m", "fastmcp"] + processed_args
     _execute_fastmcp(cmd)
 
 
