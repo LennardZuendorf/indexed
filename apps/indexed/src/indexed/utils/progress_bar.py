@@ -19,7 +19,11 @@ from rich.progress import (
     TaskID,
 )
 
-from indexed.utils.components.theme import get_accent_style, get_success_style
+from indexed.utils.components.theme import (
+    get_accent_style,
+    get_success_style,
+    get_dim_style,
+)
 from indexed.utils.console import console, is_interactive
 
 
@@ -109,13 +113,15 @@ class RichPhasedProgress:
 
         self._progress.update(
             task_id,
-            description=f"  [{get_success_style()}]✓[/{get_success_style()}] {name}  [dim]{elapsed_str}[/dim]",
+            description=f"  [{get_success_style()}]✓[/{get_success_style()}] {name}  [{get_dim_style()}]{elapsed_str}[/{get_dim_style()}]",
         )
 
     def log(self, message: str) -> None:
         """Display a log message within the progress context."""
         if self._started:
-            self._progress.console.print(f"    [dim]{message}[/dim]")
+            self._progress.console.print(
+                f"    [{get_dim_style()}]{message}[/{get_dim_style()}]"
+            )
 
 
 class PlainPhasedProgress:
