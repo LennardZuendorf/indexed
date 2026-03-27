@@ -6,6 +6,8 @@ results beautifully with the card-based design system.
 
 import typer
 from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
+
+# Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
 
 if TYPE_CHECKING:
