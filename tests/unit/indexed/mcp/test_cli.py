@@ -1,6 +1,7 @@
 """Tests for MCP CLI command building and execution."""
 
 import subprocess
+import sys
 from unittest.mock import patch, MagicMock
 from typer.testing import CliRunner
 import pytest
@@ -26,8 +27,9 @@ class TestBuildFastmcpCommand:
     def test_run_command_basic(self) -> None:
         """Test run command with default options."""
         cmd = _build_fastmcp_command("run")
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "run"
+        assert cmd[0] == sys.executable
+        assert cmd[1:3] == ["-m", "fastmcp"]
+        assert cmd[3] == "run"
         assert _get_server_path() in cmd
         # Default options should not be included
         assert "--transport" not in cmd
@@ -105,8 +107,9 @@ class TestDevCommand:
     def test_dev_command_basic(self) -> None:
         """Test dev command with default options."""
         cmd = _build_fastmcp_command("dev")
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "dev"
+        assert cmd[0] == sys.executable
+        assert cmd[1:3] == ["-m", "fastmcp"]
+        assert cmd[3] == "dev"
         assert _get_server_path() in cmd
 
     def test_dev_command_with_inspector_options(self) -> None:
@@ -155,8 +158,9 @@ class TestInspectCommand:
     def test_inspect_command_basic(self) -> None:
         """Test inspect command with default options."""
         cmd = _build_fastmcp_command("inspect")
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "inspect"
+        assert cmd[0] == sys.executable
+        assert cmd[1:3] == ["-m", "fastmcp"]
+        assert cmd[3] == "inspect"
         assert _get_server_path() in cmd
 
     def test_inspect_command_with_format(self) -> None:
@@ -215,21 +219,17 @@ class TestInspectCommand:
 class TestCliCommands:
     """Tests for CLI command invocation."""
 
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_mcp_without_subcommand_runs_server(self, mock_execute: MagicMock) -> None:
+    @patch("indexed.mcp.server.mcp")
+    def test_mcp_without_subcommand_runs_server(self, mock_mcp: MagicMock) -> None:
         """Test that 'indexed mcp' without subcommand runs the server."""
         runner.invoke(app, [])
-        mock_execute.assert_called_once()
-        cmd = mock_execute.call_args[0][0]
-        assert cmd[1] == "run"
+        mock_mcp.run.assert_called_once()
 
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_mcp_run_command(self, mock_execute: MagicMock) -> None:
+    @patch("indexed.mcp.server.mcp")
+    def test_mcp_run_command(self, mock_mcp: MagicMock) -> None:
         """Test that 'indexed mcp run' works correctly."""
         runner.invoke(app, ["run"])
-        mock_execute.assert_called_once()
-        cmd = mock_execute.call_args[0][0]
-        assert cmd[1] == "run"
+        mock_mcp.run.assert_called_once()
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_dev_command(self, mock_execute: MagicMock) -> None:
@@ -237,8 +237,8 @@ class TestCliCommands:
         runner.invoke(app, ["dev"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "dev"
+        assert cmd[1:3] == ["-m", "fastmcp"]
+        assert cmd[3] == "dev"
 
     @patch("indexed.mcp.cli.subprocess.run")
     def test_mcp_inspect_command(self, mock_subprocess: MagicMock) -> None:
@@ -252,8 +252,8 @@ class TestCliCommands:
         runner.invoke(app, ["inspect"])
         mock_subprocess.assert_called_once()
         cmd = mock_subprocess.call_args[0][0]
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "inspect"
+        assert cmd[1:3] == ["-m", "fastmcp"]
+        assert cmd[3] == "inspect"
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_inspect_with_format(self, mock_execute: MagicMock) -> None:
@@ -270,7 +270,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "version"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "version"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "version"]
 
     def test_mcp_fastmcp_no_args_shows_error(self) -> None:
         """Test that 'indexed mcp fastmcp' without args shows error."""
@@ -284,7 +284,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "args=--help"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "--help"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "--help"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_fastmcp_arg_prefix(self, mock_execute: MagicMock) -> None:
@@ -292,7 +292,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "arg=version"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "version"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "version"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_fastmcp_arguments_prefix(self, mock_execute: MagicMock) -> None:
@@ -300,7 +300,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "arguments=version"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "version"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "version"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_fastmcp_subcommand_with_args_help(
@@ -310,7 +310,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "run", "args=--help"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "run", "--help"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "run", "--help"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_fastmcp_multiple_args(self, mock_execute: MagicMock) -> None:
@@ -318,7 +318,7 @@ class TestCliCommands:
         runner.invoke(app, ["fastmcp", "arg=install", "arg=cursor"])
         mock_execute.assert_called_once()
         cmd = mock_execute.call_args[0][0]
-        assert cmd == ["fastmcp", "install", "cursor"]
+        assert cmd == [sys.executable, "-m", "fastmcp", "install", "cursor"]
 
     @patch("indexed.mcp.cli._execute_fastmcp")
     def test_mcp_dev_with_inspector_options(self, mock_execute: MagicMock) -> None:
@@ -463,33 +463,47 @@ class TestExecuteFastmcp:
 class TestRunImpl:
     """Tests for run_impl function."""
 
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_run_impl_calls_execute(self, mock_execute) -> None:
-        """run_impl should call _execute_fastmcp."""
+    @patch("indexed.mcp.server.mcp")
+    def test_run_impl_calls_mcp_run(self, mock_mcp) -> None:
+        """run_impl should call mcp.run() directly."""
         run_impl()
-        mock_execute.assert_called_once()
+        mock_mcp.run.assert_called_once()
 
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_run_impl_json_logs_appended(self, mock_execute) -> None:
-        """run_impl with json_logs=True should append --json-logs to command."""
-        run_impl(json_logs=True)
-        cmd = mock_execute.call_args[0][0]
-        assert "--json-logs" in cmd
-
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_run_impl_no_json_logs_by_default(self, mock_execute) -> None:
-        """run_impl without json_logs should not add --json-logs flag."""
+    @patch("indexed.mcp.server.mcp")
+    def test_run_impl_default_args(self, mock_mcp) -> None:
+        """run_impl should pass default args to mcp.run()."""
         run_impl()
-        cmd = mock_execute.call_args[0][0]
-        assert "--json-logs" not in cmd
+        mock_mcp.run.assert_called_once_with(
+            transport="stdio",
+            show_banner=True,
+            host="127.0.0.1",
+            port=8000,
+            log_level="INFO",
+        )
 
-    @patch("indexed.mcp.cli._execute_fastmcp")
-    def test_run_impl_custom_transport(self, mock_execute) -> None:
-        """run_impl with http transport should pass --transport http."""
+    @patch("indexed.mcp.server.mcp")
+    def test_run_impl_custom_transport(self, mock_mcp) -> None:
+        """run_impl with http transport should pass transport='http'."""
         run_impl(transport="http")
-        cmd = mock_execute.call_args[0][0]
-        assert "--transport" in cmd
-        assert "http" in cmd
+        mock_mcp.run.assert_called_once_with(
+            transport="http",
+            show_banner=True,
+            host="127.0.0.1",
+            port=8000,
+            log_level="INFO",
+        )
+
+    @patch("indexed.mcp.server.mcp")
+    def test_run_impl_no_banner(self, mock_mcp) -> None:
+        """run_impl with no_banner=True should pass show_banner=False."""
+        run_impl(no_banner=True)
+        mock_mcp.run.assert_called_once_with(
+            transport="stdio",
+            show_banner=False,
+            host="127.0.0.1",
+            port=8000,
+            log_level="INFO",
+        )
 
 
 class TestInspectCommandErrors:
