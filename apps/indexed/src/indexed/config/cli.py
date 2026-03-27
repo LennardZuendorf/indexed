@@ -7,6 +7,9 @@ from collections import defaultdict
 from pathlib import Path
 
 import typer
+
+# Raw Rich components — used for interactive selection menus and validation error cards
+# that don't fit the card-based design system components
 from rich.panel import Panel
 from rich.console import Group
 from rich.text import Text
@@ -21,6 +24,8 @@ from ..utils.components import (
     create_key_value_panel,
     create_simple_key_value_panel,
     get_card_padding,
+    get_default_style,
+    get_detail_card_width,
     get_heading_style,
     get_success_style,
     get_error_style,
@@ -448,7 +453,7 @@ def _select_section(grouped_config: dict[str, dict[str, Any]]) -> Optional[str]:
     # Create a table for better visual organization
     table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), expand=False)
     table.add_column("Index", style=get_accent_style(), width=4)
-    table.add_column("Section", style="default", min_width=30)
+    table.add_column("Section", style=get_default_style(), min_width=30)
     table.add_column("Status", style=get_secondary_style())
 
     for idx, section in enumerate(all_sections, 1):
@@ -549,7 +554,7 @@ def _select_key(
     # Create a table for better visual organization
     table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), expand=False)
     table.add_column("Index", style=get_accent_style(), width=4)
-    table.add_column("Key", style="default")
+    table.add_column("Key", style=get_default_style())
     table.add_column("Value", style=get_secondary_style())
 
     idx = 1
@@ -1154,17 +1159,20 @@ def inspect(
     # Build informative summary
     if manual_keys > 0:
         section_list = ", ".join(sorted(manual_sections))
+        heading = get_heading_style()
         console.print(
-            f"[bold]Overall:[/bold] [{get_accent_style()}]{manual_keys}[/{get_accent_style()}] keys "
+            f"[{heading}]Overall:[/{heading}] [{get_accent_style()}]{manual_keys}[/{get_accent_style()}] keys "
             f"set manually for [{get_accent_style()}]{section_list}[/{get_accent_style()}]."
         )
     elif workspace_config:
         mode = workspace_config.get("mode", "unknown")
+        heading = get_heading_style()
         console.print(
-            f"[bold]Overall:[/bold] Workspace configured in [{get_accent_style()}]{mode}[/{get_accent_style()}] mode"
+            f"[{heading}]Overall:[/{heading}] Workspace configured in [{get_accent_style()}]{mode}[/{get_accent_style()}] mode"
         )
     else:
-        console.print("[bold]Overall:[/bold] All values using defaults")
+        heading = get_heading_style()
+        console.print(f"[{heading}]Overall:[/{heading}] All values using defaults")
     console.print()
 
 
@@ -1744,6 +1752,7 @@ def validate(
             title=f"[{get_error_style()}]{title}[/{get_error_style()}]",
             border_style=get_error_style(),
             padding=get_card_padding(),
+            width=get_detail_card_width(),
         )
         console.print(error_card)
         console.print()
