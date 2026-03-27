@@ -94,6 +94,26 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
         raise ValueError(f"Unknown source type: {cfg.type}")
 
 
+def _clear_caches(caches_path: str) -> None:
+    """Remove all read-cache entries so stale data doesn't persist."""
+    import os
+    import shutil
+
+    from loguru import logger
+
+    if not os.path.isdir(caches_path):
+        return
+    for entry in os.listdir(caches_path):
+        entry_path = os.path.join(caches_path, entry)
+        try:
+            if os.path.isdir(entry_path):
+                shutil.rmtree(entry_path, ignore_errors=True)
+            else:
+                os.remove(entry_path)
+        except OSError as exc:
+            logger.warning("Could not remove cache entry %s: %s", entry_path, exc)
+
+
 def _collection_exists(name: str, collections_path: Optional[str] = None) -> bool:
     """Check if collection exists on disk.
 
@@ -214,6 +234,10 @@ def create(
     # Resolve paths
     resolved_collections = collections_path or str(get_default_collections_path())
     resolved_caches = caches_path or str(get_default_caches_path())
+
+    if force:
+        # Clear read caches once before creating so stale data doesn't persist
+        _clear_caches(resolved_caches)
 
     for cfg in configs:
         if force and _collection_exists(cfg.name, resolved_collections):

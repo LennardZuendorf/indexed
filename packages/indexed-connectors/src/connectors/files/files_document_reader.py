@@ -42,7 +42,7 @@ class FilesDocumentReader:
         excluded_extensions: list[str] | None = None,
     ) -> None:
         self.base_path = base_path
-        self.include_patterns = include_patterns or [".*"]
+        self.include_patterns = include_patterns or ["*"]
         self.exclude_patterns = exclude_patterns or []
         self.compiled_include_patterns = [
             self._compile(p) for p in self.include_patterns

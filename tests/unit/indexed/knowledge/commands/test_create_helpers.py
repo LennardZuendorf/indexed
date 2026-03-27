@@ -30,7 +30,7 @@ class TestExecuteCreateCommand:
         """Should create collection when all required fields are present."""
         mock_config = Mock()
         mock_config.validate_requirements.return_value = ValidationResult(
-            present={"path": "/test", "include_patterns": [".*"]},
+            present={"path": "/test", "include_patterns": ["*"]},
             missing=[],
             field_info={},
         )
@@ -67,7 +67,7 @@ class TestExecuteCreateCommand:
         )
 
         mock_create.assert_called_once()
-        mock_status.assert_called_once_with(["test-collection"])
+        mock_status.assert_called_once_with(["test-collection"], collections_path=None)
         mock_print_success.assert_called_once()
 
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")

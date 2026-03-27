@@ -57,7 +57,18 @@ class CacheReaderDecorator:
 
                 yield document
 
-            self.persister.save_text_file("", f"{cache_key}_completed")
+            if document_index >= 0:
+                self.persister.save_text_file("", f"{cache_key}_completed")
+            else:
+                # Don't mark empty results as completed — a future run
+                # with the same settings should retry instead of returning
+                # zero documents from cache.
+                self.persister.remove_folder(cache_key)
+                logger.warning(
+                    "No documents produced for cache key %s; "
+                    "cache not persisted so next run will retry.",
+                    cache_key,
+                )
 
     def get_number_of_documents(self):
         """

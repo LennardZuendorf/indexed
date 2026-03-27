@@ -111,8 +111,8 @@ class FileSystemConfig(BaseModel):
 
     path: str = Field(..., description="Path to files or directory")
     include_patterns: List[str] = Field(
-        default=[".*"],
-        description="Regex patterns for files to include (comma-separated)",
+        default=["*"],
+        description="Patterns for files to include (glob or regex, comma-separated)",
     )
     exclude_patterns: List[str] = Field(
         default=[],

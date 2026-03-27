@@ -55,7 +55,7 @@ class FileSystemConnector:
     ) -> None:
         config = FileSystemConfig(
             path=path,
-            include_patterns=include_patterns or [".*"],
+            include_patterns=include_patterns or ["*"],
             exclude_patterns=exclude_patterns or [],
             fail_fast=fail_fast,
             change_tracking=change_tracking,  # type: ignore[arg-type]
@@ -162,8 +162,8 @@ class FileSystemConnector:
                 "type": "list",
                 "required": False,
                 "secret": False,
-                "default": [".*"],
-                "description": "List of regex patterns for files to include",
+                "default": ["*"],
+                "description": "List of patterns for files to include (glob or regex)",
             },
             "exclude_patterns": {
                 "type": "list",
