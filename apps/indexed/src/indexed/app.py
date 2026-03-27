@@ -25,7 +25,7 @@ from rich.theme import Theme  # noqa: E402
 from utils import bootstrap_logging  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_info  # noqa: E402
+from .utils.components import print_error, print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_dim_style,
