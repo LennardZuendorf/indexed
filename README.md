@@ -1,30 +1,50 @@
-<p align="left">
-  <img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
-  <h3>
-    Index Institutional Knowledge
-    and Make it Available for AI Agents and LLMs!
-  </h3>
-</p>
+<div align="center">
+
+<img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
+
+### Index everything. Code, docs, and knowledge — one MCP, zero cloud.
+
+[![License: Sustainable Use](https://img.shields.io/badge/License-Sustainable%20Use-blue)](#license)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-5A45FF)](#mcp-integration)
 
 [![Python Build, Check, Test](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
 
+[Quickstart](#quick-start) · [Documentation](https://indexed.sh/docs) · [Blog & Guides](https://indexed.sh/blog)
 
+</div>
 
-A privacy-first document indexing and semantic search tool that supports Jira, Confluence, and local files. Integrates with AI agents via MCP (Model Context Protocol).
+---
+
+The local-first indexing engine that gives Claude Code, Cowork, Codex and other AI agents deep context over your codebase, documentation, Jira tickets, and Confluence pages.
 
 > [!WARNING]
 > Indexed is currently in a very early alpha stage!
 
 **Key Features:**
-- 🔒 **Privacy-First**: All processing and storage happens locally - no data sent to third parties
-- 🧠 **Semantic Search**: Understands meaning, not just keywords, using vector embeddings
-- ⚡ **Fast Setup**: Simple installation and usage with `uv` and intuitive CLI commands
-- 🔌 **MCP Integration**: Works with AI agents like Claude, Cursor, and Cline via Model Context Protocol
-- 📁 **Multiple Sources**: Index from local files, Jira (Cloud & Server), and Confluence (Cloud & Server)
+- **Privacy-First**: All processing and storage happens locally - no data sent to third parties
+- **Semantic Search**: Understands meaning, not just keywords, using dense vector embeddings
+- **Fast Setup**: Simple installation and usage with `uv` and intuitive CLI commands
+- **MCP Integration**: Works with Claude Code, Cowork, Cursor, Cline, and other MCP-compatible agents
+- **Multiple Sources**: Index from local files, Jira (Cloud & Server), and Confluence (Cloud & Server)
+
+## Why Indexed?
+
+Claude Code searches your codebase on demand with grep — fast for small repos, but expensive on large ones. Every file read costs tokens. Every broad search burns context window.
+
+Indexed fixes this. It **pre-computes a semantic search index** (dense vector embeddings via FAISS) over your code, docs, and project tools — then exposes it to Claude Code via MCP. The result: instant, relevant context retrieval without burning tokens on full file reads.
+
+**What makes Indexed different:**
+
+- **Not just code.** Index Markdown vaults, PDFs, DOCX, PPTX, images, and 25+ file formats via Docling. Works with `.md` files created by Obsidian out of the box.
+- **Not just search.** Native Jira and Confluence connectors pull tickets, pages, and metadata into your index. Ask Claude about your sprint backlog or find that RFC.
+- **Not cloud-dependent.** Runs entirely on your machine. HuggingFace models with ONNX optimization for embeddings, FAISS for vector storage. No API keys required.
+- **Not one-shot.** Incremental updates via `indexed index update` with git-based change tracking keep your index fresh as your codebase evolves.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Why Indexed?](#why-indexed)
 - [What It Does](#what-it-does)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -392,6 +412,7 @@ The Core v1 implementation is based on [documents-vector-search](https://github.
 
 ## Resources
 
-- 📖 [Medium Article](https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba) – Original project announcement
-- 🐛 [Issue Tracker](https://github.com/shnax0210/documents-vector-search/issues) – Report bugs or request features
-- ⭐ **Star the repo** if you find it useful!
+- [Indexed Website](https://indexed.sh) – Project homepage
+- [Issue Tracker](https://github.com/LennardZuendorf/indexed/issues) – Report bugs or request features
+- [Medium Article](https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba) – Original project announcement
+- **Star the repo** if you find it useful!
