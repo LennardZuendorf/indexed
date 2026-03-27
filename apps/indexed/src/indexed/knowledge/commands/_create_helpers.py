@@ -91,6 +91,19 @@ def execute_create_command(
         local_collections_path = str(local_root / "data" / "collections")
         local_caches_path = str(local_root / "data" / "caches")
 
+    # Resolve storage paths based on --local flag
+    local_collections_path: Optional[str] = None
+    local_caches_path: Optional[str] = None
+    if local:
+        from pathlib import Path
+        from indexed_config import ensure_storage_dirs, get_local_root
+
+        workspace = Path.cwd()
+        local_root = get_local_root(workspace)
+        ensure_storage_dirs(local_root, is_local=True)
+        local_collections_path = str(local_root / "data" / "collections")
+        local_caches_path = str(local_root / "data" / "caches")
+
     # Display storage mode indicator (not in verbose mode, to keep logs clean)
     if not is_verbose_mode():
         from ...utils.storage_info import display_storage_mode_for_command
