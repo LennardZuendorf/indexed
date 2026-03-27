@@ -37,6 +37,7 @@ def execute_create_command(
     force: bool,
     progress_message: Optional[str] = None,
     verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
+    local: bool = False,
 ) -> None:
     """Common execution flow for all create commands.
 
@@ -65,6 +66,7 @@ def execute_create_command(
         force: Force overwrite existing collection
         progress_message: Optional custom progress message (defaults to "Creating {collection}")
         verbose_pre_creation_log: Optional callback to log connector-specific info before creation (in verbose mode)
+        local: If True, save the collection to .indexed/data/ in the current directory instead of ~/.indexed/data/
     """
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
@@ -72,6 +74,19 @@ def execute_create_command(
 
     # Get ConfigService singleton (auto-loads .env)
     config = ConfigService.instance()
+
+    # Resolve storage paths based on --local flag
+    local_collections_path: Optional[str] = None
+    local_caches_path: Optional[str] = None
+    if local:
+        from pathlib import Path
+        from indexed_config import ensure_storage_dirs, get_local_root
+
+        workspace = Path.cwd()
+        local_root = get_local_root(workspace)
+        ensure_storage_dirs(local_root, is_local=True)
+        local_collections_path = str(local_root / "data" / "collections")
+        local_caches_path = str(local_root / "data" / "caches")
 
     # Display storage mode indicator (not in verbose mode, to keep logs clean)
     if not is_verbose_mode():
@@ -139,7 +154,12 @@ def execute_create_command(
                     verbose_pre_creation_log(validation.present)
                 logger.info("Creating collection '%s'...", collection)
                 svc_create(
-                    [cfg], config_service=config, use_cache=use_cache, force=force
+                    [cfg],
+                    config_service=config,
+                    use_cache=use_cache,
+                    force=force,
+                    collections_path=local_collections_path,
+                    caches_path=local_caches_path,
                 )
         else:
             # Normal mode: phased progress display
@@ -158,6 +178,8 @@ def execute_create_command(
                             use_cache=use_cache,
                             force=force,
                             phased_progress=phased,
+                            collections_path=local_collections_path,
+                            caches_path=local_caches_path,
                         )
                 except Exception as e:
                     creation_error = e
@@ -177,7 +199,7 @@ def execute_create_command(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
 
-        collections = svc_status([collection])
+        collections = svc_status([collection], collections_path=local_collections_path)
 
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set

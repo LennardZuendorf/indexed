@@ -366,10 +366,15 @@ def search(
 
     simple = is_simple_output()
 
+    # Prefer local collections over global
+    from ...utils.storage_info import resolve_preferred_collections_path
+
+    preferred_path = str(resolve_preferred_collections_path())
+
     # Determine collections to search
     if collection is None:
         # Search all collections
-        all_statuses = status_svc()
+        all_statuses = status_svc(collections_path=preferred_path)
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -389,7 +394,7 @@ def search(
             )
     else:
         # Search specific collection
-        statuses = status_svc([collection])
+        statuses = status_svc([collection], collections_path=preferred_path)
         if not statuses:
             if simple:
                 print_json({"error": f"Collection '{collection}' not found"})
@@ -406,7 +411,7 @@ def search(
     # Build search configs for all collections
     search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name])[0]
+        coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
         search_configs[coll_name] = source_config_class(
             name=coll_name,
             type="localFiles",
@@ -427,6 +432,7 @@ def search(
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
+                    collections_path=preferred_path,
                 )
                 results.update(result)
     else:
@@ -443,6 +449,7 @@ def search(
                         max_docs=limit,
                         max_chunks=limit * 3,
                         include_matched_chunks=True,
+                        collections_path=preferred_path,
                     )
                     results.update(result)
 

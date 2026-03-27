@@ -7,14 +7,26 @@ We focus on realistic behaviors:
 - formatter behavior for no results and mixed results
 """
 
+from pathlib import Path
 from typing import Any, Dict, List
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import search as search_cmd
+from indexed.utils import storage_info as storage_info_mod
 
 
 runner = CliRunner()
+
+# Patch resolve_preferred_collections_path globally for all search tests
+# so tests don't need ConfigService
+_MOCK_PATH = patch.object(
+    storage_info_mod,
+    "resolve_preferred_collections_path",
+    return_value=Path("/tmp/test-collections"),
+)
+_MOCK_PATH.start()
 
 
 class TestSearchCommand:
@@ -34,7 +46,7 @@ class TestSearchCommand:
     def test_missing_specific_collection_exits_with_error(self, monkeypatch):
         """Searching a non-existent collection returns a clear error and exit 1."""
         # status([name]) returns empty list for that collection
-        monkeypatch.setattr(search_cmd, "status", lambda names=None: [])
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
 
         # Avoid hitting real logging setup
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
@@ -320,6 +332,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return search_results
 
@@ -378,6 +391,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
 
@@ -430,6 +444,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"col1": {"results": []}}
 
@@ -468,6 +483,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"col1": {"results": [{"id": "d1"}]}}
 
@@ -522,6 +538,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {
                 "col1": {

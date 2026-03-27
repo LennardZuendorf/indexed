@@ -20,7 +20,7 @@ from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_error, print_info, print_success  # noqa: E402
+from .utils.components import print_error, print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_help_theme_styles,
@@ -125,19 +125,11 @@ def _init_app(
         ctx.obj["mode_override"] = None
 
     if local:
-        from indexed_config import ensure_storage_dirs, get_local_root, has_local_config
+        from indexed_config import ensure_storage_dirs, get_local_root
 
         workspace = Path.cwd()
-        if not has_local_config(workspace):
-            local_root = get_local_root(workspace)
-            ensure_storage_dirs(local_root)
-            (local_root / "config.toml").write_text(
-                "# Indexed Local Configuration\n"
-                "# Auto-created with --local flag\n\n"
-                "[storage]\n"
-                'mode = "local"\n'
-            )
-            print_success(f"Created local .indexed folder at {local_root}")
+        local_root = get_local_root(workspace)
+        ensure_storage_dirs(local_root, is_local=True)
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
