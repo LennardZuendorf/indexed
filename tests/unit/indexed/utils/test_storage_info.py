@@ -116,12 +116,12 @@ class TestPrintStorageInfo:
         """Should include reason in printed output."""
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
-        reason = "via --global flag"
-        print_storage_info(mock_console, "global", path, reason=reason)
+        reason = "via --local flag"
+        print_storage_info(mock_console, "local", path, reason=reason)
 
         # Check that printed string contains reason
         call_args = str(mock_console.print.call_args_list)
-        assert "via --global flag" in call_args or mock_console.print.called
+        assert "via --local flag" in call_args or mock_console.print.called
 
     def test_local_mode_formatting(self):
         """Should format local mode correctly."""
@@ -146,18 +146,6 @@ class TestGetStorageModeAndReason:
 
         assert mode == "local"
         assert "via --local flag" in reason
-
-    def test_global_flag_override_takes_precedence(self):
-        """Should use --global flag over all other settings."""
-        mode, reason = get_storage_mode_and_reason(
-            has_local=True,
-            mode_override="global",
-            config_mode="local",
-            workspace_pref="local",
-        )
-
-        assert mode == "global"
-        assert "via --global flag" in reason
 
     def test_config_mode_used_when_no_override(self):
         """Should use config setting when no CLI override."""
@@ -277,7 +265,7 @@ class TestEdgeCases:
         # Test each level
         cases = [
             # (has_local, override, config, pref, expected_mode, expected_reason_keyword)
-            (True, "global", "local", "local", "global", "flag"),
+            (False, "local", "global", "global", "local", "flag"),
             (True, None, "local", "global", "local", "config"),
             (True, None, None, "global", "global", "preference"),
             (True, None, None, None, "local", "found"),

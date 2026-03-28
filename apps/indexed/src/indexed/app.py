@@ -20,7 +20,7 @@ from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_error, print_info  # noqa: E402
+from .utils.components import print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_help_theme_styles,
@@ -50,13 +50,7 @@ def _init_app(
     local: bool = typer.Option(
         False,
         "--local",
-        help="Use local .indexed/ storage",
-        rich_help_panel="Storage",
-    ),
-    global_: bool = typer.Option(
-        False,
-        "--global",
-        help="Use global ~/.indexed/ storage",
+        help="Use local .indexed/ storage instead of global ~/.indexed/",
         rich_help_panel="Storage",
     ),
     verbose: bool = typer.Option(
@@ -111,18 +105,9 @@ def _init_app(
     )
     setup_root_logger(level_str=level, json_mode=json_mode)
 
-    if local and global_:
-        print_error("Cannot use both --local and --global flags together.")
-        raise typer.Exit(1)
-
     # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
-    if local:
-        ctx.obj["mode_override"] = "local"
-    elif global_:
-        ctx.obj["mode_override"] = "global"
-    else:
-        ctx.obj["mode_override"] = None
+    ctx.obj["mode_override"] = "local" if local else None
 
     if local:
         from indexed_config import ensure_storage_dirs, get_local_root

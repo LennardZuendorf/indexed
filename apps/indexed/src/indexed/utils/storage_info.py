@@ -118,8 +118,6 @@ def get_storage_mode_and_reason(
     """
     if mode_override == "local":
         return ("local", "via --local flag")
-    if mode_override == "global":
-        return ("global", "via --global flag")
 
     if config_mode == "local":
         return ("local", "via config setting")

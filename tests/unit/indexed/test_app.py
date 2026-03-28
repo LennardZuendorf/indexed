@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 import sys
-import pytest
-import typer
 from typer.testing import CliRunner
 
 from indexed.app import (
@@ -31,7 +29,6 @@ class TestInitApp:
         _init_app(
             ctx,
             local=False,
-            global_=False,
             verbose=False,
             log_level=None,
             json_logs=False,
@@ -52,7 +49,6 @@ class TestInitApp:
         _init_app(
             ctx,
             local=False,
-            global_=False,
             verbose=True,
             log_level=None,
             json_logs=False,
@@ -74,7 +70,6 @@ class TestInitApp:
         _init_app(
             ctx,
             local=False,
-            global_=False,
             verbose=False,
             log_level=None,
             json_logs=True,
@@ -82,30 +77,6 @@ class TestInitApp:
 
         call_kwargs = mock_setup_logger.call_args.kwargs
         assert call_kwargs["json_mode"] is True
-
-    @patch("indexed.app.print_error")
-    @patch("indexed.app.setup_root_logger")
-    def test_init_app_both_flags_error(
-        self, mock_setup_logger, mock_print_error, mock_getenv_defaults
-    ):
-        """Should error when both --local and --global flags provided."""
-        ctx = Mock()
-        ctx.invoked_subcommand = "search"
-        ctx.resilient_parsing = False
-        ctx.ensure_object = Mock()
-        ctx.obj = {}
-
-        with pytest.raises(typer.Exit):
-            _init_app(
-                ctx,
-                local=True,
-                global_=True,
-                verbose=False,
-                log_level=None,
-                json_logs=False,
-            )
-
-        mock_print_error.assert_called_once()
 
     @patch("indexed.app.setup_root_logger")
     def test_init_app_local_sets_mode_override(
@@ -122,35 +93,12 @@ class TestInitApp:
             _init_app(
                 ctx,
                 local=True,
-                global_=False,
                 verbose=False,
                 log_level=None,
                 json_logs=False,
             )
 
         assert ctx.obj["mode_override"] == "local"
-
-    @patch("indexed.app.setup_root_logger")
-    def test_init_app_global_sets_mode_override(
-        self, mock_setup_logger, mock_getenv_defaults
-    ):
-        """Should set mode_override to 'global' on ctx.obj when --global is passed."""
-        ctx = Mock()
-        ctx.invoked_subcommand = "search"
-        ctx.resilient_parsing = False
-        ctx.ensure_object = Mock()
-        ctx.obj = {}
-
-        _init_app(
-            ctx,
-            local=False,
-            global_=True,
-            verbose=False,
-            log_level=None,
-            json_logs=False,
-        )
-
-        assert ctx.obj["mode_override"] == "global"
 
     @patch("indexed.app.setup_root_logger")
     def test_init_app_no_flags_sets_none(self, mock_setup_logger, mock_getenv_defaults):
@@ -164,7 +112,6 @@ class TestInitApp:
         _init_app(
             ctx,
             local=False,
-            global_=False,
             verbose=False,
             log_level=None,
             json_logs=False,
