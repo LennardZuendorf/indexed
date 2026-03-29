@@ -167,7 +167,7 @@ class TestSearchService:
 
     @patch("core.v2.storage.list_collection_names")
     @patch("core.v2.retrieval.search_collection")
-    def test_search_all_collections(
+    def test_search_all_single_collection(
         self, mock_search: MagicMock, mock_list: MagicMock
     ) -> None:
         mock_list.return_value = ["a"]
@@ -175,4 +175,20 @@ class TestSearchService:
         svc = SearchService()
 
         result = svc.search("query")
+        assert result["collectionName"] == "a"
+
+    @patch("core.v2.storage.list_collection_names")
+    @patch("core.v2.retrieval.search_collection")
+    def test_search_all_multiple_collections(
+        self, mock_search: MagicMock, mock_list: MagicMock
+    ) -> None:
+        mock_list.return_value = ["a", "b"]
+        mock_search.side_effect = [
+            {"collectionName": "a", "results": []},
+            {"collectionName": "b", "results": []},
+        ]
+        svc = SearchService()
+
+        result = svc.search("query")
         assert "collections" in result
+        assert len(result["collections"]) == 2

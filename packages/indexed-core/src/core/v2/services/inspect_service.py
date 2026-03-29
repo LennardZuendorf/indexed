@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+import logging
+from pathlib import Path
+from typing import Optional
 
 from .models import CollectionInfo, CollectionStatus
+
+logger = logging.getLogger(__name__)
 
 
 def status(
     names: Optional[list[str]] = None,
-    collections_dir: Any = None,
+    collections_dir: Optional[Path] = None,
 ) -> list[CollectionStatus]:
     """Get status for one or more collections.
 
@@ -30,6 +34,7 @@ def status(
         try:
             manifest = read_manifest(name, collections_dir)
         except Exception:
+            logger.debug("Skipping collection '%s': manifest unreadable", name)
             continue
 
         results.append(
@@ -49,23 +54,14 @@ def status(
 
 def inspect(
     name: str,
-    collections_dir: Any = None,
+    collections_dir: Optional[Path] = None,
 ) -> CollectionInfo:
-    """Get detailed info for a single collection.
-
-    Args:
-        name: Collection name.
-        collections_dir: Override for collections directory.
-
-    Returns:
-        CollectionInfo with computed statistics.
-    """
+    """Get detailed info for a single collection."""
     from ..storage import get_collection_path, read_manifest
 
     manifest = read_manifest(name, collections_dir)
     col_path = get_collection_path(name, collections_dir)
 
-    # Calculate disk size
     disk_size = sum(f.stat().st_size for f in col_path.rglob("*") if f.is_file())
 
     return CollectionInfo(

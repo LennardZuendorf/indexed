@@ -2,22 +2,50 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from .models import SourceConfig
 
 
-class SearchService:
-    """Stateful search service with index caching.
+def _search_collections(
+    query: str,
+    names: list[str],
+    *,
+    similarity_top_k: int = 30,
+    embed_model_name: str = "all-MiniLM-L6-v2",
+    max_docs: int = 10,
+    include_matched_chunks: bool = True,
+    collections_dir: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    """Search multiple collections and return raw results."""
+    from ..retrieval import search_collection
 
-    Good for long-running processes (MCP servers) where loading the
-    index once and reusing it across queries improves latency.
+    return [
+        search_collection(
+            query,
+            name,
+            similarity_top_k=similarity_top_k,
+            embed_model_name=embed_model_name,
+            max_docs=max_docs,
+            include_matched_chunks=include_matched_chunks,
+            collections_dir=collections_dir,
+        )
+        for name in names
+    ]
+
+
+class SearchService:
+    """Stateful search service.
+
+    Good for long-running processes (MCP servers) where configuration
+    is set once and reused across queries.
     """
 
     def __init__(
         self,
         embed_model_name: str = "all-MiniLM-L6-v2",
-        collections_dir: Any = None,
+        collections_dir: Optional[Path] = None,
     ) -> None:
         self._embed_model_name = embed_model_name
         self._collections_dir = collections_dir
@@ -32,39 +60,27 @@ class SearchService:
         include_matched_chunks: bool = True,
     ) -> dict[str, Any]:
         """Search a specific collection or all collections."""
-        from ..retrieval import search_collection
         from ..storage import list_collection_names
 
         if collection_name:
-            return search_collection(
-                query,
-                collection_name,
-                similarity_top_k=similarity_top_k,
-                embed_model_name=self._embed_model_name,
-                max_docs=max_docs,
-                include_matched_chunks=include_matched_chunks,
-                collections_dir=self._collections_dir,
-            )
+            names = [collection_name]
+        else:
+            names = list_collection_names(self._collections_dir)
 
-        # Search all collections and merge results
-        names = list_collection_names(self._collections_dir)
-        all_results: list[dict[str, Any]] = []
-        for name in names:
-            result = search_collection(
-                query,
-                name,
-                similarity_top_k=similarity_top_k,
-                embed_model_name=self._embed_model_name,
-                max_docs=max_docs,
-                include_matched_chunks=include_matched_chunks,
-                collections_dir=self._collections_dir,
-            )
-            all_results.append(result)
+        results = _search_collections(
+            query,
+            names,
+            similarity_top_k=similarity_top_k,
+            embed_model_name=self._embed_model_name,
+            max_docs=max_docs,
+            include_matched_chunks=include_matched_chunks,
+            collections_dir=self._collections_dir,
+        )
 
-        return {
-            "query": query,
-            "collections": all_results,
-        }
+        if len(results) == 1:
+            return results[0]
+
+        return {"query": query, "collections": results}
 
 
 def search(
@@ -75,45 +91,26 @@ def search(
     max_chunks: int = 30,
     include_matched_chunks: bool = True,
     embed_model_name: str = "all-MiniLM-L6-v2",
-    collections_dir: Any = None,
+    collections_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
-    """Stateless search function — convenience wrapper for CLI usage.
-
-    Args:
-        query: Search query text.
-        configs: Optional list of SourceConfig to search specific collections.
-            If None, auto-discovers all collections.
-        max_docs: Maximum documents per collection.
-        max_chunks: Top-k for the retriever.
-        include_matched_chunks: Include chunk text in results.
-        embed_model_name: Embedding model name.
-        collections_dir: Override for collections directory.
-    """
-    from ..retrieval import search_collection
+    """Stateless search function — convenience wrapper for CLI usage."""
     from ..storage import list_collection_names
 
-    if configs:
-        names = [c.name for c in configs]
-    else:
-        names = list_collection_names(collections_dir)
+    names = (
+        [c.name for c in configs] if configs else list_collection_names(collections_dir)
+    )
 
-    all_results: list[dict[str, Any]] = []
-    for name in names:
-        result = search_collection(
-            query,
-            name,
-            similarity_top_k=max_chunks,
-            embed_model_name=embed_model_name,
-            max_docs=max_docs,
-            include_matched_chunks=include_matched_chunks,
-            collections_dir=collections_dir,
-        )
-        all_results.append(result)
+    results = _search_collections(
+        query,
+        names,
+        similarity_top_k=max_chunks,
+        embed_model_name=embed_model_name,
+        max_docs=max_docs,
+        include_matched_chunks=include_matched_chunks,
+        collections_dir=collections_dir,
+    )
 
-    if len(all_results) == 1:
-        return all_results[0]
+    if len(results) == 1:
+        return results[0]
 
-    return {
-        "query": query,
-        "collections": all_results,
-    }
+    return {"query": query, "collections": results}
