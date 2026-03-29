@@ -5,6 +5,7 @@ Orchestrates: connector → adapter → embedding → VectorStoreIndex → persi
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from .adapter import PhasedProgress
@@ -17,19 +18,10 @@ def create_collection(
     *,
     embed_model_name: str = "all-MiniLM-L6-v2",
     store_type: str = "faiss",
-    collections_dir: Any = None,
+    collections_dir: Optional[Path] = None,
     progress: Optional[PhasedProgress] = None,
 ) -> dict[str, Any]:
     """Create a new collection by indexing documents from a connector.
-
-    Flow:
-        1. Remove existing collection if present
-        2. Convert connector output to LlamaIndex TextNodes via adapter
-        3. Create embedding model
-        4. Create vector store + StorageContext
-        5. Build VectorStoreIndex (LlamaIndex embeds + indexes)
-        6. Persist to disk
-        7. Write manifest
 
     Args:
         collection_name: Unique name for the collection.
@@ -78,7 +70,7 @@ def create_collection(
     embed_model = get_embed_model(embed_model_name)
 
     # Step 4: Create vector store + storage context
-    embed_dim = len(embed_model.get_query_embedding("test"))
+    embed_dim = _get_embed_dim(embed_model)
     vector_store = create_vector_store(store_type, embed_dim)
     storage_context = create_storage_context(vector_store)
 
@@ -122,3 +114,22 @@ def create_collection(
         progress.finish_phase("Writing to disk")
 
     return manifest
+
+
+# Known dimensions for common models — avoids a test embedding call.
+_KNOWN_DIMS: dict[str, int] = {
+    "all-MiniLM-L6-v2": 384,
+    "all-mpnet-base-v2": 768,
+    "multi-qa-distilbert-cos-v1": 768,
+}
+
+
+def _get_embed_dim(embed_model: Any) -> int:
+    """Get the embedding dimension, preferring known values."""
+    model_name = getattr(embed_model, "model_name", "")
+    # Strip the sentence-transformers/ prefix if present
+    short_name = model_name.rsplit("/", 1)[-1] if "/" in model_name else model_name
+    if short_name in _KNOWN_DIMS:
+        return _KNOWN_DIMS[short_name]
+    # Fallback: embed a short string to discover dimension
+    return len(embed_model.get_query_embedding("dimension probe"))
