@@ -56,6 +56,18 @@ def _loguru_console_sink(message) -> None:
     text = f"[{style}]{level: <8} | {record['message']}[/{style}]"
     console.print(text, highlight=False)
 
+    # Render traceback if an exception is attached
+    exception = record["exception"]
+    if exception is not None:
+        import traceback as tb_mod
+
+        tb_lines = tb_mod.format_exception(
+            exception.type, exception.value, exception.traceback
+        )
+        console.print(
+            f"[{style}]{''.join(tb_lines).rstrip()}[/{style}]", highlight=False
+        )
+
 
 def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) -> None:
     """Configure CLI root logging with Rich formatting and synchronize Loguru.

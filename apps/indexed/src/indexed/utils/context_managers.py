@@ -9,8 +9,6 @@ import warnings
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from io import StringIO
 
-from loguru import logger as loguru_logger
-
 
 class NoOpContext:
     """No-op context manager for verbose mode (no spinner).
@@ -40,9 +38,11 @@ class NoOpContext:
 @contextmanager
 def suppress_core_output(redirect_streams: bool = False):
     """
-    Temporarily suppress core logging, disable loguru logging, and ignore Python warnings; optionally redirect stdout and stderr for the duration of the context.
+    Temporarily suppress verbose logging while preserving WARNING/ERROR output.
 
-    When used as a context manager, sets the root logging level to CRITICAL, disables loguru, and suppresses warnings; on exit it restores the original logging level and re-enables loguru.
+    Reconfigures both standard logging and loguru to WARNING level (instead of
+    disabling entirely) so that parsing errors and warnings still surface.
+    On exit, restores the original logging configuration.
 
     Parameters:
         redirect_streams (bool): If True, redirect stdout and stderr to in-memory buffers for the duration of the context. Defaults to False to allow Rich console output (spinners, progress bars).
@@ -50,12 +50,16 @@ def suppress_core_output(redirect_streams: bool = False):
     # Save original logging level
     original_level = logging.getLogger().level
 
-    try:
-        # Suppress all standard logging output
-        logging.getLogger().setLevel(logging.CRITICAL)
+    # Save current loguru min level so we can restore it
+    from indexed.utils.logging import _configure_loguru
 
-        # Disable loguru output
-        loguru_logger.disable("")
+    try:
+        # Suppress standard logging below WARNING
+        logging.getLogger().setLevel(logging.WARNING)
+
+        # Reconfigure loguru to WARNING level instead of disabling entirely,
+        # so parsing ERRORs and WARNINGs still surface
+        _configure_loguru("WARNING")
 
         # Suppress Python warnings (deprecation warnings, etc.)
         with warnings.catch_warnings():
@@ -74,5 +78,7 @@ def suppress_core_output(redirect_streams: bool = False):
     finally:
         # Restore original logging level
         logging.getLogger().setLevel(original_level)
-        # Re-enable loguru
-        loguru_logger.enable("")
+        # Restore loguru to its previous configuration
+        from indexed.utils.logging import _cli_log_level
+
+        _configure_loguru(_cli_log_level)

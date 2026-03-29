@@ -118,6 +118,7 @@ def _init_app(
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
+from .debug import debug as debug_command  # noqa: E402
 from .init import init as init_command  # noqa: E402
 
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
@@ -237,6 +238,8 @@ app.command(
 app.command(
     "license", rich_help_panel=RESOURCES_PANEL, help="Display License and Terms"
 )(info.license_terms)
+
+app.command("debug", hidden=True)(debug_command)
 
 
 @app.command(

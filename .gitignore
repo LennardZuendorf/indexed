@@ -20,6 +20,7 @@ dist/
 build/
 .dist/
 *.egg
+_build_meta.py
 
 # uv
 .uv/
