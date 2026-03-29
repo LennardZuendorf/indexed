@@ -24,6 +24,7 @@ from .storage import (
     get_local_root,
     get_config_path,
     get_env_path as storage_get_env_path,
+    has_local_config,
 )
 
 
@@ -92,7 +93,12 @@ class TomlStore:
         """Resolved .env file path (global or workspace)."""
         if self._mode_override == "global":
             return storage_get_env_path(get_global_root())
-        return storage_get_env_path(get_local_root(self.workspace))
+        if self._mode_override == "local":
+            return storage_get_env_path(get_local_root(self.workspace))
+        # Auto-detect: local only if local config already exists
+        if has_local_config(self.workspace):
+            return storage_get_env_path(get_local_root(self.workspace))
+        return storage_get_env_path(get_global_root())
 
     @property
     def _global_env_path(self) -> Path:
@@ -372,8 +378,12 @@ class TomlStore:
         elif self._mode_override == "local":
             target = self.workspace_path
         else:
-            # Default: write to workspace for backward compatibility
-            target = self.workspace_path
+            # Default: follow auto-detection (same as StorageResolver.resolve_root)
+            # Write to local only if a local config already exists; otherwise global
+            if has_local_config(self.workspace):
+                target = self.workspace_path
+            else:
+                target = self.global_path
 
         target.parent.mkdir(parents=True, exist_ok=True)
 

@@ -73,7 +73,8 @@ def execute_create_command(
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
     # Get ConfigService singleton (auto-loads .env)
-    config = ConfigService.instance()
+    mode_override = "local" if local else None
+    config = ConfigService.instance(mode_override=mode_override)
 
     # Resolve storage paths based on --local flag
     local_collections_path: Optional[str] = None

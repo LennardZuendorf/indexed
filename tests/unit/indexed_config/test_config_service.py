@@ -88,9 +88,11 @@ def test_delete_operation(config_service):
     assert config_service.get("to_delete") is None
 
 
-def test_config_file_creation(config_service, temp_workspace):
-    """Test that config file is created."""
-    config_service.set("test.setting", "value")
+def test_config_file_creation(temp_workspace):
+    """Test that config file is created in correct location."""
+    ConfigService.reset()
+    svc = ConfigService.instance(workspace=temp_workspace, mode_override="local")
+    svc.set("test.setting", "value")
 
     config_file = temp_workspace / ".indexed" / "config.toml"
     assert config_file.exists()
