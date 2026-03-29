@@ -5,7 +5,8 @@ Loads a persisted collection and queries it via LlamaIndex's VectorIndexRetrieve
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Optional
 
 
 def search_collection(
@@ -16,16 +17,9 @@ def search_collection(
     embed_model_name: str = "all-MiniLM-L6-v2",
     max_docs: int = 10,
     include_matched_chunks: bool = True,
-    collections_dir: Any = None,
+    collections_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Search a single collection using LlamaIndex retriever.
-
-    Flow:
-        1. Load persisted StorageContext from disk
-        2. Reconstruct VectorStoreIndex
-        3. Create retriever with top_k
-        4. Execute query (LlamaIndex embeds query + searches FAISS)
-        5. Format results to v1-compatible dict
 
     Args:
         query: Search query text.
@@ -80,7 +74,7 @@ def _format_results(
             doc_results[source_id] = {
                 "id": source_id,
                 "url": node.metadata.get("url", ""),
-                "path": node.metadata.get("source_id", ""),
+                "path": node.metadata.get("url", ""),
                 "matchedChunks": [],
             }
 
