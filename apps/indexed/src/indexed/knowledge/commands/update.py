@@ -10,7 +10,7 @@ from ...utils.simple_output import is_simple_output, print_json
 from ...utils.context_managers import NoOpContext
 from ...utils.components.summary import create_summary
 from ...utils.console import console
-from ...utils.progress_bar import create_phased_progress
+from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.components.theme import (
     get_heading_style,
     get_dim_style,
