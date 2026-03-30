@@ -8,7 +8,7 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-5A45FF)](#mcp-integration)
 
-[![Python Build, Check, Test](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-package.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
+[![Python Full Test Suite with Coverage](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml) [![Python Build and System Tests](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
 
 [Quickstart](#quick-start) · [Documentation](https://indexed.sh/docs) · [Blog & Guides](https://indexed.sh/blog)
 
@@ -32,14 +32,14 @@ The local-first indexing engine that gives Claude Code, Cowork, Codex and other 
 
 Claude Code searches your codebase on demand with grep — fast for small repos, but expensive on large ones. Every file read costs tokens. Every broad search burns context window.
 
-Indexed fixes this. It **pre-computes a semantic search index** (dense vector embeddings via FAISS) over your code, docs, and project tools — then exposes it to Claude Code via MCP. The result: instant, relevant context retrieval without burning tokens on full file reads.
+Indexed fixes this. It **pre-computes a semantic search index** (dense vector embeddings via FAISS) over your code, docs, and project tools — then exposes it to Claude Code/Desktop/Cowork, Codex or any other AI Agent via MCP. The result: instant, relevant context retrieval without burning tokens on full file reads.
 
 **What makes Indexed different:**
 
 - **Not just code.** Index Markdown vaults, PDFs, DOCX, PPTX, images, and 25+ file formats via Docling. Works with `.md` files created by Obsidian out of the box.
 - **Not just search.** Native Jira and Confluence connectors pull tickets, pages, and metadata into your index. Ask Claude about your sprint backlog or find that RFC.
 - **Not cloud-dependent.** Runs entirely on your machine. HuggingFace models with ONNX optimization for embeddings, FAISS for vector storage. No API keys required.
-- **Not one-shot.** Incremental updates via `indexed index update` with git-based change tracking keep your index fresh as your codebase evolves.
+- **Not one-shot.** Incremental updates via `indexed index update` with git-based change tracking keep your index fresh as your codebase (or second brain) evolves.
 
 ## Table of Contents
 
@@ -54,25 +54,77 @@ Indexed fixes this. It **pre-computes a semantic search index** (dense vector em
 - [Documentation](#documentation)
 - [License](#license)
 
-## Quick Start
+## Quick Start & First Index
 
 ```bash
 # 1. Clone and setup
-git clone https://github.com/LennardZuendorf/indexed.git
-cd indexed
-uv sync
+uv tool install indexed-sh
 
 # 2. Create a collection from local files
-uv run indexed index create --type files --name my-docs
+indexed index create files --name my-docs
 
-# 3. Search your collections
-uv run indexed index search "your query"
+# 3. Test searching your collections
+indexed index search "your query"
 
-# 4. Start MCP server for AI agents
-uv run indexed mcp
 ```
 
-For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
+## MCP Integration
+
+Indexed provides an MCP server for AI agent integration. Use it with Claude Desktop, Cursor, Cline, and other MCP-compatible tools.
+
+### Starting the MCP Server
+
+```bash
+# Default (stdio transport for Claude Desktop)
+indexed run mcp
+
+# HTTP server mode
+indexed run mcp --transport http --port 8000
+```
+
+### Claude Code
+
+
+
+### Claude Code
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "indexed": {
+      "command": "indexed ",
+      "args": [
+        "run",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+### MCP JSON Configuratipn
+
+Add to the mcp.json file from your respective coding agent:
+
+```json
+{
+  "mcpServers": {
+    "indexed": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/indexed",
+        "run",
+        "indexed-mcp"
+      ]
+    }
+  }
+}
+```
+
+See [MCP Server Documentation](./indexed/README.md#mcp-server-examples) for more details.
 
 ## What It Does
 
@@ -110,10 +162,9 @@ For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 - **[Typer](https://typer.tiangolo.com/)** – Modern CLI framework
 - **[Rich](https://rich.readthedocs.io/)** – Beautiful terminal output
 - **[FastMCP](https://github.com/jlowin/fastmcp)** – Model Context Protocol server
-- **[uv](https://docs.astral.sh/uv/)** – Fast Python package manager with workspace support
-- **[una](https://github.com/carderne/una)** – Monorepo build tooling for distributable wheels
 
-## Installation
+
+## Full Usage Examples
 
 ### Prerequisites
 
@@ -121,6 +172,28 @@ For detailed usage examples, see the [CLI Documentation](./indexed/README.md).
 2. **[uv](https://docs.astral.sh/uv/)** – Fast Python package manager
 
 ### Setup
+
+#### From Pip
+
+**This is the suggested setup:**
+
+```bash
+# Clone the repository
+uv tool install indexed-sh
+```
+
+#### From Source
+
+You can also run directly from source, indexed will automatically pick up global or local config!
+
+```bash
+# Clone the repository
+uvx indexed-sh
+```
+
+#### Locally
+
+Alternatively you can keep all code locally and run via uv run indexed (only works in the right dir):
 
 ```bash
 # Clone the repository
@@ -134,134 +207,72 @@ uv sync
 uv run indexed --help
 ```
 
-## Usage
 
 ### Creating Collections
 
+All of these commands assume you installed using uv tool install. If not you need to replace *indexed* with:
+
+- From Source : uvx indexed-sh
+- Locally: uv run indexed
+
 ```bash
 # Local files
-uv run indexed index create --type files --name docs
+indexed index create --type files --name docs
 
 # Jira (Cloud)
-uv run indexed index create --type jiraCloud --name jira-issues
+indexed index create --type jiraCloud --name jira-issues
 
 # Confluence (Cloud)
-uv run indexed index create --type confluenceCloud --name wiki
+indexed index create --type confluenceCloud --name wiki
 ```
 
 ### Searching
 
 ```bash
 # Search all collections
-uv run indexed index search "authentication methods"
+indexed index search "authentication methods"
 
 # Search specific collection
-uv run indexed index search "bug reports" --collection jira-issues
+indexed index search "bug reports" --collection jira-issues
 
-# JSON output for scripting
-uv run indexed index search "API docs" --json
+# JSON output for machine reading
+indexed index search "API docs" --simple-output
 ```
 
 ### Managing Collections
 
 ```bash
 # List all collections
-uv run indexed index inspect
+indexed index inspect
 
 # Inspect specific collection
-uv run indexed index inspect my-docs
+indexed index inspect my-docs
 
 # Update a collection
-uv run indexed index update my-docs
+indexed index update my-docs
 
 # Delete a collection
-uv run indexed index delete my-docs
+indexed index delete my-docs
 ```
 
 ### Configuration
 
 ```bash
 # View configuration
-uv run indexed config get all
+indexed config get all
 
 # Set a value
-uv run indexed config set search.max_docs 20
+indexed config set search.max_docs 20
 
 # Validate configuration
-uv run indexed config validate
+indexed config validate
 ```
 
-For the complete CLI reference, see the [CLI Documentation](./indexed/README.md).
+For the complete CLI reference, see the [CLI Documentation](https://indexed.sh/docs/reference/config).
 
-## MCP Integration
-
-Indexed provides an MCP server for AI agent integration. Use it with Claude Desktop, Cursor, Cline, and other MCP-compatible tools.
-
-### Starting the MCP Server
-
-```bash
-# Default (stdio transport for Claude Desktop)
-uv run indexed mcp
-
-# HTTP server mode
-uv run indexed mcp --transport http --port 8000
-```
-
-### Claude Desktop Configuration
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
-
-```json
-{
-  "mcpServers": {
-    "indexed": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/path/to/indexed",
-        "run",
-        "indexed-mcp"
-      ]
-    }
-  }
-}
-```
-
-### Cursor Configuration
-
-Add to your Cursor MCP settings:
-
-```json
-{
-  "mcpServers": {
-    "indexed": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/path/to/indexed",
-        "run",
-        "indexed-mcp"
-      ]
-    }
-  }
-}
-```
-
-See [MCP Server Documentation](./indexed/README.md#mcp-server-examples) for more details.
-
-## Building
+## Local Development and Building
 
 The project uses [una](https://github.com/carderne/una) for monorepo wheel packaging with [hatch-una](https://pypi.org/project/hatch-una/).
-
-### Build a Distributable Wheel
-
-```bash
-# Build the wheel (bundles all workspace packages)
-uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-
-# The wheel contains all code and can be installed standalone
-pip install dist/indexed-0.1.0-py3-none-any.whl
-```
 
 ### Development Setup
 
@@ -277,82 +288,14 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-## Docker
-
-Run indexed in a Docker container for isolated, reproducible deployments.
-
-### Building the Image
+### Build a Distributable Wheel
 
 ```bash
-# Option 1: Build wheel first, then Docker (recommended for CI/CD)
+# Build the wheel (bundles all workspace packages)
 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-docker build -t indexed .
 
-# Option 2: Build directly with Docker (multi-stage build)
-docker build -t indexed .
-```
-
-### Simple Dockerfile with Pre-built Wheel
-
-```dockerfile
-FROM python:3.11-slim
-COPY dist dist
-RUN pip install dist/*.whl
-ENTRYPOINT ["indexed"]
-```
-
-### Running the MCP Server
-
-```bash
-# Default: stdio transport (for Claude Desktop pipe)
-docker run -i -v ~/.indexed:/root/.indexed indexed
-
-# HTTP transport (for network access)
-docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport http --host 0.0.0.0
-
-# SSE transport
-docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport sse --host 0.0.0.0
-```
-
-### Managing Collections in Docker
-
-```bash
-# Create a collection from local files
-docker run -v ~/.indexed:/root/.indexed -v /path/to/docs:/docs \
-  indexed index create --type files --name my-docs --path /docs
-
-# Search collections
-docker run -v ~/.indexed:/root/.indexed indexed index search "your query"
-
-# Inspect collections
-docker run -v ~/.indexed:/root/.indexed indexed index inspect
-```
-
-### Docker Compose
-
-For HTTP-based deployments, use the included `docker-compose.yml`:
-
-```bash
-# Start HTTP server
-docker compose up indexed-http
-
-# Run CLI commands
-docker compose run indexed-cli index inspect
-```
-
-### Volume Mounts
-
-| Container Path | Purpose |
-|----------------|---------|
-| `/root/.indexed` | Configuration and data storage |
-| `/docs` (example) | Mount local files for indexing |
-
-### Environment Variables
-
-Configure via `INDEXED__` prefix:
-
-```bash
-docker run -e INDEXED__mcp__log_level=DEBUG indexed mcp
+# The wheel contains all code and can be installed standalone. Replace x.x.x with the build number returned above!
+pip install dist/indexed-x.x.x-py3-none-any.whl
 ```
 
 ## Project Structure
@@ -368,9 +311,10 @@ indexed/
 ├── packages/
 │   ├── indexed-core/         # Core indexing and search library
 │   │   ├── src/core/         # Business logic and services
+│   │   │    ├── v1/          # Core V1 Implementation
 │   │   └── README.md         # 📖 Core library docs
 │   │
-│   ├── indexed-parsing/      # Document parsing (Docling + tree-sitter)
+│   ├── indexed-parsing/      # Shared document parsing (Docling + tree-sitter)
 │   │   └── src/parsing/      # Parsers, router, code chunker
 │   │
 │   ├── indexed-config/       # Configuration management
@@ -378,14 +322,14 @@ indexed/
 │   │   └── README.md         # 📖 Config system docs
 │   │
 │   ├── indexed-connectors/   # Document source connectors
-│   │   ├── src/connectors/   # Jira, Confluence, Files connectors
+│   │   ├── src/connectors/   # Jira, Confluence, Files connectors -> Use shared document parsing
 │   │   └── README.md         # 📖 Connector docs
 │   │
 │   └── utils/                # Shared utilities
 │       ├── src/utils/        # Logging, retry, batching, etc.
 │       └── README.md         # 📖 Utilities docs
 │
-├── tests/                    # Test suite
+├── tests/                    # Test suite, unit and system
 ├── docs/                     # Documentation
 │
 └── pyproject.toml            # Workspace configuration
@@ -414,5 +358,4 @@ The Core v1 implementation is based on [documents-vector-search](https://github.
 
 - [Indexed Website](https://indexed.sh) – Project homepage
 - [Issue Tracker](https://github.com/LennardZuendorf/indexed/issues) – Report bugs or request features
-- [Medium Article](https://medium.com/@shnax0210/mcp-tool-for-vector-search-in-confluence-and-jira-6beeade658ba) – Original project announcement
 - **Star the repo** if you find it useful!
