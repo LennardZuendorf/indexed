@@ -1096,7 +1096,7 @@ wheels = [
 
 [[package]]
 name = "indexed"
-version = "0.1.0"
+version = "0.1.3"
 source = { editable = "apps/indexed" }
 dependencies = [
     { name = "art" },

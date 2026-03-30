@@ -106,7 +106,7 @@ def init(
             f"  [{accent}]3.[/{accent}] {action} model [{accent}]{model_name}[/{accent}]..."
         )
         with Progress(
-            SpinnerColumn(),
+            SpinnerColumn(style=get_accent_style()),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:

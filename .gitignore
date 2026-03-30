@@ -54,4 +54,4 @@ dmypy.json
 data/
 tmp/
 .indexed/
-.docs/superpowers/
+docs/superpowers/

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import datetime
 import fnmatch
-import json
 import os
 import re
 from pathlib import Path
@@ -87,10 +86,8 @@ class FilesDocumentReader:
 
     def read_all_parsed(self) -> Iterator[ParsedDocument]:
         """Yield a ``ParsedDocument`` for every matching file."""
-        result_stats: dict[str, list[str]] = {
-            "successFiles": [],
-            "errorFiles": [],
-        }
+        success_files: list[str] = []
+        error_files: list[str] = []
 
         for file_path in self._iter_file_paths():
             try:
@@ -99,17 +96,26 @@ class FilesDocumentReader:
                 doc.metadata["modified_time"] = self._read_file_modification_time(
                     file_path
                 ).isoformat()
-                result_stats["successFiles"].append(file_path)
+
+                if doc.metadata.get("error"):
+                    error_files.append(file_path)
+                else:
+                    success_files.append(file_path)
+
                 yield doc
             except Exception as exc:
-                result_stats["errorFiles"].append(file_path)
+                error_files.append(file_path)
                 if self.fail_fast:
                     raise RuntimeError(f"Error reading file {file_path}") from exc
-                logger.opt(exception=exc).error("Error reading file {}", file_path)
+                logger.error("Error reading file {}: {}", file_path, exc)
 
-        logger.info(
-            f"Files reading stats: \n{json.dumps(result_stats, indent=2, ensure_ascii=False)}"
-        )
+        logger.info("Parsed {} files successfully", len(success_files))
+        if error_files:
+            logger.warning(
+                "Could not parse {} file(s):\n{}",
+                len(error_files),
+                "\n".join(f"  - {f}" for f in error_files),
+            )
 
     # -- backward-compat v1 API ------------------------------------------
 

@@ -1,6 +1,6 @@
 [project]
 name = "indexed"
-version = "0.1.0"
+version = "0.1.3"
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 authors = [

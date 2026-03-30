@@ -50,12 +50,19 @@ def suppress_core_output(redirect_streams: bool = False):
     # Save original logging level
     original_level = logging.getLogger().level
 
+    # Save and suppress docling logger (its format-mismatch WARNINGs are noisy)
+    docling_logger = logging.getLogger("docling")
+    original_docling_level = docling_logger.level
+
     # Save current loguru min level so we can restore it
     from indexed.utils.logging import _configure_loguru
 
     try:
         # Suppress standard logging below WARNING
         logging.getLogger().setLevel(logging.WARNING)
+
+        # Suppress docling warnings (format-mismatch noise); only surface ERRORs
+        docling_logger.setLevel(logging.ERROR)
 
         # Reconfigure loguru to WARNING level instead of disabling entirely,
         # so parsing ERRORs and WARNINGs still surface
@@ -78,6 +85,7 @@ def suppress_core_output(redirect_streams: bool = False):
     finally:
         # Restore original logging level
         logging.getLogger().setLevel(original_level)
+        docling_logger.setLevel(original_docling_level)
         # Restore loguru to its previous configuration
         from indexed.utils.logging import _cli_log_level
 

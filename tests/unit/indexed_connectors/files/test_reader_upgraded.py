@@ -66,6 +66,32 @@ class TestFilesDocumentReaderParsed:
         assert len(docs) == 1
 
 
+class TestFilesDocumentReaderErrorSummary:
+    def test_error_summary_only_lists_truly_unparseable(self, tmp_path):
+        """Parseable files should not appear in error stats."""
+        (tmp_path / "readme.md").write_text("# Hello")
+        (tmp_path / "styles.css").write_text("body { color: red; }")
+        (tmp_path / ".gitignore").write_text("node_modules/")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+
+        assert len(docs) == 3
+        assert all(doc.metadata.get("error") is not True for doc in docs)
+
+    def test_mixed_parseable_and_empty_files(self, tmp_path):
+        """Empty files should not be flagged as errors."""
+        (tmp_path / "content.txt").write_text("some content")
+        (tmp_path / ".hotreload").write_text("")
+
+        reader = FilesDocumentReader(base_path=str(tmp_path))
+        docs = list(reader.read_all_parsed())
+
+        assert len(docs) == 2
+        error_docs = [d for d in docs if d.metadata.get("error")]
+        assert len(error_docs) == 0
+
+
 class TestFilesDocumentReaderV1Compat:
     def test_read_all_documents_backward_compat(self, tmp_path):
         (tmp_path / "test.txt").write_text("Hello v1 world")

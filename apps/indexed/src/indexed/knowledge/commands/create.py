@@ -229,6 +229,7 @@ def create_files(
         use_cache=use_cache,
         force=force,
         local=local,
+        source_path_key="path",
     )
 
 
@@ -446,6 +447,7 @@ def create_jira(
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_jira_log,
         local=local,
+        source_path_key="url",
     )
 
 
@@ -692,6 +694,7 @@ def create_confluence(
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_confluence_log,
         local=local,
+        source_path_key="url",
     )
 
 

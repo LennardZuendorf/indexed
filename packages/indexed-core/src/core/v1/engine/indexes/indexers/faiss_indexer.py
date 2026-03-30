@@ -23,8 +23,10 @@ class FaissIndexer:
     def get_name(self):
         return self.name
 
-    def index_texts(self, ids, texts):
-        embeddings = self.embedder.embed_batch(texts, batch_size=64)
+    def index_texts(self, ids, texts, progress_callback=None):
+        embeddings = self.embedder.embed_batch(
+            texts, batch_size=64, progress_callback=progress_callback
+        )
         self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
 
     def remove_ids(self, ids):

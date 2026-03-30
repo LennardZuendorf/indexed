@@ -103,27 +103,17 @@ class DocumentCollectionCreator:
                 "Check that the source path exists and contains readable files."
             )
 
-        # Phase: Generating embeddings / Building FAISS index
-        if self.phased_progress:
-            self.phased_progress.start_phase(
-                "Generating embeddings", total=len(document_ids)
-            )
-
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_new_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
         )
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Generating embeddings")
-            self.phased_progress.start_phase("Writing to disk")
+            self.phased_progress.finish_phase("Generating Embeddings")
 
         manifest = self.__create_manifest_file(
             update_time, last_modified_document_time, number_of_chunks
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -160,19 +150,13 @@ class DocumentCollectionCreator:
             self.__save_json_file(manifest, self.__build_manifest_path())
             return
 
-        if self.phased_progress:
-            self.phased_progress.start_phase(
-                "Generating embeddings", total=len(document_ids)
-            )
-
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_existing_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
         )
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Generating embeddings")
-            self.phased_progress.start_phase("Writing to disk")
+            self.phased_progress.finish_phase("Generating Embeddings")
 
         manifest = self.__create_manifest_file(
             update_time,
@@ -180,9 +164,6 @@ class DocumentCollectionCreator:
             number_of_chunks,
             existing_manifest=manifest,
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -210,7 +191,7 @@ class DocumentCollectionCreator:
 
         if self.phased_progress:
             self.phased_progress.start_phase(
-                "Fetching documents",
+                "Fetching Documents",
                 total=number_of_expected_documents
                 if number_of_expected_documents
                 else None,
@@ -236,10 +217,10 @@ class DocumentCollectionCreator:
                 )
 
             if self.phased_progress:
-                self.phased_progress.advance("Fetching documents")
+                self.phased_progress.advance("Fetching Documents")
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Fetching documents")
+            self.phased_progress.finish_phase("Fetching Documents")
 
         return document_ids, number_of_expected_documents
 
@@ -332,8 +313,22 @@ class DocumentCollectionCreator:
                         last_index_item_id
                     )
 
+            # Start embedding phase with chunk-level tracking
+            if self.phased_progress:
+                self.phased_progress.start_phase(
+                    "Generating Embeddings", total=len(items_to_index)
+                )
+
+            embedding_progress = None
+            if self.phased_progress:
+
+                def embedding_progress(n: int) -> None:
+                    self.phased_progress.advance("Generating Embeddings", amount=n)
+
             for indexer in self.document_indexers:
-                indexer.index_texts(index_item_ids, items_to_index)
+                indexer.index_texts(
+                    index_item_ids, items_to_index, progress_callback=embedding_progress
+                )
 
             processed += len(batch_document_ids)
             if self.progress_callback:
@@ -344,10 +339,6 @@ class DocumentCollectionCreator:
                         total=total_docs,
                         message=f"Indexing: {processed}/{total_docs} documents",
                     )
-                )
-            if self.phased_progress:
-                self.phased_progress.advance(
-                    "Generating embeddings", amount=len(batch_document_ids)
                 )
 
         for indexer in self.document_indexers:

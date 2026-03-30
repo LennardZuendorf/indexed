@@ -13,7 +13,7 @@ from ...utils.simple_output import is_simple_output, print_json
 from ...utils.context_managers import NoOpContext, suppress_core_output
 from ...utils.components.summary import create_summary
 from ...utils.console import console
-from ...utils.progress_bar import create_phased_progress
+from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.components.theme import (
     get_heading_style,
     get_dim_style,
@@ -22,38 +22,15 @@ from ...utils.components.theme import (
 )
 from ...utils.components import (
     create_detail_card,
-    get_accent_style,
     print_error,
     print_info,
     ICON_SUCCESS,
     ICON_ERROR,
 )
 from ...utils.credentials import ensure_credentials_for_source
+from ...utils.format import format_source_type as _format_source_type
 
 app = typer.Typer(help="Update collections")
-
-
-def _format_source_type(source_type: Optional[str]) -> str:
-    """
-    Convert an internal source type identifier into a human-readable display name.
-
-    Parameters:
-        source_type (Optional[str]): Internal source type identifier (may be None or falsy).
-
-    Returns:
-        str: A friendly display name for the source type (returns "Unknown" if `source_type` is falsy; falls back to a capitalized form if the type is unrecognized).
-    """
-    if not source_type:
-        return "Unknown"
-
-    type_map = {
-        "jira": "Jira",
-        "jiraCloud": "Jira Cloud",
-        "confluence": "Confluence",
-        "confluenceCloud": "Confluence Cloud",
-        "localFiles": "Local Files",
-    }
-    return type_map.get(source_type, source_type.capitalize())
 
 
 def _config_existed_before(config_service: ConfigService) -> bool:
@@ -327,17 +304,21 @@ def update(
                 break
         else:
             # Normal mode: phased progress display
-            title = f"  [{get_accent_style()}]{coll_name}[/{get_accent_style()}]"
+            title = build_progress_title(
+                "Updating",
+                coll_name,
+                _format_source_type(source_type) if source_type else "",
+            )
             with create_phased_progress(title=title) as phased:
                 try:
                     with suppress_core_output():
                         update_service([source_config], phased_progress=phased)
                     console.print(
-                        f"  {ICON_SUCCESS} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Updated"
+                        f"  [{get_success_style()}]{ICON_SUCCESS}[/{get_success_style()}] {coll_name}: Updated"
                     )
                 except Exception as e:
                     console.print(
-                        f"  {ICON_ERROR} [{get_accent_style()}]{coll_name}[/{get_accent_style()}]: Update Failed"
+                        f"  [{get_error_style()}]{ICON_ERROR}[/{get_error_style()}] {coll_name}: Update Failed"
                     )
                     update_error = e
                     break

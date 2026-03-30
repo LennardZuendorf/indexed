@@ -16,9 +16,9 @@ from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.components.theme import get_heading_style, get_accent_style
-from ...utils.components import print_success, print_error, create_summary
-from ...utils.progress_bar import create_phased_progress
+from ...utils.components import print_success, print_error, print_warning
+from ...utils.format import format_source_type
+from ...utils.progress_bar import create_phased_progress, build_progress_title
 
 
 def execute_create_command(
@@ -38,6 +38,7 @@ def execute_create_command(
     progress_message: Optional[str] = None,
     verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
     local: bool = False,
+    source_path_key: Optional[str] = None,
 ) -> None:
     """Common execution flow for all create commands.
 
@@ -142,6 +143,16 @@ def execute_create_command(
     svc_create = this_module.svc_create
     svc_status = this_module.svc_status
 
+    # Check if collection already exists (prompt unless --force)
+    if not force:
+        from core.v1.engine.services.collection_service import _collection_exists
+
+        if _collection_exists(collection, collections_path=local_collections_path):
+            console.print()
+            print_warning(f"Collection '{collection}' already exists.")
+            if not typer.confirm("Overwrite?", default=False):
+                raise typer.Exit(0)
+
     # Build source config using connector-specific callback
     cfg = build_source_config(validation.present, collection)
 
@@ -164,10 +175,8 @@ def execute_create_command(
                 )
         else:
             # Normal mode: phased progress display
-            title = (
-                f"[{get_heading_style()}]Creating {source_type} collection: "
-                f"[{get_accent_style()}]{collection}[/{get_accent_style()}]"
-                f"[/{get_heading_style()}]"
+            title = build_progress_title(
+                "Creating", collection, format_source_type(source_type)
             )
 
             with create_phased_progress(title=title) as phased:
@@ -211,17 +220,14 @@ def execute_create_command(
                     "Collection created successfully with %d documents", doc_count
                 )
 
-            print_success(
-                f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}"
-            )
+            # Build success message with optional source path
+            source_display = ""
+            if source_path_key and source_path_key in validation.present:
+                source_display = f" ({validation.present[source_path_key]})"
 
-            # Summary
             console.print()
-            console.print(
-                create_summary(
-                    "Created",
-                    f"{collection} collection with {doc_count} documents",
-                )
+            print_success(
+                f"Collection '{collection}' created with {doc_count} documents {success_message_suffix}{source_display}"
             )
             console.print()
         else:

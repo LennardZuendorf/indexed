@@ -74,6 +74,13 @@ PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
         ".cfg",
         ".env",
         ".log",
+        # Stylesheets
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        # Markup
+        ".svg",
     }
 )
 
