@@ -168,6 +168,7 @@ class DocumentCollectionCreator:
             )
             return
 
+
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_existing_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
