@@ -10,6 +10,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/python-benchmark.yml'
       - 'tests/system/**'
+      - 'tests/benchmarks/**'
   push:
     branches: [ "main", "building" ]
     paths:
@@ -18,6 +19,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/python-benchmark.yml'
       - 'tests/system/**'
+      - 'tests/benchmarks/**'
 
 jobs:
   benchmark:
@@ -48,6 +50,20 @@ jobs:
       run: |
         python -m pip install uv
         python -m uv sync
+
+    - name: Cache HuggingFace embedding model
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
+        key: hf-model-all-MiniLM-L6-v2
+
+    - name: Download embedding model
+      run: |
+        uv run python -c "
+        from core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        ensure_model('all-MiniLM-L6-v2')
+        print('Model ready')
+        "
 
     - name: Determine branch names
       id: branch-info
@@ -110,7 +126,7 @@ jobs:
     - name: Run benchmarks
       id: run-benchmarks
       run: |
-        uv run pytest tests/system \
+        uv run pytest tests/system tests/benchmarks \
           --benchmark-only \
           --benchmark-json=benchmark-results.json \
           --benchmark-autosave \

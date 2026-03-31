@@ -46,7 +46,7 @@ def _strip_ansi(text: str) -> str:
 def _check_model_available() -> bool:
     """Check if the embedding model is cached and usable."""
     try:
-        from core.v1.engine.embeddings.sentence_embedder import is_model_cached
+        from core.v1.engine.indexes.embeddings.model_manager import is_model_cached
 
         return is_model_cached("all-MiniLM-L6-v2")
     except Exception:
