@@ -447,7 +447,9 @@ def search(
         # Normal mode: phased progress display (consistent with Create/Update)
         heading = get_heading_style()
         accent = get_accent_style()
-        title = f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
+        title = (
+            f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
+        )
 
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
