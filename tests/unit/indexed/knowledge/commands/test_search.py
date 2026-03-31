@@ -304,7 +304,7 @@ class TestSearchCommandExecution:
 
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("col1"), self._make_status("col2")]
 
@@ -338,31 +338,20 @@ class TestSearchCommandExecution:
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
 
-        # suppress_core_output and console.status need to be contexts
         from contextlib import contextmanager
 
         @contextmanager
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            progress = Mock()
-            task_id = 0
-
-            def callback(*a, **kw):
-                pass
-
-            yield progress, task_id, callback
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        # Mock create_phased_progress as a context manager returning a mock with start/finish_phase
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(search_cmd.app, ["my-query"])
@@ -372,7 +361,7 @@ class TestSearchCommandExecution:
 
     def test_search_specific_collection_compact_output(self, monkeypatch):
         """--compact flag should use compact formatter path."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("myCol")]
 
@@ -403,18 +392,13 @@ class TestSearchCommandExecution:
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            yield Mock(), 0, lambda *a, **kw: None
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(
@@ -464,7 +448,7 @@ class TestSearchCommandExecution:
 
     def test_search_no_content_flag(self, monkeypatch):
         """--no-content flag should pass show_content=False to formatter."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("col1")]
 
@@ -495,18 +479,13 @@ class TestSearchCommandExecution:
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            yield Mock(), 0, lambda *a, **kw: None
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])

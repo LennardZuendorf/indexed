@@ -17,6 +17,7 @@ from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -27,7 +28,6 @@ from ...utils.components import (
     get_dim_style,
     print_error,
     print_warning,
-    OperationStatus,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -373,6 +373,12 @@ def search(
 
     preferred_path = str(resolve_preferred_collections_path())
 
+    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
+    if not is_verbose_mode() and not simple:
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
     # Determine collections to search
     if collection is None:
         # Search all collections
@@ -421,11 +427,11 @@ def search(
             indexer=coll_status.indexers[0],
         )
 
-    # Search each collection with status spinner
+    # Search each collection with phased progress
     results = {}
 
     if simple or is_verbose_mode():
-        # Simple output / verbose mode: no spinner
+        # Simple output / verbose mode: no progress display
         for coll_name in collections_to_search:
             with NoOpContext():
                 result = svc_search(
@@ -438,12 +444,14 @@ def search(
                 )
                 results.update(result)
     else:
-        # Normal mode: OperationStatus spinner for all collections
-        num_colls = len(collections_to_search)
-        with OperationStatus(console, "Searching", capture_logs=False) as op_status:
-            op_status.update("Loading model...")
-            for idx, coll_name in enumerate(collections_to_search, 1):
-                op_status.update(f"Searching {idx}/{num_colls}: {coll_name}")
+        # Normal mode: phased progress display (consistent with Create/Update)
+        heading = get_heading_style()
+        accent = get_accent_style()
+        title = f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
+
+        with create_phased_progress(title=title) as phased:
+            for coll_name in collections_to_search:
+                phased.start_phase(f"Searching {coll_name}")
                 with suppress_core_output():
                     result = svc_search(
                         query,
@@ -454,6 +462,7 @@ def search(
                         collections_path=preferred_path,
                     )
                     results.update(result)
+                phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
     if simple:
