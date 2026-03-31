@@ -574,3 +574,73 @@ class TestSearchCommandExecution:
             assert "error" in parsed
         finally:
             reset_simple_output()
+
+    def test_search_simple_output_missing_collection(self, monkeypatch):
+        """In simple output mode, missing collection should return JSON error and exit 1."""
+        import json
+
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["my-query", "--collection", "missing"]
+            )
+
+            assert result.exit_code == 1
+            parsed = json.loads(result.stdout)
+            assert "error" in parsed
+            assert "missing" in parsed["error"]
+        finally:
+            reset_simple_output()
+
+
+class TestFormatSearchResultsCompactEdgeCases:
+    """Tests for edge cases in compact formatter."""
+
+    def test_compact_skips_error_collections(self, monkeypatch):
+        """format_search_results_compact should skip error collections."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "error-coll": {"error": "unavailable"},
+            "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
+        }
+        search_cmd.format_search_results_compact("query", results=results)
+
+        joined = "\n".join(outputs)
+        assert "error-coll" not in joined
+        assert "good-coll" in joined
+
+    def test_compact_skips_empty_collections(self, monkeypatch):
+        """format_search_results_compact should skip collections with no results."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "empty-coll": {"results": []},
+        }
+        search_cmd.format_search_results_compact("query", results=results)
+
+        joined = "\n".join(outputs)
+        assert "empty-coll" not in joined
+        assert "No results found" in joined
