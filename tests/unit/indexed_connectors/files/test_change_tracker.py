@@ -181,3 +181,76 @@ class TestChangeTrackerGit:
         changes = tracker.detect_changes([str(f)], state)
         statuses = {ch.status for ch in changes}
         assert "modified" in statuses
+
+    def test_detects_uncommitted_modifications(self, git_repo):
+        """Uncommitted (unstaged) working-tree changes must be detected via git status."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+
+        # Modify the file WITHOUT committing
+        f.write_text("dirty uncommitted change")
+
+        changes = tracker.detect_changes([str(f)], state)
+        statuses = {ch.status for ch in changes}
+        assert "modified" in statuses, "Uncommitted change was not detected"
+
+    def test_detects_staged_modifications(self, git_repo):
+        """Staged (but not committed) changes must be detected via git status."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+
+        f.write_text("staged change")
+        subprocess.run(
+            ["git", "add", str(f)], cwd=str(git_repo), capture_output=True, check=True
+        )
+
+        changes = tracker.detect_changes([str(f)], state)
+        statuses = {ch.status for ch in changes}
+        assert "modified" in statuses, "Staged change was not detected"
+
+    def test_subdirectory_base_path(self, tmp_path):
+        """ChangeTracker with base_path as a subdirectory must map git paths correctly."""
+        # Create a nested repo: tmp_path/repo/subdir/file.txt
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subdir = repo / "subdir"
+        subdir.mkdir()
+
+        for cmd in [
+            ["git", "init"],
+            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.name", "Test"],
+            ["git", "config", "commit.gpgsign", "false"],
+        ]:
+            subprocess.run(cmd, cwd=str(repo), capture_output=True)
+
+        f = subdir / "file.txt"
+        f.write_text("original")
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "init"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+
+        # Tracker uses the subdirectory as base_path (not the repo root)
+        tracker = ChangeTracker(str(subdir), strategy="git")
+        state = tracker.build_state([str(f)])
+
+        # Modify the file and commit
+        f.write_text("modified")
+        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
+        subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "modify"],
+            cwd=str(repo),
+            capture_output=True,
+            check=True,
+        )
+
+        changes = tracker.detect_changes([str(f)], state)
+        assert len(changes) == 1, f"Expected 1 change, got {changes}"
+        assert changes[0].status == "modified"
+        assert changes[0].path == "file.txt"

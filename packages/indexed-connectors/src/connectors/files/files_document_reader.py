@@ -34,6 +34,7 @@ class FilesDocumentReader:
         exclude_patterns: list[str] | None = None,
         fail_fast: bool = False,
         start_from_time: datetime.datetime | None = None,
+        specific_files: list[str] | None = None,
         *,
         ocr: bool = True,
         table_structure: bool = True,
@@ -51,6 +52,7 @@ class FilesDocumentReader:
         ]
         self.fail_fast = fail_fast
         self.start_from_time = start_from_time
+        self.specific_files = specific_files
         self._excluded_extensions = frozenset(
             excluded_extensions or DEFAULT_EXCLUDED_EXTENSIONS
         )
@@ -131,6 +133,8 @@ class FilesDocumentReader:
     # -- helpers ----------------------------------------------------------
 
     def get_number_of_documents(self) -> int:
+        if self.specific_files is not None:
+            return len(self.specific_files)
         return len(list(self._iter_file_paths()))
 
     def get_reader_details(self) -> dict:
@@ -143,7 +147,23 @@ class FilesDocumentReader:
         }
 
     def _iter_file_paths(self) -> Iterator[str]:
-        """Walk the directory and yield matching file paths."""
+        """Yield matching file paths.
+
+        If ``specific_files`` is set, iterate only those paths (applying the
+        same extension and exclusion filters). Otherwise walk the full
+        directory tree as normal.
+        """
+        if self.specific_files is not None:
+            for full_path in self.specific_files:
+                if not os.path.isfile(full_path):
+                    continue
+                relative_path = os.path.relpath(full_path, self.base_path)
+                if not any(
+                    relative_path.endswith(ext) for ext in self._excluded_extensions
+                ) and not self._is_file_excluded(relative_path):
+                    yield full_path
+            return
+
         for root, _, files in os.walk(self.base_path):
             for file_name in files:
                 full_path = os.path.join(root, file_name)

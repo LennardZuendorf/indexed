@@ -164,6 +164,14 @@ def _create_one(
     )
     creator.run()
 
+    # Persist change-tracking state so the first update has a baseline.
+    from connectors.files import FileSystemConnector
+
+    if isinstance(connector, FileSystemConnector):
+        resolved_path = collections_path or str(get_default_collections_path())
+        persister = DiskPersister(base_path=resolved_path)
+        connector.save_state(persister.get_full_path(cfg.name))
+
 
 def _update_one(
     cfg: SourceConfig,

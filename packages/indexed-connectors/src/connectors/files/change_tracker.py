@@ -143,6 +143,7 @@ class ChangeTracker:
     ) -> list[FileChange]:
         last_commit = state.last_indexed_commit
         current_commit = self._current_git_commit()
+        git_toplevel = self._git_toplevel()
 
         if not current_commit:
             logger.warning("No git HEAD found; treating all files as added")
@@ -157,61 +158,154 @@ class ChangeTracker:
                 for p in file_paths
             ]
 
-        if last_commit == current_commit:
-            return []
+        current_rel = {os.path.relpath(p, self._base_path) for p in file_paths}
 
+        # Collect committed changes between last_commit and HEAD
+        committed: dict[str, Literal["added", "modified", "deleted"]] = {}
+        if last_commit != current_commit:
+            try:
+                result = subprocess.run(
+                    ["git", "diff", "--name-status", last_commit, current_commit],
+                    capture_output=True,
+                    text=True,
+                    cwd=self._base_path,
+                    timeout=30,
+                )
+                if result.returncode == 0:
+                    committed = self._parse_diff_name_status(
+                        result.stdout, git_toplevel, current_rel
+                    )
+                else:
+                    logger.warning("git diff failed; falling back to full re-index")
+                    return [FileChange(path=p, status="added") for p in current_rel]
+            except Exception:
+                logger.opt(exception=True).warning(
+                    "git diff failed; falling back to full re-index"
+                )
+                return [FileChange(path=p, status="added") for p in current_rel]
+
+        # Collect uncommitted changes (staged + unstaged) via git status
+        uncommitted: dict[str, Literal["added", "modified", "deleted"]] = {}
         try:
-            result = subprocess.run(
-                ["git", "diff", "--name-status", last_commit, current_commit],
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
                 cwd=self._base_path,
                 timeout=30,
             )
-            if result.returncode != 0:
-                logger.warning("git diff failed; treating all files as added")
-                return [
-                    FileChange(path=os.path.relpath(p, self._base_path), status="added")
-                    for p in file_paths
-                ]
-
-            changes: list[FileChange] = []
-            current_rel = {os.path.relpath(p, self._base_path) for p in file_paths}
-
-            for line in result.stdout.strip().splitlines():
-                if not line.strip():
-                    continue
-                parts = line.split("\t")
-                status_code = parts[0][0]  # A, M, D, R, C, etc.
-
-                if status_code == "D":
-                    rel = parts[1]
-                    changes.append(FileChange(path=rel, status="deleted"))
-                elif status_code == "A":
-                    rel = parts[1]
-                    if rel in current_rel:
-                        changes.append(FileChange(path=rel, status="added"))
-                elif status_code == "M":
-                    rel = parts[1]
-                    if rel in current_rel:
-                        changes.append(FileChange(path=rel, status="modified"))
-                elif status_code == "R":
-                    old_rel = parts[1]
-                    new_rel = parts[2] if len(parts) > 2 else parts[1]
-                    changes.append(FileChange(path=old_rel, status="deleted"))
-                    if new_rel in current_rel:
-                        changes.append(FileChange(path=new_rel, status="added"))
-
-            return changes
-
+            if status_result.returncode == 0:
+                uncommitted = self._parse_status_porcelain(
+                    status_result.stdout, git_toplevel, current_rel
+                )
         except Exception:
             logger.opt(exception=True).warning(
-                "git diff failed; treating all files as added"
+                "git status failed; uncommitted changes may be missed"
             )
-            return [
-                FileChange(path=os.path.relpath(p, self._base_path), status="added")
-                for p in file_paths
-            ]
+
+        # Merge: uncommitted takes precedence over committed for same paths
+        merged: dict[str, Literal["added", "modified", "deleted"]] = {
+            **committed,
+            **uncommitted,
+        }
+
+        return [FileChange(path=p, status=s) for p, s in merged.items()]
+
+    def _git_path_to_rel(self, git_path: str, git_toplevel: str | None) -> str | None:
+        """Convert a repo-root-relative git path to a base_path-relative path.
+
+        Returns None if the path is outside base_path.
+        """
+        if git_toplevel:
+            abs_path = os.path.join(git_toplevel, git_path)
+        else:
+            abs_path = os.path.join(self._base_path, git_path)
+
+        rel = os.path.relpath(abs_path, self._base_path)
+        if rel.startswith(".."):
+            return None  # outside base_path
+        return rel
+
+    def _parse_diff_name_status(
+        self,
+        output: str,
+        git_toplevel: str | None,
+        current_rel: set[str],
+    ) -> dict[str, Literal["added", "modified", "deleted"]]:
+        """Parse ``git diff --name-status`` output into a change dict."""
+        result: dict[str, Literal["added", "modified", "deleted"]] = {}
+        for line in output.strip().splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            code = parts[0][0]
+            if code == "D":
+                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                if rel is not None:
+                    result[rel] = "deleted"
+            elif code == "A":
+                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                if rel is not None and rel in current_rel:
+                    result[rel] = "added"
+            elif code == "M":
+                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                if rel is not None and rel in current_rel:
+                    result[rel] = "modified"
+            elif code == "R":
+                old_rel = self._git_path_to_rel(parts[1], git_toplevel)
+                new_rel = self._git_path_to_rel(
+                    parts[2] if len(parts) > 2 else parts[1], git_toplevel
+                )
+                if old_rel is not None:
+                    result[old_rel] = "deleted"
+                if new_rel is not None and new_rel in current_rel:
+                    result[new_rel] = "added"
+        return result
+
+    def _parse_status_porcelain(
+        self,
+        output: str,
+        git_toplevel: str | None,
+        current_rel: set[str],
+    ) -> dict[str, Literal["added", "modified", "deleted"]]:
+        """Parse ``git status --porcelain`` output into a change dict.
+
+        Covers staged, unstaged, and untracked files.
+        """
+        result: dict[str, Literal["added", "modified", "deleted"]] = {}
+        for line in output.splitlines():
+            if len(line) < 4:
+                continue
+            xy = line[:2]
+            git_path = line[3:].strip()
+
+            # Handle renames: "old -> new" format
+            if " -> " in git_path:
+                old_part, new_part = git_path.split(" -> ", 1)
+                old_rel = self._git_path_to_rel(old_part.strip(), git_toplevel)
+                new_rel = self._git_path_to_rel(new_part.strip(), git_toplevel)
+                if old_rel is not None:
+                    result[old_rel] = "deleted"
+                if new_rel is not None and new_rel in current_rel:
+                    result[new_rel] = "added"
+                continue
+
+            rel = self._git_path_to_rel(git_path, git_toplevel)
+            if rel is None:
+                continue
+
+            # XY codes: X = staged, Y = unstaged; '?' = untracked
+            x, y = xy[0], xy[1]
+            if x == "D" or y == "D":
+                result[rel] = "deleted"
+            elif x == "?" or (x == "A" and y in ("A", " ", "?")):
+                if rel in current_rel:
+                    result[rel] = "added"
+            elif x in ("M", "A", "R", "C") or y == "M":
+                if rel in current_rel:
+                    result[rel] = "modified"
+
+        return result
 
     # -- content-hash strategy --------------------------------------------
 

@@ -121,3 +121,66 @@ class TestFilesDocumentReaderV1Compat:
         details = reader.get_reader_details()
         assert details["type"] == "localFiles"
         assert details["basePath"] == str(tmp_path)
+
+
+class TestFilesDocumentReaderSpecificFiles:
+    def test_specific_files_limits_iteration(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        c = tmp_path / "c.txt"
+        a.write_text("aaa")
+        b.write_text("bbb")
+        c.write_text("ccc")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[str(a), str(b)],
+        )
+        found = list(reader._iter_file_paths())
+        assert set(found) == {str(a), str(b)}
+        assert str(c) not in found
+
+    def test_specific_files_empty_yields_nothing(self, tmp_path):
+        (tmp_path / "a.txt").write_text("aaa")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[],
+        )
+        assert list(reader._iter_file_paths()) == []
+
+    def test_specific_files_get_number_of_documents(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        a.write_text("a")
+        b.write_text("b")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[str(a), str(b)],
+        )
+        assert reader.get_number_of_documents() == 2
+
+    def test_specific_files_missing_file_skipped(self, tmp_path):
+        a = tmp_path / "a.txt"
+        a.write_text("aaa")
+        missing = str(tmp_path / "does_not_exist.txt")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[str(a), missing],
+        )
+        found = list(reader._iter_file_paths())
+        assert found == [str(a)]
+
+    def test_none_specific_files_walks_directory(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.txt"
+        a.write_text("a")
+        b.write_text("b")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=None,
+        )
+        assert reader.get_number_of_documents() == 2

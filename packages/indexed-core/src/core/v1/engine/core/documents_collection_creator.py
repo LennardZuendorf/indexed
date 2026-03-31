@@ -49,6 +49,7 @@ class DocumentCollectionCreator:
         indexing_batch_size=500_000,
         progress_callback: ProgressCallback = None,
         phased_progress: PhasedProgressCallback = None,
+        explicit_deletions: list[str] | None = None,
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
@@ -59,6 +60,7 @@ class DocumentCollectionCreator:
         self.indexing_batch_size = indexing_batch_size
         self.progress_callback = progress_callback
         self.phased_progress = phased_progress
+        self.explicit_deletions = explicit_deletions or []
 
     def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
@@ -136,18 +138,37 @@ class DocumentCollectionCreator:
 
         update_time = datetime.now(timezone.utc)
 
+        if self.explicit_deletions:
+            log_execution_duration(
+                lambda: self.__remove_explicit_deletions(self.explicit_deletions),
+                identifier=f"Removing deleted documents from collection: {self.collection_name}",
+            )
+
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
         )
 
-        if len(document_ids) == 0:
+        if len(document_ids) == 0 and not self.explicit_deletions:
             logger.info(
                 "No new documents found for collection update. Updating timestamp only."
             )
             # Update only the timestamp in manifest to record that we checked for updates
             manifest["updatedTime"] = update_time.isoformat()
             self.__save_json_file(manifest, self.__build_manifest_path())
+            return
+
+        if len(document_ids) == 0:
+            # Only deletions — update manifest counts without re-indexing
+            manifest["updatedTime"] = update_time.isoformat()
+            manifest["numberOfDocuments"] = len(
+                self.persister.read_folder_files(f"{self.collection_name}/documents")
+            )
+            manifest["numberOfChunks"] = self.document_indexers[0].get_size()
+            self.__save_json_file(manifest, self.__build_manifest_path())
+            logger.info(
+                f"Collection successfully updated (deletions only): \n{_json_dumps(manifest, indent=True)}"
+            )
             return
 
         last_modified_document_time, number_of_chunks = log_execution_duration(
@@ -378,11 +399,41 @@ class DocumentCollectionCreator:
                     index_ids_to_remove.extend(document_index_ids_to_remove)
 
                     for index_id in document_index_ids_to_remove:
-                        del index_mapping[str(index_id)]
+                        index_mapping.pop(str(index_id), None)
                     del reverse_index_mapping[document_id]
 
             for indexer in self.document_indexers:
                 indexer.remove_ids(np.array(index_ids_to_remove))
+
+    def __remove_explicit_deletions(self, doc_ids: list[str]) -> None:
+        """Remove explicitly deleted documents (by document ID) from the index.
+
+        Called during updates when the ChangeTracker reports deleted files.
+        Document IDs for local files are relative file paths (e.g. ``utils/retry.py``).
+        """
+        if not doc_ids:
+            return
+
+        for doc_id in doc_ids:
+            doc_file = f"{self.collection_name}/documents/{doc_id}.json"
+            if self.persister.is_path_exists(doc_file):
+                self.persister.remove_file(doc_file)
+
+        index_mapping = _json_loads(
+            self.persister.read_text_file(self.__build_index_mapping_path())
+        )
+        reverse_index_mapping = _json_loads(
+            self.persister.read_text_file(self.__build_reverse_index_mapping_path())
+        )
+
+        self.__remove_documents_from_index(
+            doc_ids, index_mapping, reverse_index_mapping
+        )
+
+        self.__save_json_file(index_mapping, self.__build_index_mapping_path())
+        self.__save_json_file(
+            reverse_index_mapping, self.__build_reverse_index_mapping_path()
+        )
 
     def __build_reverse_index_mapping_path(self):
         return f"{self.collection_name}/indexes/reverse_index_document_mapping.json"
