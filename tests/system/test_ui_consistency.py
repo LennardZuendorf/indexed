@@ -11,7 +11,9 @@ import pytest
 
 
 # Paths to the command files under test
-_COMMANDS_DIR = Path(__file__).resolve().parents[2] / "apps" / "indexed" / "src" / "indexed"
+_COMMANDS_DIR = (
+    Path(__file__).resolve().parents[2] / "apps" / "indexed" / "src" / "indexed"
+)
 
 _COMMAND_FILES = {
     "init": _COMMANDS_DIR / "init.py",
