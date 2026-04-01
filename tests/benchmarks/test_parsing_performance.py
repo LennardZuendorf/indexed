@@ -191,17 +191,9 @@ def test_parse_png_image(benchmark, parsing_module: ParsingModule):
 
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
 def test_file_router_throughput(benchmark, file_router: FileRouter):
-    """Benchmark: FileRouter routing speed (should be sub-microsecond)."""
-    paths = [
-        Path("doc.pdf"),
-        Path("code.py"),
-        Path("notes.md"),
-        Path("config.json"),
-        Path("image.png"),
-        Path("data.csv"),
-        Path("script.ts"),
-        Path("unknown.xyz"),
-    ]
+    """Benchmark: FileRouter routing 10,000 paths."""
+    extensions = [".pdf", ".py", ".md", ".json", ".png", ".csv", ".ts", ".xyz"]
+    paths = [Path(f"file_{i}{ext}") for i in range(1250) for ext in extensions]
 
     def route_all():
         for p in paths:
@@ -279,21 +271,21 @@ def test_full_connector_pipeline_mixed(benchmark, mixed_workspace: Path):
 
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
 def test_v1_adapter_conversion(benchmark, parsing_module: ParsingModule):
-    """Benchmark: V1FormatAdapter conversion overhead (reader + converter output)."""
-    target = SPEC_DIR / "tech.md"
-    assert target.exists()
+    """Benchmark: V1FormatAdapter conversion on multiple parsed documents."""
+    md_files = list(SPEC_DIR.glob("*.md")) + list(DOCS_DIR.glob("*.md"))
+    assert len(md_files) > 0
 
-    # Pre-parse the document
-    parsed = parsing_module.parse(target)
-    base = str(SPEC_DIR)
+    # Pre-parse all documents (setup, not measured)
+    parsed_docs = [(parsing_module.parse(f), str(f.parent)) for f in md_files]
 
-    def convert_v1():
-        reader_out = V1FormatAdapter.reader_output(parsed, base)
-        conv_out = V1FormatAdapter.converter_output(parsed, base)
-        assert len(reader_out["content"]) > 0
-        assert len(conv_out) == 1
+    def convert_all_v1():
+        for parsed, base in parsed_docs:
+            reader_out = V1FormatAdapter.reader_output(parsed, base)
+            conv_out = V1FormatAdapter.converter_output(parsed, base)
+            assert len(reader_out["content"]) > 0
+            assert len(conv_out) == 1
 
-    benchmark(convert_v1)
+    benchmark(convert_all_v1)
 
 
 # ---------------------------------------------------------------------------
@@ -301,11 +293,22 @@ def test_v1_adapter_conversion(benchmark, parsing_module: ParsingModule):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(scope="module")
+def large_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a workspace with 500 files of ~2KB each for change tracking."""
+    base = tmp_path_factory.mktemp("large_workspace")
+    for i in range(500):
+        subdir = base / f"dir_{i // 50}"
+        subdir.mkdir(exist_ok=True)
+        (subdir / f"file_{i}.txt").write_text(f"Content block {i}\n" * 100)
+    return base
+
+
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
-def test_change_tracking_content_hash(benchmark, mixed_workspace: Path):
-    """Benchmark: content-hash change detection on ~50 files."""
-    tracker = ChangeTracker(str(mixed_workspace), strategy="content_hash")
-    file_paths = [str(p) for p in mixed_workspace.rglob("*") if p.is_file()]
+def test_change_tracking_content_hash(benchmark, large_workspace: Path):
+    """Benchmark: content-hash change detection on 500 files."""
+    tracker = ChangeTracker(str(large_workspace), strategy="content_hash")
+    file_paths = [str(p) for p in large_workspace.rglob("*") if p.is_file()]
 
     # Build initial state
     state = tracker.build_state(file_paths)
@@ -318,10 +321,10 @@ def test_change_tracking_content_hash(benchmark, mixed_workspace: Path):
 
 
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
-def test_change_tracking_build_state(benchmark, mixed_workspace: Path):
-    """Benchmark: building state snapshot (hashing all files)."""
-    tracker = ChangeTracker(str(mixed_workspace), strategy="content_hash")
-    file_paths = [str(p) for p in mixed_workspace.rglob("*") if p.is_file()]
+def test_change_tracking_build_state(benchmark, large_workspace: Path):
+    """Benchmark: building state snapshot (hashing 500 files)."""
+    tracker = ChangeTracker(str(large_workspace), strategy="content_hash")
+    file_paths = [str(p) for p in large_workspace.rglob("*") if p.is_file()]
 
     def build():
         state = tracker.build_state(file_paths)
