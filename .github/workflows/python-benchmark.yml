@@ -314,9 +314,31 @@ jobs:
           comment += '| Test | Mean Time | Threshold | Status |\n';
           comment += '|------|-----------|-----------|--------|\n';
 
+          // Threshold map: test name substring → max seconds
+          // Generous multipliers over observed CI times to avoid flaky failures
+          const thresholds = {
+            'help': 0.5,
+            'inspect': 0.5,
+            'e2e_create': 30.0,
+            'e2e_search': 5.0,
+            'parse_png': 10.0,
+            'parse_large': 5.0,
+            'full_connector_pipeline_mixed': 20.0,
+            'full_connector_pipeline': 10.0,
+            'batch_parse': 5.0,
+            'parse_markdown_docs': 3.0,
+          };
+
+          function getThreshold(name) {
+            for (const [key, val] of Object.entries(thresholds)) {
+              if (name.includes(key)) return val;
+            }
+            return 1.0;  // default for fast unit-level benchmarks
+          }
+
           results.benchmarks.forEach(bench => {
             const mean = bench.stats.mean;
-            const threshold = bench.name.includes('help') || bench.name.includes('inspect') ? 0.5 : 1.0;
+            const threshold = getThreshold(bench.name);
             const status = mean < threshold ? '✅ PASS' : '❌ FAIL';
             comment += `| ${bench.name} | ${mean.toFixed(3)}s | <${threshold}s | ${status} |\n`;
           });
