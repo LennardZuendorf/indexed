@@ -336,11 +336,17 @@ jobs:
             return 1.0;  // default for fast unit-level benchmarks
           }
 
+          function formatTime(seconds) {
+            if (seconds < 0.001) return `${(seconds * 1_000_000).toFixed(0)}µs`;
+            if (seconds < 1.0)   return `${(seconds * 1000).toFixed(1)}ms`;
+            return `${seconds.toFixed(2)}s`;
+          }
+
           results.benchmarks.forEach(bench => {
             const mean = bench.stats.mean;
             const threshold = getThreshold(bench.name);
             const status = mean < threshold ? '✅ PASS' : '❌ FAIL';
-            comment += `| ${bench.name} | ${mean.toFixed(3)}s | <${threshold}s | ${status} |\n`;
+            comment += `| ${bench.name} | ${formatTime(mean)} | <${threshold}s | ${status} |\n`;
           });
 
           // Add comparison results if available
