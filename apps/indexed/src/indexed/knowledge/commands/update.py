@@ -22,10 +22,9 @@ from ...utils.components.theme import (
 )
 from ...utils.components import (
     create_detail_card,
+    print_success,
     print_error,
     print_info,
-    ICON_SUCCESS,
-    ICON_ERROR,
 )
 from ...utils.credentials import ensure_credentials_for_source
 from ...utils.format import format_source_type as _format_source_type
@@ -313,13 +312,11 @@ def update(
                 try:
                     with suppress_core_output():
                         update_service([source_config], phased_progress=phased)
-                    console.print(
-                        f"  [{get_success_style()}]{ICON_SUCCESS}[/{get_success_style()}] {coll_name}: Updated"
-                    )
+                    console.print()
+                    print_success(f"Collection '{coll_name}' updated")
                 except Exception as e:
-                    console.print(
-                        f"  [{get_error_style()}]{ICON_ERROR}[/{get_error_style()}] {coll_name}: Update Failed"
-                    )
+                    console.print()
+                    print_error(f"Collection '{coll_name}' update failed")
                     update_error = e
                     break
 

@@ -8,18 +8,18 @@ Idempotent — safe to run multiple times.
 from typing import Optional
 
 import typer
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from indexed.utils.components import (
     create_detail_card,
-    get_accent_style,
     get_dim_style,
     get_heading_style,
-    get_success_style,
     print_success,
     print_warning,
 )
 from indexed.utils.console import console
+from indexed.utils.progress_bar import create_phased_progress
+from indexed.utils.context_managers import suppress_core_output
+from indexed.utils.storage_info import display_storage_mode_for_command
 
 
 def init(
@@ -59,62 +59,52 @@ def init(
         get_cache_info,
         is_model_cached,
     )
+    from indexed_config import ConfigService, ensure_storage_dirs, get_global_root
 
     model_name = model or DEFAULT_MODEL
 
+    # Initialize ConfigService and display storage mode
+    ConfigService.instance()
+    display_storage_mode_for_command(console)
+
     heading = get_heading_style()
     dim = get_dim_style()
-    accent = get_accent_style()
-    success = get_success_style()
-
-    console.print()
-    console.print(f"[{heading}]Indexed Setup[/{heading}]")
-    console.print(f"[{dim}]Preparing your environment for semantic search.[/{dim}]")
-    console.print()
-
-    # Step 1: Data directories
-    console.print(f"  [{accent}]1.[/{accent}] Creating data directories...", end=" ")
-    from indexed_config import ensure_storage_dirs, get_global_root
+    title = f"[{heading}]Initializing Indexed[/{heading}]"
 
     root = get_global_root()
-    ensure_storage_dirs(root)
-    console.print(f"[{success}]done[/{success}]")
 
-    # Step 2: Config validation
-    console.print(f"  [{accent}]2.[/{accent}] Validating configuration...", end=" ")
-    try:
-        from indexed_config import ConfigService
+    with create_phased_progress(title=title) as progress:
+        # Phase 1: Create data directories
+        progress.start_phase("Creating data directories")
+        ensure_storage_dirs(root)
+        progress.finish_phase("Creating data directories")
 
-        ConfigService.instance()
-        console.print(f"[{success}]done[/{success}]")
-    except Exception as e:
-        print_warning(str(e))
+        # Phase 2: Validate configuration
+        progress.start_phase("Validating configuration")
+        try:
+            ConfigService.instance()
+        except Exception as e:
+            print_warning(str(e))
+        progress.finish_phase("Validating configuration")
 
-    # Step 3: Model
-    if skip_model:
-        console.print(
-            f"  [{accent}]3.[/{accent}] Model download [{dim}]skipped[/{dim}]"
-        )
-    elif is_model_cached(model_name) and not force:
-        console.print(
-            f"  [{accent}]3.[/{accent}] Model [{accent}]{model_name}[/{accent}] "
-            f"already in HuggingFace cache [{success}]done[/{success}]"
-        )
-    else:
-        action = "Re-downloading" if force else "Downloading"
-        console.print(
-            f"  [{accent}]3.[/{accent}] {action} model [{accent}]{model_name}[/{accent}]..."
-        )
-        with Progress(
-            SpinnerColumn(style=get_accent_style()),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"Downloading {model_name}...", total=None)
-            ensure_model(model_name, force=force)
-            progress.update(task, description="Cached")
+        # Phase 3: Embedding model
+        if skip_model:
+            progress.start_phase("Download embedding model")
+            progress.log("skipped (--skip-model)")
+            progress.finish_phase("Download embedding model")
+        elif is_model_cached(model_name) and not force:
+            progress.start_phase("Download embedding model")
+            progress.log(f"{model_name} already cached")
+            progress.finish_phase("Download embedding model")
+        else:
+            action = "Re-downloading" if force else "Downloading"
+            phase_name = f"{action} model {model_name}"
+            progress.start_phase(phase_name)
+            with suppress_core_output():
+                ensure_model(model_name, force=force)
+            progress.finish_phase(phase_name)
 
-    # Step 4: Summary
+    # Summary
     console.print()
     info = get_cache_info()
 
