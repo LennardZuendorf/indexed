@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "indexed": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["indexed-sh", "mcp", "run"],
+      "env": {
+        "INDEXED__general__log_level": "WARNING"
+      }
+    }
+  }
+}
