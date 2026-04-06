@@ -53,13 +53,17 @@ Indexed pre-computes a semantic search index over your code, docs, and project t
 
 Indexed exposes a Model Context Protocol server for AI agent integration.
 
-### Claude Code
+### Claude Code (CLI, VS Code, JetBrains)
+
+Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin:
 
 ```bash
 claude mcp add indexed -- indexed mcp run
 ```
 
-Or add manually to your `.mcp.json`:
+This adds indexed to your project's `.mcp.json`. You can also manage servers via `/mcp` in the VS Code chat panel.
+
+To add manually, create or edit `.mcp.json` in your project root:
 
 ```json
 {
