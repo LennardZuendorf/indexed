@@ -185,6 +185,213 @@ class TestBuildConnectorFromConfig:
             assert connector == mock_connector
 
 
+class TestBuildLocalFilesConnectorOpts:
+    """Test _build_connector_from_config with localFiles reader_opts."""
+
+    def test_files_connector_with_include_patterns(self):
+        config_service = MagicMock()
+        source_config = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={"includePatterns": [r".*\.md$"]},
+        )
+
+        with patch("connectors.files.FileSystemConnector") as mock_cls:
+            mock_cls.from_config.return_value = Mock()
+            _build_connector_from_config(source_config, config_service)
+
+            config_service.set.assert_any_call(
+                "sources.files.include_patterns", [r".*\.md$"]
+            )
+
+    def test_files_connector_with_exclude_patterns(self):
+        config_service = MagicMock()
+        source_config = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={"excludePatterns": [r".*\.tmp$"]},
+        )
+
+        with patch("connectors.files.FileSystemConnector") as mock_cls:
+            mock_cls.from_config.return_value = Mock()
+            _build_connector_from_config(source_config, config_service)
+
+            config_service.set.assert_any_call(
+                "sources.files.exclude_patterns", [r".*\.tmp$"]
+            )
+
+    def test_files_connector_with_fail_fast(self):
+        config_service = MagicMock()
+        source_config = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={"failFast": True},
+        )
+
+        with patch("connectors.files.FileSystemConnector") as mock_cls:
+            mock_cls.from_config.return_value = Mock()
+            _build_connector_from_config(source_config, config_service)
+
+            config_service.set.assert_any_call("sources.files.fail_fast", True)
+
+
+class TestUnknownSourceType:
+    """Test unknown source type handling."""
+
+    def test_raises_for_unknown_type(self):
+        import pytest
+
+        config_service = MagicMock()
+        # Create a valid SourceConfig then patch the type to an invalid value
+        source_config = Mock()
+        source_config.type = "unknownSource"
+        source_config.base_url_or_path = "http://example.com"
+        source_config.query = None
+        source_config.reader_opts = {}
+
+        with pytest.raises(ValueError, match="Unknown source type"):
+            _build_connector_from_config(source_config, config_service)
+
+
+class TestClearCaches:
+    """Test _clear_caches function."""
+
+    def test_clear_caches_removes_entries(self, tmp_path):
+        from core.v1.engine.services.collection_service import _clear_caches
+
+        # Create some cache entries
+        (tmp_path / "cache1").mkdir()
+        (tmp_path / "cache1" / "data.json").write_text("{}")
+        (tmp_path / "cache2_completed").write_text("")
+
+        _clear_caches(str(tmp_path))
+
+        assert not (tmp_path / "cache1").exists()
+        assert not (tmp_path / "cache2_completed").exists()
+
+    def test_clear_caches_nonexistent_dir(self):
+        from core.v1.engine.services.collection_service import _clear_caches
+
+        # Should not raise
+        _clear_caches("/nonexistent/path/12345")
+
+
+class TestClearCollections:
+    """Test clear function."""
+
+    def test_clear_removes_collection(self):
+        from core.v1.engine.services.collection_service import clear
+
+        with patch(
+            "core.v1.engine.services.collection_service.DiskPersister"
+        ) as mock_cls:
+            mock_persister = Mock()
+            mock_cls.return_value = mock_persister
+
+            clear(["col1", "col2"], collections_path="/tmp/test")
+
+            assert mock_persister.remove_folder.call_count == 2
+            mock_persister.remove_folder.assert_any_call("col1")
+            mock_persister.remove_folder.assert_any_call("col2")
+
+
+class TestCreateFunction:
+    """Test create function."""
+
+    def test_create_with_force_clears_caches(self):
+        from core.v1.engine.services.collection_service import create
+
+        cfg = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={},
+        )
+
+        with patch(
+            "core.v1.engine.services.collection_service._clear_caches"
+        ) as mock_clear:
+            with patch(
+                "core.v1.engine.services.collection_service._collection_exists",
+                return_value=False,
+            ):
+                with patch(
+                    "core.v1.engine.services.collection_service._create_one"
+                ) as mock_create:
+                    create(
+                        [cfg],
+                        config_service=MagicMock(),
+                        force=True,
+                    )
+
+                    mock_clear.assert_called_once()
+                    mock_create.assert_called_once()
+
+    def test_create_with_force_and_existing_collection(self):
+        from core.v1.engine.services.collection_service import create
+
+        cfg = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={},
+        )
+
+        with patch(
+            "core.v1.engine.services.collection_service._clear_caches"
+        ):
+            with patch(
+                "core.v1.engine.services.collection_service._collection_exists",
+                return_value=True,
+            ):
+                with patch(
+                    "core.v1.engine.services.collection_service.clear"
+                ) as mock_clear_col:
+                    with patch(
+                        "core.v1.engine.services.collection_service._create_one"
+                    ):
+                        create(
+                            [cfg],
+                            config_service=MagicMock(),
+                            force=True,
+                        )
+
+                        mock_clear_col.assert_called_once()
+
+    def test_create_initializes_config_service_when_none(self):
+        from core.v1.engine.services.collection_service import create
+
+        cfg = SourceConfig(
+            name="test-col",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={},
+        )
+
+        with patch(
+            "core.v1.engine.services.collection_service._create_one"
+        ):
+            with patch("indexed_config.ConfigService") as mock_cs:
+                mock_cs.return_value = MagicMock()
+                create([cfg], config_service=None, force=False)
+                mock_cs.assert_called_once()
+
+
 class TestCollectionExists:
     """Test _collection_exists function."""
 

@@ -184,3 +184,73 @@ class TestFilesDocumentReaderSpecificFiles:
             specific_files=None,
         )
         assert reader.get_number_of_documents() == 2
+
+    def test_specific_files_excluded_extension_filtered(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "b.exe"
+        a.write_text("aaa")
+        b.write_bytes(b"\x00")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[str(a), str(b)],
+        )
+        found = list(reader._iter_file_paths())
+        assert found == [str(a)]
+
+    def test_specific_files_exclude_pattern_applied(self, tmp_path):
+        a = tmp_path / "a.txt"
+        b = tmp_path / "skip.txt"
+        a.write_text("aaa")
+        b.write_text("bbb")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            specific_files=[str(a), str(b)],
+            exclude_patterns=[r"skip.*"],
+        )
+        found = list(reader._iter_file_paths())
+        assert found == [str(a)]
+
+
+class TestFilesDocumentReaderStartFromTime:
+    def test_start_from_time_filters_old_files(self, tmp_path):
+        import datetime
+        import time
+
+        old = tmp_path / "old.txt"
+        old.write_text("old content")
+
+        # Wait briefly then create new file
+        time.sleep(0.05)
+        cutoff = datetime.datetime.now()
+        time.sleep(0.05)
+
+        new = tmp_path / "new.txt"
+        new.write_text("new content")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            start_from_time=cutoff,
+        )
+        found = list(reader._iter_file_paths())
+        assert len(found) == 1
+        assert "new.txt" in found[0]
+
+
+class TestFilesDocumentReaderGlobFallback:
+    def test_glob_pattern_compiled(self, tmp_path):
+        """Patterns that aren't valid regex should fall back to glob."""
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["*.txt"],
+        )
+        # The pattern should be compiled (glob fallback)
+        assert len(reader.compiled_include_patterns) == 1
+
+    def test_regex_pattern_compiled(self, tmp_path):
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+        )
+        assert len(reader.compiled_include_patterns) == 1
