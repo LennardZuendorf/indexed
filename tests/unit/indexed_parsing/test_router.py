@@ -31,6 +31,13 @@ class TestFileRouter:
         for ext in (".md", ".txt", ".json", ".yaml", ".toml", ".csv"):
             assert router.route(Path(f"file{ext}")) == ParsingStrategy.PLAINTEXT
 
+    def test_stylesheet_extensions(self, router: FileRouter):
+        for ext in (".css", ".scss", ".sass", ".less"):
+            assert router.route(Path(f"style{ext}")) == ParsingStrategy.PLAINTEXT
+
+    def test_svg_extension(self, router: FileRouter):
+        assert router.route(Path("icon.svg")) == ParsingStrategy.PLAINTEXT
+
     def test_unknown_extension_fallback(self, router: FileRouter):
         assert router.route(Path("file.xyz")) == ParsingStrategy.DOCLING_FALLBACK
         assert router.route(Path("file.weird")) == ParsingStrategy.DOCLING_FALLBACK

@@ -8,12 +8,18 @@ Idempotent — safe to run multiple times.
 from typing import Optional
 
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
 
-console = Console()
+from indexed.utils.components import (
+    create_detail_card,
+    get_dim_style,
+    get_heading_style,
+    print_success,
+    print_warning,
+)
+from indexed.utils.console import console
+from indexed.utils.progress_bar import create_phased_progress
+from indexed.utils.context_managers import suppress_core_output
+from indexed.utils.storage_info import display_storage_mode_for_command
 
 
 def init(
@@ -53,80 +59,80 @@ def init(
         get_cache_info,
         is_model_cached,
     )
+    from indexed_config import ConfigService, ensure_storage_dirs, get_global_root
 
     model_name = model or DEFAULT_MODEL
 
-    console.print()
-    console.print(
-        Panel.fit(
-            "[bold]Indexed Setup[/bold]\n"
-            "Preparing your environment for semantic search.",
-            border_style="bright_cyan",
-        )
-    )
-    console.print()
+    # Initialize ConfigService and display storage mode
+    ConfigService.instance()
+    display_storage_mode_for_command(console)
 
-    # Step 1: Data directories
-    console.print("[bold]1.[/bold] Creating data directories...", end=" ")
-    from indexed_config import ensure_storage_dirs, get_global_root
+    heading = get_heading_style()
+    dim = get_dim_style()
+    title = f"[{heading}]Initializing Indexed[/{heading}]"
 
     root = get_global_root()
-    ensure_storage_dirs(root)
-    console.print("[green]done[/green]")
 
-    # Step 2: Config validation
-    console.print("[bold]2.[/bold] Validating configuration...", end=" ")
-    try:
-        from indexed_config import ConfigService
+    with create_phased_progress(title=title) as progress:
+        # Phase 1: Create data directories
+        progress.start_phase("Creating data directories")
+        ensure_storage_dirs(root)
+        progress.finish_phase("Creating data directories")
 
-        ConfigService.instance()
-        console.print("[green]done[/green]")
-    except Exception as e:
-        console.print(f"[yellow]warning: {e}[/yellow]")
+        # Phase 2: Validate configuration
+        progress.start_phase("Validating configuration")
+        try:
+            ConfigService.instance()
+        except Exception as e:
+            print_warning(str(e))
+        progress.finish_phase("Validating configuration")
 
-    # Step 3: Model
-    if skip_model:
-        console.print("[bold]3.[/bold] Model download [dim]skipped[/dim]")
-    elif is_model_cached(model_name) and not force:
-        console.print(
-            f"[bold]3.[/bold] Model [cyan]{model_name}[/cyan] "
-            f"already in HuggingFace cache [green]done[/green]"
-        )
-    else:
-        action = "Re-downloading" if force else "Downloading"
-        console.print(f"[bold]3.[/bold] {action} model [cyan]{model_name}[/cyan]...")
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"Downloading {model_name}...", total=None)
-            ensure_model(model_name, force=force)
-            progress.update(task, description="Cached")
+        # Phase 3: Embedding model
+        if skip_model:
+            progress.start_phase("Download embedding model")
+            progress.log("skipped (--skip-model)")
+            progress.finish_phase("Download embedding model")
+        elif is_model_cached(model_name) and not force:
+            progress.start_phase("Download embedding model")
+            progress.log(f"{model_name} already cached")
+            progress.finish_phase("Download embedding model")
+        else:
+            action = "Re-downloading" if force else "Downloading"
+            phase_name = f"{action} model {model_name}"
+            progress.start_phase(phase_name)
+            with suppress_core_output():
+                ensure_model(model_name, force=force)
+            progress.finish_phase(phase_name)
 
-    # Step 4: Summary
+    # Summary
     console.print()
     info = get_cache_info()
 
     if info["models"]:
-        table = Table(title="Cached Embedding Models", show_lines=False, padding=(0, 1))
-        table.add_column("Model", style="cyan")
-        table.add_column("Size", justify="right")
-        table.add_column("Location", style="dim", max_width=50)
         for m in info["models"]:
-            table.add_row(m["name"], f"{m['size_mb']} MB", m["path"])
-        console.print(table)
+            card = create_detail_card(
+                title=m["name"],
+                rows=[
+                    ("Size", f"{m['size_mb']} MB"),
+                    ("Location", m["path"]),
+                ],
+            )
+            console.print(card)
         console.print()
 
-    console.print(
-        Panel.fit(
-            f"[green bold]Setup complete![/green bold]\n\n"
-            f"HuggingFace cache: [dim]{info['cache_dir']}[/dim]\n"
-            f"Models cached: {len(info['models'])} ({info['total_size_mb']} MB)\n\n"
-            f"[dim]Next steps:[/dim]\n"
-            f"  indexed index create files --collection my-docs\n"
-            f'  indexed index search "your query"\n'
-            f"  indexed mcp run",
-            border_style="green",
-        )
+    print_success("Setup complete!")
+
+    card = create_detail_card(
+        title="Setup Summary",
+        rows=[
+            ("Cache", info["cache_dir"]),
+            ("Models", f"{len(info['models'])} ({info['total_size_mb']} MB)"),
+        ],
     )
+    console.print(card)
+
+    console.print()
+    console.print(f"[{dim}]Next steps:[/{dim}]")
+    console.print("  indexed index create files --collection my-docs")
+    console.print('  indexed index search "your query"')
+    console.print("  indexed mcp run")

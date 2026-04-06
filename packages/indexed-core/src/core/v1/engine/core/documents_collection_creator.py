@@ -49,6 +49,7 @@ class DocumentCollectionCreator:
         indexing_batch_size=500_000,
         progress_callback: ProgressCallback = None,
         phased_progress: PhasedProgressCallback = None,
+        explicit_deletions: list[str] | None = None,
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
@@ -59,6 +60,7 @@ class DocumentCollectionCreator:
         self.indexing_batch_size = indexing_batch_size
         self.progress_callback = progress_callback
         self.phased_progress = phased_progress
+        self.explicit_deletions = explicit_deletions or []
 
     def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
@@ -103,27 +105,17 @@ class DocumentCollectionCreator:
                 "Check that the source path exists and contains readable files."
             )
 
-        # Phase: Generating embeddings / Building FAISS index
-        if self.phased_progress:
-            self.phased_progress.start_phase(
-                "Generating embeddings", total=len(document_ids)
-            )
-
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_new_collection(document_ids),
             identifier=f"Indexing documents for collection: {self.collection_name}",
         )
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Generating embeddings")
-            self.phased_progress.start_phase("Writing to disk")
+            self.phased_progress.finish_phase("Generating Embeddings")
 
         manifest = self.__create_manifest_file(
             update_time, last_modified_document_time, number_of_chunks
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -146,12 +138,18 @@ class DocumentCollectionCreator:
 
         update_time = datetime.now(timezone.utc)
 
+        if self.explicit_deletions:
+            log_execution_duration(
+                lambda: self.__remove_explicit_deletions(self.explicit_deletions),
+                identifier=f"Removing deleted documents from collection: {self.collection_name}",
+            )
+
         document_ids, number_of_expected_documents = log_execution_duration(
             lambda: self.__read_documents(),
             identifier=f"Reading documents for collection: {self.collection_name}",
         )
 
-        if len(document_ids) == 0:
+        if len(document_ids) == 0 and not self.explicit_deletions:
             logger.info(
                 "No new documents found for collection update. Updating timestamp only."
             )
@@ -160,10 +158,18 @@ class DocumentCollectionCreator:
             self.__save_json_file(manifest, self.__build_manifest_path())
             return
 
-        if self.phased_progress:
-            self.phased_progress.start_phase(
-                "Generating embeddings", total=len(document_ids)
+        if len(document_ids) == 0:
+            # Only deletions — update manifest counts without re-indexing
+            manifest["updatedTime"] = update_time.isoformat()
+            manifest["numberOfDocuments"] = len(
+                self.persister.read_folder_files(f"{self.collection_name}/documents")
             )
+            manifest["numberOfChunks"] = self.document_indexers[0].get_size()
+            self.__save_json_file(manifest, self.__build_manifest_path())
+            logger.info(
+                f"Collection successfully updated (deletions only): \n{_json_dumps(manifest, indent=True)}"
+            )
+            return
 
         last_modified_document_time, number_of_chunks = log_execution_duration(
             lambda: self.__index_documents_for_existing_collection(document_ids),
@@ -171,8 +177,7 @@ class DocumentCollectionCreator:
         )
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Generating embeddings")
-            self.phased_progress.start_phase("Writing to disk")
+            self.phased_progress.finish_phase("Generating Embeddings")
 
         manifest = self.__create_manifest_file(
             update_time,
@@ -180,9 +185,6 @@ class DocumentCollectionCreator:
             number_of_chunks,
             existing_manifest=manifest,
         )
-
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Writing to disk")
 
         if number_of_expected_documents != len(document_ids):
             logger.warning(
@@ -210,7 +212,7 @@ class DocumentCollectionCreator:
 
         if self.phased_progress:
             self.phased_progress.start_phase(
-                "Fetching documents",
+                "Fetching Documents",
                 total=number_of_expected_documents
                 if number_of_expected_documents
                 else None,
@@ -236,10 +238,10 @@ class DocumentCollectionCreator:
                 )
 
             if self.phased_progress:
-                self.phased_progress.advance("Fetching documents")
+                self.phased_progress.advance("Fetching Documents")
 
         if self.phased_progress:
-            self.phased_progress.finish_phase("Fetching documents")
+            self.phased_progress.finish_phase("Fetching Documents")
 
         return document_ids, number_of_expected_documents
 
@@ -332,8 +334,22 @@ class DocumentCollectionCreator:
                         last_index_item_id
                     )
 
+            # Start embedding phase with chunk-level tracking
+            if self.phased_progress:
+                self.phased_progress.start_phase(
+                    "Generating Embeddings", total=len(items_to_index)
+                )
+
+            embedding_progress = None
+            if self.phased_progress:
+
+                def embedding_progress(n: int) -> None:
+                    self.phased_progress.advance("Generating Embeddings", amount=n)
+
             for indexer in self.document_indexers:
-                indexer.index_texts(index_item_ids, items_to_index)
+                indexer.index_texts(
+                    index_item_ids, items_to_index, progress_callback=embedding_progress
+                )
 
             processed += len(batch_document_ids)
             if self.progress_callback:
@@ -344,10 +360,6 @@ class DocumentCollectionCreator:
                         total=total_docs,
                         message=f"Indexing: {processed}/{total_docs} documents",
                     )
-                )
-            if self.phased_progress:
-                self.phased_progress.advance(
-                    "Generating embeddings", amount=len(batch_document_ids)
                 )
 
         for indexer in self.document_indexers:
@@ -387,11 +399,41 @@ class DocumentCollectionCreator:
                     index_ids_to_remove.extend(document_index_ids_to_remove)
 
                     for index_id in document_index_ids_to_remove:
-                        del index_mapping[str(index_id)]
+                        index_mapping.pop(str(index_id), None)
                     del reverse_index_mapping[document_id]
 
             for indexer in self.document_indexers:
                 indexer.remove_ids(np.array(index_ids_to_remove))
+
+    def __remove_explicit_deletions(self, doc_ids: list[str]) -> None:
+        """Remove explicitly deleted documents (by document ID) from the index.
+
+        Called during updates when the ChangeTracker reports deleted files.
+        Document IDs for local files are relative file paths (e.g. ``utils/retry.py``).
+        """
+        if not doc_ids:
+            return
+
+        for doc_id in doc_ids:
+            doc_file = f"{self.collection_name}/documents/{doc_id}.json"
+            if self.persister.is_path_exists(doc_file):
+                self.persister.remove_file(doc_file)
+
+        index_mapping = _json_loads(
+            self.persister.read_text_file(self.__build_index_mapping_path())
+        )
+        reverse_index_mapping = _json_loads(
+            self.persister.read_text_file(self.__build_reverse_index_mapping_path())
+        )
+
+        self.__remove_documents_from_index(
+            doc_ids, index_mapping, reverse_index_mapping
+        )
+
+        self.__save_json_file(index_mapping, self.__build_index_mapping_path())
+        self.__save_json_file(
+            reverse_index_mapping, self.__build_reverse_index_mapping_path()
+        )
 
     def __build_reverse_index_mapping_path(self):
         return f"{self.collection_name}/indexes/reverse_index_document_mapping.json"

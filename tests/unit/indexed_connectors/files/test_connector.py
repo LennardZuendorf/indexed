@@ -54,7 +54,7 @@ def test_filesystem_connector_config_spec():
     # Verify include_patterns is optional with default
     assert spec["include_patterns"]["type"] == "list"
     assert spec["include_patterns"]["required"] is False
-    assert spec["include_patterns"]["default"] == [".*"]
+    assert spec["include_patterns"]["default"] == ["*"]
 
     # Verify exclude_patterns is optional with default
     assert spec["exclude_patterns"]["type"] == "list"

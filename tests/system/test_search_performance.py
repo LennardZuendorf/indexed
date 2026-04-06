@@ -9,13 +9,29 @@ Tests the performance-critical paths that were optimized:
 
 import json
 import os
+import pickle
 
+import faiss
 import numpy as np
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import MagicMock
 
 from indexed.app import app
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+class _RandomEmbedder:
+    """Stub embedder returning random 384-d vectors (avoids model load)."""
+
+    def embed(self, text: str) -> np.ndarray:
+        return np.random.rand(384).astype(np.float32)
+
+    def get_number_of_dimensions(self) -> int:
+        return 384
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +83,11 @@ def test_cli_index_search_help(benchmark):
 
 @pytest.fixture(scope="module")
 def mock_collection(tmp_path_factory):
-    """Create a realistic mock collection on disk for search benchmarks."""
+    """Create a realistic mock collection on disk for search benchmarks.
+
+    Scaled to 1000 docs × 10 chunks = 10,000 vectors so that FAISS search,
+    JSON parsing, and index I/O produce measurable (non-zero) times.
+    """
     base = tmp_path_factory.mktemp("collections")
     collection_name = "bench-collection"
     indexer_name = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
@@ -79,9 +99,10 @@ def mock_collection(tmp_path_factory):
     indexes_dir.mkdir(parents=True)
     docs_dir.mkdir(parents=True)
 
-    num_docs = 100
-    chunks_per_doc = 5
+    num_docs = 1000
+    chunks_per_doc = 10
     total_chunks = num_docs * chunks_per_doc
+    dimension = 384  # all-MiniLM-L6-v2
 
     # Build index-document mapping
     mapping = {}
@@ -119,9 +140,6 @@ def mock_collection(tmp_path_factory):
         (docs_dir / f"{doc_id}.json").write_text(json.dumps(doc))
 
     # Create FAISS index with random vectors
-    import faiss
-
-    dimension = 384  # all-MiniLM-L6-v2
     inner_index = faiss.IndexFlatL2(dimension)
     index = faiss.IndexIDMap(inner_index)
     vectors = np.random.rand(total_chunks, dimension).astype(np.float32)
@@ -132,8 +150,6 @@ def mock_collection(tmp_path_factory):
     faiss.write_index(index, str(indexes_dir / "indexer.faiss"))
 
     # Also save in legacy pickle format for comparison
-    import pickle
-
     with open(str(indexes_dir / "indexer"), "wb") as f:
         pickle.dump(faiss.serialize_index(index), f)
 
@@ -163,29 +179,34 @@ def test_searcher_cached_mapping(benchmark, mock_collection):
     """Benchmark: DocumentCollectionSearcher with cached mapping.
 
     Measures search latency when mapping is already cached (MCP warm path).
-    The mapping + document caches eliminate repeated JSON I/O.
+    Uses a real FAISS index for actual vector similarity search.
     """
     from core.v1.engine.core.documents_collection_searcher import (
         DocumentCollectionSearcher,
     )
+    from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
     from core.v1.engine.persisters.disk_persister import DiskPersister
 
     persister = DiskPersister(base_path=mock_collection["base_path"])
 
-    # Create a mock indexer that returns fake FAISS results
-    mock_indexer = MagicMock()
-    mock_indexer.get_name.return_value = mock_collection["indexer_name"]
-
-    # Simulate FAISS returning top 10 results
-    scores = np.array(
-        [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]], dtype=np.float32
+    faiss_path = os.path.join(
+        mock_collection["base_path"],
+        mock_collection["collection_name"],
+        "indexes",
+        mock_collection["indexer_name"],
+        "indexer.faiss",
     )
-    indexes = np.array([[0, 5, 10, 15, 20, 25, 30, 35, 40, 45]], dtype=np.int64)
-    mock_indexer.search.return_value = (scores, indexes)
+    faiss_index = faiss.read_index(faiss_path, faiss.IO_FLAG_MMAP)
+
+    indexer = FaissIndexer(
+        name=mock_collection["indexer_name"],
+        embedder=_RandomEmbedder(),
+        faiss_index=faiss_index,
+    )
 
     searcher = DocumentCollectionSearcher(
         collection_name=mock_collection["collection_name"],
-        indexer=mock_indexer,
+        indexer=indexer,
         persister=persister,
     )
 
@@ -211,26 +232,34 @@ def test_searcher_first_search(benchmark, mock_collection):
     """Benchmark: DocumentCollectionSearcher first search (cold mapping).
 
     Measures search latency when mapping needs to be loaded from disk.
-    This is the CLI path — one search per process.
+    Uses a real FAISS index — this is the CLI path (one search per process).
     """
     from core.v1.engine.core.documents_collection_searcher import (
         DocumentCollectionSearcher,
     )
+    from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
     from core.v1.engine.persisters.disk_persister import DiskPersister
 
     persister = DiskPersister(base_path=mock_collection["base_path"])
-
-    mock_indexer = MagicMock()
-    mock_indexer.get_name.return_value = mock_collection["indexer_name"]
-    scores = np.array([[0.1, 0.2, 0.3, 0.4, 0.5]], dtype=np.float32)
-    indexes = np.array([[0, 10, 20, 30, 40]], dtype=np.int64)
-    mock_indexer.search.return_value = (scores, indexes)
+    faiss_path = os.path.join(
+        mock_collection["base_path"],
+        mock_collection["collection_name"],
+        "indexes",
+        mock_collection["indexer_name"],
+        "indexer.faiss",
+    )
 
     def run_cold_search():
-        # Create a fresh searcher each time (simulates CLI cold start)
+        # Load FAISS index fresh each iteration (simulates CLI cold start)
+        faiss_index = faiss.read_index(faiss_path, faiss.IO_FLAG_MMAP)
+        indexer = FaissIndexer(
+            name=mock_collection["indexer_name"],
+            embedder=_RandomEmbedder(),
+            faiss_index=faiss_index,
+        )
         searcher = DocumentCollectionSearcher(
             collection_name=mock_collection["collection_name"],
-            indexer=mock_indexer,
+            indexer=indexer,
             persister=persister,
         )
         result = searcher.search(
@@ -253,10 +282,9 @@ def test_searcher_first_search(benchmark, mock_collection):
 def test_faiss_load_native_mmap(benchmark, mock_collection):
     """Benchmark: FAISS index load via native read_index with mmap.
 
-    This is the new optimized path using faiss.read_index + IO_FLAG_MMAP.
+    This is the optimized path using faiss.read_index + IO_FLAG_MMAP.
+    Performs a search after loading to force page faults.
     """
-    import faiss
-
     index_path = os.path.join(
         mock_collection["base_path"],
         mock_collection["collection_name"],
@@ -268,6 +296,9 @@ def test_faiss_load_native_mmap(benchmark, mock_collection):
     def load_native():
         idx = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
         assert idx.ntotal == mock_collection["total_chunks"]
+        # Force actual memory access by searching
+        query = np.random.rand(1, mock_collection["dimension"]).astype(np.float32)
+        idx.search(query, 10)
 
     benchmark(load_native)
 
@@ -277,10 +308,8 @@ def test_faiss_load_legacy_pickle(benchmark, mock_collection):
     """Benchmark: FAISS index load via legacy pickle + deserialize.
 
     This is the old path: pickle.load() -> faiss.deserialize_index().
+    Performs a search after loading for fair comparison with mmap.
     """
-    import faiss
-    import pickle
-
     index_path = os.path.join(
         mock_collection["base_path"],
         mock_collection["collection_name"],
@@ -294,6 +323,9 @@ def test_faiss_load_legacy_pickle(benchmark, mock_collection):
             serialized = pickle.load(f)
         idx = faiss.deserialize_index(serialized)
         assert idx.ntotal == mock_collection["total_chunks"]
+        # Search for fair comparison with mmap path
+        query = np.random.rand(1, mock_collection["dimension"]).astype(np.float32)
+        idx.search(query, 10)
 
     benchmark(load_pickle)
 
@@ -307,7 +339,7 @@ def test_faiss_load_legacy_pickle(benchmark, mock_collection):
 def test_orjson_loads_mapping(benchmark, mock_collection):
     """Benchmark: orjson.loads on the index-document mapping file.
 
-    Measures JSON parse speed for a realistic mapping file (500 entries).
+    Measures JSON parse speed for a realistic mapping file (10,000 entries).
     """
     try:
         import orjson

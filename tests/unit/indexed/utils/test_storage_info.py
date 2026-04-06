@@ -1,7 +1,7 @@
 """Comprehensive tests for storage_info utility module."""
 
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import pytest
 from rich.console import Console
 
@@ -116,12 +116,12 @@ class TestPrintStorageInfo:
         """Should include reason in printed output."""
         mock_console = Mock(spec=Console)
         path = Path.home() / ".indexed"
-        reason = "via --global flag"
-        print_storage_info(mock_console, "global", path, reason=reason)
+        reason = "via --local flag"
+        print_storage_info(mock_console, "local", path, reason=reason)
 
         # Check that printed string contains reason
         call_args = str(mock_console.print.call_args_list)
-        assert "via --global flag" in call_args or mock_console.print.called
+        assert "via --local flag" in call_args or mock_console.print.called
 
     def test_local_mode_formatting(self):
         """Should format local mode correctly."""
@@ -146,18 +146,6 @@ class TestGetStorageModeAndReason:
 
         assert mode == "local"
         assert "via --local flag" in reason
-
-    def test_global_flag_override_takes_precedence(self):
-        """Should use --global flag over all other settings."""
-        mode, reason = get_storage_mode_and_reason(
-            has_local=True,
-            mode_override="global",
-            config_mode="local",
-            workspace_pref="local",
-        )
-
-        assert mode == "global"
-        assert "via --global flag" in reason
 
     def test_config_mode_used_when_no_override(self):
         """Should use config setting when no CLI override."""
@@ -244,6 +232,77 @@ class TestGetStorageModeAndReason:
         assert "saved preference" in reason
 
 
+class TestDisplayStorageModeForCommand:
+    """Test display_storage_mode_for_command function."""
+
+    def test_display_calls_print_storage_info(self):
+        from indexed.utils.storage_info import display_storage_mode_for_command
+
+        mock_console = Mock(spec=Console)
+
+        with patch("indexed_config.ConfigService") as mock_cs:
+            mock_instance = Mock()
+            mock_instance.resolve_storage_mode.return_value = "global"
+            mock_instance.store.read.return_value = {}
+            mock_instance.get_workspace_preference.return_value = None
+            mock_cs.instance.return_value = mock_instance
+
+            with patch("indexed_config.has_local_config", return_value=False):
+                with patch(
+                    "indexed_config.get_global_root",
+                    return_value=Path.home() / ".indexed",
+                ):
+                    with patch(
+                        "indexed_config.get_local_root",
+                        return_value=Path.cwd() / ".indexed",
+                    ):
+                        # typer.get_current_context is imported locally; patch the module attr
+                        import typer as _typer
+
+                        with patch.object(
+                            _typer,
+                            "get_current_context",
+                            create=True,
+                            return_value=None,
+                        ):
+                            display_storage_mode_for_command(mock_console)
+
+                            assert mock_console.print.called
+
+    def test_display_local_mode(self):
+        from indexed.utils.storage_info import display_storage_mode_for_command
+
+        mock_console = Mock(spec=Console)
+
+        with patch("indexed_config.ConfigService") as mock_cs:
+            mock_instance = Mock()
+            mock_instance.resolve_storage_mode.return_value = "local"
+            mock_instance.store.read.return_value = {"storage": {"mode": "local"}}
+            mock_instance.get_workspace_preference.return_value = None
+            mock_cs.instance.return_value = mock_instance
+
+            with patch("indexed_config.has_local_config", return_value=True):
+                with patch(
+                    "indexed_config.get_local_root",
+                    return_value=Path.cwd() / ".indexed",
+                ):
+                    with patch(
+                        "indexed_config.get_global_root",
+                        return_value=Path.home() / ".indexed",
+                    ):
+                        import typer as _typer
+
+                        with patch.object(
+                            _typer,
+                            "get_current_context",
+                            create=True,
+                            return_value=None,
+                        ):
+                            display_storage_mode_for_command(mock_console)
+
+                            assert mock_console.print.called
+
+
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
@@ -277,7 +336,7 @@ class TestEdgeCases:
         # Test each level
         cases = [
             # (has_local, override, config, pref, expected_mode, expected_reason_keyword)
-            (True, "global", "local", "local", "global", "flag"),
+            (False, "local", "global", "global", "local", "flag"),
             (True, None, "local", "global", "local", "config"),
             (True, None, None, "global", "global", "preference"),
             (True, None, None, None, "local", "found"),

@@ -43,3 +43,30 @@ class TestParsingModule:
         doc = module.parse(FIXTURES / "sample.py")
         assert "format" in doc.metadata
         assert doc.metadata["format"] == ".py"
+
+    def test_css_routes_to_plaintext(self, module: ParsingModule, tmp_path: Path):
+        css_file = tmp_path / "styles.css"
+        css_file.write_text("body { color: red; }")
+        doc = module.parse(css_file)
+        assert len(doc.chunks) > 0
+        assert doc.metadata.get("error") is not True
+
+    def test_docling_fallback_succeeds_via_plaintext(
+        self, module: ParsingModule, tmp_path: Path
+    ):
+        """Files with unknown extensions should fall back to plaintext without error."""
+        unknown_file = tmp_path / ".gitignore"
+        unknown_file.write_text("node_modules/\n.env\n")
+        doc = module.parse(unknown_file)
+        assert len(doc.chunks) > 0
+        assert doc.metadata.get("error") is not True
+
+    def test_docling_fallback_empty_file_no_error(
+        self, module: ParsingModule, tmp_path: Path
+    ):
+        """Empty files via fallback should not be flagged as errors."""
+        empty = tmp_path / ".hotreload"
+        empty.write_text("")
+        doc = module.parse(empty)
+        assert doc.chunks == []
+        assert doc.metadata.get("error") is not True

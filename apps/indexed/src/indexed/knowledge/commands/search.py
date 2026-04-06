@@ -6,6 +6,8 @@ results beautifully with the card-based design system.
 
 import typer
 from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
+
+# Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
 
 if TYPE_CHECKING:
@@ -15,6 +17,7 @@ from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -25,7 +28,6 @@ from ...utils.components import (
     get_dim_style,
     print_error,
     print_warning,
-    OperationStatus,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -366,10 +368,21 @@ def search(
 
     simple = is_simple_output()
 
+    # Prefer local collections over global
+    from ...utils.storage_info import resolve_preferred_collections_path
+
+    preferred_path = str(resolve_preferred_collections_path())
+
+    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
+    if not is_verbose_mode() and not simple:
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
     # Determine collections to search
     if collection is None:
         # Search all collections
-        all_statuses = status_svc()
+        all_statuses = status_svc(collections_path=preferred_path)
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -389,7 +402,7 @@ def search(
             )
     else:
         # Search specific collection
-        statuses = status_svc([collection])
+        statuses = status_svc([collection], collections_path=preferred_path)
         if not statuses:
             if simple:
                 print_json({"error": f"Collection '{collection}' not found"})
@@ -406,7 +419,7 @@ def search(
     # Build search configs for all collections
     search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name])[0]
+        coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
         search_configs[coll_name] = source_config_class(
             name=coll_name,
             type="localFiles",
@@ -414,11 +427,11 @@ def search(
             indexer=coll_status.indexers[0],
         )
 
-    # Search each collection with status spinner
+    # Search each collection with phased progress
     results = {}
 
     if simple or is_verbose_mode():
-        # Simple output / verbose mode: no spinner
+        # Simple output / verbose mode: no progress display
         for coll_name in collections_to_search:
             with NoOpContext():
                 result = svc_search(
@@ -427,15 +440,20 @@ def search(
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
+                    collections_path=preferred_path,
                 )
                 results.update(result)
     else:
-        # Normal mode: OperationStatus spinner for all collections
-        num_colls = len(collections_to_search)
-        with OperationStatus(console, "Searching", capture_logs=False) as op_status:
-            op_status.update("Loading model...")
-            for idx, coll_name in enumerate(collections_to_search, 1):
-                op_status.update(f"Searching {idx}/{num_colls}: {coll_name}")
+        # Normal mode: phased progress display (consistent with Create/Update)
+        heading = get_heading_style()
+        accent = get_accent_style()
+        title = (
+            f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
+        )
+
+        with create_phased_progress(title=title) as phased:
+            for coll_name in collections_to_search:
+                phased.start_phase(f"Searching {coll_name}")
                 with suppress_core_output():
                     result = svc_search(
                         query,
@@ -443,8 +461,10 @@ def search(
                         max_docs=limit,
                         max_chunks=limit * 3,
                         include_matched_chunks=True,
+                        collections_path=preferred_path,
                     )
                     results.update(result)
+                phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
     if simple:

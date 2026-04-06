@@ -105,9 +105,7 @@ class DoclingParser:
             )
 
         except Exception:
-            logger.opt(exception=True).warning(
-                "Docling failed to parse {}; returning empty document", file_path
-            )
+            logger.debug("Docling could not parse {} (unsupported format)", file_path)
             return ParsedDocument(
                 file_path=str(file_path),
                 chunks=[],

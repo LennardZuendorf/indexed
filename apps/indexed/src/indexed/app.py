@@ -20,7 +20,7 @@ from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_error, print_info, print_success  # noqa: E402
+from .utils.components import print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_help_theme_styles,
@@ -50,13 +50,7 @@ def _init_app(
     local: bool = typer.Option(
         False,
         "--local",
-        help="Use local .indexed/ storage",
-        rich_help_panel="Storage",
-    ),
-    global_: bool = typer.Option(
-        False,
-        "--global",
-        help="Use global ~/.indexed/ storage",
+        help="Use local .indexed/ storage instead of global ~/.indexed/",
         rich_help_panel="Storage",
     ),
     verbose: bool = typer.Option(
@@ -111,36 +105,20 @@ def _init_app(
     )
     setup_root_logger(level_str=level, json_mode=json_mode)
 
-    if local and global_:
-        print_error("Cannot use both --local and --global flags together.")
-        raise typer.Exit(1)
-
     # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
-    if local:
-        ctx.obj["mode_override"] = "local"
-    elif global_:
-        ctx.obj["mode_override"] = "global"
-    else:
-        ctx.obj["mode_override"] = None
+    ctx.obj["mode_override"] = "local" if local else None
 
     if local:
-        from indexed_config import ensure_storage_dirs, get_local_root, has_local_config
+        from indexed_config import ensure_storage_dirs, get_local_root
 
         workspace = Path.cwd()
-        if not has_local_config(workspace):
-            local_root = get_local_root(workspace)
-            ensure_storage_dirs(local_root)
-            (local_root / "config.toml").write_text(
-                "# Indexed Local Configuration\n"
-                "# Auto-created with --local flag\n\n"
-                "[storage]\n"
-                'mode = "local"\n'
-            )
-            print_success(f"Created local .indexed folder at {local_root}")
+        local_root = get_local_root(workspace)
+        ensure_storage_dirs(local_root, is_local=True)
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
+from .debug import debug as debug_command  # noqa: E402
 from .init import init as init_command  # noqa: E402
 
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
@@ -260,6 +238,8 @@ app.command(
 app.command(
     "license", rich_help_panel=RESOURCES_PANEL, help="Display License and Terms"
 )(info.license_terms)
+
+app.command("debug", hidden=True)(debug_command)
 
 
 @app.command(

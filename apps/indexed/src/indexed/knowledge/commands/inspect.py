@@ -197,18 +197,22 @@ def inspect_collections(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import inspect as this_module
+    from ...utils.storage_info import resolve_preferred_collections_path
 
     inspect_svc = this_module.inspect
+
+    # Prefer local collections over global
+    preferred_path = str(resolve_preferred_collections_path())
 
     # Fetch collection info from core - this is connection-agnostic
     if name:
         # Inspect specific collection (no progress bar)
-        collections = inspect_svc([name])
+        collections = inspect_svc([name], collections_path=preferred_path)
 
         # Check if collection exists and has valid data
         if not collections or collections[0].number_of_documents == 0:
             # Check if it truly doesn't exist vs just being empty
-            all_collections = inspect_svc()
+            all_collections = inspect_svc(collections_path=preferred_path)
             exists = any(c.name == name for c in all_collections)
 
             if not exists:
@@ -229,7 +233,7 @@ def inspect_collections(
             format_collection_detail(collections[0])
     else:
         # List all collections (no progress bar)
-        collections = inspect_svc()
+        collections = inspect_svc(collections_path=preferred_path)
 
         if not collections:
             console.print(

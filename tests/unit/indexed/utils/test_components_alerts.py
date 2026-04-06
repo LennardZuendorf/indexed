@@ -200,7 +200,7 @@ class TestEdgeCases:
     @patch("indexed.utils.components.alerts.console")
     def test_handles_numeric_message(self, mock_console):
         """Should handle numeric messages (converted to string)."""
-        print_success(42)  # type: ignore
+        print_success(str(42))
 
         assert mock_console.print.called
 

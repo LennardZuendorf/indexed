@@ -1,7 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from datetime import timezone
+
+def format_source_type(source_type: Optional[str]) -> str:
+    """Convert an internal source type identifier to a human-readable display name."""
+    if not source_type:
+        return "Unknown"
+
+    type_map = {
+        "jira": "Jira",
+        "jiraCloud": "Jira Cloud",
+        "confluence": "Confluence",
+        "confluenceCloud": "Confluence Cloud",
+        "localFiles": "Local Files",
+    }
+    return type_map.get(source_type, source_type.capitalize())
 
 
 def format_time(timestamp: Optional[str]) -> str:

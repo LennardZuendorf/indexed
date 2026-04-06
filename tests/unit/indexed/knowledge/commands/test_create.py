@@ -417,7 +417,7 @@ class TestPromptMissingFilesFields:
             present={},
         )
         prompt_fn(validation, mock_config, "sources.files")
-        assert validation.present["include_patterns"] == [".*"]
+        assert validation.present["include_patterns"] == ["*"]
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")

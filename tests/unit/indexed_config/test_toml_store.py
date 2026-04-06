@@ -53,10 +53,21 @@ class TestTomlStorePaths:
 class TestTomlStoreEnvPaths:
     """Test TomlStore .env file path properties."""
 
-    def test_env_path_defaults_to_local(self):
-        """Default _env_path is the local .env file."""
+    def test_env_path_defaults_to_global_when_no_local_config(self):
+        """Default _env_path is the global .env when no local config exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace)
+            expected = Path.home() / ".indexed" / ".env"
+            assert store._env_path == expected
+
+    def test_env_path_defaults_to_local_when_local_config_exists(self):
+        """Default _env_path is the local .env when local config exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[existing]\nkey = "val"\n')
             store = TomlStore(workspace=workspace)
             expected = workspace / ".indexed" / ".env"
             assert store._env_path == expected
@@ -133,19 +144,40 @@ class TestTomlStoreRead:
 class TestTomlStoreWrite:
     """Test TomlStore write functionality."""
 
-    def test_write_creates_workspace_config(self):
-        """write() creates config in workspace by default."""
+    def test_write_defaults_to_global_when_no_local_config(self):
+        """write() without mode_override writes to global when no local config exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_home = Path(tmpdir) / "home"
+            fake_home.mkdir()
+            workspace = Path(tmpdir) / "project"
+            workspace.mkdir()
+            with patch.object(Path, "home", return_value=fake_home):
+                store = TomlStore(workspace=workspace)
+                store.write({"test": {"key": "value"}})
+
+                global_path = fake_home / ".indexed" / "config.toml"
+                local_path = workspace / ".indexed" / "config.toml"
+                assert global_path.exists()
+                assert not local_path.exists()
+                content = global_path.read_text()
+                assert "key" in content
+                assert "value" in content
+
+    def test_write_defaults_to_local_when_local_config_exists(self):
+        """write() without mode_override writes to local when local config already exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            store = TomlStore(workspace=workspace)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text('[existing]\nkey = "val"\n')
 
+            store = TomlStore(workspace=workspace)
             store.write({"test": {"key": "value"}})
 
-            config_path = workspace / ".indexed" / "config.toml"
-            assert config_path.exists()
-            content = config_path.read_text()
+            local_path = workspace / ".indexed" / "config.toml"
+            assert local_path.exists()
+            content = local_path.read_text()
             assert "key" in content
-            assert "value" in content
 
     def test_write_to_global(self):
         """write() with to_global=True writes to global config."""
@@ -193,14 +225,18 @@ class TestTomlStoreConflictDetection:
     def test_configs_differ_false_when_only_one_exists(self):
         """configs_differ returns False when only one config exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
-            # Create only local config
+            fake_home = Path(tmpdir) / "home"
+            fake_home.mkdir()
+            workspace = Path(tmpdir) / "project"
+            workspace.mkdir()
+            # Create only local config (no global config in fake_home)
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
             (local_dir / "config.toml").write_text('[test]\nkey = "value"')
 
-            store = TomlStore(workspace=workspace)
-            assert store.configs_differ() is False
+            with patch.object(Path, "home", return_value=fake_home):
+                store = TomlStore(workspace=workspace)
+                assert store.configs_differ() is False
 
     def test_configs_differ_true_when_different(self):
         """configs_differ returns True when configs have different values."""
