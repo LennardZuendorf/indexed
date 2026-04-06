@@ -1,0 +1,16 @@
+{
+  "name": "indexed",
+  "description": "Semantic document search for Claude Code via the indexed MCP server. Bundles search skills (index-create, index-use, index-update), a PreToolUse nudge hook that steers Claude away from Grep/Glob toward semantic MCP search, and MCP server registration.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Lennard Zuendorf",
+    "email": "lennard@zuendorf.me"
+  },
+  "homepage": "https://github.com/lennardzuendorf/indexed",
+  "repository": "https://github.com/lennardzuendorf/indexed",
+  "license": "MIT",
+  "keywords": ["search", "indexing", "semantic", "mcp", "faiss", "codebase"],
+  "skills": "../skills/",
+  "hooks": "../.claude/hooks/hooks.json",
+  "mcpServers": "../.mcp.json"
+}
