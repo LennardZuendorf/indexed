@@ -1,6 +1,6 @@
 [project]
 name = "indexed"
-version = "0.1.0"
+version = "0.1.3"
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 authors = [
@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "indexed-core",
     "indexed-connectors",
+    "indexed-parsing",
     "indexed-utils",
     "indexed-config",
     "typer>=0.12.3",
@@ -27,6 +28,7 @@ indexed-mcp = "indexed.mcp.cli:cli_main"
 [tool.uv.sources]
 indexed-core = { workspace = true }
 indexed-connectors = { workspace = true }
+indexed-parsing = { workspace = true }
 indexed-utils = { workspace = true }
 indexed-config = { workspace = true }
 
@@ -38,6 +40,8 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.hooks.una-build]
+
+[tool.hatch.build.hooks.custom]
 
 [tool.hatch.metadata.hooks.una-meta]
 

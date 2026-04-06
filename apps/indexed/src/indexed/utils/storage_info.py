@@ -22,6 +22,25 @@ logger = logging.getLogger(__name__)
 StorageMode = Literal["global", "local"]
 
 
+def resolve_preferred_collections_path() -> Path:
+    """Resolve collections path preferring local over global.
+
+    If a local .indexed/data/collections/ directory exists and contains
+    at least one collection, use it. Otherwise fall back to the global default.
+
+    This is used by search/inspect commands which should prefer local collections
+    while keeping config resolution separate (always global unless local config.toml exists).
+    """
+    local_path = Path.cwd() / ".indexed" / "data" / "collections"
+    if local_path.is_dir() and any(local_path.iterdir()):
+        return local_path
+
+    from indexed_config import ConfigService
+
+    resolver = ConfigService.instance().resolver
+    return resolver.get_collections_path()
+
+
 def get_storage_indicator(
     mode: StorageMode,
     path: Path,
@@ -99,8 +118,6 @@ def get_storage_mode_and_reason(
     """
     if mode_override == "local":
         return ("local", "via --local flag")
-    if mode_override == "global":
-        return ("global", "via --global flag")
 
     if config_mode == "local":
         return ("local", "via config setting")

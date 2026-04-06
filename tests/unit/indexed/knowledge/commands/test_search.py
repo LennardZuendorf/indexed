@@ -7,14 +7,26 @@ We focus on realistic behaviors:
 - formatter behavior for no results and mixed results
 """
 
+from pathlib import Path
 from typing import Any, Dict, List
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import search as search_cmd
+from indexed.utils import storage_info as storage_info_mod
 
 
 runner = CliRunner()
+
+# Patch resolve_preferred_collections_path globally for all search tests
+# so tests don't need ConfigService
+_MOCK_PATH = patch.object(
+    storage_info_mod,
+    "resolve_preferred_collections_path",
+    return_value=Path("/tmp/test-collections"),
+)
+_MOCK_PATH.start()
 
 
 class TestSearchCommand:
@@ -34,7 +46,7 @@ class TestSearchCommand:
     def test_missing_specific_collection_exits_with_error(self, monkeypatch):
         """Searching a non-existent collection returns a clear error and exit 1."""
         # status([name]) returns empty list for that collection
-        monkeypatch.setattr(search_cmd, "status", lambda names=None: [])
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
 
         # Avoid hitting real logging setup
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
@@ -292,7 +304,7 @@ class TestSearchCommandExecution:
 
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("col1"), self._make_status("col2")]
 
@@ -320,36 +332,26 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return search_results
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
 
-        # suppress_core_output and console.status need to be contexts
         from contextlib import contextmanager
 
         @contextmanager
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            progress = Mock()
-            task_id = 0
-
-            def callback(*a, **kw):
-                pass
-
-            yield progress, task_id, callback
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        # Mock create_phased_progress as a context manager returning a mock with start/finish_phase
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(search_cmd.app, ["my-query"])
@@ -359,7 +361,7 @@ class TestSearchCommandExecution:
 
     def test_search_specific_collection_compact_output(self, monkeypatch):
         """--compact flag should use compact formatter path."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("myCol")]
 
@@ -378,6 +380,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
 
@@ -389,18 +392,13 @@ class TestSearchCommandExecution:
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            yield Mock(), 0, lambda *a, **kw: None
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(
@@ -430,6 +428,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"col1": {"results": []}}
 
@@ -449,7 +448,7 @@ class TestSearchCommandExecution:
 
     def test_search_no_content_flag(self, monkeypatch):
         """--no-content flag should pass show_content=False to formatter."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
 
         statuses = [self._make_status("col1")]
 
@@ -468,6 +467,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {"col1": {"results": [{"id": "d1"}]}}
 
@@ -479,18 +479,13 @@ class TestSearchCommandExecution:
         def fake_suppress():
             yield
 
-        @contextmanager
-        def fake_progress(desc):
-            yield Mock(), 0, lambda *a, **kw: None
-
         monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-        from unittest.mock import MagicMock
 
-        mock_status_ctx = MagicMock()
-        mock_status_ctx.__enter__ = Mock(return_value=MagicMock())
-        mock_status_ctx.__exit__ = Mock(return_value=False)
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
         monkeypatch.setattr(
-            search_cmd.console, "status", lambda *a, **kw: mock_status_ctx
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
         result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])
@@ -522,6 +517,7 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             progress_callback=None,
+            collections_path=None,
         ):
             return {
                 "col1": {
@@ -578,3 +574,73 @@ class TestSearchCommandExecution:
             assert "error" in parsed
         finally:
             reset_simple_output()
+
+    def test_search_simple_output_missing_collection(self, monkeypatch):
+        """In simple output mode, missing collection should return JSON error and exit 1."""
+        import json
+
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["my-query", "--collection", "missing"]
+            )
+
+            assert result.exit_code == 1
+            parsed = json.loads(result.stdout)
+            assert "error" in parsed
+            assert "missing" in parsed["error"]
+        finally:
+            reset_simple_output()
+
+
+class TestFormatSearchResultsCompactEdgeCases:
+    """Tests for edge cases in compact formatter."""
+
+    def test_compact_skips_error_collections(self, monkeypatch):
+        """format_search_results_compact should skip error collections."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "error-coll": {"error": "unavailable"},
+            "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
+        }
+        search_cmd.format_search_results_compact("query", results=results)
+
+        joined = "\n".join(outputs)
+        assert "error-coll" not in joined
+        assert "good-coll" in joined
+
+    def test_compact_skips_empty_collections(self, monkeypatch):
+        """format_search_results_compact should skip collections with no results."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            text = " ".join(str(a) for a in args)
+            outputs.append(text)
+
+        monkeypatch.setattr(
+            search_cmd, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "empty-coll": {"results": []},
+        }
+        search_cmd.format_search_results_compact("query", results=results)
+
+        joined = "\n".join(outputs)
+        assert "empty-coll" not in joined
+        assert "No results found" in joined

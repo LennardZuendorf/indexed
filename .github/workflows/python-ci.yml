@@ -3,7 +3,6 @@ name: Python Build and System Tests
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ "main", "building" ]
     paths:
       - '**.py'
       - 'pyproject.toml'

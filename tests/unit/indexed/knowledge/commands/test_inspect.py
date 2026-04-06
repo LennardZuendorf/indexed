@@ -6,15 +6,27 @@ We focus on realistic behaviors:
 - JSON vs rich output paths
 """
 
+from pathlib import Path
 from typing import List
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import inspect as inspect_cmd
+from indexed.utils import storage_info as storage_info_mod
 from core.v1.engine.services import CollectionInfo
 
 
 runner = CliRunner()
+
+# Patch resolve_preferred_collections_path globally for all inspect tests
+# so tests don't need ConfigService
+_MOCK_PATH = patch.object(
+    storage_info_mod,
+    "resolve_preferred_collections_path",
+    return_value=Path("/tmp/test-collections"),
+)
+_MOCK_PATH.start()
 
 
 def _make_collection(
@@ -44,7 +56,7 @@ class TestInspectCollectionsCommand:
 
     def test_no_collections_shows_hint(self, monkeypatch):
         """When there are no collections, show a helpful message."""
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: [])
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [])
 
         # No subcommand name required – this app exposes a single inspect command
         result = runner.invoke(inspect_cmd.app, [])
@@ -60,7 +72,7 @@ class TestInspectCollectionsCommand:
             _make_collection("jira", source_type="jira", docs=2, chunks=4),
         ]
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: collections)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: collections)
 
         result = runner.invoke(inspect_cmd.app, [])
 
@@ -74,7 +86,7 @@ class TestInspectCollectionsCommand:
         """Inspecting a missing collection should show available ones and exit 1."""
 
         # First call: inspect([name]) returns empty list
-        def fake_inspect(names=None):
+        def fake_inspect(names=None, **kwargs):
             if names:
                 return []
             # Second call: list of available collections
@@ -96,7 +108,7 @@ class TestInspectCollectionsCommand:
 
         coll = _make_collection("docs")
 
-        def fake_inspect(names=None):
+        def fake_inspect(names=None, **kwargs):
             if names:
                 return [coll]
             return [coll]
@@ -120,7 +132,7 @@ class TestInspectCollectionsCommand:
 
         colls = [_make_collection("docs"), _make_collection("jira")]
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: colls)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: colls)
         set_simple_output(True)
 
         try:
@@ -137,7 +149,7 @@ class TestInspectCollectionsCommand:
         """Inspecting a specific collection without --json shows rich panel output."""
         coll = _make_collection("docs")
 
-        def fake_inspect(names=None):
+        def fake_inspect(names=None, **kwargs):
             return [coll]
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
@@ -154,7 +166,7 @@ class TestInspectCollectionsCommand:
             _make_collection("jira", source_type="jira", docs=2, chunks=4),
         ]
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: collections)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: collections)
 
         result = runner.invoke(inspect_cmd.app, ["--verbose"])
 
@@ -166,7 +178,7 @@ class TestInspectCollectionsCommand:
         """Verbose list with one collection uses singular 'Collection'."""
         collections = [_make_collection("docs")]
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: collections)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: collections)
 
         result = runner.invoke(inspect_cmd.app, ["--verbose"])
 
@@ -177,7 +189,7 @@ class TestInspectCollectionsCommand:
         """Inspecting a found collection with documents should display it."""
         coll = _make_collection("docs", docs=5, chunks=10)
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: [coll])
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
 
         result = runner.invoke(inspect_cmd.app, ["docs"])
 
@@ -199,7 +211,7 @@ class TestInspectCollectionsCommand:
             updated_time="2025-01-02T00:00:00Z",
         )
 
-        monkeypatch.setattr(inspect_cmd, "inspect", lambda names=None: [coll])
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
 
         result = runner.invoke(inspect_cmd.app, ["--verbose"])
 

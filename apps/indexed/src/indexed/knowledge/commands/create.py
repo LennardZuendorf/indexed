@@ -100,6 +100,12 @@ def create_files(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
     # Use module-level lazy-loaded services (supports mocking in tests)
@@ -150,12 +156,12 @@ def create_files(
                 )
             elif field_name == "include_patterns":
                 patterns_input = console.input(
-                    f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [.*]: "
+                    f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [*]: "
                 )
                 value = (
                     [p.strip() for p in patterns_input.split(",")]
                     if patterns_input
-                    else [".*"]
+                    else ["*"]
                 )
             elif field_name == "exclude_patterns":
                 patterns_input = console.input(
@@ -201,7 +207,7 @@ def create_files(
             base_url_or_path=present["path"],
             indexer=this_module.DEFAULT_INDEXER,
             reader_opts={
-                "includePatterns": present.get("include_patterns", [".*"]),
+                "includePatterns": present.get("include_patterns", ["*"]),
                 "excludePatterns": present.get("exclude_patterns", []),
                 "failFast": present.get("fail_fast", False),
             },
@@ -222,6 +228,8 @@ def create_files(
         log_level=log_level,
         use_cache=use_cache,
         force=force,
+        local=local,
+        source_path_key="path",
     )
 
 
@@ -286,6 +294,12 @@ def create_jira(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
     ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
@@ -432,6 +446,8 @@ def create_jira(
         force=force,
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_jira_log,
+        local=local,
+        source_path_key="url",
     )
 
 
@@ -502,6 +518,12 @@ def create_confluence(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
     ),
 ):
     """
@@ -671,6 +693,8 @@ def create_confluence(
         force=force,
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_confluence_log,
+        local=local,
+        source_path_key="url",
     )
 
 

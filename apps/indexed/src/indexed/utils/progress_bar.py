@@ -13,13 +13,16 @@ from rich.progress import (
     Progress,
     BarColumn,
     TextColumn,
-    TimeElapsedColumn,
     SpinnerColumn,
-    TaskProgressColumn,
     TaskID,
 )
 
-from indexed.utils.components.theme import get_accent_style, get_success_style
+from indexed.utils.components.theme import (
+    get_accent_style,
+    get_heading_style,
+    get_default_style,
+    get_dim_style,
+)
 from indexed.utils.console import console, is_interactive
 
 
@@ -40,12 +43,21 @@ class RichPhasedProgress:
 
     def __init__(self, title: str = "") -> None:
         self._title = title
+        self._accent = get_accent_style()
+        self._dim = get_dim_style()
+        self._default = get_default_style()
         self._progress = Progress(
-            SpinnerColumn(),
+            SpinnerColumn(style=self._accent),
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=20),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
+            BarColumn(
+                bar_width=20,
+                complete_style=self._default,
+                finished_style=self._default,
+                pulse_style=self._dim,
+            ),
+            TextColumn(
+                f"[{self._default}]{{task.percentage:>3.0f}}%[/{self._default}]"
+            ),
             console=console,
             transient=False,
         )
@@ -70,7 +82,6 @@ class RichPhasedProgress:
             return
 
         self._start_times[name] = time.monotonic()
-        accent = get_accent_style()
 
         if name in self._tasks:
             task_id = self._tasks[name]
@@ -78,12 +89,12 @@ class RichPhasedProgress:
                 self._progress.update(task_id, total=total, completed=0)
             self._progress.update(
                 task_id,
-                description=f"  [{accent}]●[/{accent}] {name}",
+                description=f"  {name}",
                 visible=True,
             )
         else:
             task_id = self._progress.add_task(
-                f"  [{accent}]●[/{accent}] {name}",
+                f"  {name}",
                 total=total,
             )
             self._tasks[name] = task_id
@@ -109,13 +120,13 @@ class RichPhasedProgress:
 
         self._progress.update(
             task_id,
-            description=f"  [{get_success_style()}]✓[/{get_success_style()}] {name}  [dim]{elapsed_str}[/dim]",
+            description=f"  [{self._accent}]✓[/{self._accent}] {name}  [{self._dim}]{elapsed_str}[/{self._dim}]",
         )
 
     def log(self, message: str) -> None:
         """Display a log message within the progress context."""
         if self._started:
-            self._progress.console.print(f"    [dim]{message}[/dim]")
+            self._progress.console.print(f"    [{self._dim}]{message}[/{self._dim}]")
 
 
 class PlainPhasedProgress:
@@ -162,3 +173,22 @@ def create_phased_progress(
     if is_interactive():
         return RichPhasedProgress(title=title)
     return PlainPhasedProgress()
+
+
+def build_progress_title(verb: str, collection: str, source_display: str = "") -> str:
+    """Build a consistently styled title for phased progress sections.
+
+    Args:
+        verb: Action word, e.g. "Creating" or "Updating"
+        collection: Collection name (highlighted in accent color)
+        source_display: Human-readable source type, e.g. "Local Files" (optional)
+
+    Returns:
+        Rich markup string for use as a progress section title.
+    """
+    heading = get_heading_style()
+    accent = get_accent_style()
+    type_part = f"{source_display} collection" if source_display else "collection"
+    return (
+        f"[{heading}]{verb} {type_part}: [{accent}]{collection}[/{accent}][/{heading}]"
+    )

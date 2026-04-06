@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import datetime
 import fnmatch
-import json
 import os
 import re
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from loguru import logger
-from parsing import ParsingModule
-from parsing.schema import ParsedDocument
+
+if TYPE_CHECKING:
+    from parsing import ParsingModule
+    from parsing.schema import ParsedDocument
 
 from .schema import DEFAULT_EXCLUDED_EXTENSIONS
 from .v1_adapter import V1FormatAdapter
@@ -33,6 +34,7 @@ class FilesDocumentReader:
         exclude_patterns: list[str] | None = None,
         fail_fast: bool = False,
         start_from_time: datetime.datetime | None = None,
+        specific_files: list[str] | None = None,
         *,
         ocr: bool = True,
         table_structure: bool = True,
@@ -40,7 +42,7 @@ class FilesDocumentReader:
         excluded_extensions: list[str] | None = None,
     ) -> None:
         self.base_path = base_path
-        self.include_patterns = include_patterns or [".*"]
+        self.include_patterns = include_patterns or ["*"]
         self.exclude_patterns = exclude_patterns or []
         self.compiled_include_patterns = [
             self._compile(p) for p in self.include_patterns
@@ -50,6 +52,7 @@ class FilesDocumentReader:
         ]
         self.fail_fast = fail_fast
         self.start_from_time = start_from_time
+        self.specific_files = specific_files
         self._excluded_extensions = frozenset(
             excluded_extensions or DEFAULT_EXCLUDED_EXTENSIONS
         )
@@ -72,7 +75,9 @@ class FilesDocumentReader:
     def parsing(self) -> ParsingModule:
         """Lazily create the parsing module."""
         if self._parsing is None:
-            self._parsing = ParsingModule(
+            from parsing import ParsingModule as _ParsingModule
+
+            self._parsing = _ParsingModule(
                 ocr=self._ocr,
                 table_structure=self._table_structure,
                 max_tokens=self._max_tokens,
@@ -83,10 +88,8 @@ class FilesDocumentReader:
 
     def read_all_parsed(self) -> Iterator[ParsedDocument]:
         """Yield a ``ParsedDocument`` for every matching file."""
-        result_stats: dict[str, list[str]] = {
-            "successFiles": [],
-            "errorFiles": [],
-        }
+        success_files: list[str] = []
+        error_files: list[str] = []
 
         for file_path in self._iter_file_paths():
             try:
@@ -95,17 +98,26 @@ class FilesDocumentReader:
                 doc.metadata["modified_time"] = self._read_file_modification_time(
                     file_path
                 ).isoformat()
-                result_stats["successFiles"].append(file_path)
+
+                if doc.metadata.get("error"):
+                    error_files.append(file_path)
+                else:
+                    success_files.append(file_path)
+
                 yield doc
             except Exception as exc:
-                result_stats["errorFiles"].append(file_path)
+                error_files.append(file_path)
                 if self.fail_fast:
                     raise RuntimeError(f"Error reading file {file_path}") from exc
-                logger.opt(exception=exc).error("Error reading file {}", file_path)
+                logger.error("Error reading file {}: {}", file_path, exc)
 
-        logger.info(
-            f"Files reading stats: \n{json.dumps(result_stats, indent=2, ensure_ascii=False)}"
-        )
+        logger.info("Parsed {} files successfully", len(success_files))
+        if error_files:
+            logger.warning(
+                "Could not parse {} file(s):\n{}",
+                len(error_files),
+                "\n".join(f"  - {f}" for f in error_files),
+            )
 
     # -- backward-compat v1 API ------------------------------------------
 
@@ -121,6 +133,8 @@ class FilesDocumentReader:
     # -- helpers ----------------------------------------------------------
 
     def get_number_of_documents(self) -> int:
+        if self.specific_files is not None:
+            return len(self.specific_files)
         return len(list(self._iter_file_paths()))
 
     def get_reader_details(self) -> dict:
@@ -133,7 +147,23 @@ class FilesDocumentReader:
         }
 
     def _iter_file_paths(self) -> Iterator[str]:
-        """Walk the directory and yield matching file paths."""
+        """Yield matching file paths.
+
+        If ``specific_files`` is set, iterate only those paths (applying the
+        same extension and exclusion filters). Otherwise walk the full
+        directory tree as normal.
+        """
+        if self.specific_files is not None:
+            for full_path in self.specific_files:
+                if not os.path.isfile(full_path):
+                    continue
+                relative_path = os.path.relpath(full_path, self.base_path)
+                if not any(
+                    relative_path.endswith(ext) for ext in self._excluded_extensions
+                ) and not self._is_file_excluded(relative_path):
+                    yield full_path
+            return
+
         for root, _, files in os.walk(self.base_path):
             for file_name in files:
                 full_path = os.path.join(root, file_name)

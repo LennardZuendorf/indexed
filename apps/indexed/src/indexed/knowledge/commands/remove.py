@@ -19,8 +19,12 @@ from ...utils.components import (
     print_success,
     print_error,
 )
-from ...utils.format import format_size, format_time
+from ...utils.format import format_size, format_time, format_source_type
 from ...utils.simple_output import is_simple_output, print_json
+from ...utils.logging import is_verbose_mode
+from ...utils.progress_bar import create_phased_progress, build_progress_title
+from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.storage_info import display_storage_mode_for_command
 
 app = typer.Typer(help="Remove collections")
 
@@ -67,6 +71,14 @@ def remove(
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
     index = index_svc()
+    simple = is_simple_output()
+
+    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
+    if not is_verbose_mode() and not simple:
+        from indexed_config import ConfigService
+
+        ConfigService.instance()
+        display_storage_mode_for_command(console)
 
     # Fetch all collections to validate
     all_collections = inspect_svc()
@@ -97,7 +109,7 @@ def remove(
         raise typer.Exit(1)
 
     # Simple output mode: skip confirmation, output JSON
-    if is_simple_output():
+    if simple:
         try:
             index.remove(collection)
             print_json({"status": "removed", "collection": collection})
@@ -144,10 +156,23 @@ def remove(
 
     # Execute removal
     try:
-        console.print(
-            f"[{get_dim_style()}]Removing collection '{collection}'...[/{get_dim_style()}]"
-        )
-        index.remove(collection)
+        if is_verbose_mode():
+            # Verbose mode: show all logs, no progress UI
+            with NoOpContext():
+                index.remove(collection)
+        else:
+            # Normal mode: phased progress display
+            source_type = target_collection.source_type
+            source_display = format_source_type(source_type) if source_type else ""
+            title = build_progress_title("Removing", collection, source_display)
+
+            with create_phased_progress(title=title) as phased:
+                phased.start_phase("Removing collection data")
+                with suppress_core_output():
+                    index.remove(collection)
+                phased.finish_phase("Removing collection data")
+
+        console.print()
         print_success(f"Collection '{collection}' removed")
 
         # Show summary

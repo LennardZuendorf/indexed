@@ -64,8 +64,9 @@ class OperationStatus:
         # Start spinner with initial message
         self._status = self.console.status(
             self._format_status_message(self._current_message),
-            spinner="dots",  # Clean, minimal spinner
-            refresh_per_second=12.5,  # Ensure smooth updates
+            spinner="dots",
+            spinner_style=get_accent_style(),
+            refresh_per_second=12.5,
         )
         self._status.__enter__()
 

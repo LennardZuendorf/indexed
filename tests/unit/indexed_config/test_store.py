@@ -86,10 +86,10 @@ def test_toml_store_env_to_mapping_empty():
 
 
 def test_toml_store_write():
-    """Test write() creates directory and file."""
+    """Test write() creates directory and file in local mode."""
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
-        store = TomlStore(workspace=workspace)
+        store = TomlStore(workspace=workspace, mode_override="local")
 
         data = {"section": {"key": "value"}}
         store.write(data)
