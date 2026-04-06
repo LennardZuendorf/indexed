@@ -350,9 +350,7 @@ class TestCreateFunction:
             reader_opts={},
         )
 
-        with patch(
-            "core.v1.engine.services.collection_service._clear_caches"
-        ):
+        with patch("core.v1.engine.services.collection_service._clear_caches"):
             with patch(
                 "core.v1.engine.services.collection_service._collection_exists",
                 return_value=True,
@@ -383,9 +381,7 @@ class TestCreateFunction:
             reader_opts={},
         )
 
-        with patch(
-            "core.v1.engine.services.collection_service._create_one"
-        ):
+        with patch("core.v1.engine.services.collection_service._create_one"):
             with patch("indexed_config.ConfigService") as mock_cs:
                 mock_cs.return_value = MagicMock()
                 create([cfg], config_service=None, force=False)

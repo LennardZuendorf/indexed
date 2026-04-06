@@ -273,13 +273,15 @@ class TestUpdateCollectionWithDeletions:
         mock_converter = Mock()
         mock_indexer = Mock()
 
-        existing_manifest = json.dumps({
-            "collectionName": "test-col",
-            "updatedTime": "2024-01-01T00:00:00+00:00",
-            "lastModifiedDocumentTime": "2024-01-01T00:00:00+00:00",
-            "numberOfDocuments": 10,
-            "numberOfChunks": 50,
-        })
+        existing_manifest = json.dumps(
+            {
+                "collectionName": "test-col",
+                "updatedTime": "2024-01-01T00:00:00+00:00",
+                "lastModifiedDocumentTime": "2024-01-01T00:00:00+00:00",
+                "numberOfDocuments": 10,
+                "numberOfChunks": 50,
+            }
+        )
 
         mock_persister.is_path_exists.return_value = True
         mock_persister.read_text_file.return_value = existing_manifest

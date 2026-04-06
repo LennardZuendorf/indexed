@@ -260,7 +260,10 @@ class TestDisplayStorageModeForCommand:
                         import typer as _typer
 
                         with patch.object(
-                            _typer, "get_current_context", create=True, return_value=None
+                            _typer,
+                            "get_current_context",
+                            create=True,
+                            return_value=None,
                         ):
                             display_storage_mode_for_command(mock_console)
 
@@ -290,7 +293,10 @@ class TestDisplayStorageModeForCommand:
                         import typer as _typer
 
                         with patch.object(
-                            _typer, "get_current_context", create=True, return_value=None
+                            _typer,
+                            "get_current_context",
+                            create=True,
+                            return_value=None,
                         ):
                             display_storage_mode_for_command(mock_console)
 

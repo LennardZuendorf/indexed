@@ -48,9 +48,7 @@ class TestCacheReaderDecoratorMiss:
     def test_cache_miss_reads_from_reader_and_persists(self):
         reader = Mock()
         reader.get_reader_details.return_value = {"type": "test"}
-        reader.read_all_documents.return_value = iter(
-            [{"id": "doc0"}, {"id": "doc1"}]
-        )
+        reader.read_all_documents.return_value = iter([{"id": "doc0"}, {"id": "doc1"}])
         persister = Mock()
         persister.is_path_exists.return_value = False
 

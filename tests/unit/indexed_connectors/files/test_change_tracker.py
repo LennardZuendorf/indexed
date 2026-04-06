@@ -280,9 +280,7 @@ class TestParseDiffNameStatus:
     def test_renamed_file(self, tmp_path):
         tracker = ChangeTracker(str(tmp_path), strategy="git")
         output = "R100\told_name.txt\tnew_name.txt\n"
-        result = tracker._parse_diff_name_status(
-            output, None, {"new_name.txt"}
-        )
+        result = tracker._parse_diff_name_status(output, None, {"new_name.txt"})
         assert result["old_name.txt"] == "deleted"
         assert result["new_name.txt"] == "added"
 
@@ -300,9 +298,7 @@ class TestParseDiffNameStatus:
     def test_multiple_changes(self, tmp_path):
         tracker = ChangeTracker(str(tmp_path), strategy="git")
         output = "A\ta.txt\nM\tb.txt\nD\tc.txt\n"
-        result = tracker._parse_diff_name_status(
-            output, None, {"a.txt", "b.txt"}
-        )
+        result = tracker._parse_diff_name_status(output, None, {"a.txt", "b.txt"})
         assert result == {"a.txt": "added", "b.txt": "modified", "c.txt": "deleted"}
 
     def test_with_git_toplevel(self, tmp_path):
@@ -310,9 +306,7 @@ class TestParseDiffNameStatus:
         sub.mkdir()
         tracker = ChangeTracker(str(sub), strategy="git")
         output = "M\tsubdir/file.txt\n"
-        result = tracker._parse_diff_name_status(
-            output, str(tmp_path), {"file.txt"}
-        )
+        result = tracker._parse_diff_name_status(output, str(tmp_path), {"file.txt"})
         assert result == {"file.txt": "modified"}
 
     def test_path_outside_base_ignored(self, tmp_path):
@@ -320,9 +314,7 @@ class TestParseDiffNameStatus:
         sub.mkdir()
         tracker = ChangeTracker(str(sub), strategy="git")
         output = "M\tother/file.txt\n"
-        result = tracker._parse_diff_name_status(
-            output, str(tmp_path), {"file.txt"}
-        )
+        result = tracker._parse_diff_name_status(output, str(tmp_path), {"file.txt"})
         assert result == {}
 
 
@@ -388,9 +380,7 @@ class TestParseStatusPorcelain:
         sub.mkdir()
         tracker = ChangeTracker(str(sub), strategy="git")
         output = " M other/file.txt\n"
-        result = tracker._parse_status_porcelain(
-            output, str(tmp_path), {"file.txt"}
-        )
+        result = tracker._parse_status_porcelain(output, str(tmp_path), {"file.txt"})
         assert result == {}
 
 
@@ -511,7 +501,5 @@ class TestChangeTrackerHashOSError:
     def test_oserror_on_read_skips_file(self, tmp_path):
         tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
         # Pass a path that doesn't exist
-        changes = tracker.detect_changes(
-            [str(tmp_path / "missing.txt")], IndexState()
-        )
+        changes = tracker.detect_changes([str(tmp_path / "missing.txt")], IndexState())
         assert changes == []

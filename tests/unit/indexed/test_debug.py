@@ -90,9 +90,7 @@ class TestDebugCommand:
         with patch("indexed.debug.console") as mock_console:
             with patch("indexed.debug.get_build_info", return_value=("dev", "n/a")):
                 with patch("indexed.debug._pkg_version", return_value="0.1.0"):
-                    with patch(
-                        "indexed.debug._module_version", return_value="bundled"
-                    ):
+                    with patch("indexed.debug._module_version", return_value="bundled"):
                         from indexed.debug import debug
 
                         debug(json_output=True)
@@ -110,9 +108,7 @@ class TestDebugCommand:
         with patch("indexed.debug.console") as mock_console:
             with patch("indexed.debug.get_build_info", return_value=("dev", "n/a")):
                 with patch("indexed.debug._pkg_version", return_value="0.1.0"):
-                    with patch(
-                        "indexed.debug._module_version", return_value="bundled"
-                    ):
+                    with patch("indexed.debug._module_version", return_value="bundled"):
                         with patch(
                             "indexed.debug.create_key_value_panel"
                         ) as mock_panel:
