@@ -198,7 +198,14 @@ class DocumentCollectionCreator:
     def __read_documents(self):
         document_ids = []
 
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Preparing")
+            self.phased_progress.start_phase("Scanning Files")
+
         number_of_expected_documents = self.document_reader.get_number_of_documents()
+
+        if self.phased_progress:
+            self.phased_progress.finish_phase("Scanning Files")
 
         if self.progress_callback:
             self.progress_callback(
