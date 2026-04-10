@@ -1,10 +1,23 @@
 [project]
-name = "indexed"
+name = "indexed-sh"
 version = "0.1.3"
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
+license = { text = "See LICENSE file" }
 authors = [
     { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
+]
+keywords = ["semantic-search", "mcp", "rag", "faiss", "ai", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -20,6 +33,11 @@ dependencies = [
     "art>=6.0",
 ]
 dynamic = ["una"]
+
+[project.urls]
+Homepage = "https://indexed.sh"
+Repository = "https://github.com/LennardZuendorf/indexed"
+"Issue Tracker" = "https://github.com/LennardZuendorf/indexed/issues"
 
 [project.scripts]
 indexed = "indexed.app:main"
