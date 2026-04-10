@@ -1,24 +1,52 @@
-name: Python Build and Publish to PyPI on Release
+name: Release on Tag — Merge to Main + Publish to PyPI
 
+# Trigger: push any tag matching v0.0.0 (from any branch)
+# Flow: merge tag → main  →  build wheel  →  publish PyPI  →  create GH release
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write   # needed to push to main and create GitHub Release
+  id-token: write   # needed for PyPI OIDC trusted-publisher auth
 
 jobs:
-  build:
-    name: Build Distribution
+  # ── 1. Merge the tagged commit into main ────────────────────────────────────
+  merge-to-main:
+    name: Merge Tag to Main
     runs-on: ubuntu-latest
-    if: github.event.release.target_commitish == 'main'
 
     steps:
-    - name: Checkout code
+    - name: Checkout full history
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.release.tag_name }}
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure git bot identity
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Merge tag into main
+      run: |
+        git checkout main
+        git merge --no-ff ${{ github.ref_name }} \
+          -m "chore(release): merge ${{ github.ref_name }} into main"
+        git push origin main
+
+  # ── 2. Build the wheel from the freshly merged main ─────────────────────────
+  build:
+    name: Build Distribution
+    needs: merge-to-main
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout main
+      uses: actions/checkout@v4
+      with:
+        ref: main
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -34,32 +62,48 @@ jobs:
     - name: Build distributable wheel
       run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
-    - name: Store the distribution packages
+    - name: Store distribution packages
       uses: actions/upload-artifact@v5
       with:
         name: python-package-distributions
         path: dist/
 
+  # ── 3. Publish to PyPI via OIDC trusted publisher ───────────────────────────
   publish-to-pypi:
-    name: Publish Distribution to PyPI
+    name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    if: github.event.release.target_commitish == 'main'
     environment:
       name: pypi
       url: https://pypi.org/p/indexed-sh
 
     steps:
-    - name: Download the distributions
+    - name: Download distribution packages
       uses: actions/download-artifact@v5
       with:
         name: python-package-distributions
         path: dist/
 
-    - name: Publish distribution to PyPI
+    - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
 
-    - name: Attach artifacts to release
+  # ── 4. Create GitHub Release with auto-generated notes + wheel attachment ───
+  create-github-release:
+    name: Create GitHub Release
+    needs: publish-to-pypi
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download distribution packages
+      uses: actions/download-artifact@v5
+      with:
+        name: python-package-distributions
+        path: dist/
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        generate_release_notes: true
         files: dist/*
