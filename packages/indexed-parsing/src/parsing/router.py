@@ -101,4 +101,9 @@ class FileRouter:
             return ParsingStrategy.DOCLING
         if ext in PLAINTEXT_EXTENSIONS:
             return ParsingStrategy.PLAINTEXT
+        # Extensionless files (LICENSE, Makefile, Dockerfile) and dotfiles
+        # (.gitignore, .dockerignore) go straight to plaintext — avoids
+        # noisy docling warnings about unsupported formats.
+        if not ext or path.name.startswith("."):
+            return ParsingStrategy.PLAINTEXT
         return ParsingStrategy.DOCLING_FALLBACK
