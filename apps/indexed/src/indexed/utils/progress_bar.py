@@ -41,26 +41,28 @@ class RichPhasedProgress:
             Building FAISS index                 waiting...
     """
 
-    def __init__(self, title: str = "") -> None:
+    def __init__(self, title: str = "", show_bar: bool = True) -> None:
         self._title = title
         self._accent = get_accent_style()
         self._dim = get_dim_style()
         self._default = get_default_style()
-        self._progress = Progress(
+        columns = [
             SpinnerColumn(style=self._accent),
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(
-                bar_width=20,
-                complete_style=self._default,
-                finished_style=self._default,
-                pulse_style=self._dim,
-            ),
-            TextColumn(
-                f"[{self._default}]{{task.percentage:>3.0f}}%[/{self._default}]"
-            ),
-            console=console,
-            transient=False,
-        )
+        ]
+        if show_bar:
+            columns += [
+                BarColumn(
+                    bar_width=20,
+                    complete_style=self._default,
+                    finished_style=self._default,
+                    pulse_style=self._dim,
+                ),
+                TextColumn(
+                    f"[{self._default}]{{task.percentage:>3.0f}}%[/{self._default}]"
+                ),
+            ]
+        self._progress = Progress(*columns, console=console, transient=False)
         self._tasks: Dict[str, TaskID] = {}
         self._start_times: Dict[str, float] = {}
         self._started = False
@@ -117,6 +119,8 @@ class RichPhasedProgress:
         task = self._progress.tasks[task_id]
         if task.total is not None:
             self._progress.update(task_id, completed=task.total)
+        else:
+            self._progress.update(task_id, total=1, completed=1)
 
         self._progress.update(
             task_id,
@@ -164,14 +168,20 @@ class PlainPhasedProgress:
 
 def create_phased_progress(
     title: str = "",
+    show_bar: bool = True,
 ) -> "RichPhasedProgress | PlainPhasedProgress":
     """Create the appropriate phased progress implementation.
 
     Returns RichPhasedProgress for interactive terminals,
     PlainPhasedProgress for piped/CI environments.
+
+    Args:
+        title: Optional title displayed above the progress section.
+        show_bar: When False, omit the progress bar and percentage columns.
+                  Use for commands where phases have no meaningful item count.
     """
     if is_interactive():
-        return RichPhasedProgress(title=title)
+        return RichPhasedProgress(title=title, show_bar=show_bar)
     return PlainPhasedProgress()
 
 
