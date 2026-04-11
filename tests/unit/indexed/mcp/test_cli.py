@@ -76,6 +76,7 @@ class TestRunImpl:
             host="0.0.0.0",
             port=9000,
             log_level="INFO",
+            json_logs=False,
         )
 
     @patch("indexed.mcp.server.mcp")
