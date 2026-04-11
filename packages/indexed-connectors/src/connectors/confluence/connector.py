@@ -215,7 +215,7 @@ class ConfluenceConnector:
             ConfluenceConnector: An instance configured with values from ConfluenceConfig.
         """
         # Register our config spec
-        config_service.register(ConfluenceConfig, path="sources.confluence.server")
+        config_service.register(ConfluenceConfig, path="sources.confluence")
 
         # Bind and get our config
         provider = config_service.bind()
@@ -399,7 +399,7 @@ class ConfluenceCloudConnector:
             ConfluenceCloudConnector: Connector instance configured from the retrieved ConfluenceCloudConfig.
         """
         # Register our config spec using unified namespace
-        config_service.register(ConfluenceCloudConfig, path="sources.confluence.cloud")
+        config_service.register(ConfluenceCloudConfig, path="sources.confluence")
 
         # Bind and get our config
         provider = config_service.bind()

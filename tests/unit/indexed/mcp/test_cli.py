@@ -479,6 +479,7 @@ class TestRunImpl:
             host="127.0.0.1",
             port=8000,
             log_level="INFO",
+            json_logs=False,
         )
 
     @patch("indexed.mcp.server.mcp")
@@ -491,6 +492,7 @@ class TestRunImpl:
             host="127.0.0.1",
             port=8000,
             log_level="INFO",
+            json_logs=False,
         )
 
     @patch("indexed.mcp.server.mcp")
@@ -503,6 +505,7 @@ class TestRunImpl:
             host="127.0.0.1",
             port=8000,
             log_level="INFO",
+            json_logs=False,
         )
 
 
