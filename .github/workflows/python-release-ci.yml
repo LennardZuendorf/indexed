@@ -31,8 +31,12 @@ jobs:
     - name: Merge release tag into main
       run: |
         git checkout main
-        git merge --no-ff ${{ github.event.release.tag_name }} \
-          -m "chore(release): merge ${{ github.event.release.tag_name }} into main"
+        if git merge-base --is-ancestor ${{ github.event.release.tag_name }} HEAD; then
+          echo "Tag already on main — skipping merge"
+        else
+          git merge --no-ff ${{ github.event.release.tag_name }} \
+            -m "chore(release): merge ${{ github.event.release.tag_name }} into main"
+        fi
         git push origin main
 
   # ── 2. Build the wheel from the freshly merged main ─────────────────────────

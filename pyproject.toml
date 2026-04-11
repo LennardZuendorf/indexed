@@ -16,6 +16,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow",
+    "unit_api: marks unit API tests",
+    "benchmark: marks benchmark tests",
+    "connectors: marks connector functionality tests",
+    "indexed: marks main app integration tests",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",

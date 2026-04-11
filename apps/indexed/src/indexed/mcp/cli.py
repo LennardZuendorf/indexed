@@ -310,6 +310,7 @@ def run_impl(
         host=host,
         port=port,
         log_level=log_level,
+        json_logs=json_logs,
     )
 
 

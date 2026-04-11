@@ -157,7 +157,7 @@ jobs:
           exit 1
         fi
         echo "📊 Comparing against main branch baseline (20% tolerance)..."
-        python .benchmarks/benchmark_compare.py compare-json \
+        uv run python .benchmarks/benchmark_compare.py compare-json \
           "$MAIN_BASELINE" \
           benchmark-results.json \
           --tolerance=20 > main_comparison.txt 2>&1 || true
@@ -186,7 +186,7 @@ jobs:
           exit 1
         fi
         echo "📊 Comparing against current branch baseline (20% tolerance)..."
-        python .benchmarks/benchmark_compare.py compare-json \
+        uv run python .benchmarks/benchmark_compare.py compare-json \
           "$CURRENT_BASELINE" \
           benchmark-results.json \
           --tolerance=20 > current_comparison.txt 2>&1 || true
@@ -252,7 +252,7 @@ jobs:
 
         # Compare performance with existing baseline (5% threshold for updates)
         echo "📊 Checking if performance changed significantly..."
-        if python .benchmarks/benchmark_compare.py compare-json \
+        if uv run python .benchmarks/benchmark_compare.py compare-json \
           "$BASELINE_FILE" \
           benchmark-results.json \
           --tolerance=5 > /dev/null 2>&1; then
@@ -270,7 +270,7 @@ jobs:
         CURRENT_NODE="${{ steps.extract-node.outputs.node }}"
         echo "💾 Saving baseline for branch: $CURRENT_BRANCH (node: $CURRENT_NODE)"
         # Node will be automatically extracted from benchmark-results.json
-        python .benchmarks/benchmark_baseline.py save "$CURRENT_BRANCH" benchmark-results.json
+        uv run python .benchmarks/benchmark_baseline.py save "$CURRENT_BRANCH" benchmark-results.json
 
     - name: Commit and push baseline for all branches
       if: github.event_name == 'push' && steps.run-benchmarks.outcome == 'success' && steps.check-baseline-update.outputs.should_update == 'true'
