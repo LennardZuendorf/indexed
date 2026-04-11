@@ -50,9 +50,16 @@ def suppress_core_output(redirect_streams: bool = False):
     # Save original logging level
     original_level = logging.getLogger().level
 
-    # Save and suppress docling logger (its format-mismatch WARNINGs are noisy)
-    docling_logger = logging.getLogger("docling")
-    original_docling_level = docling_logger.level
+    # Save and suppress ALL docling/docling_core loggers (child loggers may
+    # have their own handlers that bypass the parent level).
+    saved_docling_levels: dict[str, int] = {}
+    for name in list(logging.Logger.manager.loggerDict):
+        if name.startswith(("docling", "docling_core")):
+            lg = logging.getLogger(name)
+            saved_docling_levels[name] = lg.level
+    # Also include the root "docling" logger itself
+    docling_root = logging.getLogger("docling")
+    saved_docling_levels.setdefault("docling", docling_root.level)
 
     # Save current loguru min level so we can restore it
     from indexed.utils.logging import _configure_loguru
@@ -61,8 +68,9 @@ def suppress_core_output(redirect_streams: bool = False):
         # Suppress standard logging below WARNING
         logging.getLogger().setLevel(logging.WARNING)
 
-        # Suppress docling warnings (format-mismatch noise); only surface ERRORs
-        docling_logger.setLevel(logging.ERROR)
+        # Suppress all docling loggers (format-mismatch noise); only surface ERRORs
+        for name in saved_docling_levels:
+            logging.getLogger(name).setLevel(logging.ERROR)
 
         # Reconfigure loguru to WARNING level instead of disabling entirely,
         # so parsing ERRORs and WARNINGs still surface
@@ -85,7 +93,8 @@ def suppress_core_output(redirect_streams: bool = False):
     finally:
         # Restore original logging level
         logging.getLogger().setLevel(original_level)
-        docling_logger.setLevel(original_docling_level)
+        for name, level in saved_docling_levels.items():
+            logging.getLogger(name).setLevel(level)
         # Restore loguru to its previous configuration
         from indexed.utils.logging import _cli_log_level
 

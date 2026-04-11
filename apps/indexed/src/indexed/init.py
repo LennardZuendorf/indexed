@@ -10,9 +10,9 @@ from typing import Optional
 import typer
 
 from indexed.utils.components import (
-    create_detail_card,
     get_dim_style,
     get_heading_style,
+    get_label_style,
     print_success,
     print_warning,
 )
@@ -73,7 +73,7 @@ def init(
 
     root = get_global_root()
 
-    with create_phased_progress(title=title) as progress:
+    with create_phased_progress(title=title, show_bar=False) as progress:
         # Phase 1: Create data directories
         progress.start_phase("Creating data directories")
         ensure_storage_dirs(root)
@@ -105,31 +105,21 @@ def init(
             progress.finish_phase(phase_name)
 
     # Summary
-    console.print()
     info = get_cache_info()
+    label = get_label_style()
+
+    console.print()
+    print_success("Setup complete!")
+    console.print()
 
     if info["models"]:
         for m in info["models"]:
-            card = create_detail_card(
-                title=m["name"],
-                rows=[
-                    ("Size", f"{m['size_mb']} MB"),
-                    ("Location", m["path"]),
-                ],
+            console.print(
+                f"  [{label}]{'Model':<10}[/{label}]{m['name']}  [{dim}]{m['size_mb']} MB[/{dim}]"
             )
-            console.print(card)
-        console.print()
-
-    print_success("Setup complete!")
-
-    card = create_detail_card(
-        title="Setup Summary",
-        rows=[
-            ("Cache", info["cache_dir"]),
-            ("Models", f"{len(info['models'])} ({info['total_size_mb']} MB)"),
-        ],
+    console.print(
+        f"  [{label}]{'Cache':<10}[/{label}][{dim}]{info['cache_dir']}[/{dim}]"
     )
-    console.print(card)
 
     console.print()
     console.print(f"[{dim}]Next steps:[/{dim}]")

@@ -14,7 +14,7 @@ _WHITE = "white"
 _ERROR_COLOR = "red"
 _WARNING_COLOR = "yellow"
 _SUCCESS_COLOR = "green"
-_DIM_COLOR = "dim"
+_DIM_COLOR = "#808080"  # Neutral grey — consistent across terminal themes
 
 # Text hierarchy styles
 _ACCENT_STYLE = f"bold {_ACCENT_COLOR}"

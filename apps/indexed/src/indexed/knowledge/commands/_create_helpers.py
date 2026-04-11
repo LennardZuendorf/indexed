@@ -180,6 +180,7 @@ def execute_create_command(
             )
 
             with create_phased_progress(title=title) as phased:
+                phased.start_phase("Preparing")
                 try:
                     with suppress_core_output():
                         svc_create(
