@@ -890,3 +890,164 @@ class TestUpdateCommand:
         # create_summary is called with the result_text — check it contains the delta
         all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
         assert "-3 documents" in all_calls
+
+
+class TestUpdateCommandV2:
+    """Tests for v2 engine routing in the update CLI command."""
+
+    @patch("core.v2.services.status", return_value=[])
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    def test_v2_no_collections_returns_early(
+        self,
+        mock_setup_logger: "Mock",
+        mock_config_service: "Mock",
+        mock_v2_status: "Mock",
+    ) -> None:
+        """--engine v2 with no collections shows friendly message."""
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+        mock_config_service.instance.return_value = mock_config
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "No collections found" in result.stdout
+
+    @patch("core.v2.services.update")
+    @patch("core.v2.services.inspect")
+    @patch("core.v2.services.status")
+    @patch("connectors.registry.get_connector_class")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    def test_v2_calls_v2_update_with_connector(
+        self,
+        mock_verbose: "Mock",
+        mock_setup_logger: "Mock",
+        mock_config_service: "Mock",
+        mock_get_connector: "Mock",
+        mock_v2_status: "Mock",
+        mock_v2_inspect: "Mock",
+        mock_v2_update: "Mock",
+    ) -> None:
+        """--engine v2 calls core.v2.services.update with a connector object."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+
+        mock_verbose.return_value = True  # verbose → NoOpContext (simpler)
+
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2EmbeddingConfig()
+            if cls == CoreV2EmbeddingConfig
+            else CoreV2StorageConfig()
+        )
+        mock_config.bind.return_value = mock_provider
+        mock_config_service.instance.return_value = mock_config
+
+        mock_coll = MagicMock()
+        mock_coll.name = "my-docs"
+        mock_coll.source_type = "localFiles"
+        mock_coll.indexers = ["default"]
+        mock_v2_status.return_value = [mock_coll]
+
+        mock_inspect_info = MagicMock()
+        mock_inspect_info.name = "my-docs"
+        mock_inspect_info.source_type = "localFiles"
+        mock_inspect_info.number_of_documents = 10
+        mock_inspect_info.number_of_chunks = 20
+        mock_inspect_info.disk_size_bytes = 1024
+        mock_inspect_info.updated_time = "2025-01-01T00:00:00Z"
+        mock_v2_inspect.return_value = mock_inspect_info
+
+        mock_connector_instance = MagicMock()
+        mock_connector_class = MagicMock(return_value=mock_connector_instance)
+        mock_connector_class.from_config.return_value = mock_connector_instance
+        mock_get_connector.return_value = mock_connector_class
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "my-docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        mock_v2_update.assert_called_once()
+        call_kwargs = mock_v2_update.call_args.kwargs
+        assert "embed_model_name" in call_kwargs
+
+    @patch("core.v2.services.update")
+    @patch("core.v2.services.inspect")
+    @patch("core.v2.services.status")
+    @patch("connectors.registry.get_connector_class")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    def test_v2_calls_v2_inspect_before_and_after_update(
+        self,
+        mock_verbose: "Mock",
+        mock_setup_logger: "Mock",
+        mock_config_service: "Mock",
+        mock_get_connector: "Mock",
+        mock_v2_status: "Mock",
+        mock_v2_inspect: "Mock",
+        mock_v2_update: "Mock",
+    ) -> None:
+        """--engine v2 calls v2_inspect before and after update for delta calculation."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+
+        mock_verbose.return_value = True
+
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2EmbeddingConfig()
+            if cls == CoreV2EmbeddingConfig
+            else CoreV2StorageConfig()
+        )
+        mock_config.bind.return_value = mock_provider
+        mock_config_service.instance.return_value = mock_config
+
+        mock_coll = MagicMock()
+        mock_coll.name = "my-docs"
+        mock_coll.source_type = "localFiles"
+        mock_coll.indexers = ["default"]
+        mock_v2_status.return_value = [mock_coll]
+
+        before_info = MagicMock()
+        before_info.name = "my-docs"
+        before_info.source_type = "localFiles"
+        before_info.number_of_documents = 5
+        before_info.number_of_chunks = 10
+        before_info.disk_size_bytes = 1024
+        before_info.updated_time = "2025-01-01T00:00:00Z"
+        after_info = MagicMock()
+        after_info.name = "my-docs"
+        after_info.source_type = "localFiles"
+        after_info.number_of_documents = 8
+        after_info.number_of_chunks = 16
+        after_info.disk_size_bytes = 2048
+        after_info.updated_time = "2025-06-01T00:00:00Z"
+        mock_v2_inspect.side_effect = [before_info, after_info]
+
+        mock_connector_class = MagicMock()
+        mock_connector_class.from_config.return_value = MagicMock()
+        mock_get_connector.return_value = mock_connector_class
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "my-docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        # v2_inspect called twice: once before, once after the update
+        assert mock_v2_inspect.call_count == 2

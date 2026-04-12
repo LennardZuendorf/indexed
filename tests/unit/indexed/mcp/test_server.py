@@ -1,6 +1,7 @@
 """Tests for the MCP server implementation."""
 
 import asyncio
+from typing import Any
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -647,3 +648,120 @@ class TestMainFunction:
         mock_mcp.run.assert_called_once_with(
             host="localhost", port=8080, log_level="WARNING"
         )
+
+
+class TestV2EngineRouting:
+    """Tests for v2 engine routing in MCP tools and resources.
+
+    The global ``mcp`` instance's tools capture the original ``_get_engine``
+    function via closure, so v2 tests create a fresh FastMCP instance registered
+    with ``lambda: "v2"`` as the engine getter.
+    """
+
+    def _make_v2_mcp(self) -> "Any":
+        """Return a fresh FastMCP registered with v2 engine getter."""
+        from fastmcp import FastMCP
+        from core.v1.config_models import CoreV1SearchConfig, MCPConfig
+        from indexed.mcp.tools import register_tools
+        from indexed.mcp.resources import register_resources
+
+        v2_mcp = FastMCP("test-v2")
+        register_tools(v2_mcp, lambda: CoreV1SearchConfig(), lambda: "v2")
+        register_resources(v2_mcp, lambda: MCPConfig(), lambda: "v2")
+        return v2_mcp
+
+    @patch("core.v2.services.search")
+    @patch("indexed_config.ConfigService")
+    def test_search_tool_routes_to_v2(
+        self, mock_config_service: "MagicMock", mock_v2_search: "MagicMock"
+    ) -> None:
+        """search tool calls core.v2.services.search when engine='v2'."""
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+        mock_v2_search.return_value = {"collectionName": "docs", "results": []}
+
+        v2_mcp = self._make_v2_mcp()
+        search_tool = v2_mcp._tool_manager._tools.get("search")
+        assert search_tool is not None
+
+        run_async(search_tool.fn("test query"))
+
+        mock_v2_search.assert_called_once()
+        assert "embed_model_name" in mock_v2_search.call_args.kwargs
+
+    @patch("core.v2.services.search")
+    @patch("indexed_config.ConfigService")
+    def test_search_collection_tool_routes_to_v2(
+        self, mock_config_service: "MagicMock", mock_v2_search: "MagicMock"
+    ) -> None:
+        """search_collection tool calls core.v2.services.search when engine='v2'."""
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+        mock_v2_search.return_value = {"collectionName": "my-docs", "results": []}
+
+        v2_mcp = self._make_v2_mcp()
+        search_collection_tool = v2_mcp._tool_manager._tools.get("search_collection")
+        assert search_collection_tool is not None
+
+        run_async(search_collection_tool.fn("my-docs", "test query"))
+
+        mock_v2_search.assert_called_once()
+        assert "embed_model_name" in mock_v2_search.call_args.kwargs
+
+    @patch("core.v2.services.status")
+    def test_collections_list_resource_uses_v2_status(
+        self, mock_v2_status: "MagicMock"
+    ) -> None:
+        """collections_list resource calls core.v2.services.status when engine='v2'."""
+        mock_item = MagicMock()
+        mock_item.name = "v2-collection"
+        mock_v2_status.return_value = [mock_item]
+
+        v2_mcp = self._make_v2_mcp()
+        template = v2_mcp._resource_manager._templates.get(
+            "resource://collections/{_all}"
+        )
+        assert template is not None
+
+        result = run_async(template.fn("all"))
+
+        mock_v2_status.assert_called_once()
+        assert "v2-collection" in result
+
+    @patch("core.v2.services.status")
+    def test_collections_status_list_uses_v2_status(
+        self, mock_v2_status: "MagicMock"
+    ) -> None:
+        """collections_status_list resource calls core.v2.services.status when engine='v2'."""
+        mock_item = MagicMock()
+        mock_item.name = "v2-docs"
+        mock_item.number_of_documents = 10
+        mock_item.number_of_chunks = 20
+        mock_item.updated_time = "2025-01-01T00:00:00Z"
+        mock_v2_status.return_value = [mock_item]
+
+        v2_mcp = self._make_v2_mcp()
+        template = v2_mcp._resource_manager._templates.get(
+            "resource://collections/status/{_all}"
+        )
+        assert template is not None
+
+        result = run_async(template.fn("all"))
+
+        mock_v2_status.assert_called_once()
+        assert len(result) == 1
+        assert result[0]["name"] == "v2-docs"
