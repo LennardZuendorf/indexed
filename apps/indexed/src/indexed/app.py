@@ -101,6 +101,13 @@ def _init_app(
         help="Machine-readable JSON output (for programmatic use)",
         rich_help_panel="Usage Options",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine version: v1 (default) or v2 (LlamaIndex-powered). Overrides [general] engine in config.",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
     if simple_output:
@@ -139,9 +146,10 @@ def _init_app(
         json_mode=json_mode,
     )
 
-    # Store resolved mode_override on ctx.obj for subcommands to access
+    # Store resolved mode_override and engine on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
     ctx.obj["mode_override"] = "local" if local else None
+    ctx.obj["engine"] = engine.lower() if engine else None
 
     if local:
         from indexed_config import ensure_storage_dirs, get_local_root
@@ -149,6 +157,17 @@ def _init_app(
         workspace = Path.cwd()
         local_root = get_local_root(workspace)
         ensure_storage_dirs(local_root, is_local=True)
+
+    # Register GeneralConfig and v2 core configs so [general] engine and
+    # [core.v2.*] settings are available in config.toml (explicit registration,
+    # never at import time — see cleanup.md §8)
+    from indexed_config import ConfigService
+    from core.v2.config import register_config as _register_v2_config
+    from .services.engine_router import GeneralConfig as _GeneralConfig
+
+    _cfg_svc = ConfigService.instance()
+    _cfg_svc.register(_GeneralConfig, path="general")
+    _register_v2_config(_cfg_svc)
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
