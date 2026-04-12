@@ -37,9 +37,9 @@ def get_effective_engine(command_engine: Optional[str] = None) -> str:
 
     # Root callback flag stored on Typer context
     try:
-        import typer
+        import click
 
-        ctx = typer.main.get_current_context()  # type: ignore[attr-defined]
+        ctx = click.get_current_context()
         root_engine: Any = (ctx.obj or {}).get("engine")
         if root_engine:
             return str(root_engine)

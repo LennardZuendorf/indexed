@@ -55,7 +55,7 @@ def _get_engine() -> str:
         config_service = ConfigService.instance()
         config_service.register(GeneralConfig, path="general")
         provider = config_service.bind()
-        return provider.get(GeneralConfig).engine
+        return str(provider.get(GeneralConfig).engine)
     except Exception:
         return "v1"
 
