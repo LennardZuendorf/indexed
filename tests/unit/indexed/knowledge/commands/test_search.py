@@ -620,3 +620,125 @@ class TestFormatSearchResultsCompactEdgeCases:
         joined = "\n".join(outputs)
         assert "empty-coll" not in joined
         assert "No results found" in joined
+
+
+class TestNormalizeV2Search:
+    """Pure-function tests for the v2 result normalizer in the search command."""
+
+    def test_single_collection_format(self) -> None:
+        """Single-collection v2 result maps collectionName key to top-level dict key."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs", "results": [{"text": "hello"}]}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": [{"text": "hello"}]}}
+
+    def test_multi_collection_format(self) -> None:
+        """Multi-collection v2 result flattens collections list."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {
+            "collections": [
+                {"collectionName": "a", "results": [{"text": "x"}]},
+                {"collectionName": "b", "results": []},
+            ]
+        }
+        out = _normalize_v2_search(raw)
+        assert out == {
+            "a": {"results": [{"text": "x"}]},
+            "b": {"results": []},
+        }
+
+    def test_empty_results_single_collection(self) -> None:
+        """Single-collection with empty results list normalizes correctly."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs", "results": []}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": []}}
+
+    def test_missing_results_key_defaults_to_empty_list(self) -> None:
+        """Missing results key falls back to empty list via .get()."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs"}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": []}}
+
+
+class TestSearchCommandV2:
+    """Tests for v2 engine routing in the search CLI command."""
+
+    @patch("indexed_config.ConfigService")
+    @patch("core.v2.services.status", return_value=[])
+    def test_v2_no_collections_shows_hint(
+        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
+    ) -> None:
+        """--engine v2 with no collections shows friendly hint via v2 status."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "No collections found" in result.stdout
+        mock_v2_status.assert_called_once()
+
+    @patch("indexed_config.ConfigService")
+    @patch("core.v2.services.status")
+    def test_v2_calls_svc_search_v2(
+        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
+    ) -> None:
+        """--engine v2 calls svc_search_v2 with embed_model_name kwarg."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+        from indexed.utils.simple_output import set_simple_output, reset_simple_output
+
+        mock_coll = MagicMock()
+        mock_coll.name = "test-docs"
+        mock_v2_status.return_value = [mock_coll]
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+
+        v2_search_calls: List[Dict[str, Any]] = []
+
+        def fake_v2_search(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            v2_search_calls.append(kwargs)
+            return {"collectionName": "test-docs", "results": []}
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "svc_search_v2", fake_v2_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0
+        assert len(v2_search_calls) == 1
+        assert "embed_model_name" in v2_search_calls[0]
+
+    def test_svc_search_v2_lazy_attr_is_v2_search(self) -> None:
+        """__getattr__ resolves svc_search_v2 to core.v2.services.search."""
+        from core.v2.services import search as v2_search_fn
+
+        assert search_cmd.svc_search_v2 is v2_search_fn

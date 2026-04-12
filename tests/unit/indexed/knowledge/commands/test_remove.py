@@ -9,6 +9,8 @@ We focus on realistic behaviors:
 - removal failure handling
 """
 
+from typing import Any
+
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import remove as remove_cmd
@@ -210,3 +212,67 @@ class TestRemoveCommand:
         assert result.exit_code == 1
         assert "Failed to remove" in result.stdout
         assert "permission denied" in result.stdout
+
+
+class TestRemoveCommandV2:
+    """Tests for v2 engine routing in the remove CLI command."""
+
+    def _make_v2_collection(self, name: str = "docs") -> "CollectionInfo":
+        """Build a CollectionInfo compatible with both v1 and v2 display logic."""
+        return _make_collection(name)
+
+    def test_v2_no_collections_exits_cleanly(self, monkeypatch: "Any") -> None:
+        """--engine v2 with no collections shows friendly message."""
+        from unittest.mock import patch
+
+        with patch("core.v2.services.status", return_value=[]):
+            monkeypatch.setattr(remove_cmd, "Index", lambda: None)
+            result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "No collections found" in result.stdout
+
+    def test_v2_force_calls_v2_clear(self, monkeypatch: "Any") -> None:
+        """--engine v2 --force calls core.v2.services.clear with collection name."""
+        from unittest.mock import patch, MagicMock
+
+        mock_coll = _make_collection("docs")
+
+        v2_clear_calls = []
+
+        def fake_v2_clear(names, collections_dir=None):  # type: ignore[no-untyped-def]
+            v2_clear_calls.extend(names)
+
+        with patch("core.v2.services.status", return_value=[mock_coll]):
+            with patch("core.v2.services.clear", side_effect=fake_v2_clear):
+                monkeypatch.setattr(remove_cmd, "Index", lambda: MagicMock())
+                result = runner.invoke(
+                    remove_cmd.app, ["docs", "--engine", "v2", "--force"]
+                )
+
+        assert result.exit_code == 0
+        assert "docs" in v2_clear_calls
+
+    def test_v2_simple_output_calls_v2_clear_and_returns_json(
+        self, monkeypatch: "Any"
+    ) -> None:
+        """--engine v2 in simple-output mode calls v2_clear and returns JSON."""
+        from unittest.mock import patch, MagicMock
+
+        mock_coll = _make_collection("docs")
+
+        set_simple_output(True)
+        try:
+            with patch("core.v2.services.status", return_value=[mock_coll]):
+                with patch("core.v2.services.clear", return_value=None):
+                    monkeypatch.setattr(remove_cmd, "Index", lambda: MagicMock())
+                    result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v2"])
+        finally:
+            reset_simple_output()
+
+        import json
+
+        assert result.exit_code == 0
+        parsed = json.loads(result.stdout)
+        assert parsed["status"] == "removed"
+        assert parsed["collection"] == "docs"
