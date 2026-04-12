@@ -23,7 +23,7 @@ jobs:
       with:
         ref: main
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.RELEASE_PAT }}
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -46,7 +46,7 @@ jobs:
         git add releases/
         git diff --cached --quiet && echo "No new wheel to commit" && exit 0
         git commit -m "build(release): add wheel ${{ github.event.release.tag_name || github.ref_name }}"
-        git push origin main
+        git push https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}.git main
 
     - name: Store distribution packages
       uses: actions/upload-artifact@v5
