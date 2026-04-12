@@ -218,6 +218,13 @@ def update(
     collection: str = typer.Argument(
         None, help="Collection name to update (omit to update all collections)"
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -241,6 +248,11 @@ def update(
     """Refresh and re-index a collection or all collections."""
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import update as this_module
+    from ...services.engine_router import get_effective_engine
+    from pathlib import Path
+    from ...utils.storage_info import resolve_preferred_collections_path
+
+    active_engine = get_effective_engine(engine)
 
     update_service = this_module.update_service
     source_config_class = this_module.SourceConfig
@@ -251,6 +263,9 @@ def update(
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
+
+    preferred_path = str(resolve_preferred_collections_path())
+    preferred_dir = Path(preferred_path)
 
     # Initialize ConfigService and check if config existed before
     config_service = ConfigService.instance()
@@ -267,7 +282,12 @@ def update(
     # Determine collections to update
     if collection is None:
         # Update all collections
-        all_statuses = svc_status()
+        if active_engine == "v2":
+            from core.v2.services import status as v2_status
+
+            all_statuses = v2_status(collections_dir=preferred_dir)
+        else:
+            all_statuses = svc_status()
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -288,7 +308,12 @@ def update(
             )
     else:
         # Update specific collection
-        statuses = svc_status([collection])
+        if active_engine == "v2":
+            from core.v2.services import status as v2_status
+
+            statuses = v2_status([collection], collections_dir=preferred_dir)
+        else:
+            statuses = svc_status([collection])
         if not statuses:
             if simple:
                 print_json(
@@ -303,15 +328,29 @@ def update(
     # Capture before state for all collections
     before_data = {}
     for coll_name in collections_to_update:
-        inspect_result = inspect_svc([coll_name])
-        if not inspect_result:
-            msg = f"Cannot inspect collection '{coll_name}' before update"
-            if simple:
-                print_json({"status": "error", "error": msg})
-            else:
-                print_error(msg)
-            raise typer.Exit(1)
-        before_data[coll_name] = inspect_result[0]
+        if active_engine == "v2":
+            from core.v2.services import inspect as v2_inspect
+
+            try:
+                before_info = v2_inspect(coll_name, collections_dir=preferred_dir)
+                before_data[coll_name] = before_info
+            except Exception:
+                msg = f"Cannot inspect collection '{coll_name}' before update"
+                if simple:
+                    print_json({"status": "error", "error": msg})
+                else:
+                    print_error(msg)
+                raise typer.Exit(1)
+        else:
+            inspect_result = inspect_svc([coll_name])
+            if not inspect_result:
+                msg = f"Cannot inspect collection '{coll_name}' before update"
+                if simple:
+                    print_json({"status": "error", "error": msg})
+                else:
+                    print_error(msg)
+                raise typer.Exit(1)
+            before_data[coll_name] = inspect_result[0]
 
     # Update each collection with individual progress
     update_error = None
@@ -324,84 +363,141 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
-        # Get collection status to build proper SourceConfig
-        coll_statuses = svc_status([coll_name])
-        if not coll_statuses:
-            print_error(f"Collection '{coll_name}' not found during update")
-            continue
-        coll_status = coll_statuses[0]
+        # Get collection status to build proper SourceConfig / connector
+        if active_engine == "v2":
+            from core.v2.services import status as v2_status_loop
+
+            coll_statuses_v2 = v2_status_loop(
+                [coll_name], collections_dir=preferred_dir
+            )
+            if not coll_statuses_v2:
+                print_error(f"Collection '{coll_name}' not found during update")
+                continue
+            coll_status = coll_statuses_v2[0]
+        else:
+            coll_statuses = svc_status([coll_name])
+            if not coll_statuses:
+                print_error(f"Collection '{coll_name}' not found during update")
+                continue
+            coll_status = coll_statuses[0]
 
         # Ensure credentials are available for this source type
         source_type = getattr(coll_status, "source_type", None)
         if source_type:
             ensure_credentials_for_source(source_type, config_service)
 
-        if not coll_status.indexers:
-            print_error(f"Collection '{coll_name}' has no indexers configured")
-            continue
+        if active_engine == "v2":
+            from core.v2.services import update as v2_update
+            from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+            from connectors.registry import get_connector_class
 
-        source_config = source_config_class(
-            name=coll_name,
-            type="localFiles",  # Default type, not used in update
-            base_url_or_path="",  # Not used in update
-            indexer=coll_status.indexers[0],  # Get from collection status
-        )
+            _provider = config_service.bind()
+            _v2_embed_cfg = _provider.get(CoreV2EmbeddingConfig)
+            _v2_store_cfg = _provider.get(CoreV2StorageConfig)
 
-        if simple or is_verbose_mode():
-            # Simple output / verbose mode: no progress display
-            try:
-                with NoOpContext():
-                    update_service([source_config])
-                successfully_updated.append(coll_name)
-            except Exception as e:
-                if not simple:
-                    print_error(f"Failed to update collection '{coll_name}': {str(e)}")
-                update_error = e
-                break
-        else:
-            reader_cfg = _read_manifest_reader_config(coll_name)
-            _display_collection_update_header(coll_name, source_type, reader_cfg)
+            _source_type = source_type or "localFiles"
+            ConnectorClass = get_connector_class(_source_type)
+            connector = ConnectorClass.from_config(config_service)
 
-            _coll_error: Exception | None = None
-            with create_phased_progress(title=None) as phased:
+            if simple or is_verbose_mode():
                 try:
-                    update_service([source_config], phased_progress=phased)
+                    with NoOpContext():
+                        v2_update(
+                            coll_name,
+                            connector,
+                            embed_model_name=_v2_embed_cfg.model_name,
+                            store_type=_v2_store_cfg.vector_store,
+                            collections_dir=preferred_dir,
+                        )
+                    successfully_updated.append(coll_name)
                 except Exception as e:
-                    _coll_error = e
-
-            console.print()
-            if _coll_error is None:
-                after_result = inspect_svc([coll_name])
-                if after_result:
-                    after_info = after_result[0]
-                    before_info = before_data[coll_name]
-                    _format_update_comparison(before_info, after_info)
-                    total_docs += after_info.number_of_documents
-                    total_chunks += after_info.number_of_chunks
-                    docs_delta += (
-                        after_info.number_of_documents - before_info.number_of_documents
-                    )
-                    chunks_delta += (
-                        after_info.number_of_chunks - before_info.number_of_chunks
-                    )
-                    updated_collections.append(
-                        {
-                            "name": coll_name,
-                            "documents": after_info.number_of_documents,
-                            "chunks": after_info.number_of_chunks,
-                            "documents_delta": after_info.number_of_documents
-                            - before_info.number_of_documents,
-                            "chunks_delta": after_info.number_of_chunks
-                            - before_info.number_of_chunks,
-                        }
-                    )
-                console.print()
-                print_success(f"Collection '{coll_name}' updated")
-                console.print()
+                    if not simple:
+                        print_error(
+                            f"Failed to update collection '{coll_name}': {str(e)}"
+                        )
+                    update_error = e
+                    break
             else:
-                print_error(f"Collection '{coll_name}' update failed")
-                update_error = _coll_error
-                break
+                title = build_progress_title(
+                    "Updating",
+                    coll_name,
+                    _format_source_type(source_type) if source_type else "",
+                )
+                with create_phased_progress(title=title) as phased:
+                    try:
+                        v2_update(
+                            coll_name,
+                            connector,
+                            embed_model_name=_v2_embed_cfg.model_name,
+                            store_type=_v2_store_cfg.vector_store,
+                            collections_dir=preferred_dir,
+                            progress=phased,
+                        )
+                        console.print()
+                        print_success(f"Collection '{coll_name}' updated")
+                        successfully_updated.append(coll_name)
+                    except Exception as e:
+                        console.print()
+                        print_error(f"Collection '{coll_name}' update failed")
+                        update_error = e
+                        break
+        else:
+            if simple or is_verbose_mode():
+                # Simple output / verbose mode: no progress display
+                try:
+                    with NoOpContext():
+                        update_service([source_config])
+                    successfully_updated.append(coll_name)
+                except Exception as e:
+                    if not simple:
+                        print_error(f"Failed to update collection '{coll_name}': {str(e)}")
+                    update_error = e
+                    break
+            else:
+                reader_cfg = _read_manifest_reader_config(coll_name)
+                _display_collection_update_header(coll_name, source_type, reader_cfg)
+
+                _coll_error: Exception | None = None
+                with create_phased_progress(title=None) as phased:
+                    try:
+                        update_service([source_config], phased_progress=phased)
+                    except Exception as e:
+                        _coll_error = e
+
+                console.print()
+                if _coll_error is None:
+                    after_result = inspect_svc([coll_name])
+                    if after_result:
+                        after_info = after_result[0]
+                        before_info = before_data[coll_name]
+                        _format_update_comparison(before_info, after_info)
+                        total_docs += after_info.number_of_documents
+                        total_chunks += after_info.number_of_chunks
+                        docs_delta += (
+                            after_info.number_of_documents - before_info.number_of_documents
+                        )
+                        chunks_delta += (
+                            after_info.number_of_chunks - before_info.number_of_chunks
+                        )
+                        updated_collections.append(
+                            {
+                                "name": coll_name,
+                                "documents": after_info.number_of_documents,
+                                "chunks": after_info.number_of_chunks,
+                                "documents_delta": after_info.number_of_documents
+                                - before_info.number_of_documents,
+                                "chunks_delta": after_info.number_of_chunks
+                                - before_info.number_of_chunks,
+                            }
+                        )
+                    console.print()
+                    print_success(f"Collection '{coll_name}' updated")
+                    console.print()
+                    successfully_updated.append(coll_name)
+                else:
+                    print_error(f"Collection '{coll_name}' update failed")
+                    update_error = _coll_error
+                    break
 
     # If update failed, show error and exit
     if update_error:
