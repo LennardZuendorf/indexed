@@ -16,6 +16,7 @@ jobs:
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
+    environment: pypi
 
     steps:
     - name: Checkout main
