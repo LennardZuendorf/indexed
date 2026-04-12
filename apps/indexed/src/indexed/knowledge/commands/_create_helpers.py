@@ -201,8 +201,13 @@ def execute_create_command(
     try:
         if engine == "v2":
             from core.v2.services import create as v2_create
-            from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+            from core.v2.config import (
+                CoreV2EmbeddingConfig,
+                CoreV2StorageConfig,
+                register_config as _register_v2_config,
+            )
 
+            _register_v2_config(config)  # idempotent — ensure specs are registered
             _provider = config.bind()
             _v2_embed_cfg = _provider.get(CoreV2EmbeddingConfig)
             _v2_store_cfg = _provider.get(CoreV2StorageConfig)

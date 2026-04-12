@@ -332,9 +332,16 @@ def update(
 
         if active_engine == "v2":
             from core.v2.services import update as v2_update
-            from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+            from core.v2.config import (
+                CoreV2EmbeddingConfig,
+                CoreV2StorageConfig,
+                register_config as _register_v2_config,
+            )
             from connectors.registry import get_connector_class
 
+            _register_v2_config(
+                config_service
+            )  # idempotent — ensure specs are registered
             _provider = config_service.bind()
             _v2_embed_cfg = _provider.get(CoreV2EmbeddingConfig)
             _v2_store_cfg = _provider.get(CoreV2StorageConfig)

@@ -56,10 +56,16 @@ def register_tools(
         try:
             if engine == "v2":
                 from core.v2.services import search as v2_search
-                from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+                from core.v2.config import (
+                    CoreV2SearchConfig,
+                    CoreV2EmbeddingConfig,
+                    register_config as _register_v2_config,
+                )
                 from indexed_config import ConfigService
 
-                _provider = ConfigService.instance().bind()
+                _cs = ConfigService.instance()
+                _register_v2_config(_cs)  # idempotent — ensure specs are registered
+                _provider = _cs.bind()
                 v2_s_cfg = _provider.get(CoreV2SearchConfig)
                 v2_e_cfg = _provider.get(CoreV2EmbeddingConfig)
                 raw = v2_search(
@@ -110,11 +116,17 @@ def register_tools(
         try:
             if engine == "v2":
                 from core.v2.services import search as v2_search
-                from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+                from core.v2.config import (
+                    CoreV2SearchConfig,
+                    CoreV2EmbeddingConfig,
+                    register_config as _register_v2_config,
+                )
                 from core.v1.engine.services import SourceConfig as SC
                 from indexed_config import ConfigService
 
-                _provider = ConfigService.instance().bind()
+                _cs = ConfigService.instance()
+                _register_v2_config(_cs)  # idempotent — ensure specs are registered
+                _provider = _cs.bind()
                 v2_s_cfg = _provider.get(CoreV2SearchConfig)
                 v2_e_cfg = _provider.get(CoreV2EmbeddingConfig)
                 raw = v2_search(
