@@ -412,9 +412,15 @@ def search(
 
     if active_engine == "v2":
         from indexed_config import ConfigService
-        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+        from core.v2.config import (
+            CoreV2SearchConfig,
+            CoreV2EmbeddingConfig,
+            register_config as _register_v2_config,
+        )
 
-        _provider = ConfigService.instance().bind()
+        _cs = ConfigService.instance()
+        _register_v2_config(_cs)  # idempotent — ensure specs are registered
+        _provider = _cs.bind()
         _v2_search_cfg = _provider.get(CoreV2SearchConfig)
         _v2_embed_cfg = _provider.get(CoreV2EmbeddingConfig)
         svc_search_v2 = this_module.svc_search_v2
