@@ -6,7 +6,7 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 """
 
 import typer
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from rich.columns import Columns
 
 from ...utils.console import console
@@ -186,6 +186,13 @@ def inspect_collections(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed information for all collections"
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
 ) -> None:
     """Show all indexed collections or inspect a specific collection.
 
@@ -198,25 +205,26 @@ def inspect_collections(
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import inspect as this_module
     from ...utils.storage_info import resolve_preferred_collections_path
+    from ...services.engine_router import get_effective_engine
+    from pathlib import Path
 
+    active_engine = get_effective_engine(engine)
     inspect_svc = this_module.inspect
 
     # Prefer local collections over global
     preferred_path = str(resolve_preferred_collections_path())
+    preferred_dir = Path(preferred_path)
 
     # Fetch collection info from core - this is connection-agnostic
     if name:
-        # Inspect specific collection (no progress bar)
-        collections = inspect_svc([name], collections_path=preferred_path)
+        if active_engine == "v2":
+            from core.v2.services import inspect as v2_inspect, status as v2_status
 
-        # Check if collection exists and has valid data
-        if not collections or collections[0].number_of_documents == 0:
-            # Check if it truly doesn't exist vs just being empty
-            all_collections = inspect_svc(collections_path=preferred_path)
-            exists = any(c.name == name for c in all_collections)
-
-            if not exists:
+            try:
+                coll_info = v2_inspect(name, collections_dir=preferred_dir)
+            except Exception:
                 print_error(f"Collection '{name}' not found")
+                all_collections = v2_status(collections_dir=preferred_dir)
                 if all_collections:
                     console.print(
                         f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
@@ -226,14 +234,44 @@ def inspect_collections(
                 console.print()
                 raise typer.Exit(1)
 
-        # Format and display single collection
-        if is_simple_output():
-            format_collection_json(collections[0])
+            if is_simple_output():
+                format_collection_json(coll_info)
+            else:
+                format_collection_detail(coll_info)
         else:
-            format_collection_detail(collections[0])
+            # Inspect specific collection (no progress bar)
+            collections = inspect_svc([name], collections_path=preferred_path)
+
+            # Check if collection exists and has valid data
+            if not collections or collections[0].number_of_documents == 0:
+                # Check if it truly doesn't exist vs just being empty
+                all_collections = inspect_svc(collections_path=preferred_path)
+                exists = any(c.name == name for c in all_collections)
+
+                if not exists:
+                    print_error(f"Collection '{name}' not found")
+                    if all_collections:
+                        console.print(
+                            f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+                        )
+                        for coll in all_collections:
+                            console.print(f"  • {coll.name}")
+                    console.print()
+                    raise typer.Exit(1)
+
+            # Format and display single collection
+            if is_simple_output():
+                format_collection_json(collections[0])
+            else:
+                format_collection_detail(collections[0])
     else:
-        # List all collections (no progress bar)
-        collections = inspect_svc(collections_path=preferred_path)
+        if active_engine == "v2":
+            from core.v2.services import status as v2_status
+
+            collections = v2_status(collections_dir=preferred_dir)
+        else:
+            # List all collections (no progress bar)
+            collections = inspect_svc(collections_path=preferred_path)
 
         if not collections:
             console.print(

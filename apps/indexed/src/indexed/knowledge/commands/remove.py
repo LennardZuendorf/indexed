@@ -33,6 +33,13 @@ app = typer.Typer(help="Remove collections")
 def remove(
     collection: str = typer.Argument(..., help="Collection name to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -61,7 +68,11 @@ def remove(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import remove as this_module
+    from ...services.engine_router import get_effective_engine
+    from pathlib import Path
+    from ...utils.storage_info import resolve_preferred_collections_path
 
+    active_engine = get_effective_engine(engine)
     index_svc = this_module.Index
     inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
@@ -69,6 +80,9 @@ def remove(
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
+
+    preferred_path = str(resolve_preferred_collections_path())
+    preferred_dir = Path(preferred_path)
 
     index = index_svc()
     simple = is_simple_output()
@@ -81,7 +95,12 @@ def remove(
         display_storage_mode_for_command(console)
 
     # Fetch all collections to validate
-    all_collections = inspect_svc()
+    if active_engine == "v2":
+        from core.v2.services import status as v2_status
+
+        all_collections = v2_status(collections_dir=preferred_dir)
+    else:
+        all_collections = inspect_svc()
 
     if not all_collections:
         console.print(f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]")
@@ -111,7 +130,12 @@ def remove(
     # Simple output mode: skip confirmation, output JSON
     if simple:
         try:
-            index.remove(collection)
+            if active_engine == "v2":
+                from core.v2.services import clear as v2_clear
+
+                v2_clear([collection], collections_dir=preferred_dir)
+            else:
+                index.remove(collection)
             print_json({"status": "removed", "collection": collection})
         except Exception as e:
             print_json({"status": "error", "collection": collection, "error": str(e)})
@@ -159,7 +183,12 @@ def remove(
         if is_verbose_mode():
             # Verbose mode: show all logs, no progress UI
             with NoOpContext():
-                index.remove(collection)
+                if active_engine == "v2":
+                    from core.v2.services import clear as v2_clear
+
+                    v2_clear([collection], collections_dir=preferred_dir)
+                else:
+                    index.remove(collection)
         else:
             # Normal mode: phased progress display
             source_type = target_collection.source_type
@@ -168,7 +197,12 @@ def remove(
 
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Removing collection data")
-                index.remove(collection)
+                if active_engine == "v2":
+                    from core.v2.services import clear as v2_clear
+
+                    v2_clear([collection], collections_dir=preferred_dir)
+                else:
+                    index.remove(collection)
                 phased.finish_phase("Removing collection data")
 
         console.print()
