@@ -43,7 +43,7 @@ def get_effective_engine(command_engine: Optional[str] = None) -> str:
         root_engine: Any = (ctx.obj or {}).get("engine")
         if root_engine:
             return str(root_engine)
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         pass  # No active Typer context (e.g., during unit tests)
 
     # Fall back to [general] engine in config
