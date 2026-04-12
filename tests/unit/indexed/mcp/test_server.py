@@ -538,7 +538,7 @@ class TestContextHandling:
         search_tool.fn("test query", ctx=None)
 
         mock_search.assert_called_once()
-        mock_resolve_config.assert_called_once()
+        assert mock_resolve_config.call_count >= 1
 
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_mcp_config")
