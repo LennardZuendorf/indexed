@@ -32,7 +32,7 @@ def get_effective_engine(command_engine: Optional[str] = None) -> str:
     Returns:
         ``"v1"`` or ``"v2"``.
     """
-    if command_engine:
+    if command_engine and isinstance(command_engine, str):
         return command_engine.lower()
 
     # Root callback flag stored on Typer context
