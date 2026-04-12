@@ -22,6 +22,7 @@ class LifespanState(TypedDict):
 
     mcp_config: MCPConfig
     search_config: CoreV1SearchConfig
+    engine: str
 
 
 def _get_mcp_config() -> MCPConfig:
@@ -46,16 +47,31 @@ def _get_search_config() -> CoreV1SearchConfig:
         return CoreV1SearchConfig()
 
 
+def _get_engine() -> str:
+    """Load engine selection from config, defaulting to v1."""
+    try:
+        from ..services.engine_router import GeneralConfig
+
+        config_service = ConfigService.instance()
+        config_service.register(GeneralConfig, path="general")
+        provider = config_service.bind()
+        return provider.get(GeneralConfig).engine
+    except Exception:
+        return "v1"
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     """Server lifespan context manager for configuration initialization."""
     mcp_config = _get_mcp_config()
     search_config = _get_search_config()
-    yield {"mcp_config": mcp_config, "search_config": search_config}
+    engine = _get_engine()
+    yield {"mcp_config": mcp_config, "search_config": search_config, "engine": engine}
 
 
 mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
 mcp.add_middleware(ResponseCachingMiddleware())
 
-register_tools(mcp, _get_search_config)
-register_resources(mcp, _get_mcp_config)
+# Register tools and resources with engine routing
+register_tools(mcp, _get_search_config, _get_engine)
+register_resources(mcp, _get_mcp_config, _get_engine)
