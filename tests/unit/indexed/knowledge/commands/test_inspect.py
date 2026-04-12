@@ -7,7 +7,7 @@ We focus on realistic behaviors:
 """
 
 from pathlib import Path
-from typing import List
+from typing import Any, List
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -217,3 +217,68 @@ class TestInspectCollectionsCommand:
 
         assert result.exit_code == 0
         assert "sized-collection" in result.stdout
+
+
+class TestInspectCollectionsCommandV2:
+    """Tests for v2 engine routing in the inspect CLI command."""
+
+    @patch("core.v2.services.status")
+    def test_v2_all_collections_calls_v2_status(self, mock_v2_status: Any) -> None:
+        """--engine v2 with no name arg calls core.v2.services.status."""
+        from unittest.mock import MagicMock
+
+        mock_coll = MagicMock()
+        mock_coll.name = "v2-docs"
+        mock_coll.source_type = "localFiles"
+        mock_coll.relative_path = "/docs"
+        mock_coll.number_of_documents = 5
+        mock_coll.number_of_chunks = 10
+        mock_coll.disk_size_bytes = 1024
+        mock_coll.index_size_bytes = 512
+        mock_coll.created_time = "2025-01-01T00:00:00Z"
+        mock_coll.updated_time = "2025-01-02T00:00:00Z"
+        mock_v2_status.return_value = [mock_coll]
+
+        result = runner.invoke(inspect_cmd.app, ["--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "v2-docs" in result.stdout
+        mock_v2_status.assert_called_once()
+
+    @patch("core.v2.services.status")
+    @patch("core.v2.services.inspect")
+    def test_v2_specific_collection_calls_v2_inspect(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 with a collection name calls core.v2.services.inspect."""
+        from unittest.mock import MagicMock
+
+        mock_info = MagicMock()
+        mock_info.name = "my-docs"
+        mock_info.source_type = "localFiles"
+        mock_info.relative_path = "/docs"
+        mock_info.number_of_documents = 7
+        mock_info.number_of_chunks = 14
+        mock_info.disk_size_bytes = 2048
+        mock_info.index_size_bytes = 1024
+        mock_info.created_time = "2025-01-01T00:00:00Z"
+        mock_info.updated_time = "2025-01-02T00:00:00Z"
+        mock_v2_inspect.return_value = mock_info
+
+        result = runner.invoke(inspect_cmd.app, ["my-docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        mock_v2_inspect.assert_called_once()
+
+    @patch("core.v2.services.status", return_value=[])
+    @patch("core.v2.services.inspect")
+    def test_v2_inspect_not_found_shows_error(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 inspect raising exception shows error and exits 1."""
+        mock_v2_inspect.side_effect = Exception("Collection 'missing' not found")
+
+        result = runner.invoke(inspect_cmd.app, ["missing", "--engine", "v2"])
+
+        assert result.exit_code == 1
+        assert "missing" in result.stdout
