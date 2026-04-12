@@ -39,6 +39,7 @@ def _build_v2_connector(cfg: "SourceConfig", config_service: Any) -> Any:
         return FileSystemConnector(
             path=cfg.base_url_or_path,
             include_patterns=cfg.reader_opts.get("includePatterns", ["*"]),
+            exclude_patterns=cfg.reader_opts.get("excludePatterns", []),
             fail_fast=cfg.reader_opts.get("failFast", False),
         )
 
