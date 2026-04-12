@@ -14,7 +14,21 @@ from .config import resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
 
-def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
+def _normalize_v2_results(raw: dict) -> dict:
+    """Convert v2 search output to v1-compatible display format for the LLM formatter."""
+    if "collections" in raw:
+        return {
+            item["collectionName"]: {"results": item.get("results", [])}
+            for item in raw["collections"]
+        }
+    return {raw["collectionName"]: {"results": raw.get("results", [])}}
+
+
+def register_tools(
+    mcp: Any,
+    get_search_config: Callable[[], Any],
+    get_engine: Callable[[], str] = lambda: "v1",
+) -> None:
     """Register search tools on the FastMCP instance."""
 
     @mcp.tool
@@ -34,19 +48,38 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 chunk_number, and text fields.
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        engine = _resolve_config(ctx, "engine", get_engine)
 
         try:
-            raw_results = svc_search(
-                query,
-                configs=None,
-                max_docs=search_cfg.max_docs,
-                max_chunks=search_cfg.max_chunks,
-                score_threshold=search_cfg.score_threshold,
-                include_full_text=search_cfg.include_full_text,
-                include_all_chunks=search_cfg.include_all_chunks,
-                include_matched_chunks=search_cfg.include_matched_chunks,
-            )
-            return format_search_results_for_llm(raw_results, query)
+            if engine == "v2":
+                from core.v2.services import search as v2_search
+                from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+                from indexed_config import ConfigService
+
+                _provider = ConfigService.instance().bind()
+                v2_s_cfg = _provider.get(CoreV2SearchConfig)
+                v2_e_cfg = _provider.get(CoreV2EmbeddingConfig)
+                raw = v2_search(
+                    query,
+                    configs=None,
+                    max_docs=v2_s_cfg.max_docs,
+                    max_chunks=v2_s_cfg.max_chunks,
+                    include_matched_chunks=v2_s_cfg.include_matched_chunks,
+                    embed_model_name=v2_e_cfg.model_name,
+                )
+                return format_search_results_for_llm(_normalize_v2_results(raw), query)
+            else:
+                raw_results = svc_search(
+                    query,
+                    configs=None,
+                    max_docs=search_cfg.max_docs,
+                    max_chunks=search_cfg.max_chunks,
+                    score_threshold=search_cfg.score_threshold,
+                    include_full_text=search_cfg.include_full_text,
+                    include_all_chunks=search_cfg.include_all_chunks,
+                    include_matched_chunks=search_cfg.include_matched_chunks,
+                )
+                return format_search_results_for_llm(raw_results, query)
         except Exception as e:
             return {"error": str(e)}
 
@@ -69,37 +102,59 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             dict: LLM-friendly search results with the same structure as search() tool
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        engine = _resolve_config(ctx, "engine", get_engine)
 
         try:
-            try:
-                statuses = svc_status([collection])
-                if not statuses or not statuses[0].indexers:
-                    return {
-                        "error": f"Collection '{collection}' not found or has no indexers"
-                    }
-                default_indexer = statuses[0].indexers[0]
-            except Exception:
-                from core.v1.constants import DEFAULT_INDEXER
+            if engine == "v2":
+                from core.v2.services import search as v2_search
+                from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+                from core.v1.engine.services import SourceConfig as SC
+                from indexed_config import ConfigService
 
-                default_indexer = DEFAULT_INDEXER
+                _provider = ConfigService.instance().bind()
+                v2_s_cfg = _provider.get(CoreV2SearchConfig)
+                v2_e_cfg = _provider.get(CoreV2EmbeddingConfig)
+                raw = v2_search(
+                    query,
+                    configs=[
+                        SC(name=collection, type="localFiles", base_url_or_path="")
+                    ],
+                    max_docs=v2_s_cfg.max_docs,
+                    max_chunks=v2_s_cfg.max_chunks,
+                    include_matched_chunks=v2_s_cfg.include_matched_chunks,
+                    embed_model_name=v2_e_cfg.model_name,
+                )
+                return format_search_results_for_llm(_normalize_v2_results(raw), query)
+            else:
+                try:
+                    statuses = svc_status([collection])
+                    if not statuses or not statuses[0].indexers:
+                        return {
+                            "error": f"Collection '{collection}' not found or has no indexers"
+                        }
+                    default_indexer = statuses[0].indexers[0]
+                except Exception:
+                    from core.v1.constants import DEFAULT_INDEXER
 
-            source_config = SourceConfig(
-                name=collection,
-                type="localFiles",
-                base_url_or_path="",
-                indexer=default_indexer,
-            )
+                    default_indexer = DEFAULT_INDEXER
 
-            raw_results = svc_search(
-                query,
-                configs=[source_config],
-                max_docs=search_cfg.max_docs,
-                max_chunks=search_cfg.max_chunks,
-                score_threshold=search_cfg.score_threshold,
-                include_full_text=search_cfg.include_full_text,
-                include_all_chunks=search_cfg.include_all_chunks,
-                include_matched_chunks=search_cfg.include_matched_chunks,
-            )
-            return format_search_results_for_llm(raw_results, query)
+                source_config = SourceConfig(
+                    name=collection,
+                    type="localFiles",
+                    base_url_or_path="",
+                    indexer=default_indexer,
+                )
+
+                raw_results = svc_search(
+                    query,
+                    configs=[source_config],
+                    max_docs=search_cfg.max_docs,
+                    max_chunks=search_cfg.max_chunks,
+                    score_threshold=search_cfg.score_threshold,
+                    include_full_text=search_cfg.include_full_text,
+                    include_all_chunks=search_cfg.include_all_chunks,
+                    include_matched_chunks=search_cfg.include_matched_chunks,
+                )
+                return format_search_results_for_llm(raw_results, query)
         except Exception as e:
             return {"error": str(e)}
