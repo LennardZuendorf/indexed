@@ -29,6 +29,7 @@ class DoclingParser:
         # Lazily initialised on first call to ``parse``.
         self._converter: object | None = None
         self._chunker: object | None = None
+        self._supported_extensions: frozenset[str] | None = None
 
     # -- lazy init --------------------------------------------------------
 
@@ -50,7 +51,12 @@ class DoclingParser:
             }
         )
 
+        from docling.datamodel.base_models import FormatToExtensions
         from docling_core.transforms.chunker import HierarchicalChunker
+
+        self._supported_extensions = frozenset(
+            f".{ext.lower()}" for exts in FormatToExtensions.values() for ext in exts
+        )
 
         self._chunker = HierarchicalChunker(
             max_tokens=self._max_tokens,
@@ -64,6 +70,16 @@ class DoclingParser:
         self._ensure_converter()
         assert self._converter is not None  # for type-checkers
         assert self._chunker is not None
+        assert self._supported_extensions is not None
+
+        # Skip files with extensions docling doesn't support — avoids noisy
+        # ERROR logs from docling's DocumentConverter for unsupported formats.
+        if file_path.suffix.lower() not in self._supported_extensions:
+            return ParsedDocument(
+                file_path=str(file_path),
+                chunks=[],
+                metadata={"format": file_path.suffix.lower(), "skipped": True},
+            )
 
         try:
             result = self._converter.convert(str(file_path))  # type: ignore[union-attr]

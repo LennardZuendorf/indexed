@@ -1,11 +1,14 @@
 """Indexed CLI application - stateless commands backed by services."""
 
-# Fix OpenMP threading issues on macOS before any imports
-# Must be set before PyTorch/sentence-transformers are loaded
+# Process-wide env vars — must be set before any third-party imports.
+# Fix OpenMP threading on macOS; suppress noisy third-party output.
 import os
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("TQDM_DISABLE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
 
 import warnings
 
@@ -51,13 +54,13 @@ def _init_app(
         False,
         "--local",
         help="Use local .indexed/ storage instead of global ~/.indexed/",
-        rich_help_panel="Storage",
+        rich_help_panel="Usage Options",
     ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
         help="Enable verbose (INFO) logging",
-        rich_help_panel="Logging",
+        rich_help_panel="Debug Options",
     ),
     log_level: Optional[str] = typer.Option(
         None,
@@ -65,16 +68,19 @@ def _init_app(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         case_sensitive=False,
         show_choices=True,
-        rich_help_panel="Logging",
+        rich_help_panel="Debug Options",
     ),
     json_logs: bool = typer.Option(
-        False, "--json-logs", help="Output logs as JSON", rich_help_panel="Logging"
+        False,
+        "--json-logs",
+        help="Output logs as JSON",
+        rich_help_panel="Debug Options",
     ),
     simple_output: bool = typer.Option(
         False,
         "--simple-output",
         help="Machine-readable JSON output (for programmatic use)",
-        rich_help_panel="Output",
+        rich_help_panel="Usage Options",
     ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
@@ -244,7 +250,7 @@ app.command("debug", hidden=True)(debug_command)
 
 @app.command(
     "migrate",
-    rich_help_panel=CONFIG_PANEL,
+    rich_help_panel="Setup",
     help="Migrate legacy ./data/ to global ~/.indexed/data/",
 )
 def migrate_data(

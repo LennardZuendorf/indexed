@@ -35,6 +35,20 @@ class NoOpContext:
         pass
 
 
+class _BlockDoclingFilter(logging.Filter):
+    """Block docling/docling_core WARNING records at the root logger.
+
+    Installed on the root logger inside ``suppress_core_output`` so that
+    docling loggers created *lazily* (after the context is entered) are
+    still silenced — even if they carry their own handlers.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name.startswith(("docling", "docling_core")):
+            return record.levelno >= logging.CRITICAL
+        return True
+
+
 @contextmanager
 def suppress_core_output(redirect_streams: bool = False):
     """
@@ -50,27 +64,30 @@ def suppress_core_output(redirect_streams: bool = False):
     # Save original logging level
     original_level = logging.getLogger().level
 
-    # Save and suppress ALL docling/docling_core loggers (child loggers may
-    # have their own handlers that bypass the parent level).
-    saved_docling_levels: dict[str, int] = {}
-    for name in list(logging.Logger.manager.loggerDict):
-        if name.startswith(("docling", "docling_core")):
-            lg = logging.getLogger(name)
-            saved_docling_levels[name] = lg.level
-    # Also include the root "docling" logger itself
-    docling_root = logging.getLogger("docling")
-    saved_docling_levels.setdefault("docling", docling_root.level)
+    # Configure docling parent loggers to ERROR — child loggers with NOTSET
+    # inherit this, covering loggers created lazily inside the context.
+    docling_logger = logging.getLogger("docling")
+    docling_core_logger = logging.getLogger("docling_core")
+    saved_docling_level = docling_logger.level
+    saved_docling_core_level = docling_core_logger.level
+
+    # Root filter catches any docling child logger that has its own handler
+    # (bypassing parent level inheritance via propagation to root).
+    docling_filter = _BlockDoclingFilter()
 
     # Save current loguru min level so we can restore it
-    from indexed.utils.logging import _configure_loguru
+    from indexed.utils.logging import _cli_log_level, _configure_loguru
+
+    saved_loguru_level = _cli_log_level
 
     try:
         # Suppress standard logging below WARNING
         logging.getLogger().setLevel(logging.WARNING)
 
-        # Suppress all docling loggers (format-mismatch noise); only surface ERRORs
-        for name in saved_docling_levels:
-            logging.getLogger(name).setLevel(logging.ERROR)
+        # Suppress docling loggers and install root filter
+        docling_logger.setLevel(logging.ERROR)
+        docling_core_logger.setLevel(logging.ERROR)
+        logging.getLogger().addFilter(docling_filter)
 
         # Reconfigure loguru to WARNING level instead of disabling entirely,
         # so parsing ERRORs and WARNINGs still surface
@@ -93,9 +110,8 @@ def suppress_core_output(redirect_streams: bool = False):
     finally:
         # Restore original logging level
         logging.getLogger().setLevel(original_level)
-        for name, level in saved_docling_levels.items():
-            logging.getLogger(name).setLevel(level)
+        logging.getLogger().removeFilter(docling_filter)
+        docling_logger.setLevel(saved_docling_level)
+        docling_core_logger.setLevel(saved_docling_core_level)
         # Restore loguru to its previous configuration
-        from indexed.utils.logging import _cli_log_level
-
-        _configure_loguru(_cli_log_level)
+        _configure_loguru(saved_loguru_level)
