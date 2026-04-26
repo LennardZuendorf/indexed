@@ -234,8 +234,11 @@ def dev_impl(
     server_port: Optional[int] = None,
     inspector_version: Optional[str] = None,
 ) -> None:
-    """Launch MCP Inspector against the indexed server via fastmcp dev."""
-    cmd: List[str] = ["fastmcp", "dev", _get_server_path()]
+    """Launch MCP Inspector against the indexed server via fastmcp dev inspector.
+
+    Relies on fastmcp.json at the repo root for server discovery.
+    """
+    cmd: List[str] = ["fastmcp", "dev", "inspector"]
     if ui_port is not None:
         cmd.extend(["--ui-port", str(ui_port)])
     if server_port is not None:

@@ -105,7 +105,7 @@ class TestDevImpl:
         cmd = mock_run.call_args.args[0]
         assert cmd[0] == "fastmcp"
         assert cmd[1] == "dev"
-        assert cmd[2].endswith("server.py")
+        assert cmd[2] == "inspector"
         assert mock_run.call_args.kwargs.get("check") is True
 
     @patch("indexed.mcp.cli.subprocess.run")
