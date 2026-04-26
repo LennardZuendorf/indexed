@@ -26,87 +26,114 @@ src/utils/
 
 ## Logging (`logger.py`)
 
-Centralized Loguru configuration for the entire application.
+Single-sink Loguru architecture. All log records — both Loguru and stdlib `logging` — flow through one Loguru configuration. Bootstrapped once at CLI entry.
 
-### Setup Logging
+### Bootstrap
 
 ```python
-from utils import setup_root_logger, get_current_log_level
+from utils import bootstrap_logging
 
-# Setup root logger (typically at application startup)
-setup_root_logger(
-    level="INFO",                     # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    verbose=False,                    # Verbose mode for DEBUG logs
-    log_file="/tmp/indexed.log",      # Optional: write to file
-    json_mode=False,                  # Optional: JSON structured logging
+# CLI entry point — call once, idempotent
+bootstrap_logging(
+    level="WARNING",     # Effective console level (resolved by caller from flags)
+    debug=False,         # --debug: lowers third-party libs to DEBUG, enables file sink
+    quiet=False,         # --quiet: silences status sink (no spinner text)
+    rich_console=None,   # Optional shared rich.console.Console instance
+    theme_styles=None,   # Optional {level_name: style_str} for Rich rendering
+    log_dir=None,        # Optional dir for the rotating --debug file sink
 )
-
-# Later: check current level
-current_level = get_current_log_level()
-print(f"Current log level: {current_level}")
 ```
 
-### Using Logging
+The CLI in `apps/indexed` builds `theme_styles` from `apps/indexed/src/indexed/utils/components/theme.py` accessors. Library / non-CLI consumers omit `rich_console` and `theme_styles` and get plain stderr output.
+
+### Strict verbosity matrix
+
+| Flag        | Console | Console format          | Status sink | File sink |
+|-------------|---------|-------------------------|-------------|-----------|
+| _(default)_ | WARNING | level + msg             | on          | off       |
+| `--verbose` | INFO    | level + name:line + msg | on          | off       |
+| `--debug`   | DEBUG   | full + file sink path   | on          | DEBUG, daily-rotating |
+| `--quiet`   | ERROR   | level + msg             | **off**     | off       |
+
+### Status messages (spinner)
+
+```python
+from utils import emit_status, subscribe_status, unsubscribe_status
+
+# Application code: emit progress narration
+emit_status("Embedding chunk 42 of 120")
+
+# UI code (spinner / progress bar): subscribe
+token = subscribe_status(lambda msg: spinner.update(msg))
+try:
+    do_work_that_emits_status()
+finally:
+    unsubscribe_status(token)
+```
+
+`emit_status` is `logger.bind(status=True).info(...)` under the hood. The status sink filters on the `status` extra and fans out to subscribers. This is independent of console verbosity — `--quiet` is the only flag that disables it.
+
+### Third-party logger policy
+
+`THIRD_PARTY_LOGGERS` is a declarative table of noisy libs and their default level floors:
+
+```python
+from utils import THIRD_PARTY_LOGGERS
+
+# Current defaults — extend when a new noisy dep surfaces:
+{
+    "docling": "CRITICAL",         # wrapped by indexed-parsing; their errors are noise
+    "docling_core": "CRITICAL",
+    "transformers": "ERROR",       # informative — surface ERROR+
+    "sentence_transformers": "WARNING",
+    "urllib3": "WARNING",
+    "huggingface_hub": "WARNING",
+    "filelock": "WARNING",
+}
+```
+
+In `--debug`, every entry is lowered to `DEBUG` so the user sees what these libs are doing. Otherwise the level here is the floor.
+
+### Defense in depth
+
+`bootstrap_logging` does the following at startup:
+
+1. Installs an `InterceptHandler` on the root stdlib logger — every `logging` record routes through Loguru.
+2. Sets `logging.lastResort = None` — kills Python's silent stderr fallback. (Without this, records that find no handler in the chain leak to stderr at WARNING level.)
+3. For each entry in `THIRD_PARTY_LOGGERS`: sets the level, attaches a `NullHandler` (so `callHandlers` finds a handler and never falls back to `lastResort`), leaves `propagate=True` so the record still reaches the InterceptHandler.
+
+Result: no third-party `logging` record can produce raw stderr output, ever, regardless of bootstrap order. The console sink is the only path to user output.
+
+### Using Loguru in application code
 
 ```python
 from loguru import logger
 
-# Log at different levels
-logger.debug("Detailed diagnostic information")
-logger.info("General informational message")
-logger.warning("Warning that should be reviewed")
-logger.error("Error occurred but application continues")
-logger.critical("Critical error, application may not recover")
+logger.debug("Detailed diagnostic")
+logger.info("Operation complete")
+logger.warning("Something unusual")
+logger.error("Recoverable failure")
 
-# Log with context
-user_id = "user-123"
-logger.info(f"User action: {user_id} performed operation")
-
-# Log exceptions
 try:
     risky_operation()
-except Exception as e:
-    logger.exception("Operation failed")  # Includes full traceback
-
-# Structured logging with extra fields
-logger.info("Collection created", extra={
-    "collection_name": "my-docs",
-    "document_count": 100,
-    "duration_ms": 1234,
-})
+except Exception:
+    logger.exception("Operation failed")  # Includes traceback
 ```
 
-### Log Level Detection
+### Verbosity introspection
 
 ```python
-from utils import is_verbose_mode
+from utils import is_verbose_mode, get_current_log_level
 
-# Check if verbose mode is enabled
-if is_verbose_mode():
-    # Verbose mode is active
-    logger.debug("This debug message shows in verbose mode")
-else:
-    # Normal mode
-    logger.debug("This debug message is suppressed in normal mode")
+if is_verbose_mode():  # True at INFO or DEBUG
+    logger.debug("verbose-only diagnostic")
+
+current = get_current_log_level()  # "WARNING" / "INFO" / "DEBUG" / "ERROR"
 ```
 
-### Configuration
+### Migration from `setup_root_logger`
 
-Logging is configured at package level via environment:
-
-```bash
-# Set log level
-export INDEXED__logging__level=DEBUG
-
-# Enable verbose mode
-export INDEXED__logging__verbose=true
-
-# Write logs to file
-export INDEXED__logging__file=/var/log/indexed.log
-
-# JSON structured logging
-export INDEXED__logging__json_mode=true
-```
+`setup_root_logger(level_str=...)` is kept as a deprecated shim that delegates to `bootstrap_logging`. New code should call `bootstrap_logging` directly with the full Strict matrix.
 
 ## Retry Logic (`retry.py`)
 

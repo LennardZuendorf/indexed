@@ -18,6 +18,7 @@ dependencies = [
     "atlassian-python-api>=3.41.16",
     "loguru>=0.7.0",
     "xxhash>=3.0",
+    "pathspec>=0.12",
 ]
 
 [tool.uv.sources]

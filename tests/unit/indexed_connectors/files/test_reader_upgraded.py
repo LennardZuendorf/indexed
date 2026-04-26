@@ -39,25 +39,60 @@ class TestFilesDocumentReaderParsed:
         assert len(docs) == 1
         assert "keep.txt" in docs[0].file_path
 
-    def test_exclude_patterns(self, tmp_path):
+    def test_negation_pattern_excludes_file(self, tmp_path):
         (tmp_path / "keep.txt").write_text("keep")
         (tmp_path / "skip.txt").write_text("skip")
 
         reader = FilesDocumentReader(
             base_path=str(tmp_path),
-            exclude_patterns=[r"skip.*"],
+            include_patterns=["*", "!skip.txt"],
         )
-        docs = list(reader.read_all_parsed())
-        assert len(docs) == 1
+        paths = list(reader._iter_file_paths())
+        assert len(paths) == 1
+        assert "keep.txt" in paths[0]
 
-    def test_excluded_extensions(self, tmp_path):
+    def test_negation_pattern_excludes_by_extension(self, tmp_path):
+        (tmp_path / "doc.txt").write_text("doc")
+        (tmp_path / "binary.exe").write_bytes(b"\x00\x01\x02")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["*", "!*.exe"],
+        )
+        paths = list(reader._iter_file_paths())
+        assert len(paths) == 1
+        assert "doc.txt" in paths[0]
+
+    def test_negation_no_positive_pattern_yields_nothing(self, tmp_path):
+        (tmp_path / "doc.txt").write_text("doc")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["!*.txt"],
+        )
+        assert list(reader._iter_file_paths()) == []
+
+    def test_multiple_negation_patterns(self, tmp_path):
+        (tmp_path / "keep.py").write_text("keep")
+        (tmp_path / "skip.exe").write_bytes(b"\x00")
+        (tmp_path / "skip.bin").write_bytes(b"\x00")
+
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["*", "!*.exe", "!*.bin"],
+        )
+        paths = list(reader._iter_file_paths())
+        assert len(paths) == 1
+        assert "keep.py" in paths[0]
+
+    def test_exe_included_by_default(self, tmp_path):
         (tmp_path / "doc.txt").write_text("doc")
         (tmp_path / "binary.exe").write_bytes(b"\x00\x01\x02")
 
         reader = FilesDocumentReader(base_path=str(tmp_path))
-        docs = list(reader.read_all_parsed())
-        # .exe is in default excluded extensions
-        assert len(docs) == 1
+        paths = list(reader._iter_file_paths())
+        # No default extension blocklist — both files are included
+        assert len(paths) == 2
 
     def test_fail_fast(self, tmp_path):
         (tmp_path / "good.txt").write_text("good")
@@ -121,6 +156,16 @@ class TestFilesDocumentReaderV1Compat:
         details = reader.get_reader_details()
         assert details["type"] == "localFiles"
         assert details["basePath"] == str(tmp_path)
+        assert "excludedDirs" in details
+        assert "excludedExtensions" not in details
+
+    def test_get_reader_details_includes_negation_patterns(self, tmp_path):
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["*", "!*.log"],
+        )
+        details = reader.get_reader_details()
+        assert "!*.log" in details["includePatterns"]
 
 
 class TestFilesDocumentReaderSpecificFiles:
@@ -185,20 +230,7 @@ class TestFilesDocumentReaderSpecificFiles:
         )
         assert reader.get_number_of_documents() == 2
 
-    def test_specific_files_excluded_extension_filtered(self, tmp_path):
-        a = tmp_path / "a.txt"
-        b = tmp_path / "b.exe"
-        a.write_text("aaa")
-        b.write_bytes(b"\x00")
-
-        reader = FilesDocumentReader(
-            base_path=str(tmp_path),
-            specific_files=[str(a), str(b)],
-        )
-        found = list(reader._iter_file_paths())
-        assert found == [str(a)]
-
-    def test_specific_files_exclude_pattern_applied(self, tmp_path):
+    def test_specific_files_negation_pattern_applied(self, tmp_path):
         a = tmp_path / "a.txt"
         b = tmp_path / "skip.txt"
         a.write_text("aaa")
@@ -207,7 +239,7 @@ class TestFilesDocumentReaderSpecificFiles:
         reader = FilesDocumentReader(
             base_path=str(tmp_path),
             specific_files=[str(a), str(b)],
-            exclude_patterns=[r"skip.*"],
+            include_patterns=["*", "!skip.txt"],
         )
         found = list(reader._iter_file_paths())
         assert found == [str(a)]
@@ -254,3 +286,12 @@ class TestFilesDocumentReaderGlobFallback:
             include_patterns=[r".*\.txt$"],
         )
         assert len(reader.compiled_include_patterns) == 1
+
+    def test_negation_glob_pattern_compiled(self, tmp_path):
+        """Negation glob patterns should compile via fallback too."""
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=["*", "!*.pyc"],
+        )
+        assert len(reader.compiled_include_patterns) == 1
+        assert len(reader._compiled_exclude_patterns) == 1

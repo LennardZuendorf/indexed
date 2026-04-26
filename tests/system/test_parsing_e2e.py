@@ -200,12 +200,12 @@ class TestFileSystemConnectorE2E:
         connector = FileSystemConnector(path=str(tmp_path))
         parsed = list(connector.reader.read_all_parsed())
 
-        # binary.exe should be excluded by default
+        # all files included by default (no extension blocklist)
         file_names = {Path(d.file_path).name for d in parsed}
         assert "readme.md" in file_names
         assert "app.py" in file_names
         assert "config.json" in file_names
-        assert "binary.exe" not in file_names
+        assert "binary.exe" in file_names
 
     def test_connector_with_v1_adapter_roundtrip(self, spec_dir: Path):
         """Verify V1FormatAdapter produces valid v1 dicts from ParsedDocuments."""

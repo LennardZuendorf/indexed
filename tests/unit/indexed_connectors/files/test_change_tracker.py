@@ -255,6 +255,21 @@ class TestChangeTrackerGit:
         assert changes[0].status == "modified"
         assert changes[0].path == "file.txt"
 
+    def test_gitignored_file_detected_as_deleted(self, git_repo):
+        """File previously indexed but now excluded (e.g. .gitignore) must be 'deleted'."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        # State includes initial.txt as indexed
+        state = tracker.build_state([str(f)])
+
+        # Simulate the file being gitignored: still on disk, not in the current walk
+        # Pass an empty file_paths list (as if the walker skipped it)
+        changes = tracker.detect_changes([], state)
+
+        deleted = [ch for ch in changes if ch.status == "deleted"]
+        assert len(deleted) == 1
+        assert deleted[0].path == "initial.txt"
+
 
 class TestParseDiffNameStatus:
     """Unit tests for _parse_diff_name_status without a real git repo."""

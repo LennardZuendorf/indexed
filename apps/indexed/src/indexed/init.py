@@ -18,7 +18,6 @@ from indexed.utils.components import (
 )
 from indexed.utils.console import console
 from indexed.utils.progress_bar import create_phased_progress
-from indexed.utils.context_managers import suppress_core_output
 from indexed.utils.storage_info import display_storage_mode_for_command
 
 
@@ -100,8 +99,7 @@ def init(
             action = "Re-downloading" if force else "Downloading"
             phase_name = f"{action} model {model_name}"
             progress.start_phase(phase_name)
-            with suppress_core_output():
-                ensure_model(model_name, force=force)
+            ensure_model(model_name, force=force)
             progress.finish_phase(phase_name)
 
     # Summary

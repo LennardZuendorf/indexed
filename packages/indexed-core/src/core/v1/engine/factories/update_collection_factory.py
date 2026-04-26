@@ -295,10 +295,10 @@ def _populate_local_files_config(
     config_service.set(
         f"{namespace}.include_patterns", reader_config.get("includePatterns", [".*"])
     )
-    config_service.set(
-        f"{namespace}.exclude_patterns", reader_config.get("excludePatterns", [])
-    )
     config_service.set(f"{namespace}.fail_fast", reader_config.get("failFast", False))
+    config_service.set(
+        f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
+    )
 
 
 def _build_local_files_update(
@@ -322,9 +322,10 @@ def _build_local_files_update(
     connector = FileSystemConnector(
         path=reader_config["basePath"],
         include_patterns=reader_config.get("includePatterns") or ["*"],
-        exclude_patterns=reader_config.get("excludePatterns") or [],
         fail_fast=reader_config.get("failFast", False),
         change_tracking=reader_config.get("changeTracking", "auto"),
+        excluded_dirs=reader_config.get("excludedDirs") or None,
+        respect_gitignore=reader_config.get("respectGitignore", True),
     )
 
     collection_full_path = disk_persister.get_full_path(collection_name)
@@ -343,13 +344,13 @@ def _build_local_files_update(
     reader = FilesDocumentReader(
         base_path=connector._path,
         include_patterns=connector._include_patterns,
-        exclude_patterns=connector._exclude_patterns,
         fail_fast=connector._fail_fast,
         ocr=cfg.ocr_enabled,
         table_structure=cfg.table_structure,
         max_tokens=cfg.max_chunk_tokens,
-        excluded_extensions=cfg.excluded_extensions or None,
+        excluded_dirs=cfg.excluded_dirs or None,
         specific_files=specific_files,
+        respect_gitignore=cfg.respect_gitignore,
     )
 
     def _save_state() -> None:

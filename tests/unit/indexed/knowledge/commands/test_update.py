@@ -302,12 +302,10 @@ class TestUpdateCommand:
     @patch("indexed.knowledge.commands.update.inspect")
     @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
     @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.suppress_core_output")
     @patch("indexed.knowledge.commands.update.console")
     def test_update_ensures_credentials(
         self,
         mock_console,
-        mock_suppress,
         mock_update_service,
         mock_ensure_creds,
         mock_inspect,
@@ -606,14 +604,12 @@ class TestUpdateCommand:
     @patch("indexed.knowledge.commands.update.inspect")
     @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
     @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.suppress_core_output")
     @patch("indexed.knowledge.commands.update.create_phased_progress")
     @patch("indexed.knowledge.commands.update.console")
     def test_update_non_verbose_exception_exits(
         self,
         mock_console,
         mock_phased_progress,
-        mock_suppress,
         mock_update_service,
         mock_ensure_creds,
         mock_inspect,
@@ -648,14 +644,6 @@ class TestUpdateCommand:
         phased_mock.__enter__ = Mock(return_value=phased_mock)
         phased_mock.__exit__ = Mock(return_value=False)
         mock_phased_progress.return_value = phased_mock
-
-        from contextlib import contextmanager
-
-        @contextmanager
-        def fake_suppress():
-            yield
-
-        mock_suppress.return_value = fake_suppress()
 
         from indexed.app import app
 
@@ -738,7 +726,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """If post-update inspect fails, should exit with error."""
+        """If post-update inspect fails, command succeeds without comparison card."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -765,7 +753,8 @@ class TestUpdateCommand:
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
-        assert result.exit_code == 1
+        # Update succeeded; missing post-update inspect is graceful degradation
+        assert result.exit_code == 0
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
@@ -788,7 +777,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """Summary should report +docs/+chunks when collection grew."""
+        """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -825,9 +814,8 @@ class TestUpdateCommand:
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 0
-        # create_summary is called with the result_text — check it contains the delta
-        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
-        assert "+3 documents" in all_calls
+        # For a single collection, result summary is not shown (create_summary not called)
+        mock_create_summary.assert_not_called()
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
@@ -850,7 +838,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """Summary should report doc/chunk decrease when collection shrank."""
+        """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -887,6 +875,5 @@ class TestUpdateCommand:
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 0
-        # create_summary is called with the result_text — check it contains the delta
-        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
-        assert "-3 documents" in all_calls
+        # For a single collection, result summary is not shown (create_summary not called)
+        mock_create_summary.assert_not_called()

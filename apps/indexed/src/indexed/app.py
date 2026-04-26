@@ -1,11 +1,14 @@
 """Indexed CLI application - stateless commands backed by services."""
 
-# Fix OpenMP threading issues on macOS before any imports
-# Must be set before PyTorch/sentence-transformers are loaded
+# Process-wide env vars — must be set before any third-party imports.
+# Fix OpenMP threading on macOS; suppress noisy third-party output.
 import os
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("TQDM_DISABLE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
 
 import warnings
 
@@ -19,13 +22,32 @@ import typer.rich_utils  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
+from utils import bootstrap_logging  # noqa: E402
+
 from .utils.banner import print_indexed_banner  # noqa: E402
 from .utils.components import print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
+    get_dim_style,
+    get_error_style,
     get_help_theme_styles,
+    get_info_style,
+    get_success_style,
+    get_warning_style,
 )
-from .utils.logging import setup_root_logger  # noqa: E402
+from .utils.console import console as _shared_console  # noqa: E402
+
+# Single source of truth for level → Rich style mapping. New themes change
+# theme.py; logging picks them up automatically.
+THEME_STYLES: dict[str, str] = {
+    "TRACE": get_dim_style(),
+    "DEBUG": get_dim_style(),
+    "INFO": get_info_style(),
+    "SUCCESS": get_success_style(),
+    "WARNING": get_warning_style(),
+    "ERROR": get_error_style(),
+    "CRITICAL": get_error_style(),
+}
 
 typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"
@@ -51,13 +73,13 @@ def _init_app(
         False,
         "--local",
         help="Use local .indexed/ storage instead of global ~/.indexed/",
-        rich_help_panel="Storage",
+        rich_help_panel="Usage Options",
     ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
         help="Enable verbose (INFO) logging",
-        rich_help_panel="Logging",
+        rich_help_panel="Debug Options",
     ),
     log_level: Optional[str] = typer.Option(
         None,
@@ -65,16 +87,19 @@ def _init_app(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         case_sensitive=False,
         show_choices=True,
-        rich_help_panel="Logging",
+        rich_help_panel="Debug Options",
     ),
     json_logs: bool = typer.Option(
-        False, "--json-logs", help="Output logs as JSON", rich_help_panel="Logging"
+        False,
+        "--json-logs",
+        help="Output logs as JSON",
+        rich_help_panel="Debug Options",
     ),
     simple_output: bool = typer.Option(
         False,
         "--simple-output",
         help="Machine-readable JSON output (for programmatic use)",
-        rich_help_panel="Output",
+        rich_help_panel="Usage Options",
     ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
@@ -103,7 +128,16 @@ def _init_app(
         or is_simple_output()
         or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     )
-    setup_root_logger(level_str=level, json_mode=json_mode)
+    effective_level = (level or "WARNING").upper()
+    bootstrap_logging(
+        level=effective_level,
+        debug=(effective_level == "DEBUG"),
+        quiet=(effective_level == "ERROR"),
+        rich_console=_shared_console,
+        theme_styles=THEME_STYLES,
+        log_dir=Path.home() / ".indexed" / "logs",
+        json_mode=json_mode,
+    )
 
     # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
@@ -210,9 +244,7 @@ app.add_typer(
     rich_help_panel=MCP_PANEL,
     hidden=True,
 )
-app.command(
-    "mcp run", rich_help_panel=MCP_PANEL, help="Run The MCP Server With FastMCP CLI"
-)(mcp.run)
+app.command("mcp run", rich_help_panel=MCP_PANEL, help="Run The MCP Server")(mcp.run)
 app.command(
     "mcp dev",
     rich_help_panel=MCP_PANEL,
@@ -221,9 +253,6 @@ app.command(
 app.command(
     "mcp inspect", rich_help_panel=MCP_PANEL, help="Inspect MCP Server Capabilities"
 )(mcp.inspect)
-app.command(
-    "mcp fastmcp", rich_help_panel=MCP_PANEL, help="Direct Passthrough To FastMCP CLI"
-)(mcp.fastmcp)
 
 app.add_typer(
     info.app,
@@ -244,7 +273,7 @@ app.command("debug", hidden=True)(debug_command)
 
 @app.command(
     "migrate",
-    rich_help_panel=CONFIG_PANEL,
+    rich_help_panel="Setup",
     help="Migrate legacy ./data/ to global ~/.indexed/data/",
 )
 def migrate_data(
@@ -313,6 +342,15 @@ def __getattr__(name: str):
 
 def main() -> None:
     """CLI entry point."""
+    # Wire logging BEFORE Typer parses args so any third-party module imported
+    # during command resolution can't leak to stderr. The Typer callback
+    # reconfigures with the resolved verbosity (idempotent).
+    bootstrap_logging(
+        level="WARNING",
+        rich_console=_shared_console,
+        theme_styles=THEME_STYLES,
+    )
+
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()
     app()

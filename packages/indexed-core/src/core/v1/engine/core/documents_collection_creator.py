@@ -92,13 +92,10 @@ class DocumentCollectionCreator:
             details = []
             base_path = getattr(reader, "base_path", None)
             include_patterns = getattr(reader, "include_patterns", None)
-            exclude_patterns = getattr(reader, "exclude_patterns", None)
             if base_path:
                 details.append(f"source path: {base_path}")
             if include_patterns is not None:
                 details.append(f"include patterns: {include_patterns}")
-            if exclude_patterns is not None:
-                details.append(f"exclude patterns: {exclude_patterns}")
             detail_str = f" ({', '.join(details)})" if details else ""
             raise ValueError(
                 f"No documents found for collection '{self.collection_name}'{detail_str}. "

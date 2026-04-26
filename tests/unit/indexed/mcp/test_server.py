@@ -24,6 +24,44 @@ def run_async(coro_or_result):
     return coro_or_result
 
 
+def _get_tool(name: str):
+    """Fetch a registered tool by name via FastMCP v3 public API."""
+    return asyncio.run(mcp.get_tool(name))
+
+
+def _get_resource(uri: str):
+    """Fetch a static resource by URI via FastMCP v3 public API."""
+    return asyncio.run(mcp.get_resource(uri))
+
+
+def _get_template(uri: str):
+    """Fetch a parameterised resource template by URI via FastMCP v3 public API."""
+    return asyncio.run(mcp.get_resource_template(uri))
+
+
+def _list_resource_uris() -> list[str]:
+    """Return URIs of static resources registered on the server."""
+    resources = asyncio.run(mcp.list_resources())
+    return [str(r.uri) for r in resources]
+
+
+def _list_template_uris() -> list[str]:
+    """Return URI templates registered on the server."""
+    templates = asyncio.run(mcp.list_resource_templates())
+    return [t.uri_template for t in templates]
+
+
+def _list_tool_names() -> list[str]:
+    """Return names of registered tools."""
+    tools = asyncio.run(mcp.list_tools())
+    return [t.name for t in tools]
+
+
+def _read_resource(uri: str):
+    """Dispatch a resource read through FastMCP's full URI resolution."""
+    return asyncio.run(mcp.read_resource(uri))
+
+
 @pytest.fixture(autouse=True)
 def mock_fastmcp_context():
     """Provide a minimal FastMCP Context via contextvar for dependency injection."""
@@ -138,7 +176,7 @@ class TestSearchToolFunction:
             },
         }
 
-        search_tool = mcp._tool_manager._tools.get("search")
+        search_tool = _get_tool("search")
         assert search_tool is not None
         result = search_tool.fn("test query")
 
@@ -161,7 +199,7 @@ class TestSearchToolFunction:
         mock_get_config.return_value = mock_config
         mock_search.side_effect = Exception("Search failed")
 
-        search_tool = mcp._tool_manager._tools.get("search")
+        search_tool = _get_tool("search")
         assert search_tool is not None
         result = search_tool.fn("test query")
 
@@ -212,7 +250,7 @@ class TestSearchCollectionToolFunction:
             }
         }
 
-        search_collection_tool = mcp._tool_manager._tools.get("search_collection")
+        search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("my_collection", "test query")
 
@@ -233,7 +271,7 @@ class TestSearchCollectionToolFunction:
         mock_get_config.return_value = mock_config
         mock_status.return_value = []
 
-        search_collection_tool = mcp._tool_manager._tools.get("search_collection")
+        search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("nonexistent", "test query")
 
@@ -258,7 +296,7 @@ class TestSearchCollectionToolFunction:
 
         mock_search.side_effect = Exception("Search failed")
 
-        search_collection_tool = mcp._tool_manager._tools.get("search_collection")
+        search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("my_collection", "test query")
 
@@ -276,19 +314,19 @@ class TestCollectionsListResourceFunction:
         mock_status2.name = "collection2"
         mock_status.return_value = [mock_status1, mock_status2]
 
-        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
-        assert template is not None
-        result = run_async(template.fn("all"))
+        resource = _get_resource("resource://collections")
+        assert resource is not None
+        result = run_async(resource.fn())
 
-        assert result == ["collection1", "collection2"]
+        assert result == {"collections": ["collection1", "collection2"]}
 
     @patch.object(resources_module, "svc_status")
     def test_collections_list_handles_error(self, mock_status: MagicMock) -> None:
         mock_status.side_effect = Exception("Status failed")
 
-        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
-        assert template is not None
-        result = run_async(template.fn("all"))
+        resource = _get_resource("resource://collections")
+        assert resource is not None
+        result = run_async(resource.fn())
 
         assert "error" in result
         assert "Status failed" in result["error"]
@@ -319,16 +357,15 @@ class TestCollectionsStatusListResourceFunction:
         mock_status_item.disk_size_bytes = 2048
         mock_status.return_value = [mock_status_item]
 
-        template = mcp._resource_manager._templates.get(
-            "resource://collections/status/{_all}"
-        )
-        assert template is not None
-        result = run_async(template.fn(_all="all"))
+        resource = _get_resource("resource://collections/status")
+        assert resource is not None
+        result = run_async(resource.fn())
 
-        assert len(result) == 1
-        assert result[0]["name"] == "collection1"
-        assert result[0]["number_of_documents"] == 100
-        assert result[0]["number_of_chunks"] == 500
+        collections = result["collections"]
+        assert len(collections) == 1
+        assert collections[0]["name"] == "collection1"
+        assert collections[0]["number_of_documents"] == 100
+        assert collections[0]["number_of_chunks"] == 500
 
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_mcp_config")
@@ -339,14 +376,12 @@ class TestCollectionsStatusListResourceFunction:
         mock_get_config.return_value = mock_config
         mock_status.side_effect = Exception("Status failed")
 
-        template = mcp._resource_manager._templates.get(
-            "resource://collections/status/{_all}"
-        )
-        assert template is not None
-        result = run_async(template.fn(_all="all"))
+        resource = _get_resource("resource://collections/status")
+        assert resource is not None
+        result = run_async(resource.fn())
 
-        assert len(result) == 1
-        assert "error" in result[0]
+        assert "error" in result
+        assert "Status failed" in result["error"]
 
 
 class TestCollectionStatusResourceTemplateFunction:
@@ -374,7 +409,7 @@ class TestCollectionStatusResourceTemplateFunction:
         mock_status_item.disk_size_bytes = 1024
         mock_status.return_value = [mock_status_item]
 
-        template = mcp._resource_manager._templates.get("resource://collections/{name}")
+        template = _get_template("resource://collection/{name}")
         assert template is not None
         result = run_async(template.fn(name="my_collection"))
 
@@ -390,7 +425,7 @@ class TestCollectionStatusResourceTemplateFunction:
         mock_get_config.return_value = mock_config
         mock_status.return_value = []
 
-        template = mcp._resource_manager._templates.get("resource://collections/{name}")
+        template = _get_template("resource://collection/{name}")
         assert template is not None
         result = run_async(template.fn(name="nonexistent"))
 
@@ -406,7 +441,7 @@ class TestCollectionStatusResourceTemplateFunction:
         mock_get_config.return_value = mock_config
         mock_status.side_effect = Exception("Status failed")
 
-        template = mcp._resource_manager._templates.get("resource://collections/{name}")
+        template = _get_template("resource://collection/{name}")
         assert template is not None
         result = run_async(template.fn(name="my_collection"))
 
@@ -417,21 +452,19 @@ class TestToolRegistration:
     """Tests to verify tools are properly registered with FastMCP."""
 
     def test_search_tool_registered(self) -> None:
-        tools = mcp._tool_manager._tools
-        assert "search" in tools
+        assert "search" in _list_tool_names()
 
     def test_search_collection_tool_registered(self) -> None:
-        tools = mcp._tool_manager._tools
-        assert "search_collection" in tools
+        assert "search_collection" in _list_tool_names()
 
     def test_search_tool_has_description(self) -> None:
-        tool = mcp._tool_manager._tools.get("search")
+        tool = _get_tool("search")
         assert tool is not None
         assert tool.description is not None
         assert "semantically similar" in tool.description.lower()
 
     def test_search_collection_tool_has_description(self) -> None:
-        tool = mcp._tool_manager._tools.get("search_collection")
+        tool = _get_tool("search_collection")
         assert tool is not None
         assert tool.description is not None
         assert "specific" in tool.description.lower()
@@ -441,28 +474,91 @@ class TestResourceRegistration:
     """Tests to verify resources are properly registered with FastMCP."""
 
     def test_collections_list_resource_registered(self) -> None:
-        templates = mcp._resource_manager._templates
-        assert "resource://collections/{_all}" in templates
+        assert "resource://collections" in _list_resource_uris()
 
     def test_collections_status_resource_registered(self) -> None:
-        templates = mcp._resource_manager._templates
-        assert "resource://collections/status/{_all}" in templates
+        assert "resource://collections/status" in _list_resource_uris()
 
     def test_collection_status_template_registered(self) -> None:
-        templates = mcp._resource_manager._templates
-        assert "resource://collections/{name}" in templates
+        assert "resource://collection/{name}" in _list_template_uris()
 
     def test_collections_list_resource_has_name(self) -> None:
-        template = mcp._resource_manager._templates.get("resource://collections/{_all}")
-        assert template is not None
-        assert template.name == "CollectionsList"
+        resource = _get_resource("resource://collections")
+        assert resource is not None
+        assert resource.name == "CollectionsList"
 
     def test_collections_status_resource_has_name(self) -> None:
-        template = mcp._resource_manager._templates.get(
-            "resource://collections/status/{_all}"
-        )
-        assert template is not None
-        assert template.name == "CollectionsStatusList"
+        resource = _get_resource("resource://collections/status")
+        assert resource is not None
+        assert resource.name == "CollectionsStatusList"
+
+
+class TestResourceDispatch:
+    """End-to-end resource dispatch tests via mcp.read_resource()."""
+
+    @patch.object(resources_module, "svc_status")
+    def test_read_collections_static(self, mock_status: MagicMock) -> None:
+        item = MagicMock()
+        item.name = "alpha"
+        mock_status.return_value = [item]
+
+        result = _read_resource("resource://collections")
+
+        assert result.contents
+        assert "alpha" in result.contents[0].content
+
+    @patch.object(resources_module, "svc_status")
+    @patch.object(server_module, "_get_mcp_config")
+    def test_read_collections_status_static(
+        self, mock_get_config: MagicMock, mock_status: MagicMock
+    ) -> None:
+        from core.v1.config_models import MCPConfig
+
+        mock_get_config.return_value = MCPConfig()
+        item = MagicMock()
+        item.name = "alpha"
+        item.number_of_documents = 1
+        item.number_of_chunks = 2
+        item.updated_time = None
+        item.last_modified_document_time = None
+        item.indexers = []
+        item.index_size = 0
+        item.source_type = "files"
+        item.relative_path = None
+        item.disk_size_bytes = 0
+        mock_status.return_value = [item]
+
+        result = _read_resource("resource://collections/status")
+
+        assert result.contents
+        assert "alpha" in result.contents[0].content
+
+    @patch.object(resources_module, "svc_status")
+    @patch.object(server_module, "_get_mcp_config")
+    def test_read_single_collection_template(
+        self, mock_get_config: MagicMock, mock_status: MagicMock
+    ) -> None:
+        from core.v1.config_models import MCPConfig
+
+        mock_get_config.return_value = MCPConfig()
+        item = MagicMock()
+        item.name = "beta"
+        item.number_of_documents = 3
+        item.number_of_chunks = 9
+        item.updated_time = None
+        item.last_modified_document_time = None
+        item.indexers = []
+        item.index_size = 0
+        item.source_type = "files"
+        item.relative_path = None
+        item.disk_size_bytes = 0
+        mock_status.return_value = [item]
+
+        result = _read_resource("resource://collection/beta")
+
+        assert result.contents
+        assert "beta" in result.contents[0].content
+        assert "number_of_documents" in result.contents[0].content
 
 
 class TestLifespan:
@@ -509,13 +605,11 @@ class TestContextHandling:
         mock_config.include_matched_chunks = True
 
         mock_context = MagicMock()
-        mock_fastmcp_context = MagicMock()
-        mock_fastmcp_context.lifespan_context = {"search_config": mock_config}
-        mock_context.fastmcp_context = mock_fastmcp_context
+        mock_context.lifespan_context = {"search_config": mock_config}
 
         mock_search.return_value = {"collection1": []}
 
-        search_tool = mcp._tool_manager._tools.get("search")
+        search_tool = _get_tool("search")
         assert search_tool is not None
         search_tool.fn("test query", ctx=mock_context)
 
@@ -533,117 +627,52 @@ class TestContextHandling:
         mock_resolve_config.return_value = mock_config
         mock_search.return_value = {"collection1": []}
 
-        search_tool = mcp._tool_manager._tools.get("search")
+        search_tool = _get_tool("search")
         assert search_tool is not None
         search_tool.fn("test query", ctx=None)
 
         mock_search.assert_called_once()
         mock_resolve_config.assert_called_once()
 
-    @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
-    def test_collections_status_uses_lifespan_context(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
-    ) -> None:
+    def test_resolve_config_returns_lifespan_value(self) -> None:
+        """Direct test: resolve_config returns the lifespan-stored config when present."""
+        from indexed.mcp.config import resolve_config
         from core.v1.config_models import MCPConfig
 
-        mock_config = MCPConfig()
-        mock_config.include_index_size = True
+        cfg = MCPConfig()
+        ctx = MagicMock()
+        ctx.lifespan_context = {"mcp_config": cfg}
+        loader = MagicMock()
 
-        mock_context = MagicMock()
-        mock_fastmcp_context = MagicMock()
-        mock_fastmcp_context.lifespan_context = {"mcp_config": mock_config}
-        mock_context.fastmcp_context = mock_fastmcp_context
+        result = resolve_config(ctx, "mcp_config", loader)
 
-        mock_status_item = MagicMock()
-        mock_status_item.name = "test_collection"
-        mock_status_item.number_of_documents = 10
-        mock_status_item.number_of_chunks = 50
-        mock_status_item.updated_time = "2024-01-01T00:00:00"
-        mock_status_item.last_modified_document_time = "2024-01-01T00:00:00"
-        mock_status_item.indexers = ["default"]
-        mock_status_item.index_size = 1024
-        mock_status_item.source_type = "files"
-        mock_status_item.relative_path = "./docs"
-        mock_status_item.disk_size_bytes = 2048
-        mock_status.return_value = [mock_status_item]
+        assert result is cfg
+        loader.assert_not_called()
 
-        template = mcp._resource_manager._templates.get(
-            "resource://collections/status/{_all}"
-        )
-        assert template is not None
-        run_async(template.fn(_all="all", ctx=mock_context))
-
-        mock_status.assert_called_once_with(include_index_size=True)
-        mock_get_config.assert_not_called()
-
-
-class TestMainFunction:
-    """Tests for main entry point."""
-
-    @patch.object(server_module, "_get_mcp_config")
-    @patch.object(server_module, "mcp")
-    @patch("indexed.mcp.server.argparse.ArgumentParser")
-    def test_main_parses_arguments(
-        self, mock_parser_class, mock_mcp, mock_get_config
-    ) -> None:
+    def test_resolve_config_falls_back_to_loader_when_key_missing(self) -> None:
+        """Direct test: resolve_config calls loader when ctx has no matching key."""
+        from indexed.mcp.config import resolve_config
         from core.v1.config_models import MCPConfig
 
-        mock_config = MCPConfig()
-        mock_config.host = "0.0.0.0"
-        mock_config.port = 8000
-        mock_config.log_level = "INFO"
-        mock_get_config.return_value = mock_config
+        cfg = MCPConfig()
+        ctx = MagicMock()
+        ctx.lifespan_context = {}
+        loader = MagicMock(return_value=cfg)
 
-        mock_parser = MagicMock()
-        mock_args = MagicMock()
-        mock_args.host = "127.0.0.1"
-        mock_args.port = 9000
-        mock_args.log_level = "DEBUG"
-        mock_parser.parse_args.return_value = mock_args
-        mock_parser_class.return_value = mock_parser
+        result = resolve_config(ctx, "mcp_config", loader)
 
-        server_module.main()
+        assert result is cfg
+        loader.assert_called_once()
 
-        mock_parser.add_argument.assert_any_call(
-            "--host",
-            default="0.0.0.0",
-            help="Host to bind to (default: 0.0.0.0)",
-        )
-        mock_parser.add_argument.assert_any_call(
-            "--port",
-            type=int,
-            default=8000,
-            help="Port to bind to (default: 8000)",
-        )
-        mock_mcp.run.assert_called_once_with(
-            host="127.0.0.1", port=9000, log_level="DEBUG"
-        )
-
-    @patch.object(server_module, "_get_mcp_config")
-    @patch.object(server_module, "mcp")
-    @patch("indexed.mcp.server.argparse.ArgumentParser")
-    def test_main_uses_config_defaults(
-        self, mock_parser_class, mock_mcp, mock_get_config
-    ) -> None:
+    def test_resolve_config_falls_back_to_loader_when_ctx_none(self) -> None:
+        """Direct test: resolve_config calls loader when ctx is None."""
+        from indexed.mcp.config import resolve_config
         from core.v1.config_models import MCPConfig
 
-        mock_config = MCPConfig()
-        mock_config.host = "localhost"
-        mock_config.port = 8080
-        mock_config.log_level = "WARNING"
-        mock_get_config.return_value = mock_config
+        cfg = MCPConfig()
+        loader = MagicMock(return_value=cfg)
 
-        mock_parser = MagicMock()
-        mock_args = MagicMock()
-        mock_args.host = "localhost"
-        mock_args.port = 8080
-        mock_args.log_level = "WARNING"
-        mock_parser.parse_args.return_value = mock_args
-        mock_parser_class.return_value = mock_parser
+        result = resolve_config(None, "mcp_config", loader)
 
-        server_module.main()
-
-        mock_mcp.run.assert_called_once_with(
-            host="localhost", port=8080, log_level="WARNING"
-        )
+        assert result is cfg
+        loader.assert_called_once()

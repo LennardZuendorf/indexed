@@ -23,7 +23,7 @@ from ...utils.format import format_size, format_time, format_source_type
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.logging import is_verbose_mode
 from ...utils.progress_bar import create_phased_progress, build_progress_title
-from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.context_managers import NoOpContext
 from ...utils.storage_info import display_storage_mode_for_command
 
 app = typer.Typer(help="Remove collections")
@@ -168,8 +168,7 @@ def remove(
 
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Removing collection data")
-                with suppress_core_output():
-                    index.remove(collection)
+                index.remove(collection)
                 phased.finish_phase("Removing collection data")
 
         console.print()

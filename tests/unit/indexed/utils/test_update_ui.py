@@ -2,7 +2,6 @@
 
 import time
 from unittest.mock import Mock
-from io import StringIO
 
 
 class TestFormatSourceType:
@@ -148,72 +147,6 @@ class TestOperationStatus:
 
         # Should have waited for MIN_DISPLAY_TIME (0.5s)
         assert elapsed >= 0.4  # Allow some tolerance
-
-
-class TestSuppressCoreOutput:
-    """Test suppress_core_output context manager."""
-
-    def test_default_does_not_redirect_streams(self):
-        """Test default behavior doesn't redirect stdout/stderr."""
-        from indexed.utils.context_managers import suppress_core_output
-        import sys
-
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-
-        with suppress_core_output():
-            # stdout/stderr should NOT be redirected
-            assert sys.stdout is original_stdout
-            assert sys.stderr is original_stderr
-
-    def test_redirect_streams_true_redirects(self):
-        """Test redirect_streams=True does redirect stdout/stderr."""
-        from indexed.utils.context_managers import suppress_core_output
-        import sys
-
-        original_stdout = sys.stdout
-
-        with suppress_core_output(redirect_streams=True):
-            # stdout should be redirected
-            assert sys.stdout is not original_stdout
-
-    def test_suppresses_logging(self):
-        """Test logging is suppressed."""
-        from indexed.utils.context_managers import suppress_core_output
-        import logging
-
-        # Set up a string handler to capture log output
-        log_capture = StringIO()
-        handler = logging.StreamHandler(log_capture)
-        logger = logging.getLogger()
-        logger.addHandler(handler)
-        original_level = logger.level
-        logger.setLevel(logging.INFO)
-
-        try:
-            with suppress_core_output():
-                logging.info("This should be suppressed")
-
-            # After context, check nothing was logged
-            # (logging level was raised to CRITICAL during context)
-            log_output = log_capture.getvalue()
-            assert "This should be suppressed" not in log_output
-        finally:
-            logger.removeHandler(handler)
-            logger.setLevel(original_level)
-
-    def test_restores_logging_level_after_exit(self):
-        """Test logging level is restored after context exit."""
-        from indexed.utils.context_managers import suppress_core_output
-        import logging
-
-        logger = logging.getLogger()
-        original_level = logger.level
-
-        with suppress_core_output():
-            pass
-
-        assert logger.level == original_level
 
 
 class TestDynamicResultText:

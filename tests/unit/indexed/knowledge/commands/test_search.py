@@ -338,14 +338,6 @@ class TestSearchCommandExecution:
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
 
-        from contextlib import contextmanager
-
-        @contextmanager
-        def fake_suppress():
-            yield
-
-        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
-
         # Mock create_phased_progress as a context manager returning a mock with start/finish_phase
         phased_mock = MagicMock()
         phased_mock.__enter__ = Mock(return_value=phased_mock)
@@ -385,14 +377,6 @@ class TestSearchCommandExecution:
             return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
-
-        from contextlib import contextmanager
-
-        @contextmanager
-        def fake_suppress():
-            yield
-
-        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
 
         phased_mock = MagicMock()
         phased_mock.__enter__ = Mock(return_value=phased_mock)
@@ -472,14 +456,6 @@ class TestSearchCommandExecution:
             return {"col1": {"results": [{"id": "d1"}]}}
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
-
-        from contextlib import contextmanager
-
-        @contextmanager
-        def fake_suppress():
-            yield
-
-        monkeypatch.setattr(search_cmd, "suppress_core_output", fake_suppress)
 
         phased_mock = MagicMock()
         phased_mock.__enter__ = Mock(return_value=phased_mock)

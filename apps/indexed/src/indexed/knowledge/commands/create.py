@@ -27,6 +27,34 @@ from ...utils.credentials import (
 from ._create_helpers import execute_create_command
 
 
+def _display_files_source_summary(present: Dict[str, Any]) -> None:
+    """Print a concise source summary before the creation spinner starts."""
+    from ...utils.components.info_row import create_info_row
+    from ...utils.format import format_path_tilde
+    from ...utils.files_source_display import build_excluded_row_text
+    from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
+
+    path = str(present.get("path", ""))
+    respect_gitignore: bool = present.get("respect_gitignore", True)
+    _dirs = present.get("excluded_dirs")
+    excluded_dirs: list[str] = (
+        _dirs if isinstance(_dirs, list) else list(DEFAULT_EXCLUDED_DIRS)
+    )
+    _patterns = present.get("include_patterns")
+    include_patterns: list[str] = _patterns if isinstance(_patterns, list) else ["*"]
+
+    console.print(create_info_row("Path", format_path_tilde(path)))
+    console.print(
+        create_info_row(
+            "Excluded",
+            build_excluded_row_text(
+                path, include_patterns, excluded_dirs, respect_gitignore
+            ),
+        )
+    )
+    console.print()
+
+
 def _is_cloud(url: str) -> bool:
     """
     Determine whether a given Atlassian base URL refers to the cloud-hosted service.
@@ -100,6 +128,11 @@ def create_files(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    respect_gitignore: bool = typer.Option(
+        True,
+        "--respect-gitignore/--no-respect-gitignore",
+        help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
+    ),
     local: bool = typer.Option(
         False,
         "--local",
@@ -128,6 +161,7 @@ def create_files(
         cli_overrides["exclude_patterns"] = exclude
     if fail_fast:
         cli_overrides["fail_fast"] = fail_fast
+    cli_overrides["respect_gitignore"] = respect_gitignore
 
     def prompt_missing_files_fields(
         validation: Dict[str, Any], config: ConfigService, ns: str
@@ -210,6 +244,7 @@ def create_files(
                 "includePatterns": present.get("include_patterns", ["*"]),
                 "excludePatterns": present.get("exclude_patterns", []),
                 "failFast": present.get("fail_fast", False),
+                "respectGitignore": present.get("respect_gitignore", True),
             },
         )
 
@@ -228,6 +263,7 @@ def create_files(
         log_level=log_level,
         use_cache=use_cache,
         force=force,
+        pre_creation_display=_display_files_source_summary,
         local=local,
         source_path_key="path",
     )
