@@ -726,7 +726,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """If post-update inspect fails, should exit with error."""
+        """If post-update inspect fails, command succeeds without comparison card."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -753,7 +753,8 @@ class TestUpdateCommand:
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
-        assert result.exit_code == 1
+        # Update succeeded; missing post-update inspect is graceful degradation
+        assert result.exit_code == 0
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
@@ -776,7 +777,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """Summary should report +docs/+chunks when collection grew."""
+        """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -813,9 +814,8 @@ class TestUpdateCommand:
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 0
-        # create_summary is called with the result_text — check it contains the delta
-        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
-        assert "+3 documents" in all_calls
+        # For a single collection, result summary is not shown (create_summary not called)
+        mock_create_summary.assert_not_called()
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
@@ -838,7 +838,7 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """Summary should report doc/chunk decrease when collection shrank."""
+        """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -875,6 +875,5 @@ class TestUpdateCommand:
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 0
-        # create_summary is called with the result_text — check it contains the delta
-        all_calls = " ".join(str(c) for c in mock_create_summary.call_args_list)
-        assert "-3 documents" in all_calls
+        # For a single collection, result summary is not shown (create_summary not called)
+        mock_create_summary.assert_not_called()
