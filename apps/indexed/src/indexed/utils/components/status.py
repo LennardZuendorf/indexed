@@ -7,7 +7,7 @@ with a spinner during operations like search.
 import time
 
 from rich.console import Console
-from ..logging import enable_status_capture, disable_status_capture
+from utils import subscribe_status, unsubscribe_status
 
 from .theme import get_accent_style
 
@@ -45,7 +45,7 @@ class OperationStatus:
         self.operation_desc = operation_desc
         self.capture_logs = capture_logs
         self._status = None
-        self._sink_id = None
+        self._sub_token = None
         self._current_message = "Starting..."
         self._start_time = None
 
@@ -70,9 +70,9 @@ class OperationStatus:
         )
         self._status.__enter__()
 
-        # Enable INFO log capture for status updates
+        # Subscribe to emit_status messages so the spinner reflects progress.
         if self.capture_logs:
-            self._sink_id = enable_status_capture(self.update)
+            self._sub_token = subscribe_status(self.update)
 
         return self
 
@@ -135,10 +135,10 @@ class OperationStatus:
             if elapsed < self.MIN_DISPLAY_TIME:
                 time.sleep(self.MIN_DISPLAY_TIME - elapsed)
 
-        # Disable log capture first
-        if self._sink_id is not None:
-            disable_status_capture()
-            self._sink_id = None
+        # Unsubscribe from status sink first
+        if self._sub_token is not None:
+            unsubscribe_status(self._sub_token)
+            self._sub_token = None
 
         # Stop the spinner
         if self._status:
@@ -162,10 +162,10 @@ class OperationStatus:
         Parameters:
             *args: Exception information (exc_type, exc_value, traceback) from the context-manager protocol, forwarded to the underlying status __exit__.
         """
-        # Disable INFO log capture
-        if self._sink_id is not None:
-            disable_status_capture()
-            self._sink_id = None
+        # Unsubscribe from status sink
+        if self._sub_token is not None:
+            unsubscribe_status(self._sub_token)
+            self._sub_token = None
 
         # Stop status display
         if self._status:

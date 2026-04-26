@@ -302,12 +302,10 @@ class TestUpdateCommand:
     @patch("indexed.knowledge.commands.update.inspect")
     @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
     @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.suppress_core_output")
     @patch("indexed.knowledge.commands.update.console")
     def test_update_ensures_credentials(
         self,
         mock_console,
-        mock_suppress,
         mock_update_service,
         mock_ensure_creds,
         mock_inspect,
@@ -606,14 +604,12 @@ class TestUpdateCommand:
     @patch("indexed.knowledge.commands.update.inspect")
     @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
     @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.suppress_core_output")
     @patch("indexed.knowledge.commands.update.create_phased_progress")
     @patch("indexed.knowledge.commands.update.console")
     def test_update_non_verbose_exception_exits(
         self,
         mock_console,
         mock_phased_progress,
-        mock_suppress,
         mock_update_service,
         mock_ensure_creds,
         mock_inspect,
@@ -648,14 +644,6 @@ class TestUpdateCommand:
         phased_mock.__enter__ = Mock(return_value=phased_mock)
         phased_mock.__exit__ = Mock(return_value=False)
         mock_phased_progress.return_value = phased_mock
-
-        from contextlib import contextmanager
-
-        @contextmanager
-        def fake_suppress():
-            yield
-
-        mock_suppress.return_value = fake_suppress()
 
         from indexed.app import app
 

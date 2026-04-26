@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
-from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.context_managers import NoOpContext
 from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
@@ -454,16 +454,15 @@ def search(
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
                 phased.start_phase(f"Searching {coll_name}")
-                with suppress_core_output():
-                    result = svc_search(
-                        query,
-                        configs=[search_configs[coll_name]],
-                        max_docs=limit,
-                        max_chunks=limit * 3,
-                        include_matched_chunks=True,
-                        collections_path=preferred_path,
-                    )
-                    results.update(result)
+                result = svc_search(
+                    query,
+                    configs=[search_configs[coll_name]],
+                    max_docs=limit,
+                    max_chunks=limit * 3,
+                    include_matched_chunks=True,
+                    collections_path=preferred_path,
+                )
+                results.update(result)
                 phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results

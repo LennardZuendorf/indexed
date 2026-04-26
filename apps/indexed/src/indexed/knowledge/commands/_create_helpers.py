@@ -15,7 +15,7 @@ from indexed_config import ConfigService
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
-from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.context_managers import NoOpContext
 from ...utils.components import print_success, print_error, print_warning
 from ...utils.format import format_source_type
 from ...utils.progress_bar import create_phased_progress, build_progress_title
@@ -182,16 +182,15 @@ def execute_create_command(
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Preparing")
                 try:
-                    with suppress_core_output():
-                        svc_create(
-                            [cfg],
-                            config_service=config,
-                            use_cache=use_cache,
-                            force=force,
-                            phased_progress=phased,
-                            collections_path=local_collections_path,
-                            caches_path=local_caches_path,
-                        )
+                    svc_create(
+                        [cfg],
+                        config_service=config,
+                        use_cache=use_cache,
+                        force=force,
+                        phased_progress=phased,
+                        collections_path=local_collections_path,
+                        caches_path=local_caches_path,
+                    )
                 except Exception as e:
                     creation_error = e
 

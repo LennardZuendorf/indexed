@@ -1,16 +1,20 @@
-"""Indexed utilities - shared code for all packages.
+"""Indexed utilities — shared code for all packages.
 
-This package provides lightweight utilities for the indexed project:
-- Logging: Base Loguru configuration (no Rich dependency)
-- Retry: Exponential backoff for transient failures
-- Batch: Paginated API reading with error handling
-- Performance: Execution timing utilities
+- Logging: single-sink Loguru architecture (Rich-optional).
+- Retry: exponential backoff for transient failures.
+- Batch: paginated API reading with error handling.
+- Performance: execution timing utilities.
 """
 
 from .logger import (
-    setup_root_logger,
-    is_verbose_mode,
+    THIRD_PARTY_LOGGERS,
+    bootstrap_logging,
+    emit_status,
     get_current_log_level,
+    is_verbose_mode,
+    setup_root_logger,  # deprecated shim
+    subscribe_status,
+    unsubscribe_status,
 )
 from .batch import read_items_in_batches
 from .retry import execute_with_retry
@@ -19,9 +23,14 @@ from .safe_getattr import safe_str_attr
 
 __all__ = [
     # Logging
-    "setup_root_logger",
+    "bootstrap_logging",
+    "emit_status",
+    "subscribe_status",
+    "unsubscribe_status",
     "is_verbose_mode",
     "get_current_log_level",
+    "THIRD_PARTY_LOGGERS",
+    "setup_root_logger",  # deprecated
     # Batch processing
     "read_items_in_batches",
     # Retry logic

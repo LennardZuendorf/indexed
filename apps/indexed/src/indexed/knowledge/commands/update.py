@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
-from ...utils.context_managers import NoOpContext, suppress_core_output
+from ...utils.context_managers import NoOpContext
 from ...utils.components.summary import create_summary
 from ...utils.console import console
 from ...utils.progress_bar import create_phased_progress, build_progress_title
@@ -310,8 +310,7 @@ def update(
             )
             with create_phased_progress(title=title) as phased:
                 try:
-                    with suppress_core_output():
-                        update_service([source_config], phased_progress=phased)
+                    update_service([source_config], phased_progress=phased)
                     console.print()
                     print_success(f"Collection '{coll_name}' updated")
                 except Exception as e:

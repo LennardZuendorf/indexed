@@ -16,7 +16,7 @@ runner = CliRunner()
 class TestInitApp:
     """Test _init_app callback."""
 
-    @patch("indexed.app.setup_root_logger")
+    @patch("indexed.app.bootstrap_logging")
     def test_init_app_sets_up_logging(self, mock_setup_logger, mock_getenv_defaults):
         """Should set up logging with correct parameters."""
 
@@ -36,7 +36,7 @@ class TestInitApp:
 
         mock_setup_logger.assert_called_once()
 
-    @patch("indexed.app.setup_root_logger")
+    @patch("indexed.app.bootstrap_logging")
     def test_init_app_verbose_mode(self, mock_setup_logger, mock_getenv_defaults):
         """Should set INFO logging level in verbose mode."""
 
@@ -55,9 +55,9 @@ class TestInitApp:
         )
 
         call_kwargs = mock_setup_logger.call_args.kwargs
-        assert call_kwargs["level_str"] == "INFO"
+        assert call_kwargs["level"] == "INFO"
 
-    @patch("indexed.app.setup_root_logger")
+    @patch("indexed.app.bootstrap_logging")
     def test_init_app_json_logs(self, mock_setup_logger, mock_getenv_defaults):
         """Should enable JSON logging when --json-logs flag provided."""
 
@@ -78,7 +78,7 @@ class TestInitApp:
         call_kwargs = mock_setup_logger.call_args.kwargs
         assert call_kwargs["json_mode"] is True
 
-    @patch("indexed.app.setup_root_logger")
+    @patch("indexed.app.bootstrap_logging")
     def test_init_app_local_sets_mode_override(
         self, mock_setup_logger, mock_getenv_defaults
     ):
@@ -100,7 +100,7 @@ class TestInitApp:
 
         assert ctx.obj["mode_override"] == "local"
 
-    @patch("indexed.app.setup_root_logger")
+    @patch("indexed.app.bootstrap_logging")
     def test_init_app_no_flags_sets_none(self, mock_setup_logger, mock_getenv_defaults):
         """Should set mode_override to None when no storage flags provided."""
         ctx = Mock()

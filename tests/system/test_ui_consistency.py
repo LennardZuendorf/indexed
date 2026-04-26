@@ -96,12 +96,25 @@ class TestUIDesignConsistency:
         )
 
     @pytest.mark.parametrize("cmd_name", _PROGRESS_COMMANDS)
-    def test_commands_use_suppress_core_output(self, cmd_name):
-        """Commands with phased progress must suppress core output during progress."""
+    def test_commands_emit_no_raw_stderr_via_phased_progress(self, cmd_name):
+        """Commands with phased progress rely on the single-sink Loguru bootstrap.
+
+        The previous ``suppress_core_output`` wrap was deleted (see
+        docs/plans/2026-04-25-001-refactor-cli-logging-pipeline-plan.md). Third-
+        party noise is now killed at startup by ``utils.logger.bootstrap_logging``
+        (NullHandler-per-noisy-lib + dead lastResort). Commands MUST NOT
+        re-introduce the wrap.
+        """
         source = _read_source(_COMMAND_FILES[cmd_name])
-        assert "suppress_core_output" in source, (
-            f"{cmd_name} command must use suppress_core_output() "
-            f"to prevent core logs from interfering with progress display"
+        assert "suppress_core_output" not in source, (
+            f"{cmd_name} command must NOT call suppress_core_output(); "
+            f"third-party log noise is handled by utils.logger bootstrap. "
+            f"See docs/plans/2026-04-25-001-refactor-cli-logging-pipeline-plan.md."
+        )
+        # Sanity: command still drives the phased progress UI.
+        assert "create_phased_progress" in source, (
+            f"{cmd_name} command must use create_phased_progress() for the "
+            f"shared spinner/progress UI."
         )
 
     @pytest.mark.parametrize("cmd_name", ["create", "search", "update", "remove"])

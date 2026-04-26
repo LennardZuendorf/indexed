@@ -17,6 +17,8 @@ from rich.progress import (
     TaskID,
 )
 
+from utils import subscribe_status, unsubscribe_status
+
 from indexed.utils.components.theme import (
     get_accent_style,
     get_heading_style,
@@ -66,15 +68,21 @@ class RichPhasedProgress:
         self._tasks: Dict[str, TaskID] = {}
         self._start_times: Dict[str, float] = {}
         self._started = False
+        self._sub_token: Optional[int] = None
 
     def __enter__(self) -> "RichPhasedProgress":
         if self._title:
             console.print(f"\n{self._title}\n")
         self._progress.start()
         self._started = True
+        # Surface emit_status() messages as the existing dim sub-line.
+        self._sub_token = subscribe_status(self.log)
         return self
 
     def __exit__(self, *args) -> None:
+        if self._sub_token is not None:
+            unsubscribe_status(self._sub_token)
+            self._sub_token = None
         self._progress.stop()
         self._started = False
 
@@ -143,12 +151,16 @@ class PlainPhasedProgress:
 
     def __init__(self) -> None:
         self._phase_order: list[str] = []
+        self._sub_token: Optional[int] = None
 
     def __enter__(self) -> "PlainPhasedProgress":
+        self._sub_token = subscribe_status(self.log)
         return self
 
     def __exit__(self, *args) -> None:
-        pass
+        if self._sub_token is not None:
+            unsubscribe_status(self._sub_token)
+            self._sub_token = None
 
     def start_phase(self, name: str, total: Optional[int] = None) -> None:
         if name not in self._phase_order:

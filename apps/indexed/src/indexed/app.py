@@ -22,13 +22,32 @@ import typer.rich_utils  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
+from utils import bootstrap_logging  # noqa: E402
+
 from .utils.banner import print_indexed_banner  # noqa: E402
 from .utils.components import print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
+    get_dim_style,
+    get_error_style,
     get_help_theme_styles,
+    get_info_style,
+    get_success_style,
+    get_warning_style,
 )
-from .utils.logging import setup_root_logger  # noqa: E402
+from .utils.console import console as _shared_console  # noqa: E402
+
+# Single source of truth for level → Rich style mapping. New themes change
+# theme.py; logging picks them up automatically.
+THEME_STYLES: dict[str, str] = {
+    "TRACE": get_dim_style(),
+    "DEBUG": get_dim_style(),
+    "INFO": get_info_style(),
+    "SUCCESS": get_success_style(),
+    "WARNING": get_warning_style(),
+    "ERROR": get_error_style(),
+    "CRITICAL": get_error_style(),
+}
 
 typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
 typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"
@@ -109,7 +128,16 @@ def _init_app(
         or is_simple_output()
         or os.getenv("INDEXED_LOG_JSON", "false").lower() == "true"
     )
-    setup_root_logger(level_str=level, json_mode=json_mode)
+    effective_level = (level or "WARNING").upper()
+    bootstrap_logging(
+        level=effective_level,
+        debug=(effective_level == "DEBUG"),
+        quiet=(effective_level == "ERROR"),
+        rich_console=_shared_console,
+        theme_styles=THEME_STYLES,
+        log_dir=Path.home() / ".indexed" / "logs",
+        json_mode=json_mode,
+    )
 
     # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
@@ -319,6 +347,15 @@ def __getattr__(name: str):
 
 def main() -> None:
     """CLI entry point."""
+    # Wire logging BEFORE Typer parses args so any third-party module imported
+    # during command resolution can't leak to stderr. The Typer callback
+    # reconfigures with the resolved verbosity (idempotent).
+    bootstrap_logging(
+        level="WARNING",
+        rich_console=_shared_console,
+        theme_styles=THEME_STYLES,
+    )
+
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()
     app()

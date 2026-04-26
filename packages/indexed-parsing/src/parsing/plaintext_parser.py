@@ -25,7 +25,11 @@ class PlaintextParser:
         """Parse *file_path* and return a ``ParsedDocument``."""
         ext = file_path.suffix.lower()
 
-        if ext in (".md", ".rst"):
+        # Only Markdown goes through Docling (which natively supports it).
+        # .rst falls through to the generic path — Docling has no InputFormat
+        # for reST and would emit a per-file ERROR before we caught the
+        # exception. See docs/plans/2026-04-25-001-refactor-cli-logging-pipeline-plan.md U7.
+        if ext == ".md":
             return self._parse_markdown(file_path)
         return self._parse_generic(file_path)
 
