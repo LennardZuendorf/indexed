@@ -8,7 +8,6 @@ import json
 import subprocess
 import sys
 import webbrowser
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import typer
@@ -23,11 +22,6 @@ from ..utils.components import (
 from ..utils.console import console
 
 app = typer.Typer(help="Start MCP server for AI agent integration")
-
-
-def _get_server_path() -> str:
-    """Get absolute path to the MCP server file."""
-    return str(Path(__file__).parent / "server.py")
 
 
 def _build_inspect_summary(
@@ -136,38 +130,20 @@ def _display_mcp_inspect_json(summary: Dict[str, Any]) -> None:
 
 
 @app.callback(invoke_without_command=True)
-def main(
-    ctx: typer.Context,
-    transport: str = typer.Option(
-        "stdio",
-        "--transport",
-        "-t",
-        help="Transport protocol: stdio (default), http, sse, streamable-http",
-    ),
-    host: str = typer.Option(
-        "127.0.0.1", "--host", "-h", help="Host to bind (HTTP/SSE/streamable-http)"
-    ),
-    port: int = typer.Option(
-        8000, "--port", "-p", help="Port to bind (HTTP/SSE/streamable-http)"
-    ),
-    log_level: str = typer.Option(
-        "INFO", "--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR)"
-    ),
-) -> None:
+def main(ctx: typer.Context) -> None:
     """Start the MCP server for AI agent integration.
 
+    Without a subcommand, defaults to `run` on stdio. Use `mcp run` explicitly
+    when transport/host/port/log-level configuration is needed.
+
     Examples:
-        # Start with stdio (for Claude Desktop, etc.)
-        indexed mcp
-
-        # Start HTTP server
-        indexed mcp --transport http --port 8000
-
-        # Start with debug logging
-        indexed mcp --log-level DEBUG
+        indexed mcp                         # stdio, default config
+        indexed mcp run --transport http    # see `mcp run --help` for options
+        indexed mcp dev                     # MCP Inspector
+        indexed mcp inspect                 # capability summary
     """
     if ctx.invoked_subcommand is None:
-        run_impl(transport=transport, host=host, port=port, log_level=log_level)
+        run_impl()
 
 
 def run_impl(

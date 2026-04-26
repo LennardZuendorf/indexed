@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 
 from indexed.mcp.cli import (
     _build_inspect_summary,
-    _get_server_path,
     app,
     dev_impl,
     inspect_impl,
@@ -18,13 +17,6 @@ from indexed.mcp.cli import (
 
 
 runner = CliRunner()
-
-
-class TestGetServerPath:
-    def test_returns_absolute_path(self) -> None:
-        path = _get_server_path()
-        assert path.endswith("server.py")
-        assert "/mcp/" in path or "\\mcp\\" in path
 
 
 class TestBuildInspectSummary:
@@ -138,23 +130,17 @@ class TestDevImpl:
 
 
 class TestInspectImpl:
-    @patch("indexed.mcp.cli.is_simple_output", create=True)
     @patch("indexed.mcp.server.mcp")
-    def test_renders_panel(
-        self, mock_mcp: MagicMock, _mock_is_simple: MagicMock
-    ) -> None:
-        # is_simple_output is imported lazily inside inspect_impl, so patch the attribute
-        # by patching the originating module instead.
+    def test_renders_panel(self, mock_mcp: MagicMock) -> None:
+        # is_simple_output is imported lazily inside inspect_impl from
+        # indexed.utils.simple_output; patch the originating module so the
+        # lazy import sees the mock.
         from indexed.utils import simple_output
 
         with patch.object(simple_output, "is_simple_output", return_value=False):
             tool = MagicMock()
             tool.name = "search"
             mock_mcp.name = "Indexed MCP Server"
-
-            async def mk(_):
-                return [tool]
-
             mock_mcp.list_tools = MagicMock(return_value=_async_value([tool]))
             mock_mcp.list_resources = MagicMock(return_value=_async_value([]))
             mock_mcp.list_resource_templates = MagicMock(return_value=_async_value([]))
