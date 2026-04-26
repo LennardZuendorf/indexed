@@ -244,9 +244,7 @@ app.add_typer(
     rich_help_panel=MCP_PANEL,
     hidden=True,
 )
-app.command(
-    "mcp run", rich_help_panel=MCP_PANEL, help="Run The MCP Server With FastMCP CLI"
-)(mcp.run)
+app.command("mcp run", rich_help_panel=MCP_PANEL, help="Run The MCP Server")(mcp.run)
 app.command(
     "mcp dev",
     rich_help_panel=MCP_PANEL,
@@ -255,9 +253,6 @@ app.command(
 app.command(
     "mcp inspect", rich_help_panel=MCP_PANEL, help="Inspect MCP Server Capabilities"
 )(mcp.inspect)
-app.command(
-    "mcp fastmcp", rich_help_panel=MCP_PANEL, help="Direct Passthrough To FastMCP CLI"
-)(mcp.fastmcp)
 
 app.add_typer(
     info.app,
