@@ -1,5 +1,11 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+
+
+def format_path_tilde(path: str) -> str:
+    """Contract the home directory prefix to ~ for display."""
+    return path.replace(str(Path.home()), "~")
 
 
 def format_source_type(source_type: Optional[str]) -> str:

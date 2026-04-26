@@ -1,11 +1,8 @@
 """Update command for refreshing collections."""
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 import typer
-
-if TYPE_CHECKING:
-    pass
 
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
@@ -54,8 +51,9 @@ def _display_collection_update_header(
     coll_name: str, source_type: str | None, reader_config: dict
 ) -> None:
     """Print the per-collection heading block before progress bars."""
-    from pathlib import Path
     from ...utils.components.info_row import create_info_row
+    from ...utils.format import format_path_tilde
+    from ...utils.files_source_display import build_excluded_row_text
     from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
 
     heading = get_heading_style()
@@ -66,41 +64,26 @@ def _display_collection_update_header(
 
     if source_type == "localFiles" and reader_config:
         path = str(reader_config.get("basePath", ""))
-        path_display = path.replace(str(Path.home()), "~")
-        console.print(create_info_row("Path", path_display))
+        console.print(create_info_row("Path", format_path_tilde(path)))
 
         include_patterns: list[str] = reader_config.get("includePatterns") or ["*"]
         positive = [p for p in include_patterns if not p.startswith("!")]
-        if positive == ["*"]:
-            patterns_display = "* (all files)"
-        else:
-            patterns_display = ", ".join(positive)
+        patterns_display = "* (all files)" if positive == ["*"] else ", ".join(positive)
         console.print(create_info_row("Included Patterns", patterns_display))
 
         _dirs = reader_config.get("excludedDirs")
         excluded_dirs: list[str] = (
             _dirs if isinstance(_dirs, list) else list(DEFAULT_EXCLUDED_DIRS)
         )
-        negation_count = sum(1 for p in include_patterns if p.startswith("!"))
-
-        parts: list[str] = [f"{len(excluded_dirs)} dirs"]
-        if negation_count:
-            parts.append(
-                f"{negation_count} exclusion {'pattern' if negation_count == 1 else 'patterns'}"
+        respect_gitignore: bool = reader_config.get("respectGitignore", True)
+        console.print(
+            create_info_row(
+                "Excluded",
+                build_excluded_row_text(
+                    path, include_patterns, excluded_dirs, respect_gitignore
+                ),
             )
-
-        if reader_config.get("respectGitignore", True):
-            from .create import _find_gitignore_files, _count_gitignore_patterns
-
-            gitignore_files = _find_gitignore_files(path)
-            if gitignore_files:
-                file_count = len(gitignore_files)
-                pattern_count = _count_gitignore_patterns(gitignore_files)
-                parts.append(
-                    f".gitignore ({file_count} {'file' if file_count == 1 else 'files'}, {pattern_count} patterns)"
-                )
-
-        console.print(create_info_row("Excluded", " · ".join(parts)))
+        )
 
     console.print()
 
@@ -176,20 +159,16 @@ def _format_update_comparison(before, after):
 
         before_str = format_size(before_bytes)
         after_str = format_size(after_bytes)
-
-        if before_bytes is not None and after_bytes is not None:
-            success = get_success_style()
-            error = get_error_style()
-            dim = get_dim_style()
-            delta = after_bytes - before_bytes
-            if delta > 0:
-                return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
-            elif delta < 0:
-                return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
-            else:
-                return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
-
-        return f"{before_str} → {after_str}"
+        success = get_success_style()
+        error = get_error_style()
+        dim = get_dim_style()
+        delta = after_bytes - before_bytes
+        if delta > 0:
+            return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
+        elif delta < 0:
+            return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
+        else:
+            return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
 
     # Build info rows for the card
     rows = []
@@ -338,6 +317,7 @@ def update(
     update_error = None
     config_was_created = False
     updated_collections = []
+    successfully_updated: list[str] = []
     total_docs = 0
     total_chunks = 0
     docs_delta = 0
@@ -372,6 +352,7 @@ def update(
             try:
                 with NoOpContext():
                     update_service([source_config])
+                successfully_updated.append(coll_name)
             except Exception as e:
                 if not simple:
                     print_error(f"Failed to update collection '{coll_name}': {str(e)}")
@@ -442,10 +423,9 @@ def update(
         console.print()
         print_info(f"Created new config file with default settings: {config_path}")
 
-    # Simple output mode: JSON status (for simple/verbose path which skips display loop above)
+    # Simple output mode: JSON status
     if simple:
-        # For simple mode, gather after data now
-        for coll_name in collections_to_update:
+        for coll_name in successfully_updated:
             inspect_result = inspect_svc([coll_name])
             if inspect_result:
                 after_info = inspect_result[0]
@@ -473,8 +453,8 @@ def update(
         )
         return
 
-    # Result summary for multiple collections only
-    if len(collections_to_update) > 1:
+    # Result summary for multiple collections (not shown in verbose mode — logs cover it)
+    if len(collections_to_update) > 1 and not is_verbose_mode():
         num_collections = len(collections_to_update)
         if docs_delta == 0 and chunks_delta == 0:
             result_text = f"Checked {num_collections} Collections - all up to date ({total_docs} documents, {total_chunks} chunks)"

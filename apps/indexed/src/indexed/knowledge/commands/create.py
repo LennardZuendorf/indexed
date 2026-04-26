@@ -27,42 +27,11 @@ from ...utils.credentials import (
 from ._create_helpers import execute_create_command
 
 
-def _find_gitignore_files(base_path: str, max_dirs: int = 200) -> list[str]:
-    """Walk base_path and return paths of discovered .gitignore files."""
-    import os
-    from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
-
-    excluded = frozenset(DEFAULT_EXCLUDED_DIRS)
-    found: list[str] = []
-    dirs_visited = 0
-    for root, dirs, files in os.walk(base_path, topdown=True):
-        dirs_visited += 1
-        if dirs_visited > max_dirs:
-            break
-        if ".gitignore" in files:
-            found.append(os.path.join(root, ".gitignore"))
-        dirs[:] = [d for d in dirs if d not in excluded]
-    return found
-
-
-def _count_gitignore_patterns(gitignore_paths: list[str]) -> int:
-    """Count total non-comment, non-empty lines across all .gitignore files."""
-    total = 0
-    for gi_path in gitignore_paths:
-        try:
-            for line in open(gi_path, encoding="utf-8", errors="replace"):
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    total += 1
-        except OSError:
-            pass
-    return total
-
-
 def _display_files_source_summary(present: Dict[str, Any]) -> None:
     """Print a concise source summary before the creation spinner starts."""
-    from pathlib import Path
     from ...utils.components.info_row import create_info_row
+    from ...utils.format import format_path_tilde
+    from ...utils.files_source_display import build_excluded_row_text
     from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
 
     path = str(present.get("path", ""))
@@ -73,33 +42,16 @@ def _display_files_source_summary(present: Dict[str, Any]) -> None:
     )
     _patterns = present.get("include_patterns")
     include_patterns: list[str] = _patterns if isinstance(_patterns, list) else ["*"]
-    negation_count = sum(1 for p in include_patterns if p.startswith("!"))
 
-    # Path (tilde-contracted)
-    path_display = path.replace(str(Path.home()), "~")
-    console.print(create_info_row("Path", path_display))
-
-    # Excluded row: dirs + negation patterns + gitignore
-    parts: list[str] = []
-
-    parts.append(f"{len(excluded_dirs)} dirs")
-
-    if negation_count:
-        parts.append(
-            f"{negation_count} exclusion {'pattern' if negation_count == 1 else 'patterns'}"
+    console.print(create_info_row("Path", format_path_tilde(path)))
+    console.print(
+        create_info_row(
+            "Excluded",
+            build_excluded_row_text(
+                path, include_patterns, excluded_dirs, respect_gitignore
+            ),
         )
-
-    if respect_gitignore:
-        gitignore_files = _find_gitignore_files(path)
-        if gitignore_files:
-            pattern_count = _count_gitignore_patterns(gitignore_files)
-            file_count = len(gitignore_files)
-            gi_label = f".gitignore ({file_count} {'file' if file_count == 1 else 'files'}, {pattern_count} patterns)"
-            parts.append(gi_label)
-
-    if parts:
-        console.print(create_info_row("Excluded", " · ".join(parts)))
-
+    )
     console.print()
 
 
