@@ -37,6 +37,7 @@ def execute_create_command(
     force: bool,
     progress_message: Optional[str] = None,
     verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
+    pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
     local: bool = False,
     source_path_key: Optional[str] = None,
 ) -> None:
@@ -155,6 +156,10 @@ def execute_create_command(
 
     # Build source config using connector-specific callback
     cfg = build_source_config(validation.present, collection)
+
+    # Show source summary before spinner (non-verbose only — verbose path uses logger)
+    if pre_creation_display and not is_verbose_mode():
+        pre_creation_display(validation.present)
 
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
