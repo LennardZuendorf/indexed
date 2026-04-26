@@ -185,7 +185,6 @@ class TestCreateCollection:
         mock_reader.read_all_documents.return_value = iter([])
         mock_reader.base_path = "/some/path"
         mock_reader.include_patterns = ["*.md"]
-        mock_reader.exclude_patterns = None
         # No nested .reader attribute
         mock_reader.reader = mock_reader
 

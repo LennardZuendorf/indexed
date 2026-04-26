@@ -207,25 +207,6 @@ class TestBuildLocalFilesConnectorOpts:
                 "sources.files.include_patterns", [r".*\.md$"]
             )
 
-    def test_files_connector_with_exclude_patterns(self):
-        config_service = MagicMock()
-        source_config = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={"excludePatterns": [r".*\.tmp$"]},
-        )
-
-        with patch("connectors.files.FileSystemConnector") as mock_cls:
-            mock_cls.from_config.return_value = Mock()
-            _build_connector_from_config(source_config, config_service)
-
-            config_service.set.assert_any_call(
-                "sources.files.exclude_patterns", [r".*\.tmp$"]
-            )
-
     def test_files_connector_with_fail_fast(self):
         config_service = MagicMock()
         source_config = SourceConfig(

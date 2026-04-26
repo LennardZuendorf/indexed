@@ -209,6 +209,14 @@ class ChangeTracker:
             **uncommitted,
         }
 
+        # Detect files that were indexed before but are no longer in the current
+        # walk (e.g. newly added to .gitignore, matched a new exclude pattern, or
+        # deleted outside of git). git diff/status won't surface these.
+        if state.file_hashes:
+            for rel in state.file_hashes:
+                if rel not in current_rel and rel not in merged:
+                    merged[rel] = "deleted"
+
         return [FileChange(path=p, status=s) for p, s in merged.items()]
 
     def _git_path_to_rel(self, git_path: str, git_toplevel: str | None) -> str | None:

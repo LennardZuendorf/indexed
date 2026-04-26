@@ -43,7 +43,6 @@ class FileSystemConnector:
         self,
         path: str,
         include_patterns: List[str] | None = None,
-        exclude_patterns: List[str] | None = None,
         fail_fast: bool = False,
         *,
         change_tracking: str = "auto",
@@ -51,38 +50,35 @@ class FileSystemConnector:
         table_structure: bool = True,
         code_chunking: bool = True,
         max_chunk_tokens: int = 512,
-        excluded_extensions: List[str] | None = None,
+        excluded_dirs: List[str] | None = None,
         respect_gitignore: bool = True,
     ) -> None:
         config = FileSystemConfig(
             path=path,
             include_patterns=include_patterns or ["*"],
-            exclude_patterns=exclude_patterns or [],
             fail_fast=fail_fast,
             change_tracking=change_tracking,  # type: ignore[arg-type]
             ocr_enabled=ocr_enabled,
             table_structure=table_structure,
             code_chunking=code_chunking,
             max_chunk_tokens=max_chunk_tokens,
-            excluded_extensions=excluded_extensions or [],
+            excluded_dirs=excluded_dirs or [],
             respect_gitignore=respect_gitignore,
         )
 
         self._path = config.path
         self._include_patterns = config.include_patterns
-        self._exclude_patterns = config.exclude_patterns
         self._fail_fast = config.fail_fast
         self._config = config
 
         self._reader = FilesDocumentReader(
             base_path=self._path,
             include_patterns=self._include_patterns,
-            exclude_patterns=self._exclude_patterns,
             fail_fast=self._fail_fast,
             ocr=config.ocr_enabled,
             table_structure=config.table_structure,
             max_tokens=config.max_chunk_tokens,
-            excluded_extensions=config.excluded_extensions or None,
+            excluded_dirs=config.excluded_dirs or None,
             respect_gitignore=config.respect_gitignore,
         )
         self._converter = FilesDocumentConverter()
@@ -108,8 +104,7 @@ class FileSystemConnector:
     def __repr__(self) -> str:
         return (
             f"FileSystemConnector(path='{self._path}', "
-            f"include_patterns={self._include_patterns}, "
-            f"exclude_patterns={self._exclude_patterns})"
+            f"include_patterns={self._include_patterns})"
         )
 
     # -- change tracking --------------------------------------------------
@@ -166,14 +161,7 @@ class FileSystemConnector:
                 "required": False,
                 "secret": False,
                 "default": ["*"],
-                "description": "List of patterns for files to include (glob or regex)",
-            },
-            "exclude_patterns": {
-                "type": "list",
-                "required": False,
-                "secret": False,
-                "default": [],
-                "description": "List of regex patterns for files to exclude",
+                "description": "Patterns for files to include; prefix with '!' to exclude (e.g. ['*', '!*.pyc'])",
             },
             "fail_fast": {
                 "type": "bool",
@@ -221,13 +209,12 @@ class FileSystemConnector:
         return cls(
             path=cfg.path,
             include_patterns=cfg.include_patterns,
-            exclude_patterns=cfg.exclude_patterns,
             fail_fast=cfg.fail_fast,
             change_tracking=cfg.change_tracking,
             ocr_enabled=cfg.ocr_enabled,
             table_structure=cfg.table_structure,
             max_chunk_tokens=cfg.max_chunk_tokens,
-            excluded_extensions=cfg.excluded_extensions,
+            excluded_dirs=cfg.excluded_dirs,
             respect_gitignore=cfg.respect_gitignore,
         )
 

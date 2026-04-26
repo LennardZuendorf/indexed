@@ -407,8 +407,7 @@ def _get_available_config_schema() -> dict[str, dict[str, Any]]:
         "sources": {
             # Files connector
             "files.path": "./data",
-            "files.include_patterns": ["*.md", "*.txt"],
-            "files.exclude_patterns": [],
+            "files.include_patterns": ["*"],
             # Jira connector
             "jira.url": "https://your-domain.atlassian.net",
             "jira.email": "your-email@example.com",
@@ -1857,8 +1856,11 @@ max_chunks = 50
 
 # [sources.files]
 # path = "./docs"
-# include_patterns = [".*\\\\.md$", ".*\\\\.txt$"]
-# exclude_patterns = []
+# include_patterns = ["*"]  # use !-prefix to exclude: ["*", "!*.log", "!dist/*"]
+# excluded_dirs = [".git", ".hg", ".svn", "node_modules", ".venv", "venv",
+#                  "__pycache__", ".tox", ".mypy_cache", ".ruff_cache",
+#                  ".pytest_cache", ".eggs"]
+# respect_gitignore = true
 # fail_fast = false
 
 # [sources.jira]

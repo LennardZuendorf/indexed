@@ -66,7 +66,6 @@ def test_connector_direct_instantiation(tmp_path):
     connector = FileSystemConnector(
         path=str(test_dir),
         include_patterns=[r".*\.md$"],
-        exclude_patterns=[],
         fail_fast=False,
     )
 

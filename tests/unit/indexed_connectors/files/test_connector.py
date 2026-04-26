@@ -24,15 +24,13 @@ def test_filesystem_connector_with_patterns():
     with tempfile.TemporaryDirectory() as tmpdir:
         connector = FileSystemConnector(
             path=tmpdir,
-            include_patterns=[r".*\.md$", r".*\.txt$"],
-            exclude_patterns=[r".*test.*", r".*/node_modules/.*"],
+            include_patterns=[r".*\.md$", r".*\.txt$", r"!.*test.*"],
             fail_fast=True,
         )
 
         assert isinstance(connector.reader, FilesDocumentReader)
         assert connector.connector_type == "localFiles"
         assert r".*\.md$" in connector._include_patterns
-        assert r".*test.*" in connector._exclude_patterns
         assert connector._fail_fast is True
 
 
@@ -56,11 +54,6 @@ def test_filesystem_connector_config_spec():
     assert spec["include_patterns"]["required"] is False
     assert spec["include_patterns"]["default"] == ["*"]
 
-    # Verify exclude_patterns is optional with default
-    assert spec["exclude_patterns"]["type"] == "list"
-    assert spec["exclude_patterns"]["required"] is False
-    assert spec["exclude_patterns"]["default"] == []
-
     # Verify fail_fast is optional with default
     assert spec["fail_fast"]["type"] == "bool"
     assert spec["fail_fast"]["required"] is False
@@ -71,7 +64,7 @@ def test_filesystem_connector_repr():
     """Test FileSystemConnector string representation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         connector = FileSystemConnector(
-            path=tmpdir, include_patterns=[r".*\.md$"], exclude_patterns=[r".*test.*"]
+            path=tmpdir, include_patterns=[r".*\.md$", r"!.*test.*"]
         )
 
         repr_str = str(connector)
@@ -79,7 +72,6 @@ def test_filesystem_connector_repr():
         assert tmpdir in repr_str
         # Note: backslashes are escaped in the string representation
         assert r".*\.md$" in repr_str or ".*\\\\.md$" in repr_str
-        assert r".*test.*" in repr_str
 
 
 def test_filesystem_connector_properties():

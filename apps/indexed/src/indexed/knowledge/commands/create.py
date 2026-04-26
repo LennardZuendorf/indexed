@@ -45,48 +45,61 @@ def _find_gitignore_files(base_path: str, max_dirs: int = 200) -> list[str]:
     return found
 
 
+def _count_gitignore_patterns(gitignore_paths: list[str]) -> int:
+    """Count total non-comment, non-empty lines across all .gitignore files."""
+    total = 0
+    for gi_path in gitignore_paths:
+        try:
+            for line in open(gi_path, encoding="utf-8", errors="replace"):
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    total += 1
+        except OSError:
+            pass
+    return total
+
+
 def _display_files_source_summary(present: Dict[str, Any]) -> None:
     """Print a concise source summary before the creation spinner starts."""
     from pathlib import Path
     from ...utils.components.info_row import create_info_row
-    from ...utils.components.theme import get_dim_style
     from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
 
     path = str(present.get("path", ""))
-    include_patterns: list[str] = present.get("include_patterns", ["*"])
-    exclude_patterns: list[str] = present.get("exclude_patterns", [])
     respect_gitignore: bool = present.get("respect_gitignore", True)
-
-    dim = get_dim_style()
+    _dirs = present.get("excluded_dirs")
+    excluded_dirs: list[str] = (
+        _dirs if isinstance(_dirs, list) else list(DEFAULT_EXCLUDED_DIRS)
+    )
+    _patterns = present.get("include_patterns")
+    include_patterns: list[str] = _patterns if isinstance(_patterns, list) else ["*"]
+    negation_count = sum(1 for p in include_patterns if p.startswith("!"))
 
     # Path (tilde-contracted)
     path_display = path.replace(str(Path.home()), "~")
     console.print(create_info_row("Path", path_display))
 
-    # Include only if non-default
-    if include_patterns and include_patterns != ["*"]:
-        console.print(create_info_row("Include", ", ".join(include_patterns)))
+    # Excluded row: dirs + negation patterns + gitignore
+    parts: list[str] = []
 
-    # Exclude only if set
-    if exclude_patterns:
-        console.print(create_info_row("Exclude", ", ".join(exclude_patterns)))
+    parts.append(f"{len(excluded_dirs)} dirs")
 
-    # Filters line: gitignore status + noise dirs
-    noise_dirs = DEFAULT_EXCLUDED_DIRS[:4]
-    remaining = len(DEFAULT_EXCLUDED_DIRS) - len(noise_dirs)
-    noise_text = f"{', '.join(noise_dirs)} +{remaining} more excluded"
+    if negation_count:
+        parts.append(
+            f"{negation_count} exclusion {'pattern' if negation_count == 1 else 'patterns'}"
+        )
 
     if respect_gitignore:
         gitignore_files = _find_gitignore_files(path)
         if gitignore_files:
-            count = len(gitignore_files)
-            gi_text = f".gitignore ({count} {'file' if count == 1 else 'files'}) · {noise_text}"
-        else:
-            gi_text = f"no .gitignore found · {noise_text}"
-    else:
-        gi_text = f"[{dim}]gitignore skipped[/{dim}] · {noise_text}"
+            pattern_count = _count_gitignore_patterns(gitignore_files)
+            file_count = len(gitignore_files)
+            gi_label = f".gitignore ({file_count} {'file' if file_count == 1 else 'files'}, {pattern_count} patterns)"
+            parts.append(gi_label)
 
-    console.print(create_info_row("Filters", gi_text))
+    if parts:
+        console.print(create_info_row("Excluded", " · ".join(parts)))
+
     console.print()
 
 

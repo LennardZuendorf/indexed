@@ -67,9 +67,7 @@ class TestDefaultDirExclusion:
         (nm / "pkg.js").write_text("x")
         (tmp_path / "src.py").write_text("y")
 
-        reader = FilesDocumentReader(
-            base_path=str(tmp_path), respect_gitignore=False
-        )
+        reader = FilesDocumentReader(base_path=str(tmp_path), respect_gitignore=False)
         found = list(reader._iter_file_paths())
 
         assert not any("node_modules" in p for p in found)
@@ -155,9 +153,7 @@ class TestGitignoreRespect:
         (tmp_path / "main.py").write_text("code")
         (tmp_path / "readme.txt").write_text("docs")
 
-        reader = FilesDocumentReader(
-            base_path=str(tmp_path), respect_gitignore=False
-        )
+        reader = FilesDocumentReader(base_path=str(tmp_path), respect_gitignore=False)
         found = list(reader._iter_file_paths())
 
         # .gitignore ignored — .py files present
@@ -172,7 +168,7 @@ class TestGitignoreRespect:
 
         reader = FilesDocumentReader(
             base_path=str(tmp_path),
-            exclude_patterns=[r".*skip.*"],
+            include_patterns=["*", "!*skip*"],
         )
         found = list(reader._iter_file_paths())
 
@@ -181,9 +177,7 @@ class TestGitignoreRespect:
         assert any("keep.txt" in p for p in found)
 
     def test_get_reader_details_includes_flag(self, tmp_path):
-        reader = FilesDocumentReader(
-            base_path=str(tmp_path), respect_gitignore=False
-        )
+        reader = FilesDocumentReader(base_path=str(tmp_path), respect_gitignore=False)
         details = reader.get_reader_details()
         assert details["respectGitignore"] is False
 

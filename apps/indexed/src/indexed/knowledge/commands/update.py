@@ -32,6 +32,38 @@ from ...utils.format import format_source_type as _format_source_type
 app = typer.Typer(help="Update collections")
 
 
+def _read_manifest_reader_config(collection_name: str) -> dict:
+    """Read the reader dict from a collection manifest; return {} on failure."""
+    try:
+        import json
+        from pathlib import Path
+        from core.v1.config_models import get_default_collections_path
+
+        manifest_path = (
+            Path(get_default_collections_path()) / collection_name / "manifest.json"
+        )
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return manifest.get("reader", {})
+    except Exception:
+        pass
+    return {}
+
+
+def _display_update_files_summary(reader_config: dict) -> None:
+    """Show path/gitignore summary before the update spinner for localFiles collections."""
+    from .create import _display_files_source_summary
+
+    _display_files_source_summary(
+        {
+            "path": reader_config.get("basePath", ""),
+            "respect_gitignore": reader_config.get("respectGitignore", True),
+            "include_patterns": reader_config.get("includePatterns", ["*"]),
+            "excluded_dirs": reader_config.get("excludedDirs", []),
+        }
+    )
+
+
 def _config_existed_before(config_service: ConfigService) -> bool:
     """
     Determine whether a configuration file existed prior to an operation based on the ConfigService's resolved storage mode.
@@ -302,22 +334,32 @@ def update(
                 update_error = e
                 break
         else:
+            # Show source summary before spinner for local-files collections
+            if source_type == "localFiles":
+                reader_cfg = _read_manifest_reader_config(coll_name)
+                if reader_cfg:
+                    _display_update_files_summary(reader_cfg)
+
             # Normal mode: phased progress display
             title = build_progress_title(
                 "Updating",
                 coll_name,
                 _format_source_type(source_type) if source_type else "",
             )
+            _coll_error: Exception | None = None
             with create_phased_progress(title=title) as phased:
                 try:
                     update_service([source_config], phased_progress=phased)
-                    console.print()
-                    print_success(f"Collection '{coll_name}' updated")
                 except Exception as e:
-                    console.print()
-                    print_error(f"Collection '{coll_name}' update failed")
-                    update_error = e
-                    break
+                    _coll_error = e
+
+            console.print()
+            if _coll_error is None:
+                print_success(f"Collection '{coll_name}' updated")
+            else:
+                print_error(f"Collection '{coll_name}' update failed")
+                update_error = _coll_error
+                break
 
     # If update failed, show error and exit
     if update_error:
