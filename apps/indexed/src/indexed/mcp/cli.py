@@ -236,9 +236,13 @@ def dev_impl(
 ) -> None:
     """Launch MCP Inspector against the indexed server via fastmcp dev inspector.
 
-    Relies on fastmcp.json at the repo root for server discovery.
+    Invokes fastmcp via `python -m fastmcp.cli` so the running interpreter's
+    site-packages is used — works whether indexed is installed as a uv tool
+    (isolated venv, `fastmcp` console script not on PATH) or run from the
+    workspace via `uv run`. Server discovery relies on `fastmcp.json` at the
+    repo root; run this command from the repo root.
     """
-    cmd: List[str] = ["fastmcp", "dev", "inspector"]
+    cmd: List[str] = [sys.executable, "-m", "fastmcp.cli", "dev", "inspector"]
     if ui_port is not None:
         cmd.extend(["--ui-port", str(ui_port)])
     if server_port is not None:
@@ -253,7 +257,8 @@ def dev_impl(
         raise typer.Exit(1)
     except FileNotFoundError:
         print_error(
-            "fastmcp executable not found. Ensure fastmcp is installed: uv sync"
+            "Python interpreter or fastmcp module not found. "
+            "Reinstall the indexed wheel."
         )
         raise typer.Exit(1)
 

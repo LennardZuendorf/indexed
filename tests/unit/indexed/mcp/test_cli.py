@@ -100,12 +100,12 @@ class TestRunImpl:
 class TestDevImpl:
     @patch("indexed.mcp.cli.subprocess.run")
     def test_invokes_fastmcp_dev(self, mock_run: MagicMock) -> None:
+        import sys as _sys
+
         dev_impl()
 
         cmd = mock_run.call_args.args[0]
-        assert cmd[0] == "fastmcp"
-        assert cmd[1] == "dev"
-        assert cmd[2] == "inspector"
+        assert cmd[:5] == [_sys.executable, "-m", "fastmcp.cli", "dev", "inspector"]
         assert mock_run.call_args.kwargs.get("check") is True
 
     @patch("indexed.mcp.cli.subprocess.run")
