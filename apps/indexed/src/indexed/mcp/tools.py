@@ -2,10 +2,7 @@
 
 from typing import Any, Callable, Dict, Optional
 
-try:
-    from fastmcp import Context
-except ImportError:
-    Context = None  # type: ignore
+from fastmcp import Context
 
 from core.v1.engine.services import (
     SourceConfig,
@@ -21,7 +18,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     """Register search tools on the FastMCP instance."""
 
     @mcp.tool
-    def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:  # type: ignore[valid-type]
+    def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
 
         Returns results in an LLM-optimized format with flat structure and direct text access.
@@ -57,7 +54,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     def search_collection(
         collection: str,
         query: str,
-        ctx: Optional[Context] = None,  # type: ignore[valid-type]
+        ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
 
