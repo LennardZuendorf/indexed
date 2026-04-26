@@ -6,21 +6,18 @@ individual commands for flat registration in the main app.
 
 import webbrowser
 import typer
+
 from .commands import create, search, inspect, update, remove
 from ..utils.console import console
 from ..utils.components.theme import get_success_style, get_secondary_style
 
-# Create the knowledge subgroup (will be hidden in main app)
 app = typer.Typer(help="Knowledge / Index Management commands")
 
-# Register commands in the subgroup
-app.add_typer(
-    create.app, name="create", help="Create new collections (files, jira, confluence)"
-)
-app.command("search", help="Search indexed collections")(search.search)
-app.command("inspect", help="Inspect indexed collections")(inspect.inspect_collections)
-app.command("update", help="Update indexed collections")(update.update)
-app.command("remove", help="Remove indexed collections")(remove.remove)
+app.add_typer(create.app, name="create", help="Create new collections")
+app.command("search", help="Search collections")(search.search)
+app.command("inspect", help="Inspect collections")(inspect.inspect_collections)
+app.command("update", help="Update collections")(update.update)
+app.command("remove", help="Remove collections")(remove.remove)
 
 
 @app.command("docs", rich_help_panel="Resources")

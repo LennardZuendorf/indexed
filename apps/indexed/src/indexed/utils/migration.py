@@ -10,16 +10,14 @@ import shutil
 from pathlib import Path
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Confirm
 
 from .components.theme import (
     get_accent_style,
-    get_card_border_style,
     get_dim_style,
     get_warning_style,
 )
-from .components import print_success, print_warning, print_error
+from .components import print_success, print_warning, print_error, create_detail_card
 
 
 def _get_legacy_data_path() -> Path:
@@ -123,25 +121,23 @@ def migrate_legacy_data(
         return True
 
     # Show what will be migrated
+    names_display = ", ".join(collections[:10])
+    if len(collections) > 10:
+        names_display += f" +{len(collections) - 10} more"
+
     console.print()
+    print_warning("Legacy data detected at ./data/")
     console.print(
-        Panel(
-            f"[{get_warning_style()}]Legacy data detected at ./data/[/]\n\n"
-            f"Found [{get_accent_style()}]{len(collections)}[/] collection(s):\n"
-            + "\n".join(f"  • {name}" for name in collections[:10])
-            + (
-                f"\n  ... and {len(collections) - 10} more"
-                if len(collections) > 10
-                else ""
-            ),
-            title="[bold]Migration Available[/bold]",
-            border_style=get_card_border_style(),
-            padding=(1, 2),
+        create_detail_card(
+            title="Migration Available",
+            rows=[
+                ("Collections", str(len(collections))),
+                ("Names", names_display),
+                ("Source", "./data/"),
+                ("Target", str(target_root / "data/")),
+            ],
         )
     )
-    console.print()
-    console.print(f"[{get_dim_style()}]Source: ./data/[/]")
-    console.print(f"[{get_dim_style()}]Target: {target_root}/data/[/]")
     console.print()
 
     if dry_run:

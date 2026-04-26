@@ -8,10 +8,10 @@ Uses the same from_config() pattern as create operations for unified
 config handling across the CLI.
 """
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 import json
-from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Any
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
@@ -19,33 +19,23 @@ from core.v1.engine.core.documents_collection_creator import (
     DocumentCollectionCreator,
     OPERATION_TYPE,
 )
-from connectors import get_connector_class, get_config_namespace
+from core.v1.config_models import get_default_collections_path
 
 from utils.performance import log_execution_duration
-
-
-def _get_default_collections_path() -> str:
-    """Get the default collections path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_collections_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "collections")
 
 
 def create_collection_updater(
     collection_name: str,
     progress_callback=None,
-    collections_path: Optional[str] = None,
+    phased_progress=None,
+    collections_path: str | None = None,
 ):
     """Create a collection updater for incremental updates.
 
     Args:
         collection_name: Name of the collection to update
         progress_callback: Optional callback for progress updates
+        phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
                          Defaults to resolved path from storage config.
 
@@ -54,7 +44,7 @@ def create_collection_updater(
     """
     return log_execution_duration(
         lambda: _create_collection_updater(
-            collection_name, progress_callback, collections_path
+            collection_name, progress_callback, phased_progress, collections_path
         ),
         identifier="Preparing collection updater",
     )
@@ -63,10 +53,11 @@ def create_collection_updater(
 def _create_collection_updater(
     collection_name: str,
     progress_callback=None,
-    collections_path: Optional[str] = None,
+    phased_progress=None,
+    collections_path: str | None = None,
 ):
     """Internal implementation of collection updater creation."""
-    resolved_path = collections_path or _get_default_collections_path()
+    resolved_path = collections_path or str(get_default_collections_path())
     disk_persister = DiskPersister(base_path=resolved_path)
 
     if not disk_persister.is_path_exists(collection_name):
@@ -76,14 +67,23 @@ def _create_collection_updater(
         disk_persister.read_text_file(f"{collection_name}/manifest.json")
     )
 
-    document_reader, document_converter = _create_reader_and_converter(manifest)
+    connector_type = manifest["reader"]["type"]
+    post_run = None
+
+    if connector_type == "localFiles":
+        document_reader, document_converter, explicit_deletions, post_run = (
+            _build_local_files_update(manifest, collection_name, disk_persister)
+        )
+    else:
+        document_reader, document_converter = _create_reader_and_converter(manifest)
+        explicit_deletions = []
 
     document_indexers = [
         load_indexer(indexer["name"], collection_name, disk_persister)
         for indexer in manifest["indexers"]
     ]
 
-    return DocumentCollectionCreator(
+    creator = DocumentCollectionCreator(
         collection_name=collection_name,
         document_reader=document_reader,
         document_converter=document_converter,
@@ -91,7 +91,31 @@ def _create_collection_updater(
         persister=disk_persister,
         operation_type=OPERATION_TYPE.UPDATE,
         progress_callback=progress_callback,
+        phased_progress=phased_progress,
+        explicit_deletions=explicit_deletions,
     )
+
+    if post_run is not None:
+        return _UpdatingCollectionCreator(creator, post_run)
+    return creator
+
+
+class _UpdatingCollectionCreator:
+    """Thin wrapper: runs a DocumentCollectionCreator then calls a post-run hook.
+
+    Used to persist ChangeTracker state after a successful update without
+    modifying the DocumentCollectionCreator interface.
+    """
+
+    def __init__(
+        self, creator: DocumentCollectionCreator, post_run: Callable[[], None]
+    ) -> None:
+        self._creator = creator
+        self._post_run = post_run
+
+    def run(self) -> None:
+        self._creator.run()
+        self._post_run()
 
 
 def _calculate_update_time(manifest: dict) -> datetime:
@@ -106,7 +130,7 @@ def _calculate_update_date(manifest: dict):
     return _calculate_update_time(manifest).date()
 
 
-def _create_reader_and_converter(manifest: dict) -> Tuple[Any, Any]:
+def _create_reader_and_converter(manifest: dict) -> tuple[Any, Any]:
     """Create reader and converter from manifest using connector registry.
 
     This function uses the same from_config() pattern as create operations,
@@ -125,6 +149,7 @@ def _create_reader_and_converter(manifest: dict) -> Tuple[Any, Any]:
         ValueError: If connector type is unknown or credentials are missing
     """
     from indexed_config import ConfigService
+    from connectors import get_connector_class, get_config_namespace
 
     connector_type = manifest["reader"]["type"]
 
@@ -265,17 +290,70 @@ def _populate_local_files_config(
     reader_config: dict,
     namespace: str,
 ) -> None:
-    """Populate ConfigService with local files config from manifest.
-
-    Note: Incremental updates for local files are not fully supported via
-    the connector pattern. The start_from_time filtering would need to be
-    added to the LocalFilesConfig schema for full support.
-    """
+    """Populate ConfigService with local files config from manifest."""
     config_service.set(f"{namespace}.path", reader_config["basePath"])
     config_service.set(
         f"{namespace}.include_patterns", reader_config.get("includePatterns", [".*"])
     )
-    config_service.set(
-        f"{namespace}.exclude_patterns", reader_config.get("excludePatterns", [])
-    )
     config_service.set(f"{namespace}.fail_fast", reader_config.get("failFast", False))
+    config_service.set(
+        f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
+    )
+
+
+def _build_local_files_update(
+    manifest: dict,
+    collection_name: str,
+    disk_persister: DiskPersister,
+) -> tuple[Any, Any, list[str], Callable[[], None]]:
+    """Build reader, converter, deletions, and post-run hook for a localFiles update.
+
+    Uses ChangeTracker to detect which files changed since the last index run,
+    limiting the reader to only those files.
+
+    Returns:
+        (reader, converter, explicit_deletions, post_run_callback)
+    """
+    from connectors.files.connector import FileSystemConnector
+    from connectors.files.files_document_reader import FilesDocumentReader
+
+    reader_config = manifest["reader"]
+
+    connector = FileSystemConnector(
+        path=reader_config["basePath"],
+        include_patterns=reader_config.get("includePatterns") or ["*"],
+        fail_fast=reader_config.get("failFast", False),
+        change_tracking=reader_config.get("changeTracking", "auto"),
+        excluded_dirs=reader_config.get("excludedDirs") or None,
+        respect_gitignore=reader_config.get("respectGitignore", True),
+    )
+
+    collection_full_path = disk_persister.get_full_path(collection_name)
+    state = connector.load_state(collection_full_path)
+
+    if state is not None:
+        changed_paths = connector.get_files_to_process(state)
+        deleted_files: list[str] = connector.get_deletions(state)
+        specific_files: list[str] | None = [str(p) for p in changed_paths]
+    else:
+        # No prior state — full re-index (first update after create without state)
+        specific_files = None
+        deleted_files = []
+
+    cfg = connector._config
+    reader = FilesDocumentReader(
+        base_path=connector._path,
+        include_patterns=connector._include_patterns,
+        fail_fast=connector._fail_fast,
+        ocr=cfg.ocr_enabled,
+        table_structure=cfg.table_structure,
+        max_tokens=cfg.max_chunk_tokens,
+        excluded_dirs=cfg.excluded_dirs or None,
+        specific_files=specific_files,
+        respect_gitignore=cfg.respect_gitignore,
+    )
+
+    def _save_state() -> None:
+        connector.save_state(collection_full_path)
+
+    return reader, connector.converter, deleted_files, _save_state

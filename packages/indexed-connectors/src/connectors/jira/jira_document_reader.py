@@ -29,6 +29,8 @@ class JiraDocumentReader:
         number_of_retries=3,
         retry_delay=1,
         max_skipped_items_in_row=5,
+        include_attachments=False,
+        max_attachment_size_mb=10,
     ):
         """
         Create a deprecated Jira Server/DC document reader wrapper that delegates functionality to UnifiedJiraDocumentReader.
@@ -74,6 +76,8 @@ class JiraDocumentReader:
             number_of_retries=number_of_retries,
             retry_delay=retry_delay,
             max_skipped_items_in_row=max_skipped_items_in_row,
+            include_attachments=include_attachments,
+            max_attachment_size_mb=max_attachment_size_mb,
         )
 
         # Expose attributes for compatibility

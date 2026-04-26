@@ -160,17 +160,47 @@ def has_global_config() -> bool:
     return get_config_path(get_global_root()).exists()
 
 
-def ensure_storage_dirs(root: Path) -> None:
+def _ensure_gitignore(root: Path) -> None:
+    """Ensure a .gitignore exists in root with a .env entry.
+
+    Creates the file if missing, or appends `.env` if the file exists
+    but doesn't already contain it.
+
+    Parameters:
+        root (Path): Storage root directory to protect.
+    """
+    gitignore = root / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text()
+        # Check if .env is already covered (strip comments and whitespace)
+        has_env = any(
+            line.split("#")[0].strip() == ".env" for line in content.splitlines()
+        )
+        if not has_env:
+            with open(gitignore, "a") as f:
+                # Ensure we start on a new line
+                if content and not content.endswith("\n"):
+                    f.write("\n")
+                f.write(".env\n")
+    else:
+        root.mkdir(parents=True, exist_ok=True)
+        gitignore.write_text(".env\n")
+
+
+def ensure_storage_dirs(root: Path, *, is_local: bool = False) -> None:
     """
     Create the storage root and its data, collections, and caches subdirectories if they do not exist.
 
     Parameters:
         root (Path): Root directory under which `data`, `data/collections`, and `data/caches` will be created.
+        is_local (bool): If True, also creates a .gitignore with `.env` entry to prevent accidental commits.
     """
     root.mkdir(parents=True, exist_ok=True)
     get_data_root(root).mkdir(parents=True, exist_ok=True)
     get_collections_path(root).mkdir(parents=True, exist_ok=True)
     get_caches_path(root).mkdir(parents=True, exist_ok=True)
+    if is_local:
+        _ensure_gitignore(root)
 
 
 class StorageResolver:
@@ -241,7 +271,8 @@ class StorageResolver:
         Resolution order:
         1. CLI mode override (`self._mode_override`)
         2. `workspace_preference` passed from workspace config
-        3. Default to the global root
+        3. Auto-detect: if local .indexed/config.toml exists, use local root
+        4. Default to the global root
 
         Parameters:
             workspace_preference (Optional[StorageMode]): Workspace-configured preference, either `"local"` or `"global"`; omitted or None means no preference.
@@ -260,6 +291,10 @@ class StorageResolver:
             return self.local_root
         if workspace_preference == "global":
             return self.global_root
+
+        # Auto-detect: if local config exists, use local root
+        if has_local_config(self._workspace):
+            return self.local_root
 
         # Default to global
         return self.global_root
@@ -348,46 +383,13 @@ class StorageResolver:
         workspace_preference) and create the root directory and its required subdirectories
         (e.g., data, data/collections, data/caches) if they do not already exist.
 
+        When the resolved root is the local root, a .gitignore is also created
+        to prevent accidental .env commits.
+
         Parameters:
             workspace_preference (Optional[StorageMode]): Preferred storage mode to use when
                 resolving the root; when omitted the resolver's configured preference is used.
         """
         root = self.resolve_root(workspace_preference)
-        ensure_storage_dirs(root)
-
-
-# Module-level singleton for convenience
-_default_resolver: Optional[StorageResolver] = None
-
-
-def get_resolver(
-    workspace: Optional[Path] = None,
-    mode_override: Optional[StorageMode] = None,
-    reset: bool = False,
-) -> StorageResolver:
-    """
-    Get the singleton StorageResolver, creating a new instance when none exists or when reset is True.
-
-    Parameters:
-        workspace (Optional[Path]): Workspace directory used by the resolver; defaults to the current working directory when None.
-        mode_override (Optional[StorageMode]): Explicit storage mode to force ("global" or "local"); if None the resolver will use workspace preferences or defaults.
-        reset (bool): If True, create and return a new resolver even if a default already exists.
-
-    Returns:
-        StorageResolver: The active resolver instance.
-    """
-    global _default_resolver
-
-    if _default_resolver is None or reset:
-        _default_resolver = StorageResolver(
-            workspace=workspace,
-            mode_override=mode_override,
-        )
-
-    return _default_resolver
-
-
-def reset_resolver() -> None:
-    """Reset the default resolver (useful for testing)."""
-    global _default_resolver
-    _default_resolver = None
+        is_local = root == self.local_root
+        ensure_storage_dirs(root, is_local=is_local)

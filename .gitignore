@@ -20,6 +20,7 @@ dist/
 build/
 .dist/
 *.egg
+_build_meta.py
 
 # uv
 .uv/
@@ -27,7 +28,8 @@ build/
 # Testing
 .pytest_cache/
 .coverage
-htmlcov/
+htmlcov*/
+coverage.xml
 .tox/
 
 # Type checking
@@ -45,17 +47,13 @@ dmypy.json
 **/.DS_Store
 .dccache
 .cursor/mcp.json
+.memory/
+*.bak
 
 # Project data
 data/
 tmp/
 .indexed/
-
-#Python Package Stuff
-*.egg-info/
-.dist
-.ruff_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-*.bak
+docs/superpowers/
+docs/plans/
+docs/brainstorms/
