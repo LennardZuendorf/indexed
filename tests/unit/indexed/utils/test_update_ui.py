@@ -2,7 +2,6 @@
 
 import time
 from unittest.mock import Mock
-from io import StringIO
 
 
 class TestFormatSourceType:

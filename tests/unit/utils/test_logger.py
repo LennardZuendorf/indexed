@@ -97,9 +97,7 @@ class TestThirdPartyPolicy:
 
     def test_docling_error_visible_at_debug(self, capsys):
         bootstrap_logging("DEBUG", debug=True)
-        logging.getLogger("docling.datamodel.document").error(
-            "noise visible in debug"
-        )
+        logging.getLogger("docling.datamodel.document").error("noise visible in debug")
         captured = capsys.readouterr()
         assert "noise visible in debug" in (captured.out + captured.err)
 

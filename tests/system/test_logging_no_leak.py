@@ -97,9 +97,7 @@ class TestParsingModuleNoLeakOnRstFixture:
     """End-to-end through ParsingModule with a mixed-extension directory."""
 
     def _make_fixture(self, tmp_path: Path) -> Path:
-        (tmp_path / "README.rst").write_text(
-            "Title\n=====\n\nA reST paragraph.\n"
-        )
+        (tmp_path / "README.rst").write_text("Title\n=====\n\nA reST paragraph.\n")
         (tmp_path / "doc.md").write_text("# Heading\n\nMarkdown body.\n")
         (tmp_path / "notes.txt").write_text("plain text content")
         return tmp_path

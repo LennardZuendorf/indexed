@@ -358,9 +358,7 @@ def get_current_log_level() -> str:
 # ---------------------------------------------------------------------------
 
 
-def setup_root_logger(
-    level_str: Optional[str] = None, json_mode: bool = False
-) -> None:
+def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) -> None:
     """Deprecated shim — calls ``bootstrap_logging`` for old callers.
 
     Kept to avoid breaking imports during the migration. New code should call
