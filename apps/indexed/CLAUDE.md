@@ -141,22 +141,34 @@ uv run indexed config validate
 **Start MCP server (stdio, for Claude Desktop):**
 ```bash
 uv run indexed-mcp run
+# or: uv run indexed mcp run
 ```
 
 **Start HTTP server:**
 ```bash
-uv run indexed-mcp run --transport http --host 127.0.0.1 --port 8000
+uv run indexed mcp run --transport http --host 127.0.0.1 --port 8000
 ```
 
 **Development mode with inspector:**
 ```bash
-uv run indexed-mcp dev
+uv run indexed mcp dev
 ```
 
-**View available MCP tools:**
+**View MCP server capabilities (tools, resources, prompts):**
 ```bash
-uv run indexed-mcp inspect
+uv run indexed mcp inspect
 ```
+
+**Native fastmcp CLI (declarative via `fastmcp.json` at repo root):**
+```bash
+uv run fastmcp run                       # auto-detects fastmcp.json
+uv run fastmcp dev inspector             # MCP Inspector
+uv run fastmcp install claude-desktop    # one-shot Claude Desktop install
+uv run fastmcp install cursor            # Cursor install
+uv run fastmcp inspect                   # JSON capability report
+```
+
+`indexed mcp run` and `fastmcp run` resolve to the same server (`fastmcp_server.py` at the repo root re-exports the package server). Prefer `indexed mcp run` for end users; `fastmcp install <client>` is the simplest path for setting up Claude Desktop / Cursor / Claude Code.
 
 ## Command Implementation Patterns
 
@@ -382,7 +394,7 @@ def collection_status(name: str) -> dict:
 
 ### Running the MCP Server
 
-**Claude Desktop Integration:**
+**Claude Desktop Integration (manual config):**
 ```json
 {
   "mcpServers": {
@@ -396,6 +408,12 @@ def collection_status(name: str) -> dict:
   }
 }
 ```
+
+**Claude Desktop Integration (auto via fastmcp.json):**
+```bash
+uv run fastmcp install claude-desktop
+```
+Same trick works for `cursor`, `claude-code`, `gemini-cli`, `goose`, and `mcp-json`.
 
 **HTTP Server:**
 ```bash
