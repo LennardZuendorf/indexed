@@ -100,6 +100,11 @@ def create_files(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    respect_gitignore: bool = typer.Option(
+        True,
+        "--respect-gitignore/--no-respect-gitignore",
+        help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
+    ),
     local: bool = typer.Option(
         False,
         "--local",
@@ -128,6 +133,7 @@ def create_files(
         cli_overrides["exclude_patterns"] = exclude
     if fail_fast:
         cli_overrides["fail_fast"] = fail_fast
+    cli_overrides["respect_gitignore"] = respect_gitignore
 
     def prompt_missing_files_fields(
         validation: Dict[str, Any], config: ConfigService, ns: str
@@ -210,6 +216,7 @@ def create_files(
                 "includePatterns": present.get("include_patterns", ["*"]),
                 "excludePatterns": present.get("exclude_patterns", []),
                 "failFast": present.get("fail_fast", False),
+                "respectGitignore": present.get("respect_gitignore", True),
             },
         )
 

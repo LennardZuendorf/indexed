@@ -52,6 +52,7 @@ class FileSystemConnector:
         code_chunking: bool = True,
         max_chunk_tokens: int = 512,
         excluded_extensions: List[str] | None = None,
+        respect_gitignore: bool = True,
     ) -> None:
         config = FileSystemConfig(
             path=path,
@@ -64,6 +65,7 @@ class FileSystemConnector:
             code_chunking=code_chunking,
             max_chunk_tokens=max_chunk_tokens,
             excluded_extensions=excluded_extensions or [],
+            respect_gitignore=respect_gitignore,
         )
 
         self._path = config.path
@@ -81,6 +83,7 @@ class FileSystemConnector:
             table_structure=config.table_structure,
             max_tokens=config.max_chunk_tokens,
             excluded_extensions=config.excluded_extensions or None,
+            respect_gitignore=config.respect_gitignore,
         )
         self._converter = FilesDocumentConverter()
         self._change_tracker = ChangeTracker(
@@ -225,6 +228,7 @@ class FileSystemConnector:
             table_structure=cfg.table_structure,
             max_chunk_tokens=cfg.max_chunk_tokens,
             excluded_extensions=cfg.excluded_extensions,
+            respect_gitignore=cfg.respect_gitignore,
         )
 
 

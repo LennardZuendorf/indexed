@@ -299,6 +299,9 @@ def _populate_local_files_config(
         f"{namespace}.exclude_patterns", reader_config.get("excludePatterns", [])
     )
     config_service.set(f"{namespace}.fail_fast", reader_config.get("failFast", False))
+    config_service.set(
+        f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
+    )
 
 
 def _build_local_files_update(
@@ -325,6 +328,7 @@ def _build_local_files_update(
         exclude_patterns=reader_config.get("excludePatterns") or [],
         fail_fast=reader_config.get("failFast", False),
         change_tracking=reader_config.get("changeTracking", "auto"),
+        respect_gitignore=reader_config.get("respectGitignore", True),
     )
 
     collection_full_path = disk_persister.get_full_path(collection_name)
@@ -350,6 +354,7 @@ def _build_local_files_update(
         max_tokens=cfg.max_chunk_tokens,
         excluded_extensions=cfg.excluded_extensions or None,
         specific_files=specific_files,
+        respect_gitignore=cfg.respect_gitignore,
     )
 
     def _save_state() -> None:

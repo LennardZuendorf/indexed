@@ -7,6 +7,22 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+# Directories always pruned during traversal (VCS metadata, build artefacts, env dirs).
+DEFAULT_EXCLUDED_DIRS: List[str] = [
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".tox",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".eggs",
+]
+
 # Default excluded extensions (binary, archive, media, etc.)
 DEFAULT_EXCLUDED_EXTENSIONS: List[str] = [
     ".DS_Store",
@@ -141,6 +157,10 @@ class FileSystemConfig(BaseModel):
         default_factory=lambda: list(DEFAULT_EXCLUDED_EXTENSIONS),
         description="File extensions to exclude from indexing",
     )
+    respect_gitignore: bool = Field(
+        default=True,
+        description="Respect .gitignore files and skip default noise directories (node_modules, .venv, __pycache__, etc.)",
+    )
 
     @field_validator("include_patterns", "exclude_patterns", mode="before")
     @classmethod
@@ -172,4 +192,4 @@ class FileSystemConfig(BaseModel):
 # Alias for backward compatibility with registry
 LocalFilesConfig = FileSystemConfig
 
-__all__ = ["FileSystemConfig", "LocalFilesConfig", "DEFAULT_EXCLUDED_EXTENSIONS"]
+__all__ = ["FileSystemConfig", "LocalFilesConfig", "DEFAULT_EXCLUDED_EXTENSIONS", "DEFAULT_EXCLUDED_DIRS"]

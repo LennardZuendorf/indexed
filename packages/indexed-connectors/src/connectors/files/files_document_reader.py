@@ -12,7 +12,7 @@ import fnmatch
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 from loguru import logger
 
@@ -20,8 +20,10 @@ if TYPE_CHECKING:
     from parsing import ParsingModule
     from parsing.schema import ParsedDocument
 
-from .schema import DEFAULT_EXCLUDED_EXTENSIONS
+from .schema import DEFAULT_EXCLUDED_DIRS, DEFAULT_EXCLUDED_EXTENSIONS
 from .v1_adapter import V1FormatAdapter
+
+_DEFAULT_EXCLUDED_DIRS: frozenset[str] = frozenset(DEFAULT_EXCLUDED_DIRS)
 
 
 class FilesDocumentReader:
@@ -40,6 +42,7 @@ class FilesDocumentReader:
         table_structure: bool = True,
         max_tokens: int = 512,
         excluded_extensions: list[str] | None = None,
+        respect_gitignore: bool = True,
     ) -> None:
         self.base_path = base_path
         self.include_patterns = include_patterns or ["*"]
@@ -56,6 +59,7 @@ class FilesDocumentReader:
         self._excluded_extensions = frozenset(
             excluded_extensions or DEFAULT_EXCLUDED_EXTENSIONS
         )
+        self._respect_gitignore = respect_gitignore
 
         # Lazy-init parsing module on first use
         self._parsing: ParsingModule | None = None
@@ -144,6 +148,7 @@ class FilesDocumentReader:
             "includePatterns": self.include_patterns,
             "excludePatterns": self.exclude_patterns,
             "failFast": self.fail_fast,
+            "respectGitignore": self._respect_gitignore,
         }
 
     def _iter_file_paths(self) -> Iterator[str]:
@@ -151,7 +156,7 @@ class FilesDocumentReader:
 
         If ``specific_files`` is set, iterate only those paths (applying the
         same extension and exclusion filters). Otherwise walk the full
-        directory tree as normal.
+        directory tree, pruning excluded directories before descending.
         """
         if self.specific_files is not None:
             for full_path in self.specific_files:
@@ -164,7 +169,34 @@ class FilesDocumentReader:
                     yield full_path
             return
 
-        for root, _, files in os.walk(self.base_path):
+        # Accumulate (gitignore_dir, PathSpec) tuples as we descend.
+        gitignore_specs: list[tuple[Path, Any]] = []
+
+        for root, dirs, files in os.walk(self.base_path, topdown=True):
+            root_path = Path(root)
+
+            # Load .gitignore present in the current directory before pruning.
+            if self._respect_gitignore:
+                gi_file = root_path / ".gitignore"
+                if gi_file.is_file():
+                    try:
+                        import pathspec as _pathspec
+
+                        lines = gi_file.read_text(
+                            encoding="utf-8", errors="replace"
+                        ).splitlines()
+                        spec = _pathspec.PathSpec.from_lines("gitwildmatch", lines)
+                        gitignore_specs.append((root_path, spec))
+                    except Exception:
+                        pass
+
+            # Prune subdirectories in-place to avoid descending into noise dirs.
+            dirs[:] = [
+                d
+                for d in dirs
+                if not self._is_dir_pruned(root_path / d, gitignore_specs)
+            ]
+
             for file_name in files:
                 full_path = os.path.join(root, file_name)
                 relative_path = os.path.relpath(full_path, self.base_path)
@@ -176,6 +208,7 @@ class FilesDocumentReader:
                         relative_path.endswith(ext) for ext in self._excluded_extensions
                     )
                     and not self._is_file_excluded(relative_path)
+                    and not self._is_file_gitignored(Path(full_path), gitignore_specs)
                     and (
                         self.start_from_time is None
                         or self._read_file_modification_time(full_path)
@@ -193,6 +226,39 @@ class FilesDocumentReader:
         return any(
             pattern.fullmatch(file_path) for pattern in self.compiled_exclude_patterns
         )
+
+    def _is_dir_pruned(
+        self, dir_path: Path, gitignore_specs: list[tuple[Path, Any]]
+    ) -> bool:
+        """Return True if this directory should be excluded before descending."""
+        if dir_path.name in _DEFAULT_EXCLUDED_DIRS:
+            return True
+        if not self._respect_gitignore:
+            return False
+        for spec_dir, spec in gitignore_specs:
+            try:
+                rel = dir_path.relative_to(spec_dir)
+            except ValueError:
+                continue
+            rel_str = rel.as_posix()
+            if spec.match_file(rel_str + "/") or spec.match_file(rel_str):
+                return True
+        return False
+
+    def _is_file_gitignored(
+        self, file_path: Path, gitignore_specs: list[tuple[Path, Any]]
+    ) -> bool:
+        """Return True if this file is matched by any loaded gitignore spec."""
+        if not self._respect_gitignore:
+            return False
+        for spec_dir, spec in gitignore_specs:
+            try:
+                rel = file_path.relative_to(spec_dir)
+            except ValueError:
+                continue
+            if spec.match_file(rel.as_posix()):
+                return True
+        return False
 
     @staticmethod
     def _read_file_modification_time(file_path: str) -> datetime.datetime:

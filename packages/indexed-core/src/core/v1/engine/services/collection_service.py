@@ -88,6 +88,10 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
             )
         if "failFast" in cfg.reader_opts:
             config_service.set("sources.files.fail_fast", cfg.reader_opts["failFast"])
+        if "respectGitignore" in cfg.reader_opts:
+            config_service.set(
+                "sources.files.respect_gitignore", cfg.reader_opts["respectGitignore"]
+            )
         return FileSystemConnector.from_config(config_service)
 
     else:
