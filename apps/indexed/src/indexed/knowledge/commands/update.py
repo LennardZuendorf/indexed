@@ -449,6 +449,17 @@ def update(
                         update_error = e
                         break
         else:
+            if not coll_status.indexers:
+                print_error(f"Collection '{coll_name}' has no indexers configured")
+                continue
+
+            source_config = source_config_class(
+                name=coll_name,
+                type="localFiles",
+                base_url_or_path="",
+                indexer=coll_status.indexers[0],
+            )
+
             if simple or is_verbose_mode():
                 # Simple output / verbose mode: no progress display
                 try:
@@ -457,7 +468,9 @@ def update(
                     successfully_updated.append(coll_name)
                 except Exception as e:
                     if not simple:
-                        print_error(f"Failed to update collection '{coll_name}': {str(e)}")
+                        print_error(
+                            f"Failed to update collection '{coll_name}': {str(e)}"
+                        )
                     update_error = e
                     break
             else:
@@ -481,7 +494,8 @@ def update(
                         total_docs += after_info.number_of_documents
                         total_chunks += after_info.number_of_chunks
                         docs_delta += (
-                            after_info.number_of_documents - before_info.number_of_documents
+                            after_info.number_of_documents
+                            - before_info.number_of_documents
                         )
                         chunks_delta += (
                             after_info.number_of_chunks - before_info.number_of_chunks
