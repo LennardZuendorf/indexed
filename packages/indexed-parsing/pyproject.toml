@@ -38,3 +38,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/parsing"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/parsing"]

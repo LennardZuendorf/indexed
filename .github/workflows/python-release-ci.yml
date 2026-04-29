@@ -1,22 +1,24 @@
-name: Release — Build + Commit Wheel + Publish to PyPI
+name: Release — Build + Publish to PyPI
 
 # Trigger: publish a GitHub Release in the GitHub UI (manual)
-# Flow: build wheel from main → commit wheel to main → publish to PyPI
+# Flow: build wheel from main → validate → publish to PyPI → attach to release
+#
+# Wheels are NEVER committed to git. They are built fresh in CI on every
+# release, validated against PyPI's exact archive validator (tools/validate_wheel.py),
+# uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub Release
+# as the durable archive.
 on:
   release:
     types: [published]
   workflow_dispatch:
 
-permissions:
-  contents: write   # commit wheel to main + attach artifacts to release
-  id-token: write   # PyPI OIDC trusted-publisher auth
-
 jobs:
-  # ── 1. Build wheel from main, commit it back to the repo ────────────────────
+  # ── 1. Build the wheel from main and validate it ────────────────────────────
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
-    environment: pypi
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout main
@@ -24,7 +26,6 @@ jobs:
       with:
         ref: main
         fetch-depth: 0
-        token: ${{ secrets.RELEASE_PAT }}
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -38,22 +39,21 @@ jobs:
       run: uv sync
 
     - name: Build distributable wheel
-      run: uvx --from build pyproject-build --installer=uv --outdir=releases --wheel apps/indexed
+      run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
-    - name: Commit wheel to main
-      run: |
-        git config user.name  "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add releases/
-        git diff --cached --quiet && echo "No new wheel to commit" && exit 0
-        git commit -m "build(release): add wheel ${{ github.event.release.tag_name || github.ref_name }}"
-        git push https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}.git main
+    - name: Validate wheel with PyPI's archive validator
+      # Same checks PyPI's warehouse runs on upload. Failing here means PyPI
+      # would reject — fail fast with the exact error message instead.
+      run: uv run python tools/validate_wheel.py dist/*.whl
 
-    - name: Store distribution packages
-      uses: actions/upload-artifact@v5
+    - name: Upload wheel artifact
+      uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
-        path: releases/
+        path: dist/
+        if-no-files-found: error
+        # Wheels are already compressed; don't waste CI time recompressing.
+        compression-level: 0
 
   # ── 2. Publish to PyPI via OIDC trusted publisher ───────────────────────────
   publish-to-pypi:
@@ -63,21 +63,23 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/indexed-sh
+    permissions:
+      id-token: write   # OIDC trusted publishing
+      contents: write   # attach wheel to GitHub Release
 
     steps:
-    - name: Download distribution packages
-      uses: actions/download-artifact@v5
+    - name: Download wheel artifact
+      uses: actions/download-artifact@v4
       with:
         name: python-package-distributions
-        path: releases/
+        path: dist/
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: releases/
+      # Default packages-dir: dist/ — no override needed.
 
     - name: Attach wheel to GitHub Release
       if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: releases/*
+        files: dist/*

@@ -1,5 +1,6 @@
 """Tests for MCP CLI commands."""
 
+import re
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,12 @@ from indexed.mcp.cli import (
 
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 class TestBuildInspectSummary:
@@ -161,16 +168,18 @@ class TestCommandRegistration:
     def test_run_command_help(self) -> None:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
-        assert "--transport" in result.stdout
-        assert "--host" in result.stdout
-        assert "--port" in result.stdout
-        assert "--log-level" in result.stdout
+        stdout = _strip_ansi(result.stdout)
+        assert "--transport" in stdout
+        assert "--host" in stdout
+        assert "--port" in stdout
+        assert "--log-level" in stdout
 
     def test_dev_command_help(self) -> None:
         result = runner.invoke(app, ["dev", "--help"])
         assert result.exit_code == 0
-        assert "--ui-port" in result.stdout
-        assert "--server-port" in result.stdout
+        stdout = _strip_ansi(result.stdout)
+        assert "--ui-port" in stdout
+        assert "--server-port" in stdout
 
     def test_inspect_command_help(self) -> None:
         result = runner.invoke(app, ["inspect", "--help"])

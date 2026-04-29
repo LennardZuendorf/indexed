@@ -19,7 +19,9 @@ env/
 dist/
 build/
 .dist/
+releases/
 *.egg
+*.whl
 _build_meta.py
 
 # uv

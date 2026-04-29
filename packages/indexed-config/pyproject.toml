@@ -32,6 +32,9 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/indexed_config"]
 
+[tool.hatch.build.targets.sdist]
+only-include = ["src/indexed_config"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"

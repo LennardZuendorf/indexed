@@ -1,0 +1,6 @@
+# Wheels and sdists are binary archives. Mark them so git never applies
+# line-ending or text filters to them — even if anyone has core.autocrlf=true
+# or text=auto in their global config. Corrupted bytes here = PyPI rejecting
+# the upload with "Trailing data" / "Mis-matched data size".
+*.whl  binary
+*.tar.gz  binary
