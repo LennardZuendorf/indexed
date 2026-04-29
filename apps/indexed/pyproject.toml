@@ -1,6 +1,6 @@
 [project]
 name = "indexed-sh"
-version = "0.0.4"
+version = "0.0.5"
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 license = { text = "See LICENSE file" }
