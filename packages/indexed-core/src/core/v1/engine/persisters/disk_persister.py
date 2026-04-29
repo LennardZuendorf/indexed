@@ -1,6 +1,6 @@
 import os
-import shutil
 import pickle
+import shutil
 
 
 class DiskPersister:
@@ -34,6 +34,31 @@ class DiskPersister:
 
         with open(path, "rb") as file:
             return pickle.load(file)
+
+    def save_faiss_index(self, faiss_index, file_path):
+        """Save a FAISS index using native faiss.write_index for optimal I/O."""
+        import faiss
+
+        path = os.path.join(self.base_path, file_path)
+        self.__make_sure_path_exists(path)
+        faiss.write_index(faiss_index, path)
+
+    def read_faiss_index(self, file_path, mmap=True):
+        """Load a FAISS index using native faiss.read_index.
+
+        Args:
+            file_path: Relative path to the FAISS index file.
+            mmap: If True, use memory-mapped I/O for near-instant loading.
+        """
+        import faiss
+
+        path = os.path.join(self.base_path, file_path)
+        io_flags = faiss.IO_FLAG_MMAP if mmap else 0
+        return faiss.read_index(path, io_flags)
+
+    def get_full_path(self, file_path):
+        """Return the absolute path for a relative file path."""
+        return os.path.join(self.base_path, file_path)
 
     def create_folder(self, folder_name):
         directory_path = os.path.join(self.base_path, folder_name)

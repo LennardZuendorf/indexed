@@ -53,6 +53,8 @@ class ConfluenceDocumentReader:
         retry_delay=1,
         max_skipped_items_in_row=5,
         read_all_comments=False,
+        include_attachments=False,
+        max_attachment_size_mb=10,
     ):
         # "token" or "login" and "password" must be provided
         """
@@ -95,10 +97,15 @@ class ConfluenceDocumentReader:
         self.retry_delay = retry_delay
         self.max_skipped_items_in_row = max_skipped_items_in_row
         self.read_all_comments = read_all_comments
+        self.include_attachments = include_attachments
+        self.max_attachment_size_bytes = max_attachment_size_mb * 1024 * 1024
 
     def read_all_documents(self):
         for page in self.__read_items():
-            yield {"page": page, "comments": self.__read_comments(page)}
+            doc = {"page": page, "comments": self.__read_comments(page)}
+            if self.include_attachments:
+                doc["attachments"] = self.__read_attachments(page)
+            yield doc
 
     def get_number_of_documents(self):
         search_result = self.__request(
@@ -185,6 +192,73 @@ class ConfluenceDocumentReader:
         )
 
         return [comment for comment in comments_generator]
+
+    def __read_attachments(self, page):
+        """Fetch attachment bytes for a page."""
+        from loguru import logger
+
+        def read_batch_func(start_at, batch_size):
+            return self.__request(
+                self.__add_url_prefix(
+                    f"/rest/api/content/{page['id']}/child/attachment"
+                ),
+                {"limit": batch_size, "start": start_at},
+            )
+
+        att_gen = read_items_in_batches(
+            read_batch_func,
+            fetch_items_from_result_func=lambda result: result["results"],
+            fetch_total_from_result_func=lambda result: result["size"],
+            batch_size=self.batch_size,
+            max_skipped_items_in_row=self.max_skipped_items_in_row,
+            itemsName="attachments",
+        )
+
+        downloaded = []
+        for att in att_gen:
+            size = att.get("extensions", {}).get("fileSize", 0)
+            if size > self.max_attachment_size_bytes:
+                logger.warning(
+                    f"Skipping attachment {att.get('title')} "
+                    f"({size / 1024 / 1024:.1f} MB) — exceeds limit"
+                )
+                continue
+            download_url = att.get("_links", {}).get("download", "")
+            if not download_url:
+                continue
+            data = self.__fetch_attachment_bytes(self.__add_url_prefix(download_url))
+            if data:
+                downloaded.append(
+                    {
+                        "filename": att.get("title", "unknown"),
+                        "bytes": data,
+                        "mimeType": att.get("metadata", {}).get("mediaType", ""),
+                    }
+                )
+        return downloaded
+
+    def __fetch_attachment_bytes(self, url):
+        """Download attachment content."""
+        from loguru import logger
+
+        try:
+            response = requests.get(
+                url=url,
+                headers={
+                    **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
+                },
+                auth=(
+                    (self.login, self.password)
+                    if self.login and self.password
+                    else None
+                ),
+                timeout=60,
+            )
+            response.raise_for_status()
+            return response.content
+        except Exception:
+            logger.warning(f"Failed to download attachment: {url}")
+            return None
 
     def __read_items(self):
         def read_batch_func(start_at, batch_size):

@@ -1,24 +1,43 @@
 [project]
-name = "indexed"
-version = "0.1.0"
+name = "indexed-sh"
+version = "0.0.4"
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
+license = { text = "See LICENSE file" }
 authors = [
     { name = "Lennard Zündorf", email = "lennard@zuendorf.me" }
+]
+keywords = ["semantic-search", "mcp", "rag", "faiss", "ai", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.11"
 dependencies = [
     "indexed-core",
     "indexed-connectors",
+    "indexed-parsing",
     "indexed-utils",
     "indexed-config",
     "typer>=0.12.3",
     "rich>=13.7.0",
     "mcp>=1.13.0",
-    "fastmcp>=2.13.0",
+    "fastmcp>=3.2.4,<4",
     "art>=6.0",
 ]
 dynamic = ["una"]
+
+[project.urls]
+Homepage = "https://indexed.sh"
+Repository = "https://github.com/LennardZuendorf/indexed"
+"Issue Tracker" = "https://github.com/LennardZuendorf/indexed/issues"
 
 [project.scripts]
 indexed = "indexed.app:main"
@@ -27,6 +46,7 @@ indexed-mcp = "indexed.mcp.cli:cli_main"
 [tool.uv.sources]
 indexed-core = { workspace = true }
 indexed-connectors = { workspace = true }
+indexed-parsing = { workspace = true }
 indexed-utils = { workspace = true }
 indexed-config = { workspace = true }
 
@@ -38,6 +58,8 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.hooks.una-build]
+
+[tool.hatch.build.hooks.custom]
 
 [tool.hatch.metadata.hooks.una-meta]
 

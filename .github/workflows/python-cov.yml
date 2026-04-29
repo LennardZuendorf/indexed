@@ -1,43 +1,55 @@
-name: Python Test and Upload Coverage
+name: Python Full Test Suite with Coverage
 
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ "main", "building*" ]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-cov.yml'
+      - 'tests/**'
   push:
-    branches: [ "main" ]
+    branches: [ "main", "building" ]
 
 jobs:
-  build:
-
+  full-test-suite:
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    name: Full Test Suite with Coverage
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.14"]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        python -m pip install uv
-        python -m uv sync
-        # Ruff and pytest should be installed via project dependencies, not as standalone tools
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Run Ruff Linter
-      run: |
-        uv run ruff check
+      - name: Install dependencies
+        run: |
+          python -m pip install uv
+          python -m uv sync
+          # Ruff and pytest should be installed via project dependencies, not as standalone tools
 
-    - name: Run Tests with Pytest
-      run: |
-        uv run pytest --cov --cov-branch --cov-report=xml
+      - name: Run Ruff Linter
+        run: |
+          uv run ruff check
 
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run Unit Tests with Coverage
+        run: |
+          uv run pytest tests/unit/ --cov=indexed --cov=core --cov=connectors --cov=parsing --cov=indexed_config --cov=utils --cov-branch --cov-report=xml --cov-report=term-missing -v
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true

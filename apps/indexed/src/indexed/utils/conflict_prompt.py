@@ -10,14 +10,11 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.table import Table
-from rich import box
 
+from .components import create_detail_card, print_warning
 from .components.theme import (
     get_accent_style,
-    get_card_border_style,
     get_dim_style,
     get_heading_style,
     get_label_style,
@@ -60,30 +57,20 @@ def show_config_differences(
         console: Rich Console to print to.
     """
     if not differences:
-        console.print("[dim]No differences found.[/dim]")
+        console.print(f"[{get_dim_style()}]No differences found.[/{get_dim_style()}]")
         return
 
-    table = Table(
-        title="Config Differences",
-        box=box.ROUNDED,
-        border_style=get_card_border_style(),
-        show_header=True,
-        header_style=get_heading_style(),
-    )
-
-    table.add_column("Setting", style=get_label_style())
-    table.add_column("Local Value", style="yellow")
-    table.add_column("Global Value", style="cyan")
-
-    for path, (local_val, global_val) in differences.items():
-        table.add_row(
+    rows: list[tuple[str, str]] = [
+        (
             path,
-            format_value(local_val),
-            format_value(global_val),
+            f"[{get_warning_style()}]{format_value(local_val)}[/{get_warning_style()}]"
+            f" → [{get_accent_style()}]{format_value(global_val)}[/{get_accent_style()}]",
         )
+        for path, (local_val, global_val) in differences.items()
+    ]
 
     console.print()
-    console.print(table)
+    console.print(create_detail_card(title="Config Differences", rows=rows))
     console.print()
 
 
@@ -110,14 +97,7 @@ def prompt_storage_choice(
 
     # Show header
     console.print()
-    console.print(
-        Panel(
-            f"[{get_warning_style()}]Both local and global configurations exist![/]",
-            title="[bold]Storage Conflict Detected[/bold]",
-            border_style=get_card_border_style(),
-            padding=(1, 2),
-        )
-    )
+    print_warning("Both local and global configurations exist!")
 
     # Show differences if provided
     if differences:

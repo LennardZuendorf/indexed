@@ -14,6 +14,18 @@ class JiraConfig(BaseModel):
     token: Optional[str] = Field(None, description="Bearer token (env: JIRA_TOKEN)")
     login: Optional[str] = Field(None, description="Username (env: JIRA_LOGIN)")
     password: Optional[str] = Field(None, description="Password (env: JIRA_PASSWORD)")
+    include_attachments: bool = Field(
+        default=False, description="Fetch and parse issue attachments"
+    )
+    max_chunk_tokens: int = Field(
+        default=512, ge=64, le=2048, description="Max tokens per chunk"
+    )
+    ocr_enabled: bool = Field(
+        default=True, description="Enable OCR for image attachments"
+    )
+    max_attachment_size_mb: int = Field(
+        default=10, ge=1, le=100, description="Max attachment size in MB to download"
+    )
 
     def get_token(self) -> Optional[str]:
         """
@@ -53,6 +65,18 @@ class JiraCloudConfig(BaseModel):
     )
     api_token: Optional[str] = Field(
         None, description="API token (env: ATLASSIAN_TOKEN)"
+    )
+    include_attachments: bool = Field(
+        default=False, description="Fetch and parse issue attachments"
+    )
+    max_chunk_tokens: int = Field(
+        default=512, ge=64, le=2048, description="Max tokens per chunk"
+    )
+    ocr_enabled: bool = Field(
+        default=True, description="Enable OCR for image attachments"
+    )
+    max_attachment_size_mb: int = Field(
+        default=10, ge=1, le=100, description="Max attachment size in MB to download"
     )
 
     def get_email(self) -> str:

@@ -6,6 +6,7 @@ is being used for the current command.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -15,8 +16,29 @@ from .components.theme import (
     get_dim_style,
 )
 
+logger = logging.getLogger(__name__)
+
 
 StorageMode = Literal["global", "local"]
+
+
+def resolve_preferred_collections_path() -> Path:
+    """Resolve collections path preferring local over global.
+
+    If a local .indexed/data/collections/ directory exists and contains
+    at least one collection, use it. Otherwise fall back to the global default.
+
+    This is used by search/inspect commands which should prefer local collections
+    while keeping config resolution separate (always global unless local config.toml exists).
+    """
+    local_path = Path.cwd() / ".indexed" / "data" / "collections"
+    if local_path.is_dir() and any(local_path.iterdir()):
+        return local_path
+
+    from indexed_config import ConfigService
+
+    resolver = ConfigService.instance().resolver
+    return resolver.get_collections_path()
 
 
 def get_storage_indicator(
@@ -96,8 +118,6 @@ def get_storage_mode_and_reason(
     """
     if mode_override == "local":
         return ("local", "via --local flag")
-    if mode_override == "global":
-        return ("global", "via --global flag")
 
     if config_mode == "local":
         return ("local", "via config setting")
@@ -113,3 +133,76 @@ def get_storage_mode_and_reason(
         return ("local", "local .indexed found")
 
     return ("global", "default")
+
+
+def display_storage_mode_for_command(console: Console) -> None:
+    """
+    Display the storage mode indicator for the current command.
+
+    This should be called by commands after they initialize ConfigService.
+    It determines the storage mode based on ConfigService state and displays
+    a brief indicator to the user.
+
+    Parameters:
+        console (Console): Rich Console to print to.
+    """
+    from indexed_config import (
+        ConfigService,
+        has_local_config,
+        get_local_root,
+        get_global_root,
+    )
+
+    # Get ConfigService instance (should already be initialized by command)
+    config_service = ConfigService.instance()
+    workspace = Path.cwd()
+
+    # Determine mode from ConfigService
+    storage_mode = config_service.resolve_storage_mode()
+    local_exists = has_local_config(workspace)
+
+    # Get path
+    if storage_mode == "local":
+        storage_path = get_local_root(workspace)
+    else:
+        storage_path = get_global_root()
+
+    # Try to read config mode
+    config_mode = None
+    try:
+        config_data = config_service.store.read()
+        config_mode = config_data.get("storage", {}).get("mode")
+    except Exception:
+        logger.debug("Failed to read config mode from store", exc_info=True)
+
+    # Get mode override from Typer context (set in app.py callback)
+    mode_override = None
+    try:
+        import typer
+
+        ctx = typer.get_current_context(silent=True)
+        if ctx and ctx.obj:
+            mode_override = ctx.obj.get("mode_override")
+    except Exception:
+        logger.debug("Failed to get mode override from Typer context", exc_info=True)
+
+    # Get workspace preference
+    workspace_pref = config_service.get_workspace_preference()
+
+    # Determine reason
+    mode, reason = get_storage_mode_and_reason(
+        has_local=local_exists,
+        mode_override=mode_override,
+        config_mode=config_mode if config_mode in ("local", "global") else None,
+        workspace_pref=workspace_pref,
+    )
+
+    # Display
+    print_storage_info(
+        console=console,
+        mode=mode,
+        path=storage_path,
+        reason=reason,
+        newline_before=False,
+        newline_after=True,
+    )

@@ -1,18 +1,26 @@
-name: Python Setup, Test and Build
+name: Python Build and System Tests
 
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ "main", "building*" ]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-ci.yml'
+      - 'tests/system/**'
+  push:
+    branches: [ "main", "building" ]
 
 jobs:
-  build:
-
+  build-and-system-tests:
+    if: github.event_name == 'push' || github.event.pull_request.draft != true
+    name: Build and System Tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -25,11 +33,13 @@ jobs:
       run: |
         python -m pip install uv
         python -m uv sync
-        # Ruff and pytest should be installed via project dependencies, not as standalone tools
 
-    - name: Run Tests with Pytest
+    - name: Run System Tests
       run: |
-        uv run pytest -q
+        uv run pytest tests/system/ -q --tb=short
 
     - name: Build Distributable Wheel (apps/indexed with bundled packages)
       run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+
+    - name: Validate wheel with PyPI's archive validator
+      run: uv run python tools/validate_wheel.py dist/*.whl

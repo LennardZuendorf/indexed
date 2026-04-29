@@ -1,15 +1,15 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.v1.engine.services import SourceConfig
 
 import typer
 from loguru import logger
 
 # Import ConfigService at module level so tests can patch
 from indexed_config import ConfigService
-
-# Import constants
-from core.v1.constants import DEFAULT_INDEXER
 
 # Import utilities for progress and logging
 from ...utils.logging import is_verbose_mode
@@ -25,6 +25,34 @@ from ...utils.credentials import (
     check_server_auth_present,
 )
 from ._create_helpers import execute_create_command
+
+
+def _display_files_source_summary(present: Dict[str, Any]) -> None:
+    """Print a concise source summary before the creation spinner starts."""
+    from ...utils.components.info_row import create_info_row
+    from ...utils.format import format_path_tilde
+    from ...utils.files_source_display import build_excluded_row_text
+    from connectors.files.schema import DEFAULT_EXCLUDED_DIRS
+
+    path = str(present.get("path", ""))
+    respect_gitignore: bool = present.get("respect_gitignore", True)
+    _dirs = present.get("excluded_dirs")
+    excluded_dirs: list[str] = (
+        _dirs if isinstance(_dirs, list) else list(DEFAULT_EXCLUDED_DIRS)
+    )
+    _patterns = present.get("include_patterns")
+    include_patterns: list[str] = _patterns if isinstance(_patterns, list) else ["*"]
+
+    console.print(create_info_row("Path", format_path_tilde(path)))
+    console.print(
+        create_info_row(
+            "Excluded",
+            build_excluded_row_text(
+                path, include_patterns, excluded_dirs, respect_gitignore
+            ),
+        )
+    )
+    console.print()
 
 
 def _is_cloud(url: str) -> bool:
@@ -100,14 +128,27 @@ def create_files(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    respect_gitignore: bool = typer.Option(
+        True,
+        "--respect-gitignore/--no-respect-gitignore",
+        help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
 ):
     """Create a Files collection with comprehensive parameter resolution and progress tracking."""
-    from core.v1.engine.services import SourceConfig
-    from connectors.files import LocalFilesConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    local_files_config_class = this_module.LocalFilesConfig
 
     # Files connector (no cloud/server split)
     source_type = "localFiles"
-    config_class = LocalFilesConfig
+    config_class = local_files_config_class
     namespace = "sources.files"
 
     # Build CLI overrides (map CLI params to schema fields)
@@ -120,12 +161,13 @@ def create_files(
         cli_overrides["exclude_patterns"] = exclude
     if fail_fast:
         cli_overrides["fail_fast"] = fail_fast
+    cli_overrides["respect_gitignore"] = respect_gitignore
 
     def prompt_missing_files_fields(
         validation: Dict[str, Any], config: ConfigService, ns: str
     ) -> None:
         """Prompt for missing Files-specific fields."""
-        if not validation["missing"]:
+        if not validation.missing:
             return
 
         if not is_verbose_mode():
@@ -135,8 +177,8 @@ def create_files(
             )
             console.print()
 
-        for field_name in validation["missing"]:
-            field_info = validation["field_info"][field_name]
+        for field_name in validation.missing:
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -148,12 +190,12 @@ def create_files(
                 )
             elif field_name == "include_patterns":
                 patterns_input = console.input(
-                    f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [.*]: "
+                    f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [*]: "
                 )
                 value = (
                     [p.strip() for p in patterns_input.split(",")]
                     if patterns_input
-                    else [".*"]
+                    else ["*"]
                 )
             elif field_name == "exclude_patterns":
                 patterns_input = console.input(
@@ -177,7 +219,7 @@ def create_files(
 
             # Save using ConfigService
             config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(
@@ -188,17 +230,21 @@ def create_files(
 
     def build_files_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Files connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["path"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={
-                "includePatterns": present.get("include_patterns", [".*"]),
+                "includePatterns": present.get("include_patterns", ["*"]),
                 "excludePatterns": present.get("exclude_patterns", []),
                 "failFast": present.get("fail_fast", False),
+                "respectGitignore": present.get("respect_gitignore", True),
             },
         )
 
@@ -217,6 +263,9 @@ def create_files(
         log_level=log_level,
         use_cache=use_cache,
         force=force,
+        pre_creation_display=_display_files_source_summary,
+        local=local,
+        source_path_key="path",
     )
 
 
@@ -282,10 +331,19 @@ def create_jira(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
 ):
     """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
-    from core.v1.engine.services import SourceConfig
-    from connectors.jira import JiraCloudConfig, JiraConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    jira_cloud_config_class = this_module.JiraCloudConfig
+    jira_config_class = this_module.JiraConfig
 
     # Use a single namespace for Jira config - detect Cloud vs Server from URL at runtime
     namespace = "sources.jira"
@@ -319,10 +377,10 @@ def create_jira(
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
     if _is_cloud(resolved_url):
         source_type = "jiraCloud"
-        config_class = JiraCloudConfig
+        config_class = jira_cloud_config_class
     else:
         source_type = "jira"
-        config_class = JiraConfig
+        config_class = jira_config_class
 
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
@@ -338,7 +396,7 @@ def create_jira(
     ) -> None:
         """Prompt for missing Jira-specific fields."""
         # URL already handled above, exclude it from missing fields
-        missing_fields = [f for f in validation["missing"] if f != "url"]
+        missing_fields = [f for f in validation.missing if f != "url"]
         if not missing_fields:
             return
 
@@ -351,7 +409,7 @@ def create_jira(
             console.print()
 
         for field_name in missing_fields:
-            field_info = validation["field_info"][field_name]
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -377,7 +435,7 @@ def create_jira(
                 )
                 config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
 
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(
@@ -388,14 +446,17 @@ def create_jira(
 
     def build_jira_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Jira connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["url"],
             query=present["query"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={},  # Credentials are read from ConfigService by connector
         )
 
@@ -421,6 +482,8 @@ def create_jira(
         force=force,
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_jira_log,
+        local=local,
+        source_path_key="url",
     )
 
 
@@ -492,14 +555,23 @@ def create_confluence(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
 ):
     """
     Create a Confluence collection by resolving configuration, executing the ingestion, and verifying the result.
 
     Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
     """
-    from core.v1.engine.services import SourceConfig
-    from connectors.confluence import ConfluenceCloudConfig, ConfluenceConfig
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    confluence_cloud_config_class = this_module.ConfluenceCloudConfig
+    confluence_config_class = this_module.ConfluenceConfig
 
     # Use a single namespace for Confluence config - detect Cloud vs Server from URL at runtime
     namespace = "sources.confluence"
@@ -533,10 +605,10 @@ def create_confluence(
     # Determine connector type based on the URL (Cloud = *.atlassian.net)
     if _is_cloud(resolved_url):
         source_type = "confluenceCloud"
-        config_class = ConfluenceCloudConfig
+        config_class = confluence_cloud_config_class
     else:
         source_type = "confluence"
-        config_class = ConfluenceConfig
+        config_class = confluence_config_class
 
     # Build CLI overrides (url is now always known)
     cli_overrides = {"url": resolved_url}
@@ -554,14 +626,14 @@ def create_confluence(
     ) -> None:
         """Prompt for missing Confluence-specific fields."""
         # URL already handled above, exclude it from missing fields
-        missing_fields = [f for f in validation["missing"] if f != "url"]
+        missing_fields = [f for f in validation.missing if f != "url"]
 
         # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
         # but at least one auth method is required by the connector.
         # Check if we need to prompt for auth credentials using shared function.
         if source_type == "confluence":
             if not check_server_auth_present(
-                validation["present"],
+                validation.present,
                 token_env_var="CONF_TOKEN",
                 login_env_var="CONF_LOGIN",
                 password_env_var="CONF_PASSWORD",
@@ -584,7 +656,7 @@ def create_confluence(
             console.print()
 
         for field_name in missing_fields:
-            field_info = validation["field_info"][field_name]
+            field_info = validation.field_info[field_name]
 
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
@@ -610,7 +682,7 @@ def create_confluence(
                 )
                 config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
 
-            validation["present"][field_name] = value
+            validation.present[field_name] = value
 
             if is_verbose_mode():
                 logger.info(
@@ -621,14 +693,17 @@ def create_confluence(
 
     def build_confluence_source_config(
         present: Dict[str, Any], coll_name: str
-    ) -> SourceConfig:
+    ) -> "SourceConfig":
         """Build SourceConfig for Confluence connector."""
-        return SourceConfig(
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
             name=coll_name,
             type=source_type,
             base_url_or_path=present["url"],
             query=present["query"],
-            indexer=DEFAULT_INDEXER,
+            indexer=this_module.DEFAULT_INDEXER,
             reader_opts={"readAllComments": present.get("read_all_comments", True)},
         )
 
@@ -654,4 +729,39 @@ def create_confluence(
         force=force,
         progress_message=f"Connecting to {resolved_url}",
         verbose_pre_creation_log=verbose_confluence_log,
+        local=local,
+        source_path_key="url",
     )
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "DEFAULT_INDEXER":
+        from core.v1.constants import DEFAULT_INDEXER
+
+        return DEFAULT_INDEXER
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "LocalFilesConfig":
+        from connectors.files import LocalFilesConfig
+
+        return LocalFilesConfig
+    elif name == "JiraCloudConfig":
+        from connectors.jira import JiraCloudConfig
+
+        return JiraCloudConfig
+    elif name == "JiraConfig":
+        from connectors.jira import JiraConfig
+
+        return JiraConfig
+    elif name == "ConfluenceCloudConfig":
+        from connectors.confluence import ConfluenceCloudConfig
+
+        return ConfluenceCloudConfig
+    elif name == "ConfluenceConfig":
+        from connectors.confluence import ConfluenceConfig
+
+        return ConfluenceConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

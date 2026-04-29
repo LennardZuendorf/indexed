@@ -7,7 +7,6 @@ use cases.
 """
 
 import json
-from pathlib import Path
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 import os
@@ -18,20 +17,9 @@ from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCa
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
+from core.v1.config_models import get_default_collections_path
 
 setup_root_logger()
-
-
-def _get_default_collections_path() -> str:
-    """Get the default collections path from storage config."""
-    try:
-        from indexed_config import get_resolver
-
-        resolver = get_resolver()
-        return str(resolver.get_collections_path())
-    except ImportError:
-        # Fallback if indexed_config not available
-        return str(Path.home() / ".indexed" / "data" / "collections")
 
 
 class InspectService:
@@ -60,7 +48,7 @@ class InspectService:
                              Defaults to resolved path from storage config.
         """
         self._manifest_cache: Dict[str, dict] = {}
-        resolved_path = collections_path or _get_default_collections_path()
+        resolved_path = collections_path or str(get_default_collections_path())
         self._persister = DiskPersister(base_path=resolved_path)
 
     def _read_manifest(self, collection_name: str) -> dict:

@@ -16,31 +16,25 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow",
+    "unit_api: marks unit API tests",
+    "benchmark: marks benchmark tests",
+    "connectors: marks connector functionality tests",
+    "indexed: marks main app integration tests",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=apps/indexed/src/indexed",
-    "--cov=packages/indexed-core/src/core",
-    "--cov=packages/indexed-connectors/src/connectors",
-    "--cov=packages/utils/src/utils",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov"
-]
-markers = [
-    "indexed: Main indexed application tests",
-    "connectors: Tests for indexed-connectors package",
-    "core: Tests for indexed-core package",
-    "utils: Tests for indexed-utils package",
-
-    # Test type markers (integration testing)
-    "integration: Integration tests requiring external services",
-    "unit: Fast unit tests",
-    "slow: Tests that take > 1 second",
-    "api: Tests that interact with external APIs",
-
-    # Environment markers (integration testing)
-    "requires_api: Tests requiring real API credentials",
-    "requires_network: Tests requiring network access",
+    # Use package names (installed packages) instead of source paths
+    # This works better with uv workspace where packages are installed in .venv
+    "--cov=indexed",
+    "--cov=core",
+    "--cov=connectors",
+    "--cov=parsing",
+    "--cov=indexed_config",
+    "--cov=utils",
+    "--cov-report=term",
 ]
 filterwarnings = [
     # Suppress deprecations from third-party libs (faiss/numpy/swig)
@@ -48,6 +42,48 @@ filterwarnings = [
     "ignore:.*builtin type SwigPyPacked has no __module__ attribute.*:DeprecationWarning",
     "ignore:.*builtin type SwigPyObject has no __module__ attribute.*:DeprecationWarning",
     "ignore:.*builtin type swigvarlink has no __module__ attribute.*:DeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+# Measure coverage for installed packages (not source paths)
+# In uv workspace, packages are installed in .venv, so we use package names
+source_pkgs = [
+    "indexed",      # apps/indexed/src/indexed
+    "core",         # packages/indexed-core/src/core
+    "connectors",   # packages/indexed-connectors/src/connectors
+    "parsing",      # packages/indexed-parsing/src/parsing
+    "indexed_config",  # packages/indexed-config/src/indexed_config
+    "utils",        # packages/utils/src/utils
+]
+# Also include source directories for file path matching
+source = [
+    "apps/indexed/src/indexed",
+    "packages/indexed-core/src/core",
+    "packages/indexed-connectors/src/connectors",
+    "packages/indexed-parsing/src/parsing",
+    "packages/indexed-config/src/indexed_config",
+    "packages/utils/src/utils",
+]
+# Exclude test files and directories
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py",
+    "*/setup.py",
+]
+
+[tool.coverage.report]
+# Exclude patterns from coverage reports
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
 ]
 
 # MyPy configuration
@@ -72,6 +108,7 @@ dev = [
     "mypy>=1.17.1",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
+    "pytest-benchmark>=4.0.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.14.1",
     "pytest-httpserver>=1.0.0",

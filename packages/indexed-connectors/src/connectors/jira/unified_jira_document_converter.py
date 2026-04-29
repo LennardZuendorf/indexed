@@ -1,182 +1,140 @@
 """Unified Jira document converter supporting both Cloud and Server/DC instances.
 
-This module consolidates the previously separate JiraCloudDocumentConverter and
-JiraDocumentConverter into a single implementation, following DRY principles.
-
-The main difference between Cloud and Server is that Cloud uses ADF (Atlassian Document Format)
-for descriptions and comments, while Server uses plain text or HTML. This unified converter
-handles both formats automatically.
+Handles both Cloud (ADF format) and Server (plain text/HTML) automatically.
+Uses ParsingModule for intelligent chunking instead of RecursiveCharacterTextSplitter.
 """
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from __future__ import annotations
+
+from typing import Any
+
+from loguru import logger
 
 
 class UnifiedJiraDocumentConverter:
     """Unified converter for Jira Cloud and Server/DC documents.
 
-    This class replaces the separate JiraCloudDocumentConverter and JiraDocumentConverter
-    classes, consolidating ~92% duplicate code into a single implementation.
-
-    The converter automatically detects whether content is in ADF format (Cloud) or
-    plain text (Server) and processes it accordingly.
+    Automatically detects ADF (Cloud) vs plain text (Server) content and
+    uses ParsingModule for chunking.
 
     Args:
-        chunk_size: Size of text chunks for splitting (default: 1000)
-        chunk_overlap: Overlap between chunks (default: 100)
-
-    Example:
-        >>> converter = UnifiedJiraDocumentConverter()
-        >>> documents = converter.convert(jira_issue)
+        max_chunk_tokens: Maximum tokens per chunk (passed to ParsingModule).
+        ocr: Enable OCR for image attachments.
+        include_attachments: Whether to parse attachment bytes from the document.
     """
 
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100):
-        """Initialize the unified Jira document converter.
+    def __init__(
+        self,
+        *,
+        max_chunk_tokens: int = 512,
+        ocr: bool = True,
+        include_attachments: bool = False,
+        # Legacy params (ignored, kept for backward compat)
+        chunk_size: int = 1000,
+        chunk_overlap: int = 100,
+    ) -> None:
+        self._max_chunk_tokens = max_chunk_tokens
+        self._ocr = ocr
+        self._include_attachments = include_attachments
+        self._parsing: Any = None  # lazy ParsingModule
 
-        Args:
-            chunk_size: Size of text chunks for splitting
-            chunk_overlap: Overlap between consecutive chunks
-        """
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
+    @property
+    def _parser(self) -> Any:
+        """Lazy-load ParsingModule to avoid heavy imports at module level."""
+        if self._parsing is None:
+            from parsing import ParsingModule
 
-    def convert(self, document: dict) -> list:
+            self._parsing = ParsingModule(
+                ocr=self._ocr,
+                table_structure=True,
+                max_tokens=self._max_chunk_tokens,
+            )
+        return self._parsing
+
+    def convert(self, document: dict) -> list[dict]:
         """Convert a Jira document to indexed format.
 
         Args:
-            document: Jira issue document as dictionary
+            document: Jira issue document as dictionary.
 
         Returns:
-            List containing a single document dict with id, url, modifiedTime, text, and chunks
+            Single-element list with id, url, modifiedTime, text, chunks.
         """
         return [
             {
                 "id": document["key"],
-                "url": self.__build_url(document),
+                "url": self._build_url(document),
                 "modifiedTime": document["fields"]["updated"],
-                "text": self.__build_document_text(document),
-                "chunks": self.__split_to_chunks(document),
+                "text": self._build_document_text(document),
+                "chunks": self._split_to_chunks(document),
             }
         ]
 
-    def __build_document_text(self, document: dict) -> str:
-        """Build complete document text from issue info, description, and comments."""
-        main_info = self.__build_main_ticket_info(document)
-        description_and_comments = self.__fetch_description_and_comments(document)
-        return self.__convert_to_text([main_info, description_and_comments])
+    # ------------------------------------------------------------------
+    # Text building (unchanged logic)
+    # ------------------------------------------------------------------
 
-    def __split_to_chunks(self, document: dict) -> list:
-        """Split document into chunks for indexing.
+    def _build_document_text(self, document: dict) -> str:
+        main_info = self._build_main_ticket_info(document)
+        description_and_comments = self._fetch_description_and_comments(document)
+        return self._join_text([main_info, description_and_comments])
 
-        The first chunk contains the main ticket info (key and summary).
-        Additional chunks contain split description and comments.
-        """
-        chunks = [{"indexedData": self.__build_main_ticket_info(document)}]
+    def _fetch_description_and_comments(self, document: dict) -> str:
+        description = self._fetch_description(document)
+        comments = self._fetch_comments(document)
+        return self._join_text([description] + comments).strip()
 
-        description_and_comments = self.__fetch_description_and_comments(document)
-        if description_and_comments:
-            for chunk in self.text_splitter.split_text(description_and_comments):
-                chunks.append({"indexedData": chunk})
-
-        return chunks
-
-    def __fetch_description_and_comments(self, document: dict) -> str:
-        """Fetch and combine description and comments.
-
-        Automatically detects ADF format (Cloud) vs plain text (Server).
-        """
-        description = self.__fetch_description(document)
-        comments = self.__fetch_comments(document)
-        return self.__convert_to_text([description] + comments).strip()
-
-    def __fetch_description(self, document: dict) -> str:
-        """Fetch and parse description field.
-
-        Handles both ADF (Cloud) and plain text (Server) formats.
-        """
+    def _fetch_description(self, document: dict) -> str:
         description = document.get("fields", {}).get("description")
         if not description:
             return ""
-
-        # Check if description is ADF format (Cloud) or plain text (Server)
         if isinstance(description, dict):
-            # ADF format (Jira Cloud)
-            return self.__parse_adf_content(description)
-        else:
-            # Plain text or HTML (Jira Server/DC)
-            return str(description) if description else ""
+            return self._parse_adf_content(description)
+        return str(description) if description else ""
 
-    def __fetch_comments(self, document: dict) -> list:
-        """Fetch and parse comments.
-
-        Handles both ADF (Cloud) and plain text (Server) formats.
-        """
+    def _fetch_comments(self, document: dict) -> list[str]:
         comments_data = (
             document.get("fields", {}).get("comment", {}).get("comments", [])
         )
-        comments = []
-
+        comments: list[str] = []
         for comment in comments_data:
             body = comment.get("body")
             if not body:
                 continue
-
-            # Check if comment is ADF format (Cloud) or plain text (Server)
             if isinstance(body, dict):
-                # ADF format (Jira Cloud)
-                parsed = self.__parse_adf_content(body)
+                parsed = self._parse_adf_content(body)
             else:
-                # Plain text or HTML (Jira Server/DC)
                 parsed = str(body) if body else ""
-
             if parsed:
                 comments.append(parsed)
-
         return comments
 
-    def __parse_adf_content(self, adf_doc: dict) -> str:
-        """Parse Atlassian Document Format (ADF) to text preserving structure.
+    # ------------------------------------------------------------------
+    # ADF parsing (Jira Cloud specific)
+    # ------------------------------------------------------------------
 
-        This method is used for Jira Cloud instances which use ADF for rich text.
-
-        Args:
-            adf_doc: ADF document as dictionary
-
-        Returns:
-            Parsed text content
-        """
+    def _parse_adf_content(self, adf_doc: dict) -> str:
         if not adf_doc or not isinstance(adf_doc, dict):
             return ""
         content = adf_doc.get("content", [])
-        return self.__parse_adf_nodes(content)
+        return self._parse_adf_nodes(content)
 
-    def __parse_adf_nodes(
+    def _parse_adf_nodes(
         self, nodes: list, depth: int = 0, block_level: bool = True
     ) -> str:
-        """Parse ADF nodes recursively.
-
-        Args:
-            nodes: List of ADF nodes
-            depth: Current nesting depth (for list indentation)
-            block_level: Whether we're at block level or inline level
-
-        Returns:
-            Parsed text content
-        """
-        texts = []
+        texts: list[str] = []
         for node in nodes or []:
             node_type = node.get("type")
 
             if node_type == "paragraph":
-                para_text = self.__parse_adf_nodes(
+                para_text = self._parse_adf_nodes(
                     node.get("content", []), depth, block_level=False
                 )
                 if para_text:
                     texts.append(para_text)
 
             elif node_type == "heading":
-                heading_text = self.__parse_adf_nodes(
+                heading_text = self._parse_adf_nodes(
                     node.get("content", []), depth, block_level=False
                 )
                 if heading_text:
@@ -184,14 +142,14 @@ class UnifiedJiraDocumentConverter:
                     texts.append(f"{'#' * int(level)} {heading_text}")
 
             elif node_type in ("bulletList", "orderedList"):
-                list_items = self.__parse_adf_nodes(
+                list_items = self._parse_adf_nodes(
                     node.get("content", []), depth + 1, block_level=True
                 )
                 if list_items:
                     texts.append(list_items)
 
             elif node_type == "listItem":
-                item_text = self.__parse_adf_nodes(
+                item_text = self._parse_adf_nodes(
                     node.get("content", []), depth, block_level=False
                 )
                 if item_text:
@@ -199,7 +157,7 @@ class UnifiedJiraDocumentConverter:
                     texts.append(f"{indent}- {item_text}")
 
             elif node_type == "codeBlock":
-                code_text = self.__parse_adf_nodes(
+                code_text = self._parse_adf_nodes(
                     node.get("content", []), depth, block_level=False
                 )
                 if code_text:
@@ -207,7 +165,6 @@ class UnifiedJiraDocumentConverter:
 
             elif node_type == "text":
                 text_content = node.get("text", "")
-                # Apply text formatting marks
                 for mark in node.get("marks", []) or []:
                     mark_type = mark.get("type")
                     if mark_type == "strong":
@@ -222,43 +179,79 @@ class UnifiedJiraDocumentConverter:
                 texts.append("\n")
 
             elif "content" in node:
-                # Unknown node type with content - try to parse it
-                nested = self.__parse_adf_nodes(
+                nested = self._parse_adf_nodes(
                     node.get("content", []), depth, block_level
                 )
                 if nested:
                     texts.append(nested)
 
-        # Join with appropriate delimiter based on context
         if not block_level or depth > 0:
-            return "".join(texts)  # Inline content or nested content
-        else:
-            return "\n\n".join(filter(None, texts))  # Block-level content at root
+            return "".join(texts)
+        return "\n\n".join(filter(None, texts))
 
-    def __build_main_ticket_info(self, document: dict) -> str:
-        """Build main ticket info string with key and summary."""
+    # ------------------------------------------------------------------
+    # Chunking via ParsingModule
+    # ------------------------------------------------------------------
+
+    def _split_to_chunks(self, document: dict) -> list[dict]:
+        # First chunk: ticket key + summary (Jira-specific context)
+        chunks: list[dict] = [{"indexedData": self._build_main_ticket_info(document)}]
+
+        # Chunk description + comments via ParsingModule
+        description_and_comments = self._fetch_description_and_comments(document)
+        if description_and_comments:
+            parsed = self._parser.parse_bytes(
+                description_and_comments.encode("utf-8"), "content.md"
+            )
+            for chunk in parsed.chunks:
+                entry: dict = {"indexedData": chunk.contextualized_text}
+                if chunk.metadata:
+                    entry["metadata"] = dict(chunk.metadata)
+                chunks.append(entry)
+
+        # Chunk attachments if present
+        if self._include_attachments:
+            chunks.extend(self._parse_attachments(document))
+
+        return chunks
+
+    def _parse_attachments(self, document: dict) -> list[dict]:
+        """Parse attachment bytes via ParsingModule."""
+        attachment_chunks: list[dict] = []
+        attachments = document.get("attachments", [])
+
+        for att in attachments:
+            filename = att.get("filename", "unknown")
+            data = att.get("bytes")
+            if not data:
+                continue
+
+            try:
+                parsed = self._parser.parse_bytes(data, filename)
+                for chunk in parsed.chunks:
+                    entry: dict = {"indexedData": chunk.contextualized_text}
+                    meta = dict(chunk.metadata) if chunk.metadata else {}
+                    meta["attachment"] = filename
+                    entry["metadata"] = meta
+                    attachment_chunks.append(entry)
+            except Exception:
+                logger.warning(f"Failed to parse attachment: {filename}")
+
+        return attachment_chunks
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_main_ticket_info(document: dict) -> str:
         return f"{document['key']} : {document['fields']['summary']}"
 
-    def __convert_to_text(self, elements: list, delimiter: str = "\n\n") -> str:
-        """Convert list of text elements to single string with delimiter.
+    @staticmethod
+    def _join_text(elements: list[str], delimiter: str = "\n\n") -> str:
+        return delimiter.join([e for e in elements if e]).strip()
 
-        Args:
-            elements: List of text strings
-            delimiter: Delimiter to join elements
-
-        Returns:
-            Joined string with empty elements filtered out
-        """
-        return delimiter.join([element for element in elements if element]).strip()
-
-    def __build_url(self, document: dict) -> str:
-        """Build browse URL for the Jira issue.
-
-        Args:
-            document: Jira issue document
-
-        Returns:
-            Browse URL for the issue
-        """
+    @staticmethod
+    def _build_url(document: dict) -> str:
         base_url = document["self"].split("/rest/api/")[0]
         return f"{base_url}/browse/{document['key']}"

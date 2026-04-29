@@ -47,7 +47,7 @@ class CoreV1EmbeddingConfig(BaseModel):
         default=None, description="Embedding dimension (auto-detected if None)"
     )
     batch_size: int = Field(
-        default=64, ge=1, description="Batch size for embedding generation"
+        default=128, ge=1, description="Batch size for embedding generation"
     )
     device: Optional[str] = Field(
         default=None,
@@ -80,7 +80,12 @@ class CoreV1StorageConfig(BaseModel):
 
 
 class CoreV1SearchConfig(BaseModel):
-    """Search configuration for core.v1."""
+    """Search configuration for core.v1.
+
+    Default values are optimized for LLM consumption via MCP:
+    - include_matched_chunks=True ensures text content is returned
+    - max_docs=10 and max_chunks=30 provide comprehensive results
+    """
 
     max_docs: int = Field(
         default=10, ge=1, le=100, description="Maximum documents to return"
@@ -95,30 +100,31 @@ class CoreV1SearchConfig(BaseModel):
         default=False, description="Include all document chunks"
     )
     include_matched_chunks: bool = Field(
-        default=False, description="Include only matched chunks"
+        default=True,
+        description="Include matched chunk content (required for LLM usage)",
     )
     score_threshold: Optional[float] = Field(
         default=None, ge=0.0, le=1.0, description="Minimum similarity score threshold"
     )
 
 
-def _get_default_collections_path() -> Path:
+def get_default_collections_path() -> Path:
     """Get default collections path from storage config."""
     try:
-        from indexed_config import get_resolver
+        from indexed_config import ConfigService
 
-        resolver = get_resolver()
+        resolver = ConfigService.instance().resolver
         return resolver.get_collections_path()
     except ImportError:
         return Path.home() / ".indexed" / "data" / "collections"
 
 
-def _get_default_caches_path() -> Path:
+def get_default_caches_path() -> Path:
     """Get default caches path from storage config."""
     try:
-        from indexed_config import get_resolver
+        from indexed_config import ConfigService
 
-        resolver = get_resolver()
+        resolver = ConfigService.instance().resolver
         return resolver.get_caches_path()
     except ImportError:
         return Path.home() / ".indexed" / "data" / "caches"
@@ -132,11 +138,11 @@ class PathsConfig(BaseModel):
     """
 
     collections_dir: Path = Field(
-        default_factory=_get_default_collections_path,
+        default_factory=get_default_collections_path,
         description="Directory for collections storage",
     )
     caches_dir: Path = Field(
-        default_factory=_get_default_caches_path,
+        default_factory=get_default_caches_path,
         description="Directory for document caches",
     )
     temp_dir: Path = Field(
@@ -200,4 +206,6 @@ __all__ = [
     "MCPConfig",
     "PerformanceConfig",
     "LoggingConfig",
+    "get_default_collections_path",
+    "get_default_caches_path",
 ]

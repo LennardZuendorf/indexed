@@ -10,7 +10,6 @@ authors = [{name = "Indexed Team"}]
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5.0",
-    "platformdirs>=4.2.0",
     "python-dotenv>=1.0.0",
     "tomlkit>=0.12.0",
 ]
@@ -32,6 +31,9 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/indexed_config"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/indexed_config"]
 
 [tool.ruff]
 line-length = 88

@@ -5,14 +5,19 @@ results beautifully with the card-based design system.
 """
 
 import typer
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
+
+# Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
-from core.v1 import Index
-from core.v1.engine.services import search as search_service, SourceConfig, status
+
+if TYPE_CHECKING:
+    pass
+
 from ...utils.logging import is_verbose_mode
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
-from ...utils.context_managers import NoOpContext, suppress_core_output
-from ...utils.progress_bar import create_operation_progress
+from ...utils.context_managers import NoOpContext
+from ...utils.progress_bar import create_phased_progress
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -20,8 +25,9 @@ from ...utils.components import (
     get_card_border_style,
     get_card_padding,
     get_secondary_style,
-    get_default_style,
+    get_dim_style,
     print_error,
+    print_warning,
 )
 from ...utils.components.theme import get_detail_card_width
 
@@ -93,8 +99,9 @@ def format_search_results(
                 )
 
     if not all_chunks:
-        console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
+        print_warning(
+            f'No results found for "{query}". '
+            f"Try broadening your search terms or checking collection contents."
         )
         console.print()
         return
@@ -175,9 +182,9 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
 
     # Use a subtle dim/muted style for the excerpt card with same width as meta card
     excerpt_panel = Panel(
-        f"[dim]{display_excerpt}[/dim]"
+        f"[{get_dim_style()}]{display_excerpt}[/{get_dim_style()}]"
         if excerpt
-        else "[dim][No excerpt available][/dim]",
+        else f"[{get_dim_style()}][No excerpt available][/{get_dim_style()}]",
         title="Top Result Excerpt",
         border_style=get_card_border_style(),
         padding=get_card_padding(),
@@ -203,8 +210,8 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
     console.print(
         f"  • [{get_accent_style()}]{collection}[/{get_accent_style()}] / "
         f"{doc_id} / "
-        f"[dim]Chunk {chunk_index}[/dim] / "
-        f"[dim]{chunk_score}[/dim]"
+        f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
+        f"[{get_dim_style()}]{chunk_score}[/{get_dim_style()}]"
     )
 
 
@@ -224,7 +231,7 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
         # Collection header
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [dim]({len(documents)} results)[/dim]"
+            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -235,14 +242,11 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
         console.print()
 
     # Summary
+    console.print()
     if total_results > 0:
-        console.print(
-            f"[{get_accent_style()}]Total:[/{get_accent_style()}] {total_results} results"
-        )
+        console.print(create_summary("Search Result", f"{total_results} results"))
     else:
-        console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
-        )
+        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
 
@@ -274,7 +278,7 @@ def format_search_results_compact(
 
         # Collection header
         console.print(
-            f"[bold]{collection_name}[/bold] [dim]({len(documents)} results)[/dim]"
+            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -286,21 +290,20 @@ def format_search_results_compact(
                 score_str = (
                     f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
                 )
-                console.print(f"  {i}. {doc_id}[dim]{score_str}[/dim]")
+                console.print(
+                    f"  {i}. {doc_id}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
+                )
             else:
                 console.print(f"  {i}. {doc_id}")
 
         console.print()
 
     # Summary
+    console.print()
     if total_results > 0:
-        console.print(
-            f"[{get_accent_style()}]Total:[/{get_accent_style()}] {total_results} results"
-        )
+        console.print(create_summary("Search Result", f"{total_results} results"))
     else:
-        console.print(
-            f"[{get_secondary_style()}]No results found[/{get_secondary_style()}]"
-        )
+        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
 
@@ -348,96 +351,151 @@ def search(
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
     """
-    from ...utils.logging import setup_root_logger
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import search as this_module
+
+    index_class = this_module.Index
+    svc_search = this_module.svc_search
+    source_config_class = this_module.SourceConfig
+    status_svc = this_module.status
+    setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
-    setup_root_logger(level_str=effective_level, json_mode=json_logs)
+    setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    Index()
+    index_class()
+
+    simple = is_simple_output()
+
+    # Prefer local collections over global
+    from ...utils.storage_info import resolve_preferred_collections_path
+
+    preferred_path = str(resolve_preferred_collections_path())
+
+    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
+    if not is_verbose_mode() and not simple:
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
 
     # Determine collections to search
     if collection is None:
         # Search all collections
-        all_statuses = status()
+        all_statuses = status_svc(collections_path=preferred_path)
         if not all_statuses:
-            console.print("\nNo collections found to search")
+            if simple:
+                print_json({"error": "No collections found"})
+                return
+            console.print(
+                f"\n[{get_dim_style()}]No collections found to search[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
             return
 
         collections_to_search = [s.name for s in all_statuses]
-        console.print(
-            f'\n[{get_heading_style()}]Searching for [bold {get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
-        )
+        if not simple:
+            console.print(
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
+            )
     else:
         # Search specific collection
-        statuses = status([collection])
+        statuses = status_svc([collection], collections_path=preferred_path)
         if not statuses:
+            if simple:
+                print_json({"error": f"Collection '{collection}' not found"})
+                raise typer.Exit(1)
             print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_search = [collection]
-        console.print(
-            f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
-        )
+        if not simple:
+            console.print(
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
+            )
 
     # Build search configs for all collections
-    search_configs = []
+    search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status([coll_name])[0]
-        config = SourceConfig(
+        coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
+        search_configs[coll_name] = source_config_class(
             name=coll_name,
-            type="localFiles",  # Default type, not used in search
-            base_url_or_path="",  # Not used in search
-            indexer=coll_status.indexers[0],  # Get from collection status
+            type="localFiles",
+            base_url_or_path="",
+            indexer=coll_status.indexers[0],
         )
-        search_configs.append(config)
 
-    # Search each collection with individual progress
+    # Search each collection with phased progress
     results = {}
-    for coll_name in collections_to_search:
-        # Get collection status to build proper SourceConfig
-        coll_status = status([coll_name])[0]
-        config = SourceConfig(
-            name=coll_name,
-            type="localFiles",  # Default type, not used in search
-            base_url_or_path="",  # Not used in search
-            indexer=coll_status.indexers[0],  # Get from collection status
-        )
 
-        operation_desc = f"[{get_default_style()}]Searching collection: [{get_accent_style()}]{coll_name}[/{get_accent_style()}][/{get_default_style()}]"
-
-        if is_verbose_mode():
-            # Verbose mode: show core logs directly
+    if simple or is_verbose_mode():
+        # Simple output / verbose mode: no progress display
+        for coll_name in collections_to_search:
             with NoOpContext():
-                result = search_service(
+                result = svc_search(
                     query,
-                    configs=[config],
+                    configs=[search_configs[coll_name]],
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
+                    collections_path=preferred_path,
                 )
                 results.update(result)
-        else:
-            # Normal mode: use centralized progress tracking
-            with create_operation_progress(operation_desc) as (
-                progress,
-                task_id,
-                callback,
-            ):
-                # Suppress all core output and call search service
-                with suppress_core_output():
-                    result = search_service(
-                        query,
-                        configs=[config],
-                        max_docs=limit,
-                        max_chunks=limit * 3,
-                        include_matched_chunks=True,
-                        progress_callback=callback,
-                    )
-                    results.update(result)
+    else:
+        # Normal mode: phased progress display (consistent with Create/Update)
+        heading = get_heading_style()
+        accent = get_accent_style()
+        title = (
+            f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
+        )
+
+        with create_phased_progress(title=title) as phased:
+            for coll_name in collections_to_search:
+                phased.start_phase(f"Searching {coll_name}")
+                result = svc_search(
+                    query,
+                    configs=[search_configs[coll_name]],
+                    max_docs=limit,
+                    max_chunks=limit * 3,
+                    include_matched_chunks=True,
+                    collections_path=preferred_path,
+                )
+                results.update(result)
+                phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
-    if compact:
+    if simple:
+        from ...mcp.formatting import format_search_results_for_llm
+
+        print_json(format_search_results_for_llm(results, query))
+    elif compact:
         format_search_results_compact(query, results, limit=limit)
     else:
         format_search_results(query, results, limit=limit, show_content=not no_content)
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "Index":
+        from core.v1 import Index
+
+        return Index
+    elif name == "svc_search":
+        from core.v1.engine.services import search
+
+        return search
+    elif name == "SourceConfig":
+        from core.v1.engine.services import SourceConfig
+
+        return SourceConfig
+    elif name == "status":
+        from core.v1.engine.services import status
+
+        return status
+    elif name == "setup_root_logger":
+        from ...utils.logging import setup_root_logger
+
+        return setup_root_logger
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

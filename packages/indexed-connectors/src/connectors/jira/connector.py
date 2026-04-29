@@ -8,9 +8,8 @@ and Jira Cloud.
 from typing import ClassVar, Optional
 from core.v1.connectors.metadata import ConnectorMetadata
 from .jira_document_reader import JiraDocumentReader
-from .jira_document_converter import JiraDocumentConverter
-from .jira_cloud_document_reader import JiraCloudDocumentReader
-from .jira_cloud_document_converter import JiraCloudDocumentConverter
+from .unified_jira_document_converter import UnifiedJiraDocumentConverter
+from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from .schema import JiraConfig, JiraCloudConfig
 
 
@@ -59,6 +58,10 @@ class JiraConnector:
         token: Optional[str] = None,
         login: Optional[str] = None,
         password: Optional[str] = None,
+        include_attachments: bool = False,
+        max_chunk_tokens: int = 512,
+        ocr_enabled: bool = True,
+        max_attachment_size_mb: int = 10,
     ):
         """Initialize Jira Server/Data Center connector.
 
@@ -68,16 +71,13 @@ class JiraConnector:
             token: Bearer token for authentication (recommended)
             login: Username for basic auth (if token not provided)
             password: Password for basic auth (if token not provided)
+            include_attachments: Fetch and parse issue attachments.
+            max_chunk_tokens: Max tokens per chunk for ParsingModule.
+            ocr_enabled: Enable OCR for image attachments.
+            max_attachment_size_mb: Max attachment size in MB to download.
 
         Raises:
             ValueError: If neither token nor login/password are provided
-
-        Examples:
-            >>> connector = JiraConnector(
-            ...     url="https://jira.example.com",
-            ...     query="project = MYPROJ",
-            ...     token="bearer-token-here"
-            ... )
         """
         if not token and (not login or not password):
             raise ValueError(
@@ -89,9 +89,19 @@ class JiraConnector:
 
         # Initialize reader and converter
         self._reader = JiraDocumentReader(
-            base_url=url, query=query, token=token, login=login, password=password
+            base_url=url,
+            query=query,
+            token=token,
+            login=login,
+            password=password,
+            include_attachments=include_attachments,
+            max_attachment_size_mb=max_attachment_size_mb,
         )
-        self._converter = JiraDocumentConverter()
+        self._converter = UnifiedJiraDocumentConverter(
+            max_chunk_tokens=max_chunk_tokens,
+            ocr=ocr_enabled,
+            include_attachments=include_attachments,
+        )
 
     @property
     def reader(self) -> JiraDocumentReader:
@@ -99,7 +109,7 @@ class JiraConnector:
         return self._reader
 
     @property
-    def converter(self) -> JiraDocumentConverter:
+    def converter(self) -> UnifiedJiraDocumentConverter:
         """Return the document converter instance."""
         return self._converter
 
@@ -187,6 +197,10 @@ class JiraConnector:
             token=cfg.get_token(),
             login=cfg.get_login(),
             password=cfg.get_password(),
+            include_attachments=cfg.include_attachments,
+            max_chunk_tokens=cfg.max_chunk_tokens,
+            ocr_enabled=cfg.ocr_enabled,
+            max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
 
@@ -220,40 +234,54 @@ class JiraCloudConnector:
         >>> index.add_collection("jira-cloud", connector)
     """
 
-    def __init__(self, url: str, query: str, email: str, api_token: str):
+    def __init__(
+        self,
+        url: str,
+        query: str,
+        email: str,
+        api_token: str,
+        include_attachments: bool = False,
+        max_chunk_tokens: int = 512,
+        ocr_enabled: bool = True,
+        max_attachment_size_mb: int = 10,
+    ):
         """Initialize Jira Cloud connector.
 
         Args:
             url: Jira Cloud URL (e.g., https://company.atlassian.net)
             query: JQL query to filter issues
             email: Atlassian account email
-            api_token: Atlassian API token (generate at
-                      https://id.atlassian.com/manage/api-tokens)
-
-        Examples:
-            >>> connector = JiraCloudConnector(
-            ...     url="https://mycompany.atlassian.net",
-            ...     query="assignee = currentUser()",
-            ...     email="me@example.com",
-            ...     api_token="ATATT..."
-            ... )
+            api_token: Atlassian API token
+            include_attachments: Fetch and parse issue attachments.
+            max_chunk_tokens: Max tokens per chunk for ParsingModule.
+            ocr_enabled: Enable OCR for image attachments.
+            max_attachment_size_mb: Max attachment size in MB to download.
         """
         self._url = url
         self._query = query
 
-        # Initialize reader and converter
-        self._reader = JiraCloudDocumentReader(
-            base_url=url, query=query, email=email, api_token=api_token
+        # Use async reader for concurrent batch fetching
+        self._reader = AsyncJiraCloudDocumentReader(
+            base_url=url,
+            query=query,
+            email=email,
+            api_token=api_token,
+            include_attachments=include_attachments,
+            max_attachment_size_mb=max_attachment_size_mb,
         )
-        self._converter = JiraCloudDocumentConverter()
+        self._converter = UnifiedJiraDocumentConverter(
+            max_chunk_tokens=max_chunk_tokens,
+            ocr=ocr_enabled,
+            include_attachments=include_attachments,
+        )
 
     @property
-    def reader(self) -> JiraCloudDocumentReader:
+    def reader(self) -> AsyncJiraCloudDocumentReader:
         """Return the document reader instance."""
         return self._reader
 
     @property
-    def converter(self) -> JiraCloudDocumentConverter:
+    def converter(self) -> UnifiedJiraDocumentConverter:
         """Return the document converter instance."""
         return self._converter
 
@@ -338,6 +366,10 @@ class JiraCloudConnector:
             query=cfg.query,
             email=cfg.get_email(),
             api_token=cfg.get_api_token(),
+            include_attachments=cfg.include_attachments,
+            max_chunk_tokens=cfg.max_chunk_tokens,
+            ocr_enabled=cfg.ocr_enabled,
+            max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
 

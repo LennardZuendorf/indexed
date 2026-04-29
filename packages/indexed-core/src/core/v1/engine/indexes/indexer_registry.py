@@ -41,8 +41,9 @@ INDEXER_CONFIGS: Dict[str, IndexerConfig] = {
     ),
 }
 
-# Indexer name prefix pattern
+# Indexer name prefix patterns
 INDEXER_PREFIX = "indexer_FAISS_IndexFlatL2__embeddings_"
+INDEXER_AUTO_PREFIX = "indexer_FAISS_Auto__embeddings_"
 
 
 def get_indexer_config(indexer_name: str) -> IndexerConfig:
@@ -75,6 +76,11 @@ def get_indexer_config(indexer_name: str) -> IndexerConfig:
     return INDEXER_CONFIGS[short_name]
 
 
+def is_auto_indexer(indexer_name: str) -> bool:
+    """Check if an indexer name uses the Auto index selection strategy."""
+    return indexer_name.startswith(INDEXER_AUTO_PREFIX)
+
+
 def extract_model_name(indexer_name: str) -> str:
     """Extract the model short name from a full indexer name.
 
@@ -87,20 +93,24 @@ def extract_model_name(indexer_name: str) -> str:
     Raises:
         ValueError: If indexer name doesn't match expected pattern
     """
+    if indexer_name.startswith(INDEXER_AUTO_PREFIX):
+        return indexer_name[len(INDEXER_AUTO_PREFIX) :]
+
     if not indexer_name.startswith(INDEXER_PREFIX):
         raise ValueError(
             f"Invalid indexer name format: '{indexer_name}'. "
-            f"Expected prefix: '{INDEXER_PREFIX}'"
+            f"Expected prefix: '{INDEXER_PREFIX}' or '{INDEXER_AUTO_PREFIX}'"
         )
 
     return indexer_name[len(INDEXER_PREFIX) :]
 
 
-def build_indexer_name(short_name: str) -> str:
+def build_indexer_name(short_name: str, auto: bool = False) -> str:
     """Build full indexer name from model short name.
 
     Args:
         short_name: Model short name (e.g., "all-MiniLM-L6-v2")
+        auto: If True, use the Auto index selection prefix.
 
     Returns:
         Full indexer name
@@ -108,17 +118,24 @@ def build_indexer_name(short_name: str) -> str:
     Examples:
         >>> build_indexer_name("all-MiniLM-L6-v2")
         'indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2'
+        >>> build_indexer_name("all-MiniLM-L6-v2", auto=True)
+        'indexer_FAISS_Auto__embeddings_all-MiniLM-L6-v2'
     """
-    return f"{INDEXER_PREFIX}{short_name}"
+    prefix = INDEXER_AUTO_PREFIX if auto else INDEXER_PREFIX
+    return f"{prefix}{short_name}"
 
 
 def list_available_indexers() -> List[str]:
     """List all available full indexer names.
 
     Returns:
-        List of full indexer names
+        List of full indexer names (both FlatL2 and Auto variants)
     """
-    return [build_indexer_name(name) for name in INDEXER_CONFIGS.keys()]
+    names = []
+    for model_name in INDEXER_CONFIGS.keys():
+        names.append(build_indexer_name(model_name))
+        names.append(build_indexer_name(model_name, auto=True))
+    return names
 
 
 def list_available_models() -> List[str]:

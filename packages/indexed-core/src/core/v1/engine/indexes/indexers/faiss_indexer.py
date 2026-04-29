@@ -1,14 +1,21 @@
-import faiss
 import numpy as np
 
 
 class FaissIndexer:
-    def __init__(self, name, embedder, serialized_index=None):
+    def __init__(self, name, embedder, serialized_index=None, faiss_index=None):
         self.name = name
         self.embedder = embedder
-        if serialized_index is not None:
+
+        if faiss_index is not None:
+            # Pre-loaded index (e.g., via memory-mapped read_index)
+            self.faiss_index = faiss_index
+        elif serialized_index is not None:
+            import faiss
+
             self.faiss_index = faiss.deserialize_index(serialized_index)
         else:
+            import faiss
+
             self.faiss_index = faiss.IndexIDMap(
                 faiss.IndexFlatL2(embedder.get_number_of_dimensions())
             )
@@ -16,16 +23,23 @@ class FaissIndexer:
     def get_name(self):
         return self.name
 
-    def index_texts(self, ids, texts):
-        self.faiss_index.add_with_ids(
-            self.embedder.embed(texts), np.array(ids, dtype=np.int64)
+    def index_texts(self, ids, texts, progress_callback=None):
+        embeddings = self.embedder.embed_batch(
+            texts, batch_size=64, progress_callback=progress_callback
         )
+        self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
 
     def remove_ids(self, ids):
         self.faiss_index.remove_ids(ids)
 
     def serialize(self):
+        import faiss
+
         return faiss.serialize_index(self.faiss_index)
+
+    def get_faiss_index(self):
+        """Return the underlying FAISS index for direct persistence."""
+        return self.faiss_index
 
     def search(self, text, number_of_results=10):
         return self.faiss_index.search(
