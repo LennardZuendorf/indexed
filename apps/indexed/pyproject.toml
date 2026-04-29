@@ -14,7 +14,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Framework :: FastAPI",
     "Framework :: Rich",
-    "Framework :: Typer"
+    "Framework :: Typer",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
