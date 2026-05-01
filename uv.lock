@@ -1134,7 +1134,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "indexed-connectors"
-version = "0.1.0"
+version = "0.0.3"
 source = { editable = "packages/indexed-connectors" }
 dependencies = [
     { name = "atlassian-python-api" },
