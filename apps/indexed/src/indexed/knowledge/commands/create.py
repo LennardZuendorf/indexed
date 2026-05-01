@@ -734,6 +734,201 @@ def create_confluence(
     )
 
 
+@app.command(
+    "outline",
+    help="Create a new collection from an Outline Wiki workspace (Cloud or self-hosted).",
+)
+def create_outline(
+    collection: str = typer.Option(
+        "outline",
+        "--collection",
+        "-c",
+        help="Name of the collection (default: outline).",
+    ),
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Outline base URL. Defaults to https://app.getoutline.com (Cloud). Provide your own domain for self-hosted Outline.",
+    ),
+    token: str = typer.Option(
+        None,
+        "--token",
+        help="Outline API token (overrides env OUTLINE_API_TOKEN).",
+    ),
+    collection_id: Optional[List[str]] = typer.Option(
+        None,
+        "--collection-id",
+        help="Restrict to specific Outline collection IDs (can be specified multiple times). Defaults to all collections.",
+        show_default=False,
+    ),
+    include_attachments: bool = typer.Option(
+        True,
+        "--include-attachments/--no-include-attachments",
+        help="Download and OCR inline images and file attachments.",
+    ),
+    ocr: bool = typer.Option(
+        True,
+        "--ocr/--no-ocr",
+        help="Enable OCR for image attachments.",
+    ),
+    use_cache: bool = typer.Option(
+        True,
+        "--use-cache/--no-cache",
+        help="Enable on-disk cache for faster reindexing of unchanged documents.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete any existing collection with the same name before creating a new one.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
+) -> None:
+    """Create an Outline Wiki collection. Works against Outline Cloud and any self-hosted Outline deployment."""
+    from . import create as this_module
+
+    outline_config_class = this_module.OutlineConfig
+
+    _OUTLINE_CLOUD_URL = "https://app.getoutline.com"
+
+    source_type = "outline"
+    namespace = "sources.outline"
+
+    # Phase 0: Resolve URL — prompt if not provided, default to Cloud on Enter
+    config = ConfigService.instance()
+    resolved_url = url or config.get(f"{namespace}.url")
+
+    url_was_prompted = False
+    if not resolved_url:
+        if not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Outline Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+
+        raw_input = console.input(
+            f"[{get_accent_style()}]Outline URL[/{get_accent_style()}] [{_OUTLINE_CLOUD_URL}]: "
+        )
+        resolved_url = raw_input.strip() or _OUTLINE_CLOUD_URL
+        url_was_prompted = True
+
+    # Build CLI overrides
+    cli_overrides: Dict[str, Any] = {"url": resolved_url}
+    if token:
+        cli_overrides["api_token"] = token
+    if collection_id:
+        cli_overrides["collection_ids"] = list(collection_id)
+    cli_overrides["include_attachments"] = include_attachments
+    cli_overrides["ocr_enabled"] = ocr
+
+    def prompt_missing_outline_fields(
+        validation: Dict[str, Any], cfg: ConfigService, ns: str
+    ) -> None:
+        missing_fields = [f for f in validation.missing if f not in ("url",)]
+        if not missing_fields:
+            return
+
+        if not url_was_prompted and not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Outline Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        for field_name in missing_fields:
+            field_info = validation.field_info[field_name]
+
+            if is_verbose_mode():
+                logger.info("Prompting for missing field: %s", field_name)
+
+            if is_credential_field(field_name):
+                value = prompt_credential_field(field_name, field_info, cfg, ns, source_type)
+            else:
+                value = console.input(
+                    f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
+                )
+                cfg.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+
+            validation.present[field_name] = value
+
+            if is_verbose_mode():
+                logger.info(
+                    "Saved %s to %s",
+                    field_name,
+                    "env" if field_info.get("sensitive") else "config",
+                )
+
+    def build_outline_source_config(
+        present: Dict[str, Any], coll_name: str
+    ) -> "SourceConfig":
+        from . import create as this_module
+
+        return this_module.SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            indexer=this_module.DEFAULT_INDEXER,
+            reader_opts={
+                "collectionIds": present.get("collection_ids"),
+                "includeAttachments": present.get("include_attachments", True),
+                "ocrEnabled": present.get("ocr_enabled", True),
+            },
+        )
+
+    def verbose_outline_log(present: Dict[str, Any]) -> None:
+        _url = present["url"]
+        deployment = "Cloud" if _url == _OUTLINE_CLOUD_URL else "self-hosted"
+        logger.info("Connecting to Outline at %s (%s)...", _url, deployment)
+
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=outline_config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_outline_fields,
+        build_source_config=build_outline_source_config,
+        success_message_suffix="from Outline",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_outline_log,
+        local=local,
+        source_path_key="url",
+    )
+
+
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "DEFAULT_INDEXER":
@@ -764,4 +959,8 @@ def __getattr__(name: str):
         from connectors.confluence import ConfluenceConfig
 
         return ConfluenceConfig
+    elif name == "OutlineConfig":
+        from connectors.outline import OutlineConfig
+
+        return OutlineConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
