@@ -1229,7 +1229,7 @@ requires-dist = [
 
 [[package]]
 name = "indexed-sh"
-version = "0.0.4"
+version = "0.0.5"
 source = { editable = "apps/indexed" }
 dependencies = [
     { name = "art" },
