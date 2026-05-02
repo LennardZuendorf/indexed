@@ -32,6 +32,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         mock_setup_logger.assert_called_once()
@@ -52,6 +54,8 @@ class TestInitApp:
             verbose=True,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         call_kwargs = mock_setup_logger.call_args.kwargs
@@ -73,6 +77,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=True,
+            simple_output=False,
+            engine=None,
         )
 
         call_kwargs = mock_setup_logger.call_args.kwargs
@@ -96,6 +102,8 @@ class TestInitApp:
                 verbose=False,
                 log_level=None,
                 json_logs=False,
+                simple_output=False,
+                engine=None,
             )
 
         assert ctx.obj["mode_override"] == "local"
@@ -115,6 +123,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         assert ctx.obj["mode_override"] is None

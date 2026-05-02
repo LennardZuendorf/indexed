@@ -22,6 +22,7 @@ markers = [
     "benchmark: marks benchmark tests",
     "connectors: marks connector functionality tests",
     "indexed: marks main app integration tests",
+    "requires_embedding_model: marks e2e tests requiring the real HuggingFace embedding model in cache",
 ]
 addopts = [
     "--strict-markers",

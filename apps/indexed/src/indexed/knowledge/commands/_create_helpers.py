@@ -21,6 +21,28 @@ from ...utils.format import format_source_type
 from ...utils.progress_bar import create_phased_progress, build_progress_title
 
 
+def _build_v2_connector(cfg: "SourceConfig", config_service: Any) -> Any:
+    """Build a v2 connector object from a resolved SourceConfig.
+
+    For file connectors, instantiate directly from SourceConfig fields.
+    For remote connectors (Jira/Confluence), credentials are already in
+    config_service from CLI prompts — use from_config().
+    """
+    if cfg.type == "localFiles":
+        from connectors.files.connector import FileSystemConnector
+
+        return FileSystemConnector(
+            path=cfg.base_url_or_path,
+            include_patterns=cfg.reader_opts.get("includePatterns", ["*"]),
+            fail_fast=cfg.reader_opts.get("failFast", False),
+        )
+
+    from connectors.registry import get_connector_class
+
+    ConnectorClass = get_connector_class(cfg.type)
+    return ConnectorClass.from_config(config_service)
+
+
 def execute_create_command(
     collection: str,
     source_type: str,
@@ -40,6 +62,7 @@ def execute_create_command(
     pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
     local: bool = False,
     source_path_key: Optional[str] = None,
+    engine: str = "v1",
 ) -> None:
     """Common execution flow for all create commands.
 
@@ -140,15 +163,31 @@ def execute_create_command(
 
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import _create_helpers as this_module
+    from pathlib import Path
 
     svc_create = this_module.svc_create
     svc_status = this_module.svc_status
 
+    # v2 collections directory (None → use default global path)
+    v2_collections_dir = (
+        Path(local_collections_path) if local_collections_path else None
+    )
+
     # Check if collection already exists (prompt unless --force)
     if not force:
-        from core.v1.engine.services.collection_service import _collection_exists
+        if engine == "v2":
+            from core.v2.services import status as v2_status_check
 
-        if _collection_exists(collection, collections_path=local_collections_path):
+            existing = v2_status_check([collection], collections_dir=v2_collections_dir)
+            collection_exists = bool(existing)
+        else:
+            from core.v1.engine.services.collection_service import _collection_exists
+
+            collection_exists = _collection_exists(
+                collection, collections_path=local_collections_path
+            )
+
+        if collection_exists:
             console.print()
             print_warning(f"Collection '{collection}' already exists.")
             if not typer.confirm("Overwrite?", default=False):
@@ -164,40 +203,84 @@ def execute_create_command(
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
     try:
-        if is_verbose_mode():
-            # Verbose mode: show all logs, no spinner
-            with NoOpContext():
-                if verbose_pre_creation_log:
-                    verbose_pre_creation_log(validation.present)
-                logger.info("Creating collection '%s'...", collection)
-                svc_create(
-                    [cfg],
-                    config_service=config,
-                    use_cache=use_cache,
-                    force=force,
-                    collections_path=local_collections_path,
-                    caches_path=local_caches_path,
-                )
-        else:
-            # Normal mode: phased progress display
-            title = build_progress_title(
-                "Creating", collection, format_source_type(source_type)
+        if engine == "v2":
+            from core.v2.services import create as v2_create
+            from core.v2.config import (
+                CoreV2EmbeddingConfig,
+                CoreV2StorageConfig,
+                register_config as _register_v2_config,
             )
 
-            with create_phased_progress(title=title) as phased:
-                phased.start_phase("Preparing")
-                try:
+            _register_v2_config(config)  # idempotent — ensure specs are registered
+            _provider = config.bind()
+            _v2_embed_cfg = _provider.get(CoreV2EmbeddingConfig)
+            _v2_store_cfg = _provider.get(CoreV2StorageConfig)
+            connector = _build_v2_connector(cfg, config)
+
+            if is_verbose_mode():
+                with NoOpContext():
+                    if verbose_pre_creation_log:
+                        verbose_pre_creation_log(validation.present)
+                    logger.info("Creating collection '%s' (v2 engine)...", collection)
+                    v2_create(
+                        collection,
+                        connector,
+                        embed_model_name=_v2_embed_cfg.model_name,
+                        store_type=_v2_store_cfg.vector_store,
+                        collections_dir=v2_collections_dir,
+                    )
+            else:
+                title = build_progress_title(
+                    "Creating", collection, format_source_type(source_type)
+                )
+                with create_phased_progress(title=title) as phased:
+                    phased.start_phase("Preparing")
+                    try:
+                        v2_create(
+                            collection,
+                            connector,
+                            embed_model_name=_v2_embed_cfg.model_name,
+                            store_type=_v2_store_cfg.vector_store,
+                            collections_dir=v2_collections_dir,
+                            progress=phased,
+                        )
+                    except Exception as e:
+                        creation_error = e
+        else:
+            if is_verbose_mode():
+                # Verbose mode: show all logs, no spinner
+                with NoOpContext():
+                    if verbose_pre_creation_log:
+                        verbose_pre_creation_log(validation.present)
+                    logger.info("Creating collection '%s'...", collection)
                     svc_create(
                         [cfg],
                         config_service=config,
                         use_cache=use_cache,
                         force=force,
-                        phased_progress=phased,
                         collections_path=local_collections_path,
                         caches_path=local_caches_path,
                     )
-                except Exception as e:
-                    creation_error = e
+            else:
+                # Normal mode: phased progress display
+                title = build_progress_title(
+                    "Creating", collection, format_source_type(source_type)
+                )
+
+                with create_phased_progress(title=title) as phased:
+                    phased.start_phase("Preparing")
+                    try:
+                        svc_create(
+                            [cfg],
+                            config_service=config,
+                            use_cache=use_cache,
+                            force=force,
+                            phased_progress=phased,
+                            collections_path=local_collections_path,
+                            caches_path=local_caches_path,
+                        )
+                    except Exception as e:
+                        creation_error = e
 
     except Exception as e:
         creation_error = e
@@ -214,7 +297,16 @@ def execute_create_command(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
 
-        collections = svc_status([collection], collections_path=local_collections_path)
+        if engine == "v2":
+            from core.v2.services import status as v2_status_verify
+
+            collections = v2_status_verify(
+                [collection], collections_dir=v2_collections_dir
+            )
+        else:
+            collections = svc_status(
+                [collection], collections_path=local_collections_path
+            )
 
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set
