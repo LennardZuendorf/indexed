@@ -34,9 +34,14 @@ def v2_mcp_workspace(
     indexed_dir = workspace / ".indexed"
     indexed_dir.mkdir()
     (indexed_dir / "config.toml").write_text(
-        '[general]\nengine = "v2"\n',
+        '[general]\nengine = "v2"\n'
+        '[core.v2.embedding]\nmodel_name = "all-MiniLM-L6-v2"\n'
+        "[core.v2.indexing]\nchunk_size = 512\n"
+        '[core.v2.storage]\nvector_store = "faiss"\n'
+        "[core.v2.search]\nmax_docs = 10\n",
         encoding="utf-8",
     )
+    ConfigService.reset()
 
     original_cwd = os.getcwd()
     try:

@@ -73,9 +73,28 @@ def e2e_docs(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def e2e_workspace(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[Path, None, None]:
-    """Provide an isolated workspace with `.indexed/` for local-mode storage."""
+    """Provide an isolated workspace with `.indexed/` for local-mode storage.
+
+    Seeds `config.toml` with explicit v2 sections so `ConfigService.bind()`
+    instantiates the v2 specs (the bind loop skips specs whose payload is
+    ``None`` or ``{}``, which would otherwise raise ``KeyError`` on every
+    `provider.get(...)` call in the v2 path). Resets the ConfigService
+    singleton so a stale workspace path from a previous module doesn't leak in.
+    """
+    from indexed_config import ConfigService
+
     workspace = tmp_path_factory.mktemp("e2e_workspace")
     indexed_dir = workspace / ".indexed"
     indexed_dir.mkdir()
-    (indexed_dir / "config.toml").touch()
-    yield workspace
+    (indexed_dir / "config.toml").write_text(
+        '[core.v2.embedding]\nmodel_name = "all-MiniLM-L6-v2"\n'
+        "[core.v2.indexing]\nchunk_size = 512\n"
+        '[core.v2.storage]\nvector_store = "faiss"\n'
+        "[core.v2.search]\nmax_docs = 10\n",
+        encoding="utf-8",
+    )
+    ConfigService.reset()
+    try:
+        yield workspace
+    finally:
+        ConfigService.reset()

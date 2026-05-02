@@ -63,6 +63,7 @@ class TestV2CreateAndSearch:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "search",
                     "semantic search embeddings",
@@ -70,7 +71,6 @@ class TestV2CreateAndSearch:
                     "v2-e2e-test",
                     "--engine",
                     "v2",
-                    "--local",
                 ],
             )
         finally:
@@ -88,10 +88,10 @@ class TestV2CreateAndSearch:
                 [
                     "--engine",
                     "v2",
+                    "--local",
                     "index",
                     "search",
                     "document indexing",
-                    "--local",
                 ],
             )
         finally:
@@ -112,12 +112,12 @@ class TestV2CreateAndSearch:
                 [
                     "--engine",
                     "v2",
+                    "--local",
                     "index",
                     "search",
                     "indexing pipeline",
                     "--collection",
                     "v2-e2e-test",
-                    "--local",
                 ],
             )
         finally:
@@ -140,7 +140,7 @@ class TestV2Inspect:
             os.chdir(e2e_workspace)
             result = runner.invoke(
                 app,
-                ["index", "inspect", "--engine", "v2", "--local"],
+                ["--local", "index", "inspect", "--engine", "v2"],
             )
         finally:
             os.chdir(original_cwd)
@@ -155,7 +155,7 @@ class TestV2Inspect:
             os.chdir(e2e_workspace)
             result = runner.invoke(
                 app,
-                ["index", "inspect", "v2-e2e-test", "--engine", "v2", "--local"],
+                ["--local", "index", "inspect", "v2-e2e-test", "--engine", "v2"],
             )
         finally:
             os.chdir(original_cwd)
@@ -176,13 +176,13 @@ class TestV2Remove:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "remove",
                     "v2-e2e-test",
                     "--engine",
                     "v2",
                     "--force",
-                    "--local",
                 ],
             )
         finally:

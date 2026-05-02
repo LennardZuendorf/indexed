@@ -60,12 +60,12 @@ class TestV1CreateAndSearch:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "search",
                     "semantic search embeddings",
                     "--collection",
                     "v1-e2e-test",
-                    "--local",
                 ],
             )
         finally:
@@ -81,10 +81,10 @@ class TestV1CreateAndSearch:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "search",
                     "document indexing",
-                    "--local",
                 ],
             )
         finally:
@@ -103,12 +103,12 @@ class TestV1CreateAndSearch:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "search",
                     "indexing pipeline",
                     "--collection",
                     "v1-e2e-test",
-                    "--local",
                 ],
             )
         finally:
@@ -131,7 +131,7 @@ class TestV1Inspect:
             os.chdir(e2e_workspace)
             result = runner.invoke(
                 app,
-                ["index", "inspect", "--local"],
+                ["--local", "index", "inspect"],
             )
         finally:
             os.chdir(original_cwd)
@@ -146,7 +146,7 @@ class TestV1Inspect:
             os.chdir(e2e_workspace)
             result = runner.invoke(
                 app,
-                ["index", "inspect", "v1-e2e-test", "--local"],
+                ["--local", "index", "inspect", "v1-e2e-test"],
             )
         finally:
             os.chdir(original_cwd)
@@ -167,11 +167,11 @@ class TestV1Remove:
             result = runner.invoke(
                 app,
                 [
+                    "--local",
                     "index",
                     "remove",
                     "v1-e2e-test",
                     "--force",
-                    "--local",
                 ],
             )
         finally:
