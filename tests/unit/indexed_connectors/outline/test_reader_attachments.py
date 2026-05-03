@@ -21,7 +21,9 @@ def reader():
     )
 
 
-def _make_httpx_response(status: int, content: bytes = b"", headers: dict | None = None) -> httpx.Response:
+def _make_httpx_response(
+    status: int, content: bytes = b"", headers: dict | None = None
+) -> httpx.Response:
     return httpx.Response(
         status_code=status,
         content=content,
@@ -32,6 +34,7 @@ def _make_httpx_response(status: int, content: bytes = b"", headers: dict | None
 # ---------------------------------------------------------------------------
 # Inline image URL extraction
 # ---------------------------------------------------------------------------
+
 
 def test_inline_image_regex_extracts_url() -> None:
     from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
@@ -64,13 +67,17 @@ def test_inline_image_regex_multiple_matches() -> None:
 # Size cap
 # ---------------------------------------------------------------------------
 
+
 def test_oversized_attachment_skipped(reader) -> None:
     limit = reader.max_attachment_size_bytes
     oversized = b"x" * (limit + 1)
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.headers = {"content-length": str(len(oversized)), "content-type": "image/png"}
+    mock_resp.headers = {
+        "content-length": str(len(oversized)),
+        "content-type": "image/png",
+    }
     mock_resp.content = oversized
     mock_resp.raise_for_status = MagicMock()
 
@@ -81,7 +88,9 @@ def test_oversized_attachment_skipped(reader) -> None:
         semaphore = asyncio.Semaphore(10)
         client = AsyncMock()
         client.get = mock_get
-        return await reader._download_attachment_url(client, semaphore, "https://example.com/big.png", "big.png", "id1")
+        return await reader._download_attachment_url(
+            client, semaphore, "https://example.com/big.png", "big.png", "id1"
+        )
 
     result = asyncio.run(run())
     assert result is None
@@ -103,7 +112,9 @@ def test_small_attachment_downloaded(reader) -> None:
         semaphore = asyncio.Semaphore(10)
         client = AsyncMock()
         client.get = mock_get
-        return await reader._download_attachment_url(client, semaphore, "https://example.com/img.png", "img.png", "id2")
+        return await reader._download_attachment_url(
+            client, semaphore, "https://example.com/img.png", "img.png", "id2"
+        )
 
     result = asyncio.run(run())
     assert result is not None
@@ -116,6 +127,7 @@ def test_small_attachment_downloaded(reader) -> None:
 # Error handling
 # ---------------------------------------------------------------------------
 
+
 def test_failed_download_returns_none(reader) -> None:
     async def run():
         async def mock_get(url, **kwargs):
@@ -124,7 +136,9 @@ def test_failed_download_returns_none(reader) -> None:
         semaphore = asyncio.Semaphore(10)
         client = AsyncMock()
         client.get = mock_get
-        return await reader._download_attachment_url(client, semaphore, "https://bad.host/img.png", "img.png", "id3")
+        return await reader._download_attachment_url(
+            client, semaphore, "https://bad.host/img.png", "img.png", "id3"
+        )
 
     result = asyncio.run(run())
     assert result is None

@@ -30,7 +30,9 @@ def _make_document(
 def converter():
     from connectors.outline.outline_document_converter import OutlineDocumentConverter
 
-    return OutlineDocumentConverter(max_chunk_tokens=512, ocr=False, include_attachments=True)
+    return OutlineDocumentConverter(
+        max_chunk_tokens=512, ocr=False, include_attachments=True
+    )
 
 
 @pytest.fixture
@@ -95,7 +97,9 @@ def test_body_chunks_appended(converter, mock_parser) -> None:
 def test_attachment_chunk_has_metadata_key(converter, mock_parser) -> None:
     converter._parsing = mock_parser
     doc = _make_document(
-        attachments=[{"filename": "diagram.png", "bytes": b"fake", "mimeType": "image/png"}]
+        attachments=[
+            {"filename": "diagram.png", "bytes": b"fake", "mimeType": "image/png"}
+        ]
     )
     result = converter.convert(doc)
     chunks = result[0]["chunks"]
@@ -125,7 +129,9 @@ def test_no_attachments_when_disabled() -> None:
 
     doc = _make_document(
         text="body",
-        attachments=[{"filename": "secret.pdf", "bytes": b"data", "mimeType": "application/pdf"}],
+        attachments=[
+            {"filename": "secret.pdf", "bytes": b"data", "mimeType": "application/pdf"}
+        ],
     )
     result = c.convert(doc)
     chunks = result[0]["chunks"]
@@ -142,7 +148,9 @@ def test_parse_attachment_failure_skipped(converter, mock_parser) -> None:
 
     doc = _make_document(
         text="body",
-        attachments=[{"filename": "bad.pdf", "bytes": b"garbage", "mimeType": "application/pdf"}],
+        attachments=[
+            {"filename": "bad.pdf", "bytes": b"garbage", "mimeType": "application/pdf"}
+        ],
     )
     # Should not raise
     result = converter.convert(doc)

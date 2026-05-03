@@ -137,13 +137,20 @@ def test_extract_attachment_id() -> None:
 def test_extract_attachment_id_missing() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
-    assert OutlineDocumentReader._extract_attachment_id("https://example.com/no-id") == ""
+    assert (
+        OutlineDocumentReader._extract_attachment_id("https://example.com/no-id") == ""
+    )
 
 
 def test_ext_from_url_png() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
-    assert OutlineDocumentReader._ext_from_url("https://host/api/attachments.redirect?id=x") == ".png"
+    assert (
+        OutlineDocumentReader._ext_from_url(
+            "https://host/api/attachments.redirect?id=x"
+        )
+        == ".png"
+    )
 
 
 def test_ext_from_url_pdf() -> None:

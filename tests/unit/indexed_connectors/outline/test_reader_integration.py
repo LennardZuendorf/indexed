@@ -165,7 +165,9 @@ def test_full_pipeline_yields_documents_with_attachments() -> None:
             return _doc_info(doc_id, text="Body content.")
         if "attachments.list" in url:
             router.list_calls += 1
-            return _attachments_list([{"id": f"att{router.list_calls}", "name": "diagram.png"}])
+            return _attachments_list(
+                [{"id": f"att{router.list_calls}", "name": "diagram.png"}]
+            )
         if "attachments.redirect" in url:
             return _attachment_bytes(b"PNGDATA")
         raise AssertionError(f"unexpected {method} {url}")
@@ -268,8 +270,9 @@ def test_body_fetch_all_retries_fail_doc_skipped() -> None:
 
     router_with_one_success.calls = 0
 
-    with patch("requests.post", side_effect=sync_calls), _patch_async_client(
-        router_with_one_success
+    with (
+        patch("requests.post", side_effect=sync_calls),
+        _patch_async_client(router_with_one_success),
     ):
         envelopes = list(reader.read_all_documents())
 
@@ -308,7 +311,10 @@ def test_attachments_fetch_exception_yields_empty_list() -> None:
 
     sync_calls = [_doc_list([{"id": "d1"}], total=1)]
 
-    with patch("requests.post", side_effect=sync_calls), _patch_async_client(safer_router):
+    with (
+        patch("requests.post", side_effect=sync_calls),
+        _patch_async_client(safer_router),
+    ):
         envelopes = list(reader.read_all_documents())
 
     # _list_attachments swallows the exception and returns [] internally
@@ -373,7 +379,9 @@ def test_documents_list_retries_on_transient_then_succeeds() -> None:
         patch(
             "connectors.outline.outline_document_reader.httpx.AsyncClient",
             new=lambda **kw: _FakeAsyncClient(
-                lambda m, u: _doc_info("d1") if "documents.info" in u else _attachments_list([])
+                lambda m, u: (
+                    _doc_info("d1") if "documents.info" in u else _attachments_list([])
+                )
             ),
         ),
     ):

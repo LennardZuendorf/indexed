@@ -870,7 +870,9 @@ def create_outline(
                 logger.info("Prompting for missing field: %s", field_name)
 
             if is_credential_field(field_name):
-                value = prompt_credential_field(field_name, field_info, cfg, ns, source_type)
+                value = prompt_credential_field(
+                    field_name, field_info, cfg, ns, source_type
+                )
             else:
                 value = console.input(
                     f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "

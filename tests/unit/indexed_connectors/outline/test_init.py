@@ -1,7 +1,6 @@
 """Registry membership and public export tests for the Outline connector."""
 
 
-
 def test_outline_in_connector_registry() -> None:
     from connectors.registry import CONNECTOR_REGISTRY
 
