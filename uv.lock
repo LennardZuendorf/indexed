@@ -1134,7 +1134,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "indexed-connectors"
-version = "0.1.0"
+version = "0.1.3"
 source = { editable = "packages/indexed-connectors" }
 dependencies = [
     { name = "atlassian-python-api" },
@@ -1229,7 +1229,7 @@ requires-dist = [
 
 [[package]]
 name = "indexed-sh"
-version = "0.0.4"
+version = "0.0.5"
 source = { editable = "apps/indexed" }
 dependencies = [
     { name = "art" },

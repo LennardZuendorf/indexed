@@ -13,11 +13,13 @@ from typing import Dict, Type, Any
 from .files.connector import FileSystemConnector
 from .jira.connector import JiraConnector, JiraCloudConnector
 from .confluence.connector import ConfluenceConnector, ConfluenceCloudConnector
+from .outline.connector import OutlineConnector
 
 # Import config DTOs for type hints
 from .files.schema import LocalFilesConfig
 from .jira.schema import JiraConfig, JiraCloudConfig
 from .confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
+from .outline.schema import OutlineConfig
 
 
 # Registry mapping connector_type strings to connector classes
@@ -28,6 +30,7 @@ CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
     "jiraCloud": JiraCloudConnector,
     "confluence": ConfluenceConnector,
     "confluenceCloud": ConfluenceCloudConnector,
+    "outline": OutlineConnector,
 }
 
 # Registry mapping connector_type strings to their config DTO classes
@@ -37,6 +40,7 @@ CONFIG_REGISTRY: Dict[str, Type[Any]] = {
     "jiraCloud": JiraCloudConfig,
     "confluence": ConfluenceConfig,
     "confluenceCloud": ConfluenceCloudConfig,
+    "outline": OutlineConfig,
 }
 
 # Registry mapping connector_type strings to their config namespace paths
@@ -49,6 +53,7 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
     "jiraCloud": "sources.jira",  # Unified with jira
     "confluence": "sources.confluence",
     "confluenceCloud": "sources.confluence",  # Unified with confluence
+    "outline": "sources.outline",
 }
 
 
