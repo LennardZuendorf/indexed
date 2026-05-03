@@ -526,15 +526,31 @@ def search(
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
                 phased.start_phase(f"Searching {coll_name}")
-                result = svc_search(
-                    query,
-                    configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
-                    include_matched_chunks=True,
-                    collections_path=preferred_path,
-                )
-                results.update(result)
+                if active_engine == "v2":
+                    raw = svc_search_v2(
+                        query,
+                        configs=[
+                            source_config_class(
+                                name=coll_name, type="localFiles", base_url_or_path=""
+                            )
+                        ],
+                        max_docs=_v2_search_cfg.max_docs,
+                        max_chunks=_v2_search_cfg.max_chunks,
+                        include_matched_chunks=_v2_search_cfg.include_matched_chunks,
+                        embed_model_name=_v2_embed_cfg.model_name,
+                        collections_dir=preferred_dir,
+                    )
+                    results.update(_normalize_v2_search(raw))
+                else:
+                    result = svc_search(
+                        query,
+                        configs=[search_configs[coll_name]],
+                        max_docs=limit,
+                        max_chunks=limit * 3,
+                        include_matched_chunks=True,
+                        collections_path=preferred_path,
+                    )
+                    results.update(result)
                 phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
