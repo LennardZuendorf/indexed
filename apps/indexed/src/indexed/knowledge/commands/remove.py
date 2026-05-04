@@ -72,7 +72,6 @@ def remove(
     from pathlib import Path
     from ...utils.storage_info import resolve_preferred_collections_path
 
-    active_engine = get_effective_engine(engine)
     setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
@@ -81,6 +80,10 @@ def remove(
 
     preferred_path = str(resolve_preferred_collections_path())
     preferred_dir = Path(preferred_path)
+
+    active_engine = get_effective_engine(
+        engine, collection=collection, collections_path=preferred_path
+    )
 
     simple = is_simple_output()
 
