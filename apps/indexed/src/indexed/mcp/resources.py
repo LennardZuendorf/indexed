@@ -20,7 +20,10 @@ from fastmcp import Context
 
 from core.v1.engine.services import status as svc_status
 
-from .config import resolve_config as _resolve_config
+from .config import (
+    resolve_config as _resolve_config,
+    resolve_engine_for_collection as _resolve_engine_for_collection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +98,7 @@ def register_resources(
     )
     def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
         mcp_cfg = _resolve_config(ctx, "mcp_config", get_mcp_config)
-        engine = _resolve_config(ctx, "engine", get_engine)
+        engine = _resolve_engine_for_collection(name, ctx, get_engine)
 
         try:
             if engine == "v2":

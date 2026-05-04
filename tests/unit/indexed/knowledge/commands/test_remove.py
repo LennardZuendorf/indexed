@@ -276,3 +276,77 @@ class TestRemoveCommandV2:
         parsed = json.loads(result.stdout)
         assert parsed["status"] == "removed"
         assert parsed["collection"] == "docs"
+
+
+class TestRemoveAutoDetect:
+    """Per-collection engine auto-detection in `remove`."""
+
+    def test_v2_manifest_routes_to_v2_clear_without_flag(
+        self, monkeypatch: "Any", tmp_path
+    ) -> None:
+        """A v2 manifest on disk routes to v2 clear without --engine v2."""
+        import json as _json
+        from unittest.mock import patch, MagicMock
+        from indexed.utils import storage_info as storage_info_mod
+
+        coll_dir = tmp_path / "docs"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text(
+            _json.dumps({"name": "docs", "version": "2.0"}), encoding="utf-8"
+        )
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v2_clear_calls: list = []
+
+        def fake_v2_clear(names, **kwargs):
+            v2_clear_calls.extend(names)
+
+        mock_coll = _make_collection("docs")
+
+        set_simple_output(True)
+        try:
+            with patch("core.v2.services.status", return_value=[mock_coll]):
+                with patch("core.v2.services.clear", side_effect=fake_v2_clear):
+                    monkeypatch.setattr(remove_cmd, "Index", lambda: MagicMock())
+                    result = runner.invoke(remove_cmd.app, ["docs"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.output
+        assert v2_clear_calls == ["docs"]
+
+    def test_force_v1_overrides_v2_manifest(
+        self, monkeypatch: "Any", tmp_path
+    ) -> None:
+        """--engine v1 forces v1 path even with v2 manifest on disk."""
+        import json as _json
+        from unittest.mock import MagicMock
+        from indexed.utils import storage_info as storage_info_mod
+
+        coll_dir = tmp_path / "docs"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text(
+            _json.dumps({"name": "docs", "version": "2.0"}), encoding="utf-8"
+        )
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        mock_coll = _make_collection("docs")
+        mock_index = MagicMock()
+        mock_index.remove.return_value = None
+
+        set_simple_output(True)
+        try:
+            monkeypatch.setattr(remove_cmd, "Index", lambda: mock_index)
+            monkeypatch.setattr(remove_cmd, "inspect", lambda: [mock_coll])
+            result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0
+        mock_index.remove.assert_called_once_with("docs")

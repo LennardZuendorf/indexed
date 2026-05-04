@@ -877,3 +877,59 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         # For a single collection, result summary is not shown (create_summary not called)
         mock_create_summary.assert_not_called()
+
+
+class TestUpdateAutoDetect:
+    """Per-collection engine auto-detection in `update`."""
+
+    def _write_v2(self, root, name):
+        import json as _json
+        coll = root / name
+        coll.mkdir(parents=True, exist_ok=True)
+        (coll / "manifest.json").write_text(
+            _json.dumps({"name": name, "version": "2.0"}), encoding="utf-8"
+        )
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    def test_force_v1_against_v2_layout_emits_hard_error(
+        self,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_cfg,
+        mock_logger,
+        monkeypatch,
+        tmp_path,
+    ):
+        from indexed.utils import storage_info as storage_info_mod
+        mock_verbose.return_value = False
+        cfg = Mock()
+        cfg.resolve_storage_mode.return_value = "global"
+        cfg.store.has_global_config.return_value = True
+        cfg.store.global_path = "/tmp/c.toml"
+        mock_cfg.instance.return_value = cfg
+        self._write_v2(tmp_path, "v2coll")
+        monkeypatch.setattr(storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path)
+        v1_status = Mock()
+        v1_status.name = "v2coll"
+        v1_status.source_type = "localFiles"
+        v1_status.indexers = []
+        mock_svc_status.return_value = [v1_status]
+        before_info = Mock()
+        before_info.name = "v2coll"
+        before_info.number_of_documents = 0
+        before_info.number_of_chunks = 0
+        before_info.disk_size_bytes = 0
+        before_info.updated_time = None
+        before_info.source_type = "localFiles"
+        mock_inspect.return_value = [before_info]
+        from indexed.app import app
+        result = runner.invoke(app, ["index", "update", "v2coll", "--engine", "v1"])
+        assert result.exit_code == 1
+        assert "indexer metadata" in result.output

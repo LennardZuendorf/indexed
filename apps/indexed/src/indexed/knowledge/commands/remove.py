@@ -72,7 +72,6 @@ def remove(
     from pathlib import Path
     from ...utils.storage_info import resolve_preferred_collections_path
 
-    active_engine = get_effective_engine(engine)
     index_svc = this_module.Index
     inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
@@ -83,6 +82,10 @@ def remove(
 
     preferred_path = str(resolve_preferred_collections_path())
     preferred_dir = Path(preferred_path)
+
+    active_engine = get_effective_engine(
+        engine, collection=collection, collections_path=preferred_path
+    )
 
     index = index_svc()
     simple = is_simple_output()
