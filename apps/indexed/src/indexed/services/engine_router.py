@@ -16,6 +16,20 @@ from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+VALID_ENGINES: frozenset[str] = frozenset({"v1", "v2"})
+
+
+def normalize_engine(value: Any) -> Optional[str]:
+    """Lowercase a candidate engine value and validate it against ``VALID_ENGINES``.
+
+    Returns the normalized string if valid, ``None`` otherwise. Non-string
+    inputs (e.g., Typer ``OptionInfo`` sentinels) return ``None``.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    normalized = value.lower()
+    return normalized if normalized in VALID_ENGINES else None
+
 
 class GeneralConfig(BaseModel):
     """Top-level [general] section of config.toml."""
@@ -95,17 +109,18 @@ def get_effective_engine(
     Returns:
         ``"v1"`` or ``"v2"``.
     """
-    if command_engine and isinstance(command_engine, str):
-        return command_engine.lower()
+    cmd = normalize_engine(command_engine)
+    if cmd is not None:
+        return cmd
 
     # Root callback flag stored on Typer context
     try:
         import click
 
         ctx = click.get_current_context()
-        root_engine: Any = (ctx.obj or {}).get("engine")
-        if root_engine:
-            return str(root_engine)
+        root_engine = normalize_engine((ctx.obj or {}).get("engine"))
+        if root_engine is not None:
+            return root_engine
     except (RuntimeError, AttributeError):
         pass  # No active Typer context (e.g., during unit tests)
 
@@ -122,7 +137,9 @@ def get_effective_engine(
         config = ConfigService.instance()
         provider = config.bind()
         general = provider.get(GeneralConfig)
-        return str(general.engine)
+        cfg_engine = normalize_engine(general.engine)
+        if cfg_engine is not None:
+            return cfg_engine
     except Exception:
         pass
 

@@ -78,6 +78,22 @@ class TestGetEmbedModel:
             assert model1 is not model2
             assert mock_cls.call_count == 2
 
+    def test_short_and_full_repo_id_share_cache(self) -> None:
+        """Bare name and prefixed repo id collapse onto the same cache entry."""
+        mock_cls = MagicMock()
+        with patch.dict(
+            "sys.modules",
+            {
+                "llama_index.embeddings.huggingface": MagicMock(
+                    HuggingFaceEmbedding=mock_cls
+                )
+            },
+        ):
+            short = get_embed_model("all-MiniLM-L6-v2")
+            full = get_embed_model("sentence-transformers/all-MiniLM-L6-v2")
+            assert short is full
+            assert mock_cls.call_count == 1
+
     def test_raises_embedding_error_on_import_failure(self) -> None:
         with patch.dict("sys.modules", {"llama_index.embeddings.huggingface": None}):
             with pytest.raises(

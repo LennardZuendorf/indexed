@@ -40,6 +40,22 @@ class TestGetEffectiveEngine:
     def test_command_flag_lowercases(self) -> None:
         assert get_effective_engine("V2") == "v2"
 
+    def test_invalid_command_engine_falls_through(self) -> None:
+        """Typos in command engine fall through instead of being returned verbatim."""
+        with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
+            with patch("indexed_config.ConfigService") as mock_svc_cls:
+                mock_svc_cls.instance.side_effect = Exception("no config")
+                assert get_effective_engine("vv2") == "v1"
+
+    def test_invalid_ctx_engine_falls_through(self) -> None:
+        """Corrupt ctx engine falls through to config branch."""
+        mock_ctx = MagicMock()
+        mock_ctx.obj = {"engine": "vv2"}
+        with patch("click.get_current_context", return_value=mock_ctx):
+            with patch("indexed_config.ConfigService") as mock_svc_cls:
+                mock_svc_cls.instance.side_effect = Exception("no config")
+                assert get_effective_engine(None) == "v1"
+
     def test_root_flag_from_ctx_obj(self) -> None:
         """Root callback engine stored in ctx.obj is second priority."""
         mock_ctx = MagicMock()

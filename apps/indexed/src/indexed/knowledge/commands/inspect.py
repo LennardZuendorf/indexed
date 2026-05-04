@@ -22,7 +22,10 @@ from ...utils.components import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path as _Path
+
     from core.v1.engine.services import CollectionInfo
+    from core.v1.engine.services.models import CollectionStatus
 
 # ---- Use format_size and format_time from @format.py ----
 from ...utils.format import format_size, format_time
@@ -179,6 +182,39 @@ def format_collections_json(collections: List["CollectionInfo"]) -> None:
     print_json(output)
 
 
+def _v2_status_to_info(
+    status: "CollectionStatus", collections_dir: "_Path"
+) -> "CollectionInfo":
+    """Adapt v2 CollectionStatus → CollectionInfo for the shared formatter."""
+    from core.v1.engine.services.models import CollectionInfo
+    from core.v2.storage import get_collection_path, read_manifest
+
+    try:
+        manifest = read_manifest(status.name, collections_dir)
+        created_time = manifest.get("created_time", "")
+    except Exception:
+        created_time = ""
+
+    col_path = get_collection_path(status.name, collections_dir)
+    disk_size = (
+        sum(f.stat().st_size for f in col_path.rglob("*") if f.is_file())
+        if col_path.exists()
+        else 0
+    )
+
+    return CollectionInfo(
+        name=status.name,
+        source_type=status.source_type,
+        number_of_documents=status.number_of_documents,
+        number_of_chunks=status.number_of_chunks,
+        disk_size_bytes=disk_size,
+        index_size_bytes=status.index_size or disk_size,
+        created_time=created_time,
+        updated_time=status.updated_time,
+        indexers=status.indexers,
+    )
+
+
 # ---- END FORMATTER LOGIC ----
 
 
@@ -278,7 +314,10 @@ def inspect_collections(
             if active_engine == "v2":
                 from core.v2.services import status as v2_status
 
-                collections = v2_status(collections_dir=preferred_dir)
+                v2_statuses = v2_status(collections_dir=preferred_dir)
+                collections = [
+                    _v2_status_to_info(s, preferred_dir) for s in v2_statuses
+                ]
             else:
                 collections = inspect_svc(collections_path=preferred_path)
         else:
