@@ -884,6 +884,7 @@ class TestUpdateAutoDetect:
 
     def _write_v2(self, root, name):
         import json as _json
+
         coll = root / name
         coll.mkdir(parents=True, exist_ok=True)
         (coll / "manifest.json").write_text(
@@ -908,6 +909,7 @@ class TestUpdateAutoDetect:
         tmp_path,
     ):
         from indexed.utils import storage_info as storage_info_mod
+
         mock_verbose.return_value = False
         cfg = Mock()
         cfg.resolve_storage_mode.return_value = "global"
@@ -915,7 +917,9 @@ class TestUpdateAutoDetect:
         cfg.store.global_path = "/tmp/c.toml"
         mock_cfg.instance.return_value = cfg
         self._write_v2(tmp_path, "v2coll")
-        monkeypatch.setattr(storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
         v1_status = Mock()
         v1_status.name = "v2coll"
         v1_status.source_type = "localFiles"
@@ -930,6 +934,7 @@ class TestUpdateAutoDetect:
         before_info.source_type = "localFiles"
         mock_inspect.return_value = [before_info]
         from indexed.app import app
+
         result = runner.invoke(app, ["index", "update", "v2coll", "--engine", "v1"])
         assert result.exit_code == 1
         assert "indexer metadata" in result.output

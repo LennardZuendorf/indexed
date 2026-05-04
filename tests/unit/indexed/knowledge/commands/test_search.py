@@ -805,14 +805,10 @@ class TestSearchAutoDetect:
 
         with patch("indexed_config.ConfigService") as mock_cfg:
             mock_cfg.instance.return_value.bind.return_value = mock_provider
-            with patch(
-                "core.v2.services.status", return_value=[mock_v2_status_obj]
-            ):
+            with patch("core.v2.services.status", return_value=[mock_v2_status_obj]):
                 set_simple_output(True)
                 try:
-                    result = runner.invoke(
-                        search_cmd.app, ["query", "-c", "indexed"]
-                    )
+                    result = runner.invoke(search_cmd.app, ["query", "-c", "indexed"])
                 finally:
                     reset_simple_output()
 

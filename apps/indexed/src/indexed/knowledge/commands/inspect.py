@@ -354,9 +354,7 @@ def _list_collections_per_row(
 
     if v1_names:
         try:
-            collections.extend(
-                inspect_svc(v1_names, collections_path=preferred_path)
-            )
+            collections.extend(inspect_svc(v1_names, collections_path=preferred_path))
         except Exception:
             pass
 

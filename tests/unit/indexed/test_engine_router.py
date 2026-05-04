@@ -195,7 +195,9 @@ class TestGetEffectiveEngineWithDetection:
                 )
         assert result == "v1"
 
-    def test_missing_manifest_falls_back_to_config_default(self, tmp_path: Path) -> None:
+    def test_missing_manifest_falls_back_to_config_default(
+        self, tmp_path: Path
+    ) -> None:
         with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
             mock_svc = MagicMock()
             mock_provider = MagicMock()

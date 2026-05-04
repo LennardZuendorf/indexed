@@ -318,9 +318,7 @@ class TestRemoveAutoDetect:
         assert result.exit_code == 0, result.output
         assert v2_clear_calls == ["docs"]
 
-    def test_force_v1_overrides_v2_manifest(
-        self, monkeypatch: "Any", tmp_path
-    ) -> None:
+    def test_force_v1_overrides_v2_manifest(self, monkeypatch: "Any", tmp_path) -> None:
         """--engine v1 forces v1 path even with v2 manifest on disk."""
         import json as _json
         from unittest.mock import MagicMock
