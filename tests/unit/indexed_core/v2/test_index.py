@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from core.v2 import Index, IndexConfig
 
@@ -63,6 +64,13 @@ class TestIndex:
 
         index.update("docs")
         mock_create.assert_called_once()
+
+    def test_update_unknown_collection_raises(self) -> None:
+        from core.v2.errors import CollectionNotFoundError
+
+        index = Index()
+        with pytest.raises(CollectionNotFoundError, match="ghost"):
+            index.update("ghost")
 
     @patch("core.v2.storage.read_manifest")
     def test_status_single(self, mock_read: MagicMock) -> None:

@@ -86,11 +86,22 @@ def benchmark_docs(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def benchmark_workspace(tmp_path_factory) -> Path:
-    """Create a temp workspace with .indexed/ for local collection storage."""
+    """Create a temp workspace with .indexed/ for local collection storage.
+
+    Seeds v2 config sections so `ConfigService.bind()` materializes the v2
+    specs — without these, `provider.get(CoreV2EmbeddingConfig)` raises
+    KeyError because `bind()` skips empty payloads.
+    """
     workspace = tmp_path_factory.mktemp("benchmark_workspace")
     indexed_dir = workspace / ".indexed"
     indexed_dir.mkdir()
-    (indexed_dir / "config.toml").touch()
+    (indexed_dir / "config.toml").write_text(
+        '[core.v2.embedding]\nmodel_name = "all-MiniLM-L6-v2"\n'
+        "[core.v2.indexing]\nchunk_size = 512\n"
+        '[core.v2.storage]\nvector_store = "faiss"\n'
+        "[core.v2.search]\nmax_docs = 10\n",
+        encoding="utf-8",
+    )
     return workspace
 
 
@@ -392,14 +403,14 @@ def test_e2e_search_collection_v2(
             result = runner.invoke(
                 app,
                 [
+                    "--engine",
+                    "v2",
+                    "--local",
                     "index",
                     "search",
                     "indexed collections engine",
                     "--collection",
                     created_collection_v2,
-                    "--engine",
-                    "v2",
-                    "--local",
                     "--compact",
                 ],
             )

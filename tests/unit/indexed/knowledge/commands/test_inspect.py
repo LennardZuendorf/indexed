@@ -282,3 +282,134 @@ class TestInspectCollectionsCommandV2:
 
         assert result.exit_code == 1
         assert "missing" in result.stdout
+
+
+def _write_v2_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "name": name,
+                "version": "2.0",
+                "source_type": "localFiles",
+                "num_documents": docs,
+                "num_chunks": chunks,
+                "embed_model_name": "all-MiniLM-L6-v2",
+                "vector_store_type": "faiss",
+                "created_time": "2025-01-01T00:00:00Z",
+                "updated_time": "2025-01-02T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_v1_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "collectionName": name,
+                "numberOfDocuments": docs,
+                "numberOfChunks": chunks,
+                "indexers": [{"name": "FAISS"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestInspectAutoDetect:
+    """Per-collection auto-routing fixes the v2 silent-zeros bug."""
+
+    def test_v2_detail_view_reports_real_counts_without_engine_flag(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`inspect <v2-coll>` must return the v2 manifest's document/chunk counts."""
+        from unittest.mock import MagicMock
+
+        _write_v2_manifest(tmp_path, "indexed", docs=42, chunks=137)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v2_info = MagicMock()
+        v2_info.name = "indexed"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 42
+        v2_info.number_of_chunks = 137
+        v2_info.disk_size_bytes = 1024
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info) as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["indexed"])
+
+        assert result.exit_code == 0, result.output
+        v2_inspect.assert_called_once()
+        assert "42" in result.stdout
+        assert "137" in result.stdout
+
+    def test_mixed_engine_list_view_renders_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """A mixed-engine repo lists v1 + v2 with their own counts."""
+        from unittest.mock import MagicMock
+
+        _write_v1_manifest(tmp_path, "v1coll", docs=3, chunks=9)
+        _write_v2_manifest(tmp_path, "v2coll", docs=5, chunks=11)
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v1_info = _make_collection("v1coll", docs=3, chunks=9)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [v1_info])
+
+        v2_info = MagicMock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 5
+        v2_info.number_of_chunks = 11
+        v2_info.disk_size_bytes = 2048
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info):
+            result = runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.output
+        # Both rows shown
+        assert "v1coll" in result.stdout
+        assert "v2coll" in result.stdout
+        # Real counts for each
+        assert "3" in result.stdout and "9" in result.stdout
+        assert "5" in result.stdout and "11" in result.stdout
+
+    def test_force_v1_engine_in_list_view_skips_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`--engine v1` reverts to single-engine list (escape hatch)."""
+        _write_v2_manifest(tmp_path, "v2coll", docs=99, chunks=99)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        sentinel = _make_collection("v2coll", docs=0, chunks=0)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [sentinel])
+
+        with patch("core.v2.services.inspect") as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["--engine", "v1"])
+
+        assert result.exit_code == 0
+        v2_inspect.assert_not_called()

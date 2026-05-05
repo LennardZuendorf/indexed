@@ -66,6 +66,26 @@ app = typer.Typer(
 )
 
 
+_configs_registered = False
+
+
+def _ensure_configs_registered() -> None:
+    """Register GeneralConfig and v2 core configs once per process."""
+    global _configs_registered
+    if _configs_registered:
+        return
+    from indexed_config import ConfigService
+
+    from core.v2.config import register_config as _register_v2_config
+
+    from .services.engine_router import GeneralConfig as _GeneralConfig
+
+    cfg_svc = ConfigService.instance()
+    cfg_svc.register(_GeneralConfig, path="general")
+    _register_v2_config(cfg_svc)
+    _configs_registered = True
+
+
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
@@ -149,7 +169,18 @@ def _init_app(
     # Store resolved mode_override and engine on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
     ctx.obj["mode_override"] = "local" if local else None
-    ctx.obj["engine"] = engine.lower() if engine else None
+    if engine is not None:
+        from .services.engine_router import VALID_ENGINES, normalize_engine
+
+        normalized = normalize_engine(engine)
+        if normalized is None:
+            raise typer.BadParameter(
+                f"Engine must be one of {sorted(VALID_ENGINES)}; got {engine!r}",
+                param_hint="--engine",
+            )
+        ctx.obj["engine"] = normalized
+    else:
+        ctx.obj["engine"] = None
 
     if local:
         from indexed_config import ensure_storage_dirs, get_local_root
@@ -158,16 +189,10 @@ def _init_app(
         local_root = get_local_root(workspace)
         ensure_storage_dirs(local_root, is_local=True)
 
-    # Register GeneralConfig and v2 core configs so [general] engine and
-    # [core.v2.*] settings are available in config.toml (explicit registration,
-    # never at import time — see cleanup.md §8)
-    from indexed_config import ConfigService
-    from core.v2.config import register_config as _register_v2_config
-    from .services.engine_router import GeneralConfig as _GeneralConfig
-
-    _cfg_svc = ConfigService.instance()
-    _cfg_svc.register(_GeneralConfig, path="general")
-    _register_v2_config(_cfg_svc)
+    # Defer config registration until a real subcommand is being invoked.
+    # Skipping on bare `--help` keeps cold-start sub-second.
+    if ctx.invoked_subcommand is not None and not ctx.resilient_parsing:
+        _ensure_configs_registered()
 
 
 from . import config, info, knowledge, mcp  # noqa: E402

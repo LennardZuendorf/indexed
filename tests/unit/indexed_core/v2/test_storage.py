@@ -27,6 +27,30 @@ class TestGetCollectionPath:
         assert p1 != p2
 
 
+class TestCollectionNameValidation:
+    """get_collection_path rejects names that could escape the root."""
+
+    def test_rejects_dotdot(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match=r"\.\.|outside"):
+            get_collection_path("../etc", collections_dir=tmp_path)
+
+    def test_rejects_absolute(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="absolute"):
+            get_collection_path("/etc/passwd", collections_dir=tmp_path)
+
+    def test_rejects_multi_segment(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="single path segment"):
+            get_collection_path("a/b", collections_dir=tmp_path)
+
+    def test_rejects_empty(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            get_collection_path("", collections_dir=tmp_path)
+
+    def test_rejects_whitespace(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            get_collection_path("   ", collections_dir=tmp_path)
+
+
 class TestWriteManifest:
     """write_manifest creates a manifest.json file."""
 

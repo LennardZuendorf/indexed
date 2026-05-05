@@ -203,6 +203,37 @@ class TestMigrateCommand:
         assert call_kwargs.get("dry_run") is True
 
 
+class TestEngineValidation:
+    """Validate the global --engine option at the CLI boundary."""
+
+    def test_invalid_engine_exits_nonzero(self) -> None:
+        result = runner.invoke(app, ["--engine", "vv2", "index", "inspect"])
+        assert result.exit_code != 0
+        combined = (result.output or "") + (result.stderr or "")
+        assert "Engine must be" in combined
+
+    def test_engine_v2_normalizes_uppercase(self) -> None:
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        captured: dict = {}
+        ctx.ensure_object = Mock()
+        ctx.obj = captured
+
+        with patch("indexed.app.bootstrap_logging"):
+            _init_app(
+                ctx,
+                local=False,
+                verbose=False,
+                log_level=None,
+                json_logs=False,
+                simple_output=False,
+                engine="V2",
+            )
+
+        assert captured["engine"] == "v2"
+
+
 class TestMainFunction:
     """Test main entry point function."""
 

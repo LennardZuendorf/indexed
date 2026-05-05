@@ -72,9 +72,6 @@ def remove(
     from pathlib import Path
     from ...utils.storage_info import resolve_preferred_collections_path
 
-    active_engine = get_effective_engine(engine)
-    index_svc = this_module.Index
-    inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
 
     # Setup logging based on options
@@ -84,7 +81,10 @@ def remove(
     preferred_path = str(resolve_preferred_collections_path())
     preferred_dir = Path(preferred_path)
 
-    index = index_svc()
+    active_engine = get_effective_engine(
+        engine, collection=collection, collections_path=preferred_path
+    )
+
     simple = is_simple_output()
 
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
@@ -100,6 +100,7 @@ def remove(
 
         all_collections = v2_status(collections_dir=preferred_dir)
     else:
+        inspect_svc = this_module.inspect
         all_collections = inspect_svc()
 
     if not all_collections:
@@ -135,7 +136,7 @@ def remove(
 
                 v2_clear([collection], collections_dir=preferred_dir)
             else:
-                index.remove(collection)
+                this_module.Index().remove(collection)
             print_json({"status": "removed", "collection": collection})
         except Exception as e:
             print_json({"status": "error", "collection": collection, "error": str(e)})
@@ -188,7 +189,7 @@ def remove(
 
                     v2_clear([collection], collections_dir=preferred_dir)
                 else:
-                    index.remove(collection)
+                    this_module.Index().remove(collection)
         else:
             # Normal mode: phased progress display
             source_type = target_collection.source_type
@@ -202,7 +203,7 @@ def remove(
 
                     v2_clear([collection], collections_dir=preferred_dir)
                 else:
-                    index.remove(collection)
+                    this_module.Index().remove(collection)
                 phased.finish_phase("Removing collection data")
 
         console.print()

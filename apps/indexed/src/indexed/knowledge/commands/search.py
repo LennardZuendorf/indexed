@@ -378,8 +378,6 @@ def search(
     from . import search as this_module
     from ...services.engine_router import get_effective_engine
 
-    active_engine = get_effective_engine(engine)
-
     index_class = this_module.Index
     svc_search = this_module.svc_search
     source_config_class = this_module.SourceConfig
@@ -398,6 +396,10 @@ def search(
     from ...utils.storage_info import resolve_preferred_collections_path
 
     preferred_path = str(resolve_preferred_collections_path())
+
+    active_engine = get_effective_engine(
+        engine, collection=collection, collections_path=preferred_path
+    )
 
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
@@ -476,6 +478,16 @@ def search(
     if active_engine != "v2":
         for coll_name in collections_to_search:
             coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
+            if not coll_status.indexers:
+                # Defense-in-depth: auto-detection should have routed v2 collections
+                # to the v2 path; reaching this branch means a v1 lookup yielded no
+                # indexer metadata (e.g. forced --engine v1 against a v2 layout).
+                print_error(
+                    f"Collection '{coll_name}' has no indexer metadata. "
+                    "If this is a v2 collection, pass --engine v2 or set "
+                    "[general] engine = 'v2' in your config."
+                )
+                raise typer.Exit(1)
             search_configs[coll_name] = source_config_class(
                 name=coll_name,
                 type="localFiles",
@@ -526,15 +538,31 @@ def search(
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
                 phased.start_phase(f"Searching {coll_name}")
-                result = svc_search(
-                    query,
-                    configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
-                    include_matched_chunks=True,
-                    collections_path=preferred_path,
-                )
-                results.update(result)
+                if active_engine == "v2":
+                    raw = svc_search_v2(
+                        query,
+                        configs=[
+                            source_config_class(
+                                name=coll_name, type="localFiles", base_url_or_path=""
+                            )
+                        ],
+                        max_docs=_v2_search_cfg.max_docs,
+                        max_chunks=_v2_search_cfg.max_chunks,
+                        include_matched_chunks=_v2_search_cfg.include_matched_chunks,
+                        embed_model_name=_v2_embed_cfg.model_name,
+                        collections_dir=preferred_dir,
+                    )
+                    results.update(_normalize_v2_search(raw))
+                else:
+                    result = svc_search(
+                        query,
+                        configs=[search_configs[coll_name]],
+                        max_docs=limit,
+                        max_chunks=limit * 3,
+                        include_matched_chunks=True,
+                        collections_path=preferred_path,
+                    )
+                    results.update(result)
                 phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
