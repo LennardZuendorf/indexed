@@ -32,6 +32,7 @@ _build_meta.py
 .coverage
 htmlcov*/
 coverage.xml
+coverage.json
 .tox/
 
 # Type checking

@@ -20,7 +20,10 @@ from fastmcp import Context
 
 from core.v1.engine.services import status as svc_status
 
-from .config import resolve_config as _resolve_config
+from .config import (
+    resolve_config as _resolve_config,
+    resolve_engine_for_collection as _resolve_engine_for_collection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +35,20 @@ def _format_status(s: Any) -> Dict[str, Any]:
         "number_of_documents": s.number_of_documents,
         "number_of_chunks": s.number_of_chunks,
         "updated_time": s.updated_time,
-        "last_modified_document_time": s.last_modified_document_time,
-        "indexers": s.indexers,
-        "index_size": s.index_size,
-        "source_type": s.source_type,
-        "relative_path": s.relative_path,
-        "disk_size_bytes": s.disk_size_bytes,
+        "last_modified_document_time": getattr(s, "last_modified_document_time", None),
+        "indexers": getattr(s, "indexers", []),
+        "index_size": getattr(s, "index_size", None),
+        "source_type": getattr(s, "source_type", None),
+        "relative_path": getattr(s, "relative_path", None),
+        "disk_size_bytes": getattr(s, "disk_size_bytes", None),
     }
 
 
-def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
+def register_resources(
+    mcp: Any,
+    get_mcp_config: Callable[[], Any],
+    get_engine: Callable[[], str] = lambda: "v1",
+) -> None:
     """Register collection resources on the FastMCP instance."""
 
     @mcp.resource(
@@ -51,7 +58,13 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
     )
     def collections_list() -> Dict[str, Any]:
         try:
-            statuses = svc_status()
+            engine = get_engine()
+            if engine == "v2":
+                from core.v2.services import status as v2_status
+
+                statuses = v2_status()
+            else:
+                statuses = svc_status()
             return {"collections": [s.name for s in statuses]}
         except Exception as e:
             logger.debug("Failed to list collections: %s", e)
@@ -64,8 +77,15 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
     )
     def collections_status_list(ctx: Optional[Context] = None) -> Dict[str, Any]:
         mcp_cfg = _resolve_config(ctx, "mcp_config", get_mcp_config)
+        engine = _resolve_config(ctx, "engine", get_engine)
+
         try:
-            statuses = svc_status(include_index_size=mcp_cfg.include_index_size)
+            if engine == "v2":
+                from core.v2.services import status as v2_status
+
+                statuses = v2_status()
+            else:
+                statuses = svc_status(include_index_size=mcp_cfg.include_index_size)
             return {"collections": [_format_status(s) for s in statuses]}
         except Exception as e:
             logger.debug("Failed to get collection statuses: %s", e)
@@ -78,8 +98,17 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
     )
     def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
         mcp_cfg = _resolve_config(ctx, "mcp_config", get_mcp_config)
+        engine = _resolve_engine_for_collection(name, ctx, get_engine)
+
         try:
-            statuses = svc_status([name], include_index_size=mcp_cfg.include_index_size)
+            if engine == "v2":
+                from core.v2.services import status as v2_status
+
+                statuses = v2_status([name])
+            else:
+                statuses = svc_status(
+                    [name], include_index_size=mcp_cfg.include_index_size
+                )
             if not statuses:
                 return {"error": f"Collection '{name}' not found"}
             return _format_status(statuses[0])

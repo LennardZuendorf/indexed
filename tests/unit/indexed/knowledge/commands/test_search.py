@@ -620,3 +620,270 @@ class TestFormatSearchResultsCompactEdgeCases:
         joined = "\n".join(outputs)
         assert "empty-coll" not in joined
         assert "No results found" in joined
+
+
+class TestNormalizeV2Search:
+    """Pure-function tests for the v2 result normalizer in the search command."""
+
+    def test_single_collection_format(self) -> None:
+        """Single-collection v2 result maps collectionName key to top-level dict key."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs", "results": [{"text": "hello"}]}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": [{"text": "hello"}]}}
+
+    def test_multi_collection_format(self) -> None:
+        """Multi-collection v2 result flattens collections list."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {
+            "collections": [
+                {"collectionName": "a", "results": [{"text": "x"}]},
+                {"collectionName": "b", "results": []},
+            ]
+        }
+        out = _normalize_v2_search(raw)
+        assert out == {
+            "a": {"results": [{"text": "x"}]},
+            "b": {"results": []},
+        }
+
+    def test_empty_results_single_collection(self) -> None:
+        """Single-collection with empty results list normalizes correctly."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs", "results": []}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": []}}
+
+    def test_missing_results_key_defaults_to_empty_list(self) -> None:
+        """Missing results key falls back to empty list via .get()."""
+        from indexed.knowledge.commands.search import _normalize_v2_search
+
+        raw = {"collectionName": "docs"}
+        out = _normalize_v2_search(raw)
+        assert out == {"docs": {"results": []}}
+
+
+class TestSearchCommandV2:
+    """Tests for v2 engine routing in the search CLI command."""
+
+    @patch("indexed_config.ConfigService")
+    @patch("core.v2.services.status", return_value=[])
+    def test_v2_no_collections_shows_hint(
+        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
+    ) -> None:
+        """--engine v2 with no collections shows friendly hint via v2 status."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "No collections found" in result.stdout
+        mock_v2_status.assert_called_once()
+
+    @patch("indexed_config.ConfigService")
+    @patch("core.v2.services.status")
+    def test_v2_calls_svc_search_v2(
+        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
+    ) -> None:
+        """--engine v2 calls svc_search_v2 with embed_model_name kwarg."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+        from indexed.utils.simple_output import set_simple_output, reset_simple_output
+
+        mock_coll = MagicMock()
+        mock_coll.name = "test-docs"
+        mock_v2_status.return_value = [mock_coll]
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_config_service.instance.return_value.bind.return_value = mock_provider
+
+        v2_search_calls: List[Dict[str, Any]] = []
+
+        def fake_v2_search(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            v2_search_calls.append(kwargs)
+            return {"collectionName": "test-docs", "results": []}
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "svc_search_v2", fake_v2_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0
+        assert len(v2_search_calls) == 1
+        assert "embed_model_name" in v2_search_calls[0]
+
+    def test_svc_search_v2_lazy_attr_is_v2_search(self) -> None:
+        """__getattr__ resolves svc_search_v2 to core.v2.services.search."""
+        from core.v2.services import search as v2_search_fn
+
+        assert search_cmd.svc_search_v2 is v2_search_fn
+
+
+class TestSearchAutoDetect:
+    """Tests for per-collection engine auto-detection in `search`."""
+
+    def _write_v2_manifest(self, root: Path, name: str) -> None:
+        import json as _json
+
+        coll = root / name
+        coll.mkdir(parents=True, exist_ok=True)
+        (coll / "manifest.json").write_text(
+            _json.dumps({"name": name, "version": "2.0"}), encoding="utf-8"
+        )
+
+    def _write_v1_manifest(self, root: Path, name: str) -> None:
+        import json as _json
+
+        coll = root / name
+        coll.mkdir(parents=True, exist_ok=True)
+        (coll / "manifest.json").write_text(
+            _json.dumps(
+                {
+                    "collectionName": name,
+                    "indexers": [{"name": "FAISS"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_v2_collection_routes_to_v2_without_flag(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """A v2 manifest on disk routes to v2 search even with config default v1."""
+        from unittest.mock import MagicMock
+        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
+        from indexed.utils.simple_output import set_simple_output, reset_simple_output
+
+        self._write_v2_manifest(tmp_path, "indexed")
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+        mock_v2_status_obj = MagicMock()
+        mock_v2_status_obj.name = "indexed"
+
+        v2_calls: List[Dict[str, Any]] = []
+
+        def fake_v2_search(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            v2_calls.append(kwargs)
+            return {"collectionName": "indexed", "results": []}
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "svc_search_v2", fake_v2_search)
+
+        with patch("indexed_config.ConfigService") as mock_cfg:
+            mock_cfg.instance.return_value.bind.return_value = mock_provider
+            with patch("core.v2.services.status", return_value=[mock_v2_status_obj]):
+                set_simple_output(True)
+                try:
+                    result = runner.invoke(search_cmd.app, ["query", "-c", "indexed"])
+                finally:
+                    reset_simple_output()
+
+        assert result.exit_code == 0, result.output
+        assert len(v2_calls) == 1
+
+    def test_force_v1_flag_overrides_v2_manifest(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """--engine v1 against a v2 layout falls into v1 path; empty indexers
+        triggers the new defensive print_error rather than IndexError."""
+        from indexed.utils.simple_output import set_simple_output, reset_simple_output
+
+        self._write_v2_manifest(tmp_path, "indexed")
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        # v1 status returns empty indexers for the v2 layout
+        empty_status = MagicMockStatus(name="indexed", indexers=[])
+
+        def fake_v1_status(names=None, collections_path=None, **kwargs):
+            if names is None:
+                return [empty_status]
+            return [empty_status]
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "status", fake_v1_status)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["query", "-c", "indexed", "--engine", "v1"]
+            )
+        finally:
+            reset_simple_output()
+
+        # Defensive guard hit; not an IndexError
+        assert result.exit_code == 1
+        assert "IndexError" not in (result.output or "")
+
+    def test_no_collection_arg_uses_config_default(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """When -c is omitted, manifest detection is skipped (config default applies)."""
+        from indexed.utils.simple_output import set_simple_output, reset_simple_output
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        def fake_v1_status(names=None, collections_path=None, **kwargs):
+            return []
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "status", fake_v1_status)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["query"])
+        finally:
+            reset_simple_output()
+
+        # No collections + simple output → JSON error message, exit 0
+        assert result.exit_code == 0
+        assert "No collections found" in (result.stdout or "")
+
+
+class MagicMockStatus:
+    """Lightweight stand-in for v1 CollectionStatus with controllable indexers."""
+
+    def __init__(self, name: str, indexers: list) -> None:
+        self.name = name
+        self.indexers = indexers
+        self.number_of_documents = 0
+        self.number_of_chunks = 0

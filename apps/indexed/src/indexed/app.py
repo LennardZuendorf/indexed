@@ -66,6 +66,26 @@ app = typer.Typer(
 )
 
 
+_configs_registered = False
+
+
+def _ensure_configs_registered() -> None:
+    """Register GeneralConfig and v2 core configs once per process."""
+    global _configs_registered
+    if _configs_registered:
+        return
+    from indexed_config import ConfigService
+
+    from core.v2.config import register_config as _register_v2_config
+
+    from .services.engine_router import GeneralConfig as _GeneralConfig
+
+    cfg_svc = ConfigService.instance()
+    cfg_svc.register(_GeneralConfig, path="general")
+    _register_v2_config(cfg_svc)
+    _configs_registered = True
+
+
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
@@ -100,6 +120,13 @@ def _init_app(
         "--simple-output",
         help="Machine-readable JSON output (for programmatic use)",
         rich_help_panel="Usage Options",
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine version: v1 (default) or v2 (LlamaIndex-powered). Overrides [general] engine in config.",
+        case_sensitive=False,
+        rich_help_panel="Engine",
     ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
@@ -139,9 +166,21 @@ def _init_app(
         json_mode=json_mode,
     )
 
-    # Store resolved mode_override on ctx.obj for subcommands to access
+    # Store resolved mode_override and engine on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
     ctx.obj["mode_override"] = "local" if local else None
+    if engine is not None:
+        from .services.engine_router import VALID_ENGINES, normalize_engine
+
+        normalized = normalize_engine(engine)
+        if normalized is None:
+            raise typer.BadParameter(
+                f"Engine must be one of {sorted(VALID_ENGINES)}; got {engine!r}",
+                param_hint="--engine",
+            )
+        ctx.obj["engine"] = normalized
+    else:
+        ctx.obj["engine"] = None
 
     if local:
         from indexed_config import ensure_storage_dirs, get_local_root
@@ -149,6 +188,11 @@ def _init_app(
         workspace = Path.cwd()
         local_root = get_local_root(workspace)
         ensure_storage_dirs(local_root, is_local=True)
+
+    # Defer config registration until a real subcommand is being invoked.
+    # Skipping on bare `--help` keeps cold-start sub-second.
+    if ctx.invoked_subcommand is not None and not ctx.resilient_parsing:
+        _ensure_configs_registered()
 
 
 from . import config, info, knowledge, mcp  # noqa: E402
