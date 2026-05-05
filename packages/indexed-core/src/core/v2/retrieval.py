@@ -33,7 +33,7 @@ def search_collection(
     Returns:
         Dict with ``collectionName`` and ``results`` keys.
     """
-    from llama_index.core import VectorStoreIndex
+    from llama_index.core import load_index_from_storage
 
     from .embedding import get_embed_model
     from .storage import load_storage_context
@@ -41,9 +41,7 @@ def search_collection(
     embed_model = get_embed_model(embed_model_name)
 
     storage_context = load_storage_context(collection_name, collections_dir)
-    index = VectorStoreIndex.from_storage_context(
-        storage_context, embed_model=embed_model
-    )
+    index = load_index_from_storage(storage_context, embed_model=embed_model)
 
     retriever = index.as_retriever(similarity_top_k=similarity_top_k)
     retrieved_nodes = retriever.retrieve(query)

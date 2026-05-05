@@ -252,8 +252,6 @@ def update(
     from pathlib import Path
     from ...utils.storage_info import resolve_preferred_collections_path
 
-    active_engine = get_effective_engine(engine)
-
     update_service = this_module.update_service
     source_config_class = this_module.SourceConfig
     svc_status = this_module.svc_status
@@ -266,6 +264,11 @@ def update(
 
     preferred_path = str(resolve_preferred_collections_path())
     preferred_dir = Path(preferred_path)
+
+    def _engine_for(coll_name: str) -> str:
+        return get_effective_engine(
+            engine, collection=coll_name, collections_path=preferred_path
+        )
 
     # Initialize ConfigService and check if config existed before
     config_service = ConfigService.instance()
@@ -281,14 +284,26 @@ def update(
 
     # Determine collections to update
     if collection is None:
-        # Update all collections
-        if active_engine == "v2":
-            from core.v2.services import status as v2_status
+        # Enumerate all collections regardless of engine by scanning the
+        # storage dir for manifests. This lets a mixed-engine repo update
+        # both v1 and v2 collections in one command. When the dir is missing
+        # (e.g. CI/test env), fall back to the v1 status service so existing
+        # mocks keep working.
+        collections_to_update: list[str] = []
+        if preferred_dir.exists():
+            collections_to_update = sorted(
+                d.name
+                for d in preferred_dir.iterdir()
+                if d.is_dir() and (d / "manifest.json").exists()
+            )
+        if not collections_to_update:
+            try:
+                fallback_statuses = svc_status()
+                collections_to_update = [s.name for s in fallback_statuses]
+            except Exception:
+                collections_to_update = []
 
-            all_statuses = v2_status(collections_dir=preferred_dir)
-        else:
-            all_statuses = svc_status()
-        if not all_statuses:
+        if not collections_to_update:
             if simple:
                 print_json({"error": "No collections found"})
                 return
@@ -300,14 +315,14 @@ def update(
             )
             return
 
-        collections_to_update = [s.name for s in all_statuses]
         if not simple and len(collections_to_update) > 1:
             names = ", ".join(f'"{n}"' for n in collections_to_update)
             console.print(
                 f"\n[{get_heading_style()}]Updating {len(collections_to_update)} Collections: {names}[/{get_heading_style()}]"
             )
     else:
-        # Update specific collection
+        # Update specific collection — auto-detect its engine
+        active_engine = _engine_for(collection)
         if active_engine == "v2":
             from core.v2.services import status as v2_status
 
@@ -325,9 +340,10 @@ def update(
 
         collections_to_update = [collection]
 
-    # Capture before state for all collections
+    # Capture before state for all collections (per-collection engine)
     before_data = {}
     for coll_name in collections_to_update:
+        active_engine = _engine_for(coll_name)
         if active_engine == "v2":
             from core.v2.services import inspect as v2_inspect
 
@@ -363,6 +379,9 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
+        # Per-collection engine: re-detect each iteration so a mixed-engine
+        # repo routes each name to the engine that actually produced it.
+        active_engine = _engine_for(coll_name)
         # Get collection status to build proper SourceConfig / connector
         if active_engine == "v2":
             from core.v2.services import status as v2_status_loop
@@ -450,8 +469,18 @@ def update(
                         break
         else:
             if not coll_status.indexers:
-                print_error(f"Collection '{coll_name}' has no indexers configured")
-                continue
+                # Auto-detection should have routed v2 collections to the v2
+                # path above. Reaching this means a v1 lookup found no indexer
+                # metadata (e.g. forced --engine v1 against a v2 layout, or a
+                # corrupt manifest) — fail loudly with operator guidance
+                # instead of silently skipping.
+                print_error(
+                    f"Collection '{coll_name}' has no indexer metadata. "
+                    "The on-disk layout does not match v1 expectations. "
+                    "If this is a v2 collection, pass --engine v2 or set "
+                    "[general] engine = 'v2' in your config."
+                )
+                raise typer.Exit(1)
 
             source_config = source_config_class(
                 name=coll_name,
@@ -543,9 +572,19 @@ def update(
     # Simple output mode: JSON status
     if simple:
         for coll_name in successfully_updated:
-            inspect_result = inspect_svc([coll_name])
-            if inspect_result:
-                after_info = inspect_result[0]
+            after_info = None
+            if _engine_for(coll_name) == "v2":
+                from core.v2.services import inspect as v2_inspect
+
+                try:
+                    after_info = v2_inspect(coll_name, collections_dir=preferred_dir)
+                except Exception:
+                    after_info = None
+            else:
+                inspect_result = inspect_svc([coll_name])
+                if inspect_result:
+                    after_info = inspect_result[0]
+            if after_info is not None:
                 before_info = before_data[coll_name]
                 total_docs += after_info.number_of_documents
                 total_chunks += after_info.number_of_chunks

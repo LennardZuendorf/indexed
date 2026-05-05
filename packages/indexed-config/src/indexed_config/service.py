@@ -157,6 +157,13 @@ class ConfigService:
         for path, spec in self._registry.specs.items():
             payload = get_by_path(raw, path, default=None)
             if payload in (None, {}):
+                # No user config under this namespace. Try defaults; if the
+                # spec has required fields, Pydantic raises and we skip.
+                try:
+                    instances[spec] = spec.model_validate({})  # type: ignore[arg-type]
+                    path_to_type[path] = spec
+                except ValidationError:
+                    pass
                 continue
             try:
                 instances[spec] = spec.model_validate(payload)  # type: ignore[arg-type]

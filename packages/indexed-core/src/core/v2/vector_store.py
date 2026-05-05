@@ -51,5 +51,9 @@ def _create_faiss_store(
         )
         raise VectorStoreError(msg) from exc
 
-    faiss_index = faiss.IndexFlatL2(embed_dim)
-    return FaissVectorStore(faiss_index=faiss_index)
+    try:
+        faiss_index = faiss.IndexFlatL2(embed_dim)
+        return FaissVectorStore(faiss_index=faiss_index)
+    except Exception as exc:
+        msg = f"Failed to create FAISS vector store: {exc}"
+        raise VectorStoreError(msg) from exc

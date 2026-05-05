@@ -105,23 +105,27 @@ class Index:
         Args:
             collection: Specific collection name or None for all tracked.
         """
+        from .errors import CollectionNotFoundError
         from .services.collection_service import update as _update
 
-        if collection and collection in self._collections:
+        if collection is not None:
+            if collection not in self._collections:
+                raise CollectionNotFoundError(collection)
             _update(
                 collection,
                 self._collections[collection],
                 embed_model_name=self.config.embed_model_name,
                 store_type=self.config.vector_store_type,
             )
-        elif collection is None:
-            for name, conn in self._collections.items():
-                _update(
-                    name,
-                    conn,
-                    embed_model_name=self.config.embed_model_name,
-                    store_type=self.config.vector_store_type,
-                )
+            return
+
+        for name, conn in self._collections.items():
+            _update(
+                name,
+                conn,
+                embed_model_name=self.config.embed_model_name,
+                store_type=self.config.vector_store_type,
+            )
 
     def status(self, collection: Optional[str] = None) -> Any:
         """Get status for collections.

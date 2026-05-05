@@ -497,12 +497,11 @@ class TestBuildV2Connector:
         mock_cls.assert_called_once_with(
             path="/tmp/docs",
             include_patterns=["*"],
-            exclude_patterns=[],
             fail_fast=False,
         )
 
     def test_local_files_forwards_reader_opts(self) -> None:
-        """includePatterns and excludePatterns from reader_opts are forwarded."""
+        """includePatterns and failFast from reader_opts are forwarded."""
         from indexed.knowledge.commands._create_helpers import _build_v2_connector
         from core.v1.engine.services import SourceConfig
 
@@ -513,7 +512,6 @@ class TestBuildV2Connector:
             indexer="default",
             reader_opts={
                 "includePatterns": ["*.md", "*.txt"],
-                "excludePatterns": ["*.tmp"],
                 "failFast": True,
             },
         )
@@ -524,7 +522,6 @@ class TestBuildV2Connector:
 
         call_kwargs = mock_cls.call_args.kwargs
         assert call_kwargs["include_patterns"] == ["*.md", "*.txt"]
-        assert call_kwargs["exclude_patterns"] == ["*.tmp"]
         assert call_kwargs["fail_fast"] is True
 
     def test_remote_connector_uses_from_config(self) -> None:

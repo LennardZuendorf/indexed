@@ -10,7 +10,10 @@ from core.v1.engine.services import (
     status as svc_status,
 )
 
-from .config import resolve_config as _resolve_config
+from .config import (
+    resolve_config as _resolve_config,
+    resolve_engine_for_collection as _resolve_engine_for_collection,
+)
 from .formatting import format_search_results_for_llm
 
 
@@ -108,7 +111,7 @@ def register_tools(
             dict: LLM-friendly search results with the same structure as search() tool
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
-        engine = _resolve_config(ctx, "engine", get_engine)
+        engine = _resolve_engine_for_collection(collection, ctx, get_engine)
 
         try:
             if engine == "v2":

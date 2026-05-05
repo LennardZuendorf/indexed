@@ -30,13 +30,36 @@ def get_collections_dir() -> Path:
         return Path.home() / ".indexed" / "data" / "collections"
 
 
+def _validate_collection_name(name: str) -> None:
+    """Reject names that could escape the collections root."""
+    if not name or not name.strip():
+        raise ValueError("Collection name must not be empty or whitespace")
+    if ".." in name:
+        raise ValueError(f"Collection name must not contain '..': {name!r}")
+    candidate = Path(name)
+    if candidate.is_absolute():
+        raise ValueError(f"Collection name must not be an absolute path: {name!r}")
+    if len(candidate.parts) != 1:
+        raise ValueError(f"Collection name must be a single path segment: {name!r}")
+
+
 def get_collection_path(
     collection_name: str,
     collections_dir: Optional[Path] = None,
 ) -> Path:
-    """Resolve the on-disk path for a collection."""
-    base = collections_dir or get_collections_dir()
-    return base / collection_name
+    """Resolve the on-disk path for a collection.
+
+    Validates the name so callers cannot escape ``collections_dir`` via
+    ``..``, absolute paths, or multi-segment names.
+    """
+    _validate_collection_name(collection_name)
+    base = (collections_dir or get_collections_dir()).resolve()
+    resolved = (base / collection_name).resolve()
+    if resolved.parent != base:
+        raise ValueError(
+            f"Collection name resolves outside collections root: {collection_name!r}"
+        )
+    return resolved
 
 
 def create_storage_context(
@@ -123,7 +146,9 @@ def write_manifest(
         get_collection_path(collection_name, collections_dir) / "manifest.json"
     )
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    tmp_path = manifest_path.with_name(manifest_path.name + ".tmp")
+    tmp_path.write_text(json.dumps(manifest, indent=2))
+    tmp_path.replace(manifest_path)
 
     return manifest
 

@@ -6,13 +6,15 @@ Registration is explicit via :func:`register_config` — never at import time.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CoreV2EmbeddingConfig(BaseModel):
     """Embedding generation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
 
     model_name: str = Field(
         default="all-MiniLM-L6-v2",
@@ -25,6 +27,8 @@ class CoreV2EmbeddingConfig(BaseModel):
 
 class CoreV2IndexingConfig(BaseModel):
     """Indexing pipeline configuration."""
+
+    model_config = ConfigDict(extra="forbid")
 
     chunk_size: int = Field(
         default=512, ge=1, le=4096, description="Size of text chunks"
@@ -50,9 +54,11 @@ class CoreV2IndexingConfig(BaseModel):
 class CoreV2StorageConfig(BaseModel):
     """Vector storage configuration."""
 
-    vector_store: str = Field(
+    model_config = ConfigDict(extra="forbid")
+
+    vector_store: Literal["faiss", "chroma", "qdrant"] = Field(
         default="faiss",
-        description="Vector store backend (faiss, chroma, qdrant)",
+        description="Vector store backend (only 'faiss' is implemented)",
     )
     persistence_enabled: bool = Field(
         default=True, description="Enable persistence to disk"
@@ -61,6 +67,8 @@ class CoreV2StorageConfig(BaseModel):
 
 class CoreV2SearchConfig(BaseModel):
     """Search configuration."""
+
+    model_config = ConfigDict(extra="forbid")
 
     max_docs: int = Field(
         default=10, ge=1, le=100, description="Maximum documents to return"
