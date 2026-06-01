@@ -14,7 +14,7 @@ from pathlib import Path
 
 PYPROJECT = Path("apps/indexed/pyproject.toml")
 VERSION_RE = re.compile(r'^(version\s*=\s*")[^"]*(")', re.MULTILINE)
-SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+")
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 def main() -> None:
