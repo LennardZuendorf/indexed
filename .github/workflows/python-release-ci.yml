@@ -38,6 +38,9 @@ jobs:
     - name: Install dependencies
       run: uv sync
 
+    - name: Sync version with release tag
+      run: uv run python tools/sync_version.py ${{ github.ref_name }}
+
     - name: Build distributable wheel
       run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
@@ -79,7 +82,7 @@ jobs:
       # Default packages-dir: dist/ — no override needed.
 
     - name: Attach wheel to GitHub Release
-      if: github.event_name == 'release'
+      if: always() && github.event_name == 'release'
       uses: softprops/action-gh-release@v2
       with:
         files: dist/*
