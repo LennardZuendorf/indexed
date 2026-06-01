@@ -97,7 +97,9 @@ def search(
     from ..storage import list_collection_names
 
     names = (
-        [c.name for c in configs] if configs else list_collection_names(collections_dir)
+        [c.name for c in configs]
+        if configs is not None
+        else list_collection_names(collections_dir)
     )
 
     results = _search_collections(

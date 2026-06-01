@@ -139,8 +139,8 @@ class TestListCollectionNames:
         result = list_collection_names(collections_dir=tmp_path)
         assert result == ["alpha", "beta"]  # sorted
 
-    def test_missing_dir_returns_empty(self) -> None:
+    def test_missing_dir_returns_empty(self, tmp_path: Path) -> None:
         result = list_collection_names(
-            collections_dir=Path("/tmp/does-not-exist-indexed-test")
+            collections_dir=tmp_path / "does-not-exist-indexed-test"
         )
         assert result == []
