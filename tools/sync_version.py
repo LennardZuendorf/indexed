@@ -32,7 +32,10 @@ def main() -> None:
     content = PYPROJECT.read_text(encoding="utf-8")
     match = VERSION_RE.search(content)
     if not match:
-        print(f"[sync_version] Could not find version field in {PYPROJECT}", file=sys.stderr)
+        print(
+            f"[sync_version] Could not find version field in {PYPROJECT}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     current = match.group(0).split('"')[1]
