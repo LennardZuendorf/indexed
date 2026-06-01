@@ -7,7 +7,7 @@ We focus on realistic behaviors:
 """
 
 from pathlib import Path
-from typing import List
+from typing import Any, List
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -217,3 +217,199 @@ class TestInspectCollectionsCommand:
 
         assert result.exit_code == 0
         assert "sized-collection" in result.stdout
+
+
+class TestInspectCollectionsCommandV2:
+    """Tests for v2 engine routing in the inspect CLI command."""
+
+    @patch("core.v2.services.status")
+    def test_v2_all_collections_calls_v2_status(self, mock_v2_status: Any) -> None:
+        """--engine v2 with no name arg calls core.v2.services.status."""
+        from unittest.mock import MagicMock
+
+        mock_coll = MagicMock()
+        mock_coll.name = "v2-docs"
+        mock_coll.source_type = "localFiles"
+        mock_coll.relative_path = "/docs"
+        mock_coll.number_of_documents = 5
+        mock_coll.number_of_chunks = 10
+        mock_coll.disk_size_bytes = 1024
+        mock_coll.index_size_bytes = 512
+        mock_coll.created_time = "2025-01-01T00:00:00Z"
+        mock_coll.updated_time = "2025-01-02T00:00:00Z"
+        mock_v2_status.return_value = [mock_coll]
+
+        result = runner.invoke(inspect_cmd.app, ["--engine", "v2"])
+
+        assert result.exit_code == 0
+        assert "v2-docs" in result.stdout
+        mock_v2_status.assert_called_once()
+
+    @patch("core.v2.services.status")
+    @patch("core.v2.services.inspect")
+    def test_v2_specific_collection_calls_v2_inspect(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 with a collection name calls core.v2.services.inspect."""
+        from unittest.mock import MagicMock
+
+        mock_info = MagicMock()
+        mock_info.name = "my-docs"
+        mock_info.source_type = "localFiles"
+        mock_info.relative_path = "/docs"
+        mock_info.number_of_documents = 7
+        mock_info.number_of_chunks = 14
+        mock_info.disk_size_bytes = 2048
+        mock_info.index_size_bytes = 1024
+        mock_info.created_time = "2025-01-01T00:00:00Z"
+        mock_info.updated_time = "2025-01-02T00:00:00Z"
+        mock_v2_inspect.return_value = mock_info
+
+        result = runner.invoke(inspect_cmd.app, ["my-docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        mock_v2_inspect.assert_called_once()
+
+    @patch("core.v2.services.status", return_value=[])
+    @patch("core.v2.services.inspect")
+    def test_v2_inspect_not_found_shows_error(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 inspect raising exception shows error and exits 1."""
+        mock_v2_inspect.side_effect = Exception("Collection 'missing' not found")
+
+        result = runner.invoke(inspect_cmd.app, ["missing", "--engine", "v2"])
+
+        assert result.exit_code == 1
+        assert "missing" in result.stdout
+
+
+def _write_v2_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "name": name,
+                "version": "2.0",
+                "source_type": "localFiles",
+                "num_documents": docs,
+                "num_chunks": chunks,
+                "embed_model_name": "all-MiniLM-L6-v2",
+                "vector_store_type": "faiss",
+                "created_time": "2025-01-01T00:00:00Z",
+                "updated_time": "2025-01-02T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_v1_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "collectionName": name,
+                "numberOfDocuments": docs,
+                "numberOfChunks": chunks,
+                "indexers": [{"name": "FAISS"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestInspectAutoDetect:
+    """Per-collection auto-routing fixes the v2 silent-zeros bug."""
+
+    def test_v2_detail_view_reports_real_counts_without_engine_flag(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`inspect <v2-coll>` must return the v2 manifest's document/chunk counts."""
+        from unittest.mock import MagicMock
+
+        _write_v2_manifest(tmp_path, "indexed", docs=42, chunks=137)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v2_info = MagicMock()
+        v2_info.name = "indexed"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 42
+        v2_info.number_of_chunks = 137
+        v2_info.disk_size_bytes = 1024
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info) as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["indexed"])
+
+        assert result.exit_code == 0, result.output
+        v2_inspect.assert_called_once()
+        assert "42" in result.stdout
+        assert "137" in result.stdout
+
+    def test_mixed_engine_list_view_renders_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """A mixed-engine repo lists v1 + v2 with their own counts."""
+        from unittest.mock import MagicMock
+
+        _write_v1_manifest(tmp_path, "v1coll", docs=3, chunks=9)
+        _write_v2_manifest(tmp_path, "v2coll", docs=5, chunks=11)
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v1_info = _make_collection("v1coll", docs=3, chunks=9)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [v1_info])
+
+        v2_info = MagicMock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 5
+        v2_info.number_of_chunks = 11
+        v2_info.disk_size_bytes = 2048
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info):
+            result = runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.output
+        # Both rows shown
+        assert "v1coll" in result.stdout
+        assert "v2coll" in result.stdout
+        # Real counts for each
+        assert "3" in result.stdout and "9" in result.stdout
+        assert "5" in result.stdout and "11" in result.stdout
+
+    def test_force_v1_engine_in_list_view_skips_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`--engine v1` reverts to single-engine list (escape hatch)."""
+        _write_v2_manifest(tmp_path, "v2coll", docs=99, chunks=99)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        sentinel = _make_collection("v2coll", docs=0, chunks=0)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [sentinel])
+
+        with patch("core.v2.services.inspect") as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["--engine", "v1"])
+
+        assert result.exit_code == 0
+        v2_inspect.assert_not_called()
