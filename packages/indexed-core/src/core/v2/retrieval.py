@@ -72,7 +72,7 @@ def _format_results(
             doc_results[source_id] = {
                 "id": source_id,
                 "url": node.metadata.get("url", ""),
-                "path": node.metadata.get("url", ""),
+                "path": node.metadata.get("path", source_id),
                 "matchedChunks": [],
             }
 

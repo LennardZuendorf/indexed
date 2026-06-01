@@ -62,8 +62,8 @@ def connector_to_nodes(
         for converted in _iter_converted(converted_docs):
             doc_nodes = _converted_doc_to_nodes(converted, collection_name)
             nodes.extend(doc_nodes)
-            if progress:
-                progress.advance("Fetching documents", amount=1)
+        if progress:
+            progress.advance("Fetching documents", amount=1)
 
     if progress:
         progress.finish_phase("Fetching documents")
