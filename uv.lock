@@ -660,7 +660,7 @@ wheels = [
 
 [[package]]
 name = "docling"
-version = "2.85.0"
+version = "2.91.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "accelerate" },
@@ -671,6 +671,7 @@ dependencies = [
     { name = "docling-ibm-models" },
     { name = "docling-parse" },
     { name = "filetype" },
+    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "lxml" },
     { name = "marko" },
@@ -694,15 +695,16 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "typer" },
+    { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/9c/20c7979f97fa872dd88227c34132817541dccba1416d6f0abe0f1359433c/docling-2.85.0.tar.gz", hash = "sha256:142a2e50cae32a5c9c2297484ee946b6042eaeb448724019ff801dfa8d1c61bf", size = 428619, upload-time = "2026-04-07T14:23:07.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/5e/e18d8a351b2b80e77392e48851d0c17ab0e18ccffce5e7fecefce0738fe9/docling-2.91.0.tar.gz", hash = "sha256:c37fa0957e63a784753a4d43fc1271caa869d883a8354d556ee6d52a3046929e", size = 475494, upload-time = "2026-04-23T09:30:37.293Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/34/143f061b6c0f40032ae981314e8f472e22b94a0cc1f2859fb9a6099cd24b/docling-2.85.0-py3-none-any.whl", hash = "sha256:d69cf7068ca0d83023306eaf80bdc7a5e4c3b7421f6d6782de17f0786ee6da77", size = 452593, upload-time = "2026-04-07T14:23:05.663Z" },
+    { url = "https://files.pythonhosted.org/packages/af/c7/9d46072bd33edb1a4c9e6f233e0a7bf58658718da7ace86ca1144dfd7a31/docling-2.91.0-py3-none-any.whl", hash = "sha256:db413c21b2fe5bec78c32b475346ef770ab40368a331150570371c3281c951a2", size = 498712, upload-time = "2026-04-23T09:30:35.367Z" },
 ]
 
 [[package]]
 name = "docling-core"
-version = "2.70.2"
+version = "2.78.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "defusedxml" },
@@ -712,14 +714,15 @@ dependencies = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "tabulate" },
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/fb/2d88db67502418bb3e04e7ed2ac1893510d0c93c33defef08a6047d705e8/docling_core-2.70.2.tar.gz", hash = "sha256:f4cf53c86afc0f14bd526f9ee94125f68f77a284a079a99d1b83c9368ab5508c", size = 300733, upload-time = "2026-03-20T15:38:12.816Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/7f/11acfcbf29975d1abb198b4019d2f479eecd2b285845635fb08f3a6bab87/docling_core-2.78.0.tar.gz", hash = "sha256:d8b795bbd9c29b84f85dbe5ef273d968fead350c96589620d0eae01b0bb0c825", size = 333287, upload-time = "2026-05-29T15:55:29.499Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/d1/cc3ff3e9afd17447510270622429eab6e0edc94f0c842f463075f20c3cab/docling_core-2.70.2-py3-none-any.whl", hash = "sha256:80d456b3500654f5ded421bd08d10bf255d76167c2d7f5ca7b0db1c8eed53a0a", size = 266702, upload-time = "2026-03-20T15:38:11.35Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/de/7911f2750dd65b145e4971b090a3f5c30a56b243f4589d00543c5399b141/docling_core-2.78.0-py3-none-any.whl", hash = "sha256:69c0d67e87e4d3aec1509a758691a27e8ba0496f61a85ba705cc48a5b21ffe86", size = 285552, upload-time = "2026-05-29T15:55:27.936Z" },
 ]
 
 [package.optional-dependencies]
@@ -1213,7 +1216,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "docling", specifier = ">=2.70.0" },
+    { name = "docling", specifier = ">=2.91.0" },
     { name = "docling-core", specifier = ">=2.8.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
@@ -2842,16 +2845,16 @@ wheels = [
 
 [[package]]
 name = "pydantic-settings"
-version = "2.12.0"
+version = "2.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/4b/ac7e0aae12027748076d72a8764ff1c9d82ca75a7a52622e67ed3f765c54/pydantic_settings-2.12.0.tar.gz", hash = "sha256:005538ef951e3c2a68e1c08b292b5f2e71490def8589d4221b95dab00dafcfd0", size = 194184, upload-time = "2025-11-10T14:25:47.013Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/60/1d1e59c9c90d54591469ada7d268251f71c24bdb765f1a8a832cee8c6653/pydantic_settings-2.14.1.tar.gz", hash = "sha256:e874d3bec7e787b0c9958277956ed9b4dd5de6a80e162188fdaff7c5e26fd5fa", size = 235551, upload-time = "2026-05-08T13:40:06.542Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/60/5d4751ba3f4a40a6891f24eec885f51afd78d208498268c734e256fb13c4/pydantic_settings-2.12.0-py3-none-any.whl", hash = "sha256:fddb9fd99a5b18da837b29710391e945b1e30c135477f484084ee513adb93809", size = 51880, upload-time = "2025-11-10T14:25:45.546Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/8d/f1af3832f5e6eb13ba94ee809e72b8ecb5eef226d27ee0bef7d963d943c7/pydantic_settings-2.14.1-py3-none-any.whl", hash = "sha256:6e3c7edfd8277687cdc598f56e5cff0e9bfff0910a3749deaa8d4401c3a2b9de", size = 60964, upload-time = "2026-05-08T13:40:04.958Z" },
 ]
 
 [[package]]
@@ -3275,7 +3278,7 @@ wheels = [
 
 [[package]]
 name = "rapidocr"
-version = "3.7.0"
+version = "3.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorlog" },
@@ -3291,7 +3294,7 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/b8/011338eec8aea40cf9b82da7481f3e65e100537cff4c866b3c1b1e719b97/rapidocr-3.7.0-py3-none-any.whl", hash = "sha256:ace47f037956fa3780875f8556a0f27ab20d91962d36a9a2816aa367bb48718f", size = 15080131, upload-time = "2026-03-04T15:38:20.339Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/4a/fa521d947f0fc7bb304bf11bec4cb66266bd81494588b4cb48dc01001719/rapidocr-3.8.1-py3-none-any.whl", hash = "sha256:650044b1fbce9e6bae5cae462dcf8be754cde11e2f23fc51f65dcc08deae2c46", size = 15080319, upload-time = "2026-04-11T07:13:22.56Z" },
 ]
 
 [[package]]
