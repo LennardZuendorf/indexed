@@ -154,6 +154,43 @@ class TestBuildConnectorFromConfig:
             mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
+    def test_build_outline_connector(self):
+        """Test building Outline connector."""
+        config_service = MagicMock()
+
+        source_config = SourceConfig(
+            name="outline",
+            type="outline",
+            base_url_or_path="https://outline.example.com",
+            query=None,
+            indexer="test-indexer",
+            reader_opts={
+                "collectionIds": ["col-1"],
+                "includeAttachments": True,
+                "ocrEnabled": False,
+            },
+        )
+
+        with patch("connectors.outline.OutlineConnector") as mock_connector_class:
+            mock_connector = Mock()
+            mock_connector_class.from_config.return_value = mock_connector
+
+            connector = _build_connector_from_config(source_config, config_service)
+
+            config_service.set.assert_any_call(
+                "sources.outline.url", "https://outline.example.com"
+            )
+            config_service.set.assert_any_call(
+                "sources.outline.collection_ids", ["col-1"]
+            )
+            config_service.set.assert_any_call(
+                "sources.outline.include_attachments", True
+            )
+            config_service.set.assert_any_call("sources.outline.ocr_enabled", False)
+
+            mock_connector_class.from_config.assert_called_once_with(config_service)
+            assert connector == mock_connector
+
     def test_build_files_connector(self):
         """Test building files connector."""
         config_service = MagicMock()

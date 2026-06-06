@@ -11,6 +11,7 @@ config handling across the CLI.
 from collections.abc import Callable
 from datetime import datetime, timedelta
 import json
+import os
 from typing import Any
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
@@ -22,6 +23,8 @@ from core.v1.engine.core.documents_collection_creator import (
 from core.v1.config_models import get_default_collections_path
 
 from utils.performance import log_execution_duration
+
+_OUTLINE_MODIFIED_SINCE_ENV = "INDEXED__sources__outline__modified_since"
 
 
 def create_collection_updater(
@@ -164,8 +167,18 @@ def _create_reader_and_converter(manifest: dict) -> tuple[Any, Any]:
     config_service = ConfigService()
     _populate_config_from_manifest(config_service, manifest, connector_type, namespace)
 
-    # Create connector using the unified from_config() pattern
-    connector = connector_cls.from_config(config_service)
+    # Outline incremental cutoff is ephemeral — env var merges at read time but
+    # is never persisted to config.toml (unlike config_service.set()).
+    outline_cutoff_set = False
+    if connector_type == "outline":
+        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = manifest["lastModifiedDocumentTime"]
+        outline_cutoff_set = True
+
+    try:
+        connector = connector_cls.from_config(config_service)
+    finally:
+        if outline_cutoff_set:
+            os.environ.pop(_OUTLINE_MODIFIED_SINCE_ENV, None)
 
     return connector.reader, connector.converter
 
@@ -207,6 +220,8 @@ def _populate_config_from_manifest(
         )
     elif connector_type == "localFiles":
         _populate_local_files_config(config_service, reader_config, namespace)
+    elif connector_type == "outline":
+        _populate_outline_config(config_service, reader_config, namespace)
     else:
         raise ValueError(f"Cannot populate config for type: {connector_type}")
 
@@ -283,6 +298,28 @@ def _populate_confluence_cloud_config(
         f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
     )
     # Credentials (email, api_token) are read from env vars by from_config()
+
+
+def _populate_outline_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+) -> None:
+    """Populate ConfigService with Outline config from manifest."""
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    if reader_config.get("collectionIds") is not None:
+        config_service.set(
+            f"{namespace}.collection_ids", reader_config["collectionIds"]
+        )
+    config_service.set(
+        f"{namespace}.include_attachments",
+        reader_config.get("includeAttachments", True),
+    )
+    if reader_config.get("batchSize") is not None:
+        config_service.set(f"{namespace}.batch_size", reader_config["batchSize"])
+    if reader_config.get("ocrEnabled") is not None:
+        config_service.set(f"{namespace}.ocr_enabled", reader_config["ocrEnabled"])
+    # api_token read from OUTLINE_API_TOKEN env var by from_config()
 
 
 def _populate_local_files_config(
