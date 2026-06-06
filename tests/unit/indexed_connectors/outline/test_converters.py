@@ -1,5 +1,6 @@
 """Tests for OutlineDocumentConverter chunk emission, title path, and attachment parsing."""
 
+import base64
 import pytest
 from unittest.mock import MagicMock
 
@@ -98,7 +99,11 @@ def test_attachment_chunk_has_metadata_key(converter, mock_parser) -> None:
     converter._parsing = mock_parser
     doc = _make_document(
         attachments=[
-            {"filename": "diagram.png", "bytes": b"fake", "mimeType": "image/png"}
+            {
+                "filename": "diagram.png",
+                "bytes": base64.b64encode(b"fake").decode("ascii"),
+                "mimeType": "image/png",
+            }
         ]
     )
     result = converter.convert(doc)
@@ -164,3 +169,41 @@ def test_full_text_contains_title_and_body(converter, mock_parser) -> None:
     full_text = result[0]["text"]
     assert "Title" in full_text
     assert "Body content here." in full_text
+
+
+def test_modified_time_falls_back_to_created_at(converter, mock_parser) -> None:
+    converter._parsing = mock_parser
+    doc = _make_document(updated_at="")
+    doc["document"].pop("updatedAt", None)
+    doc["document"]["createdAt"] = "2026-02-01T12:00:00Z"
+    result = converter.convert(doc)
+    assert result[0]["modifiedTime"] == "2026-02-01T12:00:00Z"
+
+
+def test_modified_time_falls_back_to_epoch_when_no_timestamps(
+    converter, mock_parser
+) -> None:
+    converter._parsing = mock_parser
+    doc = _make_document(updated_at="")
+    doc["document"].pop("updatedAt", None)
+    result = converter.convert(doc)
+    assert result[0]["modifiedTime"] == "1970-01-01T00:00:00+00:00"
+
+
+def test_invalid_base64_attachment_skipped(converter, mock_parser) -> None:
+    converter._parsing = mock_parser
+    doc = _make_document(
+        text="body",
+        attachments=[
+            {
+                "filename": "broken.png",
+                "bytes": "not-valid-base64!!!",
+                "mimeType": "image/png",
+            }
+        ],
+    )
+    result = converter.convert(doc)
+    att_chunks = [
+        c for c in result[0]["chunks"] if c.get("metadata", {}).get("attachment")
+    ]
+    assert att_chunks == []

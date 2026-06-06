@@ -58,8 +58,10 @@ class OutlineConnector:
             max_concurrent_requests=config.max_concurrent_requests,
             include_attachments=config.include_attachments,
             download_inline_images=config.download_inline_images,
+            ocr_enabled=config.ocr_enabled,
             max_attachment_size_mb=config.max_attachment_size_mb,
             verify_ssl=config.verify_ssl,
+            modified_since=config.modified_since,
         )
         self._converter = OutlineDocumentConverter(
             max_chunk_tokens=config.max_chunk_tokens,

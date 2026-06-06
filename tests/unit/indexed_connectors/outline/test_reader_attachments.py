@@ -1,6 +1,8 @@
 """Tests for Outline attachment downloading — size cap, inline image extraction, retry."""
 
 import asyncio
+import base64
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -118,9 +120,35 @@ def test_small_attachment_downloaded(reader) -> None:
 
     result = asyncio.run(run())
     assert result is not None
-    assert result["bytes"] == data
+    assert result["bytes"] == base64.b64encode(data).decode("ascii")
     assert result["filename"] == "img.png"
     assert result["id"] == "id2"
+
+
+def test_attachment_bytes_are_json_serializable(reader) -> None:
+    data = b"fake image bytes"
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {"content-length": str(len(data)), "content-type": "image/png"}
+    mock_resp.content = data
+    mock_resp.raise_for_status = MagicMock()
+
+    async def run():
+        async def mock_get(url, **kwargs):
+            return mock_resp
+
+        semaphore = asyncio.Semaphore(10)
+        client = AsyncMock()
+        client.get = mock_get
+        return await reader._download_attachment_url(
+            client, semaphore, "https://example.com/img.png", "img.png", "id4"
+        )
+
+    result = asyncio.run(run())
+    assert result is not None
+    payload = {"document": {"id": "doc1"}, "attachments": [result]}
+    json.dumps(payload)
 
 
 # ---------------------------------------------------------------------------

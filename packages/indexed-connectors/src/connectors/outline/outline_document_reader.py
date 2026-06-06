@@ -7,9 +7,11 @@ fetching in windows of 100, mirroring AsyncConfluenceCloudDocumentReader.
 from __future__ import annotations
 
 import asyncio
+import base64
 import re
+from datetime import datetime
 from typing import Any, Iterator, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from loguru import logger
@@ -53,6 +55,9 @@ class OutlineDocumentReader:
         number_of_retries: Max retry attempts per request.
         retry_delay: Base delay in seconds between retries (doubles each attempt).
         verify_ssl: Verify TLS certificates (set False for self-signed CAs).
+        modified_since: ISO timestamp cutoff for incremental updates. When set,
+            only documents with updatedAt >= this value are listed (via sorted
+            early-stop). Internal — set by the update factory, not persisted.
     """
 
     def __init__(
@@ -64,10 +69,12 @@ class OutlineDocumentReader:
         max_concurrent_requests: int = 10,
         include_attachments: bool = True,
         download_inline_images: bool = True,
+        ocr_enabled: bool = True,
         max_attachment_size_mb: int = 10,
         number_of_retries: int = 3,
         retry_delay: float = 1.0,
         verify_ssl: bool = True,
+        modified_since: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token
@@ -76,10 +83,13 @@ class OutlineDocumentReader:
         self.max_concurrent_requests = max_concurrent_requests
         self.include_attachments = include_attachments
         self.download_inline_images = download_inline_images
+        # Stored for manifest roundtrip only; OCR runs in OutlineDocumentConverter.
+        self.ocr_enabled = ocr_enabled
         self.max_attachment_size_bytes = max_attachment_size_mb * 1024 * 1024
         self.number_of_retries = number_of_retries
         self.retry_delay = retry_delay
         self.verify_ssl = verify_ssl
+        self._modified_since_cutoff = self._parse_iso_datetime(modified_since)
         self._auth_headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
@@ -96,7 +106,7 @@ class OutlineDocumentReader:
         Each yielded dict has shape:
             {
                 "document": <full Outline document dict>,
-                "attachments": [{"filename": str, "bytes": bytes, "mimeType": str, "id": str}]
+                "attachments": [{"filename": str, "bytes": str, "mimeType": str, "id": str}]
             }
         """
         window: list[dict] = []
@@ -110,6 +120,9 @@ class OutlineDocumentReader:
 
     def get_number_of_documents(self) -> int:
         """Return total document count across targeted collections."""
+        if self._modified_since_cutoff is not None:
+            return sum(1 for _ in self._iter_document_stubs())
+
         import requests  # type: ignore[import-untyped]
 
         total = 0
@@ -140,6 +153,7 @@ class OutlineDocumentReader:
             "collectionIds": self.collection_ids,
             "batchSize": self.batch_size,
             "includeAttachments": self.include_attachments,
+            "ocrEnabled": self.ocr_enabled,
         }
 
     # ------------------------------------------------------------------
@@ -159,12 +173,7 @@ class OutlineDocumentReader:
                         resp = requests.post(
                             f"{self.base_url}/api/documents.list",
                             headers=self._auth_headers,
-                            json={
-                                "collectionId": collection_id,
-                                "status": "published",
-                                "limit": self.batch_size,
-                                "offset": offset,
-                            },
+                            json=self._documents_list_payload(collection_id, offset),
                             verify=self.verify_ssl,
                         )
                         self._raise_for_status(resp)
@@ -189,8 +198,15 @@ class OutlineDocumentReader:
                 pagination = result.get("pagination", {})
                 total = pagination.get("total", 0)
 
+                stop_collection = False
                 for doc in docs:
+                    if self._is_older_than_cutoff(doc):
+                        stop_collection = True
+                        break
                     yield doc
+
+                if stop_collection:
+                    break
 
                 offset += len(docs)
                 if not docs or offset >= total:
@@ -430,7 +446,7 @@ class OutlineDocumentReader:
                 return {
                     "id": att_id,
                     "filename": filename,
-                    "bytes": data,
+                    "bytes": base64.b64encode(data).decode("ascii"),
                     "mimeType": mime,
                 }
             except Exception as exc:
@@ -441,12 +457,37 @@ class OutlineDocumentReader:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _documents_list_payload(self, collection_id: str, offset: int) -> dict:
+        """Build the documents.list request body for a collection page."""
+        return {
+            "collectionId": collection_id,
+            "status": "published",
+            "limit": self.batch_size,
+            "offset": offset,
+            "sort": "updatedAt",
+            "direction": "DESC",
+        }
+
+    @staticmethod
+    def _parse_iso_datetime(value: str | None) -> Optional[datetime]:
+        if not value:
+            return None
+        normalized = str(value).replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
+
+    def _is_older_than_cutoff(self, doc: dict) -> bool:
+        """Return True when a stub is older than the incremental update cutoff."""
+        if self._modified_since_cutoff is None:
+            return False
+        doc_updated = self._parse_iso_datetime(doc.get("updatedAt"))
+        if doc_updated is None:
+            return False
+        return doc_updated < self._modified_since_cutoff
+
     @staticmethod
     def _extract_attachment_id(url: str) -> str:
         """Extract the id query parameter from an attachments.redirect URL."""
-        from urllib.parse import parse_qs, urlparse as _up
-
-        parsed = _up(url)
+        parsed = urlparse(url)
         params = parse_qs(parsed.query)
         ids = params.get("id", [])
         return ids[0] if ids else ""

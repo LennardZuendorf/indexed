@@ -52,6 +52,13 @@ class OutlineConfig(BaseModel):
         default=True,
         description="Verify TLS certificates. Set False for self-hosted instances with self-signed CAs.",
     )
+    modified_since: Optional[str] = Field(
+        None,
+        description=(
+            "Internal: ISO timestamp cutoff for incremental updates. "
+            "Set only by the update factory from manifest lastModifiedDocumentTime."
+        ),
+    )
 
     @field_validator("url", mode="before")
     @classmethod

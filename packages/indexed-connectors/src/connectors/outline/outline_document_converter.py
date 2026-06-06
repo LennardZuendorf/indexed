@@ -7,6 +7,7 @@ no BeautifulSoup HTML stripping needed since Outline bodies are already Markdown
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from loguru import logger
@@ -66,7 +67,7 @@ class OutlineDocumentConverter:
             {
                 "id": doc["id"],
                 "url": self._build_url(doc),
-                "modifiedTime": doc.get("updatedAt", ""),
+                "modifiedTime": self._resolve_modified_time(doc),
                 "text": self._build_full_text(document),
                 "chunks": self._split_to_chunks(document),
             }
@@ -96,6 +97,19 @@ class OutlineDocumentConverter:
     def _build_url(doc: dict) -> str:
         """Return the public URL for the document."""
         return str(doc.get("url", ""))
+
+    @staticmethod
+    def _resolve_modified_time(doc: dict) -> str:
+        """Return a parseable ISO timestamp for indexing metadata."""
+        for key in ("updatedAt", "createdAt"):
+            value = doc.get(key)
+            if value:
+                return str(value)
+        logger.warning(
+            "Document {} has no updatedAt or createdAt; using epoch sentinel",
+            doc.get("id", "?"),
+        )
+        return "1970-01-01T00:00:00+00:00"
 
     # ------------------------------------------------------------------
     # Chunking
@@ -137,7 +151,17 @@ class OutlineDocumentConverter:
 
         for att in attachments:
             filename = att.get("filename", "unknown")
-            data: bytes = att.get("bytes", b"")
+            raw = att.get("bytes", "")
+            if isinstance(raw, bytes):
+                data = raw
+            elif raw:
+                try:
+                    data = base64.b64decode(raw)
+                except Exception:
+                    logger.warning("Invalid base64 in attachment: {}", filename)
+                    continue
+            else:
+                data = b""
             if not data:
                 continue
 

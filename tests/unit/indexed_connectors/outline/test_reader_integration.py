@@ -183,7 +183,11 @@ def test_full_pipeline_yields_documents_with_attachments() -> None:
     assert ids == ["d1", "d2"]
     for env in envelopes:
         assert len(env["attachments"]) == 1
-        assert env["attachments"][0]["bytes"] == b"PNGDATA"
+        import base64
+
+        assert env["attachments"][0]["bytes"] == base64.b64encode(b"PNGDATA").decode(
+            "ascii"
+        )
         assert env["attachments"][0]["mimeType"] == "image/png"
 
 
