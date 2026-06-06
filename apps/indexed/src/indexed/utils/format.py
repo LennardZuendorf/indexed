@@ -19,6 +19,7 @@ def format_source_type(source_type: Optional[str]) -> str:
         "confluence": "Confluence",
         "confluenceCloud": "Confluence Cloud",
         "localFiles": "Local Files",
+        "outline": "Outline",
     }
     return type_map.get(source_type, source_type.capitalize())
 

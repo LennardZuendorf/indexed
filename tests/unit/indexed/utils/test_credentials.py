@@ -6,10 +6,51 @@ import pytest
 import typer
 
 from indexed.utils.credentials import (
+    apply_cli_credential_overrides,
     ensure_credentials_for_source,
     ensure_atlassian_cloud_credentials,
     ensure_server_credentials,
 )
+
+
+class TestApplyCliCredentialOverrides:
+    """Test apply_cli_credential_overrides function."""
+
+    def test_outline_token_sets_env_var(self):
+        """Should map Outline api_token to OUTLINE_API_TOKEN."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides(
+                "outline", {"api_token": "ol_api_secret", "url": "https://outline.com"}
+            )
+            assert os.environ["OUTLINE_API_TOKEN"] == "ol_api_secret"
+
+    def test_jira_cloud_token_and_email(self):
+        """Should map Jira Cloud credentials to Atlassian env vars."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides(
+                "jiraCloud",
+                {"api_token": "atlassian-token", "email": "user@example.com"},
+            )
+            assert os.environ["ATLASSIAN_TOKEN"] == "atlassian-token"
+            assert os.environ["ATLASSIAN_EMAIL"] == "user@example.com"
+
+    def test_jira_server_api_token_alias(self):
+        """Should map CLI api_token alias to JIRA_TOKEN for server."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("jira", {"api_token": "server-token"})
+            assert os.environ["JIRA_TOKEN"] == "server-token"
+
+    def test_ignores_unknown_source_type(self):
+        """Should no-op for sources without credential mapping."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("localFiles", {"api_token": "ignored"})
+            assert "OUTLINE_API_TOKEN" not in os.environ
+
+    def test_ignores_empty_values(self):
+        """Should not set env vars for empty credential values."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("outline", {"api_token": ""})
+            assert "OUTLINE_API_TOKEN" not in os.environ
 
 
 class TestEnsureCredentialsForSource:
@@ -92,6 +133,77 @@ class TestEnsureCredentialsForSource:
         mock_config = Mock()
         # Should not raise
         ensure_credentials_for_source("unknown_type", mock_config)
+
+    def test_outline_delegates_to_outline_handler(self):
+        """Should delegate outline to Outline credentials handler."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {"OUTLINE_API_TOKEN": "ol_api_token"}):
+            ensure_credentials_for_source("outline", mock_config)
+
+        mock_config.get.assert_any_call("sources.outline.api_token")
+
+
+class TestEnsureOutlineCredentials:
+    """Test ensure_outline_credentials function."""
+
+    def test_uses_existing_token_from_environment(self):
+        """Should use existing OUTLINE_API_TOKEN without prompting."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {"OUTLINE_API_TOKEN": "existing-token"}):
+            result = ensure_outline_credentials(mock_config, "sources.outline")
+
+        assert result["api_token"] == "existing-token"
+
+    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.utils.credentials.console")
+    def test_saves_prompted_token_to_env(
+        self, mock_console, mock_prompt, _mock_verbose
+    ):
+        """Should save prompted token to .env and set os.environ."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_prompt.return_value = "new-outline-token"
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = ensure_outline_credentials(mock_config, "sources.outline")
+            assert result["api_token"] == "new-outline-token"
+            assert os.environ["OUTLINE_API_TOKEN"] == "new-outline-token"
+
+        mock_config.set_value.assert_called_once_with(
+            "sources.outline.api_token",
+            "new-outline-token",
+            field_info={"sensitive": True, "env_var": "OUTLINE_API_TOKEN"},
+        )
+
+    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.utils.credentials.Prompt.ask", return_value="token")
+    @patch("indexed.utils.credentials.console")
+    def test_prompt_shows_token_access_guidance(
+        self, mock_console, _mock_prompt, _mock_verbose
+    ):
+        """Should show API key scope guidance between headline and token prompt."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {}, clear=True):
+            ensure_outline_credentials(mock_config, "sources.outline")
+
+        printed = " ".join(str(call) for call in mock_console.print.call_args_list)
+        assert "Outline Credentials Required" in printed
+        assert "collections.list" in printed
+        assert "attachments.redirect" in printed
+        assert "Settings" in printed
 
 
 class TestEnsureAtlassianCloudCredentials:

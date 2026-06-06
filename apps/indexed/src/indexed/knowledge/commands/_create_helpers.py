@@ -19,6 +19,11 @@ from ...utils.context_managers import NoOpContext
 from ...utils.components import print_success, print_error, print_warning
 from ...utils.format import format_source_type
 from ...utils.progress_bar import create_phased_progress, build_progress_title
+from ...utils.credentials import (
+    apply_cli_credential_overrides,
+    ensure_credentials_for_source,
+    is_credential_field,
+)
 
 
 def execute_create_command(
@@ -122,8 +127,14 @@ def execute_create_command(
     if validation.missing:
         prompt_missing_fields(validation, config, namespace)
 
+    # Phase 1b: Ensure credentials (interactive prompt + .env persistence)
+    apply_cli_credential_overrides(source_type, cli_overrides)
+    ensure_credentials_for_source(source_type, config, namespace=namespace)
+
     # Also set CLI overrides in config for connector to read
     for key, value in cli_overrides.items():
+        if is_credential_field(key):
+            continue
         field_info = validation.field_info.get(key)
         config.set_value(f"{namespace}.{key}", value, field_info=field_info)
 

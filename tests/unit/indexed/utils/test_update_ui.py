@@ -37,6 +37,12 @@ class TestFormatSourceType:
 
         assert _format_source_type("localFiles") == "Local Files"
 
+    def test_format_outline(self):
+        """Test formatting 'outline' source type."""
+        from indexed.knowledge.commands.update import _format_source_type
+
+        assert _format_source_type("outline") == "Outline"
+
     def test_format_unknown_type(self):
         """Test formatting unknown source type falls back to capitalize."""
         from indexed.knowledge.commands.update import _format_source_type
