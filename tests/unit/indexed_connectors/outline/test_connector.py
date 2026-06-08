@@ -81,7 +81,8 @@ def test_get_api_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.get_api_token() == "ol_api_from_env"
 
 
-def test_get_api_token_missing_raises() -> None:
+def test_get_api_token_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OUTLINE_API_TOKEN", raising=False)
     cfg = OutlineConfig()
     with pytest.raises(ValueError, match="OUTLINE_API_TOKEN"):
         cfg.get_api_token()

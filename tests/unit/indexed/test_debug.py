@@ -1,28 +1,30 @@
 """Tests for the debug command module."""
 
-from unittest.mock import patch, MagicMock
+import builtins
+from unittest.mock import MagicMock, patch
 
-from indexed.debug import get_build_info, _pkg_version, _module_version
+from indexed.debug import _module_version, _pkg_version, get_build_info
+
+_real_import = builtins.__import__
+
+
+def _import_without_build_meta(name, globals=None, locals=None, fromlist=(), level=0):
+    if name == "indexed._build_meta" or (
+        name == "indexed" and fromlist and "_build_meta" in fromlist
+    ):
+        raise ImportError("indexed._build_meta not available")
+    return _real_import(name, globals, locals, fromlist, level)
 
 
 class TestGetBuildInfo:
-    def test_returns_dev_fallback_when_no_build_meta(self):
-        with patch.dict("sys.modules", {"indexed._build_meta": None}):
-            with patch(
-                "indexed.debug.get_build_info",
-                wraps=get_build_info,
-            ):
-                # Force ImportError by removing the module
-                import sys
+    def test_returns_dev_fallback_when_no_build_meta(self, monkeypatch):
+        import sys
 
-                saved = sys.modules.pop("indexed._build_meta", None)
-                try:
-                    ts, commit = get_build_info()
-                    assert ts == "dev (editable install)"
-                    assert commit == "n/a"
-                finally:
-                    if saved is not None:
-                        sys.modules["indexed._build_meta"] = saved
+        monkeypatch.delitem(sys.modules, "indexed._build_meta", raising=False)
+        monkeypatch.setattr(builtins, "__import__", _import_without_build_meta)
+        ts, commit = get_build_info()
+        assert ts == "dev (editable install)"
+        assert commit == "n/a"
 
     def test_returns_build_meta_when_available(self):
         mock_module = MagicMock()
