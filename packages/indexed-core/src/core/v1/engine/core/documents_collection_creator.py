@@ -372,10 +372,6 @@ class DocumentCollectionCreator:
                 indexer.get_faiss_index(),
                 f"{self.__build_index_base_path(indexer)}/indexer.faiss",
             )
-            # Also save legacy pickle format for backward compatibility
-            self.persister.save_bin_file(
-                indexer.serialize(), f"{self.__build_index_base_path(indexer)}/indexer"
-            )
 
         index_info = {
             "lastIndexItemId": last_index_item_id,
