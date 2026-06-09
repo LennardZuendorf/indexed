@@ -713,14 +713,19 @@ class TestCreateOutline:
         mock_config.get.return_value = None
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
-        mock_console.input.return_value = ""  # User presses Enter → use default Cloud URL
+        mock_console.input.return_value = (
+            ""  # User presses Enter → use default Cloud URL
+        )
 
         create_outline(**self._default_kwargs)
 
         mock_console.input.assert_called()
         mock_execute.assert_called_once()
         call_kwargs = mock_execute.call_args.kwargs
-        assert call_kwargs["progress_message"] == "Connecting to https://app.getoutline.com"
+        assert (
+            call_kwargs["progress_message"]
+            == "Connecting to https://app.getoutline.com"
+        )
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
@@ -737,12 +742,17 @@ class TestCreateOutline:
         mock_config_service.instance.return_value = mock_config
         mock_verbose.return_value = False
 
-        create_outline(**{**self._default_kwargs, "url": "https://outline.mycompany.com"})
+        create_outline(
+            **{**self._default_kwargs, "url": "https://outline.mycompany.com"}
+        )
 
         mock_console.input.assert_not_called()
         mock_execute.assert_called_once()
         call_kwargs = mock_execute.call_args.kwargs
-        assert call_kwargs["progress_message"] == "Connecting to https://outline.mycompany.com"
+        assert (
+            call_kwargs["progress_message"]
+            == "Connecting to https://outline.mycompany.com"
+        )
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
@@ -760,7 +770,11 @@ class TestCreateOutline:
         mock_verbose.return_value = False
 
         create_outline(
-            **{**self._default_kwargs, "url": "https://app.getoutline.com", "token": "my-token"}
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "token": "my-token",
+            }
         )
 
         mock_execute.assert_called_once()
@@ -899,7 +913,12 @@ class TestPromptMissingOutlineFields:
     @patch("indexed.knowledge.commands.create.console")
     @patch("indexed.knowledge.commands.create.prompt_credential_field")
     def test_credential_field_delegates_to_prompt_credential_field(
-        self, mock_prompt_cred, mock_console, mock_verbose, mock_config_service, mock_execute
+        self,
+        mock_prompt_cred,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
     ):
         """Should call prompt_credential_field for credential fields like api_token."""
         from types import SimpleNamespace

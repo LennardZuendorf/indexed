@@ -782,7 +782,9 @@ class TestEnsureAtlassianCloudCredentialsExitPaths:
         mock_config = Mock()
         mock_config.get.return_value = None
 
-        with patch.dict(os.environ, {"ATLASSIAN_EMAIL": "user@example.com"}, clear=False):
+        with patch.dict(
+            os.environ, {"ATLASSIAN_EMAIL": "user@example.com"}, clear=False
+        ):
             os.environ.pop("ATLASSIAN_TOKEN", None)
             with patch("indexed.utils.credentials.Prompt") as mock_prompt:
                 mock_prompt.ask.return_value = ""
@@ -835,7 +837,10 @@ class TestEnsureServerCredentialsExitPaths:
             os.environ.pop("JIRA_PASSWORD", None)
             with patch("indexed.utils.credentials.Prompt") as mock_prompt:
                 with patch("indexed.utils.credentials.console") as mock_console:
-                    mock_prompt.ask.side_effect = ["", ""]  # Empty token, then empty password
+                    mock_prompt.ask.side_effect = [
+                        "",
+                        "",
+                    ]  # Empty token, then empty password
                     mock_console.input.return_value = "myuser"  # Valid login
                     with pytest.raises(typer.Exit):
                         ensure_server_credentials(
