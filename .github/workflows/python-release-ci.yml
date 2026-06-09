@@ -38,6 +38,11 @@ jobs:
     - name: Install dependencies
       run: uv sync
 
+    - name: Sync version with release tag
+      env:
+        REF_NAME: ${{ github.ref_name }}
+      run: uv run python tools/sync_version.py "$REF_NAME"
+
     - name: Build distributable wheel
       run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
