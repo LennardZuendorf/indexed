@@ -6,6 +6,7 @@ to provide a single ``ParsingModule.parse()`` entry-point.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -76,12 +77,11 @@ class ParsingModule:
     def parse_bytes(self, data: bytes, filename: str) -> ParsedDocument:
         """Parse in-memory bytes (e.g. from Confluence attachments)."""
         suffix = Path(filename).suffix
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(data)
-            tmp.flush()
-            tmp_path = Path(tmp.name)
-
+        fd, tmp_name = tempfile.mkstemp(suffix=suffix)
+        tmp_path = Path(tmp_name)
         try:
+            with os.fdopen(fd, "wb") as tmp:
+                tmp.write(data)
             doc = self.parse(tmp_path)
             # Replace temp path with the original filename
             doc.file_path = filename

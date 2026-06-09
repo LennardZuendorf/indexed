@@ -85,9 +85,11 @@ def load_indexer(
             faiss_index = persister.read_faiss_index(native_path, mmap=True)
             logger.debug(f"Loaded FAISS index via mmap: {native_path}")
         elif persister.is_path_exists(legacy_path):
-            # Fall back to legacy pickle format
-            serialized_index = persister.read_bin_file(legacy_path)
-            logger.debug(f"Loaded FAISS index via legacy pickle: {legacy_path}")
+            raise ValueError(
+                f"Collection '{collection_name}' uses a legacy index format that is no "
+                "longer supported. Please re-index the collection with: "
+                "`indexed index update <collection-name>`"
+            )
         else:
             raise FileNotFoundError(
                 f"No FAISS index found at '{native_path}' or '{legacy_path}'"
