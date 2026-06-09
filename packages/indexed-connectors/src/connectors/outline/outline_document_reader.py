@@ -144,6 +144,10 @@ class OutlineDocumentReader:
             "collectionIds": self.collection_ids,
             "batchSize": self.batch_size,
             "includeAttachments": self.include_attachments,
+            "downloadInlineImages": self.download_inline_images,
+            "maxConcurrentRequests": self.max_concurrent_requests,
+            "maxAttachmentSizeMb": self.max_attachment_size_bytes // (1024 * 1024),
+            "verifySsl": self.verify_ssl,
             "ocrEnabled": self.ocr_enabled,
         }
 
@@ -182,7 +186,7 @@ class OutlineDocumentReader:
 
     def _get_collection_ids_sync(self) -> list[str]:
         """Return collection IDs to index — from config or by listing all."""
-        if self.collection_ids:
+        if self.collection_ids is not None:
             return self.collection_ids
 
         ids: list[str] = []
@@ -328,7 +332,19 @@ class OutlineDocumentReader:
         # Inline images embedded in the Markdown body
         if self.include_attachments and self.download_inline_images:
             text = doc.get("text", "")
+            base_origin = urlparse(self.base_url)
             for url in _INLINE_IMAGE_RE.findall(text):
+                parsed_url = urlparse(url)
+                if (parsed_url.scheme, parsed_url.netloc) != (
+                    base_origin.scheme,
+                    base_origin.netloc,
+                ):
+                    logger.warning(
+                        "Skipping cross-origin inline attachment URL for doc {}: {}",
+                        doc_id,
+                        url,
+                    )
+                    continue
                 att_id = self._extract_attachment_id(url)
                 if att_id and att_id not in seen_ids:
                     seen_ids.add(att_id)

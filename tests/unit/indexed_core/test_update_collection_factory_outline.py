@@ -3,6 +3,8 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from core.v1.engine.factories.update_collection_factory import (
     _OUTLINE_MODIFIED_SINCE_ENV,
     _create_reader_and_converter,
@@ -10,6 +12,7 @@ from core.v1.engine.factories.update_collection_factory import (
 )
 
 
+@pytest.mark.unit
 class TestPopulateOutlineConfig:
     def test_populates_outline_fields_from_manifest(self) -> None:
         config_service = MagicMock()
@@ -42,6 +45,7 @@ class TestPopulateOutlineConfig:
         assert modified_since_calls == []
 
 
+@pytest.mark.unit
 class TestCreateReaderAndConverterOutline:
     def test_modified_since_applied_via_ephemeral_env_var(self) -> None:
         manifest = {

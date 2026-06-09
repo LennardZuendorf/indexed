@@ -660,6 +660,7 @@ class TestCreateModuleGetattr:
         assert result is MockSourceConfig
 
 
+@pytest.mark.unit
 class TestCreateOutline:
     """Test create_outline command."""
 
@@ -851,6 +852,7 @@ class TestCreateOutline:
         assert call_kwargs["progress_message"] == "Connecting to https://wiki.myorg.com"
 
 
+@pytest.mark.unit
 class TestPromptMissingOutlineFields:
     """Test the prompt_missing_outline_fields callback captured from create_outline."""
 
@@ -964,6 +966,7 @@ class TestPromptMissingOutlineFields:
         assert validation.present["custom_field"] == "some-value"
 
 
+@pytest.mark.unit
 class TestBuildOutlineSourceConfig:
     """Test the build_outline_source_config callback captured from create_outline."""
 

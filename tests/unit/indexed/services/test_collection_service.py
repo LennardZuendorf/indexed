@@ -3,6 +3,8 @@
 import os
 from unittest.mock import Mock, patch, MagicMock
 
+import pytest
+
 from core.v1.engine.services.collection_service import (
     _build_connector_from_config,
     _collection_exists,
@@ -154,6 +156,7 @@ class TestBuildConnectorFromConfig:
             mock_connector_class.from_config.assert_called_once_with(config_service)
             assert connector == mock_connector
 
+    @pytest.mark.unit
     def test_build_outline_connector(self):
         """Test building Outline connector."""
         config_service = MagicMock()

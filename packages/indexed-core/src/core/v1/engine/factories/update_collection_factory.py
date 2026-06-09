@@ -325,6 +325,21 @@ def _populate_outline_config(
         config_service.set(f"{namespace}.batch_size", reader_config["batchSize"])
     if reader_config.get("ocrEnabled") is not None:
         config_service.set(f"{namespace}.ocr_enabled", reader_config["ocrEnabled"])
+    if reader_config.get("downloadInlineImages") is not None:
+        config_service.set(
+            f"{namespace}.download_inline_images", reader_config["downloadInlineImages"]
+        )
+    if reader_config.get("maxConcurrentRequests") is not None:
+        config_service.set(
+            f"{namespace}.max_concurrent_requests",
+            reader_config["maxConcurrentRequests"],
+        )
+    if reader_config.get("maxAttachmentSizeMb") is not None:
+        config_service.set(
+            f"{namespace}.max_attachment_size_mb", reader_config["maxAttachmentSizeMb"]
+        )
+    if reader_config.get("verifySsl") is not None:
+        config_service.set(f"{namespace}.verify_ssl", reader_config["verifySsl"])
     # api_token read from OUTLINE_API_TOKEN env var by from_config()
 
 

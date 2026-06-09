@@ -31,8 +31,10 @@ class TestGetBuildInfo:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import sys
+        import indexed
 
         monkeypatch.delitem(sys.modules, "indexed._build_meta", raising=False)
+        monkeypatch.delattr(indexed, "_build_meta", raising=False)
         monkeypatch.setattr(builtins, "__import__", _import_without_build_meta)
         ts, commit = get_build_info()
         assert ts == "dev (editable install)"

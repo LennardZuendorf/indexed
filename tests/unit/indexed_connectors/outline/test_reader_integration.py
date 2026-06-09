@@ -125,7 +125,7 @@ def _attachment_bytes(data: bytes, mime: str = "image/png") -> _FakeResp:
 def _make_reader(**overrides: object) -> "OutlineDocumentReader":
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
-    kwargs: dict = dict(
+    kwargs: dict[str, object] = dict(
         base_url="https://app.getoutline.com",
         api_token="ol_api_test",
         collection_ids=["col1"],
