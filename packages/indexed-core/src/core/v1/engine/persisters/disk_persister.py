@@ -9,7 +9,7 @@ class DiskPersister:
     def _safe_join(self, *parts: str) -> str:
         """Join path parts and verify the result stays within base_path."""
         path = os.path.realpath(os.path.join(*parts))
-        if not path.startswith(self.base_path + os.sep) and path != self.base_path:
+        if os.path.commonpath([self.base_path, path]) != self.base_path:
             raise ValueError(f"Path escapes storage directory: {parts!r}")
         return path
 
@@ -18,8 +18,19 @@ class DiskPersister:
 
         self.__make_sure_path_exists(path)
 
-        with open(path, "w", encoding="utf-8") as file:
-            file.write(data)
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as file:
+                file.write(data)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def read_text_file(self, file_path):
         path = self._safe_join(self.base_path, file_path)
@@ -33,7 +44,16 @@ class DiskPersister:
 
         path = self._safe_join(self.base_path, file_path)
         self.__make_sure_path_exists(path)
-        faiss.write_index(faiss_index, path)
+        tmp = path + ".tmp"
+        try:
+            faiss.write_index(faiss_index, tmp)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def read_faiss_index(self, file_path, mmap=True):
         """Load a FAISS index using native faiss.read_index.
