@@ -9,7 +9,7 @@ import typer
 from loguru import logger
 
 # Import ConfigService at module level so tests can patch
-from indexed_config import ConfigService
+from indexed_config import ConfigService, ValidationResult
 
 # Import utilities for progress and logging
 from ...utils.logging import is_verbose_mode
@@ -164,7 +164,7 @@ def create_files(
     cli_overrides["respect_gitignore"] = respect_gitignore
 
     def prompt_missing_files_fields(
-        validation: Dict[str, Any], config: ConfigService, ns: str
+        validation: ValidationResult, config: ConfigService, ns: str
     ) -> None:
         """Prompt for missing Files-specific fields."""
         if not validation.missing:
@@ -392,7 +392,7 @@ def create_jira(
         cli_overrides["api_token"] = token
 
     def prompt_missing_jira_fields(
-        validation: Dict[str, Any], config: ConfigService, ns: str
+        validation: ValidationResult, config: ConfigService, ns: str
     ) -> None:
         """Prompt for missing Jira-specific fields."""
         # URL already handled above, exclude it from missing fields
@@ -622,7 +622,7 @@ def create_confluence(
     cli_overrides["read_all_comments"] = read_all_comments
 
     def prompt_missing_confluence_fields(
-        validation: Dict[str, Any], config: ConfigService, ns: str
+        validation: ValidationResult, config: ConfigService, ns: str
     ) -> None:
         """Prompt for missing Confluence-specific fields."""
         # URL already handled above, exclude it from missing fields
@@ -850,7 +850,7 @@ def create_outline(
     cli_overrides["ocr_enabled"] = ocr
 
     def prompt_missing_outline_fields(
-        validation: Dict[str, Any], cfg: ConfigService, ns: str
+        validation: ValidationResult, cfg: ConfigService, ns: str
     ) -> None:
         missing_fields = [f for f in validation.missing if f not in ("url",)]
         if not missing_fields:

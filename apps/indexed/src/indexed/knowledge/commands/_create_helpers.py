@@ -11,7 +11,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from core.v1.engine.services import SourceConfig
 
-from indexed_config import ConfigService
+from indexed_config import ConfigService, ValidationResult
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -32,7 +32,7 @@ def execute_create_command(
     config_class: Type,
     namespace: str,
     cli_overrides: Dict[str, Any],
-    prompt_missing_fields: Callable[[Dict[str, Any], ConfigService, str], None],
+    prompt_missing_fields: Callable[[ValidationResult, ConfigService, str], None],
     build_source_config: Callable[[Dict[str, Any], str], "SourceConfig"],
     success_message_suffix: str,
     verbose: bool,
