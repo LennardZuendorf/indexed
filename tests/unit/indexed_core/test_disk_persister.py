@@ -82,7 +82,9 @@ class TestDiskPersisterPathSafety:
     def test_no_pickle_import(self):
         import core.v1.engine.persisters.disk_persister as mod
 
-        assert not hasattr(mod, "pickle"), "pickle must not be imported in disk_persister"
+        assert not hasattr(mod, "pickle"), (
+            "pickle must not be imported in disk_persister"
+        )
 
 
 class TestDiskPersisterLegacyIndexError:
