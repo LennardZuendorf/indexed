@@ -123,27 +123,18 @@ class OutlineDocumentReader:
         if self._modified_since_cutoff is not None:
             return sum(1 for _ in self._iter_document_stubs())
 
-        import requests  # type: ignore[import-untyped]
-
         total = 0
         for cid in self._get_collection_ids_sync():
-            offset = 0
-            while True:
-                resp = requests.post(
-                    f"{self.base_url}/api/documents.list",
-                    headers=self._auth_headers,
-                    json={
-                        "collectionId": cid,
-                        "status": "published",
-                        "limit": 1,
-                        "offset": offset,
-                    },
-                    verify=self.verify_ssl,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                total += data.get("pagination", {}).get("total", 0)
-                break
+            resp = self._post_with_retry(
+                f"{self.base_url}/api/documents.list",
+                {
+                    "collectionId": cid,
+                    "status": "published",
+                    "limit": 1,
+                    "offset": 0,
+                },
+            )
+            total += resp.json().get("pagination", {}).get("total", 0)
         return total
 
     def get_reader_details(self) -> dict:
@@ -162,37 +153,14 @@ class OutlineDocumentReader:
 
     def _iter_document_stubs(self) -> Iterator[dict]:
         """Yield minimal document stubs (id, title, updatedAt, etc.) for all collections."""
-        import requests  # type: ignore[import-untyped]
-
         for collection_id in self._get_collection_ids_sync():
             offset = 0
             logger.debug("Listing documents in collection {}", collection_id)
             while True:
-                for attempt in range(self.number_of_retries):
-                    try:
-                        resp = requests.post(
-                            f"{self.base_url}/api/documents.list",
-                            headers=self._auth_headers,
-                            json=self._documents_list_payload(collection_id, offset),
-                            verify=self.verify_ssl,
-                        )
-                        self._raise_for_status(resp)
-                        break
-                    except OutlineAPIError:
-                        raise
-                    except Exception as exc:
-                        if attempt == self.number_of_retries - 1:
-                            raise
-                        logger.debug(
-                            "Retry {}/{} listing docs: {}",
-                            attempt + 1,
-                            self.number_of_retries,
-                            exc,
-                        )
-                        import time
-
-                        time.sleep(self.retry_delay * (2**attempt))
-
+                resp = self._post_with_retry(
+                    f"{self.base_url}/api/documents.list",
+                    self._documents_list_payload(collection_id, offset),
+                )
                 result = resp.json()
                 docs = result.get("data", [])
                 pagination = result.get("pagination", {})
@@ -217,18 +185,13 @@ class OutlineDocumentReader:
         if self.collection_ids:
             return self.collection_ids
 
-        import requests  # type: ignore[import-untyped]
-
         ids: list[str] = []
         offset = 0
         while True:
-            resp = requests.post(
+            resp = self._post_with_retry(
                 f"{self.base_url}/api/collections.list",
-                headers=self._auth_headers,
-                json={"limit": 100, "offset": offset},
-                verify=self.verify_ssl,
+                {"limit": 100, "offset": offset},
             )
-            self._raise_for_status(resp)
             result = resp.json()
             collections = result.get("data", [])
             ids.extend(c["id"] for c in collections)
@@ -248,7 +211,7 @@ class OutlineDocumentReader:
         """Fetch full docs (and optionally attachments) for a window of stubs."""
         full_docs = asyncio.run(self._fetch_bodies_async(stubs))
         attachments_map: dict[int, list[dict]] = {}
-        if self.include_attachments or self.download_inline_images:
+        if self.include_attachments:
             attachments_map = asyncio.run(self._fetch_attachments_async(full_docs))
 
         for i, doc in enumerate(full_docs):
@@ -363,7 +326,7 @@ class OutlineDocumentReader:
                     downloaded.append(data)
 
         # Inline images embedded in the Markdown body
-        if self.download_inline_images:
+        if self.include_attachments and self.download_inline_images:
             text = doc.get("text", "")
             for url in _INLINE_IMAGE_RE.findall(text):
                 att_id = self._extract_attachment_id(url)
@@ -503,6 +466,45 @@ class OutlineDocumentReader:
             if ext != ".redirect" and len(ext) <= 6:
                 return ext
         return ".png"  # Default for Outline inline images
+
+    def _post_with_retry(self, url: str, json: dict) -> Any:
+        """POST with timeout=(5,30) and retry on transient/rate-limit errors."""
+        import time
+
+        import requests  # type: ignore[import-untyped]
+
+        for attempt in range(self.number_of_retries):
+            try:
+                resp = requests.post(
+                    url,
+                    headers=self._auth_headers,
+                    json=json,
+                    verify=self.verify_ssl,
+                    timeout=(5, 30),
+                )
+                self._raise_for_status(resp)
+                return resp
+            except OutlineAPIError as exc:
+                if exc.status_code not in (429, 500, 502, 503, 504):
+                    raise
+                if attempt == self.number_of_retries - 1:
+                    raise
+                logger.debug(
+                    "Retry {}/{} after HTTP {}: {}",
+                    attempt + 1,
+                    self.number_of_retries,
+                    exc.status_code,
+                    exc,
+                )
+                time.sleep(self.retry_delay * (2**attempt))
+            except Exception as exc:
+                if attempt == self.number_of_retries - 1:
+                    raise
+                logger.debug(
+                    "Retry {}/{}: {}", attempt + 1, self.number_of_retries, exc
+                )
+                time.sleep(self.retry_delay * (2**attempt))
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     @staticmethod
     def _raise_for_status(resp: Any) -> None:

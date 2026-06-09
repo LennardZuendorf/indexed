@@ -184,14 +184,11 @@ class OutlineDocumentConverter:
 Outline documents carry a `parentDocumentId` field. The reader pre-builds a `{id: title}` map per collection so the converter can walk ancestors cheaply:
 
 ```python
-def _build_title_path(self, doc: dict, title_map: dict[str, str]) -> str:
-    parts: list[str] = []
-    parent_id = doc.get("parentDocumentId")
-    while parent_id and parent_id in title_map:
-        parts.insert(0, title_map[parent_id])
-        parent_id = None  # Outline only provides direct parent in documents.list
-    parts.append(doc["title"])
-    return " -> ".join(parts)
+@staticmethod
+def _build_title_path(doc: dict) -> str:
+    # Outline's documents.info does not return ancestor titles —
+    # a full ancestor walk requires a pre-built title map (deferred to a follow-up).
+    return str(doc.get("title", ""))
 ```
 
 ### Chunking

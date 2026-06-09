@@ -171,7 +171,13 @@ def _create_reader_and_converter(manifest: dict) -> tuple[Any, Any]:
     # is never persisted to config.toml (unlike config_service.set()).
     outline_cutoff_set = False
     if connector_type == "outline":
-        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = manifest["lastModifiedDocumentTime"]
+        last_modified = manifest.get("lastModifiedDocumentTime")
+        if last_modified is None:
+            raise ValueError(
+                "Manifest is missing 'lastModifiedDocumentTime' required for "
+                "Outline incremental update"
+            )
+        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = last_modified
         outline_cutoff_set = True
 
     try:

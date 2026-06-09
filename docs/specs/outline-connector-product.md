@@ -72,7 +72,7 @@ An AI agent calling `search(query="deploy backend service", collection="company-
 ### 5. Restrict indexing to specific collections
 
 ```
-$ indexed index create outline --collection eng-wiki --collection-id abc123,def456
+$ indexed index create outline --collection eng-wiki --collection-id abc123 --collection-id def456
 ```
 
 Scopes indexing to the specified Outline collection IDs instead of the whole workspace.
@@ -110,7 +110,7 @@ $ indexed index create outline --collection ops-wiki
 |------|---------|-------------|
 | `--url` / `-u` | prompted (default `https://app.getoutline.com`) | Outline base URL. Accepts any domain for self-hosted. |
 | `--token` | prompted (env `OUTLINE_API_TOKEN`) | Outline API token (`ol_api_…`). Stored in `.env`. |
-| `--collection-id` | (index all) | Comma-separated collection IDs to restrict indexing. |
+| `--collection-id` | (index all) | Repeatable flag; each value is a single collection ID to restrict indexing. |
 | `--include-attachments / --no-include-attachments` | `True` | Download and OCR attachments and inline images. |
 | `--ocr / --no-ocr` | `True` | Enable OCR on image attachments. |
 | `--collection` / `-c` | `outline` | Name for the indexed collection. |

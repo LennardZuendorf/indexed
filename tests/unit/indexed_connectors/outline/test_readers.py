@@ -53,6 +53,7 @@ def reader():
     )
 
 
+@pytest.mark.unit
 def test_pagination_terminates_at_total(reader) -> None:
     doc_stubs = [{"id": f"doc{i}"} for i in range(5)]
 
@@ -69,6 +70,7 @@ def test_pagination_terminates_at_total(reader) -> None:
     assert mock_post.call_count == 3
 
 
+@pytest.mark.unit
 def test_pagination_with_exact_page_boundary(reader) -> None:
     doc_stubs = [{"id": f"doc{i}"} for i in range(4)]
 
@@ -83,12 +85,14 @@ def test_pagination_with_exact_page_boundary(reader) -> None:
     assert len(stubs) == 4
 
 
+@pytest.mark.unit
 def test_empty_collection(reader) -> None:
     with patch("requests.post", return_value=_make_doc_list_response([], total=0)):
         stubs = list(reader._iter_document_stubs())
     assert stubs == []
 
 
+@pytest.mark.unit
 def test_collection_ids_none_fetches_collections() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -109,6 +113,7 @@ def test_collection_ids_none_fetches_collections() -> None:
     assert ids == ["col1", "col2"]
 
 
+@pytest.mark.unit
 def test_collection_ids_provided_skips_collections_call(reader) -> None:
     assert reader.collection_ids == ["col1"]
 
@@ -121,6 +126,7 @@ def test_collection_ids_provided_skips_collections_call(reader) -> None:
         assert "collections.list" not in str(c)
 
 
+@pytest.mark.unit
 def test_reader_details(reader) -> None:
     details = reader.get_reader_details()
     assert details["type"] == "outline"
@@ -128,6 +134,7 @@ def test_reader_details(reader) -> None:
     assert details["ocrEnabled"] is True
 
 
+@pytest.mark.unit
 def test_extract_attachment_id() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -135,6 +142,7 @@ def test_extract_attachment_id() -> None:
     assert OutlineDocumentReader._extract_attachment_id(url) == "abc-123"
 
 
+@pytest.mark.unit
 def test_extract_attachment_id_missing() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -143,6 +151,7 @@ def test_extract_attachment_id_missing() -> None:
     )
 
 
+@pytest.mark.unit
 def test_ext_from_url_png() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -154,12 +163,14 @@ def test_ext_from_url_png() -> None:
     )
 
 
+@pytest.mark.unit
 def test_ext_from_url_pdf() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
     assert OutlineDocumentReader._ext_from_url("https://host/files/doc.pdf") == ".pdf"
 
 
+@pytest.mark.unit
 def test_documents_list_payload_includes_sort(reader) -> None:
     payload = reader._documents_list_payload("col1", offset=0)
     assert payload["sort"] == "updatedAt"
@@ -168,6 +179,7 @@ def test_documents_list_payload_includes_sort(reader) -> None:
     assert payload["status"] == "published"
 
 
+@pytest.mark.unit
 def test_incremental_update_yields_only_newer_docs(reader) -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -198,6 +210,7 @@ def test_incremental_update_yields_only_newer_docs(reader) -> None:
     assert payload["direction"] == "DESC"
 
 
+@pytest.mark.unit
 def test_incremental_update_stops_paging_at_first_older_doc(reader) -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -228,6 +241,7 @@ def test_incremental_update_stops_paging_at_first_older_doc(reader) -> None:
     assert mock_post.call_count == 1
 
 
+@pytest.mark.unit
 def test_no_modified_since_yields_all_docs(reader) -> None:
     doc_stubs = [
         {"id": "doc-new", "updatedAt": "2026-03-16T10:00:00Z"},
@@ -241,6 +255,7 @@ def test_no_modified_since_yields_all_docs(reader) -> None:
     assert len(stubs) == 2
 
 
+@pytest.mark.unit
 def test_incremental_update_includes_stubs_missing_updated_at() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -267,6 +282,7 @@ def test_incremental_update_includes_stubs_missing_updated_at() -> None:
     assert [stub["id"] for stub in stubs] == ["doc-new", "doc-no-timestamp"]
 
 
+@pytest.mark.unit
 def test_get_number_of_documents_uses_stub_count_when_incremental() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 

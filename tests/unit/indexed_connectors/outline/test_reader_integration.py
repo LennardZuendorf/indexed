@@ -7,10 +7,15 @@ attachments.list → attachments.redirect runs through the real orchestration co
 
 from __future__ import annotations
 
-from typing import Callable
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests.exceptions
+
+if TYPE_CHECKING:
+    from connectors.outline.outline_document_reader import OutlineDocumentReader
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +42,7 @@ class _FakeResp:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise RuntimeError(f"HTTP {self.status_code}")
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
 
     def json(self) -> dict:
         return self._payload
@@ -117,7 +122,7 @@ def _attachment_bytes(data: bytes, mime: str = "image/png") -> _FakeResp:
 # ---------------------------------------------------------------------------
 
 
-def _make_reader(**overrides):
+def _make_reader(**overrides: object) -> "OutlineDocumentReader":
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
     kwargs: dict = dict(
@@ -136,7 +141,9 @@ def _make_reader(**overrides):
     return OutlineDocumentReader(**kwargs)
 
 
-def _patch_async_client(router: Callable[[str, str], _FakeResp]):
+def _patch_async_client(
+    router: Callable[[str, str], _FakeResp],
+) -> AbstractContextManager[None]:
     """Patch httpx.AsyncClient inside the reader module to use our fake."""
     return patch(
         "connectors.outline.outline_document_reader.httpx.AsyncClient",
@@ -149,6 +156,7 @@ def _patch_async_client(router: Callable[[str, str], _FakeResp]):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_full_pipeline_yields_documents_with_attachments() -> None:
     """One collection, two docs, each with one listed attachment — full envelope."""
     reader = _make_reader()
@@ -157,23 +165,21 @@ def test_full_pipeline_yields_documents_with_attachments() -> None:
         _doc_list([{"id": "d1"}, {"id": "d2"}], total=2),
     ]
 
+    counts: dict[str, int] = {"info": 0, "list": 0}
+
     def router(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
-            # Determine which doc by tracking call count
-            doc_id = "d1" if router.info_calls == 0 else "d2"
-            router.info_calls += 1
+            doc_id = "d1" if counts["info"] == 0 else "d2"
+            counts["info"] += 1
             return _doc_info(doc_id, text="Body content.")
         if "attachments.list" in url:
-            router.list_calls += 1
+            counts["list"] += 1
             return _attachments_list(
-                [{"id": f"att{router.list_calls}", "name": "diagram.png"}]
+                [{"id": f"att{counts['list']}", "name": "diagram.png"}]
             )
         if "attachments.redirect" in url:
             return _attachment_bytes(b"PNGDATA")
         raise AssertionError(f"unexpected {method} {url}")
-
-    router.info_calls = 0
-    router.list_calls = 0
 
     with patch("requests.post", side_effect=sync_calls), _patch_async_client(router):
         envelopes = list(reader.read_all_documents())
@@ -191,6 +197,7 @@ def test_full_pipeline_yields_documents_with_attachments() -> None:
         assert env["attachments"][0]["mimeType"] == "image/png"
 
 
+@pytest.mark.unit
 def test_inline_image_deduped_with_listed_attachment() -> None:
     """Same attachment id in attachments.list AND inline Markdown → downloaded once."""
     reader = _make_reader()
@@ -223,6 +230,7 @@ def test_inline_image_deduped_with_listed_attachment() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_body_fetch_retries_on_failure_then_succeeds() -> None:
     """documents.info fails twice (transient), succeeds on third attempt."""
     reader = _make_reader()
@@ -248,31 +256,24 @@ def test_body_fetch_retries_on_failure_then_succeeds() -> None:
     assert envelopes[0]["document"]["id"] == "d1"
 
 
+@pytest.mark.unit
 def test_body_fetch_all_retries_fail_doc_skipped() -> None:
     """When documents.info exhausts retries, the doc is dropped from output."""
     reader = _make_reader(number_of_retries=2)
 
-    def router(method: str, url: str) -> _FakeResp:
-        if "documents.info" in url:
-            raise RuntimeError("permanent")
-        if "attachments.list" in url:
-            return _attachments_list([])
-        raise AssertionError(url)
-
     sync_calls = [_doc_list([{"id": "d1"}, {"id": "d2"}], total=2)]
+
+    calls: dict[str, int] = {"n": 0}
 
     def router_with_one_success(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
-            router_with_one_success.calls += 1
-            # First doc succeeds, second always fails
-            if router_with_one_success.calls == 1:
+            calls["n"] += 1
+            if calls["n"] == 1:
                 return _doc_info("d1")
             raise RuntimeError("permanent")
         if "attachments.list" in url:
             return _attachments_list([])
         raise AssertionError(url)
-
-    router_with_one_success.calls = 0
 
     with (
         patch("requests.post", side_effect=sync_calls),
@@ -280,32 +281,16 @@ def test_body_fetch_all_retries_fail_doc_skipped() -> None:
     ):
         envelopes = list(reader.read_all_documents())
 
-    # Only the doc that succeeded is yielded
     yielded_ids = [e["document"]["id"] for e in envelopes]
     assert "d1" in yielded_ids
     assert "d2" not in yielded_ids
 
 
+@pytest.mark.unit
 def test_attachments_fetch_exception_yields_empty_list() -> None:
     """If attachments task raises, the doc is still yielded with [] attachments."""
     reader = _make_reader()
 
-    def router(method: str, url: str) -> _FakeResp:
-        if "documents.info" in url:
-            return _doc_info("d1")
-        if "attachments.list" in url:
-            # Simulate a non-network error escaping the inner try/except
-            raise KeyboardInterrupt("forced")
-        raise AssertionError(url)
-
-    sync_calls = [_doc_list([{"id": "d1"}], total=1)]
-
-    with patch("requests.post", side_effect=sync_calls), _patch_async_client(router):
-        # KeyboardInterrupt is not caught by the inner try; it bubbles up to
-        # asyncio.gather(return_exceptions=True). Use a regular Exception subclass.
-        pass
-
-    # Replace KeyboardInterrupt with a regular Exception (gather catches those)
     def safer_router(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
             return _doc_info("d1")
@@ -331,6 +316,7 @@ def test_attachments_fetch_exception_yields_empty_list() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_outline_api_error_raised_on_4xx_listing() -> None:
     """documents.list returning 401 → OutlineAPIError propagates."""
     from connectors.outline.outline_document_reader import OutlineAPIError
@@ -351,6 +337,7 @@ def test_outline_api_error_raised_on_4xx_listing() -> None:
     assert "unauthorized" in str(exc.value)
 
 
+@pytest.mark.unit
 def test_outline_api_error_falls_back_to_text_when_json_invalid() -> None:
     """_raise_for_status uses resp.text when json() raises."""
     from connectors.outline.outline_document_reader import (
@@ -371,6 +358,7 @@ def test_outline_api_error_falls_back_to_text_when_json_invalid() -> None:
     assert "Internal Server Error" in str(exc.value)
 
 
+@pytest.mark.unit
 def test_documents_list_retries_on_transient_then_succeeds() -> None:
     """documents.list raises ConnectionError twice, succeeds on third."""
     reader = _make_reader(number_of_retries=3)
@@ -400,6 +388,7 @@ def test_documents_list_retries_on_transient_then_succeeds() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_get_number_of_documents_sums_per_collection() -> None:
     """One probe per collection; totals summed across collections."""
     reader = _make_reader(collection_ids=["c1", "c2"])
@@ -416,6 +405,7 @@ def test_get_number_of_documents_sums_per_collection() -> None:
     assert mock_post.call_count == 2
 
 
+@pytest.mark.unit
 def test_get_number_of_documents_with_no_collections_returns_zero() -> None:
     """Auto-fetched empty collection list → zero docs."""
     reader = _make_reader(collection_ids=None)
@@ -433,35 +423,32 @@ def test_get_number_of_documents_with_no_collections_returns_zero() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_inline_image_only_when_attachments_disabled() -> None:
-    """include_attachments=False but download_inline_images=True still pulls inline imgs."""
+@pytest.mark.unit
+def test_no_attachments_when_include_attachments_disabled() -> None:
+    """include_attachments=False suppresses all attachment fetching, including inline images."""
     reader = _make_reader(include_attachments=False, download_inline_images=True)
     inline_md = "![](https://app.getoutline.com/api/attachments.redirect?id=inline-1)"
 
     sync_calls = [_doc_list([{"id": "d1"}], total=1)]
 
-    listed = {"n": 0}
+    attachment_calls: dict[str, int] = {"n": 0}
 
     def router(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
             return _doc_info("d1", text=f"Inline: {inline_md}")
-        if "attachments.list" in url:
-            listed["n"] += 1
-            return _attachments_list([])
-        if "attachments.redirect" in url:
-            return _attachment_bytes(b"INLINEPIXELS")
+        if "attachments.list" in url or "attachments.redirect" in url:
+            attachment_calls["n"] += 1
+            raise AssertionError(f"should not fetch attachments: {url}")
         raise AssertionError(url)
 
     with patch("requests.post", side_effect=sync_calls), _patch_async_client(router):
         envelopes = list(reader.read_all_documents())
 
-    # attachments.list should NOT be called when include_attachments=False
-    assert listed["n"] == 0
-    # But the inline image should still be downloaded
-    assert len(envelopes[0]["attachments"]) == 1
-    assert envelopes[0]["attachments"][0]["id"] == "inline-1"
+    assert attachment_calls["n"] == 0
+    assert envelopes[0]["attachments"] == []
 
 
+@pytest.mark.unit
 def test_no_attachment_fetching_when_both_disabled() -> None:
     """Both flags off: no attachment HTTP calls of any kind."""
     reader = _make_reader(include_attachments=False, download_inline_images=False)
@@ -486,21 +473,22 @@ def test_no_attachment_fetching_when_both_disabled() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_yield_window_skips_failed_doc_bodies() -> None:
     """_yield_window drops entries where _fetch_body returned None."""
     reader = _make_reader(number_of_retries=1)
 
+    calls: dict[str, int] = {"n": 0}
+
     def router(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
-            router.calls += 1
-            if router.calls == 1:
+            calls["n"] += 1
+            if calls["n"] == 1:
                 return _doc_info("ok")
             raise RuntimeError("dead")
         if "attachments.list" in url:
             return _attachments_list([])
         raise AssertionError(url)
-
-    router.calls = 0
 
     with _patch_async_client(router):
         results = list(reader._yield_window([{"id": "ok"}, {"id": "broken"}]))
@@ -509,6 +497,7 @@ def test_yield_window_skips_failed_doc_bodies() -> None:
     assert results[0]["document"]["id"] == "ok"
 
 
+@pytest.mark.unit
 def test_yield_window_with_attachment_disabled_skips_attachment_phase() -> None:
     """_yield_window with both attachment flags off skips the attachments async call."""
     reader = _make_reader(include_attachments=False, download_inline_images=False)
@@ -530,6 +519,7 @@ def test_yield_window_with_attachment_disabled_skips_attachment_phase() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_full_pipeline_paginates_documents_list() -> None:
     """documents.list returns 3 pages; all docs flow through pipeline."""
     reader = _make_reader(batch_size=2)
@@ -540,9 +530,14 @@ def test_full_pipeline_paginates_documents_list() -> None:
         _doc_list([{"id": "d5"}], total=5, offset=4),
     ]
 
+    doc_ids = ["d1", "d2", "d3", "d4", "d5"]
+    counter: dict[str, int] = {"i": 0}
+
     def router(method: str, url: str) -> _FakeResp:
         if "documents.info" in url:
-            return _doc_info("dx")  # body content irrelevant for this test
+            doc_id = doc_ids[counter["i"] % len(doc_ids)]
+            counter["i"] += 1
+            return _doc_info(doc_id)
         if "attachments.list" in url:
             return _attachments_list([])
         raise AssertionError(url)

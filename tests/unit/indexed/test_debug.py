@@ -1,23 +1,35 @@
 """Tests for the debug command module."""
 
 import builtins
+import types
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from indexed.debug import _module_version, _pkg_version, get_build_info
 
 _real_import = builtins.__import__
 
 
-def _import_without_build_meta(name, globals=None, locals=None, fromlist=(), level=0):
+def _import_without_build_meta(
+    name: str,
+    globals: dict[str, Any] | None = None,
+    locals: dict[str, Any] | None = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> types.ModuleType:
     if name == "indexed._build_meta" or (
         name == "indexed" and fromlist and "_build_meta" in fromlist
     ):
         raise ImportError("indexed._build_meta not available")
-    return _real_import(name, globals, locals, fromlist, level)
+    return _real_import(name, globals, locals, fromlist, level)  # type: ignore[return-value]
 
 
 class TestGetBuildInfo:
-    def test_returns_dev_fallback_when_no_build_meta(self, monkeypatch):
+    def test_returns_dev_fallback_when_no_build_meta(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import sys
 
         monkeypatch.delitem(sys.modules, "indexed._build_meta", raising=False)
