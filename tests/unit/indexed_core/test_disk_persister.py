@@ -112,6 +112,56 @@ class TestDiskPersisterFileOperations:
         assert sorted(disk_persister.read_folder_files("sub")) == ["a.txt", "b.txt"]
 
 
+class TestDiskPersisterFaissOperations:
+    """save_faiss_index and read_faiss_index use native faiss I/O atomically."""
+
+    def test_save_faiss_index_is_atomic(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """save_faiss_index writes via tmp then renames; no .tmp remains."""
+        mock_faiss = MagicMock()
+        with patch.dict("sys.modules", {"faiss": mock_faiss}), patch("os.replace"):
+            disk_persister.save_faiss_index(MagicMock(), "idx.faiss")
+        assert mock_faiss.write_index.called
+        assert not any(tmp_path.glob("*.tmp"))
+
+    def test_save_faiss_index_cleans_up_on_error(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """When faiss.write_index raises the .tmp file is cleaned up."""
+        mock_faiss = MagicMock()
+        mock_faiss.write_index.side_effect = OSError("no space")
+        with patch.dict("sys.modules", {"faiss": mock_faiss}):
+            with pytest.raises(OSError, match="no space"):
+                disk_persister.save_faiss_index(MagicMock(), "idx.faiss")
+        assert not any(tmp_path.glob("*.tmp"))
+
+    def test_read_faiss_index_mmap(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """read_faiss_index calls faiss.read_index with mmap flag."""
+        mock_faiss = MagicMock()
+        mock_faiss.IO_FLAG_MMAP = 2
+        (tmp_path / "idx.faiss").write_bytes(b"")
+        with patch.dict("sys.modules", {"faiss": mock_faiss}):
+            disk_persister.read_faiss_index("idx.faiss", mmap=True)
+        mock_faiss.read_index.assert_called_once()
+        _, flags = mock_faiss.read_index.call_args[0]
+        assert flags == 2
+
+    def test_read_faiss_index_no_mmap(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """read_faiss_index passes 0 as flags when mmap=False."""
+        mock_faiss = MagicMock()
+        mock_faiss.IO_FLAG_MMAP = 2
+        (tmp_path / "idx.faiss").write_bytes(b"")
+        with patch.dict("sys.modules", {"faiss": mock_faiss}):
+            disk_persister.read_faiss_index("idx.faiss", mmap=False)
+        _, flags = mock_faiss.read_index.call_args[0]
+        assert flags == 0
+
+
 class TestDiskPersisterLegacyIndexError:
     """load_indexer must reject legacy pickle-format indexes."""
 
