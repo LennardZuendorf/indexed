@@ -356,6 +356,8 @@ class TestExecuteCreateCommand:
         # Should have logged verbose information
         assert mock_logger.info.called
 
+    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
     @patch("indexed.knowledge.commands._create_helpers.ConfigService")
     @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
@@ -370,6 +372,8 @@ class TestExecuteCreateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        mock_apply_cli_creds,
+        mock_ensure_creds,
     ):
         """Should call verbose_pre_creation_log callback when provided."""
         mock_config = Mock()
@@ -473,6 +477,138 @@ class TestExecuteCreateCommand:
 
         mock_print_error.assert_called()
         assert "Failed to verify" in str(mock_print_error.call_args)
+
+    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
+    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    def test_execute_calls_ensure_credentials_for_source(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+        mock_apply_cli_creds,
+        mock_ensure_creds,
+    ):
+        """Should ensure credentials after Phase 1 prompts."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"url": "https://app.getoutline.com"},
+            missing=[],
+            field_info={},
+        )
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        mock_status_item = MagicMock()
+        mock_status_item.number_of_documents = 5
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status.return_value = [mock_status_item]
+
+        def build_source_config(present, coll_name):
+            return SourceConfig(
+                name=coll_name,
+                type="outline",
+                base_url_or_path=present["url"],
+                indexer="default",
+            )
+
+        execute_create_command(
+            collection="outline",
+            source_type="outline",
+            config_class=Mock,
+            namespace="sources.outline",
+            cli_overrides={"url": "https://app.getoutline.com"},
+            prompt_missing_fields=lambda v, c, n: None,
+            build_source_config=build_source_config,
+            success_message_suffix="from Outline",
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            use_cache=True,
+            force=False,
+        )
+
+        mock_apply_cli_creds.assert_called_once_with(
+            "outline", {"url": "https://app.getoutline.com"}
+        )
+        mock_ensure_creds.assert_called_once_with(
+            "outline", mock_config, namespace="sources.outline"
+        )
+
+    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
+    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    def test_execute_skips_credential_fields_in_cli_override_loop(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+        mock_apply_cli_creds,
+        mock_ensure_creds,
+    ):
+        """Should not write credential fields via generic config.set_value loop."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"url": "https://app.getoutline.com"},
+            missing=[],
+            field_info={"api_token": {"sensitive": True}},
+        )
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        mock_status_item = MagicMock()
+        mock_status_item.number_of_documents = 5
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status.return_value = [mock_status_item]
+
+        def build_source_config(present, coll_name):
+            return SourceConfig(
+                name=coll_name,
+                type="outline",
+                base_url_or_path=present["url"],
+                indexer="default",
+            )
+
+        execute_create_command(
+            collection="outline",
+            source_type="outline",
+            config_class=Mock,
+            namespace="sources.outline",
+            cli_overrides={
+                "url": "https://app.getoutline.com",
+                "api_token": "cli-token",
+            },
+            prompt_missing_fields=lambda v, c, n: None,
+            build_source_config=build_source_config,
+            success_message_suffix="from Outline",
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            use_cache=True,
+            force=False,
+        )
+
+        set_value_calls = [
+            call.args[0] for call in mock_config.set_value.call_args_list if call.args
+        ]
+        assert "sources.outline.url" in set_value_calls
+        assert "sources.outline.api_token" not in set_value_calls
 
 
 class TestBuildV2Connector:
