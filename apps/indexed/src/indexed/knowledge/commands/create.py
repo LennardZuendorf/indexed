@@ -810,10 +810,9 @@ def create_outline(
 ) -> None:
     """Create an Outline Wiki collection. Works against Outline Cloud and any self-hosted Outline deployment."""
     from . import create as this_module
+    from connectors.outline.schema import OUTLINE_CLOUD_URL as _OUTLINE_CLOUD_URL
 
     outline_config_class = this_module.OutlineConfig
-
-    _OUTLINE_CLOUD_URL = "https://app.getoutline.com"
 
     source_type = "outline"
     namespace = "sources.outline"
