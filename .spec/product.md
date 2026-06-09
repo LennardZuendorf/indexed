@@ -1,8 +1,8 @@
 ---
 type: entrypoint
 scope: product
-children: [feature-config-product.md]
-updated: 2026-02-16
+children: []
+updated: 2026-06-09
 ---
 
 # Product Spec: indexed
@@ -36,6 +36,7 @@ What indexed is **not**:
 | **Jira Server/DC** | ✅ Shipped | Index on-premises Jira with JQL filtering |
 | **Confluence Cloud** | ✅ Shipped | Index Confluence Cloud pages with CQL filtering |
 | **Confluence Server/DC** | ✅ Shipped | Index on-premises Confluence with CQL filtering |
+| **Outline Wiki** | ✅ Shipped | Index Outline docs + attachments (Cloud or self-hosted) |
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./docs/img/logo.png" alt="Indexed Logo" width="500"/>
+<img src="./.spec/img/logo.png" alt="Indexed Logo" width="500"/>
 
 ### Index everything. Code, docs, and knowledge — one MCP, zero cloud.
 
