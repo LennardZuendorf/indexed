@@ -171,7 +171,13 @@ def _create_reader_and_converter(manifest: dict) -> tuple[Any, Any]:
     # is never persisted to config.toml (unlike config_service.set()).
     outline_cutoff_set = False
     if connector_type == "outline":
-        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = manifest["lastModifiedDocumentTime"]
+        last_modified = manifest.get("lastModifiedDocumentTime")
+        if last_modified is None:
+            raise ValueError(
+                "Manifest is missing 'lastModifiedDocumentTime' required for "
+                "Outline incremental update"
+            )
+        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = last_modified
         outline_cutoff_set = True
 
     try:
@@ -319,6 +325,21 @@ def _populate_outline_config(
         config_service.set(f"{namespace}.batch_size", reader_config["batchSize"])
     if reader_config.get("ocrEnabled") is not None:
         config_service.set(f"{namespace}.ocr_enabled", reader_config["ocrEnabled"])
+    if reader_config.get("downloadInlineImages") is not None:
+        config_service.set(
+            f"{namespace}.download_inline_images", reader_config["downloadInlineImages"]
+        )
+    if reader_config.get("maxConcurrentRequests") is not None:
+        config_service.set(
+            f"{namespace}.max_concurrent_requests",
+            reader_config["maxConcurrentRequests"],
+        )
+    if reader_config.get("maxAttachmentSizeMb") is not None:
+        config_service.set(
+            f"{namespace}.max_attachment_size_mb", reader_config["maxAttachmentSizeMb"]
+        )
+    if reader_config.get("verifySsl") is not None:
+        config_service.set(f"{namespace}.verify_ssl", reader_config["verifySsl"])
     # api_token read from OUTLINE_API_TOKEN env var by from_config()
 
 

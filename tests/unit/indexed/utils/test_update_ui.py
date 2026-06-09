@@ -3,6 +3,8 @@
 import time
 from unittest.mock import Mock
 
+import pytest
+
 
 class TestFormatSourceType:
     """Test _format_source_type function for displaying collection types."""
@@ -37,6 +39,7 @@ class TestFormatSourceType:
 
         assert _format_source_type("localFiles") == "Local Files"
 
+    @pytest.mark.unit
     def test_format_outline(self):
         """Test formatting 'outline' source type."""
         from indexed.knowledge.commands.update import _format_source_type

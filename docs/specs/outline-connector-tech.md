@@ -10,7 +10,7 @@
 
 The Outline connector follows the same three-file structure as every other connector in `packages/indexed-connectors/`:
 
-```
+```text
 packages/indexed-connectors/src/connectors/outline/
 ├── __init__.py                    # Public re-exports
 ├── schema.py                      # OutlineConfig (Pydantic)
@@ -94,7 +94,7 @@ class OutlineConfig(BaseModel):
 
 Mirrors `async_confluence_cloud_reader.py` exactly — sequential page listing, concurrent document body + attachment fetching within sliding windows:
 
-```
+```text
 Phase 1 (sequential):  collections.list  →  per-collection documents.list (paginated)
 Phase 2 (windowed):    buffer 100 doc stubs
                        asyncio.gather → documents.info  (body + metadata)
@@ -168,15 +168,18 @@ Mirrors `unified_confluence_document_converter.py` but operates on Markdown dire
 
 ```python
 class OutlineDocumentConverter:
-    def convert(self, document: dict) -> list[dict]:
+    def convert(self, document: dict) -> Iterator[dict]:
+        """Yields one dict per document with source metadata on every chunk."""
         doc = document["document"]
-        return [{
+        yield {
             "id": doc["id"],
-            "url": doc["url"],
-            "modifiedTime": doc["updatedAt"],
+            "url": doc.get("url", ""),
+            "modifiedTime": self._resolve_modified_time(doc),
             "text": self._build_full_text(document),
             "chunks": self._split_to_chunks(document),
-        }]
+            # Each chunk dict carries: indexedData, metadata (sourceId,
+            # sourceUrl, sourceUpdatedAt, plus parser/attachment metadata).
+        }
 ```
 
 ### Title hierarchy
@@ -184,14 +187,11 @@ class OutlineDocumentConverter:
 Outline documents carry a `parentDocumentId` field. The reader pre-builds a `{id: title}` map per collection so the converter can walk ancestors cheaply:
 
 ```python
-def _build_title_path(self, doc: dict, title_map: dict[str, str]) -> str:
-    parts: list[str] = []
-    parent_id = doc.get("parentDocumentId")
-    while parent_id and parent_id in title_map:
-        parts.insert(0, title_map[parent_id])
-        parent_id = None  # Outline only provides direct parent in documents.list
-    parts.append(doc["title"])
-    return " -> ".join(parts)
+@staticmethod
+def _build_title_path(doc: dict) -> str:
+    # Outline's documents.info does not return ancestor titles —
+    # a full ancestor walk requires a pre-built title map (deferred to a follow-up).
+    return str(doc.get("title", ""))
 ```
 
 ### Chunking
@@ -270,7 +270,7 @@ indexed index create outline \
   --collection wiki \
   --url https://app.getoutline.com \
   --token ol_api_... \
-  [--collection-id abc123,def456] \
+  [--collection-id abc123 --collection-id def456] \
   [--include-attachments] \
   [--no-ocr] \
   [--force] [--use-cache] [--local] [--verbose]
@@ -282,7 +282,7 @@ indexed index create outline \
 2. `Outline API Token:` — masked, stored in `.env`.
 
 **Verbose log lines:**
-```
+```text
 INFO  Connecting to Outline at https://app.getoutline.com (Cloud)
 INFO  Connecting to Outline at https://wiki.acme.internal (self-hosted)
 ```

@@ -8,7 +8,7 @@ no BeautifulSoup HTML stripping needed since Outline bodies are already Markdown
 from __future__ import annotations
 
 import base64
-from typing import Any
+from typing import Any, Iterator
 
 from loguru import logger
 
@@ -51,27 +51,25 @@ class OutlineDocumentConverter:
     # Public API
     # ------------------------------------------------------------------
 
-    def convert(self, document: dict) -> list[dict]:
+    def convert(self, document: dict) -> Iterator[dict]:
         """Convert an Outline document dict to indexed format.
 
         Args:
             document: Dict with "document" (full Outline API doc dict) and
                       "attachments" (list of downloaded attachment dicts).
 
-        Returns:
-            Single-element list with id, url, modifiedTime, text, chunks.
+        Yields:
+            Single dict with id, url, modifiedTime, text, chunks.
         """
         doc = document["document"]
 
-        return [
-            {
-                "id": doc["id"],
-                "url": self._build_url(doc),
-                "modifiedTime": self._resolve_modified_time(doc),
-                "text": self._build_full_text(document),
-                "chunks": self._split_to_chunks(document),
-            }
-        ]
+        yield {
+            "id": doc["id"],
+            "url": self._build_url(doc),
+            "modifiedTime": self._resolve_modified_time(doc),
+            "text": self._build_full_text(document),
+            "chunks": self._split_to_chunks(document),
+        }
 
     # ------------------------------------------------------------------
     # Text helpers
@@ -117,10 +115,19 @@ class OutlineDocumentConverter:
 
     def _split_to_chunks(self, document: dict) -> list[dict]:
         doc = document["document"]
+        src_meta = {
+            "sourceId": doc.get("id"),
+            "sourceUrl": self._build_url(doc),
+            "sourceUpdatedAt": self._resolve_modified_time(doc),
+        }
 
         # First chunk: title (gives search context)
         title_path = self._build_title_path(doc)
-        chunks: list[dict] = [{"indexedData": title_path}] if title_path else []
+        chunks: list[dict] = (
+            [{"indexedData": title_path, "metadata": dict(src_meta)}]
+            if title_path
+            else []
+        )
 
         # Chunk body via ParsingModule
         body = doc.get("text", "")
@@ -129,22 +136,23 @@ class OutlineDocumentConverter:
                 parsed = self._parser.parse_bytes(body.encode("utf-8"), "doc.md")
                 for chunk in parsed.chunks:
                     entry: dict = {"indexedData": chunk.contextualized_text}
-                    if chunk.metadata:
-                        entry["metadata"] = dict(chunk.metadata)
+                    meta = dict(chunk.metadata) if chunk.metadata else {}
+                    meta.update(src_meta)
+                    entry["metadata"] = meta
                     chunks.append(entry)
             except Exception as exc:
                 logger.warning(
                     "Failed to parse body of doc {}: {}", doc.get("id", "?"), exc
                 )
-                chunks.append({"indexedData": body})
+                chunks.append({"indexedData": body, "metadata": dict(src_meta)})
 
         # Chunk attachments if enabled
         if self._include_attachments:
-            chunks.extend(self._parse_attachments(document))
+            chunks.extend(self._parse_attachments(document, src_meta))
 
         return chunks
 
-    def _parse_attachments(self, document: dict) -> list[dict]:
+    def _parse_attachments(self, document: dict, src_meta: dict) -> list[dict]:
         """Parse attachment bytes via ParsingModule."""
         attachment_chunks: list[dict] = []
         attachments = document.get("attachments", [])
@@ -171,6 +179,7 @@ class OutlineDocumentConverter:
                     entry: dict = {"indexedData": chunk.contextualized_text}
                     meta = dict(chunk.metadata) if chunk.metadata else {}
                     meta["attachment"] = filename
+                    meta.update(src_meta)
                     entry["metadata"] = meta
                     attachment_chunks.append(entry)
             except Exception:

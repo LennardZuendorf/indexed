@@ -38,6 +38,7 @@ def _make_httpx_response(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_inline_image_regex_extracts_url() -> None:
     from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
@@ -47,6 +48,7 @@ def test_inline_image_regex_extracts_url() -> None:
     assert "id=abc-123" in matches[0]
 
 
+@pytest.mark.unit
 def test_inline_image_regex_no_match_for_external() -> None:
     from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
@@ -54,6 +56,7 @@ def test_inline_image_regex_no_match_for_external() -> None:
     assert _INLINE_IMAGE_RE.findall(md) == []
 
 
+@pytest.mark.unit
 def test_inline_image_regex_multiple_matches() -> None:
     from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
@@ -70,6 +73,7 @@ def test_inline_image_regex_multiple_matches() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_oversized_attachment_skipped(reader) -> None:
     limit = reader.max_attachment_size_bytes
     oversized = b"x" * (limit + 1)
@@ -98,6 +102,7 @@ def test_oversized_attachment_skipped(reader) -> None:
     assert result is None
 
 
+@pytest.mark.unit
 def test_small_attachment_downloaded(reader) -> None:
     data = b"fake image bytes"
 
@@ -125,6 +130,7 @@ def test_small_attachment_downloaded(reader) -> None:
     assert result["id"] == "id2"
 
 
+@pytest.mark.unit
 def test_attachment_bytes_are_json_serializable(reader) -> None:
     data = b"fake image bytes"
 
@@ -156,6 +162,7 @@ def test_attachment_bytes_are_json_serializable(reader) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 def test_failed_download_returns_none(reader) -> None:
     async def run():
         async def mock_get(url, **kwargs):
@@ -172,6 +179,7 @@ def test_failed_download_returns_none(reader) -> None:
     assert result is None
 
 
+@pytest.mark.unit
 def test_list_attachments_failure_returns_empty(reader) -> None:
     async def run():
         async def mock_post(*args, **kwargs):

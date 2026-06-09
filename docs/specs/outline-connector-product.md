@@ -39,16 +39,16 @@ Teams that run [Outline](https://www.getoutline.com/) as their primary knowledge
 
 ### 1. Index an Outline Cloud workspace
 
-```
-$ indexed index create outline --collection company-wiki
+```bash
+$ indexed index create outline --collection outline-wiki
 Outline URL [https://app.getoutline.com]: ↵
 Outline API Token: ••••••••••••••
-✓ Collection 'company-wiki' created with 342 documents from Outline
+✓ Collection 'outline-wiki' created with 342 documents from Outline
 ```
 
 ### 2. Index a self-hosted Outline instance
 
-```
+```bash
 $ indexed index create outline --collection internal-wiki
 Outline URL [https://app.getoutline.com]: https://wiki.acme.internal
 Outline API Token: ••••••••••••••
@@ -59,28 +59,28 @@ The user experience is identical to Cloud; only the URL prompt answer differs.
 
 ### 3. Search Outline content via CLI
 
-```
-$ indexed index search "incident runbook pagerduty" --collection company-wiki
+```bash
+$ indexed index search "incident runbook pagerduty" --collection outline-wiki
 ```
 
 Results include Outline URLs, document titles, and the matching text passage.
 
 ### 4. AI agent searches Outline via MCP
 
-An AI agent calling `search(query="deploy backend service", collection="company-wiki")` via the MCP server receives the most relevant Outline passages, including text extracted from embedded screenshots via OCR.
+An AI agent calling `search(query="deploy backend service", collection="outline-wiki")` via the MCP server receives the most relevant Outline passages, including text extracted from embedded screenshots via OCR.
 
 ### 5. Restrict indexing to specific collections
 
 ```
-$ indexed index create outline --collection eng-wiki --collection-id abc123,def456
+$ indexed index create outline --collection eng-wiki --collection-id abc123 --collection-id def456
 ```
 
 Scopes indexing to the specified Outline collection IDs instead of the whole workspace.
 
 ### 6. Incremental update
 
-```
-$ indexed index update company-wiki
+```bash
+$ indexed index update outline-wiki
 ```
 
 Re-fetches only documents with `updatedAt > last_indexed_at`, re-embeds changed chunks, and updates the FAISS index in place.
@@ -95,7 +95,7 @@ collection_ids = ["abc123"]
 include_attachments = true
 ```
 
-```
+```bash
 $ export OUTLINE_API_TOKEN=ol_api_...
 $ indexed index create outline --collection ops-wiki
 ```
@@ -110,7 +110,7 @@ $ indexed index create outline --collection ops-wiki
 |------|---------|-------------|
 | `--url` / `-u` | prompted (default `https://app.getoutline.com`) | Outline base URL. Accepts any domain for self-hosted. |
 | `--token` | prompted (env `OUTLINE_API_TOKEN`) | Outline API token (`ol_api_…`). Stored in `.env`. |
-| `--collection-id` | (index all) | Comma-separated collection IDs to restrict indexing. |
+| `--collection-id` | (index all) | Repeatable flag; each value is a single collection ID to restrict indexing. |
 | `--include-attachments / --no-include-attachments` | `True` | Download and OCR attachments and inline images. |
 | `--ocr / --no-ocr` | `True` | Enable OCR on image attachments. |
 | `--collection` / `-c` | `outline` | Name for the indexed collection. |
