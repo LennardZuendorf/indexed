@@ -34,18 +34,21 @@ imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectura
 
 ### Lazy loading
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/embeddings/sentence_embedder.py`
+**File:** `packages/indexed-core/src/core/v1/engine/indexes/embeddings/sentence_embeder.py`
+
+`SentenceEmbedder` exposes the model via a lazy `@property` — the heavy model is
+loaded (and cached) on first access, not at import:
 
 ```python
-def get_embedder():
-    """Lazy load to avoid 500ms+ import cost at CLI startup."""
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name)
+@property
+def model(self):
+    """Lazy-load the embedding model on first access."""
+    return get_embedding_model(self.model_name)
 ```
 
 ### Batching
 
-Batch size 32 (configurable). ~120 docs/min on M1 MacBook Pro.
+`embed_batch` defaults to `DEFAULT_EMBEDDING_BATCH_SIZE = 128` (configurable per call).
 
 ---
 
@@ -74,7 +77,10 @@ distances, indices = index.search(query_vec, k=10)
 
 ### Similarity scoring
 
-FAISS returns L2 distances (lower = more similar). Score: `1 / (1 + distance)`.
+FAISS returns L2 distances. The raw distance is used directly as the result
+`score` — **lower means more similar** (it is not normalized to 0–1). Threshold
+filtering (`min_score` / `score_threshold`) keeps chunks whose score (distance)
+is **≤** the threshold.
 
 ---
 

@@ -8,8 +8,8 @@ updated: 2026-06-09
 
 # Tech Branch: Connectors (`indexed-connectors`)
 
-Protocol-based data-source adapters. May import protocols/config/utils; MUST NOT
-import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
+Protocol-based data-source adapters. May import protocols/config/utils/parsing;
+MUST NOT import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
 
 **Parent: [tech.md](tech.md).** Document parsing: [tech-parsing.md](tech-parsing.md).
 

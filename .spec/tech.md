@@ -33,7 +33,7 @@ doc; helpers are imported by every layer.
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                   User Interfaces                        │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
@@ -94,7 +94,7 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 
 ### Monorepo Structure
 
-```
+```text
 indexed/
 ├── apps/indexed/              # Main CLI & MCP server
 ├── packages/
@@ -117,7 +117,7 @@ Cross-component pipelines. Component internals: [tech-core.md](tech-core.md),
 
 ### Indexing Pipeline
 
-```
+```text
 Source API → Reader → Converter → Chunker → Embedder → Indexer → Persister
 ```
 
@@ -130,7 +130,7 @@ Source API → Reader → Converter → Chunker → Embedder → Indexer → Per
 
 ### Search Pipeline
 
-```
+```text
 Query → Embedder → FAISS Search → Result Mapper → Formatter
 ```
 
@@ -146,7 +146,7 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 **Target:** >85% coverage, measured on installed packages (`indexed`, `core`,
 `connectors`, `indexed_config`, `utils`).
 
-```
+```text
 tests/
 ├── unit/          # package-specific (indexed, indexed_core, indexed_connectors, indexed_config)
 ├── system/        # integration tests
@@ -195,7 +195,7 @@ Hard constraints across all code — v2 core, new connectors, surviving infrastr
 
 ### Dependency Direction
 
-```
+```text
 ┌──────────────────────────────────────────────────────┐
 │  CLI / MCP (apps/indexed/)                           │  ← UI only, thin commands
 │  May import: services, core, config, utils           │
@@ -250,7 +250,7 @@ _svc.register(SearchConfig, ...)     # silent if fails
 
 All exceptions inherit from `IndexedError`:
 
-```
+```text
 IndexedError
 ├── ConfigurationError
 │   └── ConfigValidationError
@@ -279,7 +279,7 @@ logging, or mutate global state. All initialization happens in explicit
 
 ### Thin Commands, Fat Services
 
-```
+```text
 Command (parse args + format output) → Service (orchestrate) → Engine (execute)
 ```
 

@@ -53,7 +53,7 @@ vars never overridden.
 Storage dirs owned by `indexed-config` (`storage.py`). Persistence semantics:
 [tech-core.md](tech-core.md) § Persistence Strategy.
 
-```
+```text
 ~/.indexed/                    # Global mode (default)
 ├── config.toml
 ├── .env                       # credentials (not in git)

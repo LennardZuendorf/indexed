@@ -52,7 +52,7 @@ What indexed is **not**:
 | **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
 | **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
 | **Single Collection** | ✅ Shipped | Target specific collection for focused results |
-| **Relevance Scoring** | ✅ Shipped | Similarity scores (0-1) for ranking |
+| **Relevance Scoring** | ✅ Shipped | FAISS L2 distance ranking (lower = closer match) |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
 | Filters | 📋 Planned | Filter by date, source type, metadata |
