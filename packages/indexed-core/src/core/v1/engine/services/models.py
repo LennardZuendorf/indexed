@@ -15,7 +15,9 @@ class SourceConfig(BaseModel):
     """Configuration for a document collection source."""
 
     name: str
-    type: Literal["jira", "jiraCloud", "confluence", "confluenceCloud", "localFiles"]
+    type: Literal[
+        "jira", "jiraCloud", "confluence", "confluenceCloud", "localFiles", "outline"
+    ]
     base_url_or_path: str = Field(
         ..., description="baseUrl for remote sources OR basePath for files"
     )

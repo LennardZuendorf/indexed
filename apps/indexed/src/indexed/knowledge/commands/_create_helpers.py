@@ -11,7 +11,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from core.v1.engine.services import SourceConfig
 
-from indexed_config import ConfigService
+from indexed_config import ConfigService, ValidationResult
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -19,6 +19,11 @@ from ...utils.context_managers import NoOpContext
 from ...utils.components import print_success, print_error, print_warning
 from ...utils.format import format_source_type
 from ...utils.progress_bar import create_phased_progress, build_progress_title
+from ...utils.credentials import (
+    apply_cli_credential_overrides,
+    ensure_credentials_for_source,
+    is_credential_field,
+)
 
 
 def execute_create_command(
@@ -27,7 +32,7 @@ def execute_create_command(
     config_class: Type,
     namespace: str,
     cli_overrides: Dict[str, Any],
-    prompt_missing_fields: Callable[[Dict[str, Any], ConfigService, str], None],
+    prompt_missing_fields: Callable[[ValidationResult, ConfigService, str], None],
     build_source_config: Callable[[Dict[str, Any], str], "SourceConfig"],
     success_message_suffix: str,
     verbose: bool,
@@ -118,12 +123,21 @@ def execute_create_command(
             len(validation.missing),
         )
 
+    # Phase 1b: Apply CLI credential overrides before prompting so connector
+    # prompt logic can see tokens already provided on the command line.
+    apply_cli_credential_overrides(source_type, cli_overrides)
+
     # Phase 1: Prompt for missing values using connector-specific callback
     if validation.missing:
         prompt_missing_fields(validation, config, namespace)
 
+    # Phase 1c: Ensure credentials (interactive prompt + .env persistence)
+    ensure_credentials_for_source(source_type, config, namespace=namespace)
+
     # Also set CLI overrides in config for connector to read
     for key, value in cli_overrides.items():
+        if is_credential_field(key):
+            continue
         field_info = validation.field_info.get(key)
         config.set_value(f"{namespace}.{key}", value, field_info=field_info)
 

@@ -16,6 +16,52 @@ from .console import console
 from .components.theme import get_heading_style, get_dim_style, get_accent_style
 from .components import print_error
 
+# Maps source types to credential field names and their environment variables.
+SOURCE_CREDENTIAL_ENV_VARS: Dict[str, Dict[str, str]] = {
+    "outline": {
+        "api_token": "OUTLINE_API_TOKEN",
+    },
+    "jiraCloud": {
+        "api_token": "ATLASSIAN_TOKEN",
+        "email": "ATLASSIAN_EMAIL",
+    },
+    "confluenceCloud": {
+        "api_token": "ATLASSIAN_TOKEN",
+        "email": "ATLASSIAN_EMAIL",
+    },
+    "jira": {
+        "token": "JIRA_TOKEN",
+        "api_token": "JIRA_TOKEN",
+        "login": "JIRA_LOGIN",
+        "password": "JIRA_PASSWORD",
+    },
+    "confluence": {
+        "token": "CONF_TOKEN",
+        "api_token": "CONF_TOKEN",
+        "login": "CONF_LOGIN",
+        "password": "CONF_PASSWORD",
+    },
+}
+
+
+def apply_cli_credential_overrides(
+    source_type: str,
+    cli_overrides: Dict[str, Any],
+) -> None:
+    """Apply CLI credential overrides to the correct environment variables.
+
+    Ensures ``--token``/``--email`` flags are visible to ``ensure_credentials_for_source``
+    and connector ``from_config()`` within the current process.
+    """
+    field_to_env = SOURCE_CREDENTIAL_ENV_VARS.get(source_type)
+    if not field_to_env:
+        return
+
+    for field_name, value in cli_overrides.items():
+        env_var = field_to_env.get(field_name)
+        if env_var and value is not None and value != "":
+            os.environ[env_var] = str(value)
+
 
 def ensure_credentials_for_source(
     source_type: str,
@@ -42,11 +88,15 @@ def ensure_credentials_for_source(
             namespace = "sources.jira"
         elif source_type in ("confluence", "confluenceCloud"):
             namespace = "sources.confluence"
+        elif source_type == "outline":
+            namespace = "sources.outline"
         else:
             return  # Unknown source type, skip
 
     # Check and prompt for credentials based on source type
-    if source_type == "jiraCloud":
+    if source_type == "outline":
+        ensure_outline_credentials(config_service, namespace)
+    elif source_type == "jiraCloud":
         ensure_atlassian_cloud_credentials(config_service, namespace, "Jira Cloud")
     elif source_type == "confluenceCloud":
         ensure_atlassian_cloud_credentials(
@@ -252,6 +302,63 @@ def ensure_server_credentials(
     return result
 
 
+_OUTLINE_TOKEN_ACCESS_RIGHTS = (
+    "collections.list, documents.list, documents.info, "
+    "attachments.list, attachments.redirect"
+)
+
+
+def _print_outline_token_guidance() -> None:
+    """Print guidance for creating a scoped Outline API key."""
+    console.print(
+        f"[{get_dim_style()}]Add a new Outline API key under Settings → API Keys.[/{get_dim_style()}]"
+    )
+    console.print(
+        f"[{get_dim_style()}]At minimum it must have the following read access: "
+        f"{_OUTLINE_TOKEN_ACCESS_RIGHTS}.[/{get_dim_style()}]"
+    )
+    console.print(
+        f"[{get_dim_style()}]Alternatively, use the global read scope or leave "
+        f"scopes empty to inherit your user's workspace access.[/{get_dim_style()}]"
+    )
+    console.print()
+
+
+def ensure_outline_credentials(
+    config_service: ConfigService,
+    namespace: str,
+) -> Dict[str, Any]:
+    """Ensure Outline API token is present, prompting when missing."""
+    token = config_service.get(f"{namespace}.api_token") or os.getenv(
+        "OUTLINE_API_TOKEN"
+    )
+    if token:
+        return {"api_token": token}
+
+    if not is_verbose_mode():
+        console.print()
+        console.print(
+            f"[{get_heading_style()}]Outline Credentials Required[/{get_heading_style()}]"
+        )
+        console.print()
+    _print_outline_token_guidance()
+
+    value = Prompt.ask(
+        f"[{get_accent_style()}]API Token[/{get_accent_style()}]", password=True
+    )
+    if not value:
+        print_error("API token is required for Outline authentication")
+        raise typer.Exit(1)
+
+    config_service.set_value(
+        f"{namespace}.api_token",
+        value,
+        field_info={"sensitive": True, "env_var": "OUTLINE_API_TOKEN"},
+    )
+    os.environ["OUTLINE_API_TOKEN"] = value
+    return {"api_token": value}
+
+
 def prompt_credential_field(
     field_name: str,
     field_info: Dict[str, Any],
@@ -313,6 +420,13 @@ def prompt_credential_field(
                 "env_var": "JIRA_TOKEN",
             }
             os.environ["JIRA_TOKEN"] = value
+        elif field_name == "api_token" and source_type == "outline":
+            updated_field_info = {
+                **field_info,
+                "sensitive": True,
+                "env_var": "OUTLINE_API_TOKEN",
+            }
+            os.environ["OUTLINE_API_TOKEN"] = value
         elif field_name == "api_token":
             updated_field_info = {
                 **field_info,

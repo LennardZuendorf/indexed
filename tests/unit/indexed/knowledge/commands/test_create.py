@@ -658,3 +658,381 @@ class TestCreateModuleGetattr:
         with patch.dict(sys.modules, {"core.v1.engine.services": mock_services}):
             result = create_mod.__getattr__("SourceConfig")
         assert result is MockSourceConfig
+
+
+@pytest.mark.unit
+class TestCreateOutline:
+    """Test create_outline command."""
+
+    _default_kwargs = dict(
+        collection="outline",
+        url=None,
+        token=None,
+        collection_id=None,
+        include_attachments=True,
+        ocr=True,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
+        local=False,
+    )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_with_explicit_url(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should call execute_create_command with outline source type."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(**{**self._default_kwargs, "url": "https://app.getoutline.com"})
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["source_type"] == "outline"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_prompts_for_url_when_missing(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should prompt for URL and default to Cloud if Enter is pressed."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_console.input.return_value = (
+            ""  # User presses Enter → use default Cloud URL
+        )
+
+        create_outline(**self._default_kwargs)
+
+        mock_console.input.assert_called()
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert (
+            call_kwargs["progress_message"]
+            == "Connecting to https://app.getoutline.com"
+        )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_uses_provided_url(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should use self-hosted URL without prompting."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{**self._default_kwargs, "url": "https://outline.mycompany.com"}
+        )
+
+        mock_console.input.assert_not_called()
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert (
+            call_kwargs["progress_message"]
+            == "Connecting to https://outline.mycompany.com"
+        )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_token_added_to_cli_overrides(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should include api_token in cli_overrides when token is provided."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "token": "my-token",
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["api_token"] == "my-token"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_collection_ids_passed(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should convert tuple of collection IDs to list in cli_overrides."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "collection_id": ["col-1", "col-2"],
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["collection_ids"] == ["col-1", "col-2"]
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_url_from_config(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should use URL from config when CLI URL not provided."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = "https://outline.configured.com"
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(**self._default_kwargs)
+
+        mock_console.input.assert_not_called()
+        mock_execute.assert_called_once()
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_create_outline_custom_url_prompts(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should use user-entered custom URL when provided at prompt."""
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_console.input.return_value = "https://wiki.myorg.com"
+
+        create_outline(**self._default_kwargs)
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["progress_message"] == "Connecting to https://wiki.myorg.com"
+
+
+@pytest.mark.unit
+class TestPromptMissingOutlineFields:
+    """Test the prompt_missing_outline_fields callback captured from create_outline."""
+
+    _default_kwargs = dict(
+        collection="outline",
+        url="https://app.getoutline.com",
+        token=None,
+        collection_id=None,
+        include_attachments=True,
+        ocr=True,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
+        local=False,
+    )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_no_missing_fields_is_noop(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should return immediately when no fields are missing."""
+        from types import SimpleNamespace
+        from indexed.knowledge.commands.create import create_outline
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_outline, self._default_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(missing=[], field_info={}, present={})
+        prompt_fn(validation, mock_config, "sources.outline")
+
+        mock_console.input.assert_not_called()
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_url_excluded_from_missing_fields(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should skip 'url' even if listed in missing fields."""
+        from types import SimpleNamespace
+        from indexed.knowledge.commands.create import create_outline
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_outline, self._default_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(missing=["url"], field_info={}, present={})
+        prompt_fn(validation, mock_config, "sources.outline")
+
+        mock_console.input.assert_not_called()
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.prompt_credential_field")
+    def test_credential_field_delegates_to_prompt_credential_field(
+        self,
+        mock_prompt_cred,
+        mock_console,
+        mock_verbose,
+        mock_config_service,
+        mock_execute,
+    ):
+        """Should call prompt_credential_field for credential fields like api_token."""
+        from types import SimpleNamespace
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_prompt_cred.return_value = "secret-token"
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_outline, self._default_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(
+            missing=["api_token"],
+            field_info={"api_token": {"sensitive": True}},
+            present={},
+        )
+        prompt_fn(validation, mock_config, "sources.outline")
+
+        mock_prompt_cred.assert_called_once()
+        assert validation.present["api_token"] == "secret-token"
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_non_credential_field_uses_console_input(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should use console.input for non-credential fields."""
+        from types import SimpleNamespace
+        from indexed.knowledge.commands.create import create_outline
+
+        mock_console.input.return_value = "some-value"
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_outline, self._default_kwargs, mock_config_service, mock_execute
+        )
+        validation = SimpleNamespace(
+            missing=["custom_field"],
+            field_info={"custom_field": {}},
+            present={},
+        )
+        prompt_fn(validation, mock_config, "sources.outline")
+
+        mock_console.input.assert_called()
+        assert validation.present["custom_field"] == "some-value"
+
+
+@pytest.mark.unit
+class TestBuildOutlineSourceConfig:
+    """Test the build_outline_source_config callback captured from create_outline."""
+
+    _default_kwargs = dict(
+        collection="outline",
+        url="https://app.getoutline.com",
+        token=None,
+        collection_id=None,
+        include_attachments=True,
+        ocr=True,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
+        local=False,
+    )
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_build_source_config_creates_outline_config(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should build SourceConfig with outline type and correct URL."""
+        import sys
+        from indexed.knowledge.commands.create import create_outline
+
+        captured: dict = {}
+
+        def capture_kwargs(**kwargs: object) -> None:
+            captured.update(kwargs)
+
+        mock_execute.side_effect = capture_kwargs
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        MockSourceConfig = Mock(return_value=Mock())
+        MockIndexer = "flat"
+
+        with patch.dict(
+            sys.modules,
+            {
+                "core.v1.engine.services": Mock(SourceConfig=MockSourceConfig),
+                "core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer),
+            },
+        ):
+            create_outline(**self._default_kwargs)
+
+        build_fn = captured.get("build_source_config")
+        assert build_fn is not None
+
+        present = {"url": "https://app.getoutline.com", "collection_ids": ["col-1"]}
+        with patch.dict(
+            sys.modules,
+            {
+                "core.v1.engine.services": Mock(SourceConfig=MockSourceConfig),
+                "core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer),
+            },
+        ):
+            build_fn(present, "my-outline")
+
+        MockSourceConfig.assert_called_once()
+        call_kwargs = MockSourceConfig.call_args.kwargs
+        assert call_kwargs["name"] == "my-outline"
+        assert call_kwargs["base_url_or_path"] == "https://app.getoutline.com"

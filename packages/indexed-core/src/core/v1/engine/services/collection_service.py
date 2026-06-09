@@ -90,6 +90,21 @@ def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
             )
         return FileSystemConnector.from_config(config_service)
 
+    elif cfg.type == "outline":
+        from connectors.outline import OutlineConnector
+
+        config_service.set("sources.outline.url", cfg.base_url_or_path)
+        opts = cfg.reader_opts
+        if opts.get("collectionIds") is not None:
+            config_service.set("sources.outline.collection_ids", opts["collectionIds"])
+        if "includeAttachments" in opts:
+            config_service.set(
+                "sources.outline.include_attachments", opts["includeAttachments"]
+            )
+        if "ocrEnabled" in opts:
+            config_service.set("sources.outline.ocr_enabled", opts["ocrEnabled"])
+        return OutlineConnector.from_config(config_service)
+
     else:
         raise ValueError(f"Unknown source type: {cfg.type}")
 

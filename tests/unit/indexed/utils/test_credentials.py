@@ -6,10 +6,51 @@ import pytest
 import typer
 
 from indexed.utils.credentials import (
+    apply_cli_credential_overrides,
     ensure_credentials_for_source,
     ensure_atlassian_cloud_credentials,
     ensure_server_credentials,
 )
+
+
+class TestApplyCliCredentialOverrides:
+    """Test apply_cli_credential_overrides function."""
+
+    def test_outline_token_sets_env_var(self):
+        """Should map Outline api_token to OUTLINE_API_TOKEN."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides(
+                "outline", {"api_token": "ol_api_secret", "url": "https://outline.com"}
+            )
+            assert os.environ["OUTLINE_API_TOKEN"] == "ol_api_secret"
+
+    def test_jira_cloud_token_and_email(self):
+        """Should map Jira Cloud credentials to Atlassian env vars."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides(
+                "jiraCloud",
+                {"api_token": "atlassian-token", "email": "user@example.com"},
+            )
+            assert os.environ["ATLASSIAN_TOKEN"] == "atlassian-token"
+            assert os.environ["ATLASSIAN_EMAIL"] == "user@example.com"
+
+    def test_jira_server_api_token_alias(self):
+        """Should map CLI api_token alias to JIRA_TOKEN for server."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("jira", {"api_token": "server-token"})
+            assert os.environ["JIRA_TOKEN"] == "server-token"
+
+    def test_ignores_unknown_source_type(self):
+        """Should no-op for sources without credential mapping."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("localFiles", {"api_token": "ignored"})
+            assert "OUTLINE_API_TOKEN" not in os.environ
+
+    def test_ignores_empty_values(self):
+        """Should not set env vars for empty credential values."""
+        with patch.dict(os.environ, {}, clear=True):
+            apply_cli_credential_overrides("outline", {"api_token": ""})
+            assert "OUTLINE_API_TOKEN" not in os.environ
 
 
 class TestEnsureCredentialsForSource:
@@ -92,6 +133,77 @@ class TestEnsureCredentialsForSource:
         mock_config = Mock()
         # Should not raise
         ensure_credentials_for_source("unknown_type", mock_config)
+
+    def test_outline_delegates_to_outline_handler(self):
+        """Should delegate outline to Outline credentials handler."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {"OUTLINE_API_TOKEN": "ol_api_token"}):
+            ensure_credentials_for_source("outline", mock_config)
+
+        mock_config.get.assert_any_call("sources.outline.api_token")
+
+
+class TestEnsureOutlineCredentials:
+    """Test ensure_outline_credentials function."""
+
+    def test_uses_existing_token_from_environment(self):
+        """Should use existing OUTLINE_API_TOKEN without prompting."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {"OUTLINE_API_TOKEN": "existing-token"}):
+            result = ensure_outline_credentials(mock_config, "sources.outline")
+
+        assert result["api_token"] == "existing-token"
+
+    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.utils.credentials.console")
+    def test_saves_prompted_token_to_env(
+        self, mock_console, mock_prompt, _mock_verbose
+    ):
+        """Should save prompted token to .env and set os.environ."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_prompt.return_value = "new-outline-token"
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = ensure_outline_credentials(mock_config, "sources.outline")
+            assert result["api_token"] == "new-outline-token"
+            assert os.environ["OUTLINE_API_TOKEN"] == "new-outline-token"
+
+        mock_config.set_value.assert_called_once_with(
+            "sources.outline.api_token",
+            "new-outline-token",
+            field_info={"sensitive": True, "env_var": "OUTLINE_API_TOKEN"},
+        )
+
+    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.utils.credentials.Prompt.ask", return_value="token")
+    @patch("indexed.utils.credentials.console")
+    def test_prompt_shows_token_access_guidance(
+        self, mock_console, _mock_prompt, _mock_verbose
+    ):
+        """Should show API key scope guidance between headline and token prompt."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {}, clear=True):
+            ensure_outline_credentials(mock_config, "sources.outline")
+
+        printed = " ".join(str(call) for call in mock_console.print.call_args_list)
+        assert "Outline Credentials Required" in printed
+        assert "collections.list" in printed
+        assert "attachments.redirect" in printed
+        assert "Settings" in printed
 
 
 class TestEnsureAtlassianCloudCredentials:
@@ -658,3 +770,208 @@ class TestCheckServerAuthPresent:
         )
 
         assert result is False
+
+
+class TestEnsureAtlassianCloudCredentialsExitPaths:
+    """Test exit paths in ensure_atlassian_cloud_credentials."""
+
+    def test_exits_when_empty_api_token_entered(self):
+        """Should raise typer.Exit(1) when user enters empty API token."""
+        from indexed.utils.credentials import ensure_atlassian_cloud_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(
+            os.environ, {"ATLASSIAN_EMAIL": "user@example.com"}, clear=False
+        ):
+            os.environ.pop("ATLASSIAN_TOKEN", None)
+            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+                mock_prompt.ask.return_value = ""
+                with pytest.raises(typer.Exit):
+                    ensure_atlassian_cloud_credentials(
+                        mock_config,
+                        "sources.jira",
+                        "Jira Cloud",
+                    )
+
+
+class TestEnsureServerCredentialsExitPaths:
+    """Test exit paths in ensure_server_credentials."""
+
+    def test_exits_when_empty_token_entered_and_no_login_password(self):
+        """Should raise typer.Exit when empty token and empty login entered."""
+        from indexed.utils.credentials import ensure_server_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JIRA_TOKEN", None)
+            os.environ.pop("JIRA_LOGIN", None)
+            os.environ.pop("JIRA_PASSWORD", None)
+            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+                with patch("indexed.utils.credentials.console") as mock_console:
+                    mock_prompt.ask.return_value = ""  # Empty token
+                    mock_console.input.return_value = ""  # Empty login → Exit
+                    with pytest.raises(typer.Exit):
+                        ensure_server_credentials(
+                            mock_config,
+                            "sources.jira",
+                            "Jira Server",
+                            token_env_var="JIRA_TOKEN",
+                            login_env_var="JIRA_LOGIN",
+                            password_env_var="JIRA_PASSWORD",
+                        )
+
+    def test_exits_when_empty_password_entered(self):
+        """Should raise typer.Exit when user enters empty password."""
+        from indexed.utils.credentials import ensure_server_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JIRA_TOKEN", None)
+            os.environ.pop("JIRA_LOGIN", None)
+            os.environ.pop("JIRA_PASSWORD", None)
+            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+                with patch("indexed.utils.credentials.console") as mock_console:
+                    mock_prompt.ask.side_effect = [
+                        "",
+                        "",
+                    ]  # Empty token, then empty password
+                    mock_console.input.return_value = "myuser"  # Valid login
+                    with pytest.raises(typer.Exit):
+                        ensure_server_credentials(
+                            mock_config,
+                            "sources.jira",
+                            "Jira Server",
+                            token_env_var="JIRA_TOKEN",
+                            login_env_var="JIRA_LOGIN",
+                            password_env_var="JIRA_PASSWORD",
+                        )
+
+
+class TestEnsureOutlineCredentialsExitPaths:
+    """Test exit paths in ensure_outline_credentials."""
+
+    def test_exits_when_empty_api_token_entered(self):
+        """Should raise typer.Exit(1) when user enters empty Outline API token."""
+        from indexed.utils.credentials import ensure_outline_credentials
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+                mock_prompt.ask.return_value = ""
+                with pytest.raises(typer.Exit):
+                    ensure_outline_credentials(mock_config, "sources.outline")
+
+
+class TestPromptCredentialFieldOutlineBranch:
+    """Test prompt_credential_field for outline api_token."""
+
+    def test_outline_api_token_sets_outline_env_var(self):
+        """Should set OUTLINE_API_TOKEN when source_type is outline."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OUTLINE_API_TOKEN", None)
+            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+                mock_prompt.ask.return_value = "ol_my_secret"
+                result = prompt_credential_field(
+                    "api_token",
+                    {"sensitive": True},
+                    mock_config,
+                    "sources.outline",
+                    source_type="outline",
+                )
+                assert os.environ["OUTLINE_API_TOKEN"] == "ol_my_secret"
+
+        assert result == "ol_my_secret"
+
+    def test_empty_email_raises_exit(self):
+        """Should raise typer.Exit when empty email entered."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.console") as mock_console:
+            mock_console.input.return_value = ""
+            with pytest.raises(typer.Exit):
+                prompt_credential_field("email", {}, mock_config, "sources.jira")
+
+    def test_empty_api_token_raises_exit(self):
+        """Should raise typer.Exit when empty api_token entered."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = ""
+            with pytest.raises(typer.Exit):
+                prompt_credential_field("api_token", {}, mock_config, "sources.jira")
+
+    def test_empty_login_raises_exit(self):
+        """Should raise typer.Exit when empty login entered."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.console") as mock_console:
+            mock_console.input.return_value = ""
+            with pytest.raises(typer.Exit):
+                prompt_credential_field("login", {}, mock_config, "sources.jira")
+
+    def test_empty_password_raises_exit(self):
+        """Should raise typer.Exit when empty password entered."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = ""
+            with pytest.raises(typer.Exit):
+                prompt_credential_field("password", {}, mock_config, "sources.jira")
+
+    def test_password_unknown_source_type_marks_sensitive(self):
+        """Should mark password as sensitive for unknown source types."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "secret"
+            result = prompt_credential_field(
+                "password",
+                {},
+                mock_config,
+                "sources.custom",
+                source_type="unknown_source",
+            )
+
+        assert result == "secret"
+        call_kwargs = mock_config.set_value.call_args.kwargs
+        assert call_kwargs["field_info"]["sensitive"] is True
+
+    def test_unknown_sensitive_field_uses_password_prompt(self):
+        """Should use Prompt.ask for unknown sensitive fields."""
+        from indexed.utils.credentials import prompt_credential_field
+
+        mock_config = Mock()
+
+        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "secret-value"
+            result = prompt_credential_field(
+                "secret_key",
+                {"sensitive": True},
+                mock_config,
+                "sources.custom",
+            )
+
+        assert result == "secret-value"
+        mock_prompt.ask.assert_called_once()
