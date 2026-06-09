@@ -54,6 +54,7 @@ def reader():
 
 
 @pytest.mark.unit
+@pytest.mark.api
 def test_pagination_terminates_at_total(reader) -> None:
     doc_stubs = [{"id": f"doc{i}"} for i in range(5)]
 
@@ -71,6 +72,7 @@ def test_pagination_terminates_at_total(reader) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.api
 def test_pagination_with_exact_page_boundary(reader) -> None:
     doc_stubs = [{"id": f"doc{i}"} for i in range(4)]
 
@@ -86,6 +88,7 @@ def test_pagination_with_exact_page_boundary(reader) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.api
 def test_empty_collection(reader) -> None:
     with patch("requests.post", return_value=_make_doc_list_response([], total=0)):
         stubs = list(reader._iter_document_stubs())
@@ -93,6 +96,7 @@ def test_empty_collection(reader) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.api
 def test_collection_ids_none_fetches_collections() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 
@@ -114,6 +118,7 @@ def test_collection_ids_none_fetches_collections() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.api
 def test_collection_ids_provided_skips_collections_call(reader) -> None:
     assert reader.collection_ids == ["col1"]
 
