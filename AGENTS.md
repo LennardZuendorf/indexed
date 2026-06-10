@@ -1,6 +1,6 @@
 # AGENTS.MD - Python Engineering Guide
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-06-09
 **Repository:** indexed v0.1.0 (Python monorepo)
 
 ## Core Operating Principles
@@ -32,6 +32,51 @@
 - **NEVER create files without necessity** - prefer editing existing files
 - **NEVER proceed without user confirmation**
 - **NEVER skip test coverage** - >85% is a hard requirement
+
+### 4. Spec-Driven Development (`.spec/`)
+
+**`.spec/` is the single source of truth for design.** Read it before writing
+code; update it when decisions change. Use the `/spec` skill for all spec work
+(scoping, validating, bootstrapping) — it owns the rules below.
+
+**READ before you build:**
+- Start every non-trivial task by reading the relevant root spec (`product.md`,
+  `tech.md`, `plan.md`) and following its links. Read `lessons.md` if present.
+- Never edit a spec you haven't read this session.
+
+**Two-layer model:**
+- **Root layer (persistent):** `product.md`, `tech.md`, `plan.md` entrypoints +
+  cross-cutting branch docs `product-{topic}.md` / `tech-{topic}.md`. Stays
+  high-level. No feature-level detail. **No backlog** — current focus only;
+  long-horizon ideas go to GitHub issues, not specs.
+- **Feature layer (branch-scoped):** `features/<name>/` with `product.md` +
+  `tech.md` (+ optional `plan.md`/`design.md`). Written during design, promoted
+  to root on completion, then **deleted before the branch merges**. CODE IS TRUTH.
+
+**Tech branch docs = one per monorepo component:**
+`tech.md` is the cross-cutting summary (architecture overview, stack, data flow,
+architectural rules). Per-component internals live in `tech-<component>.md`:
+
+| Component | Doc |
+|-----------|-----|
+| `apps/indexed` | `tech-app.md` |
+| `packages/indexed-core` | `tech-core.md` |
+| `packages/indexed-config` | `tech-config.md` |
+| `packages/indexed-connectors` | `tech-connectors.md` |
+| `packages/indexed-parsing` | `tech-parsing.md` |
+
+**Rules when editing specs:**
+- Bump `updated:` on every spec you touch.
+- Keep cross-references alive (parent ↔ child both ways; list children in
+  entrypoint frontmatter).
+- Branch-doc filenames MUST start with `product-` / `tech-` / `plan-`.
+- One concern per doc: product specs contain zero code; tech specs zero UX.
+- After changes, run `bash ~/.agents/skills/spec/scripts/validate.sh` — must be
+  **0 errors**.
+
+**Design docs vs. published docs:** `.spec/` holds internal design (source of
+truth). `docs/` holds only the logo asset — it is NOT a docs site. Do not put
+specs in `docs/`.
 
 ## Tech Stack
 

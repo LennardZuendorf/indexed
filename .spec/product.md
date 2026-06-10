@@ -1,8 +1,8 @@
 ---
 type: entrypoint
 scope: product
-children: [feature-config-product.md]
-updated: 2026-02-16
+children: []
+updated: 2026-06-09
 ---
 
 # Product Spec: indexed
@@ -36,6 +36,7 @@ What indexed is **not**:
 | **Jira Server/DC** | ✅ Shipped | Index on-premises Jira with JQL filtering |
 | **Confluence Cloud** | ✅ Shipped | Index Confluence Cloud pages with CQL filtering |
 | **Confluence Server/DC** | ✅ Shipped | Index on-premises Confluence with CQL filtering |
+| **Outline Wiki** | ✅ Shipped | Index Outline docs + attachments (Cloud or self-hosted) |
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
@@ -51,7 +52,7 @@ What indexed is **not**:
 | **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
 | **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
 | **Single Collection** | ✅ Shipped | Target specific collection for focused results |
-| **Relevance Scoring** | ✅ Shipped | Similarity scores (0-1) for ranking |
+| **Relevance Scoring** | ✅ Shipped | FAISS L2 distance ranking (lower = closer match) |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
 | Filters | 📋 Planned | Filter by date, source type, metadata |

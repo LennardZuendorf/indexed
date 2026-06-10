@@ -1,5 +1,6 @@
 """Tests for change_tracker — ChangeTracker and IndexState."""
 
+import os
 import subprocess
 
 import pytest
@@ -8,6 +9,66 @@ from connectors.files.change_tracker import (
     ChangeTracker,
     IndexState,
 )
+
+# Git exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE into hook environments
+# (e.g. the pre-push hook that runs this suite). If inherited, the throwaway
+# repos created below operate on the OUTER repo instead — corrupting its index
+# and making `auto` detect git where there is none. Scrub those vars and pin a
+# clean config (no global/system, no hooks, no signing) so every git call here
+# is fully isolated and deterministic regardless of how pytest was invoked.
+_LEAKED_GIT_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+)
+
+
+def _git_env() -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _LEAKED_GIT_VARS}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+def run_git(cwd, *args, check: bool = True) -> subprocess.CompletedProcess:
+    """Run an isolated git command: no inherited GIT_* env, no hooks, no signing."""
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
+        cwd=str(cwd),
+        capture_output=True,
+        check=check,
+        env=_git_env(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env(monkeypatch):
+    """Drop inherited GIT_* vars for every test.
+
+    The code under test (ChangeTracker) shells out to git too — if it inherits a
+    leaked GIT_DIR/GIT_INDEX_FILE it operates on the outer repo. Scrubbing the
+    process env keeps both the test setup and the tracker pinned to their own
+    repos.
+    """
+    for var in _LEAKED_GIT_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 class TestIndexState:
@@ -103,48 +164,14 @@ class TestChangeTrackerAuto:
 
 
 class TestChangeTrackerGit:
-    @staticmethod
-    def _git(tmp_path, *args):
-        """Run git with signing disabled for test isolation."""
-        return subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", *args],
-            cwd=str(tmp_path),
-            capture_output=True,
-            check=True,
-        )
-
     @pytest.fixture
     def git_repo(self, tmp_path):
-        """Create a real git repo for testing."""
-        subprocess.run(
-            ["git", "init"], cwd=str(tmp_path), capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=str(tmp_path),
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test"],
-            cwd=str(tmp_path),
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "commit.gpgsign", "false"],
-            cwd=str(tmp_path),
-            capture_output=True,
-        )
+        """Create a real, isolated git repo for testing."""
+        run_git(tmp_path, "init")
         f = tmp_path / "initial.txt"
         f.write_text("initial")
-        subprocess.run(
-            ["git", "add", "."], cwd=str(tmp_path), capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "init"],
-            cwd=str(tmp_path),
-            capture_output=True,
-            check=True,
-        )
+        run_git(tmp_path, "add", ".")
+        run_git(tmp_path, "commit", "-m", "init")
         return tmp_path
 
     def test_first_run_all_added(self, git_repo):
@@ -168,15 +195,8 @@ class TestChangeTrackerGit:
 
         # Make a new commit with a modification
         f.write_text("modified content")
-        subprocess.run(
-            ["git", "add", "."], cwd=str(git_repo), capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "modify"],
-            cwd=str(git_repo),
-            capture_output=True,
-            check=True,
-        )
+        run_git(git_repo, "add", ".")
+        run_git(git_repo, "commit", "-m", "modify")
 
         changes = tracker.detect_changes([str(f)], state)
         statuses = {ch.status for ch in changes}
@@ -202,9 +222,7 @@ class TestChangeTrackerGit:
         state = tracker.build_state([str(f)])
 
         f.write_text("staged change")
-        subprocess.run(
-            ["git", "add", str(f)], cwd=str(git_repo), capture_output=True, check=True
-        )
+        run_git(git_repo, "add", str(f))
 
         changes = tracker.detect_changes([str(f)], state)
         statuses = {ch.status for ch in changes}
@@ -218,23 +236,12 @@ class TestChangeTrackerGit:
         subdir = repo / "subdir"
         subdir.mkdir()
 
-        for cmd in [
-            ["git", "init"],
-            ["git", "config", "user.email", "test@test.com"],
-            ["git", "config", "user.name", "Test"],
-            ["git", "config", "commit.gpgsign", "false"],
-        ]:
-            subprocess.run(cmd, cwd=str(repo), capture_output=True)
+        run_git(repo, "init")
 
         f = subdir / "file.txt"
         f.write_text("original")
-        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
-        subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "init"],
-            cwd=str(repo),
-            capture_output=True,
-            check=True,
-        )
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-m", "init")
 
         # Tracker uses the subdirectory as base_path (not the repo root)
         tracker = ChangeTracker(str(subdir), strategy="git")
@@ -242,13 +249,8 @@ class TestChangeTrackerGit:
 
         # Modify the file and commit
         f.write_text("modified")
-        subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True)
-        subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "modify"],
-            cwd=str(repo),
-            capture_output=True,
-            check=True,
-        )
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-m", "modify")
 
         changes = tracker.detect_changes([str(f)], state)
         assert len(changes) == 1, f"Expected 1 change, got {changes}"

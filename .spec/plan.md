@@ -1,314 +1,84 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-02-16
+updated: 2026-06-09
 ---
 
 # Development Plan: indexed
 
-Phased roadmap for indexed development from v0.1.0 (current) to v1.0.0.
+Root roadmap. Whole-feature gates only — no unit-level backlog, no long-horizon
+wishlist. Current focus + delivered surface.
 
-**For feature specs, see [product.md](product.md).**
-**For technical implementation, see [tech.md](tech.md).**
-
----
-
-## Current Status: v0.1.0 Alpha
-
-**Released:** 2026-02-16
-**Status:** ✅ Complete
+**For features (what/why), see [product.md](product.md). For architecture, see [tech.md](tech.md).**
 
 ---
 
-## Phase 1: Foundation (v0.1.0) ✅ Complete
+## Current Status
 
-**Goal:** Core functionality working end-to-end
-
-**Delivered:**
-- Core indexing pipeline (read → convert → chunk → embed → index → persist)
-- FAISS vector search with L2 distance
-- Jira Cloud & Server connectors
-- Confluence Cloud & Server connectors
-- File system connector
-- MCP server with stdio/HTTP/SSE transports
-- CLI with all core commands (create, search, update, inspect, remove)
-- Configuration system (TOML + env vars + CLI args)
-- Test coverage >85%
-- Docker support
-- Monorepo build with `una`
-
-**What works:**
-- Privacy-first local indexing and search
-- AI agent integration via MCP
-- Multi-source document indexing
-- Semantic similarity search
-- Beautiful CLI with Rich output
+**v0.1.0 Alpha** — released 2026-02-16. Core pipeline, search, MCP, CLI, config
+all shipped. Breaking changes still allowed (alpha).
 
 ---
 
-## Phase 2: Enhancement (v0.2.0) 📋 Planned Q2 2026
+## Feature Sequence
 
-**Goal:** More sources, better search, improved UX
+Binary whole-feature gates. A feature is DONE when shipped and its live surface
+is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 
-### New Connectors
+| # | Feature | Gate | Status | Live surface |
+|---|---------|------|--------|--------------|
+| 1 | Core indexing pipeline | read→convert→chunk→embed→index→persist works E2E | ✅ DONE | `packages/indexed-core/src/core/v1/` |
+| 2 | FAISS semantic search | L2 search + score mapping | ✅ DONE | `core/v1/engine/indexes/faiss_indexer.py` |
+| 3 | Jira connectors (Cloud + Server/DC) | JQL-filtered indexing | ✅ DONE | `packages/indexed-connectors/src/connectors/jira/` |
+| 4 | Confluence connectors (Cloud + Server/DC) | CQL-filtered indexing | ✅ DONE | `.../connectors/confluence/` |
+| 5 | File system connector | local files + parsing module | ✅ DONE | `.../connectors/files/`, `packages/indexed-parsing/` |
+| 6 | Outline Wiki connector | Cloud + self-hosted parity, attachments/OCR | ✅ DONE | `.../connectors/outline/`, tests `tests/unit/indexed_connectors/outline/` |
+| 7 | MCP server (stdio/HTTP/SSE) | tools + resources exposed | ✅ DONE | `apps/indexed/src/indexed/mcp/` |
+| 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `apps/indexed/src/indexed/knowledge/commands/` |
+| 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `packages/indexed-config/`, tech.md § Configuration System |
+| 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
 
-- [ ] GitHub repositories (code + issues + PRs)
-- [ ] Google Drive (Docs, Sheets, Slides)
-- [ ] Notion (pages + databases)
-- [ ] Slack (messages + threads)
-- [ ] Email (IMAP)
-
-### Search Improvements
-
-- [ ] Filters (date range, source type, metadata fields)
-- [ ] Boolean operators (AND, OR, NOT)
-- [ ] Phrase search (exact matches)
-- [ ] Fuzzy matching
-- [ ] Query suggestions/autocomplete
-
-### UX Enhancements
-
-- [ ] Interactive TUI mode (full-screen interface)
-- [ ] Better progress bars for long operations
-- [ ] Improved error messages with suggestions
-- [ ] Collection templates (presets for common setups)
-- [ ] Interactive setup wizard
-
-### Performance
-
-- [ ] Parallel indexing (multi-threaded embedding)
-- [ ] Query result caching
-- [ ] Index compression
-- [ ] Incremental update optimization
-
-### Developer Experience
-
-- [ ] Python API documentation (auto-generated)
-- [ ] Video tutorials
-- [ ] Example projects
-- [ ] Connector development guide
+**Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
+(flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
+all shipped. Architectural rules promoted to [tech.md](tech.md) § Architectural Rules.
+Only the thin-command pattern (extract `knowledge/services/`, shrink oversized
+command files) remains open — tracked as [issue #119](https://github.com/LennardZuendorf/indexed/issues/119), not a spec backlog item.
 
 ---
 
-## Phase 3: Scale (v0.3.0) 📋 Planned Q3 2026
+## Current Focus
 
-**Goal:** Production readiness, multi-user support, enterprise features
-
-### Multi-User Support
-
-- [ ] Server mode (persistent HTTP server)
-- [ ] User authentication
-- [ ] Per-collection access control
-- [ ] Role-based permissions (admin, editor, viewer)
-
-### Enterprise Features
-
-- [ ] Audit logging (who searched what, when)
-- [ ] Backup/restore (automated or manual)
-- [ ] Collection replication
-- [ ] High availability setup guide
-- [ ] Monitoring & metrics (Prometheus/Grafana)
-
-### Advanced Indexing
-
-- [ ] Image OCR support (extract text from images)
-- [ ] Audio transcription (index podcasts, meetings)
-- [ ] Video subtitle extraction
-- [ ] Code-aware chunking (respect function boundaries)
-- [ ] Table extraction from documents
-
-### API Expansion
-
-- [ ] REST API server mode
-- [ ] GraphQL endpoint
-- [ ] Webhook support (notify on collection updates)
-- [ ] Batch operations API
-
-### Deployment
-
-- [ ] Kubernetes Helm charts
-- [ ] Official Docker Hub images
-- [ ] Cloud provider templates (AWS, GCP, Azure)
-- [ ] Terraform modules
-
----
-
-## Phase 4: Ecosystem (v1.0.0) 🔮 Planned Q4 2026
-
-**Goal:** Extensibility, community growth, long-term sustainability
-
-### Connector Marketplace
-
-- [ ] Third-party connector registry
-- [ ] Plugin system architecture
-- [ ] Connector SDK with examples
-- [ ] Community connector showcase
-
-### Embedding Flexibility
-
-- [ ] Multi-model support (OpenAI, Cohere, custom)
-- [ ] Per-collection model selection
-- [ ] Fine-tuned domain models
-- [ ] Model comparison tool
-
-### Advanced AI Features
-
-- [ ] Query reformulation (understand intent)
-- [ ] Result summarization (LLM-powered)
-- [ ] Related document suggestions
-- [ ] Knowledge graph extraction
-- [ ] Semantic clustering
-
-### Community & Ecosystem
-
-- [ ] Comprehensive tutorial series
-- [ ] Video guides and demos
-- [ ] Community showcase (user projects)
-- [ ] Conference talks
-- [ ] Blog posts and case studies
-
-### Sustainability
-
-- [ ] Clear licensing decision
-- [ ] Contribution guidelines
-- [ ] Code of conduct
-- [ ] Governance model
-- [ ] Potential monetization (enterprise support, hosted option)
+v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`,
+`utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and
+`indexed-connectors` against the rules in [tech.md](tech.md) § Architectural Rules.
+Scope the v2 work as a feature under `.spec/features/<name>/` when it starts.
 
 ---
 
 ## Versioning Strategy
 
-**Semantic Versioning:** `MAJOR.MINOR.PATCH`
+`MAJOR.MINOR.PATCH`.
 
-- **MAJOR (0 → 1):** Stable API, production-ready
-- **MINOR (0.1 → 0.2):** New features, backward compatible
-- **PATCH (0.1.0 → 0.1.1):** Bug fixes, no new features
+- **MAJOR (0→1):** stable API, production-ready
+- **MINOR:** new features, backward compatible
+- **PATCH:** bug fixes only
 
-**Alpha (current):** Breaking changes allowed, active development
-**Beta (v0.5+):** API stabilizing, fewer breaking changes
-**Stable (v1.0):** Semantic versioning guarantees
-
----
-
-## Release Schedule
-
-| Version | Target Date | Status |
-|---------|-------------|--------|
-| v0.1.0 | 2026-02-16 | ✅ Released |
-| v0.2.0 | Q2 2026 | 📋 Planned |
-| v0.3.0 | Q3 2026 | 📋 Planned |
-| v1.0.0 | Q4 2026 | 🔮 Envisioned |
-
-**Note:** Dates are targets, not commitments. Quality over schedule.
-
----
-
-## Priority Matrix
-
-### Must Have (P0)
-
-- All Phase 1 features (complete)
-- Phase 2 search improvements
-- Phase 2 new connectors (at least 2)
-
-### Should Have (P1)
-
-- Phase 2 UX enhancements
-- Phase 2 performance optimizations
-- Phase 3 multi-user support
-
-### Nice to Have (P2)
-
-- Phase 3 enterprise features
-- Phase 4 advanced AI features
-- Phase 4 ecosystem
-
----
-
-## Success Criteria
-
-### v0.2.0 (Phase 2)
-
-- [ ] At least 2 new connectors implemented
-- [ ] Search filters functional
-- [ ] TUI mode working
-- [ ] >85% test coverage maintained
-- [ ] No performance regression
-
-### v0.3.0 (Phase 3)
-
-- [ ] Multi-user server mode operational
-- [ ] Access control implemented
-- [ ] Production deployment guide
-- [ ] At least 1 large-scale deployment (>1M docs)
-
-### v1.0.0 (Phase 4)
-
-- [ ] Stable API (no breaking changes)
-- [ ] Comprehensive documentation
-- [ ] Active community (GitHub stars, contributors)
-- [ ] Production deployments at scale
-- [ ] Clear governance and sustainability model
-
----
-
-## Dependencies & Blockers
-
-### Phase 2
-
-**Dependencies:**
-- None (can start immediately)
-
-**Potential Blockers:**
-- Connector API rate limits (may need throttling)
-- Large document parsing performance (may need streaming)
-
-### Phase 3
-
-**Dependencies:**
-- Phase 2 performance work (needed for multi-user)
-
-**Potential Blockers:**
-- Database choice for multi-user (PostgreSQL? SQLite?)
-- Authentication strategy (OAuth? JWT? API keys?)
-
-### Phase 4
-
-**Dependencies:**
-- Phase 3 API stability
-- Community adoption and feedback
-
-**Potential Blockers:**
-- Embedding model licensing (commercial use restrictions?)
-- Plugin security model (sandboxing?)
+Alpha (current): breaking changes allowed. Beta (v0.5+): API stabilizing.
+Stable (v1.0): semver guarantees. Dates are targets, not commitments — quality
+over schedule.
 
 ---
 
 ## Decision Log
 
-### 2026-02-16: Initial Phases Defined
+### 2026-06-09: Spec cleanup
+**Decision:** Migrate `docs/specs/` feature specs into root, promote shipped
+feature detail, discard long-horizon roadmap backlog, route remaining cleanup
+work to GitHub issues.
+**Rationale:** Latest spec rules — feature folders are branch-scoped and deleted
+when done; root holds value-prop + architecture + current plan only; no backlog
+in specs.
 
-**Decision:** Four-phase roadmap with quarterly targets
-**Rationale:** Provides clear milestones while maintaining flexibility
-**Alternatives Considered:** Agile without roadmap (rejected: need direction)
-
-### 2026-02-16: Alpha Status
-
-**Decision:** Mark v0.1.0 as alpha, breaking changes allowed
-**Rationale:** Need flexibility to iterate on API based on feedback
-**Alternatives Considered:** Call it beta (rejected: too early)
-
----
-
-## Open Planning Questions
-
-1. **Phase 2 Connector Priority** — Which 2 connectors should be first? GitHub most requested? Google Drive most useful?
-
-2. **Multi-User Architecture** — Database-backed or keep JSON? PostgreSQL + pgvector? SQLite for simplicity?
-
-3. **Licensing** — MIT for maximum adoption? Apache 2.0 for patent protection? Commercial dual-license?
-
-4. **Community Building** — When to start active marketing? Wait until beta? Conference talks in Q3?
-
-5. **Sustainability** — Enterprise support model? Hosted option? Sponsorware? Keep fully open?
+### 2026-02-16: Alpha status
+**Decision:** Mark v0.1.0 alpha, breaking changes allowed.
+**Rationale:** Need flexibility to iterate on API from feedback.
