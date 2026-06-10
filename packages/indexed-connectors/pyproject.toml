@@ -33,6 +33,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.hooks.una-build]
+enable-by-default = false
 
 [tool.hatch.metadata.hooks.una-meta]
 

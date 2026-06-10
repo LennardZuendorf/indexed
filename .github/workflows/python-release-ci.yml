@@ -39,7 +39,7 @@ jobs:
       run: uv sync
 
     - name: Build distributable wheel
-      run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
     - name: Validate wheel with PyPI's archive validator
       # Same checks PyPI's warehouse runs on upload. Failing here means PyPI

@@ -39,7 +39,7 @@ jobs:
         uv run pytest tests/system/ -q --tb=short
 
     - name: Build Distributable Wheel (apps/indexed with bundled packages)
-      run: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 
     - name: Validate wheel with PyPI's archive validator
       run: uv run python tools/validate_wheel.py dist/*.whl

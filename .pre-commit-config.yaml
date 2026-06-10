@@ -50,7 +50,7 @@ repos:
 
       - id: build-check
         name: build wheel (verify buildable)
-        entry: uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+        entry: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
         language: system
         stages: [pre-push]
         pass_filenames: false
