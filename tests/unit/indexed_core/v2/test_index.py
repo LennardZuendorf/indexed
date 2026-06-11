@@ -100,9 +100,40 @@ class TestIndex:
             assert "docs" not in index.list_collections()
             assert not col_dir.exists()
 
-    def test_list_collections_empty(self) -> None:
-        index = Index()
-        assert index.list_collections() == []
+    def test_list_collections_empty(self, tmp_path) -> None:
+        with patch("core.v2.storage.get_collections_dir", return_value=tmp_path):
+            index = Index()
+            assert index.list_collections() == []
+
+    def test_list_collections_includes_persisted(self, tmp_path) -> None:
+        """A collection persisted on disk is visible to a fresh Index."""
+        from core.v2.storage import write_manifest
+
+        write_manifest(
+            "persisted-col",
+            num_documents=1,
+            num_chunks=3,
+            collections_dir=tmp_path,
+        )
+
+        with patch("core.v2.storage.get_collections_dir", return_value=tmp_path):
+            index = Index()  # fresh instance, nothing tracked in memory
+            assert "persisted-col" in index.list_collections()
+
+    def test_list_collections_unions_memory_and_disk(self, tmp_path) -> None:
+        """list_collections merges in-memory tracked names with disk names."""
+        from core.v2.storage import write_manifest
+
+        write_manifest(
+            "on-disk", num_documents=1, num_chunks=1, collections_dir=tmp_path
+        )
+
+        with patch("core.v2.storage.get_collections_dir", return_value=tmp_path):
+            index = Index()
+            index._collections["in-memory"] = MagicMock()
+            names = index.list_collections()
+            assert "on-disk" in names
+            assert "in-memory" in names
 
 
 class TestNoImportSideEffects:

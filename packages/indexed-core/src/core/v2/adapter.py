@@ -17,9 +17,10 @@ The v1 converter output format (per document)::
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Protocol
 
-from llama_index.core.schema import TextNode
+if TYPE_CHECKING:
+    from llama_index.core.schema import TextNode
 
 
 class PhasedProgress(Protocol):
@@ -84,6 +85,8 @@ def _converted_doc_to_nodes(
     collection_name: str,
 ) -> list[TextNode]:
     """Convert a single v1 converted document dict to TextNodes."""
+    from llama_index.core.schema import TextNode
+
     doc_id = converted["id"]
     url = converted.get("url", "")
     modified_time = converted.get("modifiedTime", "")

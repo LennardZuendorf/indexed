@@ -17,6 +17,7 @@ def search_collection(
     embed_model_name: str = "all-MiniLM-L6-v2",
     max_docs: int = 10,
     include_matched_chunks: bool = True,
+    score_threshold: Optional[float] = None,
     collections_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Search a single collection using LlamaIndex retriever.
@@ -28,6 +29,8 @@ def search_collection(
         embed_model_name: Model to use for query embedding.
         max_docs: Maximum documents in the result.
         include_matched_chunks: Whether to include chunk text in results.
+        score_threshold: If set, drop retrieved chunks scoring below this
+            value before grouping. ``None`` keeps all retrieved chunks.
         collections_dir: Override for the collections directory.
 
     Returns:
@@ -47,7 +50,11 @@ def search_collection(
     retrieved_nodes = retriever.retrieve(query)
 
     return _format_results(
-        collection_name, retrieved_nodes, max_docs, include_matched_chunks
+        collection_name,
+        retrieved_nodes,
+        max_docs,
+        include_matched_chunks,
+        score_threshold=score_threshold,
     )
 
 
@@ -56,16 +63,24 @@ def _format_results(
     retrieved_nodes: list,
     max_docs: int,
     include_matched_chunks: bool,
+    score_threshold: Optional[float] = None,
 ) -> dict[str, Any]:
     """Convert LlamaIndex NodeWithScore results to v1-compatible format.
 
     Groups results by source document, keeping the best score per chunk.
+    When ``score_threshold`` is set, chunks scoring below it are dropped.
     """
     doc_results: dict[str, dict[str, Any]] = {}
 
     for node_with_score in retrieved_nodes:
         node = node_with_score.node
         score = node_with_score.score
+        if (
+            score_threshold is not None
+            and score is not None
+            and score < score_threshold
+        ):
+            continue
         source_id = node.metadata.get("source_id", node.node_id)
 
         if source_id not in doc_results:

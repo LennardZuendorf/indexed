@@ -16,6 +16,10 @@ def create(
     store_type: str = "faiss",
     collections_dir: Optional[Path] = None,
     progress: Optional[PhasedProgressCallback] = None,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: int = 50,
+    batch_size: Optional[int] = None,
+    persistence_enabled: bool = True,
 ) -> dict[str, Any]:
     """Create a new collection from a connector.
 
@@ -30,6 +34,10 @@ def create(
         store_type=store_type,
         collections_dir=collections_dir,
         progress=progress,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        batch_size=batch_size,
+        persistence_enabled=persistence_enabled,
     )
 
 
@@ -41,11 +49,15 @@ def update(
     store_type: str = "faiss",
     collections_dir: Optional[Path] = None,
     progress: Optional[PhasedProgressCallback] = None,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: int = 50,
+    batch_size: Optional[int] = None,
+    persistence_enabled: bool = True,
 ) -> dict[str, Any]:
     """Update a collection by re-indexing from the connector.
 
-    V2 does not support incremental updates yet — this removes the
-    existing collection and recreates it from scratch.
+    V2 does not support incremental updates yet — this rebuilds the index
+    from scratch and only replaces the existing collection on success.
     """
     return create(
         name,
@@ -54,6 +66,10 @@ def update(
         store_type=store_type,
         collections_dir=collections_dir,
         progress=progress,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        batch_size=batch_size,
+        persistence_enabled=persistence_enabled,
     )
 
 
