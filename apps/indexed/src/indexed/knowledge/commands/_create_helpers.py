@@ -68,7 +68,7 @@ def execute_create_command(
     pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
     local: bool = False,
     source_path_key: Optional[str] = None,
-    engine: str = "v1",
+    engine: str = "v2",
 ) -> None:
     """Common execution flow for all create commands.
 

@@ -193,7 +193,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "test-jira"])
+        result = runner.invoke(app, ["index", "update", "test-jira", "--engine", "v1"])
 
         # Should complete successfully
         assert result.exit_code == 0
@@ -216,8 +216,19 @@ class TestUpdateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        monkeypatch,
+        tmp_path,
     ):
         """Should update all collections when no collection name provided."""
+        # Force the svc_status() fallback by pointing enumeration at an empty
+        # (non-existent) collections dir, so the mocked v1 status drives the run.
+        from indexed.utils import storage_info as _storage_info
+
+        monkeypatch.setattr(
+            _storage_info,
+            "resolve_preferred_collections_path",
+            lambda: tmp_path / "missing",
+        )
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "local"
@@ -263,7 +274,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update"])
+        result = runner.invoke(app, ["index", "update", "--engine", "v1"])
 
         # Should complete successfully
         assert result.exit_code == 0
@@ -290,7 +301,9 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "nonexistent"])
+        result = runner.invoke(
+            app, ["index", "update", "nonexistent", "--engine", "v1"]
+        )
 
         # Should exit with error
         assert result.exit_code == 1
@@ -335,7 +348,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        runner.invoke(app, ["index", "update", "jira-collection"])
+        runner.invoke(app, ["index", "update", "jira-collection", "--engine", "v1"])
 
         # Should have called ensure_credentials
         mock_ensure_creds.assert_called_once_with("jira", mock_config)
@@ -350,8 +363,17 @@ class TestUpdateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        monkeypatch,
+        tmp_path,
     ):
         """When no collections exist, update all should print message and return."""
+        from indexed.utils import storage_info as _storage_info
+
+        monkeypatch.setattr(
+            _storage_info,
+            "resolve_preferred_collections_path",
+            lambda: tmp_path / "missing",
+        )
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -362,7 +384,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update"])
+        result = runner.invoke(app, ["index", "update", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "No collections found to update" in result.stdout
@@ -398,7 +420,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 1
 
@@ -420,8 +442,17 @@ class TestUpdateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        monkeypatch,
+        tmp_path,
     ):
         """If a collection disappears between outer status and loop status, it continues."""
+        from indexed.utils import storage_info as _storage_info
+
+        monkeypatch.setattr(
+            _storage_info,
+            "resolve_preferred_collections_path",
+            lambda: tmp_path / "missing",
+        )
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -448,7 +479,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update"])
+        result = runner.invoke(app, ["index", "update", "--engine", "v1"])
 
         # Should complete (the loop continues past the missing collection)
         assert result.exit_code == 0
@@ -489,7 +520,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         # Exits cleanly — the loop continues/ends, then the after-inspect block runs
         # We just verify it doesn't crash
@@ -543,7 +574,7 @@ class TestUpdateCommand:
         # MagicMock supports context manager protocol by default
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 0
 
@@ -593,7 +624,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 1
 
@@ -647,7 +678,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 1
 
@@ -700,7 +731,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 0
         # print_info should have been called with the config-created notice
@@ -751,7 +782,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         # Update succeeded; missing post-update inspect is graceful degradation
         assert result.exit_code == 0
@@ -811,7 +842,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 0
         # For a single collection, result summary is not shown (create_summary not called)
@@ -872,7 +903,7 @@ class TestUpdateCommand:
 
         from indexed.app import app
 
-        result = runner.invoke(app, ["index", "update", "col1"])
+        result = runner.invoke(app, ["index", "update", "col1", "--engine", "v1"])
 
         assert result.exit_code == 0
         # For a single collection, result summary is not shown (create_summary not called)
@@ -938,3 +969,67 @@ class TestUpdateAutoDetect:
         result = runner.invoke(app, ["index", "update", "v2coll", "--engine", "v1"])
         assert result.exit_code == 1
         assert "indexer metadata" in result.output
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.knowledge.commands.update.ConfigService")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("connectors.registry.get_connector_class")
+    @patch("core.v2.services.update")
+    @patch("core.v2.services.inspect")
+    @patch("core.v2.services.status")
+    def test_update_v2_engine_calls_v2_update(
+        self,
+        mock_v2_status,
+        mock_v2_inspect,
+        mock_v2_update,
+        mock_get_connector_class,
+        mock_verbose,
+        mock_cfg,
+        mock_logger,
+    ):
+        """--engine v2 routes a single-collection update through core.v2.services."""
+        from core.v2.config import CoreV2EmbeddingConfig, CoreV2StorageConfig
+
+        # Verbose mode → NoOpContext path (no progress UI to mock).
+        mock_verbose.return_value = True
+
+        cfg = Mock()
+        cfg.resolve_storage_mode.return_value = "global"
+        cfg.store.has_global_config.return_value = True
+        cfg.store.global_path = "/tmp/c.toml"
+        provider = MagicMock()
+        provider.get.side_effect = lambda klass: (
+            CoreV2EmbeddingConfig()
+            if klass == CoreV2EmbeddingConfig
+            else CoreV2StorageConfig()
+        )
+        cfg.bind.return_value = provider
+        mock_cfg.instance.return_value = cfg
+
+        # v2 status (single-collection lookup) and inspect (before/after).
+        v2_coll = Mock()
+        v2_coll.name = "v2coll"
+        v2_coll.source_type = "localFiles"
+        mock_v2_status.return_value = [v2_coll]
+
+        v2_info = Mock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.number_of_documents = 7
+        v2_info.number_of_chunks = 21
+        v2_info.disk_size_bytes = 4096
+        v2_info.updated_time = None
+        mock_v2_inspect.return_value = v2_info
+
+        mock_get_connector_class.return_value.from_config.return_value = MagicMock()
+        mock_v2_update.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update", "v2coll", "--engine", "v2"])
+
+        assert result.exit_code == 0, result.output
+        mock_v2_update.assert_called_once()
+        call_kwargs = mock_v2_update.call_args.kwargs
+        assert "embed_model_name" in call_kwargs
+        assert "store_type" in call_kwargs

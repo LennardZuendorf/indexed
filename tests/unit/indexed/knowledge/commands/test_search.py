@@ -37,8 +37,9 @@ class TestSearchCommand:
         # status() returns empty list
         monkeypatch.setattr(search_cmd, "status", lambda *args, **kwargs: [])
 
-        # For this Typer app, the command name is the program; we only pass QUERY
-        result = runner.invoke(search_cmd.app, ["test-query"])
+        # For this Typer app, the command name is the program; we only pass QUERY.
+        # --engine v1 pins the legacy path so the mocked v1 status() is hit.
+        result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "No collections found to search" in result.stdout
@@ -52,7 +53,7 @@ class TestSearchCommand:
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
 
         result = runner.invoke(
-            search_cmd.app, ["test-query", "--collection", "missing"]
+            search_cmd.app, ["test-query", "--collection", "missing", "--engine", "v1"]
         )
 
         assert result.exit_code == 1
@@ -346,7 +347,8 @@ class TestSearchCommandExecution:
             search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
-        result = runner.invoke(search_cmd.app, ["my-query"])
+        # --engine v1 pins the legacy path so the mocked v1 svc_search is hit
+        result = runner.invoke(search_cmd.app, ["my-query", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "Searching for" in result.stdout
@@ -386,7 +388,8 @@ class TestSearchCommandExecution:
         )
 
         result = runner.invoke(
-            search_cmd.app, ["my-query", "--collection", "myCol", "--compact"]
+            search_cmd.app,
+            ["my-query", "--collection", "myCol", "--compact", "--engine", "v1"],
         )
 
         assert result.exit_code == 0
@@ -426,7 +429,7 @@ class TestSearchCommandExecution:
 
         monkeypatch.setattr(search_cmd, "NoOpContext", fake_noop)
 
-        result = runner.invoke(search_cmd.app, ["my-query"])
+        result = runner.invoke(search_cmd.app, ["my-query", "--engine", "v1"])
 
         assert result.exit_code == 0
 
@@ -464,7 +467,9 @@ class TestSearchCommandExecution:
             search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
-        result = runner.invoke(search_cmd.app, ["my-query", "--no-content"])
+        result = runner.invoke(
+            search_cmd.app, ["my-query", "--no-content", "--engine", "v1"]
+        )
 
         assert result.exit_code == 0
 
@@ -517,7 +522,7 @@ class TestSearchCommandExecution:
 
         set_simple_output(True)
         try:
-            result = runner.invoke(search_cmd.app, ["my-query"])
+            result = runner.invoke(search_cmd.app, ["my-query", "--engine", "v1"])
 
             assert result.exit_code == 0
             parsed = json.loads(result.stdout)
@@ -543,7 +548,7 @@ class TestSearchCommandExecution:
 
         set_simple_output(True)
         try:
-            result = runner.invoke(search_cmd.app, ["my-query"])
+            result = runner.invoke(search_cmd.app, ["my-query", "--engine", "v1"])
 
             assert result.exit_code == 0
             parsed = json.loads(result.stdout)
@@ -564,7 +569,8 @@ class TestSearchCommandExecution:
         set_simple_output(True)
         try:
             result = runner.invoke(
-                search_cmd.app, ["my-query", "--collection", "missing"]
+                search_cmd.app,
+                ["my-query", "--collection", "missing", "--engine", "v1"],
             )
 
             assert result.exit_code == 1

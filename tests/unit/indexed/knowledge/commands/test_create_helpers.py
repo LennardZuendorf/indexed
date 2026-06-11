@@ -64,6 +64,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=False,
+            engine="v1",
         )
 
         mock_create.assert_called_once()
@@ -129,6 +130,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=False,
+            engine="v1",
         )
 
         assert len(prompt_called) == 1
@@ -181,6 +183,7 @@ class TestExecuteCreateCommand:
                 log_level=None,
                 use_cache=True,
                 force=False,
+                engine="v1",
             )
 
         mock_print_error.assert_called()
@@ -236,6 +239,7 @@ class TestExecuteCreateCommand:
                 log_level=None,
                 use_cache=True,
                 force=False,
+                engine="v1",
             )
 
         mock_print_error.assert_called()
@@ -293,6 +297,7 @@ class TestExecuteCreateCommand:
                 log_level=None,
                 use_cache=True,
                 force=False,
+                engine="v1",
             )
 
         mock_print_error.assert_called()
@@ -351,6 +356,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=False,
+            engine="v1",
         )
 
         # Should have logged verbose information
@@ -418,6 +424,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=False,
+            engine="v1",
             verbose_pre_creation_log=verbose_pre_creation_log,
         )
 
@@ -473,6 +480,7 @@ class TestExecuteCreateCommand:
                 log_level=None,
                 use_cache=True,
                 force=False,
+                engine="v1",
             )
 
         mock_print_error.assert_called()
@@ -534,6 +542,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=True,
+            engine="v1",
         )
 
         mock_apply_cli_creds.assert_called_once_with(
@@ -602,6 +611,7 @@ class TestExecuteCreateCommand:
             log_level=None,
             use_cache=True,
             force=True,
+            engine="v1",
         )
 
         set_value_calls = [

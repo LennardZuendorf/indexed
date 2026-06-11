@@ -136,7 +136,7 @@ def create_files(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
         case_sensitive=False,
         rich_help_panel="Engine",
     ),
@@ -344,7 +344,7 @@ def create_jira(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
         case_sensitive=False,
         rich_help_panel="Engine",
     ),
@@ -578,7 +578,7 @@ def create_confluence(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
         case_sensitive=False,
         rich_help_panel="Engine",
     ),
@@ -831,6 +831,13 @@ def create_outline(
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
     local: bool = typer.Option(
         False,
         "--local",
@@ -939,6 +946,8 @@ def create_outline(
         deployment = "Cloud" if _url == _OUTLINE_CLOUD_URL else "self-hosted"
         logger.info("Connecting to Outline at %s (%s)...", _url, deployment)
 
+    from ...services.engine_router import get_effective_engine
+
     execute_create_command(
         collection=collection,
         source_type=source_type,
@@ -957,6 +966,7 @@ def create_outline(
         verbose_pre_creation_log=verbose_outline_log,
         local=local,
         source_path_key="url",
+        engine=get_effective_engine(engine),
     )
 
 

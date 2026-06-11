@@ -124,7 +124,7 @@ def _init_app(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Engine version: v1 (default) or v2 (LlamaIndex-powered). Overrides [general] engine in config.",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS). Overrides [general] engine in config.",
         case_sensitive=False,
         rich_help_panel="Engine",
     ),

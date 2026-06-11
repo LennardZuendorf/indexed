@@ -226,7 +226,7 @@ def inspect_collections(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Engine version: v1 (default) or v2 (LlamaIndex-powered)",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
         case_sensitive=False,
         rich_help_panel="Engine",
     ),

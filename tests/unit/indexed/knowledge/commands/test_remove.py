@@ -42,7 +42,8 @@ class TestRemoveCommand:
         """Removing when there are no collections should just show a hint."""
         monkeypatch.setattr(remove_cmd, "inspect", lambda: [])
 
-        result = runner.invoke(remove_cmd.app, ["docs"])
+        # --engine v1 pins the legacy path so the mocked v1 inspect() is hit
+        result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "No collections found" in result.stdout
@@ -56,7 +57,7 @@ class TestRemoveCommand:
             lambda: [_make_collection("docs"), _make_collection("jira")],
         )
 
-        result = runner.invoke(remove_cmd.app, ["missing"])
+        result = runner.invoke(remove_cmd.app, ["missing", "--engine", "v1"])
 
         assert result.exit_code == 1
         assert "Collection 'missing' not found" in result.stdout
@@ -81,7 +82,7 @@ class TestRemoveCommand:
         monkeypatch.setattr(remove_cmd, "Index", lambda: fake_index)
 
         # Avoid interactive confirmation by forcing
-        result = runner.invoke(remove_cmd.app, ["docs", "--force"])
+        result = runner.invoke(remove_cmd.app, ["docs", "--force", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert fake_index.removed == ["docs"]
@@ -103,7 +104,7 @@ class TestRemoveCommand:
         # Patch Confirm.ask to simulate user saying "no"
         monkeypatch.setattr(remove_cmd.Confirm, "ask", lambda *a, **k: False)
 
-        result = runner.invoke(remove_cmd.app, ["docs"])
+        result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
 
         # Typer.Exit(0) on cancel
         assert result.exit_code == 0
@@ -127,7 +128,7 @@ class TestRemoveCommand:
         # Simulate user accepting confirmation
         monkeypatch.setattr(remove_cmd.Confirm, "ask", lambda *a, **k: True)
 
-        result = runner.invoke(remove_cmd.app, ["docs"])
+        result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert fake_index.removed == ["docs"]
@@ -147,7 +148,7 @@ class TestRemoveCommand:
 
         set_simple_output(True)
         try:
-            result = runner.invoke(remove_cmd.app, ["docs"])
+            result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
             assert result.exit_code == 0
             parsed = json.loads(result.stdout)
             assert parsed["status"] == "removed"
@@ -169,7 +170,7 @@ class TestRemoveCommand:
 
         set_simple_output(True)
         try:
-            result = runner.invoke(remove_cmd.app, ["docs"])
+            result = runner.invoke(remove_cmd.app, ["docs", "--engine", "v1"])
             assert result.exit_code == 1
             parsed = json.loads(result.stdout)
             assert parsed["status"] == "error"
@@ -192,7 +193,7 @@ class TestRemoveCommand:
         fake_index = FakeIndex()
         monkeypatch.setattr(remove_cmd, "Index", lambda: fake_index)
 
-        result = runner.invoke(remove_cmd.app, ["docs", "--force"])
+        result = runner.invoke(remove_cmd.app, ["docs", "--force", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert fake_index.removed == ["docs"]
@@ -207,7 +208,7 @@ class TestRemoveCommand:
 
         monkeypatch.setattr(remove_cmd, "Index", lambda: FakeIndex())
 
-        result = runner.invoke(remove_cmd.app, ["docs", "--force"])
+        result = runner.invoke(remove_cmd.app, ["docs", "--force", "--engine", "v1"])
 
         assert result.exit_code == 1
         assert "Failed to remove" in result.stdout

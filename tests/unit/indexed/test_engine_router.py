@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from indexed.services import engine_dispatch
 from indexed.services.engine_router import (
     GeneralConfig,
     detect_collection_engine,
@@ -17,9 +18,9 @@ from indexed.services.engine_router import (
 
 
 class TestGeneralConfig:
-    def test_defaults_to_v1(self) -> None:
+    def test_defaults_to_v2(self) -> None:
         cfg = GeneralConfig()
-        assert cfg.engine == "v1"
+        assert cfg.engine == "v2"
 
     def test_accepts_v2(self) -> None:
         cfg = GeneralConfig(engine="v2")
@@ -45,7 +46,7 @@ class TestGetEffectiveEngine:
         with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
-                assert get_effective_engine("vv2") == "v1"
+                assert get_effective_engine("vv2") == "v2"
 
     def test_invalid_ctx_engine_falls_through(self) -> None:
         """Corrupt ctx engine falls through to config branch."""
@@ -54,7 +55,7 @@ class TestGetEffectiveEngine:
         with patch("click.get_current_context", return_value=mock_ctx):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
-                assert get_effective_engine(None) == "v1"
+                assert get_effective_engine(None) == "v2"
 
     def test_root_flag_from_ctx_obj(self) -> None:
         """Root callback engine stored in ctx.obj is second priority."""
@@ -71,21 +72,21 @@ class TestGetEffectiveEngine:
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
                 result = get_effective_engine(None)
-        assert result == "v1"
+        assert result == "v2"
 
     def test_runtime_error_falls_through_to_config(self) -> None:
         """RuntimeError from missing Click context is handled."""
         with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
-                assert get_effective_engine(None) == "v1"
+                assert get_effective_engine(None) == "v2"
 
     def test_attribute_error_falls_through(self) -> None:
         """AttributeError (tests call without Typer context) is handled."""
         with patch("click.get_current_context", side_effect=AttributeError("no attr")):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
-                assert get_effective_engine(None) == "v1"
+                assert get_effective_engine(None) == "v2"
 
     def test_config_engine_v2(self) -> None:
         """[general] engine = "v2" in config.toml is third priority."""
@@ -99,12 +100,12 @@ class TestGetEffectiveEngine:
                 result = get_effective_engine(None)
         assert result == "v2"
 
-    def test_config_exception_falls_back_to_v1(self) -> None:
-        """Any config exception results in v1 default."""
+    def test_config_exception_falls_back_to_v2(self) -> None:
+        """Any config exception results in v2 default."""
         with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("boom")
-                assert get_effective_engine(None) == "v1"
+                assert get_effective_engine(None) == "v2"
 
     def test_opaque_object_not_treated_as_string(self) -> None:
         """OptionInfo-like objects (truthy but not str) don't trigger .lower()."""
@@ -113,7 +114,7 @@ class TestGetEffectiveEngine:
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
                 result = get_effective_engine(opaque)  # type: ignore[arg-type]
-        assert result == "v1"
+        assert result == "v2"
 
 
 class TestDetectCollectionEngine:
@@ -230,8 +231,8 @@ class TestGetEffectiveEngineWithDetection:
         with patch("click.get_current_context", side_effect=RuntimeError("no ctx")):
             with patch("indexed_config.ConfigService") as mock_svc_cls:
                 mock_svc_cls.instance.side_effect = Exception("no config")
-                # No collection / no path → legacy path → "v1"
-                assert get_effective_engine(None) == "v1"
+                # No collection / no path → no manifest detection → default "v2"
+                assert get_effective_engine(None) == "v2"
 
     def test_ctx_obj_engine_takes_priority_over_manifest(self, tmp_path: Path) -> None:
         self._write_v2(tmp_path, "coll")
@@ -287,3 +288,33 @@ class TestGetInspectService:
 
     def test_v1_is_different_from_v2(self) -> None:
         assert get_inspect_service("v1") is not get_inspect_service("v2")
+
+
+class TestDispatchReExports:
+    """The dispatch getters now live in engine_dispatch; engine_router must
+    still expose the identical callables (re-exported single import surface)."""
+
+    def test_collection_service_is_reexported(self) -> None:
+        assert get_collection_service is engine_dispatch.get_collection_service
+
+    def test_search_service_is_reexported(self) -> None:
+        assert get_search_service is engine_dispatch.get_search_service
+
+    def test_inspect_service_is_reexported(self) -> None:
+        assert get_inspect_service is engine_dispatch.get_inspect_service
+
+    def test_dispatch_returns_v1_modules(self) -> None:
+        from core.v1.engine.services import collection_service, search_service
+        from core.v1.engine.services import inspect_service
+
+        assert engine_dispatch.get_collection_service("v1") is collection_service
+        assert engine_dispatch.get_search_service("v1") is search_service
+        assert engine_dispatch.get_inspect_service("v1") is inspect_service
+
+    def test_dispatch_returns_v2_modules(self) -> None:
+        from core.v2.services import collection_service, search_service
+        from core.v2.services import inspect_service
+
+        assert engine_dispatch.get_collection_service("v2") is collection_service
+        assert engine_dispatch.get_search_service("v2") is search_service
+        assert engine_dispatch.get_inspect_service("v2") is inspect_service
