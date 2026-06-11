@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-09
+updated: 2026-06-11
 ---
 
 # Development Plan: indexed
@@ -17,6 +17,15 @@ wishlist. Current focus + delivered surface.
 
 **v0.1.0 Alpha** — released 2026-02-16. Core pipeline, search, MCP, CLI, config
 all shipped. Breaking changes still allowed (alpha).
+
+### Delivered since release
+
+- **Core v2 engine (LlamaIndex)** — ✅ Shipped & wired into CLI + MCP. v2 is now the
+  **default** engine (v1 remains selectable via `--engine v1` / `[general] engine`).
+  HuggingFace embeddings + pluggable vector stores (FAISS default). v2 storage is not
+  v1-compatible; per-collection manifest auto-detection keeps existing v1 collections
+  working. See [tech.md](tech.md) § Engine Selection. (Epic: GH #5.)
+- **Outline wiki connector** — ✅ Shipped (works on v1 and v2).
 
 ---
 
