@@ -99,3 +99,55 @@ class TestFormatResults:
             "col", nodes, max_docs=10, include_matched_chunks=False
         )
         assert result["results"][0]["matchedChunks"][0]["score"] == 0.0
+
+
+class TestScoreThreshold:
+    """score_threshold filters out low-scoring chunks before grouping."""
+
+    def test_no_threshold_keeps_all(self) -> None:
+        nodes = [
+            _make_node_with_score(source_id="doc-1", score=0.9),
+            _make_node_with_score(source_id="doc-2", score=0.2),
+        ]
+        result = _format_results(
+            "col", nodes, max_docs=10, include_matched_chunks=False
+        )
+        assert len(result["results"]) == 2
+
+    def test_threshold_drops_low_scores(self) -> None:
+        nodes = [
+            _make_node_with_score(source_id="doc-1", score=0.9),
+            _make_node_with_score(source_id="doc-2", score=0.2),
+        ]
+        result = _format_results(
+            "col",
+            nodes,
+            max_docs=10,
+            include_matched_chunks=False,
+            score_threshold=0.5,
+        )
+        assert len(result["results"]) == 1
+        assert result["results"][0]["id"] == "doc-1"
+
+    def test_threshold_keeps_equal_scores(self) -> None:
+        nodes = [_make_node_with_score(source_id="doc-1", score=0.5)]
+        result = _format_results(
+            "col",
+            nodes,
+            max_docs=10,
+            include_matched_chunks=False,
+            score_threshold=0.5,
+        )
+        assert len(result["results"]) == 1
+
+    def test_threshold_keeps_none_scores(self) -> None:
+        """A None score is not comparable, so it is retained."""
+        nodes = [_make_node_with_score(source_id="doc-1", score=None)]
+        result = _format_results(
+            "col",
+            nodes,
+            max_docs=10,
+            include_matched_chunks=False,
+            score_threshold=0.5,
+        )
+        assert len(result["results"]) == 1

@@ -32,6 +32,14 @@ def test_core_v2_services_import_does_not_load_llama_index() -> None:
     assert _run(snippet) == "OK"
 
 
+def test_core_v2_adapter_import_does_not_load_llama_index() -> None:
+    snippet = (
+        "import sys; import core.v2.adapter; "
+        "print('OK' if 'llama_index.core' not in sys.modules else 'LEAKED')"
+    )
+    assert _run(snippet) == "OK"
+
+
 def test_index_attribute_resolves_lazily() -> None:
     from core.v2 import Index, IndexConfig
 

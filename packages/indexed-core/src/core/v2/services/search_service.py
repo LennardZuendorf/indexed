@@ -16,6 +16,7 @@ def _search_collections(
     embed_model_name: str = "all-MiniLM-L6-v2",
     max_docs: int = 10,
     include_matched_chunks: bool = True,
+    score_threshold: Optional[float] = None,
     collections_dir: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
     """Search multiple collections and return raw results."""
@@ -29,6 +30,7 @@ def _search_collections(
             embed_model_name=embed_model_name,
             max_docs=max_docs,
             include_matched_chunks=include_matched_chunks,
+            score_threshold=score_threshold,
             collections_dir=collections_dir,
         )
         for name in names
@@ -58,6 +60,7 @@ class SearchService:
         similarity_top_k: int = 30,
         max_docs: int = 10,
         include_matched_chunks: bool = True,
+        score_threshold: Optional[float] = None,
     ) -> dict[str, Any]:
         """Search a specific collection or all collections."""
         from ..storage import list_collection_names
@@ -74,6 +77,7 @@ class SearchService:
             embed_model_name=self._embed_model_name,
             max_docs=max_docs,
             include_matched_chunks=include_matched_chunks,
+            score_threshold=score_threshold,
             collections_dir=self._collections_dir,
         )
 
@@ -90,6 +94,7 @@ def search(
     max_docs: int = 10,
     max_chunks: int = 30,
     include_matched_chunks: bool = True,
+    score_threshold: Optional[float] = None,
     embed_model_name: str = "all-MiniLM-L6-v2",
     collections_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
@@ -109,6 +114,7 @@ def search(
         embed_model_name=embed_model_name,
         max_docs=max_docs,
         include_matched_chunks=include_matched_chunks,
+        score_threshold=score_threshold,
         collections_dir=collections_dir,
     )
 

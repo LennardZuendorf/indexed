@@ -151,5 +151,14 @@ class Index:
         self._collections.pop(collection, None)
 
     def list_collections(self) -> List[str]:
-        """List names of all tracked collections."""
-        return list(self._collections.keys())
+        """List names of all collections.
+
+        Combines in-memory collections added during this session with
+        collections already persisted on disk, so a fresh ``Index`` sees
+        previously created collections (consistent with ``status``/``inspect``).
+        """
+        from .storage import list_collection_names
+
+        names = set(self._collections.keys())
+        names.update(list_collection_names())
+        return sorted(names)

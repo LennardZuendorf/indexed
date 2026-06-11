@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from core.v2.services.collection_service import clear, create, update
 from core.v2.services.inspect_service import inspect, status
@@ -103,6 +104,19 @@ class TestStatus:
 class TestInspect:
     """inspect() returns detailed CollectionInfo."""
 
+    def test_missing_collection_raises_indexed_error(self, tmp_path) -> None:
+        """Service entry points raise from the IndexedError hierarchy."""
+        from indexed_config.errors import IndexedError
+
+        from core.v2.errors import CoreV2Error
+
+        with pytest.raises(CoreV2Error):
+            inspect("nonexistent", collections_dir=tmp_path)
+
+        # Same exception is catchable at the CLI/MCP boundary as IndexedError.
+        with pytest.raises(IndexedError):
+            inspect("nonexistent", collections_dir=tmp_path)
+
     def test_basic(self, tmp_path) -> None:
         write_manifest(
             "col",
@@ -152,6 +166,46 @@ class TestSearchFunction:
         result = search("query")
         assert "collections" in result
         assert len(result["collections"]) == 2
+
+    @patch("core.v2.retrieval.search_collection")
+    def test_score_threshold_passed_through(self, mock_search: MagicMock) -> None:
+        from core.v2.services.models import SourceConfig
+
+        mock_search.return_value = {"collectionName": "col", "results": []}
+        config = SourceConfig(name="col", type="localFiles", base_url_or_path=".")
+
+        search("query", configs=[config], score_threshold=0.42)
+
+        assert mock_search.call_args.kwargs["score_threshold"] == 0.42
+
+
+class TestCollectionServiceKnobs:
+    """create()/update() forward config knobs to ingestion."""
+
+    @patch("core.v2.ingestion.create_collection")
+    def test_create_forwards_knobs(self, mock_create: MagicMock) -> None:
+        mock_create.return_value = {}
+        create(
+            "col",
+            MagicMock(),
+            chunk_size=256,
+            chunk_overlap=20,
+            batch_size=64,
+            persistence_enabled=False,
+        )
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["chunk_size"] == 256
+        assert kwargs["chunk_overlap"] == 20
+        assert kwargs["batch_size"] == 64
+        assert kwargs["persistence_enabled"] is False
+
+    @patch("core.v2.ingestion.create_collection")
+    def test_update_forwards_knobs(self, mock_create: MagicMock) -> None:
+        mock_create.return_value = {}
+        update("col", MagicMock(), chunk_size=128, batch_size=16)
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["chunk_size"] == 128
+        assert kwargs["batch_size"] == 16
 
 
 class TestSearchService:
