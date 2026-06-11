@@ -94,7 +94,8 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
 
-        result = runner.invoke(inspect_cmd.app, ["missing"])
+        # --engine v1 pins the legacy path so the mocked v1 inspect() is hit
+        result = runner.invoke(inspect_cmd.app, ["missing", "--engine", "v1"])
 
         assert result.exit_code == 1
         assert "Collection 'missing' not found" in result.stdout
@@ -117,7 +118,7 @@ class TestInspectCollectionsCommand:
         set_simple_output(True)
 
         try:
-            result = runner.invoke(inspect_cmd.app, ["docs"])
+            result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
             assert result.exit_code == 0
             assert '"name": "docs"' in result.stdout
@@ -154,7 +155,7 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
 
-        result = runner.invoke(inspect_cmd.app, ["docs"])
+        result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "docs" in result.stdout
@@ -191,7 +192,7 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
 
-        result = runner.invoke(inspect_cmd.app, ["docs"])
+        result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
 
