@@ -2,7 +2,7 @@
 
 Focuses on the pure helper functions in indexed.mcp.tools that convert
 between v2 search output and the v1-compatible display format consumed by
-the LLM formatter.
+the LLM formatter, plus per-collection engine resolution in indexed.mcp.config.
 """
 
 
@@ -60,7 +60,11 @@ class TestNormalizeV2Results:
 
 
 class TestResolveEngineForCollection:
-    """Per-collection engine resolution helper used by tools and resources."""
+    """Per-collection engine resolution helper used by tools and resources.
+
+    The third argument is the *default engine* (a string) used when manifest
+    detection finds nothing — not a loader callable.
+    """
 
     def _write_manifest(self, root, name: str, payload: dict) -> None:
         import json
@@ -81,7 +85,7 @@ class TestResolveEngineForCollection:
             lambda: tmp_path,
         )
 
-        assert resolve_engine_for_collection("docs", None, lambda: "v1") == "v2"
+        assert resolve_engine_for_collection("docs", None, "v1") == "v2"
 
     def test_v1_manifest_returns_v1(self, monkeypatch, tmp_path) -> None:
         from indexed.mcp.config import resolve_engine_for_collection
@@ -96,10 +100,12 @@ class TestResolveEngineForCollection:
             lambda: tmp_path,
         )
 
-        # Loader returns v2 — but manifest says v1, manifest wins.
-        assert resolve_engine_for_collection("docs", None, lambda: "v2") == "v1"
+        # Default is v2 — but manifest says v1, manifest wins.
+        assert resolve_engine_for_collection("docs", None, "v2") == "v1"
 
-    def test_missing_manifest_falls_back_to_loader(self, monkeypatch, tmp_path) -> None:
+    def test_missing_manifest_falls_back_to_default(
+        self, monkeypatch, tmp_path
+    ) -> None:
         from indexed.mcp.config import resolve_engine_for_collection
         from indexed.utils import storage_info as storage_info_mod
 
@@ -109,9 +115,9 @@ class TestResolveEngineForCollection:
             lambda: tmp_path,
         )
 
-        assert resolve_engine_for_collection("ghost", None, lambda: "v2") == "v2"
+        assert resolve_engine_for_collection("ghost", None, "v2") == "v2"
 
-    def test_empty_collection_name_uses_loader(self, monkeypatch, tmp_path) -> None:
+    def test_empty_collection_name_uses_default(self, monkeypatch, tmp_path) -> None:
         from indexed.mcp.config import resolve_engine_for_collection
         from indexed.utils import storage_info as storage_info_mod
 
@@ -121,4 +127,20 @@ class TestResolveEngineForCollection:
             lambda: tmp_path,
         )
 
-        assert resolve_engine_for_collection("", None, lambda: "v2") == "v2"
+        assert resolve_engine_for_collection("", None, "v2") == "v2"
+
+    def test_default_uses_lifespan_engine_from_ctx(self, monkeypatch, tmp_path) -> None:
+        """When detection fails, the lifespan engine from ctx wins over the arg default."""
+        from types import SimpleNamespace
+
+        from indexed.mcp.config import resolve_engine_for_collection
+        from indexed.utils import storage_info as storage_info_mod
+
+        monkeypatch.setattr(
+            storage_info_mod,
+            "resolve_preferred_collections_path",
+            lambda: tmp_path,
+        )
+
+        ctx = SimpleNamespace(lifespan_context={"engine": "v1"})
+        assert resolve_engine_for_collection("ghost", ctx, "v2") == "v1"
