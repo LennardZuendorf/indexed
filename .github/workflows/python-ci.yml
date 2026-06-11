@@ -34,6 +34,20 @@ jobs:
         python -m pip install uv
         python -m uv sync
 
+    - name: Type check with mypy (strict)
+      # Non-blocking for now: the v2 engine work is in flight and the tree is
+      # not yet mypy-clean. Remove `continue-on-error` to make this blocking
+      # once the type errors are resolved.
+      continue-on-error: true
+      run: |
+        uv run mypy \
+          apps/indexed/src/indexed \
+          packages/indexed-core/src/core \
+          packages/indexed-connectors/src/connectors \
+          packages/indexed-parsing/src/parsing \
+          packages/indexed-config/src/indexed_config \
+          packages/utils/src/utils
+
     - name: Cache HuggingFace embedding model
       uses: actions/cache@v4
       with:

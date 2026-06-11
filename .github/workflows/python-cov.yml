@@ -41,8 +41,11 @@ jobs:
           uv run ruff check
 
       - name: Run Unit Tests with Coverage
+        # --cov=<pkg> targets and --cov-report=term come from pyproject addopts;
+        # only add the xml report (consumed by the Codecov step below) and
+        # term-missing for CI log readability.
         run: |
-          uv run pytest tests/unit/ --cov=indexed --cov=core --cov=connectors --cov=parsing --cov=indexed_config --cov=utils --cov-branch --cov-report=xml --cov-report=term-missing -v
+          uv run pytest tests/unit/ --cov-report=xml --cov-report=term-missing -v
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
