@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import search as search_cmd
@@ -19,14 +20,21 @@ from indexed.utils import storage_info as storage_info_mod
 
 runner = CliRunner()
 
-# Patch resolve_preferred_collections_path globally for all search tests
-# so tests don't need ConfigService
-_MOCK_PATH = patch.object(
-    storage_info_mod,
-    "resolve_preferred_collections_path",
-    return_value=Path("/tmp/test-collections"),
-)
-_MOCK_PATH.start()
+
+@pytest.fixture(autouse=True)
+def _mock_preferred_collections_path():
+    """Default resolve_preferred_collections_path so tests don't need ConfigService.
+
+    Scoped per-test (autouse) so it never leaks into other modules' tests — the
+    previous module-level patch.start() had no stop() and broke the e2e suite when
+    run in the same process. Individual tests may still override via monkeypatch.
+    """
+    with patch.object(
+        storage_info_mod,
+        "resolve_preferred_collections_path",
+        return_value=Path("/tmp/test-collections"),
+    ):
+        yield
 
 
 class TestSearchCommand:
@@ -675,45 +683,39 @@ class TestNormalizeV2Search:
 class TestSearchCommandV2:
     """Tests for v2 engine routing in the search CLI command."""
 
-    @patch("indexed_config.ConfigService")
-    @patch("core.v2.services.status", return_value=[])
     def test_v2_no_collections_shows_hint(
-        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
+        self, monkeypatch: Any, tmp_path: Path
     ) -> None:
-        """--engine v2 with no collections shows friendly hint via v2 status."""
-        from unittest.mock import MagicMock
-        from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
-
-        mock_provider = MagicMock()
-        mock_provider.get.side_effect = lambda cls: (
-            CoreV2SearchConfig()
-            if cls == CoreV2SearchConfig
-            else CoreV2EmbeddingConfig()
+        """--engine v2 with no collections shows the friendly hint."""
+        # Empty collections dir + empty v1 fallback => no collections found.
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
         )
-        mock_config_service.instance.return_value.bind.return_value = mock_provider
-
         monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **k: [])
 
         result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
 
         assert result.exit_code == 0
         assert "No collections found" in result.stdout
-        mock_v2_status.assert_called_once()
 
-    @patch("indexed_config.ConfigService")
-    @patch("core.v2.services.status")
-    def test_v2_calls_svc_search_v2(
-        self, mock_v2_status: Any, mock_config_service: Any, monkeypatch: Any
-    ) -> None:
-        """--engine v2 calls svc_search_v2 with embed_model_name kwarg."""
+    def test_v2_calls_svc_search_v2(self, monkeypatch: Any, tmp_path: Path) -> None:
+        """--engine v2 (search-all) routes the on-disk v2 collection to svc_search_v2."""
+        import json as _json
         from unittest.mock import MagicMock
         from core.v2.config import CoreV2SearchConfig, CoreV2EmbeddingConfig
         from indexed.utils.simple_output import set_simple_output, reset_simple_output
 
-        mock_coll = MagicMock()
-        mock_coll.name = "test-docs"
-        mock_v2_status.return_value = [mock_coll]
+        # A v2 collection on disk so the manifest dir-scan enumerates it.
+        coll = tmp_path / "test-docs"
+        coll.mkdir(parents=True, exist_ok=True)
+        (coll / "manifest.json").write_text(
+            _json.dumps({"name": "test-docs", "version": "2.0"}), encoding="utf-8"
+        )
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
 
         mock_provider = MagicMock()
         mock_provider.get.side_effect = lambda cls: (
@@ -721,7 +723,6 @@ class TestSearchCommandV2:
             if cls == CoreV2SearchConfig
             else CoreV2EmbeddingConfig()
         )
-        mock_config_service.instance.return_value.bind.return_value = mock_provider
 
         v2_search_calls: List[Dict[str, Any]] = []
 
@@ -733,13 +734,15 @@ class TestSearchCommandV2:
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "svc_search_v2", fake_v2_search)
 
-        set_simple_output(True)
-        try:
-            result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
-        finally:
-            reset_simple_output()
+        with patch("indexed_config.ConfigService") as mock_cfg:
+            mock_cfg.instance.return_value.bind.return_value = mock_provider
+            set_simple_output(True)
+            try:
+                result = runner.invoke(search_cmd.app, ["test-query", "--engine", "v2"])
+            finally:
+                reset_simple_output()
 
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         assert len(v2_search_calls) == 1
         assert "embed_model_name" in v2_search_calls[0]
 
