@@ -110,6 +110,8 @@ class TestV2MCPServer:
         assert "error" not in payload, f"search returned error: {payload}"
         assert payload["query"] == "semantic search embeddings"
         assert "results" in payload
+        # Real integration signal: the v2 MCP search returned an actual match.
+        assert len(payload["results"]) > 0, f"expected results, got: {payload}"
 
     def test_search_collection_tool_targets_v2_collection(
         self, mcp_v2_chdir: Path

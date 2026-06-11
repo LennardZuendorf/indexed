@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, List
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import inspect as inspect_cmd
@@ -19,14 +20,21 @@ from core.v1.engine.services import CollectionInfo
 
 runner = CliRunner()
 
-# Patch resolve_preferred_collections_path globally for all inspect tests
-# so tests don't need ConfigService
-_MOCK_PATH = patch.object(
-    storage_info_mod,
-    "resolve_preferred_collections_path",
-    return_value=Path("/tmp/test-collections"),
-)
-_MOCK_PATH.start()
+
+@pytest.fixture(autouse=True)
+def _mock_preferred_collections_path():
+    """Default resolve_preferred_collections_path so tests don't need ConfigService.
+
+    Scoped per-test (autouse) so it never leaks into other modules' tests — the
+    previous module-level patch.start() had no stop() and broke the e2e suite when
+    run in the same process. Individual tests may still override via monkeypatch.
+    """
+    with patch.object(
+        storage_info_mod,
+        "resolve_preferred_collections_path",
+        return_value=Path("/tmp/test-collections"),
+    ):
+        yield
 
 
 def _make_collection(

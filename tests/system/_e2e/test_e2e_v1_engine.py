@@ -24,10 +24,13 @@ def _strip_ansi(text: str) -> str:
 class TestV1CreateAndSearch:
     """Test the create → search workflow using the default v1 engine."""
 
-    def test_create_files_default_engine(
-        self, e2e_docs: Path, e2e_workspace: Path
-    ) -> None:
-        """indexed index create files (default engine) creates a v1 collection."""
+    def test_create_files_v1_engine(self, e2e_docs: Path, e2e_workspace: Path) -> None:
+        """indexed index create files --engine v1 creates a v1 collection.
+
+        v2 is now the default engine, so the v1 pipeline must be pinned
+        explicitly with --engine v1; later no-flag ops auto-detect v1 from
+        the on-disk manifest.
+        """
         original_cwd = os.getcwd()
         try:
             os.chdir(e2e_workspace)
@@ -41,6 +44,8 @@ class TestV1CreateAndSearch:
                     "v1-e2e-test",
                     "--path",
                     str(e2e_docs),
+                    "--engine",
+                    "v1",
                     "--force",
                     "--local",
                 ],
@@ -119,6 +124,9 @@ class TestV1CreateAndSearch:
         parsed = json.loads(result.stdout)
         assert "query" in parsed
         assert "results" in parsed
+        # Real integration signal: the v1 pipeline returned an actual match,
+        # not just a well-formed empty envelope.
+        assert len(parsed["results"]) > 0, f"expected results, got: {parsed}"
 
 
 class TestV1Inspect:

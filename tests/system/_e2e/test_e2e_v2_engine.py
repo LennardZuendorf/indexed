@@ -128,6 +128,8 @@ class TestV2CreateAndSearch:
         parsed = json.loads(result.stdout)
         assert "query" in parsed
         assert "results" in parsed
+        # Real integration signal: the v2 pipeline returned an actual match.
+        assert len(parsed["results"]) > 0, f"expected results, got: {parsed}"
 
 
 class TestV2Inspect:
