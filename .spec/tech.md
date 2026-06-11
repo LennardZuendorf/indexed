@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [cleanup.md, feature-config-tech.md]
-updated: 2026-02-16
+updated: 2026-06-11
 ---
 
 # Tech Spec: indexed
@@ -224,6 +224,7 @@ class ConfigService:
 [general]
 log_level = "INFO"
 storage_mode = "global"  # or "local"
+engine = "v2"            # "v2" (LlamaIndex, default) or "v1" (legacy FAISS)
 
 [core.v1.indexing]
 chunk_size = 512
@@ -242,6 +243,23 @@ max_chunks = 30
 include_matched_chunks = true
 min_score = 0.0
 
+# v2 (LlamaIndex) engine config — registered explicitly at app startup via
+# core.v2.config.register_config(); see "Engine Selection" below.
+[core.v2.embedding]
+model_name = "all-MiniLM-L6-v2"
+
+[core.v2.indexing]
+chunk_size = 512        # None/unset keeps connector chunking (no re-split)
+
+[core.v2.storage]
+vector_store = "faiss"
+
+[core.v2.search]
+max_docs = 10
+max_chunks = 30
+include_matched_chunks = true
+score_threshold = null
+
 [mcp]
 log_level = "INFO"
 json_logs = false
@@ -249,6 +267,32 @@ transport = "stdio"
 host = "127.0.0.1"
 port = 8000
 ```
+
+### Engine Selection (v1 / v2)
+
+The core engine is selectable. **v2 (LlamaIndex-powered) is the default**; v1 is
+the legacy custom-FAISS engine kept for backward compatibility.
+
+**Resolution precedence** (highest first), in `indexed.services.engine_router.get_effective_engine`:
+
+| Priority | Source |
+|----------|--------|
+| 1 | Per-command `--engine v1\|v2` flag |
+| 2 | Root `--engine` flag (stored on `ctx.obj["engine"]`) |
+| 3 | On-disk `manifest.json` auto-detection for a *named* collection (v2 manifests carry `"version": "2.x"`) |
+| 4 | `[general] engine` in config.toml |
+| 5 | Built-in default: `"v2"` |
+
+Manifest auto-detection (3) means **existing v1 collections keep working under the
+v2 default** — a per-collection operation detects v1 from its manifest. New
+collections default to v2. v2 storage is **not** backward-compatible with v1;
+re-index to migrate. `indexed info engine` reports the active engine and how to switch.
+
+- **Router:** `apps/indexed/src/indexed/services/engine_router.py` (resolution) +
+  `engine_dispatch.py` (engine→service module). MCP routes through these getters;
+  CLI commands resolve via `get_effective_engine` then dispatch per engine.
+- **v2 config registration is explicit** at app startup (`_ensure_configs_registered`
+  in `app.py`), never at import time.
 
 ---
 

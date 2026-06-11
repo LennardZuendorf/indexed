@@ -2,7 +2,7 @@
 type: spec
 scope: architecture-cleanup
 parent: tech.md
-updated: 2026-02-19
+updated: 2026-06-11
 status: in-progress
 ---
 
@@ -128,7 +128,13 @@ Existing tests pass unchanged (same `ConfigService` API). New unit tests added f
 
 ---
 
-## 2. Decompose MCP Server
+## 2. Decompose MCP Server — ✅ SHIPPED
+
+> **Status:** Completed during v2 wiring. `mcp/` split into `server.py` (lifespan +
+> registration), `tools.py`, `resources.py`, `formatting.py`, `config.py`. The dual
+> config-loading fallback was eliminated — config + engine are resolved **once** in the
+> lifespan and read via a single `get_lifespan_value(ctx, key, default)` helper. Tools and
+> resources route through the engine router; errors are caught as `IndexedError` → structured dict.
 
 **Problem:** `mcp/server.py` (527 lines) mixes tool definitions, config loading, result formatting, and a duplicated config access pattern (lifespan state + global fallback). Every tool/resource repeats the same 8-line config resolution block.
 
@@ -187,7 +193,11 @@ Move `_format_search_results_for_llm()` here. This is the right home for any fut
 
 ---
 
-## 3. Establish Thin-Command Pattern in CLI
+## 3. Establish Thin-Command Pattern in CLI — ◐ PARTIAL
+
+> **Status:** Pattern established (services + shared helpers; v2 paths added thin). The
+> legacy v1 command files remain over the 150-line limit — exempted as legacy, tracked
+> for refactor in **GH #119**. New commands must comply from the start.
 
 **Problem:** CLI command files are bloated (create.py: 707 lines, search.py: 477 lines, update.py: 418 lines). They mix argument parsing, business logic orchestration, Rich UI formatting, and service calls. When v2 core arrives, all of this gets rewritten.
 
@@ -245,7 +255,11 @@ Command files should be <150 lines. If a command file exceeds 200 lines, busines
 
 ---
 
-## 4. Fix Early Flag Parsing Hack
+## 4. Fix Early Flag Parsing Hack — ✅ SHIPPED
+
+> **Status:** Completed. `app.py` now uses a Typer `@app.callback` with real options
+> (`--local`, `--engine`, etc.) and stores resolved values on `ctx.obj`. The `sys.argv`
+> mutation and `_EARLY_*` globals are gone.
 
 **Problem:** `app.py` manually strips `--local`/`--global` from `sys.argv` before Typer processes them. This is fragile, breaks `--help` output for these flags, and uses module-level globals.
 
@@ -335,7 +349,11 @@ All v2 core/connector exceptions must inherit from `IndexedError`. This gives th
 
 ---
 
-## 6. Add Config Schema Versioning
+## 6. Add Config Schema Versioning — ⏳ DEFERRED
+
+> **Status:** Not shipped. v2 introduced `core.v2.*` namespaces alongside `core.v1.*`
+> without a `[_meta] schema_version` / migration command. Deferred to a GH issue (no
+> active migration need yet — both namespaces coexist).
 
 **Problem:** No migration path when config structure changes. v2 core will change config namespaces (e.g., `core.v1.search` → `core.v2.search`). Without versioning, old configs silently produce wrong behavior.
 
@@ -439,7 +457,12 @@ __all__ = [
 
 ---
 
-## 8. Remove Import-Time Side Effects (v2 Prep)
+## 8. Remove Import-Time Side Effects (v2 Prep) — ◐ PARTIAL
+
+> **Status:** v2 fully complies — `core.v2.config.register_config()` is explicit, called
+> from `app.py` startup, no import-time side effects. The legacy `core/v1/__init__.py`
+> still registers at import time; left as-is (legacy, slated for removal) and tracked in a
+> GH issue.
 
 **Problem:** `core/v1/__init__.py` calls `ConfigService.instance()` and registers config specs at import time, wrapped in bare `except Exception: pass`. This is a v1 pattern that must not be repeated in v2.
 

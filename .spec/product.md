@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: [feature-config-product.md]
-updated: 2026-02-16
+updated: 2026-06-11
 ---
 
 # Product Spec: indexed
@@ -36,6 +36,9 @@ What indexed is **not**:
 | **Jira Server/DC** | ✅ Shipped | Index on-premises Jira with JQL filtering |
 | **Confluence Cloud** | ✅ Shipped | Index Confluence Cloud pages with CQL filtering |
 | **Confluence Server/DC** | ✅ Shipped | Index on-premises Confluence with CQL filtering |
+| **Outline Wiki** | ✅ Shipped | Index Outline Cloud & self-hosted wikis (v1 & v2) |
+| **LlamaIndex Engine (v2)** | ✅ Shipped | Default engine: LlamaIndex + HuggingFace embeddings + pluggable vector stores |
+| **Engine Selection** | ✅ Shipped | Choose v2 (default) or v1 via `--engine` / `[general] engine`; per-collection auto-detect |
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
