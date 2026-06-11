@@ -2,6 +2,11 @@
 
 Provides search and inspect capabilities for document collections via MCP tools and resources.
 Uses FastMCP server lifespan and response caching middleware.
+
+Configuration and engine selection are resolved ONCE in :func:`lifespan` and
+stored in lifespan state. Tools and resources read them back through the single
+helper in :mod:`indexed.mcp.config` — there is no module-level config global and
+no per-call fallback loading.
 """
 
 from contextlib import asynccontextmanager
@@ -48,16 +53,18 @@ def _get_search_config() -> CoreV1SearchConfig:
 
 
 def _get_engine() -> str:
-    """Load engine selection from config, defaulting to v1."""
-    try:
-        from ..services.engine_router import GeneralConfig
+    """Resolve the active engine via the engine router, defaulting to v2.
 
-        config_service = ConfigService.instance()
-        config_service.register(GeneralConfig, path="general")
-        provider = config_service.bind()
-        return str(provider.get(GeneralConfig).engine)
+    Delegates to :func:`engine_router.get_effective_engine` so the resolution
+    order (CLI flag → root callback → config) lives in one place. Falls back to
+    ``"v2"`` only when the router cannot be reached.
+    """
+    try:
+        from ..services.engine_router import get_effective_engine
+
+        return get_effective_engine()
     except Exception:
-        return "v1"
+        return "v2"
 
 
 @asynccontextmanager
@@ -72,6 +79,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
 mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
 mcp.add_middleware(ResponseCachingMiddleware())
 
-# Register tools and resources with engine routing
-register_tools(mcp, _get_search_config, _get_engine)
-register_resources(mcp, _get_mcp_config, _get_engine)
+# Register tools and resources. Engine and config come from lifespan state at
+# request time; the registration default engine is "v2".
+register_tools(mcp)
+register_resources(mcp)
