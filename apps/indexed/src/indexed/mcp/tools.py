@@ -77,6 +77,7 @@ def _v2_search(
         max_docs=search_cfg.max_docs,
         max_chunks=search_cfg.max_chunks,
         include_matched_chunks=search_cfg.include_matched_chunks,
+        score_threshold=search_cfg.score_threshold,
         embed_model_name=embed_cfg.model_name,
         collections_dir=collections_dir,
     )

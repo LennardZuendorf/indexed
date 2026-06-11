@@ -44,7 +44,7 @@ def detect_collection_engine(
     manifest_path = Path(collections_path) / collection / "manifest.json"
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, ValueError):
+    except (OSError, ValueError):  # FileNotFoundError ⊂ OSError; JSON err ⊂ ValueError
         return None
     if not isinstance(payload, dict):
         return None
