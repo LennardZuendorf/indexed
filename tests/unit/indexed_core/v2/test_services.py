@@ -152,10 +152,11 @@ class TestSearchFunction:
         mock_search.assert_called_once()
         assert result["collectionName"] == "col"
 
+    @patch("core.v2.storage.detect_disk_engine", return_value="v2")
     @patch("core.v2.storage.list_collection_names")
     @patch("core.v2.retrieval.search_collection")
     def test_auto_discover_multiple(
-        self, mock_search: MagicMock, mock_list: MagicMock
+        self, mock_search: MagicMock, mock_list: MagicMock, mock_detect: MagicMock
     ) -> None:
         mock_list.return_value = ["a", "b"]
         mock_search.side_effect = [
@@ -166,6 +167,28 @@ class TestSearchFunction:
         result = search("query")
         assert "collections" in result
         assert len(result["collections"]) == 2
+
+    @patch("core.v2.storage.detect_disk_engine")
+    @patch("core.v2.storage.list_collection_names")
+    @patch("core.v2.retrieval.search_collection")
+    def test_auto_discover_skips_non_v2_collections(
+        self, mock_search: MagicMock, mock_list: MagicMock, mock_detect: MagicMock
+    ) -> None:
+        """All-collections v2 search must skip v1 collections, not abort on them.
+
+        Regression for B6: a mixed v1/v2 repo previously errored on the first v1
+        collection and returned nothing — hiding valid v2 results.
+        """
+        mock_list.return_value = ["v1col", "v2col"]
+        mock_detect.side_effect = lambda name, _dir: "v2" if name == "v2col" else "v1"
+        mock_search.return_value = {"collectionName": "v2col", "results": []}
+
+        result = search("query")
+
+        # Only the v2 collection is searched; the v1 one is silently skipped.
+        mock_search.assert_called_once()
+        assert mock_search.call_args.args[1] == "v2col"
+        assert result["collectionName"] == "v2col"
 
     @patch("core.v2.retrieval.search_collection")
     def test_score_threshold_passed_through(self, mock_search: MagicMock) -> None:
@@ -219,10 +242,11 @@ class TestSearchService:
         result = svc.search("query", collection_name="col")
         assert result["collectionName"] == "col"
 
+    @patch("core.v2.storage.detect_disk_engine", return_value="v2")
     @patch("core.v2.storage.list_collection_names")
     @patch("core.v2.retrieval.search_collection")
     def test_search_all_single_collection(
-        self, mock_search: MagicMock, mock_list: MagicMock
+        self, mock_search: MagicMock, mock_list: MagicMock, mock_detect: MagicMock
     ) -> None:
         mock_list.return_value = ["a"]
         mock_search.return_value = {"collectionName": "a", "results": []}
@@ -231,10 +255,11 @@ class TestSearchService:
         result = svc.search("query")
         assert result["collectionName"] == "a"
 
+    @patch("core.v2.storage.detect_disk_engine", return_value="v2")
     @patch("core.v2.storage.list_collection_names")
     @patch("core.v2.retrieval.search_collection")
     def test_search_all_multiple_collections(
-        self, mock_search: MagicMock, mock_list: MagicMock
+        self, mock_search: MagicMock, mock_list: MagicMock, mock_detect: MagicMock
     ) -> None:
         mock_list.return_value = ["a", "b"]
         mock_search.side_effect = [
