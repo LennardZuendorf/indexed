@@ -56,10 +56,22 @@ def inspect(
     name: str,
     collections_dir: Optional[Path] = None,
 ) -> CollectionInfo:
-    """Get detailed info for a single collection."""
+    """Get detailed info for a single collection.
+
+    Raises:
+        CollectionNotFoundError: If the collection has no manifest.
+        CollectionEngineMismatchError: If the manifest is not a v2 manifest
+            (e.g. a v1 collection inspected under a forced ``--engine v2``).
+            Surfacing this prevents the hollow "Unknown / 0 docs / 0 chunks"
+            card that silently appears when v2 keys are read off a v1 manifest.
+    """
+    from ..errors import CollectionEngineMismatchError
     from ..storage import get_collection_path, read_manifest
 
     manifest = read_manifest(name, collections_dir)
+    version = manifest.get("version")
+    if not (isinstance(version, str) and version.startswith("2")):
+        raise CollectionEngineMismatchError(name, "v1")
     col_path = get_collection_path(name, collections_dir)
 
     disk_size = sum(f.stat().st_size for f in col_path.rglob("*") if f.is_file())

@@ -14,7 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from .errors import CollectionNotFoundError, VectorStoreError
+from .errors import (
+    CollectionEngineMismatchError,
+    CollectionNotFoundError,
+    VectorStoreError,
+)
 
 if TYPE_CHECKING:
     from llama_index.core import StorageContext
@@ -71,6 +75,32 @@ def create_storage_context(
     return StorageContext.from_defaults(vector_store=vector_store)
 
 
+def detect_disk_engine(
+    collection_name: str,
+    collections_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """Classify an on-disk collection as ``"v1"`` / ``"v2"`` from its manifest.
+
+    v2 manifests carry ``"version": "2.x"``; v1 manifests have no ``version``
+    key. Returns ``None`` when the manifest is missing or unreadable. Mirrors
+    ``engine_router.detect_collection_engine`` so core can self-classify without
+    importing from the app layer.
+    """
+    try:
+        manifest_path = (
+            get_collection_path(collection_name, collections_dir) / "manifest.json"
+        )
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    version = payload.get("version")
+    if isinstance(version, str) and version.startswith("2"):
+        return "v2"
+    return "v1"
+
+
 def load_storage_context(
     collection_name: str,
     collections_dir: Optional[Path] = None,
@@ -95,8 +125,16 @@ def load_storage_context(
             persist_dir=str(persist_dir),
         )
     except Exception as exc:
-        msg = f"Failed to load collection '{collection_name}': {exc}"
-        raise VectorStoreError(msg) from exc
+        # Classify the failure so callers get an actionable message instead of
+        # leaked LlamaIndex/FAISS internals. A v1 layout has no v2 vector store;
+        # a v2 manifest with an unreadable store is genuinely corrupt.
+        detected = detect_disk_engine(collection_name, collections_dir)
+        if detected == "v2":
+            raise VectorStoreError(
+                f"Failed to load v2 collection '{collection_name}': the vector "
+                "store could not be read (it may be corrupt or incomplete)."
+            ) from exc
+        raise CollectionEngineMismatchError(collection_name, detected) from exc
 
 
 def persist_collection(
