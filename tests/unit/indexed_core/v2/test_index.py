@@ -45,9 +45,12 @@ class TestIndex:
 
         assert result["collectionName"] == "docs"
 
+    @patch("core.v2.storage.detect_disk_engine", return_value="v2")
     @patch("core.v2.storage.list_collection_names")
     @patch("core.v2.retrieval.search_collection")
-    def test_search_all(self, mock_search: MagicMock, mock_list: MagicMock) -> None:
+    def test_search_all(
+        self, mock_search: MagicMock, mock_list: MagicMock, mock_detect: MagicMock
+    ) -> None:
         mock_list.return_value = ["a"]
         mock_search.return_value = {"collectionName": "a", "results": []}
         index = Index()

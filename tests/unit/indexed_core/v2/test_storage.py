@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from core.v2.errors import CollectionNotFoundError
+from core.v2.errors import CollectionEngineMismatchError, CollectionNotFoundError
 from core.v2.storage import (
+    detect_disk_engine,
     get_collection_path,
     list_collection_names,
+    load_storage_context,
     read_manifest,
     remove_collection,
     write_manifest,
@@ -144,3 +146,54 @@ class TestListCollectionNames:
             collections_dir=tmp_path / "does-not-exist-indexed-test"
         )
         assert result == []
+
+
+class TestDetectDiskEngine:
+    """detect_disk_engine classifies a collection dir from its manifest."""
+
+    def test_v2_manifest(self, tmp_path: Path) -> None:
+        write_manifest("c", num_documents=1, num_chunks=1, collections_dir=tmp_path)
+        assert detect_disk_engine("c", tmp_path) == "v2"
+
+    def test_v1_manifest(self, tmp_path: Path) -> None:
+        d = tmp_path / "c"
+        d.mkdir()
+        (d / "manifest.json").write_text('{"collectionName": "c"}', encoding="utf-8")
+        assert detect_disk_engine("c", tmp_path) == "v1"
+
+    def test_missing_manifest_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "c").mkdir()
+        assert detect_disk_engine("c", tmp_path) is None
+
+
+class TestLoadStorageContext:
+    """load_storage_context surfaces actionable errors, not LlamaIndex internals."""
+
+    def test_missing_collection_raises_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(CollectionNotFoundError):
+            load_storage_context("nope", collections_dir=tmp_path)
+
+    def test_v1_layout_raises_engine_mismatch(self, tmp_path: Path) -> None:
+        # v1-style dir: manifest without "version", no v2 vector store files.
+        d = tmp_path / "v1c"
+        d.mkdir()
+        (d / "manifest.json").write_text('{"collectionName": "v1c"}', encoding="utf-8")
+
+        with pytest.raises(CollectionEngineMismatchError) as exc_info:
+            load_storage_context("v1c", collections_dir=tmp_path)
+
+        assert exc_info.value.detected_engine == "v1"
+        message = str(exc_info.value)
+        assert "v1 collection" in message
+        assert "llama_index" not in message
+        assert "vector_store" not in message
+
+    def test_engine_mismatch_catchable_as_indexed_error(self, tmp_path: Path) -> None:
+        from indexed_config.errors import IndexedError
+
+        d = tmp_path / "v1c"
+        d.mkdir()
+        (d / "manifest.json").write_text('{"collectionName": "v1c"}', encoding="utf-8")
+
+        with pytest.raises(IndexedError):
+            load_storage_context("v1c", collections_dir=tmp_path)

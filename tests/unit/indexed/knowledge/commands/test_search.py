@@ -860,6 +860,97 @@ class TestSearchAutoDetect:
         assert result.exit_code == 1
         assert "IndexError" not in (result.output or "")
 
+    def test_force_v2_on_v1_collection_shows_actionable_error_not_traceback(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """`search -c <v1> --engine v2` renders an actionable error and exits 1,
+        not a raw traceback. Regression for B1."""
+        from unittest.mock import MagicMock
+
+        from core.v2.config import CoreV2EmbeddingConfig, CoreV2SearchConfig
+        from core.v2.errors import CollectionEngineMismatchError
+
+        self._write_v1_manifest(tmp_path, "indexed")
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+
+        def raise_mismatch(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            raise CollectionEngineMismatchError("indexed", "v1")
+
+        v2_status_obj = MagicMock()
+        v2_status_obj.name = "indexed"
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "svc_search_v2", raise_mismatch)
+
+        with patch("indexed_config.ConfigService") as mock_cfg:
+            mock_cfg.instance.return_value.bind.return_value = mock_provider
+            with patch("core.v2.services.status", return_value=[v2_status_obj]):
+                result = runner.invoke(
+                    search_cmd.app, ["query", "-c", "indexed", "--engine", "v2"]
+                )
+
+        assert result.exit_code == 1
+        assert "v1 collection" in (result.output or "")
+        assert "Traceback" not in (result.output or "")
+
+    def test_force_v2_no_collection_skips_v1_and_returns_v2(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """`search --engine v2` (no -c) over a mixed repo skips v1 collections and
+        still returns v2 results, instead of aborting on the first v1 store.
+
+        Covers the multi-collection branch of the B1 fix (warn + skip, exit 0).
+        """
+        from unittest.mock import MagicMock
+
+        from core.v2.config import CoreV2EmbeddingConfig, CoreV2SearchConfig
+        from core.v2.errors import CollectionEngineMismatchError
+
+        self._write_v1_manifest(tmp_path, "v1coll")
+        self._write_v2_manifest(tmp_path, "v2coll")
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        mock_provider = MagicMock()
+        mock_provider.get.side_effect = lambda cls: (
+            CoreV2SearchConfig()
+            if cls == CoreV2SearchConfig
+            else CoreV2EmbeddingConfig()
+        )
+
+        searched: List[str] = []
+
+        def fake_v2_search(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            name = kwargs["configs"][0].name
+            searched.append(name)
+            if name == "v2coll":
+                return {"collectionName": "v2coll", "results": []}
+            raise CollectionEngineMismatchError(name, "v1")
+
+        monkeypatch.setattr(search_cmd, "Index", lambda: None)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "svc_search_v2", fake_v2_search)
+
+        with patch("indexed_config.ConfigService") as mock_cfg:
+            mock_cfg.instance.return_value.bind.return_value = mock_provider
+            result = runner.invoke(search_cmd.app, ["query", "--engine", "v2"])
+
+        # Did not abort on the v1 collection: both were attempted, exit 0, no traceback.
+        assert result.exit_code == 0, result.output
+        assert "Traceback" not in (result.output or "")
+        assert "v1coll" in searched and "v2coll" in searched
+
     def test_no_collection_arg_uses_config_default(
         self, monkeypatch: Any, tmp_path: Path
     ) -> None:
