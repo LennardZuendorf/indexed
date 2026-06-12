@@ -498,21 +498,34 @@ def search(
             engine, collection=coll_name, collections_path=preferred_path
         )
         if coll_engine == "v2":
+            from indexed_config.errors import IndexedError
+
             v2_search_cfg, v2_embed_cfg = _v2_cfg()
-            raw = this_module.svc_search_v2(
-                query,
-                configs=[
-                    source_config_class(
-                        name=coll_name, type="localFiles", base_url_or_path=""
-                    )
-                ],
-                max_docs=v2_search_cfg.max_docs,
-                max_chunks=v2_search_cfg.max_chunks,
-                include_matched_chunks=v2_search_cfg.include_matched_chunks,
-                score_threshold=v2_search_cfg.score_threshold,
-                embed_model_name=v2_embed_cfg.model_name,
-                collections_dir=preferred_dir,
-            )
+            try:
+                raw = this_module.svc_search_v2(
+                    query,
+                    configs=[
+                        source_config_class(
+                            name=coll_name, type="localFiles", base_url_or_path=""
+                        )
+                    ],
+                    max_docs=v2_search_cfg.max_docs,
+                    max_chunks=v2_search_cfg.max_chunks,
+                    include_matched_chunks=v2_search_cfg.include_matched_chunks,
+                    score_threshold=v2_search_cfg.score_threshold,
+                    embed_model_name=v2_embed_cfg.model_name,
+                    collections_dir=preferred_dir,
+                )
+            except IndexedError as exc:
+                # A forced --engine v2 against a v1 store (or a corrupt v2 store)
+                # raises here. Render the actionable message rather than dumping
+                # a traceback. Single-collection runs fail; in a multi-collection
+                # run one bad collection is skipped so the rest still return.
+                if collection is not None:
+                    print_error(str(exc))
+                    raise typer.Exit(1) from exc
+                print_warning(f"Skipping '{coll_name}': {exc}")
+                return {coll_name: {"error": str(exc)}}
             return _normalize_v2_search(raw)
 
         # v1 path: needs indexer metadata from the collection's manifest.
