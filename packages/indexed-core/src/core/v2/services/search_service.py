@@ -2,10 +2,35 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 from .models import SourceConfig
+
+logger = logging.getLogger(__name__)
+
+
+def _all_v2_collection_names(collections_dir: Optional[Path]) -> list[str]:
+    """All v2 collections under ``collections_dir``; non-v2 ones are skipped.
+
+    The all-collections search path must not abort when a v1 (legacy) collection
+    shares the directory. It filters to v2 stores and logs what it skipped so a
+    mixed v1/v2 repo still returns its v2 results rather than erroring on the
+    first v1 collection encountered.
+    """
+    from ..storage import detect_disk_engine, list_collection_names
+
+    names = list_collection_names(collections_dir)
+    v2_names = [n for n in names if detect_disk_engine(n, collections_dir) == "v2"]
+    skipped = [n for n in names if n not in v2_names]
+    if skipped:
+        logger.info(
+            "v2 search: skipping %d non-v2 collection(s): %s",
+            len(skipped),
+            ", ".join(skipped),
+        )
+    return v2_names
 
 
 def _search_collections(
@@ -63,12 +88,10 @@ class SearchService:
         score_threshold: Optional[float] = None,
     ) -> dict[str, Any]:
         """Search a specific collection or all collections."""
-        from ..storage import list_collection_names
-
         if collection_name:
             names = [collection_name]
         else:
-            names = list_collection_names(self._collections_dir)
+            names = _all_v2_collection_names(self._collections_dir)
 
         results = _search_collections(
             query,
@@ -99,12 +122,10 @@ def search(
     collections_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Stateless search function — convenience wrapper for CLI usage."""
-    from ..storage import list_collection_names
-
     names = (
         [c.name for c in configs]
         if configs is not None
-        else list_collection_names(collections_dir)
+        else _all_v2_collection_names(collections_dir)
     )
 
     results = _search_collections(
