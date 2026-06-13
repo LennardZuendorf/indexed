@@ -541,7 +541,7 @@ class TestExecuteCreateCommand:
             json_logs=False,
             log_level=None,
             use_cache=True,
-            force=False,
+            force=True,
             engine="v1",
         )
 
@@ -610,7 +610,7 @@ class TestExecuteCreateCommand:
             json_logs=False,
             log_level=None,
             use_cache=True,
-            force=False,
+            force=True,
             engine="v1",
         )
 
