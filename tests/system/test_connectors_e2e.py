@@ -55,9 +55,7 @@ def _make_fake_jira_class(issues: list[dict]):
         ):
             start = int(nextPageToken) if nextPageToken else 0
             batch = (
-                self._issues[start : start + limit]
-                if limit
-                else self._issues[start:]
+                self._issues[start : start + limit] if limit else self._issues[start:]
             )
             result = {"issues": batch}
             next_start = start + len(batch)
