@@ -44,11 +44,11 @@ def test_read_all_documents_without_attachments():
 
     issues = [{"key": "T-1", "fields": {"updated": "2024-01-01"}}]
 
-    with patch.object(reader, "_read_all_async", new_callable=AsyncMock) as mock_read:
-        mock_read.return_value = issues
+    with patch.object(reader, "_read_issues_sync", return_value=issues) as mock_read:
         result = reader.read_all_documents()
 
     assert result == issues
+    mock_read.assert_called_once()
 
 
 def test_enrich_with_attachments_downloads():

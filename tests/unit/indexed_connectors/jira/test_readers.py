@@ -1,6 +1,9 @@
 """Tests for Jira document readers."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
+from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from connectors.jira.unified_jira_document_reader import (
     UnifiedJiraDocumentReader,
     JiraAuthType,
@@ -17,14 +20,25 @@ class FakeJiraCloud:
             {"key": "ISSUE-3", "fields": {"updated": "2024-01-03T00:00:00.000+0000"}},
         ]
 
-    def jql(self, jql, fields=None, start=0, limit=50, expand=None, **kwargs):
+    def approximate_issue_count(self, jql: str) -> dict:
+        return {"count": len(self._issues)}
+
+    def enhanced_jql(
+        self,
+        jql,
+        fields=None,
+        nextPageToken=None,
+        limit=50,
+        expand=None,
+        **kwargs,
+    ):
+        start = int(nextPageToken) if nextPageToken else 0
         batch = self._issues[start : start + limit] if limit else self._issues[start:]
-        return {
-            "issues": batch,
-            "total": len(self._issues),
-            "startAt": start,
-            "maxResults": limit,
-        }
+        result = {"issues": batch}
+        next_start = start + len(batch)
+        if next_start < len(self._issues):
+            result["nextPageToken"] = str(next_start)
+        return result
 
 
 class FakeJiraServer:
@@ -46,9 +60,42 @@ class FakeJiraServer:
         }
 
 
+def _make_search_response(issues: list, next_token: str | None = None) -> MagicMock:
+    resp = MagicMock()
+    payload: dict = {"issues": issues}
+    if next_token:
+        payload["nextPageToken"] = next_token
+    resp.json.return_value = payload
+    resp.ok = True
+    resp.status_code = 200
+    resp.url = "https://acme.atlassian.net/rest/api/3/search/jql"
+    resp.text = ""
+    return resp
+
+
+def _make_count_response(count: int) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = {"count": count}
+    resp.ok = True
+    resp.status_code = 200
+    resp.url = "https://acme.atlassian.net/rest/api/3/search/approximate-count"
+    resp.text = ""
+    return resp
+
+
+@pytest.fixture
+def async_reader():
+    return AsyncJiraCloudDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        email="user@acme.com",
+        api_token="tok",
+        batch_size=2,
+    )
+
+
 def test_cloud_reader_count_and_pagination(monkeypatch):
     """Test cloud reader document counting and pagination."""
-    # Patch the Jira class in the unified reader module
     import connectors.jira.unified_jira_document_reader as unified_mod
 
     monkeypatch.setattr(unified_mod, "Jira", FakeJiraCloud, raising=True)
@@ -65,7 +112,6 @@ def test_cloud_reader_count_and_pagination(monkeypatch):
     assert reader.get_number_of_documents() == 3
 
     docs = list(reader.read_all_documents())
-    # We yielded raw issue objects, ensure full set arrived
     assert len(docs) == 3
     assert docs[0]["key"] == "ISSUE-1"
     assert docs[-1]["key"] == "ISSUE-3"
@@ -92,6 +138,53 @@ def test_server_reader_count_and_pagination(monkeypatch):
     assert docs[0]["key"] == "S-1"
 
 
+def test_pagination_terminates_at_next_page_token(async_reader):
+    """Async reader fetches all pages until nextPageToken is absent."""
+    issues = [{"key": f"I-{i}", "fields": {"updated": "2024-01-01"}} for i in range(5)]
+    responses = [
+        _make_search_response(issues[:2], next_token="2"),
+        _make_search_response(issues[2:4], next_token="4"),
+        _make_search_response(issues[4:]),
+    ]
+
+    with patch("requests.post", side_effect=responses) as mock_post:
+        result = async_reader._read_issues_sync()
+
+    assert len(result) == 5
+    assert mock_post.call_count == 3
+    assert all(
+        call.kwargs["json"]["jql"] == "project = TEST"
+        for call in mock_post.call_args_list
+    )
+
+
+def test_pagination_with_exact_page_boundary(async_reader):
+    """Async reader stops cleanly when last page fills the batch exactly."""
+    issues = [{"key": f"I-{i}", "fields": {"updated": "2024-01-01"}} for i in range(4)]
+    responses = [
+        _make_search_response(issues[:2], next_token="2"),
+        _make_search_response(issues[2:]),
+    ]
+
+    with patch("requests.post", side_effect=responses) as mock_post:
+        result = async_reader._read_issues_sync()
+
+    assert len(result) == 4
+    assert mock_post.call_count == 2
+
+
+def test_async_reader_approximate_count(async_reader):
+    """get_number_of_documents uses approximate-count endpoint."""
+    with patch(
+        "requests.post",
+        return_value=_make_count_response(42),
+    ) as mock_post:
+        count = async_reader.get_number_of_documents()
+
+    assert count == 42
+    assert "approximate-count" in mock_post.call_args.args[0]
+
+
 def test_reader_validation_cloud_requires_email_and_token():
     """Test cloud auth validation."""
     with pytest.raises(
@@ -101,7 +194,6 @@ def test_reader_validation_cloud_requires_email_and_token():
             base_url="https://acme.atlassian.net",
             query="project = TEST",
             auth_type=JiraAuthType.CLOUD,
-            # Missing email and api_token
         )
 
 
@@ -112,7 +204,6 @@ def test_reader_validation_server_token_requires_token():
             base_url="https://jira.example.com",
             query="project = TEST",
             auth_type=JiraAuthType.SERVER_TOKEN,
-            # Missing token
         )
 
 
@@ -126,7 +217,6 @@ def test_reader_validation_server_creds_requires_login_password():
             base_url="https://jira.example.com",
             query="project = TEST",
             auth_type=JiraAuthType.SERVER_CREDENTIALS,
-            # Missing login and password
         )
 
 
@@ -134,7 +224,7 @@ def test_reader_url_validation_cloud():
     """Test cloud URL validation."""
     with pytest.raises(ValueError, match="Cloud URLs must end with .atlassian.net"):
         UnifiedJiraDocumentReader(
-            base_url="https://jira.example.com",  # Wrong URL for cloud
+            base_url="https://jira.example.com",
             query="project = TEST",
             auth_type=JiraAuthType.CLOUD,
             email="x@acme.com",
@@ -148,7 +238,7 @@ def test_reader_url_validation_server():
         ValueError, match="Server/DC URLs should not end with .atlassian.net"
     ):
         UnifiedJiraDocumentReader(
-            base_url="https://acme.atlassian.net",  # Wrong URL for server
+            base_url="https://acme.atlassian.net",
             query="project = TEST",
             auth_type=JiraAuthType.SERVER_TOKEN,
             token="token",

@@ -44,6 +44,30 @@ def _make_fake_jira_class(issues: list[dict]):
                 "maxResults": limit,
             }
 
+        def enhanced_jql(
+            self,
+            jql,
+            fields=None,
+            nextPageToken=None,
+            limit=50,
+            expand=None,
+            **kwargs,
+        ):
+            start = int(nextPageToken) if nextPageToken else 0
+            batch = (
+                self._issues[start : start + limit]
+                if limit
+                else self._issues[start:]
+            )
+            result = {"issues": batch}
+            next_start = start + len(batch)
+            if next_start < len(self._issues):
+                result["nextPageToken"] = str(next_start)
+            return result
+
+        def approximate_issue_count(self, jql: str) -> dict:
+            return {"count": len(self._issues)}
+
     return _FakeJira
 
 

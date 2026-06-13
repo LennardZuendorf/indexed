@@ -1,21 +1,34 @@
 """Async Jira Cloud document reader using httpx for concurrent requests.
 
-Fetches the issue list via JQL (sequential, paginated), then fetches
-individual issue details concurrently for faster indexing.
+Sequential JQL search via Enhanced JQL API (cursor pagination), then async
+concurrent attachment downloads when enabled.
 """
 
 import asyncio
+import time
 from base64 import b64encode
+from typing import Any
 
 import httpx
+import requests
 from loguru import logger
 
 
-class AsyncJiraCloudDocumentReader:
-    """Jira Cloud reader that uses async HTTP for concurrent issue fetching.
+class JiraCloudAPIError(Exception):
+    """Raised when the Jira Cloud API returns an error response."""
 
-    The initial JQL search is paginated sequentially, but individual issue
-    detail fetching can be parallelized when fetching additional fields.
+    def __init__(self, status_code: int, message: str, url: str) -> None:
+        self.status_code = status_code
+        self.message = message
+        self.url = url
+        super().__init__(f"Jira Cloud API error {status_code} at {url}: {message}")
+
+
+class AsyncJiraCloudDocumentReader:
+    """Jira Cloud reader that uses sequential search and async attachment fetching.
+
+    Issue listing uses the Enhanced JQL API with nextPageToken pagination.
+    Attachment downloads run concurrently via httpx when enabled.
     """
 
     def __init__(
@@ -56,6 +69,11 @@ class AsyncJiraCloudDocumentReader:
             else "summary,description,comment,updated"
         )
         self._auth_header = self._build_auth_header(email, api_token)
+        self._json_headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": self._auth_header,
+        }
 
     @staticmethod
     def _build_auth_header(email: str, api_token: str) -> str:
@@ -63,31 +81,15 @@ class AsyncJiraCloudDocumentReader:
         return f"Basic {credentials}"
 
     def read_all_documents(self):
-        """Read all documents using async batch fetching."""
-        issues = asyncio.run(self._read_all_async())
+        """Read all documents: sequential JQL search, then optional attachments."""
+        issues = self._read_issues_sync()
         if not self.include_attachments:
             return issues
         return asyncio.run(self._enrich_with_attachments(issues))
 
     def get_number_of_documents(self) -> int:
-        """Get total count of documents matching the query."""
-        import requests
-
-        response = requests.get(
-            url=f"{self.base_url}/rest/api/3/search",
-            headers={
-                "Accept": "application/json",
-                "Authorization": self._auth_header,
-            },
-            params={
-                "jql": self.query,
-                "fields": self.fields,
-                "startAt": 0,
-                "maxResults": 1,
-            },
-        )
-        response.raise_for_status()
-        return response.json().get("total", 0)
+        """Get approximate count of documents matching the query."""
+        return self._get_approximate_count()
 
     def get_reader_details(self) -> dict:
         return {
@@ -98,97 +100,97 @@ class AsyncJiraCloudDocumentReader:
             "fields": self.fields,
         }
 
-    async def _read_all_async(self) -> list:
-        """Fetch all issues using concurrent batch requests."""
-        semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+    def _read_issues_sync(self) -> list[dict]:
+        """Fetch all issues via sequential nextPageToken pagination."""
+        issues: list[dict] = []
+        next_token: str | None = None
 
-        async with httpx.AsyncClient(
-            timeout=30.0,
-            limits=httpx.Limits(
-                max_connections=self.max_concurrent_requests,
-                max_keepalive_connections=5,
-            ),
-        ) as client:
-            # Get total count first
-            total = await self._get_total(client)
-            if total == 0:
-                return []
-
-            # Create tasks for all batches
-            batch_offsets = list(range(0, total, self.batch_size))
-            tasks = [
-                self._fetch_batch(client, semaphore, offset) for offset in batch_offsets
-            ]
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        all_issues = []
-        skipped = 0
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.warning(
-                    f"Failed to fetch batch at offset {batch_offsets[i]}: {result}"
-                )
-                skipped += 1
-                if skipped > self.max_skipped_items_in_row:
-                    raise result
-            else:
-                all_issues.extend(result)
-
-        return all_issues
-
-    async def _get_total(self, client: httpx.AsyncClient) -> int:
-        """Get total issue count for the JQL query."""
-        response = await client.get(
-            f"{self.base_url}/rest/api/3/search",
-            headers={
-                "Accept": "application/json",
-                "Authorization": self._auth_header,
-            },
-            params={
+        while True:
+            body: dict[str, Any] = {
                 "jql": self.query,
-                "fields": self.fields,
-                "startAt": 0,
-                "maxResults": 1,
-            },
-        )
-        response.raise_for_status()
-        return response.json().get("total", 0)
+                "fields": self.fields.split(","),
+                "maxResults": self.batch_size,
+            }
+            if next_token:
+                body["nextPageToken"] = next_token
 
-    async def _fetch_batch(
-        self,
-        client: httpx.AsyncClient,
-        semaphore: asyncio.Semaphore,
-        offset: int,
-    ) -> list:
-        """Fetch a batch of issues at the given offset."""
-        async with semaphore:
-            for attempt in range(self.number_of_retries):
-                try:
-                    response = await client.get(
-                        f"{self.base_url}/rest/api/3/search",
-                        headers={
-                            "Accept": "application/json",
-                            "Authorization": self._auth_header,
-                        },
-                        params={
-                            "jql": self.query,
-                            "fields": self.fields,
-                            "startAt": offset,
-                            "maxResults": self.batch_size,
-                        },
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    return data.get("issues", [])
-                except Exception as e:
-                    if attempt == self.number_of_retries - 1:
-                        raise
-                    logger.debug(
-                        f"Retry {attempt + 1} for batch at offset {offset}: {e}"
-                    )
-                    await asyncio.sleep(self.retry_delay * (attempt + 1))
-        return []
+            result = self._post_with_retry(
+                f"{self.base_url}/rest/api/3/search/jql",
+                body,
+            )
+            page_issues = result.get("issues", [])
+            issues.extend(page_issues)
+
+            next_token = result.get("nextPageToken")
+            if not next_token:
+                break
+
+        return issues
+
+    def _get_approximate_count(self) -> int:
+        """POST /rest/api/3/search/approximate-count for issue count estimate."""
+        result = self._post_with_retry(
+            f"{self.base_url}/rest/api/3/search/approximate-count",
+            {"jql": self.query},
+        )
+        return int(result.get("count", 0))
+
+    def _post_with_retry(self, url: str, body: dict) -> dict:
+        """POST with retry on transient/rate-limit errors."""
+        for attempt in range(self.number_of_retries):
+            try:
+                response = requests.post(
+                    url,
+                    headers=self._json_headers,
+                    json=body,
+                    timeout=(5, 30),
+                )
+                self._raise_for_status(response)
+                return response.json()
+            except JiraCloudAPIError as exc:
+                if exc.status_code not in (429, 500, 502, 503, 504):
+                    raise
+                if attempt == self.number_of_retries - 1:
+                    raise
+                logger.debug(
+                    "Retry {}/{} after HTTP {}: {}",
+                    attempt + 1,
+                    self.number_of_retries,
+                    exc.status_code,
+                    exc,
+                )
+                time.sleep(self.retry_delay * (2**attempt))
+            except Exception as exc:
+                if attempt == self.number_of_retries - 1:
+                    raise
+                logger.debug(
+                    "Retry {}/{}: {}",
+                    attempt + 1,
+                    self.number_of_retries,
+                    exc,
+                )
+                time.sleep(self.retry_delay * (2**attempt))
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @staticmethod
+    def _raise_for_status(response: requests.Response) -> None:
+        """Raise JiraCloudAPIError for non-success HTTP responses."""
+        if response.ok:
+            return
+        message = "Unknown error"
+        try:
+            error_body = response.json()
+            if "errorMessages" in error_body:
+                message = "; ".join(error_body["errorMessages"])
+            elif "message" in error_body:
+                message = str(error_body["message"])
+        except Exception:
+            message = response.text[:500] if response.text else message
+        raise JiraCloudAPIError(
+            status_code=response.status_code,
+            message=message,
+            url=str(response.url),
+        )
 
     async def _enrich_with_attachments(self, issues: list) -> list:
         """Download attachment bytes for all issues concurrently."""
