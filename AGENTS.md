@@ -206,8 +206,8 @@ uv run indexed-mcp run            # Stdio mode (Claude Desktop)
 uv run indexed-mcp run --log-level DEBUG
 uv run indexed-mcp run --transport http --port 8000
 
-# Building
-uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+# Building (release wheel — bundles workspace packages via una-build)
+HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 ```
 
 ### Git Commit Standards
@@ -651,7 +651,7 @@ def get_embedder():
 
 **Build failures:**
 - Build from PROJECT ROOT: `cd /path/to/indexed`
-- Use correct command: `uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed`
+- Use correct command: `HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed`
 - Check for missing dependencies: `uv sync --all-groups`
 
 ## Quick Reference

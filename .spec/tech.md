@@ -168,7 +168,8 @@ uv run pytest -q --cov=src --cov-report=html
 `una` bundles all workspace packages into a single wheel.
 
 ```bash
-uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+# Build wheel (HATCH_BUILD_HOOKS_ENABLE=1 required to bundle workspace packages)
+HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 # → dist/indexed-0.1.0-py3-none-any.whl  (indexed + core + connectors + parsing + config + utils)
 ```
 

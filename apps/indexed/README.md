@@ -61,8 +61,8 @@ uv sync --all-groups
 # Install production dependencies only
 uv sync
 
-# Build a standalone distributable wheel
-uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+# Build a standalone distributable wheel (bundles workspace packages via una-build)
+HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
 ```
 
 ## CLI Usage
