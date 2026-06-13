@@ -266,7 +266,9 @@ class UnifiedJiraDocumentReader:
         """
 
         def do_request():
-            # Use jql with limit=1 to get total count efficiently
+            if self.auth_type == JiraAuthType.CLOUD:
+                result = self._client.approximate_issue_count(self.query)
+                return int(result.get("count", 0))
             result = self._client.jql(self.query, fields=self.fields, start=0, limit=1)
             return result.get("total", 0)
 
@@ -296,7 +298,37 @@ class UnifiedJiraDocumentReader:
 
     def __read_items(self):
         """Read items in batches using the batch utility."""
+        if self.auth_type == JiraAuthType.CLOUD:
+            return self.__read_items_cloud()
+        return self.__read_items_server()
 
+    def __read_items_cloud(self):
+        """Read Cloud issues via Enhanced JQL API with nextPageToken pagination."""
+
+        def read_batch_func(start_at, batch_size, cursor):
+            result = self._client.enhanced_jql(
+                jql=self.query,
+                fields=self.fields,
+                limit=batch_size,
+                nextPageToken=cursor,
+            )
+            issues = result.get("issues", [])
+            if result.get("nextPageToken"):
+                result["_continuation_total"] = start_at + len(issues) + 1
+            else:
+                result["_continuation_total"] = start_at + len(issues)
+            return result
+
+        return read_items_in_batches(
+            read_batch_func,
+            fetch_items_from_result_func=lambda result: result["issues"],
+            fetch_total_from_result_func=lambda result: result["_continuation_total"],
+            batch_size=self.batch_size,
+            max_skipped_items_in_row=self.max_skipped_items_in_row,
+            cursor_parser=UnifiedJiraDocumentReader.__parse_next_page_token,
+        )
+
+    def __read_items_server(self):
         def read_batch_func(start_at, batch_size):
             return self.__request_items(start_at=start_at, max_results=batch_size)
 
@@ -307,6 +339,11 @@ class UnifiedJiraDocumentReader:
             batch_size=self.batch_size,
             max_skipped_items_in_row=self.max_skipped_items_in_row,
         )
+
+    @staticmethod
+    def __parse_next_page_token(result: dict) -> str | None:
+        """Extract nextPageToken for cursor-based pagination."""
+        return result.get("nextPageToken")
 
     def __request_items(self, start_at: int, max_results: int):
         """Request a batch of items from Jira.
