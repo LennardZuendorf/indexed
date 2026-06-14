@@ -1,6 +1,58 @@
 # Core Engine Architecture Guide
 
-This package contains the heart of Indexed: document indexing, FAISS vector search, and collection management.
+This package contains the heart of Indexed: document indexing, vector search, and collection management.
+
+## V2 Core (LlamaIndex-Powered)
+
+The v2 core engine lives at `src/core/v2/` alongside v1. It replaces the custom FAISS + sentence-transformers engine with **LlamaIndex**, **HuggingFace ONNX embeddings**, and **pluggable vector stores**.
+
+### V2 Architecture
+
+```
+src/core/v2/
+├── __init__.py              # Public API: Index, IndexConfig (NO side effects)
+├── config.py                # Pydantic configs + register_config()
+├── errors.py                # CoreV2Error hierarchy
+├── embedding.py             # Lazy HuggingFace ONNX embeddings
+├── vector_store.py          # Pluggable vector store factory (FAISS default)
+├── storage.py               # Collection persistence via LlamaIndex StorageContext
+├── adapter.py               # v1 connector output → LlamaIndex TextNode
+├── ingestion.py             # Collection creation pipeline
+├── retrieval.py             # Search/retrieval pipeline
+├── index.py                 # Index facade
+└── services/                # Service layer (same API contract as v1)
+    ├── models.py            # Re-exports v1 service models
+    ├── collection_service.py
+    ├── search_service.py
+    └── inspect_service.py
+```
+
+### V2 Key Patterns
+
+- **No import-time side effects**: Config registration via explicit `register_config()`
+- **Lazy loading**: All LlamaIndex/HuggingFace imports deferred to function bodies
+- **Pre-chunked nodes**: Connectors already chunk; v2 bypasses LlamaIndex's node parsers
+- **Pluggable vector stores**: FAISS default, extensible via `vector_store.py`
+- **embed_model passed directly**: Avoids LlamaIndex's global `Settings` object
+
+### V2 Usage
+
+```python
+from core.v2 import Index, IndexConfig
+from core.v2.config import register_config
+
+# Explicit config registration (call from app startup)
+register_config(config_service)
+
+# Use the Index facade
+index = Index()
+index.add_collection("docs", connector=files_connector)
+results = index.search("authentication methods")
+```
+
+---
+
+## V1 Core (Legacy)
 
 ## Package Overview
 

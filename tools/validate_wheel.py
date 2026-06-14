@@ -311,6 +311,37 @@ def validate_zipfile(zip_filepath: str) -> tuple[bool, str | None]:
     return True, None
 
 
+# ── Content validation (indexed-specific, NOT part of the vendored PyPI check) ──
+#
+# The structural validator above only proves the ZIP is well-formed; a wheel that
+# is missing an entire package (e.g. the v2 engine) would still pass and publish.
+# A bundled wheel for this project MUST ship both core engine versions, so we
+# additionally assert the package files are present before allowing a release.
+REQUIRED_WHEEL_MEMBERS = (
+    "core/v1/__init__.py",
+    "core/v2/__init__.py",
+)
+
+
+def validate_wheel_contents(zip_filepath: str) -> tuple[bool, str | None]:
+    """Assert the bundled wheel actually contains the required core packages.
+
+    Distinct from :func:`validate_zipfile` (the vendored PyPI archive check):
+    that one verifies ZIP structure, this one verifies that the engine code
+    we intend to publish is present so a wheel missing ``core/v2`` can't ship.
+    """
+    try:
+        with zipfile.ZipFile(zip_filepath, mode="r") as zfp:
+            names = set(zfp.namelist())
+    except zipfile.BadZipfile as e:
+        return False, e.args[0]
+
+    missing = [member for member in REQUIRED_WHEEL_MEMBERS if member not in names]
+    if missing:
+        return False, "missing package files: " + ", ".join(missing)
+    return True, None
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print("Usage: validate_wheel.py <wheel_or_sdist> [<more> ...]", file=sys.stderr)
@@ -324,11 +355,19 @@ def main(argv: list[str]) -> int:
             failures += 1
             continue
         ok, error = validate_zipfile(path)
-        if ok:
-            print(f"{name}: OK")
-        else:
+        if not ok:
             print(f"{name}: REJECTED — {error}", file=sys.stderr)
             failures += 1
+            continue
+        # Content check only applies to wheels; sdists use a different layout
+        # (name-version/... source tree) and would false-fail.
+        if path.endswith(".whl"):
+            contents_ok, contents_error = validate_wheel_contents(path)
+            if not contents_ok:
+                print(f"{name}: REJECTED — {contents_error}", file=sys.stderr)
+                failures += 1
+                continue
+        print(f"{name}: OK")
 
     return 0 if failures == 0 else 1
 

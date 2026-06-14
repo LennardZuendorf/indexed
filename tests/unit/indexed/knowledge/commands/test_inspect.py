@@ -7,9 +7,10 @@ We focus on realistic behaviors:
 """
 
 from pathlib import Path
-from typing import List
+from typing import Any, List
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import inspect as inspect_cmd
@@ -19,14 +20,21 @@ from core.v1.engine.services import CollectionInfo
 
 runner = CliRunner()
 
-# Patch resolve_preferred_collections_path globally for all inspect tests
-# so tests don't need ConfigService
-_MOCK_PATH = patch.object(
-    storage_info_mod,
-    "resolve_preferred_collections_path",
-    return_value=Path("/tmp/test-collections"),
-)
-_MOCK_PATH.start()
+
+@pytest.fixture(autouse=True)
+def _mock_preferred_collections_path():
+    """Default resolve_preferred_collections_path so tests don't need ConfigService.
+
+    Scoped per-test (autouse) so it never leaks into other modules' tests — the
+    previous module-level patch.start() had no stop() and broke the e2e suite when
+    run in the same process. Individual tests may still override via monkeypatch.
+    """
+    with patch.object(
+        storage_info_mod,
+        "resolve_preferred_collections_path",
+        return_value=Path("/tmp/test-collections"),
+    ):
+        yield
 
 
 def _make_collection(
@@ -94,7 +102,8 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
 
-        result = runner.invoke(inspect_cmd.app, ["missing"])
+        # --engine v1 pins the legacy path so the mocked v1 inspect() is hit
+        result = runner.invoke(inspect_cmd.app, ["missing", "--engine", "v1"])
 
         assert result.exit_code == 1
         assert "Collection 'missing' not found" in result.stdout
@@ -117,7 +126,7 @@ class TestInspectCollectionsCommand:
         set_simple_output(True)
 
         try:
-            result = runner.invoke(inspect_cmd.app, ["docs"])
+            result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
             assert result.exit_code == 0
             assert '"name": "docs"' in result.stdout
@@ -154,7 +163,7 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
 
-        result = runner.invoke(inspect_cmd.app, ["docs"])
+        result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
         assert "docs" in result.stdout
@@ -191,7 +200,7 @@ class TestInspectCollectionsCommand:
 
         monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
 
-        result = runner.invoke(inspect_cmd.app, ["docs"])
+        result = runner.invoke(inspect_cmd.app, ["docs", "--engine", "v1"])
 
         assert result.exit_code == 0
 
@@ -217,3 +226,249 @@ class TestInspectCollectionsCommand:
 
         assert result.exit_code == 0
         assert "sized-collection" in result.stdout
+
+
+class TestInspectCollectionsCommandV2:
+    """Tests for v2 engine routing in the inspect CLI command."""
+
+    def test_list_view_with_forced_v2_routes_per_row(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        """--engine v2 in list view routes each collection by its own manifest.
+
+        A forced engine on a *list* view has no override intent; forcing it
+        would render v1 collections with hollow v2 metadata. Regression for the
+        list-view variant of B3.
+        """
+        from unittest.mock import MagicMock
+
+        _write_v1_manifest(tmp_path, "v1coll", docs=3, chunks=9)
+        _write_v2_manifest(tmp_path, "v2coll", docs=5, chunks=11)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v1_info = _make_collection("v1coll", docs=3, chunks=9)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [v1_info])
+
+        v2_info = MagicMock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 5
+        v2_info.number_of_chunks = 11
+        v2_info.disk_size_bytes = 2048
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info) as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["--engine", "v2"])
+
+        assert result.exit_code == 0, result.output
+        assert "v1coll" in result.stdout and "v2coll" in result.stdout
+        # v2 collection routed to v2 inspect via per-row detection, not a shortcut
+        # that would have rendered v1coll with hollow zeros.
+        v2_inspect.assert_called()
+
+    @patch("core.v2.services.status")
+    @patch("core.v2.services.inspect")
+    def test_v2_specific_collection_calls_v2_inspect(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 with a collection name calls core.v2.services.inspect."""
+        from unittest.mock import MagicMock
+
+        mock_info = MagicMock()
+        mock_info.name = "my-docs"
+        mock_info.source_type = "localFiles"
+        mock_info.relative_path = "/docs"
+        mock_info.number_of_documents = 7
+        mock_info.number_of_chunks = 14
+        mock_info.disk_size_bytes = 2048
+        mock_info.index_size_bytes = 1024
+        mock_info.created_time = "2025-01-01T00:00:00Z"
+        mock_info.updated_time = "2025-01-02T00:00:00Z"
+        mock_v2_inspect.return_value = mock_info
+
+        result = runner.invoke(inspect_cmd.app, ["my-docs", "--engine", "v2"])
+
+        assert result.exit_code == 0
+        mock_v2_inspect.assert_called_once()
+
+    @patch("core.v2.services.status", return_value=[])
+    @patch("core.v2.services.inspect")
+    def test_v2_inspect_not_found_shows_error(
+        self, mock_v2_inspect: Any, mock_v2_status: Any
+    ) -> None:
+        """--engine v2 inspect raising exception shows error and exits 1."""
+        mock_v2_inspect.side_effect = Exception("Collection 'missing' not found")
+
+        result = runner.invoke(inspect_cmd.app, ["missing", "--engine", "v2"])
+
+        assert result.exit_code == 1
+        assert "missing" in result.stdout
+
+
+def _write_v2_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "name": name,
+                "version": "2.0",
+                "source_type": "localFiles",
+                "num_documents": docs,
+                "num_chunks": chunks,
+                "embed_model_name": "all-MiniLM-L6-v2",
+                "vector_store_type": "faiss",
+                "created_time": "2025-01-01T00:00:00Z",
+                "updated_time": "2025-01-02T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_v1_manifest(root: Path, name: str, *, docs: int, chunks: int) -> None:
+    import json as _json
+
+    coll = root / name
+    coll.mkdir(parents=True, exist_ok=True)
+    (coll / "manifest.json").write_text(
+        _json.dumps(
+            {
+                "collectionName": name,
+                "numberOfDocuments": docs,
+                "numberOfChunks": chunks,
+                "indexers": [{"name": "FAISS"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestInspectAutoDetect:
+    """Per-collection auto-routing fixes the v2 silent-zeros bug."""
+
+    def test_v2_detail_view_reports_real_counts_without_engine_flag(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`inspect <v2-coll>` must return the v2 manifest's document/chunk counts."""
+        from unittest.mock import MagicMock
+
+        _write_v2_manifest(tmp_path, "indexed", docs=42, chunks=137)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v2_info = MagicMock()
+        v2_info.name = "indexed"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 42
+        v2_info.number_of_chunks = 137
+        v2_info.disk_size_bytes = 1024
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info) as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["indexed"])
+
+        assert result.exit_code == 0, result.output
+        v2_inspect.assert_called_once()
+        assert "42" in result.stdout
+        assert "137" in result.stdout
+
+    def test_mixed_engine_list_view_renders_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """A mixed-engine repo lists v1 + v2 with their own counts."""
+        from unittest.mock import MagicMock
+
+        _write_v1_manifest(tmp_path, "v1coll", docs=3, chunks=9)
+        _write_v2_manifest(tmp_path, "v2coll", docs=5, chunks=11)
+
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        v1_info = _make_collection("v1coll", docs=3, chunks=9)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [v1_info])
+
+        v2_info = MagicMock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 5
+        v2_info.number_of_chunks = 11
+        v2_info.disk_size_bytes = 2048
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info):
+            result = runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.output
+        # Both rows shown
+        assert "v1coll" in result.stdout
+        assert "v2coll" in result.stdout
+        # Real counts for each
+        assert "3" in result.stdout and "9" in result.stdout
+        assert "5" in result.stdout and "11" in result.stdout
+
+    def test_forced_engine_in_list_view_still_routes_per_row(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """A forced --engine flag on the *list* view is not an override.
+
+        Each collection is still routed by its own manifest, so a v2 collection
+        renders with real counts even under --engine v1 (the flag is a per-search
+        override, not a list-display override).
+        """
+        from unittest.mock import MagicMock
+
+        _write_v2_manifest(tmp_path, "v2coll", docs=99, chunks=99)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [])
+
+        v2_info = MagicMock()
+        v2_info.name = "v2coll"
+        v2_info.source_type = "localFiles"
+        v2_info.relative_path = None
+        v2_info.number_of_documents = 99
+        v2_info.number_of_chunks = 99
+        v2_info.disk_size_bytes = 1024
+        v2_info.index_size_bytes = 0
+        v2_info.created_time = "2025-01-01T00:00:00Z"
+        v2_info.updated_time = "2025-01-02T00:00:00Z"
+
+        with patch("core.v2.services.inspect", return_value=v2_info) as v2_inspect:
+            result = runner.invoke(inspect_cmd.app, ["--engine", "v1"])
+
+        assert result.exit_code == 0, result.output
+        v2_inspect.assert_called_once()
+        assert "v2coll" in result.stdout
+
+    def test_force_v2_on_v1_collection_shows_actionable_error(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """`inspect <v1-coll> --engine v2` shows an actionable error, not a
+        hollow Unknown/0/0 card. Regression for B3 (single-collection)."""
+        _write_v1_manifest(tmp_path, "v1coll", docs=6, chunks=33)
+        monkeypatch.setattr(
+            storage_info_mod, "resolve_preferred_collections_path", lambda: tmp_path
+        )
+
+        result = runner.invoke(inspect_cmd.app, ["v1coll", "--engine", "v2"])
+
+        assert result.exit_code == 1
+        assert "v1 collection" in result.stdout
+        assert "Unknown" not in result.stdout

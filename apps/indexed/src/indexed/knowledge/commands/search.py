@@ -308,6 +308,22 @@ def format_search_results_compact(
     console.print()
 
 
+def _normalize_v2_search(raw: dict) -> dict:
+    """Convert v2 search output to v1-compatible display format.
+
+    v2 single-collection:  {"collectionName": name, "results": [...]}
+    v2 multi-collection:   {"query": ..., "collections": [{...}, ...]}
+    CLI display expects:   {coll_name: {"results": [...]}}
+    """
+    if "collections" in raw:
+        return {
+            item["collectionName"]: {"results": item.get("results", [])}
+            for item in raw["collections"]
+        }
+    # Single-collection result
+    return {raw["collectionName"]: {"results": raw.get("results", [])}}
+
+
 @app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
@@ -322,6 +338,13 @@ def search(
     ),
     no_content: bool = typer.Option(
         False, "--no-content", help="Hide content previews"
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
     ),
     verbose: bool = typer.Option(
         False,
@@ -353,6 +376,7 @@ def search(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import search as this_module
+    from ...services.engine_router import get_effective_engine
 
     index_class = this_module.Index
     svc_search = this_module.svc_search
@@ -373,6 +397,10 @@ def search(
 
     preferred_path = str(resolve_preferred_collections_path())
 
+    active_engine = get_effective_engine(
+        engine, collection=collection, collections_path=preferred_path
+    )
+
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
         from ...utils.storage_info import display_storage_mode_for_command
@@ -380,10 +408,31 @@ def search(
         display_storage_mode_for_command(console)
 
     # Determine collections to search
+    from pathlib import Path
+
+    preferred_dir = Path(preferred_path)
+
     if collection is None:
-        # Search all collections
-        all_statuses = status_svc(collections_path=preferred_path)
-        if not all_statuses:
+        # Enumerate ALL on-disk collections (any engine). Each is routed by its
+        # own manifest in _search_one below, so mixed v1/v2 layouts work under
+        # any default engine — never force a single engine across the set.
+        collections_to_search: list[str] = []
+        if preferred_dir.exists():
+            collections_to_search = sorted(
+                d.name
+                for d in preferred_dir.iterdir()
+                if d.is_dir() and (d / "manifest.json").exists()
+            )
+        if not collections_to_search:
+            # Fallback to the v1 status service when the dir is missing/empty
+            # (covers configured global paths and existing test mocks).
+            try:
+                collections_to_search = [
+                    s.name for s in status_svc(collections_path=preferred_path)
+                ]
+            except Exception:
+                collections_to_search = []
+        if not collections_to_search:
             if simple:
                 print_json({"error": "No collections found"})
                 return
@@ -395,14 +444,18 @@ def search(
             )
             return
 
-        collections_to_search = [s.name for s in all_statuses]
         if not simple:
             console.print(
                 f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
             )
     else:
         # Search specific collection
-        statuses = status_svc([collection], collections_path=preferred_path)
+        if active_engine == "v2":
+            from core.v2.services import status as v2_status
+
+            statuses = v2_status([collection], collections_dir=preferred_dir)
+        else:
+            statuses = status_svc([collection], collections_path=preferred_path)
         if not statuses:
             if simple:
                 print_json({"error": f"Collection '{collection}' not found"})
@@ -416,15 +469,87 @@ def search(
                 f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
             )
 
-    # Build search configs for all collections
-    search_configs = {}
-    for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
-        search_configs[coll_name] = source_config_class(
+    # Lazily resolve v2 search/embedding config once, only if a v2 collection is hit.
+    _v2_cfg_cache: dict = {}
+
+    def _v2_cfg():
+        if not _v2_cfg_cache:
+            from indexed_config import ConfigService
+            from core.v2.config import (
+                CoreV2SearchConfig,
+                CoreV2EmbeddingConfig,
+                register_config as _register_v2_config,
+            )
+
+            _cs = ConfigService.instance()
+            _register_v2_config(_cs)  # idempotent
+            _provider = _cs.bind()
+            _v2_cfg_cache["search"] = _provider.get(CoreV2SearchConfig)
+            _v2_cfg_cache["embed"] = _provider.get(CoreV2EmbeddingConfig)
+        return _v2_cfg_cache["search"], _v2_cfg_cache["embed"]
+
+    def _search_one(coll_name: str) -> dict:
+        """Search a single collection, routed by ITS OWN resolved engine.
+
+        Per-collection resolution lets a mixed v1/v2 store be searched correctly
+        regardless of the default engine (an explicit --engine still overrides).
+        """
+        coll_engine = get_effective_engine(
+            engine, collection=coll_name, collections_path=preferred_path
+        )
+        if coll_engine == "v2":
+            from indexed_config.errors import IndexedError
+
+            v2_search_cfg, v2_embed_cfg = _v2_cfg()
+            try:
+                raw = this_module.svc_search_v2(
+                    query,
+                    configs=[
+                        source_config_class(
+                            name=coll_name, type="localFiles", base_url_or_path=""
+                        )
+                    ],
+                    max_docs=v2_search_cfg.max_docs,
+                    max_chunks=v2_search_cfg.max_chunks,
+                    include_matched_chunks=v2_search_cfg.include_matched_chunks,
+                    score_threshold=v2_search_cfg.score_threshold,
+                    embed_model_name=v2_embed_cfg.model_name,
+                    collections_dir=preferred_dir,
+                )
+            except IndexedError as exc:
+                # A forced --engine v2 against a v1 store (or a corrupt v2 store)
+                # raises here. Render the actionable message rather than dumping
+                # a traceback. Single-collection runs fail; in a multi-collection
+                # run one bad collection is skipped so the rest still return.
+                if collection is not None:
+                    print_error(str(exc))
+                    raise typer.Exit(1) from exc
+                print_warning(f"Skipping '{coll_name}': {exc}")
+                return {coll_name: {"error": str(exc)}}
+            return _normalize_v2_search(raw)
+
+        # v1 path: needs indexer metadata from the collection's manifest.
+        coll_statuses = status_svc([coll_name], collections_path=preferred_path)
+        if not coll_statuses or not coll_statuses[0].indexers:
+            print_error(
+                f"Collection '{coll_name}' has no indexer metadata. "
+                "If this is a v2 collection, pass --engine v2 or set "
+                "[general] engine = 'v2' in your config."
+            )
+            raise typer.Exit(1)
+        cfg = source_config_class(
             name=coll_name,
             type="localFiles",
             base_url_or_path="",
-            indexer=coll_status.indexers[0],
+            indexer=coll_statuses[0].indexers[0],
+        )
+        return svc_search(
+            query,
+            configs=[cfg],
+            max_docs=limit,
+            max_chunks=limit * 3,
+            include_matched_chunks=True,
+            collections_path=preferred_path,
         )
 
     # Search each collection with phased progress
@@ -434,15 +559,7 @@ def search(
         # Simple output / verbose mode: no progress display
         for coll_name in collections_to_search:
             with NoOpContext():
-                result = svc_search(
-                    query,
-                    configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
-                    include_matched_chunks=True,
-                    collections_path=preferred_path,
-                )
-                results.update(result)
+                results.update(_search_one(coll_name))
     else:
         # Normal mode: phased progress display (consistent with Create/Update)
         heading = get_heading_style()
@@ -454,15 +571,7 @@ def search(
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
                 phased.start_phase(f"Searching {coll_name}")
-                result = svc_search(
-                    query,
-                    configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
-                    include_matched_chunks=True,
-                    collections_path=preferred_path,
-                )
-                results.update(result)
+                results.update(_search_one(coll_name))
                 phased.finish_phase(f"Searching {coll_name}")
 
     # Format and display results
@@ -484,6 +593,10 @@ def __getattr__(name: str):
         return Index
     elif name == "svc_search":
         from core.v1.engine.services import search
+
+        return search
+    elif name == "svc_search_v2":
+        from core.v2.services import search
 
         return search
     elif name == "SourceConfig":
