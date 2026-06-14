@@ -620,6 +620,7 @@ class TestExecuteCreateCommand:
         assert "sources.outline.url" in set_value_calls
         assert "sources.outline.api_token" not in set_value_calls
 
+
 class TestBuildV2Connector:
     """Tests for the _build_v2_connector helper."""
 
