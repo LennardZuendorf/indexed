@@ -1,5 +1,8 @@
 """Tests for Jira document readers."""
 
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,28 +16,35 @@ pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector 
 
 
 class FakeJiraCloud:
-    def __init__(self, url=None, username=None, password=None, cloud=None, **kwargs):
+    def __init__(
+        self,
+        url: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        cloud: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
         self._issues = [
             {"key": "ISSUE-1", "fields": {"updated": "2024-01-01T00:00:00.000+0000"}},
             {"key": "ISSUE-2", "fields": {"updated": "2024-01-02T00:00:00.000+0000"}},
             {"key": "ISSUE-3", "fields": {"updated": "2024-01-03T00:00:00.000+0000"}},
         ]
 
-    def approximate_issue_count(self, jql: str) -> dict:
+    def approximate_issue_count(self, jql: str) -> dict[str, Any]:
         return {"count": len(self._issues)}
 
     def enhanced_jql(
         self,
-        jql,
-        fields=None,
-        nextPageToken=None,
-        limit=50,
-        expand=None,
-        **kwargs,
-    ):
+        jql: str,
+        fields: str | list[str] | None = None,
+        nextPageToken: str | None = None,
+        limit: int = 50,
+        expand: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         start = int(nextPageToken) if nextPageToken else 0
         batch = self._issues[start : start + limit] if limit else self._issues[start:]
-        result = {"issues": batch}
+        result: dict[str, Any] = {"issues": batch}
         next_start = start + len(batch)
         if next_start < len(self._issues):
             result["nextPageToken"] = str(next_start)
@@ -43,14 +53,28 @@ class FakeJiraCloud:
 
 class FakeJiraServer:
     def __init__(
-        self, url=None, token=None, username=None, password=None, cloud=None, **kwargs
-    ):
+        self,
+        url: str | None = None,
+        token: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        cloud: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
         self._issues = [
             {"key": "S-1", "fields": {"updated": "2024-02-01T00:00:00.000+0000"}},
             {"key": "S-2", "fields": {"updated": "2024-02-02T00:00:00.000+0000"}},
         ]
 
-    def jql(self, jql, fields=None, start=0, limit=50, expand=None, **kwargs):
+    def jql(
+        self,
+        jql: str,
+        fields: str | list[str] | None = None,
+        start: int = 0,
+        limit: int = 50,
+        expand: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         batch = self._issues[start : start + limit] if limit else self._issues[start:]
         return {
             "issues": batch,
@@ -60,9 +84,11 @@ class FakeJiraServer:
         }
 
 
-def _make_search_response(issues: list, next_token: str | None = None) -> MagicMock:
+def _make_search_response(
+    issues: list[dict[str, Any]], next_token: str | None = None
+) -> MagicMock:
     resp = MagicMock()
-    payload: dict = {"issues": issues}
+    payload: dict[str, Any] = {"issues": issues}
     if next_token:
         payload["nextPageToken"] = next_token
     resp.json.return_value = payload
@@ -84,7 +110,7 @@ def _make_count_response(count: int) -> MagicMock:
 
 
 @pytest.fixture
-def async_reader():
+def async_reader() -> AsyncJiraCloudDocumentReader:
     return AsyncJiraCloudDocumentReader(
         base_url="https://acme.atlassian.net",
         query="project = TEST",

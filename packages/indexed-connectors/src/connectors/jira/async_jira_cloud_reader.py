@@ -80,7 +80,7 @@ class AsyncJiraCloudDocumentReader:
         credentials = b64encode(f"{email}:{api_token}".encode()).decode()
         return f"Basic {credentials}"
 
-    def read_all_documents(self):
+    def read_all_documents(self) -> list[dict[str, Any]]:
         """Read all documents: sequential JQL search, then optional attachments."""
         issues = self._read_issues_sync()
         if not self.include_attachments:
@@ -91,7 +91,8 @@ class AsyncJiraCloudDocumentReader:
         """Get approximate count of documents matching the query."""
         return self._get_approximate_count()
 
-    def get_reader_details(self) -> dict:
+    def get_reader_details(self) -> dict[str, Any]:
+        """Return reader configuration metadata for diagnostics."""
         return {
             "type": "jiraCloud",
             "baseUrl": self.base_url,
@@ -100,7 +101,7 @@ class AsyncJiraCloudDocumentReader:
             "fields": self.fields,
         }
 
-    def _read_issues_sync(self) -> list[dict]:
+    def _read_issues_sync(self) -> list[dict[str, Any]]:
         """Fetch all issues via sequential nextPageToken pagination."""
         issues: list[dict] = []
         next_token: str | None = None
@@ -135,7 +136,7 @@ class AsyncJiraCloudDocumentReader:
         )
         return int(result.get("count", 0))
 
-    def _post_with_retry(self, url: str, body: dict) -> dict:
+    def _post_with_retry(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST with retry on transient/rate-limit errors."""
         for attempt in range(self.number_of_retries):
             try:
@@ -192,7 +193,9 @@ class AsyncJiraCloudDocumentReader:
             url=str(response.url),
         )
 
-    async def _enrich_with_attachments(self, issues: list) -> list:
+    async def _enrich_with_attachments(
+        self, issues: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Download attachment bytes for all issues concurrently."""
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
 

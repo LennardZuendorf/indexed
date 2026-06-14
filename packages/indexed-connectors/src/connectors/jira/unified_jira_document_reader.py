@@ -5,7 +5,7 @@ JiraDocumentReader into a single parameterized class, following DRY principles.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Iterator, Optional
 from atlassian import Jira
 
 from utils.retry import execute_with_retry
@@ -296,21 +296,33 @@ class UnifiedJiraDocumentReader:
             "fields": self.fields,
         }
 
-    def __read_items(self):
+    def __read_items(self) -> Iterator[dict[str, Any]]:
         """Read items in batches using the batch utility."""
         if self.auth_type == JiraAuthType.CLOUD:
             return self.__read_items_cloud()
         return self.__read_items_server()
 
-    def __read_items_cloud(self):
+    def __read_items_cloud(self) -> Iterator[dict[str, Any]]:
         """Read Cloud issues via Enhanced JQL API with nextPageToken pagination."""
 
-        def read_batch_func(start_at, batch_size, cursor):
-            result = self._client.enhanced_jql(
-                jql=self.query,
-                fields=self.fields,
-                limit=batch_size,
-                nextPageToken=cursor,
+        def read_batch_func(
+            start_at: int,
+            batch_size: int,
+            cursor: str | None,
+        ) -> dict[str, Any]:
+            def do_request() -> dict[str, Any]:
+                return self._client.enhanced_jql(
+                    jql=self.query,
+                    fields=self.fields,
+                    limit=batch_size,
+                    nextPageToken=cursor,
+                )
+
+            result = execute_with_retry(
+                do_request,
+                f"Requesting Cloud items at {start_at} with max {batch_size}",
+                self.number_of_retries,
+                self.retry_delay,
             )
             issues = result.get("issues", [])
             if result.get("nextPageToken"):
@@ -328,8 +340,8 @@ class UnifiedJiraDocumentReader:
             cursor_parser=UnifiedJiraDocumentReader.__parse_next_page_token,
         )
 
-    def __read_items_server(self):
-        def read_batch_func(start_at, batch_size):
+    def __read_items_server(self) -> Iterator[dict[str, Any]]:
+        def read_batch_func(start_at: int, batch_size: int) -> dict[str, Any]:
             return self.__request_items(start_at=start_at, max_results=batch_size)
 
         return read_items_in_batches(
@@ -341,7 +353,7 @@ class UnifiedJiraDocumentReader:
         )
 
     @staticmethod
-    def __parse_next_page_token(result: dict) -> str | None:
+    def __parse_next_page_token(result: dict[str, Any]) -> str | None:
         """Extract nextPageToken for cursor-based pagination."""
         return result.get("nextPageToken")
 

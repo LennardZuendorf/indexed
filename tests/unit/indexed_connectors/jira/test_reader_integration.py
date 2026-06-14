@@ -6,17 +6,20 @@ approximate-count (optional) → search/jql pagination runs through real code.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 
-pytestmark = pytest.mark.connectors
+pytestmark = pytest.mark.integration
 
 
-def _search_resp(issues: list, next_token: str | None = None) -> MagicMock:
-    payload: dict = {"issues": issues}
+def _search_resp(
+    issues: list[dict[str, Any]], next_token: str | None = None
+) -> MagicMock:
+    payload: dict[str, Any] = {"issues": issues}
     if next_token:
         payload["nextPageToken"] = next_token
     resp = MagicMock()
@@ -39,7 +42,7 @@ def _count_resp(count: int) -> MagicMock:
 
 
 def _make_reader(**kwargs: object) -> AsyncJiraCloudDocumentReader:
-    defaults: dict = {
+    defaults: dict[str, object] = {
         "base_url": "https://acme.atlassian.net",
         "query": "project = TEST",
         "email": "user@acme.com",

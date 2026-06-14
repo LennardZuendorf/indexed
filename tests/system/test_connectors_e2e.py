@@ -6,6 +6,8 @@ using mocked API responses (no real Jira/Confluence instances needed).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from connectors.confluence.confluence_document_converter import (
@@ -28,14 +30,22 @@ pytestmark = pytest.mark.connectors
 # ---------------------------------------------------------------------------
 
 
-def _make_fake_jira_class(issues: list[dict]):
+def _make_fake_jira_class(issues: list[dict[str, Any]]):
     """Create a fake Jira class that returns the given issues from jql()."""
 
     class _FakeJira:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             self._issues = issues
 
-        def jql(self, jql, fields=None, start=0, limit=50, expand=None, **kwargs):
+        def jql(
+            self,
+            jql: str,
+            fields: str | list[str] | None = None,
+            start: int = 0,
+            limit: int = 50,
+            expand: str | list[str] | None = None,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
             batch = self._issues[start : start + limit]
             return {
                 "issues": batch,
@@ -46,30 +56,30 @@ def _make_fake_jira_class(issues: list[dict]):
 
         def enhanced_jql(
             self,
-            jql,
-            fields=None,
-            nextPageToken=None,
-            limit=50,
-            expand=None,
-            **kwargs,
-        ):
+            jql: str,
+            fields: str | list[str] | None = None,
+            nextPageToken: str | None = None,
+            limit: int = 50,
+            expand: str | list[str] | None = None,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
             start = int(nextPageToken) if nextPageToken else 0
             batch = (
                 self._issues[start : start + limit] if limit else self._issues[start:]
             )
-            result = {"issues": batch}
+            result: dict[str, Any] = {"issues": batch}
             next_start = start + len(batch)
             if next_start < len(self._issues):
                 result["nextPageToken"] = str(next_start)
             return result
 
-        def approximate_issue_count(self, jql: str) -> dict:
+        def approximate_issue_count(self, jql: str) -> dict[str, Any]:
             return {"count": len(self._issues)}
 
     return _FakeJira
 
 
-def _make_adf_text(text: str) -> dict:
+def _make_adf_text(text: str) -> dict[str, Any]:
     """Create a simple ADF paragraph containing the given text."""
     return {
         "type": "doc",
@@ -87,10 +97,10 @@ def _make_jira_issue(
     key: str,
     summary: str,
     base_url: str = "https://acme.atlassian.net",
-    description=None,
-    comments: list | None = None,
+    description: dict[str, Any] | str | None = None,
+    comments: list[dict[str, Any]] | None = None,
     updated: str = "2026-01-15T10:00:00.000+0000",
-) -> dict:
+) -> dict[str, Any]:
     """Build a realistic Jira issue dict."""
     return {
         "key": key,
@@ -112,21 +122,27 @@ def _make_jira_issue(
 class _FakeResponse:
     """Minimal requests.Response stand-in."""
 
-    def __init__(self, json_data: dict):
+    def __init__(self, json_data: dict[str, Any]) -> None:
         self._json = json_data
         self.status_code = 200
 
-    def json(self):
+    def json(self) -> dict[str, Any]:
         return self._json
 
-    def raise_for_status(self):
+    def raise_for_status(self) -> None:
         pass
 
 
-def _make_fake_confluence_get(pages: list[dict]):
+def _make_fake_confluence_get(pages: list[dict[str, Any]]):
     """Return a function that mimics requests.get for the Confluence reader."""
 
-    def fake_get(url, headers=None, params=None, auth=None, **kwargs):
+    def fake_get(
+        url: str,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        auth: Any = None,
+        **kwargs: Any,
+    ) -> _FakeResponse:
         params = params or {}
         start = params.get("start", 0)
         limit = params.get("limit", 50)
@@ -174,13 +190,13 @@ def _make_confluence_page(
 # ---------------------------------------------------------------------------
 
 
-def _run_jira_pipeline(issues: list[dict]) -> list[dict]:
+def _run_jira_pipeline(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert raw issues through the Jira converter and return v1 docs."""
     converter = UnifiedJiraDocumentConverter()
     return [converter.convert(issue)[0] for issue in issues]
 
 
-def _run_confluence_pipeline(documents) -> list[dict]:
+def _run_confluence_pipeline(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert raw reader output through the Confluence converter."""
     converter = ConfluenceDocumentConverter()
     return [converter.convert(doc)[0] for doc in documents]
