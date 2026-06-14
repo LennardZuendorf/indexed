@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-06-11
 ---
 
 # Tech Spec: indexed
@@ -138,6 +138,435 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 2. **FAISS Search** finds K nearest neighbors (L2 distance)
 3. **Result Mapper** looks up chunks, documents, metadata
 4. **Formatter** outputs as card/table/compact/JSON
+
+---
+
+## Storage Architecture
+
+### Directory Structure
+
+```
+~/.indexed/                    # Global mode (default)
+├── config.toml                # Configuration
+├── .env                       # Credentials (not in git)
+└── data/
+    └── collections/
+        └── {collection-name}/
+            ├── manifest.json              # Metadata
+            ├── documents.json             # Document list
+            ├── chunks.json                # Chunk list
+            └── index/
+                ├── index_info.json
+                ├── index_document_mapping.json
+                └── indexer_FAISS_*/
+                    └── indexer            # Binary FAISS index
+
+./.indexed/                    # Local mode (per-project)
+├── config.toml
+├── .env
+├── .gitignore                 # Auto-created with ".env" entry
+└── data/
+    └── collections/...
+```
+
+**`.gitignore` auto-creation:** When `ensure_storage_dirs(is_local=True)` creates a local `.indexed/` directory, it also creates a `.gitignore` containing `.env`. If `.gitignore` already exists, `.env` is appended if missing. Not applied to `~/.indexed/` (outside git repos).
+
+**CWD/.env:** In addition to `.indexed/.env`, the system also loads `CWD/.env` (standard project-level `.env`) as a credential fallback. See Configuration System below for loading priority.
+
+### Persistence Strategy
+
+**Atomic writes:**
+- Write to temp file
+- fsync()
+- Rename to final location (atomic on POSIX)
+
+**Prevents corruption from:**
+- Process crashes
+- System crashes
+- Disk full errors
+
+---
+
+## Configuration System
+
+### Single-Source Config Resolution
+
+The system resolves to **one** `config.toml` file — local OR global, never both. No merging.
+
+**Mode resolution order** (in `WorkspaceManager.resolve_storage_mode()`):
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 (highest) | CLI `mode_override` | `--local` / `--global` flag |
+| 2 | Workspace preference | Stored in global config `[workspace].mode` |
+| 3 | Auto-detect | Local `.indexed/config.toml` exists → local |
+| 4 (lowest) | Default | `"global"` |
+
+Once the mode is resolved, `TomlStore.read_for_mode(mode)` reads the single config source. Then env vars (`INDEXED__*`) and CLI arguments are applied on top.
+
+### .env Loading Hierarchy
+
+All `.env` files use `load_dotenv(override=False)` — first loaded wins. Real env vars are never overridden.
+
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 (highest) | Real `os.environ` | Already set before process starts, never touched |
+| 2 | `.indexed/.env` | From resolved root (local or global), loaded first |
+| 3 (lowest) | `CWD/.env` | Standard project .env, fills gaps only |
+
+`INDEXED__*` env variables are mapped into the TOML config dict separately (not via `.env` loading).
+
+### Implementation
+
+**Key files:**
+- `packages/indexed-config/src/indexed_config/service.py` — `ConfigService` slim orchestrator
+- `packages/indexed-config/src/indexed_config/store.py` — `TomlStore` with `read_for_mode()`
+- `packages/indexed-config/src/indexed_config/workspace.py` — `WorkspaceManager.resolve_storage_mode()`
+- `packages/indexed-config/src/indexed_config/env_writer.py` — `EnvFileWriter` (secrets to resolved `.env`)
+- `packages/indexed-config/src/indexed_config/registry.py` — `ConfigRegistry` (typed spec registration)
+
+```python
+class ConfigService:
+    """Singleton config service. Orchestrates registry, store, and workspace."""
+
+    _instance = None
+
+    @classmethod
+    def instance(cls) -> "ConfigService":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+```
+
+**Validation:** Pydantic models in `packages/indexed-config/src/indexed_config/models.py`
+
+### Config Schema
+
+```toml
+[general]
+log_level = "INFO"
+storage_mode = "global"  # or "local"
+engine = "v2"            # "v2" (LlamaIndex, default) or "v1" (legacy FAISS)
+
+[core.v1.indexing]
+chunk_size = 512
+chunk_overlap = 50
+batch_size = 32
+
+[core.v1.embedding]
+model_name = "all-MiniLM-L6-v2"
+
+[core.v1.vector_store]
+index_type = "IndexFlatL2"
+
+[core.v1.search]
+max_docs = 10
+max_chunks = 30
+include_matched_chunks = true
+min_score = 0.0
+
+# v2 (LlamaIndex) engine config — registered explicitly at app startup via
+# core.v2.config.register_config(); see "Engine Selection" below.
+[core.v2.embedding]
+model_name = "all-MiniLM-L6-v2"
+
+[core.v2.indexing]
+chunk_size = 512        # None/unset keeps connector chunking (no re-split)
+
+[core.v2.storage]
+vector_store = "faiss"
+
+[core.v2.search]
+max_docs = 10
+max_chunks = 30
+include_matched_chunks = true
+score_threshold = null
+
+[mcp]
+log_level = "INFO"
+json_logs = false
+transport = "stdio"
+host = "127.0.0.1"
+port = 8000
+```
+
+### Engine Selection (v1 / v2)
+
+The core engine is selectable. **v2 (LlamaIndex-powered) is the default**; v1 is
+the legacy custom-FAISS engine kept for backward compatibility.
+
+**Resolution precedence** (highest first), in `indexed.services.engine_router.get_effective_engine`:
+
+| Priority | Source |
+|----------|--------|
+| 1 | Per-command `--engine v1\|v2` flag |
+| 2 | Root `--engine` flag (stored on `ctx.obj["engine"]`) |
+| 3 | On-disk `manifest.json` auto-detection for a *named* collection (v2 manifests carry `"version": "2.x"`) |
+| 4 | `[general] engine` in config.toml |
+| 5 | Built-in default: `"v2"` |
+
+Manifest auto-detection (3) means **existing v1 collections keep working under the
+v2 default** — a per-collection operation detects v1 from its manifest. New
+collections default to v2. v2 storage is **not** backward-compatible with v1;
+re-index to migrate. `indexed info engine` reports the active engine and how to switch.
+
+- **Router:** `apps/indexed/src/indexed/services/engine_router.py` (resolution) +
+  `engine_dispatch.py` (engine→service module). MCP routes through these getters;
+  CLI commands resolve via `get_effective_engine` then dispatch per engine.
+- **v2 config registration is explicit** at app startup (`_ensure_configs_registered`
+  in `app.py`), never at import time.
+
+---
+
+## Connector Protocol
+
+### Interface
+
+**File:** `packages/indexed-core/src/core/v1/connectors/base.py`
+
+```python
+from typing import Protocol, Iterator
+
+class DocumentReader(Protocol):
+    def read_documents(self) -> Iterator[RawDocument]:
+        """Fetch documents from source."""
+        ...
+
+class DocumentConverter(Protocol):
+    def convert(self, doc: RawDocument) -> Iterator[Document]:
+        """Convert raw document to searchable chunks."""
+        ...
+
+class BaseConnector(Protocol):
+    @property
+    def reader(self) -> DocumentReader: ...
+
+    @property
+    def converter(self) -> DocumentConverter: ...
+
+    @property
+    def connector_type(self) -> str: ...
+```
+
+### Implemented Connectors
+
+| Connector | Location | Protocol | Auth |
+|-----------|----------|----------|------|
+| **FileSystemConnector** | `packages/indexed-connectors/src/connectors/files/` | Local FS | None |
+| **JiraCloudConnector** | `packages/indexed-connectors/src/connectors/jira/` | REST API | Email + Token |
+| **JiraServerConnector** | `packages/indexed-connectors/src/connectors/jira/` | REST API | Email + Token |
+| **ConfluenceCloudConnector** | `packages/indexed-connectors/src/connectors/confluence/` | REST API | Email + Token |
+| **ConfluenceServerConnector** | `packages/indexed-connectors/src/connectors/confluence/` | REST API | Email + Token |
+
+---
+
+## Embedding Strategy
+
+### Model Selection
+
+**Default:** `all-MiniLM-L6-v2`
+- 384 dimensions
+- ~22MB model size
+- Fast inference
+- Good quality for general text
+
+**Alternatives:**
+- `all-mpnet-base-v2` (768-dim, higher quality, slower)
+- `multi-qa-distilbert-cos-v1` (768-dim, optimized for Q&A)
+
+### Lazy Loading
+
+**File:** `packages/indexed-core/src/core/v1/engine/indexes/embeddings/sentence_embedder.py`
+
+```python
+def get_embedder():
+    """Lazy load to avoid 500ms+ import cost at CLI startup."""
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(model_name)
+```
+
+**Result:** CLI startup <0.5s despite heavy ML dependencies
+
+### Batching
+
+**Batch size:** 32 documents (configurable)
+**Throughput:** ~120 docs/min on M1 MacBook Pro
+
+---
+
+## FAISS Indexing
+
+### Index Types
+
+| Type | Use Case | Memory | Speed |
+|------|----------|--------|-------|
+| **IndexFlatL2** | <50K docs (default) | High | Fast |
+| IndexIVFFlat | 50K-1M docs | Low | Medium |
+| IndexHNSW | >1M docs | Medium | Fast |
+
+**Current:** Only `IndexFlatL2` implemented (exact similarity search)
+
+### Index Creation
+
+**File:** `packages/indexed-core/src/core/v1/engine/indexes/faiss_indexer.py`
+
+```python
+import faiss
+import numpy as np
+
+# Create index
+dimension = 384  # for all-MiniLM-L6-v2
+index = faiss.IndexFlatL2(dimension)
+
+# Add vectors
+embeddings = np.array(embedding_list).astype('float32')
+index.add(embeddings)
+
+# Search
+query_embedding = np.array([query_vector]).astype('float32')
+distances, indices = index.search(query_embedding, k=10)
+```
+
+### Similarity Scoring
+
+**FAISS returns:** L2 distances (lower = more similar)
+
+**Conversion to similarity score (0-1):**
+```python
+score = 1 / (1 + distance)
+```
+
+---
+
+## MCP Server Implementation
+
+### Tools
+
+**File:** `apps/indexed/src/indexed/mcp/server.py`
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("indexed")
+
+@mcp.tool()
+def search(query: str, collection: str | None = None) -> dict:
+    """Search indexed collections."""
+    results = index.search(query, collection)
+    return {
+        "query": query,
+        "results": [
+            {
+                "text": chunk.text,
+                "score": chunk.score,
+                "source": chunk.source,
+                "collection": chunk.collection,
+            }
+            for chunk in results
+        ],
+    }
+
+@mcp.tool()
+def list_collections() -> dict:
+    """List all collections."""
+    collections = index.list_collections()
+    return {"collections": [c.name for c in collections]}
+
+@mcp.tool()
+def collection_status(name: str) -> dict:
+    """Get collection status."""
+    status = index.get_status(name)
+    return {
+        "name": status.name,
+        "document_count": status.document_count,
+        "chunk_count": status.chunk_count,
+        "embedding_model": status.embedding_model,
+    }
+```
+
+### Resources
+
+```python
+@mcp.resource("resource://collections")
+def collections_resource() -> str:
+    """List of collection names."""
+    collections = index.list_collections()
+    return "\n".join(c.name for c in collections)
+
+@mcp.resource("resource://collections/status")
+def all_collections_status() -> str:
+    """Status for all collections."""
+    statuses = index.status()
+    return json.dumps([s.dict() for s in statuses], indent=2)
+
+@mcp.resource("resource://collections/{name}")
+def collection_resource(name: str) -> str:
+    """Status for specific collection."""
+    status = index.get_status(name)
+    return json.dumps(status.dict(), indent=2)
+```
+
+### Transports
+
+| Transport | Use Case | Implementation |
+|-----------|----------|----------------|
+| **stdio** | Claude Desktop, Cline | Default, stdin/stdout |
+| **http** | Network access | HTTP server on port 8000 |
+| **sse** | Server-Sent Events | SSE streaming |
+
+**File:** `apps/indexed/src/indexed/mcp/cli.py` handles transport selection
+
+---
+
+## Performance Optimizations
+
+### CLI Startup Time
+
+**Target:** <1s
+**Actual:** ~500ms
+
+**Techniques:**
+1. **Lazy imports** - Heavy ML libraries imported only in commands
+2. **Deferred initialization** - Services created on first use
+3. **Minimal module-level imports** - Use `TYPE_CHECKING` for type hints
+4. **`__getattr__` pattern** - Module-level lazy loading
+
+**Example:**
+
+```python
+# commands/search.py
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.v1 import Index
+
+def search_command(query: str):
+    from . import search_command as this_module
+    index = this_module.index  # Lazy loaded
+    return index.search(query)
+
+def __getattr__(name: str):
+    if name == "index":
+        from core.v1 import Index
+        return Index()
+    raise AttributeError(f"module has no attribute '{name}'")
+```
+
+### Search Latency
+
+**Target:** <1s for 10K-100K docs
+**Actual:** ~800ms (10K), ~1.5s (100K)
+
+**Optimizations:**
+1. **Searcher caching** - Reuse loaded FAISS indexes across queries
+2. **Memory-mapped indexes** - FAISS loads from disk without full read
+3. **Batch embedding** - Process multiple queries efficiently
+
+### Memory Usage
+
+**Idle:** ~80MB
+**Indexing:** ~400MB (embedding model + batch data)
+**Search:** ~250MB (embedding model + index)
 
 ---
 
