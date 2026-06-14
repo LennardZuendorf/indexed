@@ -32,6 +32,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         mock_setup_logger.assert_called_once()
@@ -52,6 +54,8 @@ class TestInitApp:
             verbose=True,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         call_kwargs = mock_setup_logger.call_args.kwargs
@@ -73,6 +77,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=True,
+            simple_output=False,
+            engine=None,
         )
 
         call_kwargs = mock_setup_logger.call_args.kwargs
@@ -96,6 +102,8 @@ class TestInitApp:
                 verbose=False,
                 log_level=None,
                 json_logs=False,
+                simple_output=False,
+                engine=None,
             )
 
         assert ctx.obj["mode_override"] == "local"
@@ -115,6 +123,8 @@ class TestInitApp:
             verbose=False,
             log_level=None,
             json_logs=False,
+            simple_output=False,
+            engine=None,
         )
 
         assert ctx.obj["mode_override"] is None
@@ -191,6 +201,37 @@ class TestMigrateCommand:
         assert result.exit_code == 0
         call_kwargs = mock_migrate.call_args.kwargs
         assert call_kwargs.get("dry_run") is True
+
+
+class TestEngineValidation:
+    """Validate the global --engine option at the CLI boundary."""
+
+    def test_invalid_engine_exits_nonzero(self) -> None:
+        result = runner.invoke(app, ["--engine", "vv2", "index", "inspect"])
+        assert result.exit_code != 0
+        combined = (result.output or "") + (result.stderr or "")
+        assert "Engine must be" in combined
+
+    def test_engine_v2_normalizes_uppercase(self) -> None:
+        ctx = Mock()
+        ctx.invoked_subcommand = "search"
+        ctx.resilient_parsing = False
+        captured: dict = {}
+        ctx.ensure_object = Mock()
+        ctx.obj = captured
+
+        with patch("indexed.app.bootstrap_logging"):
+            _init_app(
+                ctx,
+                local=False,
+                verbose=False,
+                log_level=None,
+                json_logs=False,
+                simple_output=False,
+                engine="V2",
+            )
+
+        assert captured["engine"] == "v2"
 
 
 class TestMainFunction:

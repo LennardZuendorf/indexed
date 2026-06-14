@@ -103,6 +103,39 @@ def docs(
         raise typer.Exit(1)
 
 
+@app.command("engine")
+def engine_info() -> None:
+    """Show the active core engine and how to change it.
+
+    Reports the engine that commands will use by default (v2, the LlamaIndex
+    engine) and how to select the legacy v1 engine. Per-collection operations
+    auto-detect the engine from the collection's on-disk manifest, so existing
+    v1 collections keep working even though new collections default to v2.
+    """
+    from ..services.engine_router import DEFAULT_ENGINE, get_effective_engine
+
+    resolved = get_effective_engine(None)
+
+    console.print()
+    console.print(f"[{get_accent_style()}]Indexed Core Engine[/{get_accent_style()}]")
+    console.print()
+    console.print(f"  Active engine : [bold]{resolved}[/bold]")
+    console.print(f"  Built-in default : {DEFAULT_ENGINE} (LlamaIndex-powered)")
+    console.print()
+    console.print(f"[{get_secondary_style()}]Change it:[/{get_secondary_style()}]")
+    console.print(
+        f"[{get_dim_style()}]  • Per command:  indexed --engine v1 index search ...[/{get_dim_style()}]"
+    )
+    console.print(
+        f"[{get_dim_style()}]  • Persistently: indexed config set general.engine v1[/{get_dim_style()}]"
+    )
+    console.print(
+        f"[{get_dim_style()}]  Note: v2 storage is not compatible with v1. Existing "
+        f"collections are auto-detected from their manifest; re-index to migrate.[/{get_dim_style()}]"
+    )
+    console.print()
+
+
 @app.command("license")
 def license_terms() -> None:
     """

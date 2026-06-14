@@ -175,16 +175,17 @@ def display_storage_mode_for_command(console: Console) -> None:
     except Exception:
         logger.debug("Failed to read config mode from store", exc_info=True)
 
-    # Get mode override from Typer context (set in app.py callback)
+    # Get mode override from the active CLI context (set in app.py callback).
+    # Typer has no get_current_context; use Click's (Typer is built on Click).
     mode_override = None
     try:
-        import typer
+        import click
 
-        ctx = typer.get_current_context(silent=True)
-        if ctx and ctx.obj:
+        ctx = click.get_current_context(silent=True)
+        if ctx is not None and ctx.obj:
             mode_override = ctx.obj.get("mode_override")
     except Exception:
-        logger.debug("Failed to get mode override from Typer context", exc_info=True)
+        logger.debug("Failed to get mode override from Click context", exc_info=True)
 
     # Get workspace preference
     workspace_pref = config_service.get_workspace_preference()
