@@ -133,6 +133,13 @@ def create_files(
         "--respect-gitignore/--no-respect-gitignore",
         help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
+    ),
     local: bool = typer.Option(
         False,
         "--local",
@@ -248,6 +255,8 @@ def create_files(
             },
         )
 
+    from ...services.engine_router import get_effective_engine
+
     # Use shared helper
     execute_create_command(
         collection=collection,
@@ -266,6 +275,7 @@ def create_files(
         pre_creation_display=_display_files_source_summary,
         local=local,
         source_path_key="path",
+        engine=get_effective_engine(engine),
     )
 
 
@@ -330,6 +340,13 @@ def create_jira(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
     ),
     local: bool = typer.Option(
         False,
@@ -465,6 +482,8 @@ def create_jira(
         logger.info("Connecting to Jira at %s...", present["url"])
         logger.info("Using JQL query: %s", present["query"])
 
+    from ...services.engine_router import get_effective_engine
+
     # Use shared helper
     execute_create_command(
         collection=collection,
@@ -484,6 +503,7 @@ def create_jira(
         verbose_pre_creation_log=verbose_jira_log,
         local=local,
         source_path_key="url",
+        engine=get_effective_engine(engine),
     )
 
 
@@ -554,6 +574,13 @@ def create_confluence(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
     ),
     local: bool = typer.Option(
         False,
@@ -712,6 +739,8 @@ def create_confluence(
         logger.info("Connecting to Confluence at %s...", present["url"])
         logger.info("Using CQL query: %s", present["query"])
 
+    from ...services.engine_router import get_effective_engine
+
     # Use shared helper
     execute_create_command(
         collection=collection,
@@ -731,6 +760,7 @@ def create_confluence(
         verbose_pre_creation_log=verbose_confluence_log,
         local=local,
         source_path_key="url",
+        engine=get_effective_engine(engine),
     )
 
 
@@ -800,6 +830,13 @@ def create_outline(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
         rich_help_panel="Logging",
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine: v2 (LlamaIndex, default) or v1 (legacy FAISS)",
+        case_sensitive=False,
+        rich_help_panel="Engine",
     ),
     local: bool = typer.Option(
         False,
@@ -909,6 +946,8 @@ def create_outline(
         deployment = "Cloud" if _url == _OUTLINE_CLOUD_URL else "self-hosted"
         logger.info("Connecting to Outline at %s (%s)...", _url, deployment)
 
+    from ...services.engine_router import get_effective_engine
+
     execute_create_command(
         collection=collection,
         source_type=source_type,
@@ -927,6 +966,7 @@ def create_outline(
         verbose_pre_creation_log=verbose_outline_log,
         local=local,
         source_path_key="url",
+        engine=get_effective_engine(engine),
     )
 
 

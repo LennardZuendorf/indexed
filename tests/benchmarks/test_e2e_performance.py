@@ -86,11 +86,22 @@ def benchmark_docs(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def benchmark_workspace(tmp_path_factory) -> Path:
-    """Create a temp workspace with .indexed/ for local collection storage."""
+    """Create a temp workspace with .indexed/ for local collection storage.
+
+    Seeds v2 config sections so `ConfigService.bind()` materializes the v2
+    specs — without these, `provider.get(CoreV2EmbeddingConfig)` raises
+    KeyError because `bind()` skips empty payloads.
+    """
     workspace = tmp_path_factory.mktemp("benchmark_workspace")
     indexed_dir = workspace / ".indexed"
     indexed_dir.mkdir()
-    (indexed_dir / "config.toml").touch()
+    (indexed_dir / "config.toml").write_text(
+        '[core.v2.embedding]\nmodel_name = "all-MiniLM-L6-v2"\n'
+        "[core.v2.indexing]\nchunk_size = 512\n"
+        '[core.v2.storage]\nvector_store = "faiss"\n'
+        "[core.v2.search]\nmax_docs = 10\n",
+        encoding="utf-8",
+    )
     return workspace
 
 
@@ -268,3 +279,146 @@ def test_e2e_inspect_collections(benchmark, created_collection, benchmark_worksp
             os.chdir(original_cwd)
 
     benchmark(run_inspect)
+
+
+# ---------------------------------------------------------------------------
+# V2 engine benchmarks
+# ---------------------------------------------------------------------------
+
+
+def _v2_model_available() -> bool:
+    """Check if the v2 embedding model (same as v1) is cached."""
+    try:
+        from core.v1.engine.indexes.embeddings.model_manager import is_model_cached
+
+        return is_model_cached("all-MiniLM-L6-v2")
+    except Exception:
+        return False
+
+
+v2_skip = pytest.mark.skipif(
+    not _v2_model_available(),
+    reason="v2 embedding model not cached (requires all-MiniLM-L6-v2)",
+)
+
+
+@pytest.fixture(scope="module")
+def created_collection_v2(benchmark_docs, benchmark_workspace) -> str:
+    """Create a v2 collection once for search benchmarks to reuse.
+
+    This is NOT benchmarked — it is setup for the v2 search benchmark.
+    """
+    collection_name = "bench-search-v2"
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(benchmark_workspace)
+        result = runner.invoke(
+            app,
+            [
+                "--engine",
+                "v2",
+                "index",
+                "create",
+                "files",
+                "--collection",
+                collection_name,
+                "--path",
+                str(benchmark_docs),
+                "--force",
+                "--local",
+            ],
+        )
+        if result.exit_code != 0:
+            pytest.skip(
+                f"V2 collection creation failed (exit {result.exit_code}): "
+                f"{_strip_ansi(result.stdout[:500])}"
+            )
+    finally:
+        os.chdir(original_cwd)
+
+    return collection_name
+
+
+@v2_skip
+@pytest.mark.benchmark(min_rounds=2, max_time=60.0)
+def test_e2e_create_collection_v2(benchmark, benchmark_docs, benchmark_workspace):
+    """Benchmark: full `indexed --engine v2 index create files`.
+
+    Measures the complete v2 pipeline:
+    - CLI startup and config loading
+    - File reading and LlamaIndex chunking
+    - Embedding model loading (cached after first round)
+    - Embedding generation for all chunks
+    - FAISS index construction and persistence
+    """
+    original_cwd = os.getcwd()
+
+    def run_create():
+        os.chdir(benchmark_workspace)
+        try:
+            result = runner.invoke(
+                app,
+                [
+                    "--engine",
+                    "v2",
+                    "index",
+                    "create",
+                    "files",
+                    "--collection",
+                    "bench-create-v2",
+                    "--path",
+                    str(benchmark_docs),
+                    "--force",
+                    "--local",
+                ],
+            )
+            assert result.exit_code == 0, (
+                f"V2 create failed (exit {result.exit_code}): "
+                f"{_strip_ansi(result.stdout[:500])}"
+            )
+        finally:
+            os.chdir(original_cwd)
+
+    benchmark(run_create)
+
+
+@v2_skip
+@pytest.mark.benchmark(min_rounds=3, max_time=60.0)
+def test_e2e_search_collection_v2(
+    benchmark, created_collection_v2, benchmark_workspace
+):
+    """Benchmark: full `indexed index search --engine v2`.
+
+    Measures the complete v2 search pipeline:
+    - CLI startup and config loading
+    - Query embedding via LlamaIndex
+    - FAISS similarity search
+    - Result mapping and formatting
+    """
+    original_cwd = os.getcwd()
+
+    def run_search():
+        os.chdir(benchmark_workspace)
+        try:
+            result = runner.invoke(
+                app,
+                [
+                    "--engine",
+                    "v2",
+                    "--local",
+                    "index",
+                    "search",
+                    "indexed collections engine",
+                    "--collection",
+                    created_collection_v2,
+                    "--compact",
+                ],
+            )
+            assert result.exit_code == 0, (
+                f"V2 search failed (exit {result.exit_code}): "
+                f"{_strip_ansi(result.stdout[:500])}"
+            )
+        finally:
+            os.chdir(original_cwd)
+
+    benchmark(run_search)
