@@ -103,7 +103,7 @@ class AsyncJiraCloudDocumentReader:
 
     def _read_issues_sync(self) -> list[dict[str, Any]]:
         """Fetch all issues via sequential nextPageToken pagination."""
-        issues: list[dict] = []
+        issues: list[dict[str, Any]] = []
         next_token: str | None = None
 
         while True:
@@ -208,7 +208,7 @@ class AsyncJiraCloudDocumentReader:
         ) as client:
             for issue in issues:
                 att_meta = issue.get("fields", {}).get("attachment", [])
-                downloaded: list[dict] = []
+                downloaded: list[dict[str, Any]] = []
                 for att in att_meta:
                     size = att.get("size", 0)
                     if size > self.max_attachment_size_bytes:
