@@ -160,7 +160,7 @@ What indexed is **not**:
 
 1. Install: `uv sync`
 2. Verify: `uv run indexed --help`
-3. Create first collection: `indexed index create my-docs --source files --source-path ./docs`
+3. Create first collection: `indexed index create files --collection my-docs --path ./docs`
 4. Search: `indexed index search "query"`
 
 **Critical:** This must work in <5 minutes.

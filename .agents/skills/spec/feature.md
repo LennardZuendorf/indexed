@@ -68,7 +68,7 @@ If any condition fails, stay in the feature flow.
 ## Examples in this repo
 
 - [.spec/features/vibe-flow/](../../../.spec/features/vibe-flow) — flow state machine, `vibe-*` skills (units `vibe-flow/n`)
-- [`.agents/skills/spec/`](../../) — spec framework (units `spec/n`, delivered — wrapped up; no feature folder)
+- [`.agents/skills/spec/`](./) — spec framework (units `spec/n`, delivered — wrapped up; no feature folder)
 - [.spec/features/agent-instructions/](../../../.spec/features/agent-instructions) — `AGENTS.md` template and adapter symlinks (units `agent-instructions/n`)
 - [.spec/features/platform-adapters/](../../../.spec/features/platform-adapters) — Codex / Claude Code adapters (units `platform-adapters/n`)
 

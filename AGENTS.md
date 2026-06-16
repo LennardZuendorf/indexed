@@ -197,7 +197,7 @@ uv run pytest tests/benchmarks/ -q --benchmark-only  # Benchmarks only
 
 # Running the CLI
 uv run indexed --help             # Show help
-uv run indexed index create my-docs --source files --source-path ./docs
+uv run indexed index create files --collection my-docs --path ./docs
 uv run indexed index search "query" --collection my-docs
 uv run indexed index list         # List all collections
 
