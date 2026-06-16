@@ -3,7 +3,7 @@ type: branch
 scope: parsing
 parent: tech.md
 covers: ParsingModule, FileRouter, Docling, tree-sitter CodeChunker, ParsedDocument output
-updated: 2026-06-09
+updated: 2026-06-15
 ---
 
 # Tech Branch: Parsing (`indexed-parsing`)
@@ -19,11 +19,11 @@ Lazy-loaded to keep CLI startup fast.
 
 | Component | Role |
 |-----------|------|
-| **FileRouter** | Map file extension → parsing strategy (Docling, AST, plaintext, fallback) |
-| **DoclingParser** | PDF/DOCX/PPTX/HTML/images via Docling, OCR (RapidOCR default) |
-| **CodeChunker** | AST-aware code chunking via tree-sitter (Python, TS, JS, Java, Rust, Go, C, C++) — splits at function/class/method boundaries |
+| **FileRouter** | Map file extension → parsing strategy (Docling, AST, plaintext, fallback); extensionless/dotfiles → plaintext |
+| **DoclingParser** | PDF/DOCX/PPTX/HTML/images via Docling; optional OCR + table-structure extraction |
+| **CodeChunker** | AST-aware code chunking via tree-sitter — Python, TS, JS, Java, Rust, Go, C, C++ split at function/class boundaries (methods for Java/Go). Other code extensions routed here (`.rb`, `.cs`, `.swift`, `.kt`, …) have no grammar and fall back to line-based chunking. |
 | **PlaintextParser** | Markdown via Docling (structure-aware); other text via paragraph splitting |
-| **ParsingModule** | Facade routing files to the correct parser |
+| **ParsingModule** | Facade routing files to the correct parser; `parse()` for paths, `parse_bytes()` for in-memory bytes (Confluence / Outline attachments) |
 
 ---
 

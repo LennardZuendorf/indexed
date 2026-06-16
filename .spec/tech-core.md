@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-06-09
+updated: 2026-06-15
 ---
 
 # Tech Branch: Core Engine (`indexed-core`)
@@ -48,7 +48,8 @@ def model(self):
 
 ### Batching
 
-`embed_batch` defaults to `DEFAULT_EMBEDDING_BATCH_SIZE = 128` (configurable per call).
+`embed_batch` defaults to `DEFAULT_EMBEDDING_BATCH_SIZE = 128`, but both indexers
+call it with `batch_size=64`, so the effective indexing batch is 64.
 
 ---
 
@@ -56,30 +57,39 @@ def model(self):
 
 ### Index types
 
-| Type | Use Case | Memory | Speed |
-|------|----------|--------|-------|
-| **IndexFlatL2** | <50K docs (default) | high | fast |
-| IndexIVFFlat | 50K–1M docs | low | medium |
-| IndexHNSW | >1M docs | medium | fast |
+`FaissIndexer` (default) is always `IndexFlatL2`. `FaissAutoIndexer` (opt-in)
+auto-selects by vector count:
 
-**Current:** only `IndexFlatL2` (exact similarity).
+| Vectors | Index | Notes |
+|---------|-------|-------|
+| <10K | **IndexFlatL2** | exact |
+| 10K–1M | IndexHNSWFlat (M=32) | approximate; efConstruction=200, efSearch=128 |
+| >1M | IndexIVFPQ | approximate, memory-efficient (nlist≤4096, m=16, nbits=8) |
+
+**Default stays `IndexFlatL2`** (`constants.py` `DEFAULT_INDEXER`); auto-selection
+is opt-in via the `indexer_FAISS_Auto__*` registry name. Both wrap the index in
+`faiss.IndexIDMap` and add vectors with `add_with_ids`.
 
 ### Creation
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/faiss_indexer.py`
+**File:** `packages/indexed-core/src/core/v1/engine/indexes/indexers/faiss_indexer.py`
 
 ```python
 import faiss, numpy as np
-index = faiss.IndexFlatL2(384)                       # 384 = all-MiniLM-L6-v2
-index.add(np.array(embedding_list).astype('float32'))
-distances, indices = index.search(query_vec, k=10)
+dim = embedder.get_number_of_dimensions()           # 384 for all-MiniLM-L6-v2
+index = faiss.IndexIDMap(faiss.IndexFlatL2(dim))     # default indexer
+index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
+distances, indices = index.search(query_vec, number_of_results)
 ```
+
+Persistence uses native `faiss.write_index` / `read_index` (memory-mapped), or
+`serialize_index` / `deserialize_index`.
 
 ### Similarity scoring
 
 FAISS returns L2 distances. The raw distance is used directly as the result
 `score` — **lower means more similar** (it is not normalized to 0–1). Threshold
-filtering (`min_score` / `score_threshold`) keeps chunks whose score (distance)
+filtering (`score_threshold`, default `None`) keeps chunks whose score (distance)
 is **≤** the threshold.
 
 ---

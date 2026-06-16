@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-06-15
 ---
 
 # Tech Spec: indexed
@@ -83,14 +83,14 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **uv** | 0.5+ | Package manager (workspace support) |
 | **FAISS** | latest | Vector similarity search |
 | **sentence-transformers** | latest | Embedding generation |
-| **Typer** | 0.15.1 | CLI framework |
-| **Rich** | 13.0+ | Terminal UI |
-| **FastMCP** | latest | MCP server |
-| **Pydantic** | 2.10+ | Validation |
+| **Typer** | >=0.12.3 | CLI framework |
+| **Rich** | >=13.7 | Terminal UI |
+| **FastMCP** | >=3.2,<4 | MCP server |
+| **Pydantic** | >=2.10 | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.9.1 | Linter + formatter |
-| **mypy** | 1.14+ | Type checker |
-| **pytest** | 8.3.4 | Testing |
+| **ruff** | >=0.12.10 | Linter + formatter |
+| **mypy** | >=1.17 | Type checker |
+| **pytest** | >=8.4 | Testing |
 
 ### Monorepo Structure
 
@@ -144,11 +144,11 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 ## Testing Strategy
 
 **Target:** >85% coverage, measured on installed packages (`indexed`, `core`,
-`connectors`, `indexed_config`, `utils`).
+`connectors`, `parsing`, `indexed_config`, `utils`).
 
 ```text
 tests/
-├── unit/          # package-specific (indexed, indexed_core, indexed_connectors, indexed_config)
+├── unit/          # package-specific (indexed, indexed_core, indexed_connectors, indexed_parsing, indexed_config)
 ├── system/        # integration tests
 └── benchmarks/    # performance tests
 ```

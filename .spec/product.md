@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-06-09
+updated: 2026-06-15
 ---
 
 # Product Spec: indexed
@@ -12,6 +12,10 @@ updated: 2026-06-09
 **Core principle:** All processing happens locally. No data sent to third parties.
 
 **Status:** v0.1.0 Alpha
+
+> Roadmap and planned connectors/features are tracked in
+> [GitHub issues](https://github.com/LennardZuendorf/indexed/issues), not here —
+> this spec covers current focus only.
 
 ---
 
@@ -40,10 +44,6 @@ What indexed is **not**:
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
-| GitHub Repos | 📋 Planned | Index code repositories and issues |
-| Google Drive | 📋 Planned | Index Google Docs, Sheets, Slides |
-| Notion | 📋 Planned | Index Notion pages and databases |
-| Slack | 📋 Planned | Index Slack messages and threads |
 
 ### Search
 
@@ -55,22 +55,17 @@ What indexed is **not**:
 | **Relevance Scoring** | ✅ Shipped | FAISS L2 distance ranking (lower = closer match) |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
-| Filters | 📋 Planned | Filter by date, source type, metadata |
-| Boolean Operators | 📋 Planned | AND, OR, NOT query composition |
-| Phrase Search | 📋 Planned | Exact phrase matching |
 
 ### MCP Integration
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Tools** | ✅ Shipped | `search`, `list_collections`, `collection_status` |
-| **Resources** | ✅ Shipped | Collection listings and status endpoints |
+| **Tools** | ✅ Shipped | `search`, `search_collection` |
+| **Resources** | ✅ Shipped | Collection listing + per-collection status |
 | **Stdio Transport** | ✅ Shipped | For Claude Desktop, Cline |
 | **HTTP Transport** | ✅ Shipped | Network-accessible server |
 | **SSE Transport** | ✅ Shipped | Server-Sent Events streaming |
 | **Error Handling** | ✅ Shipped | Rich error messages with context |
-| Streaming Results | 📋 Planned | Progressive result delivery |
-| Subscriptions | 📋 Planned | Real-time collection updates |
 
 ### CLI
 
@@ -81,9 +76,8 @@ What indexed is **not**:
 | **Update** | ✅ Shipped | `indexed index update` |
 | **Inspect** | ✅ Shipped | `indexed index inspect` |
 | **Remove** | ✅ Shipped | `indexed index remove` |
-| **Config Management** | ✅ Shipped | `get`, `set`, `validate` commands |
+| **Config Management** | ✅ Shipped | `inspect`, `set`, `validate` commands |
 | **System Info** | ✅ Shipped | `indexed info` |
-| Interactive TUI | 📋 Planned | Full-screen interactive mode |
 | Progress Indicators | ⚠️ Partial | Spinners exist, bars planned |
 
 ### Configuration
@@ -98,7 +92,6 @@ What indexed is **not**:
 | **Single-Source Config** | ✅ Shipped | Resolves to one config.toml (no global+local merge) |
 | **CWD/.env Support** | ✅ Shipped | Project-level .env loaded as credential fallback |
 | **.gitignore Protection** | ✅ Shipped | Local .indexed/ auto-creates .gitignore with .env entry |
-| Config Profiles | 📋 Planned | Named config sets (dev, prod, etc.) |
 
 ---
 
@@ -115,12 +108,6 @@ What indexed is **not**:
 **What:** Containerized deployment
 **Why:** Isolated environment, reproducible builds
 **Status:** ✅ Shipped (Dockerfile + compose)
-
-### Server (Future)
-
-**What:** Dedicated server for team access
-**Why:** Centralized collections, shared indexes
-**Status:** 📋 Planned (HTTP API + auth)
 
 ---
 
@@ -173,7 +160,7 @@ What indexed is **not**:
 
 1. Install: `uv sync`
 2. Verify: `uv run indexed --help`
-3. Create first collection: `indexed index create --type files --name docs`
+3. Create first collection: `indexed index create my-docs --source files --source-path ./docs`
 4. Search: `indexed index search "query"`
 
 **Critical:** This must work in <5 minutes.

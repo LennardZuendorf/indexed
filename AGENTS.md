@@ -1,6 +1,6 @@
 # AGENTS.MD - Python Engineering Guide
 
-**Last Updated:** 2026-06-09
+**Last Updated:** 2026-06-15
 **Repository:** indexed v0.1.0 (Python monorepo)
 
 ## Core Operating Principles
@@ -90,15 +90,15 @@ una                       # Monorepo wheel bundling
 # Core Libraries
 FAISS                     # Vector similarity search
 sentence-transformers     # Embedding generation
-Typer 0.15.1              # CLI framework
-FastMCP                   # Model Context Protocol server
-Pydantic 2.10             # Data validation
+Typer >=0.12.3            # CLI framework
+FastMCP >=3.2,<4          # Model Context Protocol server
+Pydantic >=2.10           # Data validation
 
 # Development Tools
-ruff 0.9.1                # Linting + Formatting (replaces flake8/black)
-mypy 1.14                 # Static type checking
-pytest 8.3.4              # Testing framework
-pytest-cov 6.0            # Coverage reporting
+ruff >=0.12.10            # Linting + Formatting (replaces flake8/black)
+mypy >=1.17               # Static type checking
+pytest >=8.4              # Testing framework
+pytest-cov >=4.1          # Coverage reporting
 pre-commit 4.0            # Git hooks
 ```
 
@@ -454,7 +454,7 @@ def sample_collection(tmp_path):
 ### Coverage Requirements
 - **Target:** >85% coverage
 - **Measured on:** Installed packages (not source paths)
-- **Packages:** indexed, core, connectors, indexed_config, utils
+- **Packages:** indexed, core, connectors, parsing, indexed_config, utils
 
 ```bash
 # Run with coverage
