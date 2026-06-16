@@ -170,7 +170,7 @@ uv run pytest -q --cov=src --cov-report=html
 ```bash
 # Build wheel (HATCH_BUILD_HOOKS_ENABLE=1 required to bundle workspace packages)
 HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-# → dist/indexed-0.0.5-py3-none-any.whl  (indexed + core + connectors + parsing + config + utils)
+# → dist/indexed_sh-0.0.5-py3-none-any.whl  (indexed + core + connectors + parsing + config + utils)
 ```
 
 ### Docker
