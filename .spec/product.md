@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-06-15
+updated: 2026-06-16
 ---
 
 # Product Spec: indexed
@@ -11,7 +11,7 @@ updated: 2026-06-15
 
 **Core principle:** All processing happens locally. No data sent to third parties.
 
-**Status:** v0.1.0 Alpha
+**Status:** v0.0.5 Alpha
 
 > Roadmap and planned connectors/features are tracked in
 > [GitHub issues](https://github.com/LennardZuendorf/indexed/issues), not here —

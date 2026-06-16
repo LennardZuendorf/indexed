@@ -1,7 +1,7 @@
 # AGENTS.MD - Python Engineering Guide
 
-**Last Updated:** 2026-06-15
-**Repository:** indexed v0.1.0 (Python monorepo)
+**Last Updated:** 2026-06-16
+**Repository:** indexed v0.0.5 (Python monorepo)
 
 ## Core Operating Principles
 
