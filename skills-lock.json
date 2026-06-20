@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "spec": {
+      "source": "LennardZuendorf/vibe",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/spec/SKILL.md",
+      "computedHash": "aec3d17dddebe23302d4292813dfa3ad809ecd29c2fff9e8c6244d43f30c7b1e"
+    }
+  }
+}
