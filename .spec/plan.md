@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-09
+updated: 2026-06-20
 ---
 
 # Development Plan: indexed
@@ -37,6 +37,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `apps/indexed/src/indexed/knowledge/commands/` |
 | 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `packages/indexed-config/`, tech.md § Configuration System |
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
+| 11 | MCP file watcher + async reindex | auto debounced re-index of `localFiles` collections during MCP runtime + `reindex` tool | 🚧 IN DESIGN | [features/file-watcher/](features/file-watcher/product.md) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -52,6 +53,10 @@ v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`
 `utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and
 `indexed-connectors` against the rules in [tech.md](tech.md) § Architectural Rules.
 Scope the v2 work as a feature under `.spec/features/<name>/` when it starts.
+
+In parallel, the **MCP file watcher** feature (Feature 11) is in design —
+auto-refresh of `localFiles` collections during MCP runtime plus an async
+`reindex` tool. Scoped under [features/file-watcher/](features/file-watcher/product.md).
 
 ---
 
