@@ -27,15 +27,17 @@ drives the same manager on demand.
 
 ```
 packages/indexed-core/src/core/v1/engine/services/search_service.py   # + invalidate() + functional wrapper
-packages/indexed-core/src/core/v1/engine/services/__init__.py         # export invalidate
+packages/indexed-core/src/core/v1/engine/services/inspect_service.py  # mtime-aware manifest cache + invalidate(); error flag on unreadable status
+packages/indexed-core/src/core/v1/engine/services/__init__.py         # export invalidate (search + inspect)
 packages/indexed-core/src/core/v1/config_models.py                    # MCPConfig.watch_enabled, watch_debounce_seconds
 apps/indexed/src/indexed/mcp/reindex.py                               # NEW — ReindexManager, ReindexJob   ~180 LOC
 apps/indexed/src/indexed/mcp/watcher.py                               # NEW — CollectionWatcher            ~120 LOC
 apps/indexed/src/indexed/mcp/server.py                                # build_server() factory + lifespan wiring
-apps/indexed/src/indexed/mcp/tools.py                                 # reindex tool + _get_manager
-apps/indexed/src/indexed/mcp/resources.py                            # reindex block in collection status
+apps/indexed/src/indexed/mcp/tools.py                                 # reindex tool + _get_manager; surface per-collection load failures
+apps/indexed/src/indexed/mcp/resources.py                            # reindex block + propagate collection error in status
 apps/indexed/src/indexed/mcp/cli.py                                   # --no-watch flag → build_server(...)
-tests/unit/indexed/mcp/                                               # manager, watcher, tool, cli tests
+tests/unit/indexed/mcp/                                               # manager, watcher, tool, cli, coherence tests
+tests/unit/indexed_core/                                              # inspect mtime-invalidation tests
 ```
 
 ---
@@ -53,7 +55,15 @@ class SearchService:
 def invalidate(collection_name: str | None = None,
                collections_path: str | None = None) -> int: ...   # functional wrapper on the singleton
 
-# apps/indexed/src/indexed/mcp/reindex.py
+# core/v1/engine/services/inspect_service.py
+class InspectService:
+    # _read_manifest becomes mtime-aware: cache entry stores (mtime, manifest);
+    # a stat() of manifest.json on each read reloads when mtime advanced.
+    def invalidate(self, collection_name: str | None = None) -> None:
+        """Drop cached manifest(s) so the next read reloads from disk."""
+    # status(): unreadable collections carry an explicit error marker
+    # (CollectionStatus.error) instead of a silent all-zero row.
+
 JobState = Literal["queued", "running", "done", "error"]
 
 @dataclass
@@ -174,11 +184,47 @@ manager.aclose()`. `LifespanState` gains `reindex_manager: ReindexManager | None
 `resources._format_status` gains a `reindex` block populated from
 `manager.latest(name)` when a manager is present.
 
+**Metadata coherence (#112.1/.2).** The root cause of stale status is
+`InspectService._read_manifest`: it caches a manifest the first time and never
+reloads (`if collection_name not in self._manifest_cache`), so the process-global
+singleton behind `status()` serves startup counts forever. Fix: make the cache
+**mtime-aware** — store `(mtime, manifest)` and `os.stat` the `manifest.json` on
+each read, reloading when mtime advanced (a cheap `stat`, no parse on the hot
+path). This makes status/search reflect on-disk reality after *any* rebuild,
+watcher-driven or external. The re-index path additionally calls
+`inspect_invalidate(collection)` so the after-counts read is immediate even
+within the same filesystem-timestamp granularity. `_discover_collections()`
+already scans the directory fresh on every call, so this is the only cache that
+needs touching.
+
+**Load-failure surfacing (#112.3).** Two silent paths today: `status()` swallows a
+per-collection read error and appends an **all-zero** `CollectionStatus`
+(`inspect_service.py:208-224`), and the all-collections `search` (`configs=None`)
+drops a collection whose searcher fails to load. Fix: add an optional
+`error: str | None` to `CollectionStatus`, set it on the unreadable path (instead
+of a zero row), and have the search tools report a collection that exists on disk
+but fails to load as an explicit `error` (single-collection) or a `warnings[]`
+entry (all-collections) rather than empty/omitted. Distinguish "exists but failed
+to load" (error) from "no matches" (empty-but-ok).
+
+**New-collection discovery (#112.4).** Largely already satisfied: `status(None)`
+and the all-collections `search` both go through `_discover_collections()`, which
+re-scans the collections directory on every call, and a never-before-seen
+collection has no cached manifest so it loads fresh. The work here is a
+**regression test** proving a collection created after startup is searchable and
+shows in status without restart — plus confirming `search_collection` resolves a
+brand-new collection on demand. (Auto-*watching* that new collection's folder for
+live re-index stays out of scope — see § Open Questions.)
+
 <!-- merge -->
 **Cross-cutting (promote to tech-core.md on COMPOUND):** `SearchService` gains a
 public `invalidate(name)` so long-lived hosts (MCP server) can evict the
-process-global searcher cache after content changes. Any future re-index/refresh
-path — not just the watcher — must call it to avoid serving stale FAISS results.
+process-global searcher cache after content changes. `InspectService` gains
+mtime-aware manifest reads plus `invalidate(name)`, so its singleton no longer
+serves stale collection metadata in long-lived processes. Any future
+re-index/refresh path — not just the watcher — must call both to avoid serving
+stale FAISS results or stale counts. (CLI processes are short-lived and read
+fresh regardless; the fix is for long-lived hosts.)
 <!-- /merge -->
 
 ## Performance Budget
@@ -190,6 +236,9 @@ path — not just the watcher — must call it to avoid serving stale FAISS resu
 
 ## Open Questions
 
-1. **Mid-session collections.** Path map is built at startup; collections created
-   later need a server restart. Periodic/triggered rebuild is a documented v2
+1. **Live watching of mid-session collections.** Collections created after startup
+   are searchable and appear in status immediately (see § New-collection
+   discovery), but the watcher's path map is built once at startup, so *automatic
+   re-index on their file changes* needs a restart. Periodic/triggered path-map
+   rebuild (or watching the collections root for new manifests) is a documented v2
    follow-up, not in scope here.

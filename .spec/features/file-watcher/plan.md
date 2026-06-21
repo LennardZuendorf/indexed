@@ -10,8 +10,10 @@ updated: 2026-06-21
 
 Delivers automatic, debounced re-indexing of `localFiles` collections during MCP
 server runtime, plus an async `reindex` tool — built bottom-up: cache hook first,
-then the manager, then the watcher, then server/tool/CLI wiring. A closed,
-testable box layered on the existing `update` pipeline.
+then the manager, then the watcher, then server/tool/CLI wiring. It also closes
+the stale-collection gap (#112): metadata coherence, explicit load-error
+surfacing, and new-collection pickup (units 7–9, independent of the watcher
+chain). A closed, testable box layered on the existing `update` pipeline.
 
 **Parent:** [../../plan.md](../../plan.md)
 **Requirements:** [product.md](product.md)
@@ -33,6 +35,11 @@ risk — invalidating the process-global searcher cache so a long-running server
 never serves stale results. Build the cache hook and manager (pure asyncio,
 mockable) before the filesystem-facing watcher and the FastMCP wiring.
 
+The stale-collection fixes (#112) are a parallel, mostly-core track: the
+never-invalidated `InspectService` manifest cache is the real reason status went
+stale, and the search tools' broad `except` hides load failures. These (units
+7–9) gate on nothing in the watcher chain and can land first or alongside it.
+
 ---
 
 ## Requirements Trace
@@ -46,6 +53,14 @@ mockable) before the filesystem-facing watcher and the FastMCP wiring.
 | R5 | [Asynchronous re-index tool](product.md#requirement-asynchronous-re-index-tool) | file-watcher/5 |
 | R6 | [Observable re-index status](product.md#requirement-observable-re-index-status) | file-watcher/5 |
 | R7 | [Safe concurrency and transport hygiene](product.md#requirement-safe-concurrency-and-transport-hygiene) | file-watcher/2, file-watcher/3 |
+| R8 | [Coherent metadata after on-disk changes](product.md#requirement-coherent-metadata-after-on-disk-changes) | file-watcher/7 |
+| R9 | [Explicit surfacing of load failures](product.md#requirement-explicit-surfacing-of-load-failures) | file-watcher/8 |
+| R10 | [Newly created collections without restart](product.md#requirement-newly-created-collections-without-restart) | file-watcher/9 |
+
+**Issue trace** (URLs in [product.md](product.md)): GitHub #67 file-watching half
+→ R1–R3, R7 (watcher + manager); its git-hook half is a Non-Goal (superseded by
+the always-on watcher). GitHub #112 acceptance criteria → fresh results R4 (1),
+status counts R8 (2), explicit load errors R9 (3), new collections R10 (4).
 
 ---
 
@@ -66,6 +81,12 @@ mockable) before the filesystem-facing watcher and the FastMCP wiring.
    debounce + `watch_filter`; no new dependency, no polling.
 5. **Manager always built; only the watcher honours `--no-watch`.** Manual
    `reindex` stays available even when the auto-watcher is off.
+6. **mtime-aware manifest cache, not TTL or full-disable.** `InspectService`'s
+   never-invalidated manifest cache is the root cause of stale status. A per-read
+   `stat()` + mtime compare is the minimal coherence fix — cheaper than a TTL
+   (still serves stale within the window) and keeps the cache's I/O savings.
+   `_discover_collections()` already re-scans, so new collections need no extra
+   machinery — only a regression test.
 
 ---
 
@@ -225,6 +246,82 @@ apps/indexed/src/indexed/mcp/cli.py            # --no-watch option + run_impl wi
 
 ---
 
+### file-watcher/7 — Metadata coherence: mtime-aware manifest cache (#112.1/.2)
+
+**Goal:** `InspectService` reflects on-disk manifest changes in a long-lived process, so `resource://collections/status` and search report current counts after any rebuild — watcher-driven or external.
+
+**Requirements:** R8
+
+**Dependencies:** —
+
+**Files:**
+
+```
+packages/indexed-core/src/core/v1/engine/services/inspect_service.py   # mtime-aware _read_manifest + invalidate()
+packages/indexed-core/src/core/v1/engine/services/__init__.py          # export inspect invalidate
+```
+
+**Test scenarios:**
+
+- `status()` then rewrite `manifest.json` with new counts → next `status()` returns the new counts (mtime advanced → reload)
+- Unchanged manifest → no re-parse (cache hit; assert via spy on the read)
+- `invalidate("docs")` forces a reload on the next read; `invalidate(None)` drops all
+- `ReindexManager` after-counts use a fresh/invalidated read (ties to file-watcher/2)
+
+**Verification:** `uv run pytest tests/unit/indexed_core/ -q -k "inspect and (mtime or invalidate)"`.
+
+---
+
+### file-watcher/8 — Surface collection load failures (#112.3)
+
+**Goal:** A collection that exists on disk but fails to load returns an explicit error, never a silent empty result or a silently dropped collection.
+
+**Requirements:** R9
+
+**Dependencies:** file-watcher/7
+
+**Files:**
+
+```
+packages/indexed-core/src/core/v1/engine/services/inspect_service.py   # CollectionStatus.error on unreadable path (not all-zero row)
+apps/indexed/src/indexed/mcp/tools.py                                  # search/search_collection surface load errors
+apps/indexed/src/indexed/mcp/resources.py                             # propagate error in status payload
+```
+
+**Test scenarios:**
+
+- `search_collection("docs", …)` where `docs` exists but its index is corrupt → response has an explicit `error`, not `{}`/empty
+- All-collections `search` with one broken + healthy collections → healthy results returned, broken reported in `warnings[]`, not omitted
+- `status()` on an unreadable collection → row carries `error`, not a silent all-zero count
+- A genuinely empty (zero-match) but healthy collection still returns empty-ok, no error
+
+**Verification:** `uv run pytest tests/unit/indexed/mcp/ -q -k "error or warning"` and `tests/unit/indexed_core/ -q -k inspect_error`.
+
+---
+
+### file-watcher/9 — Newly created collections searchable (#112.4)
+
+**Goal:** Lock in (and regression-test) that a collection created after server start is searchable and visible in status without a restart.
+
+**Requirements:** R10
+
+**Dependencies:** file-watcher/7
+
+**Files:**
+
+```
+tests/unit/indexed/mcp/                                               # regression tests only (behaviour already present via _discover_collections)
+```
+
+**Test scenarios:**
+
+- Server/services warm with `{a, b}`; create `c` on disk → `status()` lists `c`; `search_collection("c", …)` returns results — no restart, no manual refresh
+- Confirm no stale empty-list cache shadows discovery (guards against a future regression)
+
+**Verification:** `uv run pytest tests/unit/indexed/mcp/ -q -k new_collection`.
+
+---
+
 ## Progress
 
 | Unit | Status |
@@ -235,3 +332,6 @@ apps/indexed/src/indexed/mcp/cli.py            # --no-watch option + run_impl wi
 | file-watcher/4 | NOT STARTED |
 | file-watcher/5 | NOT STARTED |
 | file-watcher/6 | NOT STARTED |
+| file-watcher/7 | NOT STARTED |
+| file-watcher/8 | NOT STARTED |
+| file-watcher/9 | NOT STARTED |

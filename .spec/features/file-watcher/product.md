@@ -3,7 +3,7 @@ type: feature-product
 feature: file-watcher
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-06-20
+updated: 2026-06-21
 ---
 
 # Feature: MCP File Watcher — Product
@@ -13,7 +13,16 @@ server watches the folders backing file collections and, after a short debounce,
 runs an incremental re-index when files are added, modified, or deleted — so AI
 agents always search current content without anyone running `index update` by
 hand. A companion MCP tool lets an agent trigger the same re-index on demand,
-asynchronously.
+asynchronously. The feature also closes the **stale-collection** gap that made
+this necessary: a long-running server now reflects on-disk reality — fresh
+counts, fresh search, explicit errors for broken collections, and pickup of
+collections created after startup — whether the change came from the watcher or
+an external `index update`.
+
+**Tracks:** GitHub [#67](https://github.com/LennardZuendorf/indexed/issues/67)
+(automatic re-indexing — file-watching half) and
+[#112](https://github.com/LennardZuendorf/indexed/issues/112) (MCP server serves
+stale collections).
 
 **Parent:** [../../product.md](../../product.md)
 **Architecture:** [tech.md](tech.md)
@@ -27,8 +36,8 @@ asynchronously.
 
 | | |
 |---|---|
-| **Owns** | The watcher lifecycle inside the MCP server, the debounce/coalescing policy, the `reindex` MCP tool, the `--no-watch` flag, the `[mcp]` watch config keys, and the search-cache invalidation hook that keeps results fresh after a re-index. |
-| **Does not own** | The indexing/update pipeline itself (core `update` service), file change detection (`ChangeTracker` in connectors), the search algorithm, non-file connectors, and how collections are created. The feature *consumes* these; it does not modify their behaviour. |
+| **Owns** | The watcher lifecycle inside the MCP server, the debounce/coalescing policy, the `reindex` MCP tool, the `--no-watch` flag, the `[mcp]` watch config keys, the search-cache invalidation hook, **collection-metadata cache coherence** (mtime-aware manifest reads so status/search reflect on-disk changes), **explicit surfacing of collection load failures** in the search tools, and **discovery of collections created after startup**. |
+| **Does not own** | The indexing/update pipeline itself (core `update` service), file change detection (`ChangeTracker` in connectors), the FAISS search algorithm, non-file connectors, and how collections are created. The feature *consumes* these; beyond the manifest-cache coherence fix it does not change their behaviour. |
 
 ---
 
@@ -123,6 +132,48 @@ channel.
 - **When** another change for `docs` arrives
 - **Then** the second run does not start until the first finishes, and is coalesced into a single follow-up run
 
+### Requirement: Coherent metadata after on-disk changes
+
+The system SHALL ensure collection status and search reflect the current on-disk
+state of a collection after it changes — whether re-indexed by the watcher or by
+an external `index update` — rather than a snapshot cached at process start. A
+long-lived process MUST detect a replaced `manifest.json` and reload it.
+
+#### Scenario: External re-index reflected in status
+
+- **Given** a running MCP server that has reported `docs` at 50 documents
+- **When** `docs` is rebuilt on disk to 320 documents (e.g. `indexed index update docs` in another terminal)
+- **Then** `resource://collections/status` reports 320 documents without a server restart
+
+### Requirement: Explicit surfacing of load failures
+
+The system SHALL return an explicit error for a collection that exists on disk but
+whose index fails to load, and MUST NOT silently return an empty result set or
+silently drop the collection from an all-collections search.
+
+#### Scenario: Unreadable collection surfaces an error
+
+- **Given** a collection `docs` exists on disk but its index is corrupt/unreadable
+- **When** an agent calls `search_collection(collection="docs", query=…)`
+- **Then** the response contains an explicit error, not an empty result set
+
+#### Scenario: All-collections search reports the failure
+
+- **Given** `docs` fails to load while other collections are healthy
+- **When** the agent calls `search(query=…)`
+- **Then** the healthy collections return results and `docs` is reported as a warning, not silently omitted
+
+### Requirement: Newly created collections without restart
+
+The system SHALL make a collection created after the server started searchable and
+visible in collection status without a server restart.
+
+#### Scenario: Collection created after startup is searchable
+
+- **Given** the MCP server started with collections `{a, b}`
+- **When** a new collection `c` is created on disk
+- **Then** `search_collection(collection="c", query=…)` returns results and `c` appears in `resource://collections/status`, without a restart
+
 ---
 
 ## User Experience
@@ -150,9 +201,11 @@ resource://collection/docs
 ## Non-Goals
 
 - Watching non-file connectors (Jira/Confluence/Outline) — those have no local folder to watch.
-- Picking up collections created *after* the server started (requires restart in v1).
+- Live file-*watching* of collections created after startup — they become searchable and visible in status immediately, but auto re-index on *their* file changes still needs a restart (v2; see [tech.md](tech.md) § Open Questions).
+- **Git-hook / commit-time re-indexing** (the second half of [#67](https://github.com/LennardZuendorf/indexed/issues/67)) — the always-on watcher supersedes it for the MCP scenario. Revisit as a standalone issue only if daemon-free, commit-boundary freshness (fresh index with no server running) is ever needed.
 - A full job history/audit log — only the latest re-index per collection is reported.
 - Replacing the `indexed index update` CLI command.
+- CLI-side staleness work — `indexed` commands are short-lived processes that read manifests fresh per invocation, so they never serve a stale cache; the metadata-coherence fix lives in core and benefits any long-lived consumer regardless.
 
 ## Open Questions
 

@@ -65,9 +65,12 @@ There is **no public API** to evict a single searcher today → drives the
 
 Caveat found while reviewing: the functional `status()`/`inspect()` use a
 **process-global `InspectService` singleton whose manifest cache never expires**
-(`inspect_service.py:70-80,331-337`). Computing re-index deltas through it would
-read stale "after" counts — the manager must use a fresh `InspectService` or read
-the manifest directly.
+(`inspect_service.py:70-80,331-337`). This is not just a delta-read footgun — it
+is the **root cause of issue #112's stale status**: `_read_manifest` caches on
+first read and the singleton behind `status()` then serves startup counts forever.
+Decision (units `file-watcher/7`–`/8`): make `_read_manifest` mtime-aware + add
+`InspectService.invalidate()`, and replace the silent all-zero error row
+(`inspect_service.py:208-224`) with an explicit `CollectionStatus.error`.
 
 ### F5 — Watcher library: `watchfiles` is already installed
 `watchfiles` 1.1.1 (Rust-backed, asyncio-native `awatch`) imports cleanly.
@@ -95,6 +98,20 @@ home for `watch_enabled` / `watch_debounce_seconds`. The CLI `mcp run`
 server object is module-level, the flag is threaded in via a `build_server(...)`
 factory (decision recorded in [plan.md](plan.md) § Key Technical Decisions).
 
+### F8 — #112 coverage map + new-collection discovery
+Mapping the four #112 acceptance criteria to the codebase: (1) fresh results →
+searcher invalidation (F4); (2) status counts → mtime-aware manifest cache (F4
+caveat); (3) explicit load errors → `tools.py:50-51,104-105` swallow to `{}` and
+the all-collections path silently drops a failed collection; (4) new collections →
+**already mostly works**: `InspectService._discover_collections()`
+(`inspect_service.py:82-108`) re-scans the directory on every `status(None)`, and
+an unseen collection has no cached manifest, so it loads fresh. So #112.4 needs a
+regression test, not new machinery; only the watcher's startup-built path map
+stays restart-bound (v2). **Git hooks (#67 second half):** an always-on watcher
+already keeps the MCP index fresh on every save, so the post-commit hook is
+redundant for this scenario — dropped as a Non-Goal, leaving daemon-free freshness
+to a possible standalone issue.
+
 ---
 
 ## Risks (carried into tech.md)
@@ -117,3 +134,10 @@ factory (decision recorded in [plan.md](plan.md) § Key Technical Decisions).
 3. Async tool: one `reindex(collection?)`; status via existing collection resource.
 4. Library: `watchfiles`. Default: watch ON for all transports, opt-out via `--no-watch`.
 5. Scope: `localFiles` collections under the server's active storage mode.
+6. Close #112 fully: mtime-aware `InspectService` manifest cache + `invalidate()`
+   (R8), explicit load-error surfacing in status + search tools (R9), and a
+   regression test for new-collection searchability (R10).
+7. Drop git hooks (#67 second half) — superseded by the always-on watcher; recorded
+   as a Non-Goal, not built.
+8. No CLI staleness work: `indexed` commands are short-lived and read manifests
+   fresh per invocation; the core coherence fix covers any long-lived consumer.
