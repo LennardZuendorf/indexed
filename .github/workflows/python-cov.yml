@@ -36,6 +36,9 @@ jobs:
           python -m uv sync
           # Ruff and pytest should be installed via project dependencies, not as standalone tools
 
+      - name: Security audit (OSV)
+        run: uv tool run pip-audit --vulnerability-service osv
+
       - name: Run Ruff Linter
         run: |
           uv run ruff check
