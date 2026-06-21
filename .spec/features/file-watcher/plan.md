@@ -120,7 +120,7 @@ apps/indexed/src/indexed/mcp/reindex.py        # ReindexManager, ReindexJob
 
 - Two `schedule()` calls within the window → exactly one `update` call (mocked)
 - Per-collection lock serializes overlapping runs; mid-run change re-runs once
-- Success → `search_invalidate` + `response_cache_clear` called; deltas recorded
+- Success → `search_invalidate` called (plus the response-cache hook if Q1 picks the imperative-clear option); deltas recorded from a fresh inspect read
 - `update` raises → job `error`, manager stays healthy; `aclose()` cancels cleanly
 
 **Verification:** `uv run pytest tests/unit/indexed/mcp/test_reindex_manager.py -q`.

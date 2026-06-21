@@ -109,7 +109,9 @@ factory (decision recorded in [plan.md](plan.md) § Key Technical Decisions).
 
 ## Decisions taken (from the design conversation)
 
-1. Cache busting: add `SearchService.invalidate()` **and** clear the response cache.
+1. Cache busting: add `SearchService.invalidate()` **and** clear the response
+   cache. _(Revised during review — see F4: the response-cache half is better
+   solved by excluding the search tools from tool caching; pending confirmation.)_
 2. Flag plumbing: `build_server()` factory; module-level `mcp` stays default-built.
 3. Async tool: one `reindex(collection?)`; status via existing collection resource.
 4. Library: `watchfiles`. Default: watch ON for all transports, opt-out via `--no-watch`.
