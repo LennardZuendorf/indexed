@@ -1,7 +1,11 @@
 """Tests for Jira reader attachment fetching."""
 
-import pytest
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from connectors.jira.unified_jira_document_reader import (
     UnifiedJiraDocumentReader,
@@ -14,7 +18,14 @@ pytestmark = pytest.mark.connectors
 class FakeJiraWithAttachments:
     """Fake Jira client that returns issues with attachment metadata."""
 
-    def __init__(self, url=None, username=None, password=None, cloud=None, **kwargs):
+    def __init__(
+        self,
+        url: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        cloud: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
         self._issues = [
             {
                 "key": "ATT-1",
@@ -38,18 +49,52 @@ class FakeJiraWithAttachments:
             },
         ]
 
-    def jql(self, jql, fields=None, start=0, limit=50, **kwargs):
+    def jql(
+        self,
+        jql: str,
+        fields: str | list[str] | None = None,
+        start: int = 0,
+        limit: int = 50,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         batch = self._issues[start : start + limit]
         return {"issues": batch, "total": len(self._issues)}
 
+    def enhanced_jql(
+        self,
+        jql: str,
+        fields: str | list[str] | None = None,
+        nextPageToken: str | None = None,
+        limit: int = 50,
+        expand: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        start = int(nextPageToken) if nextPageToken else 0
+        batch = self._issues[start : start + limit] if limit else self._issues[start:]
+        result: dict[str, Any] = {"issues": batch}
+        next_start = start + len(batch)
+        if next_start < len(self._issues):
+            result["nextPageToken"] = str(next_start)
+        return result
+
+    def approximate_issue_count(self, jql: str) -> dict[str, Any]:
+        return {"count": len(self._issues)}
+
 
 class FakeJiraNoAttachments:
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         self._issues = [
             {"key": "NO-1", "fields": {"updated": "2024-01-01T00:00:00.000+0000"}},
         ]
 
-    def jql(self, jql, fields=None, start=0, limit=50, **kwargs):
+    def jql(
+        self,
+        jql: str,
+        fields: str | list[str] | None = None,
+        start: int = 0,
+        limit: int = 50,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         return {
             "issues": self._issues[start : start + limit],
             "total": len(self._issues),
