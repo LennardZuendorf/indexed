@@ -46,7 +46,6 @@ fi
 # Copy entrypoint templates (only if they don't exist)
 # Use a non-postfix increment to play nice with set -e
 copied=0
-missing_templates=0
 
 for entrypoint in product.md tech.md design.md plan.md; do
   if [[ -f "$SPEC_DIR/$entrypoint" ]]; then
@@ -58,15 +57,9 @@ for entrypoint in product.md tech.md design.md plan.md; do
       copied=$((copied + 1))
     else
       red "ERROR: Template not found: $TEMPLATE_DIR/$entrypoint"
-      missing_templates=$((missing_templates + 1))
     fi
   fi
 done
-
-if [[ $missing_templates -gt 0 ]]; then
-  red "Setup aborted: $missing_templates required template(s) missing."
-  exit 1
-fi
 
 # Create lessons.md if missing (no template — starts empty)
 if [[ -f "$SPEC_DIR/lessons.md" ]]; then

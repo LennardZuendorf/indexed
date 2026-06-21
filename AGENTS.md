@@ -1,723 +1,255 @@
-# AGENTS.MD - Python Engineering Guide
+# AGENTS.md — indexed Engineering Guide
 
-**Last Updated:** 2026-06-16
-**Repository:** indexed v0.0.5 (Python monorepo)
+**Repository:** indexed v0.1.0 · Python monorepo (uv + una)
+**Last Updated:** 2026-06-21
 
-## Core Operating Principles
+This is the operating contract for any agent working in this repo. Read it
+fully before acting. The four sections are load-bearing:
 
-### 1. ASK → PLAN → CONFIRM → EXECUTE
-
-**NEVER write code without approval.**
-
-1. **ASK**: Clarify requirements, understand constraints, avoid assumptions
-2. **PLAN**: Break down tasks, research patterns, present approach with reasoning
-3. **CONFIRM**: Get explicit user approval before any implementation
-4. **EXECUTE**: Implement step-by-step with clear explanations
-
-### 2. Quality-First Engineering
-
-- **KISS**: Keep It Simple, Stupid - prefer simplicity over complexity
-- **Type Safety**: All code MUST pass mypy strict mode
-- **Code Quality**: All commits MUST pass ruff checks (lint + format)
-- **Test Coverage**: Maintain >85% coverage target
-- **Performance**: Sub-second CLI startup times (lazy loading strategy)
-
-### 3. Critical Constraints
-
-- **ALWAYS run from PROJECT ROOT** - monorepo operations require this
-- **ALWAYS use `uv run <command>`** - never manually activate virtual environments
-- **ALWAYS run FULL test suite before push** - monorepo integrity is critical
-- **ALWAYS commit `uv.lock`** - reproducible builds required
-- **NEVER use `una sync`** - causes dependency conflicts
-- **NEVER create files without necessity** - prefer editing existing files
-- **NEVER proceed without user confirmation**
-- **NEVER skip test coverage** - >85% is a hard requirement
-
-### 4. Spec-Driven Development (`.spec/`)
-
-**`.spec/` is the single source of truth for design.** Read it before writing
-code; update it when decisions change. Use the `/spec` skill for all spec work
-(scoping, validating, bootstrapping) — it owns the rules below.
-
-**READ before you build:**
-- Start every non-trivial task by reading the relevant root spec (`product.md`,
-  `tech.md`, `plan.md`) and following its links. Read `lessons.md` if present.
-- Never edit a spec you haven't read this session.
-
-**Two-layer model:**
-- **Root layer (persistent):** `product.md`, `tech.md`, `plan.md` entrypoints +
-  cross-cutting branch docs `product-{topic}.md` / `tech-{topic}.md`. Stays
-  high-level. No feature-level detail. **No backlog** — current focus only;
-  long-horizon ideas go to GitHub issues, not specs.
-- **Feature layer (branch-scoped):** `features/<name>/` with `product.md` +
-  `tech.md` (+ optional `plan.md`/`design.md`). Written during design, promoted
-  to root on completion, then **deleted before the branch merges**. CODE IS TRUTH.
-
-**Tech branch docs = one per monorepo component:**
-`tech.md` is the cross-cutting summary (architecture overview, stack, data flow,
-architectural rules). Per-component internals live in `tech-<component>.md`:
-
-| Component | Doc |
-|-----------|-----|
-| `apps/indexed` | `tech-app.md` |
-| `packages/indexed-core` | `tech-core.md` |
-| `packages/indexed-config` | `tech-config.md` |
-| `packages/indexed-connectors` | `tech-connectors.md` |
-| `packages/indexed-parsing` | `tech-parsing.md` |
-
-**Rules when editing specs:**
-- Bump `updated:` on every spec you touch.
-- Keep cross-references alive (parent ↔ child both ways; list children in
-  entrypoint frontmatter).
-- Branch-doc filenames MUST start with `product-` / `tech-` / `plan-`.
-- One concern per doc: product specs contain zero code; tech specs zero UX.
-- After changes, run `bash ~/.agents/skills/spec/scripts/validate.sh` — must be
-  **0 errors**.
-
-**Design docs vs. published docs:** `.spec/` holds internal design (source of
-truth). `docs/` holds only the logo asset — it is NOT a docs site. Do not put
-specs in `docs/`.
-
-## Tech Stack
-
-### Core Technologies
-```python
-# Language & Runtime
-Python 3.11+              # Minimum version required
-uv 0.5+                   # Package manager (workspace support)
-una                       # Monorepo wheel bundling
-
-# Core Libraries
-FAISS                     # Vector similarity search
-sentence-transformers     # Embedding generation
-Typer >=0.12.3            # CLI framework
-FastMCP >=3.2,<4          # Model Context Protocol server
-Pydantic >=2.10           # Data validation
-
-# Development Tools
-ruff >=0.12.10            # Linting + Formatting (replaces flake8/black)
-mypy >=1.17               # Static type checking
-pytest >=8.4              # Testing framework
-pytest-cov >=4.1          # Coverage reporting
-pre-commit 4.0            # Git hooks
-```
-
-### Package Manager Rules
-```bash
-# ONLY use uv - NEVER pip, pipenv, or poetry directly
-uv sync                   # Install dependencies
-uv sync --all-groups      # Install with dev dependencies
-uv run <command>          # Run commands (ALWAYS use this)
-uv run pytest -q          # Run tests
-uv run ruff check .       # Lint code
-uv run ruff format        # Format code
-```
-
-## Project Architecture
-
-### Repository Structure
-```
-indexed/
-├── AGENTS.md                          # You are here
-├── README.md                          # User documentation
-├── pyproject.toml                     # Workspace root config
-├── uv.lock                            # Locked dependencies (ALWAYS commit)
-│
-├── apps/indexed/                      # Main CLI application & MCP server
-│   ├── src/indexed/
-│   │   ├── cli/                       # CLI commands (Typer)
-│   │   ├── mcp/                       # MCP server implementation
-│   │   └── main.py                    # Entry points
-│   └── pyproject.toml
-│
-├── packages/
-│   ├── indexed-core/                  # Core indexing & search engine
-│   │   ├── src/core/
-│   │   │   ├── indexing/              # FAISS indexing
-│   │   │   ├── search/                # Search service
-│   │   │   └── models/                # Domain models
-│   │   └── pyproject.toml
-│   │
-│   ├── indexed-connectors/            # Document source adapters
-│   │   ├── src/connectors/
-│   │   │   ├── jira/                  # Jira integration
-│   │   │   ├── confluence/            # Confluence integration
-│   │   │   └── files/                 # File system integration
-│   │   └── pyproject.toml
-│   │
-│   ├── indexed-config/                # Configuration management
-│   │   ├── src/indexed_config/
-│   │   │   ├── service.py             # ConfigService (singleton)
-│   │   │   └── models.py              # Pydantic models
-│   │   └── pyproject.toml
-│   │
-│   └── utils/                         # Cross-cutting utilities
-│       ├── src/utils/
-│       │   ├── logging.py             # Logging utilities
-│       │   ├── retry.py               # Retry logic
-│       │   └── batching.py            # Batch processing
-│       └── pyproject.toml
-│
-└── tests/                             # Comprehensive test suite
-    ├── unit/                          # Package-specific unit tests
-    ├── system/                        # Integration tests
-    └── benchmarks/                    # Performance benchmarks
-```
-
-### Package Responsibilities
-
-| Package | Purpose | Key Responsibility |
-|---------|---------|-------------------|
-| **indexed** (app) | CLI & MCP Server | User interaction, command parsing, AI integration |
-| **indexed-core** | Engine | Document indexing, FAISS search, persistence |
-| **indexed-connectors** | Adapters | Read from Jira, Confluence, files |
-| **indexed-config** | Configuration | TOML config, environment merging, validation |
-| **utils** | Utilities | Logging, retry logic, batching, performance helpers |
-
-## Development Workflows
-
-### Common Commands
-
-```bash
-# Development Setup
-uv sync --all-groups              # Install all dependencies + dev tools
-uv run pre-commit install --hook-type pre-commit --hook-type pre-push
-
-# Code Quality
-uv run ruff check . --fix         # Lint with auto-fix
-uv run ruff format                # Format code
-uv run mypy src/                  # Type check
-
-# Testing
-uv run pytest -q                  # Run tests (quiet)
-uv run pytest -v                  # Run tests (verbose)
-uv run pytest -q --cov=src --cov-report=html  # With coverage
-uv run pytest tests/unit/indexed_core/ -q     # Specific package
-uv run pytest tests/benchmarks/ -q --benchmark-only  # Benchmarks only
-
-# Running the CLI
-uv run indexed --help             # Show help
-uv run indexed index create files --collection my-docs --path ./docs
-uv run indexed index search "query" --collection my-docs
-uv run indexed index list         # List all collections
-
-# Running the MCP Server
-uv run indexed-mcp run            # Stdio mode (Claude Desktop)
-uv run indexed-mcp run --log-level DEBUG
-uv run indexed-mcp run --transport http --port 8000
-
-# Building (release wheel — bundles workspace packages via una-build)
-HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-```
-
-### Git Commit Standards
-
-**ABSOLUTE FORMAT (50 characters max, one line only):**
-```bash
-[type](optional-scope): imperative subject
-
-# Examples:
-feat(core): add FAISS index caching
-fix(mcp): resolve search timeout issue
-refactor(connectors): simplify reader interface
-perf(indexing): optimize embedding batch size
-chore(deps): update sentence-transformers
-test(search): add integration tests
-```
-
-**Allowed Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `refactor`: Code change (no bug fix or feature)
-- `perf`: Performance improvement
-- `style`: Formatting only (no logic changes)
-- `test`: Add/update tests
-- `docs`: Documentation only
-- `build`: Build system changes
-- `ci`: CI/CD configuration
-- `chore`: Housekeeping (NOT code changes)
-- `revert`: Revert previous commit
-
-**Rules:**
-- MUST be imperative mood ("add", NOT "added" or "adds")
-- MUST be lowercase (except proper nouns/acronyms)
-- MUST NOT exceed 50 characters total
-- MUST NOT have trailing period
-- MUST NOT have body or footer
-
-## Architecture Deep Dive
-
-### Three-Layer Design
-
-```
-┌─────────────────────────────────────────┐
-│     CLI Layer (indexed/)                │
-│  Commands, UI, MCP Server, Logging      │
-└──────────────┬──────────────────────────┘
-               │
-┌──────────────▼──────────────────────────┐
-│    Service Layer (indexed-core/)        │
-│ Orchestration, Validation, Factories    │
-└──────────────┬──────────────────────────┘
-               │
-┌──────────────▼──────────────────────────┐
-│     Engine Layer (indexed-core/)        │
-│ FAISS, Embeddings, Persistence          │
-└──────────────┬──────────────────────────┘
-               │
-┌──────────────▼──────────────────────────┐
-│  Infrastructure Layer                   │
-│  Config, Connectors, Utils              │
-└─────────────────────────────────────────┘
-```
-
-### Indexing Pipeline
-
-```
-CLI Command
-    ↓
-ConfigService (load & validate TOML config)
-    ↓
-Connector (Jira/Confluence/Files)
-    ├─ DocumentReader (fetch raw documents)
-    ├─ DocumentConverter (chunk documents)
-    ↓
-DocumentCollectionCreator
-    ├─ SentenceEmbedder (generate embeddings)
-    ├─ FaissIndexer (create vector index)
-    └─ DiskPersister (save to disk)
-    ↓
-Collection ready for search
-```
-
-### Search Pipeline
-
-```
-User Query
-    ↓
-SearchService.search(query, collections)
-    ├─ For each collection:
-    │   ├─ Load cached searcher (or create new)
-    │   ├─ Embed query text
-    │   ├─ FAISS similarity search
-    │   └─ Map results to document chunks
-    ↓
-Format & display results (JSON, table, or cards)
-```
-
-## Configuration System
-
-### Configuration Hierarchy (increasing priority)
-
-1. **Pydantic defaults** (lowest)
-2. **Global config** (`~/.indexed/config.toml`)
-3. **Workspace config** (`./.indexed/config.toml`)
-4. **Environment variables** (`INDEXED__section__key=value`)
-5. **CLI arguments** (highest)
-
-### Storage Architecture
-
-```
-~/.indexed/                      # Global storage (default)
-├── config.toml                  # Configuration
-├── .env                         # Sensitive credentials
-└── data/
-    └── collections/
-        └── {collection-name}/
-            ├── manifest.json    # Metadata
-            ├── documents.json   # Document info
-            ├── chunks.json      # Chunked text
-            └── index.faiss      # FAISS vector index
-```
-
-**Storage Modes:**
-- **Global:** `~/.indexed/` (default, shared across projects)
-- **Local:** `./.indexed/` (project-specific, overrides global)
-
-### Example Configuration
-
-```toml
-# ~/.indexed/config.toml
-[general]
-log_level = "INFO"
-storage_mode = "global"
-
-[indexing]
-chunk_size = 512
-chunk_overlap = 50
-model_name = "all-MiniLM-L6-v2"
-
-[search]
-top_k = 10
-similarity_threshold = 0.7
-
-[jira]
-server_url = "https://company.atlassian.net"
-# Credentials go in .env: INDEXED__jira__api_token=xxx
-```
-
-## Key Design Patterns
-
-### 1. Protocol-Based Extensibility
-All connectors implement `BaseConnector` protocol:
-```python
-from typing import Protocol, Iterator
-from core.models import Document
-
-class BaseConnector(Protocol):
-    def read_documents(self) -> Iterator[Document]:
-        """Fetch documents from source."""
-        ...
-
-    def convert_documents(self, docs: Iterator[Document]) -> Iterator[Document]:
-        """Transform documents into chunks."""
-        ...
-```
-
-### 2. Configuration-Driven Behavior
-```python
-from indexed_config import ConfigService
-
-# Singleton pattern - consistent config throughout app
-config = ConfigService.get_instance()
-chunk_size = config.indexing.chunk_size
-model_name = config.indexing.model_name
-```
-
-### 3. Lazy Loading for Performance
-```python
-# Heavy dependencies are lazy-loaded
-def get_embedder():
-    """Lazy load sentence transformers (500ms+ import cost)."""
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name)
-
-# Result: CLI startup <1s even with PyTorch/Transformers
-```
-
-### 4. Reader/Converter Separation
-```python
-class JiraConnector:
-    def __init__(self):
-        self.reader = JiraDocumentReader()
-        self.converter = JiraDocumentConverter()
-
-    def fetch_and_convert(self) -> Iterator[Document]:
-        raw_docs = self.reader.read()
-        return self.converter.convert(raw_docs)
-```
-
-## Testing Strategy
-
-### Test Organization
-```
-tests/
-├── conftest.py                 # Shared fixtures
-├── unit/
-│   ├── indexed/               # CLI tests
-│   ├── indexed_core/          # Engine tests
-│   ├── indexed_connectors/    # Connector tests
-│   ├── indexed_config/        # Config system tests
-│   └── utils/                 # Utilities tests
-├── system/                     # Integration tests
-└── benchmarks/                 # Performance tests
-```
-
-### Testing Patterns
-
-```python
-# Unit test example
-import pytest
-from core.search import SearchService
-
-def test_search_service_basic(tmp_path):
-    """Test basic search functionality."""
-    service = SearchService(storage_path=tmp_path)
-    results = service.search("test query", collections=["docs"])
-    assert len(results) > 0
-    assert results[0].score > 0.5
-
-# Fixture example (conftest.py)
-@pytest.fixture
-def sample_collection(tmp_path):
-    """Create a sample collection for testing."""
-    from core.indexing import DocumentCollectionCreator
-
-    creator = DocumentCollectionCreator(storage_path=tmp_path)
-    collection = creator.create(
-        name="test-docs",
-        documents=[Document(id="1", text="Sample document")]
-    )
-    return collection
-```
-
-### Coverage Requirements
-- **Target:** >85% coverage
-- **Measured on:** Installed packages (not source paths)
-- **Packages:** indexed, core, connectors, parsing, indexed_config, utils
-
-```bash
-# Run with coverage
-uv run pytest -q --cov=src --cov-report=html
-
-# View report
-open htmlcov/index.html
-```
-
-## MCP (Model Context Protocol) Integration
-
-The MCP server exposes indexed collections to AI agents (Claude, Cursor, Cline):
-
-### Tools Provided
-```python
-# Available MCP tools
-search(query: str, collection: str) -> List[SearchResult]
-list_collections() -> List[str]
-collection_status(name: str) -> CollectionMetadata
-```
-
-### Transport Modes
-
-```bash
-# Stdio mode (Claude Desktop, Cline)
-uv run indexed-mcp run
-
-# HTTP server
-uv run indexed-mcp run --transport http --host 127.0.0.1 --port 8000
-
-# SSE (Server-Sent Events)
-uv run indexed-mcp run --transport sse
-
-# With logging
-uv run indexed-mcp run --log-level DEBUG
-```
-
-### Claude Desktop Integration
-
-```json
-// ~/.config/claude/claude_desktop_config.json
-{
-  "mcpServers": {
-    "indexed": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/indexed", "run", "indexed-mcp", "run"],
-      "env": {
-        "INDEXED__general__log_level": "INFO"
-      }
-    }
-  }
-}
-```
-
-## Claude Code Skills
-
-**CRITICAL:** Use available skills as quality gates in your workflow.
-
-### Available Skills
-
-**1. feature-dev:feature-dev** 🏗️ **USE FOR COMPLEX FEATURES**
-- **Purpose**: Guided feature development with codebase understanding
-- **When to use**:
-  - Multi-file feature implementations
-  - Need codebase pattern analysis first
-  - Complex architectural decisions required
-- **Example**: "Implement new Slack connector with authentication"
-
-**2. find-skills** 🔍 **USE TO DISCOVER MORE**
-- **Purpose**: Discover and install additional Claude Code skills
-- **When to use**:
-  - Looking for specific functionality
-  - Want to extend Claude's capabilities
-- **Example**: "Find a skill for Python testing best practices"
-
-**3. keybindings-help** ⌨️ **USE FOR CUSTOMIZATION**
-- **Purpose**: Customize keyboard shortcuts in Claude Code
-- **When to use**:
-  - Want to modify default keybindings
-  - Need to add chord shortcuts
-- **Example**: "Rebind submit to Ctrl+Enter"
-
-### Skill Integration Workflow
-
-```bash
-# RECOMMENDED WORKFLOW FOR NEW FEATURES:
-
-1. ASK phase:
-   - Clarify requirements
-   - If complex feature → consider feature-dev:feature-dev skill
-
-2. PLAN phase:
-   - Research existing patterns
-   - Read relevant CURSOR.md files in packages/
-   - Break down into testable units
-
-3. CONFIRM phase:
-   - Present approach to user
-   - Get approval with skill recommendations
-
-4. EXECUTE phase:
-   - Implement code
-   - Run ruff: uv run ruff check . --fix && uv run ruff format
-   - Run mypy: uv run mypy src/
-   - Run tests: uv run pytest -q --cov=src
-   - Verify coverage: >85% required
-
-5. REVIEW phase:
-   - Final quality checks
-   - Commit with proper format
-```
-
-## Best Practices
-
-### DO ✅
-- Use type hints extensively (mypy strict mode)
-- Follow protocol-based design for extensibility
-- Leverage Pydantic for data validation
-- Use lazy loading for heavy dependencies (ML libraries)
-- Write comprehensive tests (>85% coverage)
-- Use ruff for both linting and formatting
-- Follow configuration hierarchy strictly
-- Use `uv run` for all commands
-- Run from PROJECT ROOT always
-- Commit `uv.lock` to version control
-- Ask questions before implementing
-- Get user approval before coding
-- Use skills as quality gates
-
-### DON'T ❌
-- NEVER use pip/pipenv/poetry directly - ONLY uv
-- NEVER manually activate virtual environments
-- NEVER use `una sync` (causes conflicts)
-- NEVER run commands outside PROJECT ROOT
-- NEVER skip tests before push
-- NEVER exceed 50 chars in commit messages
-- NEVER create files without necessity
-- NEVER proceed without user confirmation
-- NEVER import heavy ML libraries at module level (lazy load them)
-- NEVER hardcode configuration values (use config system)
-- NEVER skip type hints (mypy strict mode required)
-- NEVER commit code that fails ruff checks
-
-## Performance Optimization
-
-### CLI Startup Time
-**Target:** <1 second despite PyTorch/Transformers dependencies
-
-**Strategies:**
-1. **Lazy loading** of heavy dependencies (ML libraries)
-2. **Deferred initialization** of services (only when commands run)
-3. **Minimal imports** at module level
-4. **Configuration caching** to avoid re-parsing
-
-```python
-# BAD - imports immediately (500ms+ cost)
-from sentence_transformers import SentenceTransformer
-
-# GOOD - imports only when needed
-def get_embedder():
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name)
-```
-
-### FAISS Indexing
-- Batch embedding generation (default: 32)
-- Use appropriate FAISS index type (Flat for <100k docs)
-- Cache searchers for repeated queries
-- Persist indices to disk after creation
-
-## Troubleshooting
-
-### Common Issues
-
-**Tests failing:**
-- Run from PROJECT ROOT: `cd /path/to/indexed && uv run pytest`
-- Check coverage: `uv run pytest -q --cov=src --cov-report=html`
-- Verify all dependencies installed: `uv sync --all-groups`
-
-**Ruff/mypy errors:**
-- Auto-fix ruff: `uv run ruff check . --fix && uv run ruff format`
-- Check mypy: `uv run mypy src/`
-- Review error output and fix type issues
-
-**Configuration not loading:**
-- Check config hierarchy (CLI args > env vars > workspace config > global config)
-- Verify TOML syntax: `uv run python -c "import tomli; tomli.load(open('.indexed/config.toml', 'rb'))"`
-- Check environment variables: `printenv | grep INDEXED`
-
-**MCP server not connecting:**
-- Verify command in Claude Desktop config
-- Check logs: `uv run indexed-mcp run --log-level DEBUG`
-- Test manually: `uv run indexed-mcp run` and check output
-
-**Build failures:**
-- Build from PROJECT ROOT: `cd /path/to/indexed`
-- Use correct command: `HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed`
-- Check for missing dependencies: `uv sync --all-groups`
-
-## Quick Reference
-
-### Essential Commands
-```bash
-uv sync --all-groups              # Install all dependencies
-uv run pytest -q                  # Run tests
-uv run ruff check . --fix         # Lint + auto-fix
-uv run ruff format                # Format code
-uv run mypy src/                  # Type check
-uv run indexed --help             # CLI help
-uv run indexed-mcp run            # MCP server
-```
-
-### Essential Patterns
-```python
-# Configuration
-from indexed_config import ConfigService
-config = ConfigService.get_instance()
-
-# Lazy loading
-def get_heavy_dependency():
-    from heavy_library import HeavyClass
-    return HeavyClass()
-
-# Protocol implementation
-from typing import Protocol
-class BaseConnector(Protocol):
-    def read_documents(self) -> Iterator[Document]: ...
-
-# Pydantic models
-from pydantic import BaseModel, Field
-class SearchConfig(BaseModel):
-    top_k: int = Field(default=10, ge=1, le=100)
-```
-
-### File Locations
-```
-CLI Commands:       apps/indexed/src/indexed/cli/
-MCP Server:         apps/indexed/src/indexed/mcp/
-Core Engine:        packages/indexed-core/src/core/
-Connectors:         packages/indexed-connectors/src/connectors/
-Configuration:      packages/indexed-config/src/indexed_config/
-Tests:              tests/unit/, tests/system/, tests/benchmarks/
-Package Docs:       packages/*/CURSOR.md
-```
-
-### Package Import Patterns
-```python
-# From CLI/MCP layer
-from core.search import SearchService
-from core.indexing import DocumentCollectionCreator
-from connectors.jira import JiraConnector
-from indexed_config import ConfigService
-
-# From core layer
-from indexed_config.models import IndexingConfig
-from connectors.base import BaseConnector
-from utils.logging import setup_logging
-
-# Testing
-import pytest
-from core.models import Document, SearchResult
-```
+- **[Workflow](#workflow)** — the cycle you MUST run in. Non-negotiable.
+- **[Context](#context)** — what the system is and how it is built.
+- **[Rules](#rules)** — hard constraints. Violating these breaks the repo.
+- **[Learnings](#learnings)** — earned best practices. Apply them by default.
 
 ---
 
-**Remember:** ASK → PLAN → CONFIRM → EXECUTE. Quality over speed. KISS principle always.
+## Workflow
+
+**You operate in a strict, repeating cycle. Do not skip steps. Do not write
+code outside it.**
+
+```
+ASK → read .spec/ → PLAN → CONFIRM → IMPL → VERIFY → COMPOUND
+└──────────────────────── repeat per unit of work ───────────────────────┘
+```
+
+Each phase is a gate. You may not advance until the current gate is satisfied.
+
+| Phase | You MUST | Gate to pass |
+|-------|----------|--------------|
+| **ASK** | Clarify requirements. Surface assumptions. Ask, don't guess. | Scope is unambiguous. |
+| **read .spec/** | Beyond the session-start orientation read, load the **scope-specific** specs for this task — the relevant `tech-*.md` + the feature spec. | You can cite what you read. |
+| **PLAN** | Break work into testable units. Cite spec/unit IDs. Present approach + reasoning. | A written plan exists. |
+| **CONFIRM** | Get **explicit** user approval of the plan. | User said go. |
+| **IMPL** | Implement step-by-step. Test-first where specified. Edit existing files over creating new ones. | Code matches the approved plan. |
+| **VERIFY** | Run the full quality gate (below). Show real output. Never claim success without evidence. | All gates green. |
+| **COMPOUND** | Fold learnings and tech changes back in: `.spec/` + `lessons.md` + the affected `AGENTS.md`. Promote/clean feature specs. | Docs reflect reality. |
+
+**Scale the gate to the task.** A one-sentence diff (typo, log line, rename)
+skips PLAN/CONFIRM — just fix it and VERIFY. Plan when the approach is
+uncertain, the change spans files, or architecture is in play. Don't
+over-ceremony trivial work; don't under-plan risky work.
+
+**Delegate to subagents.** Offload research, codebase exploration, and parallel
+analysis to subagents — they keep the main context clean and report back
+findings. Reach for them on anything that reads many files. One focused task
+per subagent.
+
+### Session start (every session, in order)
+
+1. Read `.spec/plan.md` and `.spec/lessons.md`.
+2. Identify the feature/task in scope and load its specs.
+3. Route by intent (table below). Then enter the cycle at **ASK**.
+
+### Routing by intent
+
+| Intent | Load first | Tool |
+|--------|-----------|------|
+| Understand the project | `.spec/product.md`, `.spec/tech.md` | — |
+| Build a named feature | `.spec/features/<name>/` + root `plan.md` | `feature-dev` skill |
+| Small bounded fix | relevant feature/`tech-*` spec | direct, minimal |
+| Spec / design work | `.spec/**` | `/spec` skill |
+| Debug a failure | reproduce first | `systematic-debugging` skill |
+
+### Verify gate (run from PROJECT ROOT, all must pass)
+
+```bash
+uv run ruff check . --fix && uv run ruff format   # lint + format
+uv run mypy src/                                   # strict types, 0 errors
+uv run pytest -q --cov=src                         # full suite, >85% coverage
+bash .agents/skills/spec/scripts/validate.sh       # if .spec/ was touched → 0 errors
+```
+
+**Evidence before assertions, always.** "Done", "fixed", and "passing" are
+claims that require pasted command output. No output, no claim.
+
+### Commit (only when asked; one line, ≤50 chars, imperative)
+
+```
+<type>(<scope>): <subject>      # feat fix refactor perf style test docs build ci chore revert
+```
+
+Run the full suite before any push — monorepo integrity is critical.
+
+---
+
+## Context
+
+### What indexed is
+
+A local-first semantic search engine over your documents (files, Jira,
+Confluence). It chunks and embeds documents into a FAISS vector index, then
+serves search via a Typer **CLI** and a **FastMCP** server that exposes
+collections to AI agents.
+
+### Stack
+
+Python 3.11+ · `uv` 0.5+ (workspace) · `una` (wheel bundling) · FAISS ·
+sentence-transformers · Typer 0.15 · FastMCP · Pydantic 2.10.
+Tooling: ruff 0.9 (lint+format) · mypy 1.14 (strict) · pytest 8.3 + pytest-cov.
+
+### Layout — where to find what
+
+```
+apps/indexed/src/indexed/
+  cli/                 CLI commands (Typer)            entry: main.py
+  mcp/                 FastMCP server implementation
+packages/
+  indexed-core/src/core/
+    indexing/          FAISS indexer + collection creator + disk persister
+    search/            SearchService (query → embed → FAISS → format)
+    models/            domain models (documents, chunks, manifests)
+  indexed-connectors/src/connectors/
+    jira/ confluence/ files/   source adapters (BaseConnector protocol)
+  indexed-config/src/indexed_config/
+    service.py         ConfigService (singleton)
+    models.py          Pydantic config models
+  indexed-parsing/     document parsing/chunking
+  utils/src/utils/     logging.py · retry.py · batching.py
+tests/                 unit/ (mirrors packages) · system/ (integration) · benchmarks/
+.spec/                 design source of truth (see below)
+pyproject.toml         workspace root · uv.lock (ALWAYS commit)
+```
+
+### Architecture (4 layers, top calls down only)
+
+`CLI/MCP (apps/indexed)` → `Service (core: orchestration, factories)` →
+`Engine (core: FAISS, embeddings, persistence)` → `Infra (config, connectors, utils)`.
+
+- **Index pipeline:** Config → Connector (read → convert/chunk) → CollectionCreator (embed → FaissIndexer → DiskPersister).
+- **Search pipeline:** `SearchService.search(query, collections)` → per-collection load cached searcher → embed query → FAISS search → map to chunks → format (json/table/cards).
+
+### Configuration (increasing priority)
+
+Pydantic defaults → `~/.indexed/config.toml` → `./.indexed/config.toml` →
+env `INDEXED__section__key=value` → CLI args. Secrets live in `.env`, never in
+TOML. Collections persist under `~/.indexed/data/collections/<name>/`
+(`manifest.json`, `documents.json`, `chunks.json`, `index.faiss`); local mode
+uses `./.indexed/`.
+
+### `.spec/` — design source of truth
+
+Two layers: **root** (`product.md`, `tech.md`, `plan.md` + `tech-<component>.md`
+per package: app/core/config/connectors/parsing) stays high-level with no
+backlog; **feature** (`features/<name>/`) is branch-scoped, promoted to root on
+completion, then deleted before merge. **Code is truth** — specs describe
+intent, not a second copy of the code. `docs/` holds only the logo, not docs.
+
+### Essential commands
+
+```bash
+uv sync --all-groups                      # install everything
+uv run indexed --help                     # CLI
+uv run indexed index create my-docs --source files --source-path ./docs
+uv run indexed index search "query" --collection my-docs
+uv run indexed-mcp run                     # MCP server (stdio); --transport http --port 8000
+HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+```
+
+### Skills & plugins
+
+`feature-dev` (plugin) for multi-file features; `/spec` for spec work; plus the
+superpowers skills for the matching phase — `brainstorming`,
+`systematic-debugging`, `test-driven-development`, `writing-plans`,
+`writing-skills`, `verification-before-completion`, and more. Full set:
+`npx skills list` (installed via `skills-lock.json`).
+
+---
+
+## Rules
+
+**MUST**
+
+- Run the full **Workflow cycle**; never write code without an approved plan/spec.
+- Read `.spec/` before writing code, and cite what you read.
+- Run every command with `uv run`, from the **PROJECT ROOT**.
+- Keep mypy strict at **0 errors** and ruff clean on every commit.
+- Hold test coverage **>85%**; run the **full** suite before any push.
+- Keep commands thin: branch on business rules → extract to a service. File-size
+  limits (CLI ≤150 / service ≤300 / module ≤400) live in `.spec/tech.md`.
+- Commit `uv.lock` with dependency changes.
+- Bump `updated:` on every spec you touch; keep parent↔child cross-refs alive.
+- **Compound** every earned learning and tech adjustment back into these files in
+  the same cycle: lessons → root `AGENTS.md` (Learnings) + `.spec/lessons.md`;
+  architecture/structure changes → the affected package `AGENTS.md` + its
+  `.spec/tech-*.md`. A change that outdates a doc isn't done until the doc is updated.
+- Lazy-load heavy ML imports (sentence-transformers/torch) inside functions.
+
+**NEVER**
+
+- Use `pip`/`pipenv`/`poetry`, activate venvs manually, or run `una sync`.
+- Proceed past a gate without user confirmation.
+- Skip tests, coverage, or type checks before pushing.
+- Import heavy ML libraries at module top level.
+- Hardcode config values — go through `ConfigService`.
+- Create files when editing an existing one works.
+- Exceed 50 chars in a commit subject, or add a body/footer.
+- Put specs in `docs/`, or leave a feature spec behind after merge.
+- Let an `AGENTS.md` or spec drift from the code — never ship a change that
+  outdates a doc without updating it in the same cycle.
+
+### Run & test patterns
+
+Everything runs through `uv run` from the project root.
+
+```bash
+# Run
+uv run pytest -q                              # full suite (quiet)
+uv run pytest -v                              # verbose
+uv run pytest tests/unit/indexed_core/ -q     # one package
+uv run pytest -q -k search                    # by keyword
+uv run pytest -q --cov=src --cov-report=html  # coverage report
+uv run pytest tests/benchmarks/ --benchmark-only   # benchmarks only
+
+# Quality (must be clean before any push)
+uv run ruff check . --fix && uv run ruff format
+uv run mypy src/
+```
+
+- **Tests mirror packages.** Put a test under `tests/unit/<package>/`; shared
+  fixtures live in `tests/conftest.py`. `system/` is integration, `benchmarks/`
+  is performance.
+- **Use `tmp_path`** for any filesystem/collection state — never write to real
+  `~/.indexed/`. Build collections via `DocumentCollectionCreator(storage_path=tmp_path)`.
+- **Test-first** where the feature spec says so; cover the new branch, not just
+  the happy path. Keep the suite **>85%**.
+- **Mock the network, not the engine** — stub connectors (Jira/Confluence) at
+  the `read_documents` boundary; let FAISS/embeddings run on small fixtures.
+
+---
+
+## Learnings
+
+Earned defaults — apply without being asked.
+
+- **Lazy loading is why startup is <1s.** PyTorch/Transformers cost 500ms+ at
+  import. Load them inside `get_embedder()`-style functions, never at module top.
+- **Coverage is measured on installed packages**, not source paths — run from
+  root with `--cov=src` so the monorepo packages resolve correctly.
+- **Config is a singleton.** `ConfigService.get_instance()` — don't re-parse or
+  thread config manually; respect the priority chain (CLI > env > workspace > global > defaults).
+- **Connectors are Protocol-based.** New sources implement `BaseConnector`
+  (`read_documents` / `convert_documents`); keep reader and converter separate.
+- **FAISS Flat index is correct for <100k docs.** Batch embeddings (default 32);
+  cache searchers for repeat queries; persist to disk after creation.
+- **Spec drift is the main failure mode.** When a decision changes mid-work,
+  update the spec in the same cycle (COMPOUND) — a stale spec is worse than none.
+- **Correction → lesson.** After any user correction, record the pattern in
+  `.spec/lessons.md` so the same mistake never repeats. Review it at session start.
+- **KISS wins.** Prefer the simple, readable solution that matches surrounding
+  code over a clever one. Quality over speed.
+
+---
+
+**Remember:** ASK → read `.spec/` → PLAN → CONFIRM → IMPL → VERIFY → COMPOUND.
+Run the cycle. Show evidence. Keep it simple.

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration — https://docs.coderabbit.ai/reference/configuration
+reviews:
+  path_filters:
+    # Vendored agent tooling — installed from upstream via `npx skills` and the
+    # Claude Code plugin system, pinned in skills-lock.json. Not authored here.
+    - "!.agents/**"
+    - "!.claude/**"
