@@ -35,25 +35,29 @@ LOGO_PNG = DOCS_DIR / "img" / "logo.png"
 
 @pytest.fixture(scope="module")
 def parsing_module() -> ParsingModule:
+    """Shared ParsingModule for markdown and image parse benchmarks."""
     return ParsingModule(ocr=False, table_structure=False, max_tokens=512)
 
 
 @pytest.fixture(scope="module")
 def code_chunker() -> CodeChunker:
+    """Shared CodeChunker for Python source parse benchmarks."""
     return CodeChunker(max_tokens=512)
 
 
 @pytest.fixture(scope="module")
 def plaintext_parser() -> PlaintextParser:
+    """Shared PlaintextParser for JSON-as-plaintext benchmarks."""
     return PlaintextParser(max_tokens=512)
 
 
 @pytest.fixture(scope="module")
 def file_router() -> FileRouter:
+    """Shared FileRouter for routing throughput benchmarks."""
     return FileRouter()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a realistic mixed workspace with ~50 files for batch benchmarks."""
     base = tmp_path_factory.mktemp("bench_workspace")
@@ -114,6 +118,7 @@ def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=2.0)
 def test_parse_markdown_docs(benchmark, parsing_module: ParsingModule):
     """Benchmark: parse a real .spec/ markdown file."""
@@ -207,6 +212,7 @@ def test_file_router_throughput(benchmark, file_router: FileRouter):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=10.0)
 def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
     """Benchmark: parse all markdown files in .spec/ directory."""
@@ -223,6 +229,7 @@ def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
     benchmark(parse_all_docs)
 
 
+@pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=15.0)
 def test_full_connector_pipeline_docs(benchmark):
     """Benchmark: full FileSystemConnector pipeline on .spec/ directory."""
@@ -269,6 +276,7 @@ def test_full_connector_pipeline_mixed(benchmark, mixed_workspace: Path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
 def test_v1_adapter_conversion(benchmark, parsing_module: ParsingModule):
     """Benchmark: V1FormatAdapter conversion on multiple parsed documents."""
