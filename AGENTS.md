@@ -33,7 +33,7 @@ Each phase is a gate. You may not advance until the current gate is satisfied.
 | **CONFIRM** | Get **explicit** user approval of the plan. | User said go. |
 | **IMPL** | Implement step-by-step. Test-first where specified. Edit existing files over creating new ones. | Code matches the approved plan. |
 | **VERIFY** | Run the full quality gate (below). Show real output. Never claim success without evidence. | All gates green. |
-| **COMPOUND** | Update `.spec/` and `lessons.md` for any decision that changed. Promote/clean feature specs. | Specs reflect reality. |
+| **COMPOUND** | Fold learnings and tech changes back in: `.spec/` + `lessons.md` + the affected `AGENTS.md`. Promote/clean feature specs. | Docs reflect reality. |
 
 **Scale the gate to the task.** A one-sentence diff (typo, log line, rename)
 skips PLAN/CONFIRM — just fix it and VERIFY. Plan when the approach is
@@ -175,6 +175,10 @@ HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --out
 - Hold test coverage **>85%**; run the **full** suite before any push.
 - Commit `uv.lock` with dependency changes.
 - Bump `updated:` on every spec you touch; keep parent↔child cross-refs alive.
+- **Compound** every earned learning and tech adjustment back into these files in
+  the same cycle: lessons → root `AGENTS.md` (Learnings) + `.spec/lessons.md`;
+  architecture/structure changes → the affected package `AGENTS.md` + its
+  `.spec/tech-*.md`. A change that outdates a doc isn't done until the doc is updated.
 - Lazy-load heavy ML imports (sentence-transformers/torch) inside functions.
 
 **NEVER**
@@ -187,6 +191,8 @@ HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --out
 - Create files when editing an existing one works.
 - Exceed 50 chars in a commit subject, or add a body/footer.
 - Put specs in `docs/`, or leave a feature spec behind after merge.
+- Let an `AGENTS.md` or spec drift from the code — never ship a change that
+  outdates a doc without updating it in the same cycle.
 
 ### Run & test patterns
 
