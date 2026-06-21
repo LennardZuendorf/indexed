@@ -71,7 +71,7 @@ class ReindexJob:
 class ReindexManager:
     def __init__(self, *, debounce_seconds: float,
                  search_invalidate: Callable[[str], int],
-                 response_cache_clear: Callable[[], None],
+                 response_cache_clear: Callable[[], None] | None = None,  # None under the recommended Q1 option
                  collections_path: str | None = None) -> None: ...
     def schedule(self, collection: str) -> ReindexJob: ...   # idempotent, coalescing, non-blocking
     def status(self, collection: str | None = None) -> list[ReindexJob]: ...
@@ -117,8 +117,15 @@ path, and type from the manifest; the other `SourceConfig` fields are inert here
 `update` → `update_collection_factory` already does the incremental localFiles
 path (`ChangeTracker` + `state.json`, processes only changed files, computes
 deletions, re-saves state). On success the manager calls
-`search_invalidate(collection)` and `response_cache_clear()`, then records
-`documents_delta` / `chunks_delta` from `status([collection])` before/after.
+`search_invalidate(collection)` and handles the response cache (see § Open
+Questions Q1), then records `documents_delta` / `chunks_delta`.
+
+> **Delta read caveat.** The functional `status()` uses a process-global
+> `InspectService` singleton whose `_manifest_cache` is never invalidated
+> (`inspect_service.py:70-80,331-337`). Reading before/after counts through it
+> would return the *same cached* manifest and report a zero delta. The manager
+> MUST read after-counts from a **fresh** `InspectService(collections_path=…)`
+> (or the manifest directly), not the cached singleton.
 
 **Coalescing + serialization.** One `asyncio.Lock` per collection guards `_run`.
 `schedule()` (re)arms a `debounce_seconds` timer per collection; if changes land
@@ -128,15 +135,25 @@ after. Two `schedule()` calls inside the window ⇒ one run.
 **Watcher.** `build_path_map()` reads `status()` filtered to
 `source_type == "localFiles"` and pulls `reader.basePath` from each
 `manifest.json`. `run()` does `async for changes in awatch(*base_paths,
-watch_filter=self._keep, stop_event=...)`, maps each changed path to the
-collection(s) whose base path contains it (`path.is_relative_to(base)` — nested
-roots may fan out to several collections), and calls `manager.schedule(coll)`.
-`_keep` drops events under `connectors.files.schema.DEFAULT_EXCLUDED_DIRS`,
-gitignored paths, and non-matching `includePatterns` to avoid debounce churn;
-`ChangeTracker` remains the source of truth at index time.
+watch_filter=self._keep, stop_event=...)` (`awatch` is `recursive=True` by
+default, so subtree adds are caught), maps each changed path to the collection(s)
+whose base path contains it (`path.is_relative_to(base)` — nested roots may fan
+out to several collections), and calls `manager.schedule(coll)`. If the path map
+is empty (no file collections) the watcher idles and does **not** call `awatch`
+(it rejects an empty path list).
+
+`_keep` is a `watch_filter` — it runs **globally** across all watched roots, so it
+cannot apply per-collection `includePatterns` precisely (a path may belong to
+several collections with different patterns). It therefore does **coarse,
+conservative** filtering only: extend `watchfiles.DefaultFilter` (which already
+ignores `.git`, `node_modules`, `__pycache__`, `.venv`, editor swap/temp files)
+with `connectors.files.schema.DEFAULT_EXCLUDED_DIRS`. Precise per-collection
+include/gitignore filtering stays the `ChangeTracker`'s job at index time — `_keep`
+only trims obvious churn before the debounce timer arms.
 
 **Lifespan wiring.** `build_server` constructs the `ResponseCachingMiddleware`
-once and closes over it for `response_cache_clear`. `_make_lifespan` always builds
+once (configured per Q1 so `search`/`search_collection` stay fresh) and closes
+over it for any cache hook the manager needs. `_make_lifespan` always builds
 the `ReindexManager` (so the manual `reindex` tool works even under `--no-watch`)
 and only starts `CollectionWatcher.run` when watching is enabled. `WatchSettings`
 (from the CLI flag) overrides `MCPConfig`; precedence `--no-watch` > config >
@@ -164,9 +181,22 @@ path — not just the watcher — must call it to avoid serving stale FAISS resu
 
 ## Open Questions
 
-1. **Response-cache eviction API.** Confirm `fastmcp.server.middleware.caching.ResponseCachingMiddleware`
-   exposes a public clear/evict. If not, the fallback is searcher-invalidation
-   only plus a short middleware TTL. De-risked first (plan unit `file-watcher/1`).
+1. **Response-cache strategy (resolved by investigation; decision pending).**
+   Confirmed against fastmcp 3.2.4: `ResponseCachingMiddleware` caches `call_tool`
+   by **default with a 1-hour TTL** — so `search` responses *do* go stale after a
+   re-index. The middleware exposes **no** public `clear()`; its backend defaults
+   to `MemoryStore` (an `AsyncKeyValue` with `delete` / `destroy_collection`), and
+   the tool-cache key is per call-args. Two ways to stay fresh:
+   - **(Recommended) Exclude search tools from tool caching** —
+     `ResponseCachingMiddleware(call_tool_settings=CallToolSettings(excluded_tools=["search","search_collection"]))`.
+     Freshness becomes structural; the manager only needs `SearchService.invalidate()`,
+     no response-cache hook, no reaching into private internals. (Caching search on
+     a server with a live watcher is arguably wrong anyway.)
+   - **(Alternative) Imperative clear** — hold the backend store and call
+     `destroy_collection(<tool-cache collection>)` on each re-index. Keeps tool
+     caching but couples the manager to middleware internals.
+   This revises the originally-locked "clear response cache" decision; see plan
+   unit `file-watcher/1` and confirm direction before implementing.
 2. **Mid-session collections.** Path map is built at startup; collections created
    later need a server restart. Periodic/triggered rebuild is a documented v2
    follow-up, not in scope here.

@@ -52,16 +52,34 @@ Two caches can serve stale results inside a long-lived server:
    (`search_service.py:65`), holding the in-memory FAISS index loaded at first
    search. A re-index rewrites the on-disk index but the cached searcher keeps the
    old one.
-2. `ResponseCachingMiddleware` on the server (`server.py:58`) caches tool responses.
+2. `ResponseCachingMiddleware` on the server (`server.py:58`) — verified against
+   fastmcp 3.2.4: caches `call_tool` by **default at 1h TTL**, so `search`
+   responses *do* go stale after a re-index. It has no public `clear()`; backend
+   defaults to `MemoryStore` (`delete`/`destroy_collection` available);
+   `CallToolSettings` supports `excluded_tools`. → Recommended fix: exclude the
+   search tools from tool caching (structural freshness) rather than clear
+   imperatively. See tech.md § Open Questions Q1.
 
 There is **no public API** to evict a single searcher today → drives the
 `SearchService.invalidate()` addition (plan unit `file-watcher/1`).
 
+Caveat found while reviewing: the functional `status()`/`inspect()` use a
+**process-global `InspectService` singleton whose manifest cache never expires**
+(`inspect_service.py:70-80,331-337`). Computing re-index deltas through it would
+read stale "after" counts — the manager must use a fresh `InspectService` or read
+the manifest directly.
+
 ### F5 — Watcher library: `watchfiles` is already installed
-`watchfiles` (Rust-backed, asyncio-native `awatch` with built-in debounce + a
-`watch_filter` hook) imports cleanly in the workspace. `watchdog` is **not**
-installed. Decision: use `watchfiles` — no new dependency, drops into the FastMCP
-event loop and the lifespan cancel path.
+`watchfiles` 1.1.1 (Rust-backed, asyncio-native `awatch`) imports cleanly.
+`watchdog` is **not** installed. Decision: use `watchfiles` — no new dependency,
+drops into the FastMCP event loop and the lifespan cancel path. Verified API:
+`awatch(*paths, watch_filter=DefaultFilter(...), debounce=1600, step=50,
+stop_event=AnyEvent, recursive=True)` yields `set[tuple[Change, str]]` with
+`Change ∈ {added, modified, deleted}`. The built-in `DefaultFilter` already
+ignores `.git`, `node_modules`, `__pycache__`, `.venv`, and editor swap/temp
+files — so the feature's filter should *extend* it, not reimplement. `awatch`
+rejects an empty path list, so the watcher must not start when no file
+collections exist.
 
 ### F6 — Existing filter knobs to respect
 `localFiles` collections carry `includePatterns`, `excludedDirs`,

@@ -51,9 +51,12 @@ mockable) before the filesystem-facing watcher and the FastMCP wiring.
 
 ## Key Technical Decisions
 
-1. **`SearchService.invalidate()` + response-cache clear.** Evict the affected
-   collection's cached searcher and bust the FastMCP response cache after each
-   successful re-index — the key correctness fix. See [tech.md](tech.md) § Implementation Detail.
+1. **`SearchService.invalidate()` + a fresh response-cache strategy.** Evict the
+   affected collection's cached searcher after each re-index — the key correctness
+   fix. Investigation revised the response-cache half: fastmcp caches `search` for
+   1h by default and exposes no `clear()`, so the recommended fix is to **exclude
+   the search tools from tool caching** rather than clear it imperatively. Pending
+   confirmation — see [tech.md](tech.md) § Open Questions Q1.
 2. **`build_server()` factory.** Refactor the module-level server into a factory
    that accepts `WatchSettings`, so `--no-watch` reaches the lifespan cleanly while
    `fastmcp.json` / `fastmcp_server.py` keep using a default-built `mcp`.
@@ -73,9 +76,9 @@ commits and tests (`feat(mcp): file-watcher/3 ...`).
 
 ---
 
-### file-watcher/1 — Search cache invalidation hook
+### file-watcher/1 — Search freshness: searcher invalidation + response-cache strategy
 
-**Goal:** `SearchService` can evict a collection's cached searcher; manual spike confirms the response-cache clear path.
+**Goal:** `SearchService` can evict a collection's cached searcher, and the MCP response cache cannot serve stale `search` results after a re-index.
 
 **Requirements:** R4
 
@@ -86,15 +89,16 @@ commits and tests (`feat(mcp): file-watcher/3 ...`).
 ```
 packages/indexed-core/src/core/v1/engine/services/search_service.py   # add invalidate() + wrapper
 packages/indexed-core/src/core/v1/engine/services/__init__.py         # export invalidate
+apps/indexed/src/indexed/mcp/server.py                                # configure ResponseCachingMiddleware per Q1
 ```
 
 **Test scenarios:**
 
 - Seeding the cache then `invalidate("docs")` evicts all `docs:*` keys and returns the count
 - `invalidate(None)` clears the whole cache
-- Spike: confirm `ResponseCachingMiddleware` exposes a clear/evict hook (or settle the fallback)
+- Response-cache strategy applied (recommended: `search`/`search_collection` excluded from `call_tool` caching) so a repeated query after a re-index is not served from the 1h-TTL tool cache
 
-**Verification:** `uv run pytest tests/unit/indexed_core/ -q -k invalidate`; documented spike result in [tech.md](tech.md) § Open Questions.
+**Verification:** `uv run pytest tests/unit/indexed_core/ -q -k invalidate`; cache strategy per [tech.md](tech.md) § Open Questions Q1 (decision confirmed before coding).
 
 ---
 
@@ -236,5 +240,7 @@ apps/indexed/src/indexed/mcp/cli.py            # --no-watch option + run_impl wi
 
 ## Open Questions
 
-1. **Response-cache eviction API** (`file-watcher/1` spike) — if no public hook
-   exists, fall back to searcher-invalidation + short middleware TTL. Recommendation: prefer the public hook; fallback is acceptable for v1.
+1. **Response-cache strategy** (`file-watcher/1`) — investigation done (fastmcp
+   3.2.4: 1h tool-cache TTL, no public `clear()`). Recommended: exclude
+   `search`/`search_collection` from `call_tool` caching so freshness is
+   structural. Confirm before coding — see [tech.md](tech.md) § Open Questions Q1.
