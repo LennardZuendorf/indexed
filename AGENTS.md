@@ -35,6 +35,16 @@ Each phase is a gate. You may not advance until the current gate is satisfied.
 | **VERIFY** | Run the full quality gate (below). Show real output. Never claim success without evidence. | All gates green. |
 | **COMPOUND** | Update `.spec/` and `lessons.md` for any decision that changed. Promote/clean feature specs. | Specs reflect reality. |
 
+**Scale the gate to the task.** A one-sentence diff (typo, log line, rename)
+skips PLAN/CONFIRM — just fix it and VERIFY. Plan when the approach is
+uncertain, the change spans files, or architecture is in play. Don't
+over-ceremony trivial work; don't under-plan risky work.
+
+**Delegate to subagents.** Offload research, codebase exploration, and parallel
+analysis to subagents — they keep the main context clean and report back
+findings. Reach for them on anything that reads many files. One focused task
+per subagent.
+
 ### Session start (every session, in order)
 
 1. Read `.spec/plan.md` and `.spec/lessons.md`.
@@ -57,7 +67,7 @@ Each phase is a gate. You may not advance until the current gate is satisfied.
 uv run ruff check . --fix && uv run ruff format   # lint + format
 uv run mypy src/                                   # strict types, 0 errors
 uv run pytest -q --cov=src                         # full suite, >85% coverage
-bash ~/.agents/skills/spec/scripts/validate.sh     # if .spec/ was touched → 0 errors
+bash .agents/skills/spec/scripts/validate.sh       # if .spec/ was touched → 0 errors
 ```
 
 **Evidence before assertions, always.** "Done", "fixed", and "passing" are
@@ -224,6 +234,8 @@ Earned defaults — apply without being asked.
   cache searchers for repeat queries; persist to disk after creation.
 - **Spec drift is the main failure mode.** When a decision changes mid-work,
   update the spec in the same cycle (COMPOUND) — a stale spec is worse than none.
+- **Correction → lesson.** After any user correction, record the pattern in
+  `.spec/lessons.md` so the same mistake never repeats. Review it at session start.
 - **KISS wins.** Prefer the simple, readable solution that matches surrounding
   code over a clever one. Quality over speed.
 
