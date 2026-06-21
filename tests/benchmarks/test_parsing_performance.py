@@ -58,10 +58,10 @@ def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a realistic mixed workspace with ~50 files for batch benchmarks."""
     base = tmp_path_factory.mktemp("bench_workspace")
 
-    # Copy docs/ markdown files
+    # Copy .spec/ markdown files into a docs/ subdir (simulated content tree)
     docs_sub = base / "docs"
     docs_sub.mkdir()
-    for md in DOCS_DIR.glob("*.md"):
+    for md in SPEC_DIR.glob("*.md"):
         (docs_sub / md.name).write_text(md.read_text())
 
     # Copy .spec/ markdown files
@@ -116,8 +116,8 @@ def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.mark.benchmark(min_rounds=3, max_time=2.0)
 def test_parse_markdown_docs(benchmark, parsing_module: ParsingModule):
-    """Benchmark: parse a real docs/ markdown file."""
-    target = DOCS_DIR / "architecture-internals.md"
+    """Benchmark: parse a real .spec/ markdown file."""
+    target = SPEC_DIR / "product.md"
     assert target.exists()
 
     def parse_md():
@@ -209,8 +209,8 @@ def test_file_router_throughput(benchmark, file_router: FileRouter):
 
 @pytest.mark.benchmark(min_rounds=3, max_time=10.0)
 def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
-    """Benchmark: parse all markdown files in docs/ directory."""
-    md_files = list(DOCS_DIR.glob("*.md"))
+    """Benchmark: parse all markdown files in .spec/ directory."""
+    md_files = list(SPEC_DIR.glob("*.md"))
     assert len(md_files) > 0
 
     def parse_all_docs():
@@ -225,12 +225,12 @@ def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
 
 @pytest.mark.benchmark(min_rounds=3, max_time=15.0)
 def test_full_connector_pipeline_docs(benchmark):
-    """Benchmark: full FileSystemConnector pipeline on docs/ directory."""
-    assert DOCS_DIR.is_dir()
+    """Benchmark: full FileSystemConnector pipeline on .spec/ directory."""
+    assert SPEC_DIR.is_dir()
 
     def full_pipeline():
         connector = FileSystemConnector(
-            path=str(DOCS_DIR),
+            path=str(SPEC_DIR),
             include_patterns=[r".*\.md$"],
             ocr_enabled=False,
             table_structure=False,
@@ -272,7 +272,7 @@ def test_full_connector_pipeline_mixed(benchmark, mixed_workspace: Path):
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
 def test_v1_adapter_conversion(benchmark, parsing_module: ParsingModule):
     """Benchmark: V1FormatAdapter conversion on multiple parsed documents."""
-    md_files = list(SPEC_DIR.glob("*.md")) + list(DOCS_DIR.glob("*.md"))
+    md_files = list(SPEC_DIR.glob("*.md"))
     assert len(md_files) > 0
 
     # Pre-parse all documents (setup, not measured)
