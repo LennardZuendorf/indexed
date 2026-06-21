@@ -3,7 +3,7 @@ type: feature-design
 feature: file-watcher
 sibling: product.md
 parent: ../../design.md
-updated: 2026-06-20
+updated: 2026-06-21
 ---
 
 # Feature: MCP File Watcher — Design
@@ -18,13 +18,12 @@ protocol channel.
 **Architecture:** [tech.md](tech.md)
 **Plan:** [plan.md](plan.md)
 
-> Root `.spec/design.md` does not exist yet (no cross-cutting design language doc
-> in this repo). This feature design stands alone; promote shared interaction
-> conventions to a root `design.md` only if a second feature needs them.
-
 ---
 
 ## Design Intent
+
+Inherits the root [design language](../../design.md) — quiet-on-success, honest
+errors, channel discipline (logs → stderr on stdio). Feature-specific intent:
 
 - **Fresh by default, quiet by default.** Watching is on without being asked, and
   produces no output on the happy path. The operator notices it only if they look
@@ -54,8 +53,9 @@ protocol channel.
 - Tool name is the plain verb **`reindex`**; argument is `collection` (optional →
   all file collections). Mirror the existing `search` / `search_collection` tone.
 - Accepted response uses `accepted`, `job_id`, `state` — present tense, machine-first.
-- Disabled path returns a single clear sentence, e.g.
-  `"Re-indexing is disabled (server started with --no-watch)"`, not a stack trace.
+- `reindex` works regardless of `--no-watch` (that flag gates only the auto
+  watcher). The empty case — no file collections to re-index — returns a single
+  clear sentence, e.g. `"No file-based collections to re-index"`, not an error.
 - Status field is `reindex` with `state`, `job_id`, `documents_delta`, `error` —
   keys consistent with the surrounding status payload.
 

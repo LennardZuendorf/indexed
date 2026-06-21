@@ -2,7 +2,7 @@
 type: feature-research
 feature: file-watcher
 parent: tech.md
-updated: 2026-06-20
+updated: 2026-06-21
 ---
 
 # Feature: MCP File Watcher — Research
@@ -32,8 +32,10 @@ manager that both the watcher and a new tool can reach (tools already read
 `_build_local_files_update` uses `ChangeTracker` + persisted `state.json` to
 process only added/modified files, compute deletions, and re-save state
 afterwards. The CLI `index update` command rides the same service. **The feature
-reuses this — no new indexing code.** An update only needs `name` + `indexer`
-(path/type come from the manifest).
+reuses this — no new indexing code.** `_update_one` passes only `cfg.name` to
+`create_collection_updater` (`collection_service.py:211`); indexer, base path,
+and type are all reconstructed from the manifest, so a re-index needs nothing but
+the collection name.
 
 ### F3 — Discovering folder→collection mappings
 `core.v1.engine.services.status()` returns `CollectionStatus` with `source_type`

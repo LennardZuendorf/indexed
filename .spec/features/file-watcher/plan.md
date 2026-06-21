@@ -3,7 +3,7 @@ type: feature-plan
 feature: file-watcher
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-06-20
+updated: 2026-06-21
 ---
 
 # Feature: MCP File Watcher — Implementation Plan
@@ -191,7 +191,8 @@ apps/indexed/src/indexed/mcp/resources.py      # reindex block in _format_status
 
 - `reindex("docs")` returns a job id + accepted collection without blocking
 - `reindex()` targets all file collections
-- No manager (disabled) → clear error; `resource://collection/docs` shows reindex state
+- `reindex` still works under `--no-watch` (manager is always built; only the auto-watcher is gated)
+- `resource://collection/docs` exposes the latest reindex state
 
 **Verification:** `uv run pytest tests/unit/indexed/mcp/test_reindex_tool.py -q`.
 

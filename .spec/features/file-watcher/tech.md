@@ -3,7 +3,7 @@ type: feature-tech
 feature: file-watcher
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-06-20
+updated: 2026-06-21
 ---
 
 # Feature: MCP File Watcher — Architecture
@@ -108,14 +108,17 @@ def reindex(collection: Optional[str] = None, ctx: Optional[Context] = None) -> 
 
 ## Implementation Detail
 
-**Re-index path.** `ReindexManager._run` builds a minimal `SourceConfig(name,
-type="localFiles", base_url_or_path="", indexer=<from status>)` and calls
-`core.v1.engine.services.update([src])` via `asyncio.to_thread` (blocking:
-embeddings + model load). `update` → `update_collection_factory` already does the
-incremental localFiles path (`ChangeTracker` + `state.json`, processes only
-changed files, computes deletions, re-saves state). On success the manager calls
+**Re-index path.** `ReindexManager._run` calls
+`core.v1.engine.services.update([SourceConfig(name=collection, type="localFiles",
+base_url_or_path="", indexer=None)])` via `asyncio.to_thread` (blocking:
+embeddings + model load). The update path keys off `name` only — `_update_one`
+passes just `cfg.name` to `create_collection_updater`, which reconstructs indexer,
+path, and type from the manifest; the other `SourceConfig` fields are inert here.
+`update` → `update_collection_factory` already does the incremental localFiles
+path (`ChangeTracker` + `state.json`, processes only changed files, computes
+deletions, re-saves state). On success the manager calls
 `search_invalidate(collection)` and `response_cache_clear()`, then records
-`documents_delta` / `chunks_delta` from `status()` before/after.
+`documents_delta` / `chunks_delta` from `status([collection])` before/after.
 
 **Coalescing + serialization.** One `asyncio.Lock` per collection guards `_run`.
 `schedule()` (re)arms a `debounce_seconds` timer per collection; if changes land
