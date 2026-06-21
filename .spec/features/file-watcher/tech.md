@@ -71,7 +71,6 @@ class ReindexJob:
 class ReindexManager:
     def __init__(self, *, debounce_seconds: float,
                  search_invalidate: Callable[[str], int],
-                 response_cache_clear: Callable[[], None] | None = None,  # None under the recommended Q1 option
                  collections_path: str | None = None) -> None: ...
     def schedule(self, collection: str) -> ReindexJob: ...   # idempotent, coalescing, non-blocking
     def status(self, collection: str | None = None) -> list[ReindexJob]: ...
@@ -117,8 +116,11 @@ path, and type from the manifest; the other `SourceConfig` fields are inert here
 `update` → `update_collection_factory` already does the incremental localFiles
 path (`ChangeTracker` + `state.json`, processes only changed files, computes
 deletions, re-saves state). On success the manager calls
-`search_invalidate(collection)` and handles the response cache (see § Open
-Questions Q1), then records `documents_delta` / `chunks_delta`.
+`search_invalidate(collection)` (evicts the in-memory FAISS searcher), then
+records `documents_delta` / `chunks_delta`. No response-cache hook is needed —
+the search tools are excluded from response caching at server build time (see
+§ Response-cache strategy), so the FastMCP tool cache can never serve a stale
+`search`.
 
 > **Delta read caveat.** The functional `status()` uses a process-global
 > `InspectService` singleton whose `_manifest_cache` is never invalidated
@@ -151,9 +153,16 @@ with `connectors.files.schema.DEFAULT_EXCLUDED_DIRS`. Precise per-collection
 include/gitignore filtering stays the `ChangeTracker`'s job at index time — `_keep`
 only trims obvious churn before the debounce timer arms.
 
-**Lifespan wiring.** `build_server` constructs the `ResponseCachingMiddleware`
-once (configured per Q1 so `search`/`search_collection` stay fresh) and closes
-over it for any cache hook the manager needs. `_make_lifespan` always builds
+**Response-cache strategy.** `build_server` constructs the
+`ResponseCachingMiddleware` with the search tools excluded from `call_tool`
+caching —
+`CallToolSettings(excluded_tools=["search", "search_collection"])` — so search
+results are never cached and always reflect the current index. (fastmcp 3.2.4
+otherwise caches `call_tool` at a 1 h TTL with no public `clear()`; excluding is
+cleaner than evicting the private `MemoryStore` backend, and the searcher cache
+keeps the model + index warm so uncached search stays sub-100 ms.)
+
+**Lifespan wiring.** `_make_lifespan` always builds
 the `ReindexManager` (so the manual `reindex` tool works even under `--no-watch`)
 and only starts `CollectionWatcher.run` when watching is enabled. `WatchSettings`
 (from the CLI flag) overrides `MCPConfig`; precedence `--no-watch` > config >
@@ -181,22 +190,6 @@ path — not just the watcher — must call it to avoid serving stale FAISS resu
 
 ## Open Questions
 
-1. **Response-cache strategy (resolved by investigation; decision pending).**
-   Confirmed against fastmcp 3.2.4: `ResponseCachingMiddleware` caches `call_tool`
-   by **default with a 1-hour TTL** — so `search` responses *do* go stale after a
-   re-index. The middleware exposes **no** public `clear()`; its backend defaults
-   to `MemoryStore` (an `AsyncKeyValue` with `delete` / `destroy_collection`), and
-   the tool-cache key is per call-args. Two ways to stay fresh:
-   - **(Recommended) Exclude search tools from tool caching** —
-     `ResponseCachingMiddleware(call_tool_settings=CallToolSettings(excluded_tools=["search","search_collection"]))`.
-     Freshness becomes structural; the manager only needs `SearchService.invalidate()`,
-     no response-cache hook, no reaching into private internals. (Caching search on
-     a server with a live watcher is arguably wrong anyway.)
-   - **(Alternative) Imperative clear** — hold the backend store and call
-     `destroy_collection(<tool-cache collection>)` on each re-index. Keeps tool
-     caching but couples the manager to middleware internals.
-   This revises the originally-locked "clear response cache" decision; see plan
-   unit `file-watcher/1` and confirm direction before implementing.
-2. **Mid-session collections.** Path map is built at startup; collections created
+1. **Mid-session collections.** Path map is built at startup; collections created
    later need a server restart. Periodic/triggered rebuild is a documented v2
    follow-up, not in scope here.

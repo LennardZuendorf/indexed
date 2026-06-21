@@ -51,12 +51,12 @@ mockable) before the filesystem-facing watcher and the FastMCP wiring.
 
 ## Key Technical Decisions
 
-1. **`SearchService.invalidate()` + a fresh response-cache strategy.** Evict the
-   affected collection's cached searcher after each re-index — the key correctness
-   fix. Investigation revised the response-cache half: fastmcp caches `search` for
-   1h by default and exposes no `clear()`, so the recommended fix is to **exclude
-   the search tools from tool caching** rather than clear it imperatively. Pending
-   confirmation — see [tech.md](tech.md) § Open Questions Q1.
+1. **`SearchService.invalidate()` + exclude search from response caching.** Evict
+   the affected collection's cached searcher after each re-index (the key
+   correctness fix), and exclude `search`/`search_collection` from FastMCP
+   `call_tool` caching so the 1 h tool cache can never serve stale results. The
+   searcher cache keeps model + index warm, so uncached search stays sub-100 ms.
+   See [tech.md](tech.md) § Response-cache strategy.
 2. **`build_server()` factory.** Refactor the module-level server into a factory
    that accepts `WatchSettings`, so `--no-watch` reaches the lifespan cleanly while
    `fastmcp.json` / `fastmcp_server.py` keep using a default-built `mcp`.
@@ -89,16 +89,16 @@ commits and tests (`feat(mcp): file-watcher/3 ...`).
 ```
 packages/indexed-core/src/core/v1/engine/services/search_service.py   # add invalidate() + wrapper
 packages/indexed-core/src/core/v1/engine/services/__init__.py         # export invalidate
-apps/indexed/src/indexed/mcp/server.py                                # configure ResponseCachingMiddleware per Q1
+apps/indexed/src/indexed/mcp/server.py                                # ResponseCachingMiddleware: exclude search tools
 ```
 
 **Test scenarios:**
 
 - Seeding the cache then `invalidate("docs")` evicts all `docs:*` keys and returns the count
 - `invalidate(None)` clears the whole cache
-- Response-cache strategy applied (recommended: `search`/`search_collection` excluded from `call_tool` caching) so a repeated query after a re-index is not served from the 1h-TTL tool cache
+- `build_server` excludes `search`/`search_collection` from `call_tool` caching, so a repeated identical query after a re-index is recomputed, not served from the 1 h tool cache
 
-**Verification:** `uv run pytest tests/unit/indexed_core/ -q -k invalidate`; cache strategy per [tech.md](tech.md) § Open Questions Q1 (decision confirmed before coding).
+**Verification:** `uv run pytest tests/unit/indexed_core/ -q -k invalidate`; assert the middleware's `excluded_tools` covers the search tools.
 
 ---
 
@@ -120,7 +120,7 @@ apps/indexed/src/indexed/mcp/reindex.py        # ReindexManager, ReindexJob
 
 - Two `schedule()` calls within the window → exactly one `update` call (mocked)
 - Per-collection lock serializes overlapping runs; mid-run change re-runs once
-- Success → `search_invalidate` called (plus the response-cache hook if Q1 picks the imperative-clear option); deltas recorded from a fresh inspect read
+- Success → `search_invalidate` called; deltas recorded from a fresh inspect read (not the cached singleton)
 - `update` raises → job `error`, manager stays healthy; `aclose()` cancels cleanly
 
 **Verification:** `uv run pytest tests/unit/indexed/mcp/test_reindex_manager.py -q`.
@@ -235,12 +235,3 @@ apps/indexed/src/indexed/mcp/cli.py            # --no-watch option + run_impl wi
 | file-watcher/4 | NOT STARTED |
 | file-watcher/5 | NOT STARTED |
 | file-watcher/6 | NOT STARTED |
-
----
-
-## Open Questions
-
-1. **Response-cache strategy** (`file-watcher/1`) — investigation done (fastmcp
-   3.2.4: 1h tool-cache TTL, no public `clear()`). Recommended: exclude
-   `search`/`search_collection` from `call_tool` caching so freshness is
-   structural. Confirm before coding — see [tech.md](tech.md) § Open Questions Q1.

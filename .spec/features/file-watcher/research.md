@@ -56,9 +56,9 @@ Two caches can serve stale results inside a long-lived server:
    fastmcp 3.2.4: caches `call_tool` by **default at 1h TTL**, so `search`
    responses *do* go stale after a re-index. It has no public `clear()`; backend
    defaults to `MemoryStore` (`delete`/`destroy_collection` available);
-   `CallToolSettings` supports `excluded_tools`. → Recommended fix: exclude the
-   search tools from tool caching (structural freshness) rather than clear
-   imperatively. See tech.md § Open Questions Q1.
+   `CallToolSettings` supports `excluded_tools`. → Decision: exclude the search
+   tools from tool caching (structural freshness) rather than clear imperatively.
+   See tech.md § Response-cache strategy.
 
 There is **no public API** to evict a single searcher today → drives the
 `SearchService.invalidate()` addition (plan unit `file-watcher/1`).
@@ -109,9 +109,10 @@ factory (decision recorded in [plan.md](plan.md) § Key Technical Decisions).
 
 ## Decisions taken (from the design conversation)
 
-1. Cache busting: add `SearchService.invalidate()` **and** clear the response
-   cache. _(Revised during review — see F4: the response-cache half is better
-   solved by excluding the search tools from tool caching; pending confirmation.)_
+1. Cache busting: add `SearchService.invalidate()` for the in-memory searcher,
+   **and exclude `search`/`search_collection` from FastMCP `call_tool` caching**
+   so the 1 h tool cache can't serve stale results. _(Confirmed during review;
+   supersedes the original "clear the response cache" idea — see F4.)_
 2. Flag plumbing: `build_server()` factory; module-level `mcp` stays default-built.
 3. Async tool: one `reindex(collection?)`; status via existing collection resource.
 4. Library: `watchfiles`. Default: watch ON for all transports, opt-out via `--no-watch`.
