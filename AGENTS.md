@@ -28,7 +28,7 @@ Each phase is a gate. You may not advance until the current gate is satisfied.
 | Phase | You MUST | Gate to pass |
 |-------|----------|--------------|
 | **ASK** | Clarify requirements. Surface assumptions. Ask, don't guess. | Scope is unambiguous. |
-| **read .spec/** | Read the relevant root spec (`product.md`, `tech.md`, `plan.md`) + `lessons.md`, then any feature spec. | You can cite what you read. |
+| **read .spec/** | Beyond the session-start orientation read, load the **scope-specific** specs for this task — the relevant `tech-*.md` + the feature spec. | You can cite what you read. |
 | **PLAN** | Break work into testable units. Cite spec/unit IDs. Present approach + reasoning. | A written plan exists. |
 | **CONFIRM** | Get **explicit** user approval of the plan. | User said go. |
 | **IMPL** | Implement step-by-step. Test-first where specified. Edit existing files over creating new ones. | Code matches the approved plan. |
@@ -158,9 +158,11 @@ HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --out
 
 ### Skills & plugins
 
-`feature-dev` (plugin) for multi-file features; `/spec` for spec work;
-`brainstorming`, `systematic-debugging`, `test-driven-development`,
-`writing-plans`, `verification-before-completion` for the matching phase.
+`feature-dev` (plugin) for multi-file features; `/spec` for spec work; plus the
+superpowers skills for the matching phase — `brainstorming`,
+`systematic-debugging`, `test-driven-development`, `writing-plans`,
+`writing-skills`, `verification-before-completion`, and more. Full set:
+`npx skills list` (installed via `skills-lock.json`).
 
 ---
 
@@ -173,6 +175,8 @@ HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --out
 - Run every command with `uv run`, from the **PROJECT ROOT**.
 - Keep mypy strict at **0 errors** and ruff clean on every commit.
 - Hold test coverage **>85%**; run the **full** suite before any push.
+- Keep commands thin: branch on business rules → extract to a service. File-size
+  limits (CLI ≤150 / service ≤300 / module ≤400) live in `.spec/tech.md`.
 - Commit `uv.lock` with dependency changes.
 - Bump `updated:` on every spec you touch; keep parent↔child cross-refs alive.
 - **Compound** every earned learning and tech adjustment back into these files in
