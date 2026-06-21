@@ -88,18 +88,27 @@ Python 3.11+ · `uv` 0.5+ (workspace) · `una` (wheel bundling) · FAISS ·
 sentence-transformers · Typer 0.15 · FastMCP · Pydantic 2.10.
 Tooling: ruff 0.9 (lint+format) · mypy 1.14 (strict) · pytest 8.3 + pytest-cov.
 
-### Layout
+### Layout — where to find what
 
 ```
-apps/indexed/          CLI commands (Typer) + MCP server + entry points
+apps/indexed/src/indexed/
+  cli/                 CLI commands (Typer)            entry: main.py
+  mcp/                 FastMCP server implementation
 packages/
-  indexed-core/        engine: indexing (FAISS), search, persistence, models
-  indexed-connectors/  source adapters: jira, confluence, files
-  indexed-config/      ConfigService singleton + Pydantic models (TOML/env)
+  indexed-core/src/core/
+    indexing/          FAISS indexer + collection creator + disk persister
+    search/            SearchService (query → embed → FAISS → format)
+    models/            domain models (documents, chunks, manifests)
+  indexed-connectors/src/connectors/
+    jira/ confluence/ files/   source adapters (BaseConnector protocol)
+  indexed-config/src/indexed_config/
+    service.py         ConfigService (singleton)
+    models.py          Pydantic config models
   indexed-parsing/     document parsing/chunking
-  utils/               logging, retry, batching
-tests/                 unit/ · system/ · benchmarks/
+  utils/src/utils/     logging.py · retry.py · batching.py
+tests/                 unit/ (mirrors packages) · system/ (integration) · benchmarks/
 .spec/                 design source of truth (see below)
+pyproject.toml         workspace root · uv.lock (ALWAYS commit)
 ```
 
 ### Architecture (4 layers, top calls down only)
@@ -168,6 +177,34 @@ HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --out
 - Create files when editing an existing one works.
 - Exceed 50 chars in a commit subject, or add a body/footer.
 - Put specs in `docs/`, or leave a feature spec behind after merge.
+
+### Run & test patterns
+
+Everything runs through `uv run` from the project root.
+
+```bash
+# Run
+uv run pytest -q                              # full suite (quiet)
+uv run pytest -v                              # verbose
+uv run pytest tests/unit/indexed_core/ -q     # one package
+uv run pytest -q -k search                    # by keyword
+uv run pytest -q --cov=src --cov-report=html  # coverage report
+uv run pytest tests/benchmarks/ --benchmark-only   # benchmarks only
+
+# Quality (must be clean before any push)
+uv run ruff check . --fix && uv run ruff format
+uv run mypy src/
+```
+
+- **Tests mirror packages.** Put a test under `tests/unit/<package>/`; shared
+  fixtures live in `tests/conftest.py`. `system/` is integration, `benchmarks/`
+  is performance.
+- **Use `tmp_path`** for any filesystem/collection state — never write to real
+  `~/.indexed/`. Build collections via `DocumentCollectionCreator(storage_path=tmp_path)`.
+- **Test-first** where the feature spec says so; cover the new branch, not just
+  the happy path. Keep the suite **>85%**.
+- **Mock the network, not the engine** — stub connectors (Jira/Confluence) at
+  the `read_documents` boundary; let FAISS/embeddings run on small fixtures.
 
 ---
 
