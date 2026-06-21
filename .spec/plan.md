@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-16
+updated: 2026-06-21
 ---
 
 # Development Plan: indexed
@@ -47,6 +47,8 @@ command files) remains open — tracked as [issue #119](https://github.com/Lenna
 ---
 
 ## Current Focus
+
+**[Issue #5 — Core v2: LlamaIndex Engine Rebuild](https://github.com/LennardZuendorf/indexed/issues/5)**
 
 v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`,
 `utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and

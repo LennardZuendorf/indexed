@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-06-15
+updated: 2026-06-21
 ---
 
 # Tech Branch: Core Engine (`indexed-core`)
@@ -12,6 +12,11 @@ Indexing & search engine. Receives connectors via dependency injection; never
 imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
 
 **Parent: [tech.md](tech.md).** Pipelines (cross-component): [tech.md](tech.md) § Data Flow.
+
+> **Upcoming:** [Issue #5 — Core v2: LlamaIndex Engine Rebuild](https://github.com/LennardZuendorf/indexed/issues/5)
+> New `core/v2/` namespace using LlamaIndex as the engine layer (pluggable vector
+> stores, standard document/node model). `core/v1/` stays until v2 is stable.
+> Feature spec lives under `.spec/features/` when the branch starts.
 
 ---
 
