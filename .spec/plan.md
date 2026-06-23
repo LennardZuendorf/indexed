@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-09-03
+updated: 2026-09-05
 ---
 
 # Development Plan: indexed
@@ -45,6 +45,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
 | 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 green | ✅ DONE | `src/indexed/cli/knowledge/commands/{_create_options,_create_commands,create,_create_helpers,search}.py`, `core/engine.py`, `core/v2/{retrieval,services}`, `config/commands/set.py`, `cli/composition.py`, `README.md`, `cli/knowledge/cli.py` |
 | 18 | Core v2 rendering fixes (issue #187) | all 8 PR #162 review polish findings fixed behind regression tests — R1–R8 green | ✅ DONE | `cli/app.py`, `cli/utils/components/{alerts,theme,cards}.py`, `cli/knowledge/commands/{update_service,search_render,_create_options,inspect}.py`, `connectors/files/schema.py`, `core/engine.py` |
+| 19 | GitHub Projects/Issues connector | issues+PRs+Projects v2 indexed; incremental update | ◔ IN DESIGN | [features/github-connector/](features/github-connector/) · [#90](https://github.com/LennardZuendorf/indexed/issues/90) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
