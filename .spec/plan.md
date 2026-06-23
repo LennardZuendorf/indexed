@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-09
+updated: 2026-06-23
 ---
 
 # Development Plan: indexed
@@ -52,6 +52,32 @@ v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`
 `utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and
 `indexed-connectors` against the rules in [tech.md](tech.md) § Architectural Rules.
 Scope the v2 work as a feature under `.spec/features/<name>/` when it starts.
+
+---
+
+## Git Developer Features (scoped, not started)
+
+Developer-first git linkage — branch-scoped feature specs under `.spec/features/`.
+Whole-feature gates only; cross-feature order below, never unit edges.
+
+| Feature | Gate | Status | Spec |
+|---|---|---|---|
+| Git metadata enrichment | blame-derived git facts attached to code chunks as sidecar metadata (not embedded), returned in results | ◻ NOT STARTED | [features/git-metadata-enrichment/](features/git-metadata-enrichment/product.md) |
+| Branch-aware collections | per-branch index variants + content-hash embedding reuse across branches | ◻ NOT STARTED | [features/branch-aware-collections/](features/branch-aware-collections/product.md) |
+| Blame & ownership | ownership in search output + `who_owns` MCP tool + CLI view | ◻ NOT STARTED | [features/blame-ownership/](features/blame-ownership/product.md) |
+| Git history documents | commits as a `doc_type: "commit"` in the same collection, cross-linked to code | ◻ NOT STARTED | [features/git-history-documents/](features/git-history-documents/product.md) |
+
+**Sequence (whole-feature gates):**
+
+- **Git metadata enrichment** is the keystone — start first. **Branch-aware collections** is an independent foundation (companion to the planned filewatcher PR); can run in parallel.
+- **Blame & ownership** starts when *Git metadata enrichment* is DONE (it surfaces that feature's persisted blame).
+- **Git history documents** starts only after the engine can hold heterogeneous documents — tracked as [Merged Collection Graphs (powered by LlamaIndex), #148](https://github.com/LennardZuendorf/indexed/issues/148) — and relies on *Git metadata enrichment* for the code-side cross-link.
+
+**Backlog (GitHub issues, not specs):** git-signal re-ranking
+([#144](https://github.com/LennardZuendorf/indexed/issues/144)), diff-scoped search
+([#145](https://github.com/LennardZuendorf/indexed/issues/145)), staleness + git-hook
+auto-update ([#146](https://github.com/LennardZuendorf/indexed/issues/146)), time-travel
+search ([#147](https://github.com/LennardZuendorf/indexed/issues/147)).
 
 ---
 
