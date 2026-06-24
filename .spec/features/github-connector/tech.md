@@ -3,13 +3,15 @@ type: feature-tech
 feature: github-connector
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-06-23
+updated: 2026-06-24
 ---
 
 # Feature: GitHub Projects & Issues Connector — Architecture
 
-A single `GitHubConnector` (Cloud `github.com` and GitHub Enterprise Server
-differ only by base URL) following the **Outline** template: an async `httpx`
+A single `GitHubConnector` covering all three deployment models — public
+`github.com`, Enterprise Cloud with data residency (`SUBDOMAIN.ghe.com`), and
+self-hosted Enterprise Server — which differ only in how the GraphQL endpoint is
+derived from the configured `host`. Follows the **Outline** template: an async `httpx`
 reader against the **GraphQL v4** API, a converter that delegates chunking to the
 shared `ParsingModule`, a Pydantic `GitHubConfig` with secret getters, and
 `config_spec()` / `from_config()`. It registers in the three connector registries
@@ -57,8 +59,9 @@ converter exposes `convert(document: dict) -> list[dict]`.
 class GitHubConfig(BaseModel):
     repos: list[str] = Field(default_factory=list)        # ["owner/repo", ...]
     project: str | None = None                            # "owner/number" (org or user project v2)
-    base_url: str = "https://api.github.com"              # GHES: https://HOST/api
-    graphql_url: str | None = None                        # derived from base_url when None
+    host: str = "github.com"                              # "github.com" | "SUB.ghe.com" | GHES hostname
+    graphql_url: str | None = None                        # explicit override; else derived from host
+    verify_ssl: bool = True                               # set False for GHES self-signed CAs
     token: str | None = None                              # env: INDEXED__sources__github__token / GITHUB_TOKEN
     state: Literal["open", "closed", "all"] = "all"
     labels: list[str] | None = None
@@ -70,6 +73,7 @@ class GitHubConfig(BaseModel):
     modified_since: str | None = None                     # internal: set by update factory (ISO)
 
     def get_token(self) -> str: ...                       # delegates to auth.resolve_token(self.token)
+    def resolve_graphql_url(self) -> str: ...             # see § Endpoint resolution; graphql_url override wins
 
 # auth.py
 def resolve_token(explicit: str | None) -> str:
@@ -104,10 +108,40 @@ config chain); else shell out to `gh auth token` (`subprocess.run`, short timeou
 both remedies. `gh` is **optional** — never required, never invoked when an
 explicit token exists. No network or `gh` call happens at import time.
 
+### Endpoint resolution (R-deploy)
+
+`resolve_graphql_url()` derives the GraphQL endpoint from `host`, so the user
+configures only the host they see in the browser. An explicit `graphql_url`
+always wins (escape hatch). The host normalizes by stripping any scheme/path.
+
+| `host` | Detected as | GraphQL endpoint |
+|---|---|---|
+| `github.com` (default) | Public Cloud | `https://api.github.com/graphql` |
+| `octocorp.ghe.com` (ends `.ghe.com`) | Enterprise Cloud, data residency | `https://api.octocorp.ghe.com/graphql` |
+| `github.example.com` (anything else) | Enterprise Server (GHES) | `https://github.example.com/api/graphql` |
+
+```python
+def resolve_graphql_url(self) -> str:
+    if self.graphql_url:
+        return self.graphql_url
+    h = self.host.removeprefix("https://").removeprefix("http://").strip("/")
+    if h == "github.com":
+        return "https://api.github.com/graphql"
+    if h.endswith(".ghe.com"):                 # data residency: api.<sub>.ghe.com
+        return f"https://api.{h}/graphql"
+    return f"https://{h}/api/graphql"          # GHES: path-based
+```
+
+The distinction that makes a single field sufficient: `github.com` and `*.ghe.com`
+use an **`api.` host prefix** + `/graphql`, whereas GHES uses the **`/api/graphql`
+path** on the same host. Web URLs (`html_url`) come straight from the GraphQL
+response, so no per-deployment URL construction is needed. `verify_ssl` is passed
+to the `httpx` client for self-signed GHES CAs (same pattern as Outline).
+
 ### GraphQL reader (R1, R2, R4)
 
-Async `httpx.AsyncClient` posting to the GraphQL endpoint (`graphql_url` or
-`{base_url}/graphql`), Bearer-authenticated. Three query families in `queries.py`:
+Async `httpx.AsyncClient` posting to `config.resolve_graphql_url()`,
+Bearer-authenticated. Three query families in `queries.py`:
 
 - **Issues** — `repository(owner,name){ issues(first:$n, after:$cur, filterBy:{since:$since, labels:$labels, states:$states}) { nodes { ...IssueFields comments(first:100){nodes{...}} } pageInfo{hasNextPage endCursor} } }`. One query returns issue + labels + comments; cursor-paginate on `pageInfo`.
 - **Pull requests** — analogous `pullRequests(...)` selection when `include_pull_requests`.
@@ -172,5 +206,6 @@ Two layers, generalizing the existing update machinery:
    GitHub-only first. Recommendation: generic, since the persisted index already
    keys chunks by document and the hash is free from parsing — but gate it behind
    thorough update tests before promoting to root tech.
-2. **GHES GraphQL endpoint** — confirm `{base_url}/graphql` vs `{host}/api/graphql`
-   derivation against a real GHES instance during impl.
+2. **Endpoint derivation** — the three-way `host` rule (§ Endpoint resolution) is
+   covered by unit tests; verify once against a live GHES and a `ghe.com` tenant
+   during impl, since we have no such instances in CI.

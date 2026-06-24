@@ -3,7 +3,7 @@ type: feature-product
 feature: github-connector
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-06-23
+updated: 2026-06-24
 ---
 
 # Feature: GitHub Projects & Issues Connector — Product
@@ -11,10 +11,13 @@ updated: 2026-06-23
 Adds a source connector that indexes GitHub **issues and pull-request threads**
 from one or more repositories, and optionally a **GitHub Projects v2 board** as
 an aggregating view that pulls items (issues/PRs/draft items) across many repos
-and enriches them with project field values (Status, Priority, …). It mirrors
-the dynamic create/update flow of the Jira/Confluence/Outline connectors,
-authenticates through a token resolved from config, `.env`, or the local
-GitHub CLI, and delegates all chunking to the shared parsing module.
+and enriches them with project field values (Status, Priority, …). It works
+against all three GitHub deployment models — public `github.com`, Enterprise
+Cloud **with data residency** (`SUBDOMAIN.ghe.com`), and self-hosted **Enterprise
+Server** (GHES) — mirrors the dynamic create/update flow of the
+Jira/Confluence/Outline connectors, authenticates through a token resolved from
+config, `.env`, or the local GitHub CLI, and delegates all chunking to the
+shared parsing module.
 
 Resolves [issue #90](https://github.com/LennardZuendorf/indexed/issues/90).
 
@@ -104,6 +107,31 @@ first throttle.
 - **When** the reader fetches issues
 - **Then** it follows `pageInfo.endCursor` until exhausted and indexes every matching issue.
 
+### Requirement: Support all GitHub deployment models
+
+The system SHALL index from public `github.com`, GitHub Enterprise Cloud **with
+data residency** (`SUBDOMAIN.ghe.com`), and self-hosted **GitHub Enterprise
+Server**, selected by a single configured `host`, deriving the correct GraphQL
+endpoint for each without the user needing to know API URL conventions.
+
+#### Scenario: Public github.com (default)
+
+- **Given** no `host` is configured (defaults to `github.com`)
+- **When** the connector builds requests
+- **Then** it targets the public GraphQL endpoint and indexes issues from the configured repos.
+
+#### Scenario: Enterprise Cloud with data residency
+
+- **Given** `host = "octocorp.ghe.com"`
+- **When** the connector builds requests
+- **Then** it targets the tenant's dedicated GraphQL endpoint (the `api.`-prefixed `ghe.com` host), not `github.com`.
+
+#### Scenario: Self-hosted Enterprise Server
+
+- **Given** `host = "github.example.com"` (a GHES instance)
+- **When** the connector builds requests
+- **Then** it targets that host's path-based GraphQL endpoint, and TLS verification can be relaxed for self-signed CAs via `verify_ssl = false`.
+
 ### Requirement: Filtering by state, labels, and selectors
 
 The system SHALL support filtering indexed content by issue `state`
@@ -160,7 +188,8 @@ state = "all"                       # open | closed | all
 labels = ["bug", "feature"]         # optional label filter
 include_pull_requests = true        # include PR threads (default false)
 include_comments = true             # include issue/PR comments (default true)
-# base_url = "https://github.example.com"  # GitHub Enterprise Server (optional)
+# host = "github.com"               # default; or "octocorp.ghe.com" (data residency) / "github.example.com" (GHES)
+# verify_ssl = true                 # set false for GHES with self-signed CAs
 
 # Token (priority: config/.env  →  gh CLI  →  error)
 # .env:  INDEXED__sources__github__token=ghp_xxx
