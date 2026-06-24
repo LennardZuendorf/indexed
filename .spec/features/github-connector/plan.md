@@ -3,7 +3,7 @@ type: feature-plan
 feature: github-connector
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-06-23
+updated: 2026-06-24
 ---
 
 # Feature: GitHub Projects & Issues Connector — Implementation Plan
@@ -42,6 +42,7 @@ cross-cutting chunk-hash change is isolated in its own unit behind tests.
 | R3 | [Token resolution via config, env, or GitHub CLI](product.md#requirement-token-resolution-via-config-env-or-github-cli) | github-connector/1 |
 | R4 | [Efficient GraphQL fetching with pagination and rate limiting](product.md#requirement-efficient-graphql-fetching-with-pagination-and-rate-limiting) | github-connector/2 |
 | R5 | [Filtering by state, labels, and selectors](product.md#requirement-filtering-by-state-labels-and-selectors) | github-connector/2 |
+| R-deploy | [Support all GitHub deployment models](product.md#requirement-support-all-github-deployment-models) | github-connector/1, github-connector/2 |
 | R6 | [Smart incremental update](product.md#requirement-smart-incremental-update) | github-connector/5, github-connector/6 |
 | R7 | [Parse via the shared parsing module](product.md#requirement-parse-via-the-shared-parsing-module) | github-connector/4 |
 | R-cfg | Dynamic creation / registry wiring | github-connector/1, github-connector/4 |
@@ -64,11 +65,11 @@ commits (`feat(connectors): github-connector/2 ...`).
 
 ---
 
-### github-connector/1 — Config, schema & auth resolver
+### github-connector/1 — Config, schema, endpoint & auth resolver
 
-**Goal:** `GitHubConfig`, `auth.resolve_token()`, and registry wiring exist so the connector type is discoverable and credentials resolve.
+**Goal:** `GitHubConfig` (incl. `resolve_graphql_url()`), `auth.resolve_token()`, and registry wiring exist so the connector type is discoverable, endpoints derive per deployment, and credentials resolve.
 
-**Requirements:** R3, R-cfg
+**Requirements:** R3, R-deploy, R-cfg
 
 **Dependencies:** —
 
@@ -87,6 +88,7 @@ packages/indexed-connectors/src/connectors/registry.py        # add github rows
 - `gh auth token` used when no explicit token (subprocess mocked).
 - No token + no `gh` → `ConfigurationError` naming env var and `gh auth login`.
 - `repos`/`project` strings parse to `(owner, repo)` / `(owner, number)`.
+- `resolve_graphql_url()`: `github.com` → `api.github.com/graphql`; `octocorp.ghe.com` → `api.octocorp.ghe.com/graphql`; `github.example.com` → `github.example.com/api/graphql`; explicit `graphql_url` overrides all; scheme/trailing-slash in `host` is normalized.
 
 **Verification:** `uv run pytest tests/unit/indexed_connectors/github/test_auth.py tests/unit/indexed_connectors/github/test_schema.py -q` green; `get_connector_class("github")` resolves.
 
@@ -112,6 +114,7 @@ packages/indexed-connectors/src/connectors/github/github_graphql_reader.py
 - Two-page issue set fully read via `endCursor` (mocked GraphQL responses).
 - `state`/`labels` translate into `filterBy`/`states` arguments.
 - 403/429 + GraphQL `RATE_LIMITED` triggers retry/backoff, then succeeds.
+- Reader posts to `config.resolve_graphql_url()` and honors `verify_ssl` (asserted via mocked client construction).
 - Raw-document dict shape matches the contract in tech.md.
 
 **Verification:** `uv run pytest tests/unit/indexed_connectors/github/test_reader.py -q` green.
