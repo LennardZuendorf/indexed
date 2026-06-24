@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-09
+updated: 2026-06-21
 ---
 
 # Development Plan: indexed
@@ -15,7 +15,7 @@ wishlist. Current focus + delivered surface.
 
 ## Current Status
 
-**v0.1.0 Alpha** — released 2026-02-16. Core pipeline, search, MCP, CLI, config
+**v0.0.5 Alpha** — released 2026-04-29. Core pipeline, search, MCP, CLI, config
 all shipped. Breaking changes still allowed (alpha).
 
 ---
@@ -47,6 +47,8 @@ command files) remains open — tracked as [issue #119](https://github.com/Lenna
 ---
 
 ## Current Focus
+
+**[Issue #5 — Core v2: LlamaIndex Engine Rebuild](https://github.com/LennardZuendorf/indexed/issues/5)**
 
 v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`,
 `utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and
@@ -80,5 +82,5 @@ when done; root holds value-prop + architecture + current plan only; no backlog
 in specs.
 
 ### 2026-02-16: Alpha status
-**Decision:** Mark v0.1.0 alpha, breaking changes allowed.
+**Decision:** Mark v0.0.5 alpha, breaking changes allowed.
 **Rationale:** Need flexibility to iterate on API from feedback.

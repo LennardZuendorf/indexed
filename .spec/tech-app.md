@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-06-09
+updated: 2026-06-15
 ---
 
 # Tech Branch: App (`apps/indexed`)
@@ -35,8 +35,9 @@ def _init_app(ctx: typer.Context, local: bool = typer.Option(False, "--local"), 
 Organized in subdirectories, exposed flat for usability:
 
 - **Knowledge:** `create`, `search`, `inspect`, `update`, `remove` (as `index create`, …)
-- **Config:** `inspect`, `set`, `validate`
+- **Config:** `inspect`, `update`, `set`, `validate`, `delete`
 - **MCP:** `run`, `dev`, `inspect`
+- **Top-level:** `init`, `migrate`, `docs`, `license` (`debug` is hidden)
 
 ---
 
@@ -44,8 +45,8 @@ Organized in subdirectories, exposed flat for usability:
 
 `Global` (`~/.indexed`) vs `Local` (`./.indexed`). Resolution order:
 
-1. CLI flag `--local` / `--global` (highest)
-2. `storage.mode` in `config.toml`
+1. CLI flag `--local` (highest; absence ≠ flag — there is no `--global`)
+2. `[workspace].mode` in `config.toml`
 3. Presence of `./.indexed/` → Local
 4. Global (fallback)
 
@@ -82,48 +83,43 @@ All terminal output via `rich`:
 
 Embedded `FastMCP` server (`apps/indexed/src/indexed/mcp/`), decomposed into
 `server.py`, `tools.py`, `resources.py`, `formatting.py`, `config.py`. Reuses the
-same `SearchService` + `ConfigService` as the CLI — agent sees what the user sees.
+same engine service functions (`core.v1.engine.services`) + `ConfigService` as the
+CLI — agent sees what the user sees. Results pass through `formatting.py`
+(`format_search_results_for_llm`) into a flat, LLM-optimized shape.
 
 ### Tools
 
-```python
-from fastmcp import FastMCP
-mcp = FastMCP("indexed")
+Two tools (`tools.py`):
 
-@mcp.tool()
-def search(query: str, collection: str | None = None) -> dict:
-    """Search indexed collections."""
-    results = index.search(query, collection)
-    return {"query": query, "results": [
-        {"text": c.text, "score": c.score, "source": c.source, "collection": c.collection}
-        for c in results]}
+- `search(query, ctx=None)` — search across all collections.
+- `search_collection(collection, query, ctx=None)` — search one named collection.
 
-@mcp.tool()
-def list_collections() -> dict:
-    return {"collections": [c.name for c in index.list_collections()]}
-
-@mcp.tool()
-def collection_status(name: str) -> dict:
-    s = index.get_status(name)
-    return {"name": s.name, "document_count": s.document_count,
-            "chunk_count": s.chunk_count, "embedding_model": s.embedding_model}
-```
+Both return a dict of ranked results; each result carries `rank`,
+`relevance_score`, `collection`, `document_id`, `document_url`, `chunk_number`,
+`text`. On failure they return `{"error": "..."}`.
 
 ### Resources
+
+Listing and status are **resources**, not tools (`resources.py`):
 
 ```python
 @mcp.resource("resource://collections")          # list of names
 @mcp.resource("resource://collections/status")    # status for all
-@mcp.resource("resource://collections/{name}")     # status for one
+@mcp.resource("resource://collection/{name}")      # status for one (singular path)
 ```
+
+The single-item template uses the singular `collection/{name}` on purpose: FastMCP
+v3 dispatches by path shape, so a `collections/{name}` template would collide with
+the static `collections` / `collections/status` routes.
 
 ### Transports
 
 | Transport | Use Case | Implementation |
 |-----------|----------|----------------|
-| **stdio** | Claude Desktop, Cline | default, stdin/stdout |
+| **stdio** (default) | Claude Desktop, Cline | stdin/stdout |
 | **http** | network access | HTTP server on port 8000 |
 | **sse** | Server-Sent Events | SSE streaming |
+| **streamable-http** | streaming HTTP | FastMCP streamable transport |
 
 `apps/indexed/src/indexed/mcp/cli.py` handles transport selection.
 
@@ -138,8 +134,11 @@ module-level imports (`TYPE_CHECKING`), `__getattr__` module-level lazy loading.
 
 ```python
 def __getattr__(name: str):
-    if name == "index":
-        from core.v1 import Index
-        return Index()
+    # Engine service functions + heavy deps loaded on first access, not at import.
+    if name == "svc_search":
+        from core.v1.engine.services import search
+        return search
+    # …likewise svc_create / svc_update / svc_clear / svc_status,
+    #   DEFAULT_INDEXER, SourceConfig
     raise AttributeError(f"module has no attribute '{name}'")
 ```
