@@ -244,6 +244,39 @@ class TestConfluenceDocumentReaderAttachments:
 
         assert result is None
 
+    def test_off_origin_attachment_skipped(self):
+        """Off-origin attachment URL: no HTTP request made, returns None."""
+        reader = self._make_reader(include_attachments=True)
+
+        with patch(
+            "connectors.confluence.confluence_document_reader.requests.get"
+        ) as mock_get:
+            result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
+                "https://evil.attacker.test/steal"
+            )
+
+        mock_get.assert_not_called()
+        assert result is None
+
+    def test_same_origin_attachment_downloads(self):
+        """Same-origin attachment URL: download proceeds (regression)."""
+        reader = self._make_reader(include_attachments=True)
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"pdf bytes"
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch(
+            "connectors.confluence.confluence_document_reader.requests.get",
+            return_value=mock_resp,
+        ) as mock_get:
+            result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
+                "https://confluence.example.com/secure/attachment/123/file.pdf"
+            )
+
+        mock_get.assert_called_once()
+        assert result == b"pdf bytes"
+
 
 # ---------------------------------------------------------------------------
 # Confluence Cloud async reader

@@ -411,10 +411,6 @@ def search(
             raise typer.Exit(1)
 
         collections_to_search = [collection]
-        if not simple:
-            console.print(
-                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
-            )
 
     # Build search configs for all collections
     search_configs = {}
@@ -447,13 +443,20 @@ def search(
         # Normal mode: phased progress display (consistent with Create/Update)
         heading = get_heading_style()
         accent = get_accent_style()
-        title = (
-            f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
-        )
+        if collection is not None:
+            # Single collection: no headline printed above; title carries full context
+            title = f'[{heading}]Searching [{accent}]"{collection}"[/{accent}] Collection for: [{accent}]"{query}"[/{accent}][/{heading}]'
+        else:
+            # Multi-collection: summary headline already printed above; title empty
+            title = ""
 
         with create_phased_progress(title=title) as phased:
             for coll_name in collections_to_search:
-                phased.start_phase(f"Searching {coll_name}")
+                if collection is not None:
+                    phase_label = f"Searching {coll_name}"
+                else:
+                    phase_label = f'Searching "{coll_name}" Collection for: "{query}"'
+                phased.start_phase(phase_label)
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
@@ -463,7 +466,7 @@ def search(
                     collections_path=preferred_path,
                 )
                 results.update(result)
-                phased.finish_phase(f"Searching {coll_name}")
+                phased.finish_phase(phase_label)
 
     # Format and display results
     if simple:

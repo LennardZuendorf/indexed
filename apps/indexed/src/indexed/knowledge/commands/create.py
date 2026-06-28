@@ -65,6 +65,14 @@ def _is_cloud(url: str) -> bool:
     return url.endswith(".atlassian.net")
 
 
+def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
+    """Print storage-mode indicator unless verbose/debug output is already active."""
+    if not verbose and not (log_level and log_level.upper() in ("INFO", "DEBUG")):
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
+
 app = typer.Typer(help="Create new collections")
 
 
@@ -248,6 +256,10 @@ def create_files(
             },
         )
 
+    # Display indicator before any prompts (files has no pre-execute URL prompt)
+    ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
+
     # Use shared helper
     execute_create_command(
         collection=collection,
@@ -349,7 +361,8 @@ def create_jira(
     namespace = "sources.jira"
 
     # Phase 0: Determine the URL first (needed to detect cloud vs server)
-    config = ConfigService.instance()
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
     resolved_url = url or config.get(f"{namespace}.url")
 
     # If URL is still unknown, prompt for it first before determining source type
@@ -577,7 +590,8 @@ def create_confluence(
     namespace = "sources.confluence"
 
     # Phase 0: Determine the URL first (needed to detect cloud vs server)
-    config = ConfigService.instance()
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
     resolved_url = url or config.get(f"{namespace}.url")
 
     # If URL is still unknown, prompt for it first before determining source type
@@ -818,7 +832,8 @@ def create_outline(
     namespace = "sources.outline"
 
     # Phase 0: Resolve URL — prompt if not provided, default to Cloud on Enter
-    config = ConfigService.instance()
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
     resolved_url = url or config.get(f"{namespace}.url")
 
     url_was_prompted = False
