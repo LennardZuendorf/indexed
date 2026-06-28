@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-06-09
+updated: 2026-06-29
 ---
 
 # Tech Branch: Connectors (`indexed-connectors`)
@@ -58,6 +58,32 @@ Reader fetches raw documents; Converter transforms them into searchable chunks
 | **OutlineConnector** | `.../connectors/outline/` | REST API | Bearer token |
 
 (All paths under `packages/indexed-connectors/src/`.)
+
+---
+
+## Credential Security — Origin Guard
+
+**File:** `packages/indexed-connectors/src/connectors/_url_guard.py`
+
+All credentialed attachment fetchers (Jira Server/DC, Confluence Server, Outline) call
+`warn_if_off_origin(url, base_url)` before issuing any HTTP request. This function
+compares scheme + hostname (port intentionally ignored), logs a warning, and returns
+`False` on mismatch so the caller can `return None` without crashing the indexing run.
+
+```python
+from connectors._url_guard import warn_if_off_origin
+
+if not warn_if_off_origin(url, self.base_url):
+    return None   # skip silently after logging warning
+```
+
+`is_same_origin(url, base_url)` is the primitive (bool only, no side effects).
+`warn_if_off_origin` wraps it with logging and is the one to use in readers.
+
+**Exclusions:** `AsyncJiraCloudDocumentReader` — Jira Cloud serves attachment content
+from `api.media.atlassian.com` (off-origin by design, URLs from Jira's own API, not
+attacker-controlled). `AsyncConfluenceCloudDocumentReader` — constructs URLs as
+`f"{self.base_url}/wiki{path}"` (always same-origin by construction; guard unnecessary).
 
 ---
 

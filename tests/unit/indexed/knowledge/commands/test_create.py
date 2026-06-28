@@ -1036,3 +1036,84 @@ class TestBuildOutlineSourceConfig:
         call_kwargs = MockSourceConfig.call_args.kwargs
         assert call_kwargs["name"] == "my-outline"
         assert call_kwargs["base_url_or_path"] == "https://app.getoutline.com"
+
+
+class TestStorageIndicatorOrdering:
+    """Verify indicator prints before connector header/prompts (critical-bugs/4)."""
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_jira_indicator_before_configuration_heading(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Indicator must appear before 'Jira Configuration' heading."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_console.input.return_value = "https://jira.example.com"
+
+        call_order: list[str] = []
+
+        def track_display(console_arg):
+            call_order.append("indicator")
+
+        def track_print(*args, **kwargs):
+            if args and "Jira Configuration" in str(args[0]):
+                call_order.append("heading")
+
+        mock_console.print.side_effect = track_print
+
+        with patch(
+            "indexed.utils.storage_info.display_storage_mode_for_command",
+            side_effect=track_display,
+        ):
+            create_jira(
+                collection="test-jira",
+                url=None,
+                jql=None,
+                email=None,
+                token=None,
+                use_cache=True,
+                force=False,
+                verbose=False,
+                json_logs=False,
+                log_level=None,
+            )
+
+        assert "indicator" in call_order, "indicator never printed"
+        assert "heading" in call_order, "heading never printed"
+        assert call_order.index("indicator") < call_order.index("heading")
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_indicator_printed_exactly_once(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Indicator not duplicated — execute_create_command no longer calls it."""
+        mock_config = Mock()
+        mock_config.get.return_value = "https://jira.example.com"
+        mock_config_service.instance.return_value = mock_config
+        mock_verbose.return_value = False
+
+        with patch(
+            "indexed.utils.storage_info.display_storage_mode_for_command"
+        ) as mock_display:
+            create_jira(
+                collection="test-jira",
+                url="https://jira.example.com",
+                jql="project = TEST",
+                email=None,
+                token=None,
+                use_cache=True,
+                force=False,
+                verbose=False,
+                json_logs=False,
+                log_level=None,
+            )
+
+        mock_display.assert_called_once()
