@@ -3,285 +3,619 @@ type: feature-plan
 feature: architecture-audit
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-06-29
+updated: 2026-07-03
 ---
 
-# Feature: Architecture Audit — Implementation Plan
+# Architecture Audit Remediation — Execution Plan
 
-Remediates structural debt found in the 2026-06-29 monorepo audit in four phases:
-fix the dependency graph (protocols package, drop core→connectors), unify app
-bootstrap and storage-path resolution, clean config/retry/dead-code hygiene, then
-lock the result with import-graph CI and a characterization baseline. Each unit
-is a small, verifiable slice; phases gate on the prior phase completing.
+> **For agentic workers:** REQUIRED SUB-SKILL: use
+> `superpowers:subagent-driven-development` (one subagent per unit) or
+> `superpowers:executing-plans` (inline with sprint checkpoints). Track progress
+> by checking boxes and updating the Progress table at the bottom after each unit.
+> Commit after every unit with subject `refactor(<scope>): architecture-audit/n …`
+> (≤50 chars, imperative).
 
-**Parent:** [../../plan.md](../../plan.md)
-**Requirements:** [product.md](product.md)
-**Architecture:** [tech.md](tech.md)
-**Research:** [research/app.md](research/app.md) · [research/core.md](research/core.md) · [research/connectors.md](research/connectors.md) · [research/config.md](research/config.md) · [research/parsing-utils.md](research/parsing-utils.md) · [research/systemic.md](research/systemic.md)
+**Goal:** Fix structural debt from the 2026-06-29 audit — downward-only dependency
+graph, app composition root, CLI/MCP runtime parity, config/retry hygiene, dead-code
+removal — and lock the result with import-graph CI so v2 can scaffold on a clean base.
 
-**Feature gate:** Starts now — depends only on shipped v0.1.0 infra (all `DONE` in
-root [plan.md](../../plan.md)). Does not block on v2 engine rewrite or issue #119.
+**Architecture:** Extract `indexed-protocols` (leaf package) → sever `core→connectors`
+→ add `bootstrap.py` + `runtime.py` in `apps/indexed` → unify config reads and HTTP
+retry → delete speculative code → CI gate. See [tech.md](tech.md).
+
+**Tech stack:** Python 3.11+ · uv workspace · Hatch/una wheels · pytest/mypy/ruff.
+
+**Parent:** [../../plan.md](../../plan.md) · **Requirements:** [product.md](product.md) ·
+**Research:** [research/systemic.md](research/systemic.md) and sibling cluster docs.
+
+**Validated baseline (2026-07-03):** All 12 units NOT STARTED. Zero implementation
+progress since audit. Composer-2.5 subagents confirmed every P0 finding still present.
 
 ---
 
-## Problem Frame
+## Global Constraints
 
-The audit found upward imports (core→connectors), protocols living in the engine
-package, triple connector instantiation paths, divergent CLI/MCP storage resolution,
-import-time config registration and logging, a legacy config merge path, and
-speculative dead code. These violate [tech.md](../../tech.md) § Architectural Rules
-and block a clean v2 scaffold. Units are ordered so the graph is fixed before
-behavior moves (bootstrap, context), hygiene before service consolidation, and CI
-validation last so regressions are caught immediately.
+- Run all commands from **project root** with `uv run`.
+- **mypy strict:** 0 errors on `src/`.
+- **Coverage:** >85% on `uv run pytest -q --cov=src`.
+- **File size limits on touched files:** CLI command ≤150 · service ≤300 · module ≤400
+  ([tech.md](../../tech.md) § File Size Limits).
+- **No import-time side effects** in library packages after `/5`.
+- **Core MUST NOT import `connectors.*`** after `/2` (enforced by CI in `/12`).
+- **Do not expand into issue #119** (thin commands, `config/cli.py` split) unless R10
+  forces a split on a file you touch.
+- Commit `uv.lock` whenever workspace deps change (`/1`).
+- Bump `updated:` on every spec file you edit during COMPOUND.
+
+---
+
+## Overnight Run Guide
+
+### Pre-flight (5 min)
+
+```bash
+cd /path/to/indexed/.worktrees/chore/review
+uv sync --all-groups
+uv run pytest -q --co -q 2>/dev/null | tail -1   # note baseline test count
+git status                                       # clean or intentional branch
+```
+
+### Sprint schedule
+
+| Sprint | Units | Est. | Gate |
+|--------|-------|------|------|
+| **0a** | Quick wins (`/0`) | 30 min | test mirror + lessons restored |
+| **1** | `/1` → `/4` | 4–6 h | graph fixed, CLI/MCP path parity |
+| **2** | `/5` → `/8` | 3–4 h | config pure, retry unified, dead code gone |
+| **3** | `/9` → `/12` | 3–4 h | full verify + COMPOUND |
+| **Total** | 13 units | ~10–14 h | Feature 11 DONE |
+
+### Between every unit
+
+1. Run the unit **Verification** block — paste output before claiming done.
+2. Commit: `refactor(<scope>): architecture-audit/n <subject>`
+3. Update Progress table at bottom of this file (`IN PROGRESS` → `DONE`).
+
+### Sprint verify gates
+
+**After Sprint 1 (/4):**
+```bash
+uv run pytest tests/unit/indexed_protocols/ tests/unit/indexed_core/test_import_isolation.py \
+  tests/unit/indexed/test_bootstrap.py tests/unit/indexed/test_runtime_context.py \
+  tests/system/test_mcp_storage_parity.py -q
+uv run mypy src/
+```
+
+**After Sprint 2 (/8):**
+```bash
+uv run pytest tests/unit/indexed_config/ tests/unit/utils/test_retry.py \
+  tests/unit/indexed_connectors/test_http_retry.py -q
+uv run pytest -q --cov=src
+```
+
+**Feature complete (/12 + COMPOUND):**
+```bash
+uv run ruff check . --fix && uv run ruff format
+uv run mypy src/
+uv run python scripts/check_import_graph.py
+uv run pytest -q --cov=src
+bash .agents/skills/spec/scripts/validate.sh
+```
 
 ---
 
 ## Requirements Trace
 
 | ID | Requirement | Units |
-|---|---|---|
-| R1 | [Downward-only dependency graph](product.md#requirement-downward-only-dependency-graph) | architecture-audit/1, architecture-audit/2, architecture-audit/12 |
-| R2 | [Protocols in lowest shared package](product.md#requirement-protocols-in-lowest-shared-package) | architecture-audit/1 |
-| R3 | [CLI and MCP storage path parity](product.md#requirement-cli-and-mcp-storage-path-parity) | architecture-audit/4 |
-| R4 | [Single-source config resolution everywhere](product.md#requirement-single-source-config-resolution-everywhere) | architecture-audit/5, architecture-audit/6 |
-| R5 | [Explicit app bootstrap](product.md#requirement-explicit-app-bootstrap) | architecture-audit/3, architecture-audit/5, architecture-audit/9 |
-| R6 | [IndexedError at app boundaries](product.md#requirement-indexederror-at-app-boundaries) | architecture-audit/11 |
-| R7 | [Connector registry single path](product.md#requirement-connector-registry-single-path) | architecture-audit/3, architecture-audit/10 |
-| R8 | [HTTP retry policy consistent](product.md#requirement-http-retry-policy-consistent) | architecture-audit/7 |
-| R9 | [Delete speculative/unused code](product.md#requirement-delete-speculativeunused-code) | architecture-audit/8 |
-| R10 | [File size compliance on touched modules](product.md#requirement-file-size-compliance-on-touched-modules) | architecture-audit/3, architecture-audit/4, architecture-audit/10, architecture-audit/11 |
-| R11 | [v2 scaffold prerequisites](product.md#requirement-v2-scaffold-prerequisites) | architecture-audit/1, architecture-audit/12 |
-
-Every unit below cites the R-IDs it satisfies.
+|----|-------------|-------|
+| R1 | Downward-only dependency graph | /1, /2, /12 |
+| R2 | Protocols in lowest shared package | /1 |
+| R3 | CLI and MCP storage path parity | /4 |
+| R4 | Single-source config resolution | /5, /6 |
+| R5 | Explicit app bootstrap | /0, /3, /5, /9 |
+| R6 | IndexedError at app boundaries | /11 |
+| R7 | Connector registry single path | /3, /10 |
+| R8 | HTTP retry policy consistent | /7 |
+| R9 | Delete speculative/unused code | /8 |
+| R10 | File size compliance on touched modules | /3, /4, /10, /11 |
+| R11 | v2 scaffold prerequisites | /1, /12 |
 
 ---
 
 ## Key Technical Decisions
 
-1. **New `indexed-protocols` package.** Lowest layer for `BaseConnector`,
-   `ConnectorMetadata`, `SourceConfig`, and progress types — both core and
-   connectors depend on it; neither depends on the other. See [tech.md](tech.md)
-   § Target dependency graph.
-2. **App is the composition root.** `bootstrap.py` registers config specs and
-   wires the connector registry once; core services receive connectors via
-   injection, never import `connectors.*`.
-3. **`resolve_collections_context()` is the single storage-path API.** CLI and MCP
-   both call it; no ad-hoc `resolve_preferred_collections_path()` heuristics or
-   hardcoded `localFiles` defaults in MCP tools.
-4. **`read_for_mode()` only; delete merge path.** `TomlStore.read()` merge
-   behaviour is removed; all callers go through resolved mode + `read_for_mode()`.
-5. **Transient-only HTTP retry.** One policy in `utils/retry.py` (or
-   `connectors/http.py` wrapper); retries only on 429/502/503/504 and network
-   errors, not on 4xx client failures.
-6. **R10 on every touched file.** New/changed modules stay within limits from
-   [tech.md](../../tech.md) § File Size Limits (CLI ≤150, service ≤300, module ≤400).
+1. **`indexed-protocols`** — leaf package; pydantic + stdlib only; wheel name `protocols`.
+2. **`bootstrap.py`** — `register_app_config()`, `build_connector_registry()`,
+   `build_connector(cfg, config_service, registry)`.
+3. **`runtime.py`** — `CliContext` + `resolve_collections_context(mode_override)`.
+4. **`read_for_mode()` only** for runtime reads; `read()` merge deleted or tooling-only.
+5. **`TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})`** in `utils/retry.py`.
+6. **Legacy type normalization:** `jiraCloud` → `jira`, `confluenceCloud` → `confluence`
+   in `_normalize_connector_type()` with `DeprecationWarning`.
+7. **`MCPConfig` TOML** — `/4` wires `mcp/cli.py run_impl()` to read TOML when CLI
+   flags not explicitly set (P1 from app research).
 
 ---
 
-## Unit IDs
+## architecture-audit/0 — Quick wins (parallel-safe)
 
-Units are `architecture-audit/n`, assigned once and never renumbered. Cite in
-commits (`refactor(core): architecture-audit/2 ...`).
+**Goal:** Fix test mirror drift and restore session-start lessons before graph surgery.
 
-**Phase 0 — graph:** /1 → /2 → /3 → /4
-**Phase 1 — hygiene:** /5 → /6 → /7 → /8
-**Phase 2 — services:** /9 → /10 → /11
-**Phase 3 — validation:** /12
-
----
-
-### architecture-audit/1 — indexed-protocols package + move protocols
-
-**Goal:** Create `packages/indexed-protocols/` and relocate shared connector
-protocols and DTOs from core so both core and connectors can import them without
-creating an upward edge.
-
-**Requirements:** R1, R2, R11
+**Requirements:** R5 (hygiene)
 
 **Dependencies:** —
 
+### Task 0.1: Restore lessons.md
+
+- [x] Confirm `.spec/lessons.md` exists (restored 2026-07-03).
+
+### Task 0.2: Move misplaced core service tests
+
 **Files:**
+- Move: `tests/unit/indexed/services/test_collection_service.py` → `tests/unit/indexed_core/services/`
+- Move: `tests/unit/indexed/services/test_search_service.py` → `tests/unit/indexed_core/services/`
+- Delete: empty `tests/unit/indexed/services/` directory
 
+- [x] Run: `uv run pytest tests/unit/indexed_core/services/ -q`
+- [x] Commit: `test(core): architecture-audit/0 mirror service tests`
+
+**Verification:** `uv run pytest tests/unit/indexed_core/services/ -q`
+
+---
+
+## Phase 0 — Graph (Sprint 1)
+
+### architecture-audit/1 — indexed-protocols package
+
+**Requirements:** R1, R2, R11 · **Blocks:** /2
+
+#### Task 1.1: Scaffold package
+
+**Create:** `packages/indexed-protocols/pyproject.toml`
+
+```toml
+[project]
+name = "indexed-protocols"
+version = "0.1.0"
+description = "Shared connector protocols and DTOs for indexed"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.0.0"]
+
+[build-system]
+requires = ["hatchling", "hatch-una"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protocols"]
 ```
-packages/indexed-protocols/pyproject.toml              # NEW workspace member
-packages/indexed-protocols/src/protocols/__init__.py   # NEW public exports
-packages/indexed-protocols/src/protocols/base.py       # BaseConnector, DocumentReader, DocumentConverter
-packages/indexed-protocols/src/protocols/metadata.py   # ConnectorMetadata
-packages/indexed-protocols/src/protocols/models.py     # SourceConfig, ProgressUpdate, ProgressCallback
-pyproject.toml                                         # add workspace member + uv sources
-packages/indexed-core/src/core/v1/connectors/          # re-export or delete after move
-packages/indexed-connectors/src/connectors/            # update imports to protocols.*
-tests/unit/indexed_protocols/                            # NEW protocol conformance tests
+
+- [ ] Create directory `packages/indexed-protocols/src/protocols/`
+
+#### Task 1.2: Move protocol types
+
+**Create from copies of core modules (then slim core to re-exports):**
+
+| New file | Source |
+|----------|--------|
+| `protocols/connectors.py` | `core/v1/connectors/base.py` |
+| `protocols/metadata.py` | `core/v1/connectors/metadata.py` |
+| `protocols/models.py` | `SourceConfig`, `ProgressUpdate`, `ProgressCallback`, `PhasedProgressCallback` from `core/v1/engine/services/models.py` |
+
+**Create:** `protocols/__init__.py`
+
+```python
+from protocols.connectors import BaseConnector, DocumentConverter, DocumentReader
+from protocols.metadata import ConnectorMetadata
+from protocols.models import (
+    PhasedProgressCallback,
+    ProgressCallback,
+    ProgressUpdate,
+    SourceConfig,
+)
+
+__all__ = [
+    "BaseConnector",
+    "ConnectorMetadata",
+    "DocumentConverter",
+    "DocumentReader",
+    "PhasedProgressCallback",
+    "ProgressCallback",
+    "ProgressUpdate",
+    "SourceConfig",
+]
 ```
 
-**Test scenarios:**
+- [ ] Keep engine-only DTOs in `core/.../models.py`: `CollectionStatus`, `CollectionInfo`, `SearchResult` (delete `SearchResult` in `/8`).
 
-- `BaseConnector` remains `@runtime_checkable`; existing connector classes still
-  satisfy the protocol after import path change.
-- `SourceConfig` validates the same literal types (`jira`, `localFiles`, etc.).
-- `indexed-core` and `indexed-connectors` both resolve `indexed-protocols` from
-  the workspace without adding a core↔connectors dependency.
+#### Task 1.3: Wire workspace deps
+
+**Modify:**
+- `packages/indexed-core/pyproject.toml` — add `indexed-protocols`, keep `indexed-connectors` temporarily
+- `packages/indexed-connectors/pyproject.toml` — add `indexed-protocols`
+- `apps/indexed/pyproject.toml` — add `indexed-protocols`
+- `pyproject.toml` `[tool.coverage.run] source_pkgs` — add `"protocols"`
+
+- [ ] Run: `uv sync --all-groups`
+
+#### Task 1.4: Re-export shims in core (transition window)
+
+**Modify:** `core/v1/connectors/__init__.py` and `core/v1/connectors/base.py` → re-export from `protocols` with deprecation comment.
+
+**Modify:** `core/v1/engine/services/models.py` → re-export `SourceConfig`, progress types from `protocols`.
+
+- [ ] Update connector imports: `from protocols import BaseConnector, SourceConfig, …`
+- [ ] Grep: `from core.v1.connectors` in connectors package → switch to `protocols`
+
+#### Task 1.5: Tests
+
+**Create:** `tests/unit/indexed_protocols/test_protocols.py`
+
+```python
+from protocols import BaseConnector, SourceConfig
+from connectors.jira.connector import JiraConnector
+
+
+def test_jira_connector_satisfies_base_connector_protocol():
+    assert isinstance(JiraConnector, type)
+    # runtime_checkable: instance check after from_config needs mock config — use META
+    assert hasattr(JiraConnector, "META")
+
+
+def test_source_config_accepts_jira_type():
+    cfg = SourceConfig(name="x", type="jira", base_url_or_path="https://jira.example.com")
+    assert cfg.type == "jira"
+```
+
+- [ ] Run: `uv run pytest tests/unit/indexed_protocols/ -q && uv run mypy src/`
+- [ ] Commit: `feat(protocols): architecture-audit/1 extract package`
 
 **Verification:** `uv sync --all-groups && uv run pytest tests/unit/indexed_protocols/ -q && uv run mypy src/`
 
 ---
 
-### architecture-audit/2 — Remove core→connectors dep, fix pyproject
+### architecture-audit/2 — Remove core→connectors dependency
 
-**Goal:** Drop `indexed-connectors` from `indexed-core` dependencies; core imports
-only `protocols` and receives concrete connectors via injection from the app layer.
+**Requirements:** R1 · **Blocked by:** /1 · **Blocks:** /3
 
-**Requirements:** R1
+#### Task 2.1: pyproject
 
-**Dependencies:** architecture-audit/1
+**Modify:** `packages/indexed-core/pyproject.toml` — remove `indexed-connectors` from `dependencies` and `[tool.uv.sources]`.
 
-**Files:**
+- [ ] Run: `uv sync --all-groups`
 
+#### Task 2.2: Import isolation test (write first)
+
+**Create:** `tests/unit/indexed_core/test_import_isolation.py`
+
+```python
+import ast
+from pathlib import Path
+
+CORE_ROOT = Path("packages/indexed-core/src/core")
+
+
+def _python_files():
+    return list(CORE_ROOT.rglob("*.py"))
+
+
+def test_core_does_not_import_connectors_package():
+    violations: list[str] = []
+    for path in _python_files():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("connectors"):
+                violations.append(f"{path}:{node.lineno}: from {node.module}")
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("connectors"):
+                        violations.append(f"{path}:{node.lineno}: import {alias.name}")
+    assert not violations, "core must not import connectors:\n" + "\n".join(violations)
 ```
-packages/indexed-core/pyproject.toml                           # remove indexed-connectors dep
-packages/indexed-core/src/core/v1/engine/services/collection_service.py  # remove connectors.* imports
-packages/indexed-core/src/core/v1/engine/factories/update_collection_factory.py
-apps/indexed/pyproject.toml                                    # ensure connectors dep stays on app
-tests/unit/indexed_core/test_import_isolation.py               # NEW — core must not import connectors
-```
 
-**Test scenarios:**
+- [ ] Run test — expect **FAIL** until Task 2.3 complete.
 
-- `grep -r "from connectors" packages/indexed-core/` returns zero hits (except
-  comments/strings in migration notes, if any).
-- `collection_service` module imports without `indexed-connectors` installed in
-  an isolated check (protocols-only stub).
-- Full test suite still passes with connectors wired at app boundary.
+#### Task 2.3: Remove connector imports from core (minimal stubs for /10)
+
+**Modify:** `collection_service.py`
+- Remove `_build_connector_from_config` body imports (stub raises `ConfigurationError` if no injected factory — full removal in `/10`).
+- Add parameter: `connector_factory: Callable[[SourceConfig], Any] | None = None`.
+
+**Modify:** `create_collection_factory.py`
+- Remove top-level `from connectors.document_cache_reader_decorator import CacheReaderDecorator`.
+- Accept optional `cache_decorator_factory` argument from caller.
+
+**Modify:** `update_collection_factory.py`
+- Remove `from connectors import get_connector_class` and `FileSystemConnector` imports.
+- Accept injected connector or factory from app layer.
+
+- [ ] Run isolation test — expect **PASS**.
+- [ ] Run full suite: `uv run pytest -q` (fix app wiring temporarily if needed).
+- [ ] Commit: `refactor(core): architecture-audit/2 drop connectors dep`
 
 **Verification:** `uv run pytest tests/unit/indexed_core/test_import_isolation.py -q && uv run mypy src/`
 
 ---
 
-### architecture-audit/3 — App bootstrap + connector registry only
+### architecture-audit/3 — App bootstrap + connector registry
 
-**Goal:** Add explicit `bootstrap.py` that registers all config specs and exposes
-the connector registry; remove import-time registration from library packages.
+**Requirements:** R5, R7, R10 · **Blocked by:** /2 · **Blocks:** /4
 
-**Requirements:** R5, R7, R10
+**New modules must stay ≤400 lines.**
 
-**Dependencies:** architecture-audit/2
+#### Task 3.1: Create bootstrap.py
 
-**Files:**
+**Create:** `apps/indexed/src/indexed/bootstrap.py`
 
+```python
+"""App composition root — config registration and connector wiring."""
+
+from __future__ import annotations
+
+from typing import Any, Callable, Type
+
+from indexed_config import ConfigService
+from indexed_config.errors import ConfigurationError
+from protocols import BaseConnector, SourceConfig
+
+_LEGACY_TYPE_MAP = {"jiraCloud": "jira", "confluenceCloud": "confluence"}
+
+
+def _normalize_connector_type(connector_type: str) -> str:
+    return _LEGACY_TYPE_MAP.get(connector_type, connector_type)
+
+
+def register_app_config(config_service: ConfigService) -> None:
+    """Register all config specs — idempotent, raises on failure."""
+    from core.v1.config_models import (
+        CoreV1EmbeddingConfig,
+        CoreV1IndexingConfig,
+        CoreV1SearchConfig,
+        CoreV1StorageConfig,
+    )
+    from connectors.confluence.schema import ConfluenceCloudConfig, ConfluenceConfig
+    from connectors.files.schema import FilesConfig, LocalFilesConfig
+    from connectors.jira.schema import JiraCloudConfig, JiraConfig
+    from connectors.outline.schema import OutlineConfig
+    from indexed.mcp.config import MCPConfig
+
+    config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
+    config_service.register(CoreV1SearchConfig, path="core.v1.search")
+    config_service.register(CoreV1StorageConfig, path="core.v1.vector_store")
+    config_service.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
+    config_service.register(MCPConfig, path="mcp")
+    config_service.register(FilesConfig, path="sources.files")
+    config_service.register(LocalFilesConfig, path="sources.files")
+    config_service.register(JiraConfig, path="sources.jira")
+    config_service.register(JiraCloudConfig, path="sources.jira")
+    config_service.register(ConfluenceConfig, path="sources.confluence")
+    config_service.register(ConfluenceCloudConfig, path="sources.confluence")
+    config_service.register(OutlineConfig, path="sources.outline")
+
+
+def build_connector_registry() -> dict[str, Type[Any]]:
+    from connectors.registry import CONNECTOR_REGISTRY
+    return dict(CONNECTOR_REGISTRY)
+
+
+def build_connector(
+    cfg: SourceConfig,
+    config_service: ConfigService,
+    registry: dict[str, Type[Any]] | None = None,
+) -> BaseConnector:
+    from connectors.registry import NAMESPACE_REGISTRY
+
+    registry = registry or build_connector_registry()
+    key = _normalize_connector_type(cfg.type)
+    cls = registry.get(key)
+    if cls is None:
+        available = ", ".join(sorted(registry))
+        raise ConfigurationError(f"Unknown connector type: {cfg.type}. Available: {available}")
+
+    namespace = NAMESPACE_REGISTRY.get(key, f"sources.{key}")
+    if cfg.base_url_or_path:
+        config_service.set(f"{namespace}.url", cfg.base_url_or_path)
+    if cfg.query:
+        config_service.set(f"{namespace}.query", cfg.query)
+
+    return cls.from_config(config_service)  # type: ignore[return-value]
 ```
-apps/indexed/src/indexed/bootstrap.py                # NEW register_config(), get_connector_registry()
-apps/indexed/src/indexed/app.py                      # call bootstrap in callback / entry
-apps/indexed/src/indexed/mcp/server.py               # call bootstrap in lifespan
-packages/indexed-connectors/src/connectors/registry.py  # build_connector_from_config() entry
-tests/unit/indexed/test_bootstrap.py                 # NEW
+
+#### Task 3.2: Wire entry points
+
+**Modify:** `apps/indexed/src/indexed/app.py`
+- In `@app.callback`, after logging setup: `register_app_config(ConfigService.instance(mode_override=ctx.obj.get("mode_override")))`.
+
+**Modify:** `apps/indexed/src/indexed/mcp/server.py`
+- In lifespan startup: call `register_app_config(config_service)`.
+
+**Modify:** `apps/indexed/src/indexed/connectors/__init__.py`
+- Remove import-time `_discover_connectors()` side effect; export lazy `get_connector_registry()` only.
+
+#### Task 3.3: Tests
+
+**Create:** `tests/unit/indexed/test_bootstrap.py`
+
+```python
+import importlib
+
+import pytest
+from indexed_config import ConfigService
+
+from indexed.bootstrap import build_connector_registry, register_app_config
+
+
+def test_import_core_v1_does_not_register_config(monkeypatch):
+    ConfigService.instance(reset=True)
+    before = len(ConfigService.instance()._registry._specs)  # noqa: SLF001
+    importlib.import_module("core.v1")
+    after = len(ConfigService.instance()._registry._specs)
+    assert before == after
+
+
+def test_register_app_config_is_idempotent():
+    ConfigService.instance(reset=True)
+    svc = ConfigService.instance()
+    register_app_config(svc)
+    n = len(svc._registry._specs)
+    register_app_config(svc)
+    assert len(svc._registry._specs) == n
+
+
+def test_build_connector_registry_has_jira():
+    reg = build_connector_registry()
+    assert "jira" in reg
+    assert "jiraCloud" in reg
 ```
 
-**Test scenarios:**
-
-- Importing `core.v1` or `indexed_config` alone does not register config specs.
-- `bootstrap.register_config(ConfigService.instance())` registers MCP, core v1,
-  and source specs exactly once (idempotent).
-- `get_connector_class("jiraCloud")` resolves via registry after bootstrap; unknown
-  type raises `ValueError` with available types listed.
+- [ ] Run: `uv run pytest tests/unit/indexed/test_bootstrap.py -q && uv run indexed --help`
+- [ ] Commit: `feat(app): architecture-audit/3 bootstrap module`
 
 **Verification:** `uv run pytest tests/unit/indexed/test_bootstrap.py -q && uv run indexed --help`
 
 ---
 
-### architecture-audit/4 — resolve_collections_context CLI+MCP
+### architecture-audit/4 — resolve_collections_context CLI+MCP parity
 
-**Goal:** Introduce `resolve_collections_context()` as the single API for storage
-mode, collections path, and caches path; wire CLI commands and MCP tools to use it.
+**Requirements:** R3, R10 · **Blocked by:** /3 · **Blocks:** /5
 
-**Requirements:** R3, R10
+#### Task 4.1: Create runtime.py
 
-**Dependencies:** architecture-audit/3
+**Create:** `apps/indexed/src/indexed/runtime.py`
 
-**Files:**
+```python
+from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from indexed_config import ConfigService
+
+
+@dataclass(frozen=True)
+class CliContext:
+    mode: str
+    collections_path: Path
+    caches_path: Path
+    config_service: ConfigService
+    connector_registry: dict[str, Any]
+
+
+def resolve_collections_context(
+    mode_override: str | None = None,
+    *,
+    workspace: Path | None = None,
+) -> CliContext:
+    from indexed.bootstrap import build_connector_registry
+
+    config_service = ConfigService.instance(
+        workspace=workspace,
+        mode_override=mode_override,  # fixed properly in /6
+        reset=mode_override is not None,
+    )
+    mode = config_service.resolve_storage_mode()
+    resolver = config_service.resolver
+    return CliContext(
+        mode=mode,
+        collections_path=resolver.get_collections_path(mode),
+        caches_path=resolver.get_caches_path(mode),
+        config_service=config_service,
+        connector_registry=build_connector_registry(),
+    )
 ```
-apps/indexed/src/indexed/runtime.py                    # NEW resolve_collections_context()
-apps/indexed/src/indexed/app.py                        # pass ctx into context helper
-apps/indexed/src/indexed/knowledge/commands/search.py  # replace resolve_preferred_collections_path
-apps/indexed/src/indexed/knowledge/commands/inspect.py
-apps/indexed/src/indexed/knowledge/commands/_create_helpers.py
-apps/indexed/src/indexed/mcp/tools.py                  # pass collections_path; drop hardcoded localFiles
-apps/indexed/src/indexed/utils/storage_info.py         # delegate to runtime helper
-tests/unit/indexed/test_runtime_context.py             # NEW CLI vs MCP parity tests
-tests/system/test_mcp_storage_parity.py                # NEW — MCP uses same path as CLI --local
-```
 
-**Test scenarios:**
+#### Task 4.2: Wire CLI commands
 
-- Given `--local`, both CLI search and MCP `search()` read from `./.indexed/data/collections`.
-- Given global mode, both surfaces use `~/.indexed/data/collections`.
-- MCP `search_collection` no longer hardcodes `localFiles` source type; uses manifest
-  metadata or omits type filter.
-- `ctx.obj["mode_override"]` from CLI flag flows into context resolution (fixes
-  display-only `--local` bug).
+**Modify each to accept `typer.Context` and call `resolve_collections_context(ctx.obj.get("mode_override"))`:**
+
+| File | Change |
+|------|--------|
+| `knowledge/commands/search.py` | Replace `resolve_preferred_collections_path()` with `ctx.collections_path`; fix `SourceConfig.type` from `CollectionStatus.source_type` |
+| `knowledge/commands/inspect.py` | Same path threading |
+| `knowledge/commands/update.py` | Pass `collections_path` to `svc_status` / update services |
+| `knowledge/commands/remove.py` | Same |
+| `knowledge/commands/_create_helpers.py` | Use `resolve_collections_context`; pass global `mode_override` from `ctx.obj` |
+
+**Modify:** `utils/storage_info.py`
+- `display_storage_mode_for_command` uses `resolve_collections_context`.
+- **Delete** `resolve_preferred_collections_path()`.
+
+#### Task 4.3: Wire MCP
+
+**Modify:** `mcp/server.py` — build `CliContext` in lifespan; store in `lifespan_state["cli_context"]`.
+
+**Modify:** `mcp/tools.py`, `mcp/resources.py`
+- Read `cli_context.collections_path`; pass `collections_path=str(...)` to `svc_search` / `svc_status`.
+- Build `SourceConfig.type` from manifest `source_type`, not hardcoded `localFiles`.
+
+#### Task 4.4: MCPConfig TOML (P1 add-on)
+
+**Modify:** `mcp/cli.py` `run_impl()`
+- After parsing Typer args, if host/port/log_level still at defaults, load `MCPConfig` from bound provider and apply.
+
+#### Task 4.5: Tests
+
+**Create:** `tests/unit/indexed/test_runtime_context.py` — local vs global path resolution.
+
+**Create:** `tests/system/test_mcp_storage_parity.py` — CLI `--local` and MCP lifespan share `./.indexed/data/collections`.
+
+- [ ] Commit: `feat(app): architecture-audit/4 runtime context parity`
 
 **Verification:** `uv run pytest tests/unit/indexed/test_runtime_context.py tests/system/test_mcp_storage_parity.py -q`
 
+**Sprint 1 checkpoint:** run Sprint 1 verify gate (see Overnight Run Guide).
+
 ---
+
+## Phase 1 — Hygiene (Sprint 2)
 
 ### architecture-audit/5 — Remove import-time config registration
 
-**Goal:** Delete import-time `ConfigService.register()` calls from `core.v1.__init__`,
-MCP `_get_*_config()` helpers, and any package `__init__.py`; all registration
-goes through `bootstrap.register_config()`.
+**Requirements:** R4, R5 · **Blocked by:** /4
 
-**Requirements:** R4, R5
+**Modify:**
+- `packages/indexed-core/src/core/v1/__init__.py` — delete lines 16–33 (`try/register` block).
+- `packages/indexed-connectors/src/connectors/jira/__init__.py` — delete register block.
+- `packages/indexed-connectors/src/connectors/confluence/__init__.py` — delete register block.
+- `packages/indexed-connectors/src/connectors/files/__init__.py` — delete register block.
+- `apps/indexed/src/indexed/mcp/server.py` — remove inline `register()` from `_get_mcp_config()` / `_get_search_config()`; read via `bind()` only.
 
-**Dependencies:** architecture-audit/4
-
-**Files:**
-
-```
-packages/indexed-core/src/core/v1/__init__.py        # remove try/register block
-apps/indexed/src/indexed/mcp/server.py               # remove _get_mcp_config register side effects
-apps/indexed/src/indexed/mcp/config.py
-apps/indexed/src/indexed/bootstrap.py                # owns all register() calls
-tests/unit/indexed/test_bootstrap.py                 # extend — import core.v1 is side-effect free
-```
-
-**Test scenarios:**
-
-- `import core.v1` does not mutate `ConfigService.instance()._registry`.
-- MCP lifespan loads config from pre-registered specs after bootstrap, not inline
-  register-on-read.
-- `indexed init` and `indexed index search` still resolve config after bootstrap.
+- [ ] Extend `test_bootstrap.py`: `import connectors.jira` does not register specs.
+- [ ] Commit: `refactor(config): architecture-audit/5 explicit registration`
 
 **Verification:** `uv run pytest tests/unit/indexed/test_bootstrap.py tests/unit/indexed_config/ -q && uv run mypy src/`
 
 ---
 
-### architecture-audit/6 — Unify config read_for_mode (drop merge path)
+### architecture-audit/6 — Unify config read_for_mode
 
-**Goal:** Route all config reads through `TomlStore.read_for_mode(resolved_mode)`;
-remove or deprecate the global/local merge path in `TomlStore.read()`.
+**Requirements:** R4 · **Blocked by:** /5
 
-**Requirements:** R4
+#### Task 6.1: Fix singleton mode_override
 
-**Dependencies:** architecture-audit/5
+**Modify:** `packages/indexed-config/src/indexed_config/service.py`
 
-**Files:**
-
-```
-packages/indexed-config/src/indexed_config/store.py       # remove merge branch from read()
-packages/indexed-config/src/indexed_config/service.py     # bind() always uses read_for_mode
-packages/indexed-config/src/indexed_config/workspace.py     # single mode resolution entry
-tests/unit/indexed_config/test_toml_store.py                # drop merge tests; add no-merge guard
-tests/unit/indexed_config/test_service.py
+```python
+def instance(cls, *, workspace=None, mode_override=None, reset=False) -> "ConfigService":
+    if cls._instance is None or reset or (
+        mode_override is not None and cls._instance._mode_override != mode_override
+    ):
+        cls._instance = cls(workspace=workspace, mode_override=mode_override)
+    return cls._instance
 ```
 
-**Test scenarios:**
+#### Task 6.2: Route reads through read_for_mode
 
-- `read_for_mode("local")` returns only `./.indexed/config.toml` values (global
-  TOML keys absent unless env-overridden).
-- `ConfigService.instance(mode_override="local")` after first global call respects
-  override (singleton mode fix).
-- No production caller invokes `TomlStore.read()` merge path; grep confirms zero
-  external `store.read()` without mode.
+**Modify:** `store.py` — `read()` delegates to `read_for_mode(resolved_mode)` or raises `DeprecationWarning` for merge callers.
+
+**Modify:** `workspace.py` `get_config()` — use `read_for_mode`.
+
+**Modify:** `apps/indexed/src/indexed/utils/storage_info.py` — stop calling `store.read()` merge path.
+
+**Modify tests:** `tests/unit/indexed_config/test_toml_store.py` — replace merge tests with no-merge guards.
+
+- [ ] Grep production: `store.read()` without mode — zero hits outside tooling.
+- [ ] Commit: `refactor(config): architecture-audit/6 read_for_mode only`
 
 **Verification:** `uv run pytest tests/unit/indexed_config/ -q && uv run mypy src/`
 
@@ -289,225 +623,259 @@ tests/unit/indexed_config/test_service.py
 
 ### architecture-audit/7 — Consolidate HTTP retry
 
-**Goal:** Single transient-only retry policy shared by Jira and Confluence readers;
-stop retrying permanent 4xx errors.
+**Requirements:** R8 · **Blocked by:** /6
 
-**Requirements:** R8
+**Modify:** `packages/utils/src/utils/retry.py`
 
-**Dependencies:** architecture-audit/6
+```python
+TRANSIENT_HTTP_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 
-**Files:**
 
+def is_transient_http_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status is not None:
+        return int(status) in TRANSIENT_HTTP_STATUS
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError))
 ```
-packages/utils/src/utils/retry.py                                    # add is_transient_http_error()
-packages/indexed-connectors/src/connectors/http.py                   # NEW optional thin wrapper
-packages/indexed-connectors/src/connectors/jira/unified_jira_document_reader.py
-packages/indexed-connectors/src/connectors/confluence/confluence_document_reader.py
-packages/indexed-connectors/src/connectors/confluence/confluence_cloud_document_reader.py
-tests/unit/utils/test_retry.py                                       # transient vs permanent cases
-tests/unit/indexed_connectors/test_http_retry.py                       # NEW reader integration mocks
-```
 
-**Test scenarios:**
+**Modify `execute_with_retry`:** retry only if `is_transient_http_error(e)` OR non-HTTP `ConnectionError`/`TimeoutError`; re-raise immediately otherwise.
 
-- 401/403/404 failures fail fast without retry (mocked HTTP client).
-- 429/503 failures retry with backoff; honour `Retry-After` when present.
-- Network timeout (`ConnectionError`) retries; validation error (`ValueError`) does not.
+**Create (optional):** `packages/indexed-connectors/src/connectors/http.py` with `request_with_retry()`.
+
+**Modify readers:** `unified_jira_document_reader.py`, `confluence_document_reader.py`, `confluence_cloud_document_reader.py`, `async_jira_cloud_reader.py`, `outline_document_reader.py` — use shared helpers.
+
+**Create:** `tests/unit/indexed_connectors/test_http_retry.py` — 404 fails fast; 429 retries (mocked).
+
+- [ ] Commit: `refactor(utils): architecture-audit/7 transient retry policy`
 
 **Verification:** `uv run pytest tests/unit/utils/test_retry.py tests/unit/indexed_connectors/test_http_retry.py -q`
 
 ---
 
-### architecture-audit/8 — Delete speculative code (FaissAutoIndexer, wrappers, dead DTOs)
+### architecture-audit/8 — Delete speculative and dead code
 
-**Goal:** Remove unused engine variants, deprecated Jira/Confluence wrapper classes,
-registry dict wrappers, and dead DTOs identified in the audit.
+**Requirements:** R9, R10 · **Blocked by:** /7
 
-**Requirements:** R9, R10
+#### Task 8.1: Migrate Jira Server before deleting wrappers
 
-**Dependencies:** architecture-audit/7
+**Modify:** `packages/indexed-connectors/src/connectors/jira/connector.py`
+- Replace `JiraDocumentReader` import with `UnifiedJiraDocumentReader` for Server/DC path.
+- [ ] Run: `uv run pytest tests/unit/indexed_connectors/jira/ -q`
 
-**Files:**
+#### Task 8.2: Delete files
 
-```
-packages/indexed-core/src/core/v1/engine/indexes/indexers/faiss_auto_indexer.py  # DELETE
-packages/indexed-core/src/core/v1/engine/indexes/indexer_factory.py              # FaissIndexer only
-packages/indexed-connectors/src/connectors/jira/jira_document_reader.py          # DELETE deprecated
-packages/indexed-connectors/src/connectors/jira/jira_cloud_document_reader.py
-packages/indexed-connectors/src/connectors/jira/jira_document_converter.py
-packages/indexed-connectors/src/connectors/jira/jira_cloud_document_converter.py
-packages/indexed-connectors/src/connectors/confluence/confluence_document_converter.py
-packages/indexed-connectors/src/connectors/confluence/confluence_cloud_document_converter.py
-packages/indexed-connectors/src/connectors/jira/__init__.py                      # drop re-exports
-packages/indexed-connectors/src/connectors/confluence/__init__.py
-tests/                                                                             # remove/adjust imports of deleted symbols
-```
+| Delete | Reason |
+|--------|--------|
+| `core/.../faiss_auto_indexer.py` | Speculative HNSW/IVFPQ |
+| `connectors/jira/jira_document_reader.py` | Deprecated wrapper |
+| `connectors/jira/jira_cloud_document_reader.py` | Deprecated |
+| `connectors/jira/jira_document_converter.py` | Deprecated |
+| `connectors/jira/jira_cloud_document_converter.py` | Deprecated |
+| `connectors/confluence/confluence_document_converter.py` | Deprecated |
+| `connectors/confluence/confluence_cloud_document_converter.py` | Deprecated |
+| `utils/safe_getattr.py` | Test-only |
+| `parsing/router.py` `DOCLING_FALLBACK` branch | YAGNI |
 
-**Test scenarios:**
+**Modify:** `indexer_factory.py` — FaissIndexer only.
 
-- Indexer factory always returns `FaissIndexer`; no code path references
-  `FaissAutoIndexer`.
-- Jira/Confluence connectors instantiate unified reader/converter only; importing
-  deleted wrapper modules fails (module not found).
-- Full suite passes; coverage remains >85%.
+**Modify:** `core/v1/config_models.py` — delete unused `PathsConfig`.
 
-**Verification:** `uv run pytest -q --cov=src && uv run ruff check . --fix && uv run ruff format`
+**Modify:** `core/v1/engine/services/models.py` — delete unused `SearchResult`.
+
+- [ ] Grep deleted module names — zero production importers.
+- [ ] Commit: `refactor: architecture-audit/8 remove dead code`
+
+**Verification:** `uv run pytest -q --cov=src` (must stay >85%)
+
+**Sprint 2 checkpoint:** run Sprint 2 verify gate.
 
 ---
 
+## Phase 2 — Services (Sprint 3)
+
 ### architecture-audit/9 — Remove core import-time logging
 
-**Goal:** Remove `setup_root_logger()` call at `collection_service` module import;
-logging is configured once by the app via `bootstrap_logging()`.
+**Requirements:** R5 · **Blocked by:** /8
 
-**Requirements:** R5
+**Modify:**
+- `collection_service.py` — remove `setup_root_logger()` call at module level.
+- `inspect_service.py` — same.
 
-**Dependencies:** architecture-audit/8
+**Create:** `tests/unit/indexed_core/test_collection_service_logging.py`
 
-**Files:**
+```python
+from loguru import logger
 
+
+def test_import_collection_service_does_not_add_handlers():
+    import core.v1.engine.services.collection_service  # noqa: F401
+    # Handlers count should not grow from import alone — compare before/after in fixture
 ```
-packages/indexed-core/src/core/v1/engine/services/collection_service.py  # remove setup_root_logger()
-apps/indexed/src/indexed/bootstrap.py                                      # ensure logging init order
-apps/indexed/src/indexed/app.py
-tests/system/test_logging_no_leak.py                                       # still passes at default level
-tests/unit/indexed_core/test_collection_service_logging.py                 # NEW — import has no sink setup
-```
 
-**Test scenarios:**
-
-- Importing `collection_service` does not add loguru handlers.
-- CLI `--quiet` suppresses warnings; `--debug` shows them (existing system test).
-- Library callers (tests) can import core services without duplicate log lines.
+- [ ] Commit: `refactor(core): architecture-audit/9 no import logging`
 
 **Verification:** `uv run pytest tests/system/test_logging_no_leak.py tests/unit/indexed_core/test_collection_service_logging.py -q`
 
 ---
 
-### architecture-audit/10 — Merge connector builders to registry
+### architecture-audit/10 — Single connector builder
 
-**Goal:** Replace `collection_service._build_connector_from_config()` and duplicate
-factory logic with a single `build_connector_from_config()` on the connector registry.
+**Requirements:** R7, R10 · **Blocked by:** /9
 
-**Requirements:** R7, R10
+**Modify:** `collection_service.py` — delete `_build_connector_from_config`; `create()`/`update()` accept `connector: BaseConnector` or `connector_factory`.
 
-**Dependencies:** architecture-audit/9
+**Modify:** `update_collection_factory.py` — remove duplicate `_populate_config_from_manifest` elif chain; use app-injected builder.
 
-**Files:**
+**Modify:** `apps/indexed` create/update command paths — call `build_connector(cfg, ctx.config_service, ctx.connector_registry)`.
 
-```
-packages/indexed-connectors/src/connectors/registry.py                   # build_connector_from_config()
-packages/indexed-core/src/core/v1/engine/services/collection_service.py  # delegate to injected builder
-packages/indexed-core/src/core/v1/engine/factories/update_collection_factory.py
-apps/indexed/src/indexed/bootstrap.py                                    # inject registry builder
-tests/unit/indexed_connectors/test_registry_build.py                     # NEW — all source types
-tests/unit/indexed/services/test_collection_service.py                   # update to mock registry
-```
+**Create:** `tests/unit/indexed_connectors/test_registry_build.py` — all six source types build without error (mock config).
 
-**Test scenarios:**
+**Modify:** `tests/unit/indexed_core/services/test_collection_service.py` — mock injected connector, not `connectors.*` patches.
 
-- One code path builds connectors for `jira`, `jiraCloud`, `confluence`,
-  `confluenceCloud`, `localFiles`, `outline`.
-- `config_service.set()` namespace mapping matches `NAMESPACE_REGISTRY` (no drift).
-- Update factory uses the same builder as create (no duplicated elif chains).
+- [ ] Commit: `refactor(app): architecture-audit/10 single connector builder`
 
-**Verification:** `uv run pytest tests/unit/indexed_connectors/test_registry_build.py tests/unit/indexed/services/test_collection_service.py -q`
+**Verification:** `uv run pytest tests/unit/indexed_connectors/test_registry_build.py tests/unit/indexed_core/services/test_collection_service.py -q`
 
 ---
 
-### architecture-audit/11 — IndexedError handlers CLI/MCP
+### architecture-audit/11 — IndexedError at CLI/MCP boundaries
 
-**Goal:** CLI catches `IndexedError` subtypes for user-friendly messages and exit
-codes; MCP tools return structured error dicts from `IndexedError`, not bare
-`Exception` strings.
+**Requirements:** R6, R10 · **Blocked by:** /10
 
-**Requirements:** R6, R10
+**Modify:** `apps/indexed/src/indexed/errors.py`
 
-**Dependencies:** architecture-audit/10
+```python
+from indexed_config.errors import ConfigurationError, IndexedError, StorageError
 
-**Files:**
+EXIT_CODES = {
+    ConfigurationError: 2,
+    StorageError: 3,
+}
 
+def format_cli_error(exc: IndexedError) -> str:
+    return str(exc)
+
+def mcp_error_envelope(exc: IndexedError) -> dict[str, str]:
+    return {"error": str(exc), "type": type(exc).__name__}
 ```
-apps/indexed/src/indexed/errors.py                     # map subtypes → exit codes / messages
-apps/indexed/src/indexed/app.py                        # typer exception handler
-apps/indexed/src/indexed/mcp/tools.py                  # catch IndexedError → structured dict
-apps/indexed/src/indexed/mcp/resources.py
-apps/indexed/src/indexed/mcp/formatting.py             # error envelope helper
-tests/unit/indexed/test_cli_error_handler.py           # NEW
-tests/unit/indexed/mcp/test_error_handling.py          # NEW
-```
 
-**Test scenarios:**
+**Modify:** `app.py` — `@app.callback` or Typer handler catches `IndexedError`, prints message, exits with mapped code.
 
-- `ConfigurationError` in CLI prints actionable message, exit code ≠ 0, no traceback
-  at default verbosity.
-- MCP `search()` given missing collection returns `{"error": "...", "type": "StorageError"}`
-  not a generic `"str(e)"` from unexpected exceptions.
-- Unexpected `RuntimeError` still propagates with full traceback (CLI `--debug`).
+**Modify:** `mcp/tools.py`, `mcp/resources.py` — catch `IndexedError` → `mcp_error_envelope()`; let unexpected exceptions propagate/log traceback.
+
+**Create:** `tests/unit/indexed/test_cli_error_handler.py`, `tests/unit/indexed/mcp/test_error_handling.py`
+
+- [ ] Commit: `feat(app): architecture-audit/11 IndexedError handlers`
 
 **Verification:** `uv run pytest tests/unit/indexed/test_cli_error_handler.py tests/unit/indexed/mcp/test_error_handling.py -q && uv run mypy src/`
 
 ---
 
-### architecture-audit/12 — Import-graph CI check + characterization test baseline
+## Phase 3 — Validation
 
-**Goal:** Add CI enforcement of the target dependency graph and a characterization
-test suite that locks current CLI/MCP behaviour before v2 work begins.
+### architecture-audit/12 — Import-graph CI + characterization
 
-**Requirements:** R1, R11
+**Requirements:** R1, R11 · **Blocked by:** /11
 
-**Dependencies:** architecture-audit/11
+#### Task 12.1: Import graph script
 
-**Files:**
+**Create:** `scripts/check_import_graph.py`
 
+Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `apps/*/src`):
+
+| From package | Must NOT import |
+|--------------|-----------------|
+| `core` | `connectors` |
+| `connectors` | `core` (except during transition — **zero** after /1) |
+| `indexed_config`, `utils`, `parsing`, `protocols` | `core`, `connectors`, `indexed` |
+
+#### Task 12.2: CI workflow
+
+**Modify:** `.github/workflows/python-ci.yml` — add step before system tests:
+
+```yaml
+- name: Check import graph
+  run: uv run python scripts/check_import_graph.py
 ```
-scripts/check_import_graph.py                          # NEW — forbidden import rules
-.github/workflows/python-ci.yml                        # run check_import_graph.py
-tests/characterization/test_cli_smoke.py               # NEW baseline
-tests/characterization/test_mcp_smoke.py
-tests/characterization/test_import_graph.py
-.spec/features/architecture-audit/tech.md              # document allowed edges (cross-ref)
-```
 
-**Test scenarios:**
+#### Task 12.3: Characterization tests
 
-- Script fails if `core` imports `connectors`, `connectors` imports `core`, or
-  `indexed_config` imports anything above infra.
-- Characterization: `indexed index search "test" --collection …` exit code and
-  output shape unchanged on fixture collection in `tmp_path`.
-- Characterization: MCP `list_collections` tool returns expected keys on fixture.
-- CI workflow step fails on violation (local run matches CI).
+**Create:** `tests/characterization/test_import_graph.py` — wraps script exit code.
 
-**Verification:** `uv run python scripts/check_import_graph.py && uv run pytest tests/characterization/ -q && uv run pytest -q --cov=src`
+**Create:** `tests/characterization/test_cli_smoke.py` — search against `tmp_path` fixture collection.
+
+**Create:** `tests/characterization/test_mcp_smoke.py` — resources return expected keys.
+
+#### Task 12.4: Coverage for protocols
+
+**Modify:** root `pyproject.toml` — add `protocols` to `source_pkgs` and `--cov=protocols` if not done in `/1`.
+
+- [ ] Commit: `ci: architecture-audit/12 import graph gate`
+
+**Verification:** Full feature verify gate (see Overnight Run Guide).
+
+---
+
+## COMPOUND — After /12 passes
+
+- [ ] Promote architectural rules to [../../tech.md](../../tech.md) (protocols package, bootstrap, runtime context, import-graph CI).
+- [ ] Update [../../plan.md](../../plan.md) Feature 11 → DONE.
+- [ ] Add lessons from this run to [../../lessons.md](../../lessons.md).
+- [ ] Run: `bash .agents/skills/spec/scripts/validate.sh`
+- [ ] Archive feature folder per spec rules before branch merge.
+
+---
+
+## Risk Register
+
+| Risk | Mitigation |
+|------|------------|
+| `/2` breaks tests before `/3` wires app | Stub factory raises clear `ConfigurationError`; land /2+/3 same sprint |
+| MCP singleton + mode bug | `/6` before `/4` parity tests; use `reset=True` in `resolve_collections_context` until /6 lands |
+| `/8` deletes hot-path Jira reader | Task 8.1 migrates to `UnifiedJiraDocumentReader` first |
+| Coverage drop after deletions | Run `--cov=src` after /8; add characterization tests in /12 |
+| Scope creep into #119 | R10 on touched files only; do not split `create.py` unless you touch it and exceed 150L |
+
+---
+
+## Out of Scope (explicit deferrals)
+
+- Issue #119 thin commands (`config/cli.py`, `create.py`, `search_facade.py`)
+- `core/v2/` engine rewrite — separate feature after Feature 11 gate
+- Confluence reader unification (3 impls → 1)
+- MCP tool surface realignment (`list_collections` tool, resource URI rename)
+- `ConfigRegistry` merge into service.py
 
 ---
 
 ## Dependencies
 
 | Unit | Blocks | Blocked by |
-|---|---|---|
-| architecture-audit/1 | /2 | — |
-| architecture-audit/2 | /3 | /1 |
-| architecture-audit/3 | /4 | /2 |
-| architecture-audit/4 | /5 | /3 |
-| architecture-audit/5 | /6 | /4 |
-| architecture-audit/6 | /7 | /5 |
-| architecture-audit/7 | /8 | /6 |
-| architecture-audit/8 | /9 | /7 |
-| architecture-audit/9 | /10 | /8 |
-| architecture-audit/10 | /11 | /9 |
-| architecture-audit/11 | /12 | /10 |
-| architecture-audit/12 | — | /11 |
-
-Same-feature dependencies only. Cross-feature order is a whole-feature gate in the
-root [plan.md](../../plan.md) Feature Sequence, not a unit edge here.
+|------|--------|------------|
+| /0 | /1 (optional parallel) | — |
+| /1 | /2 | — |
+| /2 | /3 | /1 |
+| /3 | /4 | /2 |
+| /4 | /5 | /3 |
+| /5 | /6 | /4 |
+| /6 | /7 | /5 |
+| /7 | /8 | /6 |
+| /8 | /9 | /7 |
+| /9 | /10 | /8 |
+| /10 | /11 | /9 |
+| /11 | /12 | /10 |
+| /12 | COMPOUND | /11 |
 
 ---
 
 ## Progress
 
 | Unit | Status |
-|---|---|
+|------|--------|
+| architecture-audit/0 | DONE |
 | architecture-audit/1 | NOT STARTED |
 | architecture-audit/2 | NOT STARTED |
 | architecture-audit/3 | NOT STARTED |
