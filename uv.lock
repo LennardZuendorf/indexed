@@ -22,6 +22,7 @@ members = [
     "indexed-connectors",
     "indexed-core",
     "indexed-parsing",
+    "indexed-protocols",
     "indexed-sh",
     "indexed-utils",
 ]
@@ -1227,6 +1228,7 @@ dependencies = [
     { name = "bs4" },
     { name = "httpx" },
     { name = "indexed-parsing" },
+    { name = "indexed-protocols" },
     { name = "indexed-utils" },
     { name = "langchain-text-splitters" },
     { name = "loguru" },
@@ -1242,6 +1244,7 @@ requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "indexed-parsing", editable = "packages/indexed-parsing" },
+    { name = "indexed-protocols", editable = "packages/indexed-protocols" },
     { name = "indexed-utils", editable = "packages/utils" },
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "loguru", specifier = ">=0.7.0" },
@@ -1258,6 +1261,7 @@ source = { editable = "packages/indexed-core" }
 dependencies = [
     { name = "faiss-cpu" },
     { name = "indexed-connectors" },
+    { name = "indexed-protocols" },
     { name = "indexed-utils" },
     { name = "onnxruntime" },
     { name = "orjson" },
@@ -1269,6 +1273,7 @@ dependencies = [
 requires-dist = [
     { name = "faiss-cpu", specifier = ">=1.11.0" },
     { name = "indexed-connectors", editable = "packages/indexed-connectors" },
+    { name = "indexed-protocols", editable = "packages/indexed-protocols" },
     { name = "indexed-utils", editable = "packages/utils" },
     { name = "onnxruntime", specifier = ">=1.17.0" },
     { name = "orjson", specifier = ">=3.10.0" },
@@ -1314,6 +1319,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "indexed-protocols"
+version = "0.1.0"
+source = { editable = "packages/indexed-protocols" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0.0" }]
+
+[[package]]
 name = "indexed-sh"
 version = "0.0.5"
 source = { editable = "apps/indexed" }
@@ -1324,6 +1340,7 @@ dependencies = [
     { name = "indexed-connectors" },
     { name = "indexed-core" },
     { name = "indexed-parsing" },
+    { name = "indexed-protocols" },
     { name = "indexed-utils" },
     { name = "mcp" },
     { name = "rich" },
@@ -1338,6 +1355,7 @@ requires-dist = [
     { name = "indexed-connectors", editable = "packages/indexed-connectors" },
     { name = "indexed-core", editable = "packages/indexed-core" },
     { name = "indexed-parsing", editable = "packages/indexed-parsing" },
+    { name = "indexed-protocols", editable = "packages/indexed-protocols" },
     { name = "indexed-utils", editable = "packages/utils" },
     { name = "mcp", specifier = ">=1.13.0" },
     { name = "rich", specifier = ">=13.7.0" },

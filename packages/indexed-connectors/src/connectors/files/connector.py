@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, List
 
-from core.v1.connectors.metadata import ConnectorMetadata
+from protocols import ConnectorMetadata
 
 from .change_tracker import ChangeTracker, FileChange, IndexState
 from .files_document_converter import FilesDocumentConverter

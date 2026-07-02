@@ -15,7 +15,7 @@ Comment depth handling:
 """
 
 from typing import ClassVar, Optional
-from core.v1.connectors.metadata import ConnectorMetadata
+from protocols import ConnectorMetadata
 from .confluence_document_reader import ConfluenceDocumentReader
 from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 from .async_confluence_cloud_reader import AsyncConfluenceCloudDocumentReader

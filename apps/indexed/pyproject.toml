@@ -23,6 +23,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "indexed-protocols",
     "indexed-core",
     "indexed-connectors",
     "indexed-parsing",
@@ -46,6 +47,7 @@ indexed = "indexed.app:main"
 indexed-mcp = "indexed.mcp.cli:cli_main"
 
 [tool.uv.sources]
+indexed-protocols = { workspace = true }
 indexed-core = { workspace = true }
 indexed-connectors = { workspace = true }
 indexed-parsing = { workspace = true }

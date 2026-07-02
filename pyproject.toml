@@ -31,6 +31,7 @@ addopts = [
     # This works better with uv workspace where packages are installed in .venv
     "--cov=indexed",
     "--cov=core",
+    "--cov=protocols",
     "--cov=connectors",
     "--cov=parsing",
     "--cov=indexed_config",
@@ -52,6 +53,7 @@ filterwarnings = [
 source_pkgs = [
     "indexed",      # apps/indexed/src/indexed
     "core",         # packages/indexed-core/src/core
+    "protocols",    # packages/indexed-protocols/src/protocols
     "connectors",   # packages/indexed-connectors/src/connectors
     "parsing",      # packages/indexed-parsing/src/parsing
     "indexed_config",  # packages/indexed-config/src/indexed_config
@@ -61,6 +63,7 @@ source_pkgs = [
 source = [
     "apps/indexed/src/indexed",
     "packages/indexed-core/src/core",
+    "packages/indexed-protocols/src/protocols",
     "packages/indexed-connectors/src/connectors",
     "packages/indexed-parsing/src/parsing",
     "packages/indexed-config/src/indexed_config",

@@ -1,7 +1,7 @@
 """Document connectors for various sources.
 
 This package provides standardized connector classes for different document sources.
-All connectors implement the BaseConnector protocol from core.v1.connectors.
+All connectors implement the BaseConnector protocol from protocols.
 """
 
 from .files.connector import FileSystemConnector

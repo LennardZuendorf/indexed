@@ -6,7 +6,7 @@ and Jira Cloud.
 """
 
 from typing import ClassVar, Optional
-from core.v1.connectors.metadata import ConnectorMetadata
+from protocols import ConnectorMetadata
 from .jira_document_reader import JiraDocumentReader
 from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader

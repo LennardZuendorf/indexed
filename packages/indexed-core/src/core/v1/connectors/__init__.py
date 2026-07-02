@@ -1,6 +1,8 @@
-"""Connector protocol and interfaces for document sources."""
+"""Connector protocol and interfaces for document sources.
 
-from .base import BaseConnector
-from .metadata import ConnectorMetadata
+Deprecated: import from ``protocols`` instead. Re-exported during transition.
+"""
+
+from protocols import BaseConnector, ConnectorMetadata
 
 __all__ = ["BaseConnector", "ConnectorMetadata"]

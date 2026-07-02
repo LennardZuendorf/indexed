@@ -7,7 +7,7 @@ base URL differs.
 
 from typing import ClassVar
 
-from core.v1.connectors.metadata import ConnectorMetadata
+from protocols import ConnectorMetadata
 
 from .outline_document_converter import OutlineDocumentConverter
 from .outline_document_reader import OutlineDocumentReader
