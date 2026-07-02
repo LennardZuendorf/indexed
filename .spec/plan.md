@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-09
+updated: 2026-06-29
 ---
 
 # Development Plan: indexed
@@ -37,6 +37,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `apps/indexed/src/indexed/knowledge/commands/` |
 | 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `packages/indexed-config/`, tech.md § Configuration System |
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
+| 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ◻ IN PROGRESS | `.spec/features/architecture-audit/` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -44,14 +45,20 @@ all shipped. Architectural rules promoted to [tech.md](tech.md) § Architectural
 Only the thin-command pattern (extract `knowledge/services/`, shrink oversized
 command files) remains open — tracked as [issue #119](https://github.com/LennardZuendorf/indexed/issues/119), not a spec backlog item.
 
+**Feature 11 detail:** Full monorepo audit (2026-06-29) captured in
+[features/architecture-audit/](features/architecture-audit/) — requirements
+(R1–R11), target architecture, 12 implementation units, six research clusters.
+Gate: Phase 0 graph fixes + import-graph CI green; unblocks v2 core/connectors rewrite.
+
 ---
 
 ## Current Focus
 
-v2 core/connectors rewrite. The cleanup landed surviving infra (`indexed-config`,
-`utils`, CLI, MCP) on a clean foundation; v2 replaces `core/v1` and
-`indexed-connectors` against the rules in [tech.md](tech.md) § Architectural Rules.
-Scope the v2 work as a feature under `.spec/features/<name>/` when it starts.
+**Architecture audit remediation** — implement
+[features/architecture-audit/plan.md](features/architecture-audit/plan.md) units
+`architecture-audit/1`–`/12` (protocols package, drop core→connectors, app bootstrap,
+CLI/MCP storage parity, config/retry hygiene, dead-code removal). v2 core/connectors
+rewrite follows after Feature 11 gate; scope as a separate feature when remediation lands.
 
 ---
 
@@ -70,6 +77,13 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-06-29: Architecture audit feature spec
+**Decision:** Capture the 2026-06-29 monorepo audit in
+`.spec/features/architecture-audit/` (product, tech, plan, six research clusters).
+Feature 11 gates v2 rewrite on graph fixes and import-graph CI.
+**Rationale:** Audit findings are actionable but too large for root specs; feature
+layer holds remediation requirements and phased units without polluting root backlog.
 
 ### 2026-06-09: Spec cleanup
 **Decision:** Migrate `docs/specs/` feature specs into root, promote shipped
