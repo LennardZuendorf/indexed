@@ -240,6 +240,10 @@ class ConfluenceDocumentReader:
     def __fetch_attachment_bytes(self, url):
         """Download attachment content."""
         from loguru import logger
+        from .._url_guard import warn_if_off_origin
+
+        if not warn_if_off_origin(url, self.base_url):
+            return None
 
         try:
             response = requests.get(

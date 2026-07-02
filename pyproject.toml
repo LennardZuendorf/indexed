@@ -18,6 +18,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "slow: marks tests as slow",
+    "unit: marks unit tests",
     "unit_api: marks unit API tests",
     "benchmark: marks benchmark tests",
     "connectors: marks connector functionality tests",

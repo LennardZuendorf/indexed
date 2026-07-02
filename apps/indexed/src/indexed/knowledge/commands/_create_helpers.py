@@ -96,12 +96,6 @@ def execute_create_command(
         local_collections_path = str(local_root / "data" / "collections")
         local_caches_path = str(local_root / "data" / "caches")
 
-    # Display storage mode indicator (not in verbose mode, to keep logs clean)
-    if not is_verbose_mode():
-        from ...utils.storage_info import display_storage_mode_for_command
-
-        display_storage_mode_for_command(console)
-
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")

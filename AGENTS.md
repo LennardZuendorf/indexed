@@ -248,6 +248,16 @@ Earned defaults — apply without being asked.
   `.spec/lessons.md` so the same mistake never repeats. Review it at session start.
 - **KISS wins.** Prefer the simple, readable solution that matches surrounding
   code over a clever one. Quality over speed.
+- **`is_verbose_mode()` is unreliable at command-function top.** Logger setup
+  (`setup_root_logger`) runs inside `execute_create_command`, not at command entry.
+  Anything before that call must use `verbose`/`log_level` params directly. See
+  `.spec/lessons.md` for the full pattern.
+- **Shared guard helpers, not duplicated blocks.** When a security check must
+  appear in multiple readers, extract it into a shared module (`_url_guard.py`).
+  Use `warn_if_off_origin(url, base_url)` in readers; `is_same_origin` for tests.
+- **Audit Cloud readers before applying credential guards.** Cloud APIs often
+  serve attachment content from off-origin CDNs — the origin guard must be
+  selectively excluded or it silently drops all attachments.
 
 ---
 

@@ -17,7 +17,7 @@ from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext
-from ...utils.progress_bar import create_phased_progress
+from ...utils.progress_bar import create_phased_progress, build_search_phase_label
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -411,10 +411,6 @@ def search(
             raise typer.Exit(1)
 
         collections_to_search = [collection]
-        if not simple:
-            console.print(
-                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in 1 Collection:[/{get_heading_style()}]'
-            )
 
     # Build search configs for all collections
     search_configs = {}
@@ -444,16 +440,15 @@ def search(
                 )
                 results.update(result)
     else:
-        # Normal mode: phased progress display (consistent with Create/Update)
-        heading = get_heading_style()
-        accent = get_accent_style()
-        title = (
-            f"[{heading}]Searching collection: [{accent}]{query}[/{accent}][/{heading}]"
-        )
-
-        with create_phased_progress(title=title) as phased:
+        # Normal mode: phased progress display (consistent with Create/Update).
+        # No section title: each phase label carries the full collection + query
+        # context, so the plain (non-Rich) path — which ignores the title — keeps
+        # it too. Multi-collection prints its summary headline above; single does
+        # not (see #110/#88).
+        with create_phased_progress() as phased:
             for coll_name in collections_to_search:
-                phased.start_phase(f"Searching {coll_name}")
+                phase_label = build_search_phase_label(query, coll_name)
+                phased.start_phase(phase_label)
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
@@ -463,7 +458,7 @@ def search(
                     collections_path=preferred_path,
                 )
                 results.update(result)
-                phased.finish_phase(f"Searching {coll_name}")
+                phased.finish_phase(phase_label)
 
     # Format and display results
     if simple:

@@ -235,7 +235,14 @@ class UnifiedJiraDocumentReader:
         return enriched
 
     def _fetch_attachment_bytes(self, url: str) -> bytes | None:
-        """Download attachment bytes using the Jira client session."""
+        """Download attachment bytes via a direct HTTP request."""
+        from loguru import logger
+
+        from .._url_guard import warn_if_off_origin
+
+        if not warn_if_off_origin(url, self.base_url):
+            return None
+
         try:
             import requests as req
 
@@ -253,8 +260,6 @@ class UnifiedJiraDocumentReader:
             response.raise_for_status()
             return response.content
         except Exception:
-            from loguru import logger
-
             logger.warning(f"Failed to download attachment: {url}")
             return None
 

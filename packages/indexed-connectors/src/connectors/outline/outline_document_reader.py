@@ -89,6 +89,12 @@ class OutlineDocumentReader:
         self.number_of_retries = number_of_retries
         self.retry_delay = retry_delay
         self.verify_ssl = verify_ssl
+        if not verify_ssl:
+            logger.warning(
+                "Outline: TLS certificate verification is DISABLED (verify_ssl=False). "
+                "Your API token may be exposed to a man-in-the-middle. Only use this for "
+                "trusted self-hosted instances with self-signed certificates."
+            )
         self._modified_since_cutoff = self._parse_iso_datetime(modified_since)
         self._auth_headers = {
             "Authorization": f"Bearer {api_token}",
@@ -397,6 +403,11 @@ class OutlineDocumentReader:
     ) -> Optional[dict]:
         """Download bytes from a URL, respecting the size cap."""
         async with semaphore:
+            from .._url_guard import warn_if_off_origin
+
+            if not warn_if_off_origin(url, self.base_url):
+                return None
+
             try:
                 resp = await client.get(url)
                 resp.raise_for_status()
