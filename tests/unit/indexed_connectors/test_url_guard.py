@@ -4,7 +4,7 @@ import pytest
 
 from connectors._url_guard import is_same_origin
 
-pytestmark = pytest.mark.connectors
+pytestmark = [pytest.mark.unit, pytest.mark.connectors]
 
 
 class TestIsSameOrigin:
@@ -56,9 +56,23 @@ class TestIsSameOrigin:
     def test_empty_url_returns_false(self):
         assert not is_same_origin("", "https://acme.example.com")
 
-    def test_port_ignored(self):
-        # Default-port base URL vs explicit-port attachment URL — should be same origin
+    def test_default_https_port_matches_implicit_port(self):
+        # Explicit :443 vs implicit default port — same origin.
         assert is_same_origin(
             "https://acme.example.com:443/file.pdf",
+            "https://acme.example.com",
+        )
+
+    def test_default_http_port_matches_implicit_port(self):
+        # Explicit :80 vs implicit default port — same origin.
+        assert is_same_origin(
+            "http://acme.example.com:80/file.pdf",
+            "http://acme.example.com",
+        )
+
+    def test_non_default_port_is_off_origin(self):
+        # A different port is a different service on the same host — refuse creds.
+        assert not is_same_origin(
+            "https://acme.example.com:8443/file.pdf",
             "https://acme.example.com",
         )

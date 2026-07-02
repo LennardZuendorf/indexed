@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-06-29
+updated: 2026-07-03
 ---
 
 # Tech Branch: Connectors (`indexed-connectors`)
@@ -67,8 +67,11 @@ Reader fetches raw documents; Converter transforms them into searchable chunks
 
 All credentialed attachment fetchers (Jira Server/DC, Confluence Server, Outline) call
 `warn_if_off_origin(url, base_url)` before issuing any HTTP request. This function
-compares scheme + hostname (port intentionally ignored), logs a warning, and returns
-`False` on mismatch so the caller can `return None` without crashing the indexing run.
+compares scheme + hostname + **effective port** (missing ports normalized to the
+scheme default — 443 for HTTPS, 80 for HTTP — so a base URL without an explicit port
+still matches a default-port attachment, while a non-default port like `:8443` is a
+different origin), logs a warning, and returns `False` on mismatch so the caller can
+`return None` without crashing the indexing run.
 
 ```python
 from connectors._url_guard import warn_if_off_origin

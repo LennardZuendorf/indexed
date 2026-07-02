@@ -17,7 +17,7 @@ from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext
-from ...utils.progress_bar import create_phased_progress
+from ...utils.progress_bar import create_phased_progress, build_search_phase_label
 from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
     create_summary,
@@ -440,22 +440,14 @@ def search(
                 )
                 results.update(result)
     else:
-        # Normal mode: phased progress display (consistent with Create/Update)
-        heading = get_heading_style()
-        accent = get_accent_style()
-        if collection is not None:
-            # Single collection: no headline printed above; title carries full context
-            title = f'[{heading}]Searching [{accent}]"{collection}"[/{accent}] Collection for: [{accent}]"{query}"[/{accent}][/{heading}]'
-        else:
-            # Multi-collection: summary headline already printed above; title empty
-            title = ""
-
-        with create_phased_progress(title=title) as phased:
+        # Normal mode: phased progress display (consistent with Create/Update).
+        # No section title: each phase label carries the full collection + query
+        # context, so the plain (non-Rich) path — which ignores the title — keeps
+        # it too. Multi-collection prints its summary headline above; single does
+        # not (see #110/#88).
+        with create_phased_progress() as phased:
             for coll_name in collections_to_search:
-                if collection is not None:
-                    phase_label = f"Searching {coll_name}"
-                else:
-                    phase_label = f'Searching "{coll_name}" Collection for: "{query}"'
+                phase_label = build_search_phase_label(query, coll_name)
                 phased.start_phase(phase_label)
                 result = svc_search(
                     query,

@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-06-29
+updated: 2026-07-03
 ---
 
 # Lessons Learned
@@ -21,13 +21,17 @@ inside `execute_create_command`, later in the flow.
 `is_verbose_mode()` is only reliable after `setup_root_logger` runs. Tests that mock
 `is_verbose_mode` directly pass regardless of timing — they don't expose this bug.
 
-**Fix pattern:** Extract a helper with direct param access:
+**Fix pattern:** Extract one predicate over the params and reuse it for *every*
+pre-setup gate — the storage indicator *and* the connector-heading guards — so they
+stay consistent (an `--log-level=INFO` run must suppress both, or neither):
 ```python
-def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
-    if not verbose and not (log_level and log_level.upper() in ("INFO", "DEBUG")):
-        from ...utils.storage_info import display_storage_mode_for_command
-        display_storage_mode_for_command(console)
+def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
+    return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
+
+# indicator + `if not _is_pre_setup_verbose(verbose, log_level):` heading guards
 ```
+Pre-setup `logger.info(...)` lines stay gated on `is_verbose_mode()` — they genuinely
+cannot fire before `setup_root_logger`, so that check is correct, not a bug.
 
 ---
 
@@ -68,3 +72,17 @@ dropped all Cloud attachments. Jira Cloud serves `att["content"]` from
 CDN/proxy patterns. Cloud APIs often serve content from off-origin CDNs; the threat
 model there is different (URLs come from the API, not user-controlled). Exclude
 deliberately and document why.
+
+---
+
+## Same-origin checks must compare port, not just scheme + host
+
+**Context:** `is_same_origin` originally ignored the port entirely, so
+`https://host:8443/...` matched a `https://host` base and credentials would still be
+sent to a different service on the same host. The permissive behavior was justified as
+"base URLs rarely store a port."
+
+**Lesson:** Compare the **effective** port — normalize a missing port to the scheme
+default (443/80) — instead of dropping it. That keeps `https://host` ≡ `https://host:443`
+(the reason ports were skipped) while correctly rejecting non-default ports. A different
+port is a different origin for credential purposes; fail closed.

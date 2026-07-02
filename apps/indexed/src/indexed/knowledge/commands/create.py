@@ -65,9 +65,19 @@ def _is_cloud(url: str) -> bool:
     return url.endswith(".atlassian.net")
 
 
+def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
+    """Return True when verbose/INFO/DEBUG output is requested.
+
+    Use this at command-function top, before ``execute_create_command`` runs
+    ``setup_root_logger``. ``is_verbose_mode()`` is unreliable there — it reads
+    the global log level, which is not set yet (see .spec/lessons.md).
+    """
+    return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
+
+
 def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
     """Print storage-mode indicator unless verbose/debug output is already active."""
-    if not verbose and not (log_level and log_level.upper() in ("INFO", "DEBUG")):
+    if not _is_pre_setup_verbose(verbose, log_level):
         from ...utils.storage_info import display_storage_mode_for_command
 
         display_storage_mode_for_command(console)
@@ -368,7 +378,7 @@ def create_jira(
     # If URL is still unknown, prompt for it first before determining source type
     url_was_prompted = False
     if not resolved_url:
-        if not is_verbose_mode():
+        if not _is_pre_setup_verbose(verbose, log_level):
             console.print()
             console.print(
                 f"[{get_heading_style()}]Jira Configuration[/{get_heading_style()}]"
@@ -597,7 +607,7 @@ def create_confluence(
     # If URL is still unknown, prompt for it first before determining source type
     url_was_prompted = False
     if not resolved_url:
-        if not is_verbose_mode():
+        if not _is_pre_setup_verbose(verbose, log_level):
             console.print()
             console.print(
                 f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]"
@@ -838,7 +848,7 @@ def create_outline(
 
     url_was_prompted = False
     if not resolved_url:
-        if not is_verbose_mode():
+        if not _is_pre_setup_verbose(verbose, log_level):
             console.print()
             console.print(
                 f"[{get_heading_style()}]Outline Configuration[/{get_heading_style()}]"

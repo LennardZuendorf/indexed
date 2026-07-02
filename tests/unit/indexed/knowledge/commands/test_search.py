@@ -587,8 +587,10 @@ class TestSearchStatusMessages:
         return s
 
     def test_single_collection_no_in_1_collection_headline(self, monkeypatch):
-        """Single-collection search must NOT print 'in 1 Collection:' headline."""
-        from unittest.mock import Mock, MagicMock
+        """Single-collection search: no 'in 1 Collection:' headline, and the phase
+        label (the only text the plain/non-Rich path shows) still carries the
+        collection and query — not just a bare 'Searching outline'."""
+        from unittest.mock import Mock
 
         statuses = [self._make_status("outline")]
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
@@ -610,27 +612,36 @@ class TestSearchStatusMessages:
 
         monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
 
-        # Capture the title passed to create_phased_progress
-        captured: Dict[str, Any] = {}
+        # FakePhased drops the title (like PlainPhasedProgress) and records the
+        # start_phase labels — the regression surface for the plain-progress path.
+        phase_labels: List[str] = []
 
-        def fake_create_phased_progress(**kw):
-            captured["title"] = kw.get("title", "")
-            m = MagicMock()
-            m.__enter__ = Mock(return_value=m)
-            m.__exit__ = Mock(return_value=False)
-            return m
+        class FakePhased:
+            def start_phase(self, label: str):
+                phase_labels.append(label)
+
+            def finish_phase(self, label: str):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
 
         monkeypatch.setattr(
-            search_cmd, "create_phased_progress", fake_create_phased_progress
+            search_cmd, "create_phased_progress", lambda **kw: FakePhased()
         )
 
         result = runner.invoke(search_cmd.app, ["my-query", "--collection", "outline"])
 
         assert result.exit_code == 0
         assert "in 1 Collection:" not in result.stdout
-        # Title contains Rich markup; check key substrings are present
-        assert '"outline"' in captured["title"]
-        assert "Collection for:" in captured["title"]
+        # Plain path shows only phase labels — they must carry collection + query.
+        assert any(
+            '"outline"' in lbl and "my-query" in lbl and "Collection for:" in lbl
+            for lbl in phase_labels
+        )
 
     def test_multi_collection_headline_contains_n_collections(self, monkeypatch):
         """Multi-collection search must print headline with N Collections and use per-collection phase labels."""

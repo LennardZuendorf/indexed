@@ -1,6 +1,6 @@
 """Origin guard for credentialed attachment fetches."""
 
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, SplitResult
 
 
 def warn_if_off_origin(url: str, base_url: str) -> bool:
@@ -19,12 +19,34 @@ def warn_if_off_origin(url: str, base_url: str) -> bool:
     return False
 
 
-def is_same_origin(url: str, base_url: str) -> bool:
-    """Return True iff url and base_url share scheme + host (case-insensitive).
+def _effective_port(parts: SplitResult) -> int | None:
+    """Return the port for parts, normalizing a missing port to the scheme default.
 
-    Port is intentionally NOT compared: base URLs are often stored without an
-    explicit port, and default-port attachments would be falsely skipped.
-    Malformed or hostless urls return False (fail closed).
+    HTTPS defaults to 443, HTTP to 80. Returns None for any other scheme or an
+    out-of-range / non-numeric port (which fails the comparison closed).
+    """
+    try:
+        if parts.port is not None:
+            return parts.port
+    except ValueError:
+        return None
+
+    scheme = parts.scheme.lower()
+    if scheme == "https":
+        return 443
+    if scheme == "http":
+        return 80
+    return None
+
+
+def is_same_origin(url: str, base_url: str) -> bool:
+    """Return True iff url and base_url share scheme + host + effective port.
+
+    Ports are normalized to the scheme default (443 for HTTPS, 80 for HTTP), so a
+    base URL stored without an explicit port still matches a default-port
+    attachment, while a non-default port (e.g. ``:8443``) is treated as a
+    different origin — credentials must not leak to a different service on the
+    same host. Malformed or hostless urls return False (fail closed).
     """
     try:
         parsed = urlsplit(url)
@@ -32,10 +54,11 @@ def is_same_origin(url: str, base_url: str) -> bool:
     except Exception:
         return False
 
-    if not parsed.hostname or not base.hostname:
+    if not parsed.hostname or not base.hostname or not parsed.scheme or not base.scheme:
         return False
 
     return (
         parsed.scheme.lower() == base.scheme.lower()
         and parsed.hostname.lower() == base.hostname.lower()
+        and _effective_port(parsed) == _effective_port(base)
     )
