@@ -467,8 +467,8 @@ def test_build_connector_registry_has_jira():
     assert "jiraCloud" in reg
 ```
 
-- [ ] Run: `uv run pytest tests/unit/indexed/test_bootstrap.py -q && uv run indexed --help`
-- [ ] Commit: `feat(app): architecture-audit/3 bootstrap module`
+- [x] Run: `uv run pytest tests/unit/indexed/test_bootstrap.py -q && uv run indexed --help`
+- [x] Commit: `feat(app): architecture-audit/3 bootstrap module`
 
 **Verification:** `uv run pytest tests/unit/indexed/test_bootstrap.py -q && uv run indexed --help`
 
@@ -878,8 +878,8 @@ Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `ap
 | architecture-audit/0 | DONE |
 | architecture-audit/1 | DONE |
 | architecture-audit/2 | DONE |
-| architecture-audit/3 | IN PROGRESS |
-| architecture-audit/4 | NOT STARTED |
+| architecture-audit/3 | DONE |
+| architecture-audit/4 | IN PROGRESS |
 | architecture-audit/5 | NOT STARTED |
 | architecture-audit/6 | NOT STARTED |
 | architecture-audit/7 | NOT STARTED |
