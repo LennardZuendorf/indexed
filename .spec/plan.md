@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-03
+updated: 2026-07-04
 ---
 
 # Development Plan: indexed
@@ -77,11 +77,12 @@ over schedule.
 ## Decision Log
 
 ### 2026-06-29: Architecture audit feature spec
-**Decision:** Capture the 2026-06-29 monorepo audit in
-`.spec/features/architecture-audit/` (product, tech, plan, six research clusters).
-Feature 11 gates v2 rewrite on graph fixes and import-graph CI.
-**Rationale:** Audit findings are actionable but too large for root specs; feature
-layer holds remediation requirements and phased units without polluting root backlog.
+**Decision:** Capture the 2026-06-29 monorepo audit as Feature 11; remediate via
+13 implementation units (protocols package, graph fixes, bootstrap/runtime, CI gate).
+**Rationale:** Findings were actionable but too large for root specs; feature layer
+held requirements during the branch. **Wrapped up 2026-07-04:** promoted to
+[tech.md](tech.md) § Architectural Rules; feature folder deleted — live surface is
+code + root specs only.
 
 ### 2026-06-09: Spec cleanup
 **Decision:** Migrate `docs/specs/` feature specs into root, promote shipped
