@@ -1,12 +1,8 @@
 """Tests for Jira document converters."""
 
-import warnings
-
 import pytest
 from unittest.mock import MagicMock
 from connectors.jira.unified_jira_document_converter import UnifiedJiraDocumentConverter
-from connectors.jira.jira_document_converter import JiraDocumentConverter
-from connectors.jira.jira_cloud_document_converter import JiraCloudDocumentConverter
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 
@@ -673,58 +669,3 @@ class TestUnifiedJiraDocumentConverter:
         }
         result = converter.convert(document)
         assert "Inside panel" in result[0]["text"]
-
-
-class TestDeprecatedJiraConverters:
-    """Test backward-compatible deprecated converter wrappers."""
-
-    def test_jira_document_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            JiraDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "deprecated" in str(w[0].message).lower()
-
-    def test_jira_document_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = JiraDocumentConverter()
-
-        document = {
-            "key": "DEP-1",
-            "self": "https://jira.example.com/rest/api/2/issue/1",
-            "fields": {
-                "summary": "Deprecated test",
-                "updated": "2024-01-01T12:00:00.000+0000",
-                "description": "Hello",
-                "comment": {"comments": []},
-            },
-        }
-        result = converter.convert(document)
-        assert result[0]["id"] == "DEP-1"
-
-    def test_jira_cloud_document_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            JiraCloudDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-
-    def test_jira_cloud_document_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = JiraCloudDocumentConverter()
-
-        document = {
-            "key": "CDR-1",
-            "self": "https://company.atlassian.net/rest/api/3/issue/1",
-            "fields": {
-                "summary": "Cloud deprecated",
-                "updated": "2024-01-01T12:00:00.000+0000",
-                "description": None,
-                "comment": {"comments": []},
-            },
-        }
-        result = converter.convert(document)
-        assert result[0]["id"] == "CDR-1"

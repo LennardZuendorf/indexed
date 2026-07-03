@@ -19,7 +19,6 @@ from .logger import (
 from .batch import read_items_in_batches
 from .retry import execute_with_retry
 from .performance import execute_and_measure_duration, log_execution_duration
-from .safe_getattr import safe_str_attr
 
 __all__ = [
     # Logging
@@ -38,6 +37,4 @@ __all__ = [
     # Performance
     "execute_and_measure_duration",
     "log_execution_duration",
-    # Utilities
-    "safe_str_attr",
 ]

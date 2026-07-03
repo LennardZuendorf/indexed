@@ -68,11 +68,7 @@ class ParsingModule:
         if strategy == ParsingStrategy.PLAINTEXT:
             return self._plaintext.parse(path)
 
-        # DOCLING_FALLBACK — try Docling, fall back to plaintext
-        doc = self._docling.parse(path)
-        if doc.chunks:
-            return doc
-        return self._plaintext.parse(path)
+        raise ValueError(f"Unsupported parsing strategy: {strategy}")
 
     def parse_bytes(self, data: bytes, filename: str) -> ParsedDocument:
         """Parse in-memory bytes (e.g. from Confluence attachments)."""

@@ -1,13 +1,13 @@
 """Jira connector for indexing Jira issues.
 
-This connector wraps the existing JiraDocumentReader and JiraDocumentConverter
+This connector wraps UnifiedJiraDocumentReader and UnifiedJiraDocumentConverter
 to provide a standardized BaseConnector interface for both Jira Server/Data Center
 and Jira Cloud.
 """
 
 from typing import ClassVar, Optional
 from protocols import ConnectorMetadata
-from .jira_document_reader import JiraDocumentReader
+from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
 from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from .schema import JiraConfig, JiraCloudConfig
@@ -30,8 +30,8 @@ class JiraConnector:
     token-based and username/password authentication.
 
     Attributes:
-        reader: JiraDocumentReader instance for API calls
-        converter: JiraDocumentConverter instance for format conversion
+        reader: UnifiedJiraDocumentReader instance for API calls
+        converter: UnifiedJiraDocumentConverter instance for format conversion
 
     Examples:
         >>> # Token authentication (recommended)
@@ -87,10 +87,15 @@ class JiraConnector:
         self._url = url
         self._query = query
 
-        # Initialize reader and converter
-        self._reader = JiraDocumentReader(
+        if token:
+            auth_type = JiraAuthType.SERVER_TOKEN
+        else:
+            auth_type = JiraAuthType.SERVER_CREDENTIALS
+
+        self._reader = UnifiedJiraDocumentReader(
             base_url=url,
             query=query,
+            auth_type=auth_type,
             token=token,
             login=login,
             password=password,
@@ -104,7 +109,7 @@ class JiraConnector:
         )
 
     @property
-    def reader(self) -> JiraDocumentReader:
+    def reader(self) -> UnifiedJiraDocumentReader:
         """Return the document reader instance."""
         return self._reader
 

@@ -38,9 +38,9 @@ class TestFileRouter:
     def test_svg_extension(self, router: FileRouter):
         assert router.route(Path("icon.svg")) == ParsingStrategy.PLAINTEXT
 
-    def test_unknown_extension_fallback(self, router: FileRouter):
-        assert router.route(Path("file.xyz")) == ParsingStrategy.DOCLING_FALLBACK
-        assert router.route(Path("file.weird")) == ParsingStrategy.DOCLING_FALLBACK
+    def test_unknown_extension_routes_to_plaintext(self, router: FileRouter):
+        assert router.route(Path("file.xyz")) == ParsingStrategy.PLAINTEXT
+        assert router.route(Path("file.weird")) == ParsingStrategy.PLAINTEXT
 
     def test_case_insensitive(self, router: FileRouter):
         assert router.route(Path("file.PY")) == ParsingStrategy.CODE_AST

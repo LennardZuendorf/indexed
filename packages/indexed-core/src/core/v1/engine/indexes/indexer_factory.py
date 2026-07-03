@@ -7,7 +7,7 @@ existing ones from disk. It uses the indexer registry for configuration.
 import logging
 from typing import Optional
 
-from .indexer_registry import get_indexer_config, is_auto_indexer
+from .indexer_registry import get_indexer_config
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,10 @@ def create_indexer(indexer_name: str):
     """Create a new FAISS indexer with the specified configuration.
 
     Args:
-        indexer_name: Full indexer name (e.g., "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
-                      or "indexer_FAISS_Auto__embeddings_all-MiniLM-L6-v2")
+        indexer_name: Full indexer name (e.g., "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2")
 
     Returns:
-        Configured FaissIndexer or FaissAutoIndexer instance
+        Configured FaissIndexer instance
 
     Raises:
         ValueError: If indexer_name is not recognized
@@ -30,16 +29,10 @@ def create_indexer(indexer_name: str):
         >>> indexer.index_texts([0, 1], ["Hello world", "Test document"])
     """
     from .embeddings.sentence_embeder import SentenceEmbedder
+    from .indexers.faiss_indexer import FaissIndexer
 
     config = get_indexer_config(indexer_name)
     embedder = SentenceEmbedder(model_name=config.model_name)
-
-    if is_auto_indexer(indexer_name):
-        from .indexers.faiss_auto_indexer import FaissAutoIndexer
-
-        return FaissAutoIndexer(indexer_name, embedder)
-
-    from .indexers.faiss_indexer import FaissIndexer
 
     return FaissIndexer(indexer_name, embedder)
 
@@ -69,6 +62,7 @@ def load_indexer(
         FileNotFoundError: If the index file doesn't exist
     """
     from .embeddings.sentence_embeder import SentenceEmbedder
+    from .indexers.faiss_indexer import FaissIndexer
 
     config = get_indexer_config(indexer_name)
     embedder = SentenceEmbedder(model_name=config.model_name)
@@ -94,18 +88,6 @@ def load_indexer(
             raise FileNotFoundError(
                 f"No FAISS index found at '{native_path}' or '{legacy_path}'"
             )
-
-    if is_auto_indexer(indexer_name):
-        from .indexers.faiss_auto_indexer import FaissAutoIndexer
-
-        return FaissAutoIndexer(
-            indexer_name,
-            embedder,
-            serialized_index=serialized_index,
-            faiss_index=faiss_index,
-        )
-
-    from .indexers.faiss_indexer import FaissIndexer
 
     return FaissIndexer(
         indexer_name,

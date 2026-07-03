@@ -130,34 +130,6 @@ def get_default_caches_path() -> Path:
         return Path.home() / ".indexed" / "data" / "caches"
 
 
-class PathsConfig(BaseModel):
-    """File system paths configuration.
-
-    Paths default to the global storage location (~/.indexed/data/...)
-    unless explicitly configured otherwise.
-    """
-
-    collections_dir: Path = Field(
-        default_factory=get_default_collections_path,
-        description="Directory for collections storage",
-    )
-    caches_dir: Path = Field(
-        default_factory=get_default_caches_path,
-        description="Directory for document caches",
-    )
-    temp_dir: Path = Field(
-        default=Path("./tmp"), description="Temporary files directory"
-    )
-
-    @field_validator("collections_dir", "caches_dir", "temp_dir", mode="before")
-    @classmethod
-    def ensure_path(cls, v) -> Path:
-        """Convert string to Path and ensure directory exists."""
-        path = Path(v) if isinstance(v, str) else v
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-
-
 class MCPConfig(BaseModel):
     """MCP server configuration."""
 
@@ -202,7 +174,6 @@ __all__ = [
     "CoreV1EmbeddingConfig",
     "CoreV1StorageConfig",
     "CoreV1SearchConfig",
-    "PathsConfig",
     "MCPConfig",
     "PerformanceConfig",
     "LoggingConfig",

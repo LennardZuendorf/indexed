@@ -12,7 +12,6 @@ class ParsingStrategy(Enum):
     DOCLING = "docling"
     CODE_AST = "code_ast"
     PLAINTEXT = "plaintext"
-    DOCLING_FALLBACK = "docling_fallback"
 
 
 # Extension sets ----------------------------------------------------------
@@ -106,4 +105,4 @@ class FileRouter:
         # noisy docling warnings about unsupported formats.
         if not ext or path.name.startswith("."):
             return ParsingStrategy.PLAINTEXT
-        return ParsingStrategy.DOCLING_FALLBACK
+        return ParsingStrategy.PLAINTEXT

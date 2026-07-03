@@ -1,17 +1,9 @@
 """Tests for unified Confluence document converter."""
 
-import warnings
-
 import pytest
 from unittest.mock import MagicMock
 from connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
-)
-from connectors.confluence.confluence_document_converter import (
-    ConfluenceDocumentConverter,
-)
-from connectors.confluence.confluence_cloud_document_converter import (
-    ConfluenceCloudDocumentConverter,
 )
 
 pytestmark = pytest.mark.connectors
@@ -268,42 +260,3 @@ class TestUnifiedConfluenceDocumentConverter:
         del doc["comments"]
         result = converter.convert(doc)
         assert result[0]["id"] == "12345"
-
-
-class TestDeprecatedConfluenceConverters:
-    """Test backward-compatible deprecated converter wrappers."""
-
-    def test_server_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ConfluenceDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "deprecated" in str(w[0].message).lower()
-
-    def test_server_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = ConfluenceDocumentConverter()
-
-        doc = _make_server_doc()
-        result = converter.convert(doc)
-        assert result[0]["id"] == "12345"
-        assert "Test Page" in result[0]["text"]
-
-    def test_cloud_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ConfluenceCloudDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-
-    def test_cloud_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = ConfluenceCloudDocumentConverter()
-
-        doc = _make_cloud_doc()
-        result = converter.convert(doc)
-        assert result[0]["id"] == "12345"
-        assert "Test Page" in result[0]["text"]

@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from connectors.confluence.confluence_document_converter import (
-    ConfluenceDocumentConverter,
+from connectors.confluence.unified_confluence_document_converter import (
+    UnifiedConfluenceDocumentConverter,
 )
 from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
 from connectors.jira.unified_jira_document_converter import (
@@ -198,7 +198,7 @@ def _run_jira_pipeline(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _run_confluence_pipeline(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert raw reader output through the Confluence converter."""
-    converter = ConfluenceDocumentConverter()
+    converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
     return [converter.convert(doc)[0] for doc in documents]
 
 

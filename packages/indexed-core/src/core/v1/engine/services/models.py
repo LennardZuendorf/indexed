@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from protocols.models import (
     PhasedProgressCallback,
@@ -76,22 +76,6 @@ class CollectionInfo:
                 )
 
 
-@dataclass
-class SearchResult:
-    """A single search result from a collection."""
-
-    id: str
-    collection_name: str
-    url: Optional[str] = None
-    path: Optional[str] = None
-    score: Optional[float] = None
-    matched_chunks: List[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        if self.matched_chunks is None:
-            self.matched_chunks = []
-
-
 # Re-export progress types from protocols during transition window.
 __all__ = [
     "CollectionInfo",
@@ -99,6 +83,5 @@ __all__ = [
     "PhasedProgressCallback",
     "ProgressCallback",
     "ProgressUpdate",
-    "SearchResult",
     "SourceConfig",
 ]
