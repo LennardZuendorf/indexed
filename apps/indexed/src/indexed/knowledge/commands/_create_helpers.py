@@ -175,6 +175,10 @@ def execute_create_command(
     if pre_creation_display and not is_verbose_mode():
         pre_creation_display(validation.present)
 
+    from ...connector_wiring import wiring_kwargs_for_create
+
+    create_wiring = wiring_kwargs_for_create(config)
+
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
     try:
@@ -191,6 +195,7 @@ def execute_create_command(
                     force=force,
                     collections_path=local_collections_path,
                     caches_path=local_caches_path,
+                    **create_wiring,
                 )
         else:
             # Normal mode: phased progress display
@@ -209,6 +214,7 @@ def execute_create_command(
                         phased_progress=phased,
                         collections_path=local_collections_path,
                         caches_path=local_caches_path,
+                        **create_wiring,
                     )
                 except Exception as e:
                     creation_error = e

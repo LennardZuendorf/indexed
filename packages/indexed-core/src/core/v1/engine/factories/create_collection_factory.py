@@ -1,6 +1,8 @@
-from typing import Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
-from connectors.document_cache_reader_decorator import CacheReaderDecorator
+from indexed_config.errors import ConfigurationError
+
 from core.v1.engine.core.documents_collection_creator import (
     DocumentCollectionCreator,
     OPERATION_TYPE,
@@ -22,22 +24,9 @@ def create_collection_creator(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
+    cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ):
-    """Create a collection creator instance.
-
-    Args:
-        collection_name: Name of the collection to create.
-        indexers: List of indexer names to use.
-        document_reader: Document reader instance.
-        document_converter: Document converter instance.
-        use_cache: Whether to use caching for document reading.
-        progress_callback: Optional callback for progress updates (legacy).
-        phased_progress: Optional PhasedProgressCallback for multi-stage display.
-        collections_path: Optional path for collections storage.
-                         Defaults to resolved path from storage config.
-        caches_path: Optional path for caches storage.
-                    Defaults to resolved path from storage config.
-    """
+    """Create a collection creator instance."""
     return log_execution_duration(
         lambda: __create_collection_creator(
             collection_name,
@@ -49,6 +38,7 @@ def create_collection_creator(
             phased_progress,
             collections_path,
             caches_path,
+            cache_decorator_factory,
         ),
         identifier="Preparing collection creator",
     )
@@ -64,15 +54,20 @@ def __create_collection_creator(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
+    cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ):
-    # Resolve paths
     resolved_collections_path = collections_path or str(get_default_collections_path())
     resolved_caches_path = caches_path or str(get_default_caches_path())
 
     if use_cache:
+        if cache_decorator_factory is None:
+            raise ConfigurationError(
+                "cache_decorator_factory must be injected by the app layer when "
+                "use_cache=True; see indexed.bootstrap"
+            )
         cache_disk_persister = DiskPersister(base_path=resolved_caches_path)
-        result_document_reader = CacheReaderDecorator(
-            reader=document_reader, persister=cache_disk_persister
+        result_document_reader = cache_decorator_factory(
+            document_reader, cache_disk_persister
         )
     else:
         result_document_reader = document_reader

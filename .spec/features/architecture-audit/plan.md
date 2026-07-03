@@ -189,7 +189,7 @@ build-backend = "hatchling.build"
 packages = ["src/protocols"]
 ```
 
-- [ ] Create directory `packages/indexed-protocols/src/protocols/`
+- [x] Create directory `packages/indexed-protocols/src/protocols/`
 
 #### Task 1.2: Move protocol types
 
@@ -225,7 +225,7 @@ __all__ = [
 ]
 ```
 
-- [ ] Keep engine-only DTOs in `core/.../models.py`: `CollectionStatus`, `CollectionInfo`, `SearchResult` (delete `SearchResult` in `/8`).
+- [x] Keep engine-only DTOs in `core/.../models.py`: `CollectionStatus`, `CollectionInfo`, `SearchResult` (delete `SearchResult` in `/8`).
 
 #### Task 1.3: Wire workspace deps
 
@@ -235,7 +235,7 @@ __all__ = [
 - `apps/indexed/pyproject.toml` — add `indexed-protocols`
 - `pyproject.toml` `[tool.coverage.run] source_pkgs` — add `"protocols"`
 
-- [ ] Run: `uv sync --all-groups`
+- [x] Run: `uv sync --all-groups`
 
 #### Task 1.4: Re-export shims in core (transition window)
 
@@ -243,8 +243,8 @@ __all__ = [
 
 **Modify:** `core/v1/engine/services/models.py` → re-export `SourceConfig`, progress types from `protocols`.
 
-- [ ] Update connector imports: `from protocols import BaseConnector, SourceConfig, …`
-- [ ] Grep: `from core.v1.connectors` in connectors package → switch to `protocols`
+- [x] Update connector imports: `from protocols import BaseConnector, SourceConfig, …`
+- [x] Grep: `from core.v1.connectors` in connectors package → switch to `protocols`
 
 #### Task 1.5: Tests
 
@@ -266,8 +266,8 @@ def test_source_config_accepts_jira_type():
     assert cfg.type == "jira"
 ```
 
-- [ ] Run: `uv run pytest tests/unit/indexed_protocols/ -q && uv run mypy src/`
-- [ ] Commit: `feat(protocols): architecture-audit/1 extract package`
+- [x] Run: `uv run pytest tests/unit/indexed_protocols/ -q && uv run mypy src/`
+- [x] Commit: `feat(protocols): architecture-audit/1 extract package`
 
 **Verification:** `uv sync --all-groups && uv run pytest tests/unit/indexed_protocols/ -q && uv run mypy src/`
 
@@ -876,7 +876,7 @@ Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `ap
 | Unit | Status |
 |------|--------|
 | architecture-audit/0 | DONE |
-| architecture-audit/1 | NOT STARTED |
+| architecture-audit/1 | DONE |
 | architecture-audit/2 | NOT STARTED |
 | architecture-audit/3 | NOT STARTED |
 | architecture-audit/4 | NOT STARTED |

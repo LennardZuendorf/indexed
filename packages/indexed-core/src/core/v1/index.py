@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
-from .connectors import BaseConnector
+from protocols import BaseConnector
 from .engine.services import update, search, status, clear, SourceConfig
 from .engine.factories.create_collection_factory import create_collection_creator
 
@@ -105,7 +105,7 @@ class Index:
             indexers=[self.config.default_indexer],
             document_reader=connector.reader,
             document_converter=connector.converter,
-            use_cache=True,
+            use_cache=False,
         )
         creator.run()
 

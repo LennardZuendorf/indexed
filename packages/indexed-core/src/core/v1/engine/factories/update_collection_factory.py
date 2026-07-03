@@ -11,8 +11,9 @@ config handling across the CLI.
 from collections.abc import Callable
 from datetime import datetime, timedelta
 import json
-import os
 from typing import Any
+
+from indexed_config.errors import ConfigurationError
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
@@ -32,6 +33,12 @@ def create_collection_updater(
     progress_callback=None,
     phased_progress=None,
     collections_path: str | None = None,
+    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+    local_files_update_factory: Callable[
+        [dict, str, DiskPersister],
+        tuple[Any, Any, list[str], Callable[[], None] | None],
+    ]
+    | None = None,
 ):
     """Create a collection updater for incremental updates.
 
@@ -47,7 +54,12 @@ def create_collection_updater(
     """
     return log_execution_duration(
         lambda: _create_collection_updater(
-            collection_name, progress_callback, phased_progress, collections_path
+            collection_name,
+            progress_callback,
+            phased_progress,
+            collections_path,
+            manifest_connector_factory,
+            local_files_update_factory,
         ),
         identifier="Preparing collection updater",
     )
@@ -58,6 +70,12 @@ def _create_collection_updater(
     progress_callback=None,
     phased_progress=None,
     collections_path: str | None = None,
+    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+    local_files_update_factory: Callable[
+        [dict, str, DiskPersister],
+        tuple[Any, Any, list[str], Callable[[], None] | None],
+    ]
+    | None = None,
 ):
     """Internal implementation of collection updater creation."""
     resolved_path = collections_path or str(get_default_collections_path())
@@ -74,11 +92,18 @@ def _create_collection_updater(
     post_run = None
 
     if connector_type == "localFiles":
+        if local_files_update_factory is None:
+            raise ConfigurationError(
+                "local_files_update_factory must be injected by the app layer; "
+                "see indexed.bootstrap"
+            )
         document_reader, document_converter, explicit_deletions, post_run = (
-            _build_local_files_update(manifest, collection_name, disk_persister)
+            local_files_update_factory(manifest, collection_name, disk_persister)
         )
     else:
-        document_reader, document_converter = _create_reader_and_converter(manifest)
+        document_reader, document_converter = _create_reader_and_converter(
+            manifest, manifest_connector_factory
+        )
         explicit_deletions = []
 
     document_indexers = [
@@ -133,60 +158,17 @@ def _calculate_update_date(manifest: dict):
     return _calculate_update_time(manifest).date()
 
 
-def _create_reader_and_converter(manifest: dict) -> tuple[Any, Any]:
-    """Create reader and converter from manifest using connector registry.
-
-    This function uses the same from_config() pattern as create operations,
-    ensuring unified config handling across the CLI. It:
-    1. Creates a ConfigService instance
-    2. Populates it with values from the manifest and environment variables
-    3. Calls connector.from_config(config_service)
-
-    Args:
-        manifest: Collection manifest containing reader configuration
-
-    Returns:
-        Tuple of (reader, converter) instances
-
-    Raises:
-        ValueError: If connector type is unknown or credentials are missing
-    """
-    from indexed_config import ConfigService
-    from connectors import get_connector_class, get_config_namespace
-
-    connector_type = manifest["reader"]["type"]
-
-    try:
-        connector_cls = get_connector_class(connector_type)
-        namespace = get_config_namespace(connector_type)
-    except ValueError as e:
-        raise ValueError(f"Unknown document reader type: {connector_type}") from e
-
-    # Create ConfigService and populate with manifest values
-    # This mirrors the pattern used in collection_service._build_connector_from_config()
-    config_service = ConfigService()
-    _populate_config_from_manifest(config_service, manifest, connector_type, namespace)
-
-    # Outline incremental cutoff is ephemeral — env var merges at read time but
-    # is never persisted to config.toml (unlike config_service.set()).
-    outline_cutoff_set = False
-    if connector_type == "outline":
-        last_modified = manifest.get("lastModifiedDocumentTime")
-        if last_modified is None:
-            raise ValueError(
-                "Manifest is missing 'lastModifiedDocumentTime' required for "
-                "Outline incremental update"
-            )
-        os.environ[_OUTLINE_MODIFIED_SINCE_ENV] = last_modified
-        outline_cutoff_set = True
-
-    try:
-        connector = connector_cls.from_config(config_service)
-    finally:
-        if outline_cutoff_set:
-            os.environ.pop(_OUTLINE_MODIFIED_SINCE_ENV, None)
-
-    return connector.reader, connector.converter
+def _create_reader_and_converter(
+    manifest: dict,
+    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+) -> tuple[Any, Any]:
+    """Create reader and converter from manifest via injected factory."""
+    if manifest_connector_factory is None:
+        raise ConfigurationError(
+            "manifest_connector_factory must be injected by the app layer; "
+            "see indexed.bootstrap"
+        )
+    return manifest_connector_factory(manifest)
 
 
 def _populate_config_from_manifest(
@@ -357,61 +339,3 @@ def _populate_local_files_config(
     config_service.set(
         f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
     )
-
-
-def _build_local_files_update(
-    manifest: dict,
-    collection_name: str,
-    disk_persister: DiskPersister,
-) -> tuple[Any, Any, list[str], Callable[[], None]]:
-    """Build reader, converter, deletions, and post-run hook for a localFiles update.
-
-    Uses ChangeTracker to detect which files changed since the last index run,
-    limiting the reader to only those files.
-
-    Returns:
-        (reader, converter, explicit_deletions, post_run_callback)
-    """
-    from connectors.files.connector import FileSystemConnector
-    from connectors.files.files_document_reader import FilesDocumentReader
-
-    reader_config = manifest["reader"]
-
-    connector = FileSystemConnector(
-        path=reader_config["basePath"],
-        include_patterns=reader_config.get("includePatterns") or ["*"],
-        fail_fast=reader_config.get("failFast", False),
-        change_tracking=reader_config.get("changeTracking", "auto"),
-        excluded_dirs=reader_config.get("excludedDirs") or None,
-        respect_gitignore=reader_config.get("respectGitignore", True),
-    )
-
-    collection_full_path = disk_persister.get_full_path(collection_name)
-    state = connector.load_state(collection_full_path)
-
-    if state is not None:
-        changed_paths = connector.get_files_to_process(state)
-        deleted_files: list[str] = connector.get_deletions(state)
-        specific_files: list[str] | None = [str(p) for p in changed_paths]
-    else:
-        # No prior state — full re-index (first update after create without state)
-        specific_files = None
-        deleted_files = []
-
-    cfg = connector._config
-    reader = FilesDocumentReader(
-        base_path=connector._path,
-        include_patterns=connector._include_patterns,
-        fail_fast=connector._fail_fast,
-        ocr=cfg.ocr_enabled,
-        table_structure=cfg.table_structure,
-        max_tokens=cfg.max_chunk_tokens,
-        excluded_dirs=cfg.excluded_dirs or None,
-        specific_files=specific_files,
-        respect_gitignore=cfg.respect_gitignore,
-    )
-
-    def _save_state() -> None:
-        connector.save_state(collection_full_path)
-
-    return reader, connector.converter, deleted_files, _save_state

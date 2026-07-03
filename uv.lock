@@ -1260,7 +1260,6 @@ version = "0.1.0"
 source = { editable = "packages/indexed-core" }
 dependencies = [
     { name = "faiss-cpu" },
-    { name = "indexed-connectors" },
     { name = "indexed-protocols" },
     { name = "indexed-utils" },
     { name = "onnxruntime" },
@@ -1272,7 +1271,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "faiss-cpu", specifier = ">=1.11.0" },
-    { name = "indexed-connectors", editable = "packages/indexed-connectors" },
     { name = "indexed-protocols", editable = "packages/indexed-protocols" },
     { name = "indexed-utils", editable = "packages/utils" },
     { name = "onnxruntime", specifier = ">=1.17.0" },

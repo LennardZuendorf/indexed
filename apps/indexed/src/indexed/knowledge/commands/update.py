@@ -248,6 +248,10 @@ def update(
     inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
 
+    from ...connector_wiring import wiring_kwargs_for_update
+
+    update_wiring = wiring_kwargs_for_update()
+
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
@@ -351,7 +355,7 @@ def update(
             # Simple output / verbose mode: no progress display
             try:
                 with NoOpContext():
-                    update_service([source_config])
+                    update_service([source_config], **update_wiring)
                 successfully_updated.append(coll_name)
             except Exception as e:
                 if not simple:
@@ -365,7 +369,7 @@ def update(
             _coll_error: Exception | None = None
             with create_phased_progress(title=None) as phased:
                 try:
-                    update_service([source_config], phased_progress=phased)
+                    update_service([source_config], phased_progress=phased, **update_wiring)
                 except Exception as e:
                     _coll_error = e
 

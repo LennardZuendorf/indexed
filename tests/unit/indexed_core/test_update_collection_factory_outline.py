@@ -1,12 +1,12 @@
 """Tests for Outline config population during collection updates."""
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
+from indexed_config.errors import ConfigurationError
+
 from core.v1.engine.factories.update_collection_factory import (
-    _OUTLINE_MODIFIED_SINCE_ENV,
     _create_reader_and_converter,
     _populate_outline_config,
 )
@@ -47,14 +47,21 @@ class TestPopulateOutlineConfig:
 
 @pytest.mark.unit
 class TestCreateReaderAndConverterOutline:
-    def test_modified_since_applied_via_ephemeral_env_var(self) -> None:
+    def test_raises_when_factory_not_injected(self) -> None:
+        manifest = {
+            "reader": {"type": "outline", "baseUrl": "https://outline.example.com"},
+            "indexers": [{"name": "FAISS"}],
+        }
+
+        with pytest.raises(ConfigurationError, match="manifest_connector_factory"):
+            _create_reader_and_converter(manifest)
+
+    def test_delegates_to_manifest_connector_factory(self) -> None:
         manifest = {
             "reader": {
                 "type": "outline",
                 "baseUrl": "https://outline.example.com",
                 "collectionIds": ["col-1"],
-                "includeAttachments": True,
-                "ocrEnabled": True,
             },
             "indexers": [{"name": "FAISS"}],
             "lastModifiedDocumentTime": "2026-03-15T10:00:00+00:00",
@@ -62,41 +69,12 @@ class TestCreateReaderAndConverterOutline:
 
         mock_reader = MagicMock()
         mock_converter = MagicMock()
-        mock_connector = MagicMock()
-        mock_connector.reader = mock_reader
-        mock_connector.converter = mock_converter
+        factory = MagicMock(return_value=(mock_reader, mock_converter))
 
-        captured_env: list[str | None] = []
+        reader, converter = _create_reader_and_converter(
+            manifest, manifest_connector_factory=factory
+        )
 
-        def capture_from_config(_config_service: object) -> MagicMock:
-            captured_env.append(os.environ.get(_OUTLINE_MODIFIED_SINCE_ENV))
-            return mock_connector
-
-        mock_connector_cls = MagicMock()
-        mock_connector_cls.from_config.side_effect = capture_from_config
-
-        with (
-            patch("indexed_config.ConfigService") as mock_config_service_cls,
-            patch(
-                "connectors.get_connector_class",
-                return_value=mock_connector_cls,
-            ),
-            patch(
-                "connectors.get_config_namespace",
-                return_value="sources.outline",
-            ),
-            patch.dict(os.environ, {"OUTLINE_API_TOKEN": "ol_api_test"}, clear=False),
-        ):
-            mock_config_service = mock_config_service_cls.return_value
-            reader, converter = _create_reader_and_converter(manifest)
-
+        factory.assert_called_once_with(manifest)
         assert reader is mock_reader
         assert converter is mock_converter
-        assert captured_env == ["2026-03-15T10:00:00+00:00"]
-        assert _OUTLINE_MODIFIED_SINCE_ENV not in os.environ
-        modified_since_calls = [
-            call
-            for call in mock_config_service.set.call_args_list
-            if call.args[0].endswith(".modified_since")
-        ]
-        assert modified_since_calls == []

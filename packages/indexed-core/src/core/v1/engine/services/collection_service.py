@@ -5,8 +5,12 @@ from various sources including Confluence, Jira, and local files. It handles the
 orchestration of readers, converters, and persisters to build searchable collections.
 """
 
-from typing import List, Any, Optional
+from collections.abc import Callable
+from typing import Any, List, Optional
 from dataclasses import dataclass
+
+from indexed_config.errors import ConfigurationError
+
 from .models import SourceConfig, ProgressCallback
 from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
@@ -19,94 +23,18 @@ from core.v1.config_models import get_default_collections_path, get_default_cach
 setup_root_logger()
 
 
-def _build_connector_from_config(cfg: SourceConfig, config_service: Any) -> Any:
-    """Build connector using from_config() pattern.
-
-    This function creates the appropriate connector based on the source configuration
-    type using the new explicit registration pattern with ConfigService.
-
-    Args:
-        cfg (SourceConfig): Source configuration containing type, URL, query, and options.
-        config_service: ConfigService instance from indexed_config
-
-    Returns:
-        BaseConnector: Connector instance with reader and converter properties.
-
-    Raises:
-        ValueError: If source type is unknown or configuration is invalid.
-    """
-    from connectors.jira import JiraConnector, JiraCloudConnector
-    from connectors.confluence import ConfluenceConnector, ConfluenceCloudConnector
-    from connectors.files import FileSystemConnector
-
-    # Set config values from SourceConfig
-    # Use unified namespaces (sources.jira for all Jira, sources.confluence for all Confluence)
-    # The Cloud vs Server type is determined from the URL at runtime
-    if cfg.type == "jira":
-        config_service.set("sources.jira.url", cfg.base_url_or_path)
-        config_service.set("sources.jira.query", cfg.query)
-        # Pass reader_opts for auth credentials
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.jira.{key}", value)
-        return JiraConnector.from_config(config_service)
-
-    elif cfg.type == "jiraCloud":
-        # Use unified sources.jira namespace for Cloud as well
-        config_service.set("sources.jira.url", cfg.base_url_or_path)
-        config_service.set("sources.jira.query", cfg.query)
-        # Pass reader_opts for auth credentials
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.jira.{key}", value)
-        return JiraCloudConnector.from_config(config_service)
-
-    elif cfg.type == "confluence":
-        config_service.set("sources.confluence.url", cfg.base_url_or_path)
-        config_service.set("sources.confluence.query", cfg.query)
-        # Pass reader_opts for auth credentials and options
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.confluence.{key}", value)
-        return ConfluenceConnector.from_config(config_service)
-
-    elif cfg.type == "confluenceCloud":
-        # Use unified sources.confluence namespace for Cloud as well
-        config_service.set("sources.confluence.url", cfg.base_url_or_path)
-        config_service.set("sources.confluence.query", cfg.query)
-        # Pass reader_opts for auth credentials and options
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.confluence.{key}", value)
-        return ConfluenceCloudConnector.from_config(config_service)
-
-    elif cfg.type == "localFiles":
-        config_service.set("sources.files.path", cfg.base_url_or_path)
-        if "includePatterns" in cfg.reader_opts:
-            config_service.set(
-                "sources.files.include_patterns", cfg.reader_opts["includePatterns"]
-            )
-        if "failFast" in cfg.reader_opts:
-            config_service.set("sources.files.fail_fast", cfg.reader_opts["failFast"])
-        if "respectGitignore" in cfg.reader_opts:
-            config_service.set(
-                "sources.files.respect_gitignore", cfg.reader_opts["respectGitignore"]
-            )
-        return FileSystemConnector.from_config(config_service)
-
-    elif cfg.type == "outline":
-        from connectors.outline import OutlineConnector
-
-        config_service.set("sources.outline.url", cfg.base_url_or_path)
-        opts = cfg.reader_opts
-        if opts.get("collectionIds") is not None:
-            config_service.set("sources.outline.collection_ids", opts["collectionIds"])
-        if "includeAttachments" in opts:
-            config_service.set(
-                "sources.outline.include_attachments", opts["includeAttachments"]
-            )
-        if "ocrEnabled" in opts:
-            config_service.set("sources.outline.ocr_enabled", opts["ocrEnabled"])
-        return OutlineConnector.from_config(config_service)
-
-    else:
-        raise ValueError(f"Unknown source type: {cfg.type}")
+def _build_connector_from_config(
+    cfg: SourceConfig,
+    config_service: Any,
+    connector_factory: Callable[[SourceConfig], Any] | None = None,
+) -> Any:
+    """Build connector via injected factory (app composition root owns wiring)."""
+    if connector_factory is None:
+        raise ConfigurationError(
+            "connector_factory must be injected by the app layer; "
+            "see indexed.bootstrap.build_connector"
+        )
+    return connector_factory(cfg)
 
 
 def _clear_caches(caches_path: str) -> None:
@@ -152,19 +80,11 @@ def _create_one(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
+    connector_factory: Callable[[SourceConfig], Any] | None = None,
+    cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
-    """Create a single collection.
-
-    Args:
-        cfg (SourceConfig): Source configuration for the collection.
-        config_service: ConfigService instance from indexed_config
-        use_cache (bool): Whether to enable on-disk read-cache decorator.
-        progress_callback (ProgressCallback): Optional callback for progress updates.
-        phased_progress: Optional PhasedProgressCallback for multi-stage display.
-        collections_path: Optional path for collections storage.
-        caches_path: Optional path for caches storage.
-    """
-    connector = _build_connector_from_config(cfg, config_service)
+    """Create a single collection."""
+    connector = _build_connector_from_config(cfg, config_service, connector_factory)
 
     creator = create_collection_creator(
         collection_name=cfg.name,
@@ -176,13 +96,11 @@ def _create_one(
         phased_progress=phased_progress,
         collections_path=collections_path,
         caches_path=caches_path,
+        cache_decorator_factory=cache_decorator_factory,
     )
     creator.run()
 
-    # Persist change-tracking state so the first update has a baseline.
-    from connectors.files import FileSystemConnector
-
-    if isinstance(connector, FileSystemConnector):
+    if hasattr(connector, "save_state"):
         resolved_path = collections_path or str(get_default_collections_path())
         persister = DiskPersister(base_path=resolved_path)
         connector.save_state(persister.get_full_path(cfg.name))
@@ -193,17 +111,14 @@ def _update_one(
     progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
+    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+    local_files_update_factory: Callable[
+        [dict, str, DiskPersister],
+        tuple[Any, Any, list[str], Callable[[], None] | None],
+    ]
+    | None = None,
 ) -> None:
-    """Update a single collection.
-
-    Args:
-        cfg (SourceConfig): Source configuration for the collection to update.
-        progress_callback (ProgressCallback): Optional callback for progress updates.
-        phased_progress: Optional PhasedProgressCallback for multi-stage display.
-        collections_path: Optional path for collections storage.
-    """
-    # Lazy import to avoid circular dependency:
-    # connectors -> core.v1 -> collection_service -> update_collection_factory -> connectors
+    """Update a single collection."""
     from core.v1.engine.factories.update_collection_factory import (
         create_collection_updater,
     )
@@ -213,6 +128,8 @@ def _update_one(
         progress_callback,
         phased_progress=phased_progress,
         collections_path=collections_path,
+        manifest_connector_factory=manifest_connector_factory,
+        local_files_update_factory=local_files_update_factory,
     )
     updater.run()
 
@@ -227,39 +144,19 @@ def create(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
+    connector_factory: Callable[[SourceConfig], Any] | None = None,
+    cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
-    """Create collections from source configurations.
-
-    This function processes a list of source configurations and creates document
-    collections for each one. It can optionally clear existing collections before
-    creation and enable caching for improved performance.
-
-    Args:
-        configs (List[SourceConfig]): List of source configurations to process.
-        config_service: ConfigService instance from indexed_config (creates new if None)
-        use_cache (bool, optional): Enable on-disk read-cache decorator for improved
-            performance on subsequent runs. Defaults to True.
-        force (bool, optional): Delete existing collection folder first if it exists.
-            Defaults to False.
-        progress_callback (ProgressCallback, optional): Callback for progress updates.
-        collections_path: Optional path for collections storage.
-        caches_path: Optional path for caches storage.
-
-    Raises:
-        ValueError: If source configuration is invalid or required environment
-            variables are missing.
-    """
+    """Create collections from source configurations."""
     if config_service is None:
         from indexed_config import ConfigService
 
         config_service = ConfigService()
 
-    # Resolve paths
     resolved_collections = collections_path or str(get_default_collections_path())
     resolved_caches = caches_path or str(get_default_caches_path())
 
     if force:
-        # Clear read caches once before creating so stale data doesn't persist
         _clear_caches(resolved_caches)
 
     for cfg in configs:
@@ -273,6 +170,8 @@ def create(
             phased_progress=phased_progress,
             collections_path=resolved_collections,
             caches_path=resolved_caches,
+            connector_factory=connector_factory,
+            cache_decorator_factory=cache_decorator_factory,
         )
 
 
@@ -281,22 +180,14 @@ def update(
     progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
+    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+    local_files_update_factory: Callable[
+        [dict, str, DiskPersister],
+        tuple[Any, Any, list[str], Callable[[], None] | None],
+    ]
+    | None = None,
 ) -> None:
-    """Update collections from source configurations.
-
-    This function updates existing collections based on the provided source
-    configurations. The collections must already exist.
-
-    Args:
-        configs (List[SourceConfig]): List of source configurations for collections
-            to update.
-        progress_callback (ProgressCallback, optional): Callback for progress updates.
-        phased_progress: Optional PhasedProgressCallback for multi-stage display.
-        collections_path: Optional path for collections storage.
-
-    Raises:
-        ValueError: If source configuration is invalid or collection doesn't exist.
-    """
+    """Update collections from source configurations."""
     resolved_path = collections_path or str(get_default_collections_path())
     for cfg in configs:
         _update_one(
@@ -304,6 +195,8 @@ def update(
             progress_callback,
             phased_progress=phased_progress,
             collections_path=resolved_path,
+            manifest_connector_factory=manifest_connector_factory,
+            local_files_update_factory=local_files_update_factory,
         )
 
 
@@ -311,25 +204,13 @@ def clear(
     collection_names: List[str],
     collections_path: Optional[str] = None,
 ) -> None:
-    """Clear (delete) collections by name.
-
-    This function permanently removes collection folders and all their contents
-    from disk. Use with caution as this operation cannot be undone.
-
-    Args:
-        collection_names (List[str]): List of collection names to delete.
-        collections_path: Optional path for collections storage.
-
-    Warning:
-        This operation permanently deletes collection data and cannot be undone.
-    """
+    """Clear (delete) collections by name."""
     resolved_path = collections_path or str(get_default_collections_path())
     persister = DiskPersister(base_path=resolved_path)
     for name in collection_names:
         persister.remove_folder(name)
 
 
-# DTOs for injected config
 @dataclass
 class CreateArgs:
     configs: List[SourceConfig]

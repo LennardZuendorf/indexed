@@ -1,9 +1,10 @@
 """Tests for collection service."""
 
-import os
 from unittest.mock import Mock, patch, MagicMock
 
 import pytest
+
+from indexed_config.errors import ConfigurationError
 
 from core.v1.engine.services.collection_service import (
     _build_connector_from_config,
@@ -13,274 +14,43 @@ from core.v1.engine.services.models import SourceConfig
 
 
 class TestBuildConnectorFromConfig:
-    """Test _build_connector_from_config function with new config system.
+    """Test _build_connector_from_config delegates to injected factory."""
 
-    The function now uses a registry-based pattern:
-    1. Sets config values via config_service.set()
-    2. Calls ConnectorClass.from_config(config_service) which internally
-       registers specs, binds, and creates the connector
-
-    Note: Both Cloud and non-Cloud variants use unified namespaces
-    (sources.jira for all Jira, sources.confluence for all Confluence).
-    """
-
-    @patch.dict(os.environ, {"CONF_TOKEN": "test-token"})
-    def test_build_confluence_connector(self):
-        """Test building Confluence connector."""
+    def test_raises_when_factory_not_injected(self):
         config_service = MagicMock()
-
         source_config = SourceConfig(
             name="test-collection",
-            type="confluence",
-            base_url_or_path="https://confluence.example.com",
-            query="space = TEST",
-            indexer="test-indexer",
-            reader_opts={"readAllComments": True},
-        )
-
-        with patch("connectors.confluence.ConfluenceConnector") as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
-
-            connector = _build_connector_from_config(source_config, config_service)
-
-            # Verify config values were set (unified namespace)
-            config_service.set.assert_any_call(
-                "sources.confluence.url", "https://confluence.example.com"
-            )
-            config_service.set.assert_any_call(
-                "sources.confluence.query", "space = TEST"
-            )
-
-            # Verify connector was created via from_config
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-    @patch.dict(
-        os.environ,
-        {"ATLASSIAN_EMAIL": "test@example.com", "ATLASSIAN_TOKEN": "test-token"},
-    )
-    def test_build_confluence_cloud_type_connector(self):
-        """Test building Confluence Cloud connector (confluenceCloud type)."""
-        config_service = MagicMock()
-
-        source_config = SourceConfig(
-            name="test-collection",
-            type="confluenceCloud",
-            base_url_or_path="https://example.atlassian.net",
-            query="space = TEST",
-            indexer="test-indexer",
-            reader_opts={"readAllComments": False},
-        )
-
-        with patch(
-            "connectors.confluence.ConfluenceCloudConnector"
-        ) as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
-
-            connector = _build_connector_from_config(source_config, config_service)
-
-            # Verify config values were set (uses unified sources.confluence namespace)
-            config_service.set.assert_any_call(
-                "sources.confluence.url", "https://example.atlassian.net"
-            )
-            config_service.set.assert_any_call(
-                "sources.confluence.query", "space = TEST"
-            )
-
-            # Verify connector was created via from_config
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-    @patch.dict(os.environ, {"JIRA_TOKEN": "test-token"})
-    def test_build_jira_connector(self):
-        """Test building Jira connector."""
-        config_service = MagicMock()
-
-        source_config = SourceConfig(
-            name="test-collection",
-            type="jira",
-            base_url_or_path="https://jira.example.com",
-            query="project = TEST",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
             indexer="test-indexer",
             reader_opts={},
         )
 
-        with patch("connectors.jira.JiraConnector") as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
+        with pytest.raises(
+            ConfigurationError, match="connector_factory must be injected"
+        ):
+            _build_connector_from_config(source_config, config_service)
 
-            connector = _build_connector_from_config(source_config, config_service)
-
-            # Verify config values were set
-            config_service.set.assert_any_call(
-                "sources.jira.url", "https://jira.example.com"
-            )
-            config_service.set.assert_any_call("sources.jira.query", "project = TEST")
-
-            # Verify connector was created via from_config
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-    @patch.dict(
-        os.environ,
-        {"ATLASSIAN_EMAIL": "test@example.com", "ATLASSIAN_TOKEN": "test-token"},
-    )
-    def test_build_jira_cloud_type_connector(self):
-        """Test building Jira Cloud connector (jiraCloud type)."""
+    def test_delegates_to_injected_factory(self):
         config_service = MagicMock()
-
         source_config = SourceConfig(
             name="test-collection",
-            type="jiraCloud",
-            base_url_or_path="https://example.atlassian.net",
-            query="project = TEST",
+            type="localFiles",
+            base_url_or_path="./docs",
+            query=None,
             indexer="test-indexer",
             reader_opts={},
         )
+        mock_connector = Mock()
+        factory = Mock(return_value=mock_connector)
 
-        with patch("connectors.jira.JiraCloudConnector") as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
-
-            connector = _build_connector_from_config(source_config, config_service)
-
-            # Verify config values were set (uses unified sources.jira namespace)
-            config_service.set.assert_any_call(
-                "sources.jira.url", "https://example.atlassian.net"
-            )
-            config_service.set.assert_any_call("sources.jira.query", "project = TEST")
-
-            # Verify connector was created via from_config
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-    @pytest.mark.unit
-    def test_build_outline_connector(self):
-        """Test building Outline connector."""
-        config_service = MagicMock()
-
-        source_config = SourceConfig(
-            name="outline",
-            type="outline",
-            base_url_or_path="https://outline.example.com",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={
-                "collectionIds": ["col-1"],
-                "includeAttachments": True,
-                "ocrEnabled": False,
-            },
+        connector = _build_connector_from_config(
+            source_config, config_service, connector_factory=factory
         )
 
-        with patch("connectors.outline.OutlineConnector") as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
-
-            connector = _build_connector_from_config(source_config, config_service)
-
-            config_service.set.assert_any_call(
-                "sources.outline.url", "https://outline.example.com"
-            )
-            config_service.set.assert_any_call(
-                "sources.outline.collection_ids", ["col-1"]
-            )
-            config_service.set.assert_any_call(
-                "sources.outline.include_attachments", True
-            )
-            config_service.set.assert_any_call("sources.outline.ocr_enabled", False)
-
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-    def test_build_files_connector(self):
-        """Test building files connector."""
-        config_service = MagicMock()
-
-        source_config = SourceConfig(
-            name="test-collection",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={
-                "includePatterns": [r".*\.md$"],
-                "excludePatterns": [r".*\.tmp$"],
-                "failFast": True,
-            },
-        )
-
-        with patch("connectors.files.FileSystemConnector") as mock_connector_class:
-            mock_connector = Mock()
-            mock_connector_class.from_config.return_value = mock_connector
-
-            connector = _build_connector_from_config(source_config, config_service)
-
-            # Verify config values were set
-            config_service.set.assert_any_call("sources.files.path", "./docs")
-
-            # Verify connector was created via from_config
-            mock_connector_class.from_config.assert_called_once_with(config_service)
-            assert connector == mock_connector
-
-
-class TestBuildLocalFilesConnectorOpts:
-    """Test _build_connector_from_config with localFiles reader_opts."""
-
-    def test_files_connector_with_include_patterns(self):
-        config_service = MagicMock()
-        source_config = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={"includePatterns": [r".*\.md$"]},
-        )
-
-        with patch("connectors.files.FileSystemConnector") as mock_cls:
-            mock_cls.from_config.return_value = Mock()
-            _build_connector_from_config(source_config, config_service)
-
-            config_service.set.assert_any_call(
-                "sources.files.include_patterns", [r".*\.md$"]
-            )
-
-    def test_files_connector_with_fail_fast(self):
-        config_service = MagicMock()
-        source_config = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={"failFast": True},
-        )
-
-        with patch("connectors.files.FileSystemConnector") as mock_cls:
-            mock_cls.from_config.return_value = Mock()
-            _build_connector_from_config(source_config, config_service)
-
-            config_service.set.assert_any_call("sources.files.fail_fast", True)
-
-
-class TestUnknownSourceType:
-    """Test unknown source type handling."""
-
-    def test_raises_for_unknown_type(self):
-        import pytest
-
-        config_service = MagicMock()
-        # Create a valid SourceConfig then patch the type to an invalid value
-        source_config = Mock()
-        source_config.type = "unknownSource"
-        source_config.base_url_or_path = "http://example.com"
-        source_config.query = None
-        source_config.reader_opts = {}
-
-        with pytest.raises(ValueError, match="Unknown source type"):
-            _build_connector_from_config(source_config, config_service)
+        factory.assert_called_once_with(source_config)
+        assert connector is mock_connector
 
 
 class TestClearCaches:
@@ -289,7 +59,6 @@ class TestClearCaches:
     def test_clear_caches_removes_entries(self, tmp_path):
         from core.v1.engine.services.collection_service import _clear_caches
 
-        # Create some cache entries
         (tmp_path / "cache1").mkdir()
         (tmp_path / "cache1" / "data.json").write_text("{}")
         (tmp_path / "cache2_completed").write_text("")
@@ -302,7 +71,6 @@ class TestClearCaches:
     def test_clear_caches_nonexistent_dir(self):
         from core.v1.engine.services.collection_service import _clear_caches
 
-        # Should not raise
         _clear_caches("/nonexistent/path/12345")
 
 
