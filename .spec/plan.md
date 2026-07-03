@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-06-29
+updated: 2026-07-03
 ---
 
 # Development Plan: indexed
@@ -37,7 +37,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `apps/indexed/src/indexed/knowledge/commands/` |
 | 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `packages/indexed-config/`, tech.md § Configuration System |
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
-| 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ◻ IN PROGRESS | `.spec/features/architecture-audit/` |
+| 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `packages/indexed-protocols/`, `apps/indexed/.../bootstrap.py`, `runtime.py`, `scripts/check_import_graph.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -45,20 +45,18 @@ all shipped. Architectural rules promoted to [tech.md](tech.md) § Architectural
 Only the thin-command pattern (extract `knowledge/services/`, shrink oversized
 command files) remains open — tracked as [issue #119](https://github.com/LennardZuendorf/indexed/issues/119), not a spec backlog item.
 
-**Feature 11 detail:** Full monorepo audit (2026-06-29) captured in
-[features/architecture-audit/](features/architecture-audit/) — requirements
-(R1–R11), target architecture, 12 implementation units, six research clusters.
-Gate: Phase 0 graph fixes + import-graph CI green; unblocks v2 core/connectors rewrite.
+**Feature 11 detail:** Shipped 2026-07-03 — `indexed-protocols` leaf package;
+core no longer depends on connectors; `bootstrap.py` + `runtime.py` composition
+root; `resolve_collections_context()` storage parity for CLI/MCP; explicit config
+registration; unified `read_for_mode`; shared HTTP retry policy; dead-code removal;
+import-graph CI gate. Unblocks v2 core/connectors rewrite.
 
 ---
 
 ## Current Focus
 
-**Architecture audit remediation** — implement
-[features/architecture-audit/plan.md](features/architecture-audit/plan.md) units
-`architecture-audit/1`–`/12` (protocols package, drop core→connectors, app bootstrap,
-CLI/MCP storage parity, config/retry hygiene, dead-code removal). v2 core/connectors
-rewrite follows after Feature 11 gate; scope as a separate feature when remediation lands.
+**v2 core/connectors rewrite** — scaffold on the clean graph delivered by Feature 11.
+Scope as a separate feature when ready. Issue #119 (thin commands) remains deferred.
 
 ---
 

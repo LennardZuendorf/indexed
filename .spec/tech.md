@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-07-03
 ---
 
 # Tech Spec: indexed
@@ -285,6 +285,51 @@ Command (parse args + format output) → Service (orchestrate) → Engine (execu
 ```
 
 A command file branching on business rules is a sign logic needs extraction.
+
+### Protocols Package (`indexed-protocols`)
+
+Shared connector contracts and cross-layer DTOs live in the **leaf** workspace package
+`packages/indexed-protocols/` (import `protocols`). Engine-only DTOs stay in core.
+
+- `BaseConnector`, `DocumentReader`, `DocumentConverter`, `ConnectorMetadata`
+- `SourceConfig`, `ProgressUpdate`, `ProgressCallback`, `PhasedProgressCallback`
+
+`indexed-core` and `indexed-connectors` both depend on `indexed-protocols`; neither
+imports the other's concrete types for wiring.
+
+### App Composition Root
+
+`apps/indexed/src/indexed/bootstrap.py` is the **only** module that registers config
+specs and builds connectors from the registry:
+
+- `register_app_config(config_service)` — idempotent; called from CLI callback and MCP lifespan
+- `build_connector_registry()` / `build_connector(cfg, config_service, registry)`
+
+`apps/indexed/src/indexed/runtime.py` exposes `CliContext` and
+`resolve_collections_context(mode_override)` — the **single** storage-path resolver for
+CLI and MCP. Do not revive heuristics like “prefer local if non-empty collections dir”.
+
+### Import-Graph CI
+
+`scripts/check_import_graph.py` (also run in CI) AST-walks `packages/*/src` and
+`apps/*/src` and fails on forbidden edges:
+
+| From | Must NOT import |
+|------|-----------------|
+| `core` | `connectors` |
+| `connectors` | `core` |
+| `indexed_config`, `utils`, `parsing`, `protocols` | `core`, `connectors`, `indexed` |
+
+### HTTP Retry Policy
+
+Transient HTTP statuses are centralized in `utils/retry.py`:
+
+```python
+TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
+```
+
+`execute_with_retry` re-raises immediately on non-transient HTTP errors (e.g. 404).
+Connector readers use this helper — do not duplicate status-code tuples.
 
 ---
 

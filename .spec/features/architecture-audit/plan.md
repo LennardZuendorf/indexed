@@ -28,8 +28,7 @@ retry → delete speculative code → CI gate. See [tech.md](tech.md).
 **Parent:** [../../plan.md](../../plan.md) · **Requirements:** [product.md](product.md) ·
 **Research:** [research/systemic.md](research/systemic.md) and sibling cluster docs.
 
-**Validated baseline (2026-07-03):** All 12 units NOT STARTED. Zero implementation
-progress since audit. Composer-2.5 subagents confirmed every P0 finding still present.
+**Validated baseline (2026-07-03):** All 13 units DONE. Feature verify gate green (1478 tests, 85% cov, import graph OK). COMPOUND promoted to root specs 2026-07-03.
 
 ---
 
@@ -821,10 +820,10 @@ Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `ap
 
 ## COMPOUND — After /12 passes
 
-- [ ] Promote architectural rules to [../../tech.md](../../tech.md) (protocols package, bootstrap, runtime context, import-graph CI).
-- [ ] Update [../../plan.md](../../plan.md) Feature 11 → DONE.
-- [ ] Add lessons from this run to [../../lessons.md](../../lessons.md).
-- [ ] Run: `bash .agents/skills/spec/scripts/validate.sh`
+- [x] Promote architectural rules to [../../tech.md](../../tech.md) (protocols package, bootstrap, runtime context, import-graph CI).
+- [x] Update [../../plan.md](../../plan.md) Feature 11 → DONE.
+- [x] Add lessons from this run to [../../lessons.md](../../lessons.md).
+- [x] Run: `bash .agents/skills/spec/scripts/validate.sh`
 - [ ] Archive feature folder per spec rules before branch merge.
 
 ---
@@ -879,12 +878,12 @@ Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `ap
 | architecture-audit/1 | DONE |
 | architecture-audit/2 | DONE |
 | architecture-audit/3 | DONE |
-| architecture-audit/4 | IN PROGRESS |
-| architecture-audit/5 | NOT STARTED |
-| architecture-audit/6 | NOT STARTED |
-| architecture-audit/7 | NOT STARTED |
-| architecture-audit/8 | NOT STARTED |
-| architecture-audit/9 | NOT STARTED |
-| architecture-audit/10 | NOT STARTED |
-| architecture-audit/11 | NOT STARTED |
-| architecture-audit/12 | NOT STARTED |
+| architecture-audit/4 | DONE |
+| architecture-audit/5 | DONE |
+| architecture-audit/6 | DONE |
+| architecture-audit/7 | DONE |
+| architecture-audit/8 | DONE |
+| architecture-audit/9 | DONE |
+| architecture-audit/10 | DONE |
+| architecture-audit/11 | DONE |
+| architecture-audit/12 | DONE |

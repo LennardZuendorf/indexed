@@ -17,10 +17,17 @@ Accumulated mistakes and earned defaults. Read at session start.
   belong in `bootstrap.py` + `runtime.py`, never at library import time.
 - **`resolve_collections_context()` is the only storage API.** Do not revive
   heuristics like “prefer local if non-empty collections dir”.
-- **Singleton `ConfigService.instance()` ignores later `mode_override`.** Pass
-  `mode_override` on first call or use `for_context()` per command invocation.
+- **Singleton `mode_override` must rebuild.** `ConfigService.instance()` recreates
+  when `mode_override` changes on a subsequent call; use `reset=True` in tests.
 - **Migrate before delete.** Jira Server must use `UnifiedJiraDocumentReader`
   before removing deprecated wrapper modules in `/8`.
+- **Registry lookup uses `cfg.type` verbatim.** Do not normalize `jiraCloud` → `jira`
+  when resolving connector class — cloud and server connectors differ.
+- **`localFiles` sets `sources.files.path`, not `.url`.** in `build_connector()`.
+- **Lazy imports after `/5`.** Config classes live in `connectors.*.schema`; package
+  `__init__.py` no longer re-exports them — update `create.py` `__getattr__` paths.
+- **Empty dict is falsy for registry injection.** `build_connector(..., registry={})`
+  falls back to full registry — pass a partial dict with a dummy entry to test unknown types.
 
 ---
 

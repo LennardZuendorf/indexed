@@ -3,7 +3,7 @@ type: feature-tech
 feature: architecture-audit
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-06-29
+updated: 2026-07-03
 ---
 
 # Feature: architecture-audit — Architecture
