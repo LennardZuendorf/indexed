@@ -243,7 +243,7 @@ class TestDisplayStorageModeForCommand:
         with patch("indexed_config.ConfigService") as mock_cs:
             mock_instance = Mock()
             mock_instance.resolve_storage_mode.return_value = "global"
-            mock_instance.store.read.return_value = {}
+            mock_instance.load_raw.return_value = {}
             mock_instance.get_workspace_preference.return_value = None
             mock_cs.instance.return_value = mock_instance
 
@@ -277,7 +277,7 @@ class TestDisplayStorageModeForCommand:
         with patch("indexed_config.ConfigService") as mock_cs:
             mock_instance = Mock()
             mock_instance.resolve_storage_mode.return_value = "local"
-            mock_instance.store.read.return_value = {"storage": {"mode": "local"}}
+            mock_instance.load_raw.return_value = {"storage": {"mode": "local"}}
             mock_instance.get_workspace_preference.return_value = None
             mock_cs.instance.return_value = mock_instance
 

@@ -5,7 +5,6 @@ and create_confluence commands to eliminate code duplication.
 """
 
 from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
-import typer
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -79,22 +78,29 @@ def execute_create_command(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    # Get ConfigService singleton (auto-loads .env)
-    mode_override = "local" if local else None
-    config = ConfigService.instance(mode_override=mode_override)
+    mode_override: str | None = None
+    try:
+        import typer
 
-    # Resolve storage paths based on --local flag
-    local_collections_path: Optional[str] = None
-    local_caches_path: Optional[str] = None
+        ctx = typer.get_current_context(silent=True)
+        if ctx and ctx.obj:
+            mode_override = ctx.obj.get("mode_override")
+    except Exception:
+        pass
     if local:
-        from pathlib import Path
+        mode_override = "local"
+
+    from indexed.runtime import resolve_collections_context
+
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    config = cli_ctx.config_service
+    collections_path = str(cli_ctx.collections_path)
+    caches_path = str(cli_ctx.caches_path)
+
+    if local or mode_override == "local":
         from indexed_config import ensure_storage_dirs, get_local_root
 
-        workspace = Path.cwd()
-        local_root = get_local_root(workspace)
-        ensure_storage_dirs(local_root, is_local=True)
-        local_collections_path = str(local_root / "data" / "collections")
-        local_caches_path = str(local_root / "data" / "caches")
+        ensure_storage_dirs(get_local_root(config.workspace), is_local=True)
 
     # Display storage mode indicator (not in verbose mode, to keep logs clean)
     if not is_verbose_mode():
@@ -162,7 +168,7 @@ def execute_create_command(
     if not force:
         from core.v1.engine.services.collection_service import _collection_exists
 
-        if _collection_exists(collection, collections_path=local_collections_path):
+        if _collection_exists(collection, collections_path=collections_path):
             console.print()
             print_warning(f"Collection '{collection}' already exists.")
             if not typer.confirm("Overwrite?", default=False):
@@ -177,7 +183,7 @@ def execute_create_command(
 
     from ...connector_wiring import wiring_kwargs_for_create
 
-    create_wiring = wiring_kwargs_for_create(config)
+    create_wiring = wiring_kwargs_for_create(cli_ctx)
 
     # Phase 2: Create collection with appropriate UI mode
     creation_error = None
@@ -193,8 +199,8 @@ def execute_create_command(
                     config_service=config,
                     use_cache=use_cache,
                     force=force,
-                    collections_path=local_collections_path,
-                    caches_path=local_caches_path,
+                    collections_path=collections_path,
+                    caches_path=caches_path,
                     **create_wiring,
                 )
         else:
@@ -212,8 +218,8 @@ def execute_create_command(
                         use_cache=use_cache,
                         force=force,
                         phased_progress=phased,
-                        collections_path=local_collections_path,
-                        caches_path=local_caches_path,
+                        collections_path=collections_path,
+                        caches_path=caches_path,
                         **create_wiring,
                     )
                 except Exception as e:
@@ -234,7 +240,7 @@ def execute_create_command(
         if is_verbose_mode():
             logger.info("Verifying collection was created...")
 
-        collections = svc_status([collection], collections_path=local_collections_path)
+        collections = svc_status([collection], collections_path=collections_path)
 
         # Check if we got a valid collection (not just an error placeholder with 0 docs)
         # A valid collection should have updated_time set

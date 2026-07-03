@@ -8,25 +8,47 @@ We focus on realistic behaviors:
 
 from pathlib import Path
 from typing import List
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from indexed.knowledge.commands import inspect as inspect_cmd
-from indexed.utils import storage_info as storage_info_mod
 from core.v1.engine.services import CollectionInfo
 
 
 runner = CliRunner()
 
-# Patch resolve_preferred_collections_path globally for all inspect tests
-# so tests don't need ConfigService
-_MOCK_PATH = patch.object(
-    storage_info_mod,
-    "resolve_preferred_collections_path",
-    return_value=Path("/tmp/test-collections"),
-)
-_MOCK_PATH.start()
+
+def _mock_runtime_context():
+    mock_config = MagicMock()
+    mock_config.resolve_storage_mode.return_value = "global"
+    mock_config.get_workspace_preference.return_value = None
+    mock_config.store.read.return_value = {}
+    return type(
+        "MockCtx",
+        (),
+        {
+            "collections_path": Path("/tmp/test-collections"),
+            "mode": "global",
+            "config_service": mock_config,
+        },
+    )()
+
+
+@pytest.fixture(autouse=True)
+def _patch_runtime_context():
+    with (
+        patch(
+            "indexed.runtime.resolve_collections_context",
+            side_effect=lambda *args, **kwargs: _mock_runtime_context(),
+        ),
+        patch(
+            "indexed.utils.storage_info.display_storage_mode_for_command",
+            lambda *args, **kwargs: None,
+        ),
+    ):
+        yield
 
 
 def _make_collection(

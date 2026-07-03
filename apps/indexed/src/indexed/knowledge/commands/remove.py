@@ -31,6 +31,7 @@ app = typer.Typer(help="Remove collections")
 
 @app.command()
 def remove(
+    ctx: typer.Context,
     collection: str = typer.Argument(..., help="Collection name to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
     verbose: bool = typer.Option(
@@ -61,27 +62,28 @@ def remove(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import remove as this_module
+    from indexed.runtime import resolve_collections_context
 
-    index_svc = this_module.Index
+    clear_svc = this_module.clear
     inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
+
+    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    collections_path = str(cli_ctx.collections_path)
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    index = index_svc()
     simple = is_simple_output()
 
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
-        from indexed_config import ConfigService
-
-        ConfigService.instance()
         display_storage_mode_for_command(console)
 
     # Fetch all collections to validate
-    all_collections = inspect_svc()
+    all_collections = inspect_svc(collections_path=collections_path)
 
     if not all_collections:
         console.print(f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]")
@@ -111,7 +113,7 @@ def remove(
     # Simple output mode: skip confirmation, output JSON
     if simple:
         try:
-            index.remove(collection)
+            clear_svc([collection], collections_path=collections_path)
             print_json({"status": "removed", "collection": collection})
         except Exception as e:
             print_json({"status": "error", "collection": collection, "error": str(e)})
@@ -159,7 +161,7 @@ def remove(
         if is_verbose_mode():
             # Verbose mode: show all logs, no progress UI
             with NoOpContext():
-                index.remove(collection)
+                clear_svc([collection], collections_path=collections_path)
         else:
             # Normal mode: phased progress display
             source_type = target_collection.source_type
@@ -168,7 +170,7 @@ def remove(
 
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Removing collection data")
-                index.remove(collection)
+                clear_svc([collection], collections_path=collections_path)
                 phased.finish_phase("Removing collection data")
 
         console.print()
@@ -185,10 +187,10 @@ def remove(
 
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
-    if name == "Index":
-        from core.v1 import Index
+    if name == "clear":
+        from core.v1.engine.services import clear
 
-        return Index
+        return clear
     elif name == "inspect":
         from core.v1.engine.services import inspect
 

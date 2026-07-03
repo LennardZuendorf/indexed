@@ -10,7 +10,10 @@ from core.v1.engine.services import (
     status as svc_status,
 )
 
-from .config import resolve_config as _resolve_config
+from indexed_config.errors import IndexedError
+
+from ..errors import mcp_error_envelope
+from .config import resolve_cli_context, resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
 
@@ -34,6 +37,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 chunk_number, and text fields.
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        cli_ctx = resolve_cli_context(ctx)
+        collections_path = str(cli_ctx.collections_path)
 
         try:
             raw_results = svc_search(
@@ -45,10 +50,11 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 include_full_text=search_cfg.include_full_text,
                 include_all_chunks=search_cfg.include_all_chunks,
                 include_matched_chunks=search_cfg.include_matched_chunks,
+                collections_path=collections_path,
             )
             return format_search_results_for_llm(raw_results, query)
-        except Exception as e:
-            return {"error": str(e)}
+        except IndexedError as e:
+            return mcp_error_envelope(e)
 
     @mcp.tool
     def search_collection(
@@ -69,23 +75,32 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             dict: LLM-friendly search results with the same structure as search() tool
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        cli_ctx = resolve_cli_context(ctx)
+        collections_path = str(cli_ctx.collections_path)
 
         try:
             try:
-                statuses = svc_status([collection])
+                statuses = svc_status([collection], collections_path=collections_path)
                 if not statuses or not statuses[0].indexers:
                     return {
                         "error": f"Collection '{collection}' not found or has no indexers"
                     }
-                default_indexer = statuses[0].indexers[0]
+                coll_status = statuses[0]
+                default_indexer = coll_status.indexers[0]
             except Exception:
                 from core.v1.constants import DEFAULT_INDEXER
 
                 default_indexer = DEFAULT_INDEXER
+                coll_status = None
 
+            source_type = (
+                coll_status.source_type
+                if coll_status and coll_status.source_type
+                else "localFiles"
+            )
             source_config = SourceConfig(
                 name=collection,
-                type="localFiles",
+                type=source_type,
                 base_url_or_path="",
                 indexer=default_indexer,
             )
@@ -99,7 +114,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 include_full_text=search_cfg.include_full_text,
                 include_all_chunks=search_cfg.include_all_chunks,
                 include_matched_chunks=search_cfg.include_matched_chunks,
+                collections_path=collections_path,
             )
             return format_search_results_for_llm(raw_results, query)
-        except Exception as e:
-            return {"error": str(e)}
+        except IndexedError as e:
+            return mcp_error_envelope(e)

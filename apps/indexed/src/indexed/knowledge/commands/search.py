@@ -310,6 +310,7 @@ def format_search_results_compact(
 
 @app.command()
 def search(
+    ctx: typer.Context,
     query: str = typer.Argument(..., help="Search query"),
     collection: str = typer.Option(
         None, "--collection", "-c", help="Collection name to search"
@@ -368,10 +369,11 @@ def search(
 
     simple = is_simple_output()
 
-    # Prefer local collections over global
-    from ...utils.storage_info import resolve_preferred_collections_path
+    from indexed.runtime import resolve_collections_context
 
-    preferred_path = str(resolve_preferred_collections_path())
+    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    collections_path = str(cli_ctx.collections_path)
 
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
@@ -382,7 +384,7 @@ def search(
     # Determine collections to search
     if collection is None:
         # Search all collections
-        all_statuses = status_svc(collections_path=preferred_path)
+        all_statuses = status_svc(collections_path=collections_path)
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -402,7 +404,7 @@ def search(
             )
     else:
         # Search specific collection
-        statuses = status_svc([collection], collections_path=preferred_path)
+        statuses = status_svc([collection], collections_path=collections_path)
         if not statuses:
             if simple:
                 print_json({"error": f"Collection '{collection}' not found"})
@@ -419,10 +421,11 @@ def search(
     # Build search configs for all collections
     search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name], collections_path=preferred_path)[0]
+        coll_status = status_svc([coll_name], collections_path=collections_path)[0]
+        source_type = getattr(coll_status, "source_type", None) or "localFiles"
         search_configs[coll_name] = source_config_class(
             name=coll_name,
-            type="localFiles",
+            type=source_type,
             base_url_or_path="",
             indexer=coll_status.indexers[0],
         )
@@ -440,7 +443,7 @@ def search(
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
-                    collections_path=preferred_path,
+                    collections_path=collections_path,
                 )
                 results.update(result)
     else:
@@ -460,7 +463,7 @@ def search(
                     max_docs=limit,
                     max_chunks=limit * 3,
                     include_matched_chunks=True,
-                    collections_path=preferred_path,
+                    collections_path=collections_path,
                 )
                 results.update(result)
                 phased.finish_phase(f"Searching {coll_name}")

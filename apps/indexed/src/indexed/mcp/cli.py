@@ -154,7 +154,22 @@ def run_impl(
     show_banner: bool = True,
 ) -> None:
     """Run the MCP server using FastMCP Python API directly."""
+    from core.v1.config_models import MCPConfig
+    from indexed.bootstrap import register_app_config
+    from indexed_config import ConfigService
+
     from .server import mcp
+
+    if host == "127.0.0.1" and port == 8000 and log_level == "INFO":
+        try:
+            config_service = ConfigService.instance()
+            register_app_config(config_service)
+            mcp_cfg = config_service.bind().get(MCPConfig)
+            host = mcp_cfg.host
+            port = mcp_cfg.port
+            log_level = mcp_cfg.log_level
+        except Exception:
+            pass
 
     if transport == "stdio":
         mcp.run(transport="stdio", show_banner=show_banner, log_level=log_level)

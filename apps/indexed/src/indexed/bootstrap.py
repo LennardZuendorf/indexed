@@ -21,7 +21,7 @@ def register_app_config(config_service: ConfigService) -> None:
     from connectors.files.schema import FileSystemConfig, LocalFilesConfig
     from connectors.jira.schema import JiraCloudConfig, JiraConfig
     from connectors.outline.schema import OutlineConfig
-    from indexed.mcp.config import MCPConfig
+    from core.v1.config_models import MCPConfig
 
     config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
     config_service.register(CoreV1SearchConfig, path="core.v1.search")

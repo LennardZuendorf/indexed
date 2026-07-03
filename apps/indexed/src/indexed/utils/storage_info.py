@@ -22,25 +22,6 @@ logger = logging.getLogger(__name__)
 StorageMode = Literal["global", "local"]
 
 
-def resolve_preferred_collections_path() -> Path:
-    """Resolve collections path preferring local over global.
-
-    If a local .indexed/data/collections/ directory exists and contains
-    at least one collection, use it. Otherwise fall back to the global default.
-
-    This is used by search/inspect commands which should prefer local collections
-    while keeping config resolution separate (always global unless local config.toml exists).
-    """
-    local_path = Path.cwd() / ".indexed" / "data" / "collections"
-    if local_path.is_dir() and any(local_path.iterdir()):
-        return local_path
-
-    from indexed_config import ConfigService
-
-    resolver = ConfigService.instance().resolver
-    return resolver.get_collections_path()
-
-
 def get_storage_indicator(
     mode: StorageMode,
     path: Path,
@@ -146,36 +127,10 @@ def display_storage_mode_for_command(console: Console) -> None:
     Parameters:
         console (Console): Rich Console to print to.
     """
-    from indexed_config import (
-        ConfigService,
-        has_local_config,
-        get_local_root,
-        get_global_root,
-    )
+    from indexed_config import has_local_config, get_local_root, get_global_root
 
-    # Get ConfigService instance (should already be initialized by command)
-    config_service = ConfigService.instance()
-    workspace = Path.cwd()
+    from indexed.runtime import resolve_collections_context
 
-    # Determine mode from ConfigService
-    storage_mode = config_service.resolve_storage_mode()
-    local_exists = has_local_config(workspace)
-
-    # Get path
-    if storage_mode == "local":
-        storage_path = get_local_root(workspace)
-    else:
-        storage_path = get_global_root()
-
-    # Try to read config mode
-    config_mode = None
-    try:
-        config_data = config_service.store.read()
-        config_mode = config_data.get("storage", {}).get("mode")
-    except Exception:
-        logger.debug("Failed to read config mode from store", exc_info=True)
-
-    # Get mode override from Typer context (set in app.py callback)
     mode_override = None
     try:
         import typer
@@ -186,10 +141,24 @@ def display_storage_mode_for_command(console: Console) -> None:
     except Exception:
         logger.debug("Failed to get mode override from Typer context", exc_info=True)
 
-    # Get workspace preference
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    config_service = cli_ctx.config_service
+    workspace = Path.cwd()
+    local_exists = has_local_config(workspace)
+
+    storage_path = (
+        get_local_root(workspace) if cli_ctx.mode == "local" else get_global_root()
+    )
+
+    config_mode = None
+    try:
+        config_data = config_service.load_raw()
+        config_mode = config_data.get("storage", {}).get("mode")
+    except Exception:
+        logger.debug("Failed to read config mode from store", exc_info=True)
+
     workspace_pref = config_service.get_workspace_preference()
 
-    # Determine reason
     mode, reason = get_storage_mode_and_reason(
         has_local=local_exists,
         mode_override=mode_override,
@@ -197,7 +166,6 @@ def display_storage_mode_for_command(console: Console) -> None:
         workspace_pref=workspace_pref,
     )
 
-    # Display
     print_storage_info(
         console=console,
         mode=mode,

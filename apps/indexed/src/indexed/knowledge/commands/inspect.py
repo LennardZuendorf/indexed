@@ -182,6 +182,7 @@ def format_collections_json(collections: List["CollectionInfo"]) -> None:
 
 
 def inspect_collections(
+    ctx: typer.Context,
     name: str = typer.Argument(None, help="Collection name to inspect in detail"),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed information for all collections"
@@ -197,22 +198,23 @@ def inspect_collections(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import inspect as this_module
-    from ...utils.storage_info import resolve_preferred_collections_path
+    from indexed.runtime import resolve_collections_context
 
     inspect_svc = this_module.inspect
 
-    # Prefer local collections over global
-    preferred_path = str(resolve_preferred_collections_path())
+    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    collections_path = str(cli_ctx.collections_path)
 
     # Fetch collection info from core - this is connection-agnostic
     if name:
         # Inspect specific collection (no progress bar)
-        collections = inspect_svc([name], collections_path=preferred_path)
+        collections = inspect_svc([name], collections_path=collections_path)
 
         # Check if collection exists and has valid data
         if not collections or collections[0].number_of_documents == 0:
             # Check if it truly doesn't exist vs just being empty
-            all_collections = inspect_svc(collections_path=preferred_path)
+            all_collections = inspect_svc(collections_path=collections_path)
             exists = any(c.name == name for c in all_collections)
 
             if not exists:
@@ -233,7 +235,7 @@ def inspect_collections(
             format_collection_detail(collections[0])
     else:
         # List all collections (no progress bar)
-        collections = inspect_svc(collections_path=preferred_path)
+        collections = inspect_svc(collections_path=collections_path)
 
         if not collections:
             console.print(

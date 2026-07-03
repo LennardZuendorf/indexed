@@ -29,16 +29,13 @@ from ...utils.format import format_source_type as _format_source_type
 app = typer.Typer(help="Update collections")
 
 
-def _read_manifest_reader_config(collection_name: str) -> dict:
+def _read_manifest_reader_config(collection_name: str, collections_path: str) -> dict:
     """Read the reader dict from a collection manifest; return {} on failure."""
     try:
         import json
         from pathlib import Path
-        from core.v1.config_models import get_default_collections_path
 
-        manifest_path = (
-            Path(get_default_collections_path()) / collection_name / "manifest.json"
-        )
+        manifest_path = Path(collections_path) / collection_name / "manifest.json"
         if manifest_path.exists():
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             return manifest.get("reader", {})
@@ -215,6 +212,7 @@ def _format_update_comparison(before, after):
 
 @app.command()
 def update(
+    ctx: typer.Context,
     collection: str = typer.Argument(
         None, help="Collection name to update (omit to update all collections)"
     ),
@@ -249,15 +247,19 @@ def update(
     setup_root_logger_svc = this_module.setup_root_logger
 
     from ...connector_wiring import wiring_kwargs_for_update
+    from indexed.runtime import resolve_collections_context
 
-    update_wiring = wiring_kwargs_for_update()
+    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
+    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    update_wiring = wiring_kwargs_for_update(cli_ctx)
+    collections_path = str(cli_ctx.collections_path)
+    config_service = cli_ctx.config_service
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    # Initialize ConfigService and check if config existed before
-    config_service = ConfigService.instance()
+    # Check if config existed before
     config_existed = _config_existed_before(config_service)
 
     simple = is_simple_output()
@@ -271,7 +273,7 @@ def update(
     # Determine collections to update
     if collection is None:
         # Update all collections
-        all_statuses = svc_status()
+        all_statuses = svc_status(collections_path=collections_path)
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -292,7 +294,7 @@ def update(
             )
     else:
         # Update specific collection
-        statuses = svc_status([collection])
+        statuses = svc_status([collection], collections_path=collections_path)
         if not statuses:
             if simple:
                 print_json(
@@ -307,7 +309,7 @@ def update(
     # Capture before state for all collections
     before_data = {}
     for coll_name in collections_to_update:
-        inspect_result = inspect_svc([coll_name])
+        inspect_result = inspect_svc([coll_name], collections_path=collections_path)
         if not inspect_result:
             msg = f"Cannot inspect collection '{coll_name}' before update"
             if simple:
@@ -329,14 +331,14 @@ def update(
 
     for coll_name in collections_to_update:
         # Get collection status to build proper SourceConfig
-        coll_statuses = svc_status([coll_name])
+        coll_statuses = svc_status([coll_name], collections_path=collections_path)
         if not coll_statuses:
             print_error(f"Collection '{coll_name}' not found during update")
             continue
         coll_status = coll_statuses[0]
 
         # Ensure credentials are available for this source type
-        source_type = getattr(coll_status, "source_type", None)
+        source_type = getattr(coll_status, "source_type", None) or "localFiles"
         if source_type:
             ensure_credentials_for_source(source_type, config_service)
 
@@ -346,9 +348,9 @@ def update(
 
         source_config = source_config_class(
             name=coll_name,
-            type="localFiles",  # Default type, not used in update
-            base_url_or_path="",  # Not used in update
-            indexer=coll_status.indexers[0],  # Get from collection status
+            type=source_type,
+            base_url_or_path="",
+            indexer=coll_status.indexers[0],
         )
 
         if simple or is_verbose_mode():
@@ -363,19 +365,23 @@ def update(
                 update_error = e
                 break
         else:
-            reader_cfg = _read_manifest_reader_config(coll_name)
+            reader_cfg = _read_manifest_reader_config(coll_name, collections_path)
             _display_collection_update_header(coll_name, source_type, reader_cfg)
 
             _coll_error: Exception | None = None
             with create_phased_progress(title=None) as phased:
                 try:
-                    update_service([source_config], phased_progress=phased, **update_wiring)
+                    update_service(
+                        [source_config], phased_progress=phased, **update_wiring
+                    )
                 except Exception as e:
                     _coll_error = e
 
             console.print()
             if _coll_error is None:
-                after_result = inspect_svc([coll_name])
+                after_result = inspect_svc(
+                    [coll_name], collections_path=collections_path
+                )
                 if after_result:
                     after_info = after_result[0]
                     before_info = before_data[coll_name]
@@ -430,7 +436,7 @@ def update(
     # Simple output mode: JSON status
     if simple:
         for coll_name in successfully_updated:
-            inspect_result = inspect_svc([coll_name])
+            inspect_result = inspect_svc([coll_name], collections_path=collections_path)
             if inspect_result:
                 after_info = inspect_result[0]
                 before_info = before_data[coll_name]

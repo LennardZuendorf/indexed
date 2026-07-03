@@ -95,8 +95,30 @@ class TestRunImpl:
         assert kwargs["transport"] == "sse"
         assert "host" in kwargs
 
+    @patch("indexed.mcp.server.mcp")
+    @patch("indexed.bootstrap.register_app_config")
+    def test_default_args_load_mcp_config_from_toml(
+        self, mock_register: MagicMock, mock_mcp: MagicMock
+    ) -> None:
+        from core.v1.config_models import MCPConfig
 
-class TestDevImpl:
+        mock_cfg = MagicMock(spec=MCPConfig)
+        mock_cfg.host = "0.0.0.0"
+        mock_cfg.port = 9001
+        mock_cfg.log_level = "DEBUG"
+        mock_bind = MagicMock()
+        mock_bind.get.return_value = mock_cfg
+        mock_service = MagicMock()
+        mock_service.bind.return_value = mock_bind
+
+        with patch("indexed_config.ConfigService.instance", return_value=mock_service):
+            run_impl()
+
+        mock_register.assert_called_once_with(mock_service)
+        mock_mcp.run.assert_called_once_with(
+            transport="stdio", show_banner=True, log_level="DEBUG"
+        )
+
     @patch("indexed.mcp.cli.subprocess.run")
     def test_invokes_fastmcp_dev(self, mock_run: MagicMock) -> None:
         import sys as _sys
