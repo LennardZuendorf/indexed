@@ -941,27 +941,27 @@ def __getattr__(name: str):
 
         return SourceConfig
     elif name == "LocalFilesConfig":
-        from connectors.files import LocalFilesConfig
+        from connectors.files.schema import LocalFilesConfig
 
         return LocalFilesConfig
     elif name == "JiraCloudConfig":
-        from connectors.jira import JiraCloudConfig
+        from connectors.jira.schema import JiraCloudConfig
 
         return JiraCloudConfig
     elif name == "JiraConfig":
-        from connectors.jira import JiraConfig
+        from connectors.jira.schema import JiraConfig
 
         return JiraConfig
     elif name == "ConfluenceCloudConfig":
-        from connectors.confluence import ConfluenceCloudConfig
+        from connectors.confluence.schema import ConfluenceCloudConfig
 
         return ConfluenceCloudConfig
     elif name == "ConfluenceConfig":
-        from connectors.confluence import ConfluenceConfig
+        from connectors.confluence.schema import ConfluenceConfig
 
         return ConfluenceConfig
     elif name == "OutlineConfig":
-        from connectors.outline import OutlineConfig
+        from connectors.outline.schema import OutlineConfig
 
         return OutlineConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

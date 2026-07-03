@@ -3,7 +3,6 @@
 from .models import (
     SourceConfig,
     CollectionStatus,
-    SearchResult,
     CollectionInfo,
     ProgressUpdate,
     ProgressCallback,
@@ -18,7 +17,6 @@ __all__ = [
     "SourceConfig",
     "CollectionStatus",
     "CollectionInfo",
-    "SearchResult",
     "ProgressUpdate",
     "ProgressCallback",
     "PhasedProgressCallback",

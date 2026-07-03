@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from indexed_config.errors import ConfigurationError
@@ -9,18 +10,15 @@ from protocols import SourceConfig
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
 
-from .bootstrap import build_connector, build_connector_registry
+from .bootstrap import build_connector
+from .runtime import CliContext
+
+_OUTLINE_MODIFIED_SINCE_ENV = "INDEXED__sources__outline__modified_since"
 
 
-def build_connector_from_source_config(cfg: SourceConfig, config_service: Any) -> Any:
-    """Build connector from SourceConfig via bootstrap registry."""
-    registry = build_connector_registry()
-    return build_connector(cfg, config_service, registry)
-
-
-def make_connector_factory(config_service: Any) -> Callable[[SourceConfig], Any]:
-    registry = build_connector_registry()
-    return lambda cfg: build_connector(cfg, config_service, registry)
+def make_connector_factory(ctx: CliContext) -> Callable[[SourceConfig], Any]:
+    """Build connectors via bootstrap using context registry."""
+    return lambda cfg: build_connector(cfg, ctx.config_service, ctx.connector_registry)
 
 
 def make_cache_decorator_factory() -> Callable[[Any, DiskPersister], Any]:
@@ -32,26 +30,158 @@ def make_cache_decorator_factory() -> Callable[[Any, DiskPersister], Any]:
     return factory
 
 
-def make_manifest_connector_factory() -> Callable[[dict], tuple[Any, Any]]:
-    from indexed_config import ConfigService
+def _calculate_update_time(manifest: dict) -> datetime:
+    return datetime.fromisoformat(manifest["lastModifiedDocumentTime"]) - timedelta(
+        days=1
+    )
 
-    from core.v1.engine.factories import update_collection_factory as ucf
 
-    def factory(manifest: dict) -> tuple[Any, Any]:
-        from connectors import get_config_namespace, get_connector_class
+def _calculate_update_date(manifest: dict) -> datetime.date:
+    return _calculate_update_time(manifest).date()
 
-        connector_type = manifest["reader"]["type"]
-        connector_cls = get_connector_class(connector_type)
-        namespace = get_config_namespace(connector_type)
-        config_service = ConfigService()
-        ucf._populate_config_from_manifest(
-            config_service, manifest, connector_type, namespace
+
+def _populate_jira_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+    update_date: str,
+) -> None:
+    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    config_service.set(
+        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
+    )
+
+
+def _populate_jira_cloud_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+    update_date: str,
+) -> None:
+    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    config_service.set(
+        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
+    )
+
+
+def _populate_confluence_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+    update_date: str,
+) -> None:
+    query_addition = (
+        f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
+    )
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    config_service.set(
+        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
+    )
+    config_service.set(
+        f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
+    )
+
+
+def _populate_confluence_cloud_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+    update_date: str,
+) -> None:
+    query_addition = (
+        f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
+    )
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    config_service.set(
+        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
+    )
+    config_service.set(
+        f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
+    )
+
+
+def _populate_outline_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+) -> None:
+    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
+    if reader_config.get("collectionIds") is not None:
+        config_service.set(
+            f"{namespace}.collection_ids", reader_config["collectionIds"]
         )
-        return _connector_reader_converter_from_manifest(
-            manifest, connector_type, connector_cls, config_service
+    config_service.set(
+        f"{namespace}.include_attachments",
+        reader_config.get("includeAttachments", True),
+    )
+    if reader_config.get("batchSize") is not None:
+        config_service.set(f"{namespace}.batch_size", reader_config["batchSize"])
+    if reader_config.get("ocrEnabled") is not None:
+        config_service.set(f"{namespace}.ocr_enabled", reader_config["ocrEnabled"])
+    if reader_config.get("downloadInlineImages") is not None:
+        config_service.set(
+            f"{namespace}.download_inline_images", reader_config["downloadInlineImages"]
         )
+    if reader_config.get("maxConcurrentRequests") is not None:
+        config_service.set(
+            f"{namespace}.max_concurrent_requests",
+            reader_config["maxConcurrentRequests"],
+        )
+    if reader_config.get("maxAttachmentSizeMb") is not None:
+        config_service.set(
+            f"{namespace}.max_attachment_size_mb", reader_config["maxAttachmentSizeMb"]
+        )
+    if reader_config.get("verifySsl") is not None:
+        config_service.set(f"{namespace}.verify_ssl", reader_config["verifySsl"])
 
-    return factory
+
+def _populate_local_files_config(
+    config_service: Any,
+    reader_config: dict,
+    namespace: str,
+) -> None:
+    config_service.set(f"{namespace}.path", reader_config["basePath"])
+    config_service.set(
+        f"{namespace}.include_patterns", reader_config.get("includePatterns", [".*"])
+    )
+    config_service.set(f"{namespace}.fail_fast", reader_config.get("failFast", False))
+    config_service.set(
+        f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
+    )
+
+
+def populate_config_from_manifest(
+    config_service: Any,
+    manifest: dict,
+    connector_type: str,
+    namespace: str,
+) -> None:
+    """Populate ConfigService with values from manifest for incremental updates."""
+    reader_config = manifest["reader"]
+    update_date = _calculate_update_date(manifest).isoformat()
+
+    if connector_type == "jira":
+        _populate_jira_config(config_service, reader_config, namespace, update_date)
+    elif connector_type == "jiraCloud":
+        _populate_jira_cloud_config(
+            config_service, reader_config, namespace, update_date
+        )
+    elif connector_type == "confluence":
+        _populate_confluence_config(
+            config_service, reader_config, namespace, update_date
+        )
+    elif connector_type == "confluenceCloud":
+        _populate_confluence_cloud_config(
+            config_service, reader_config, namespace, update_date
+        )
+    elif connector_type == "localFiles":
+        _populate_local_files_config(config_service, reader_config, namespace)
+    elif connector_type == "outline":
+        _populate_outline_config(config_service, reader_config, namespace)
+    else:
+        raise ValueError(f"Cannot populate config for type: {connector_type}")
 
 
 def _connector_reader_converter_from_manifest(
@@ -61,10 +191,6 @@ def _connector_reader_converter_from_manifest(
     config_service: Any,
 ) -> tuple[Any, Any]:
     import os
-
-    from core.v1.engine.factories.update_collection_factory import (
-        _OUTLINE_MODIFIED_SINCE_ENV,
-    )
 
     outline_cutoff_set = False
     if connector_type == "outline":
@@ -84,6 +210,25 @@ def _connector_reader_converter_from_manifest(
             os.environ.pop(_OUTLINE_MODIFIED_SINCE_ENV, None)
 
     return connector.reader, connector.converter
+
+
+def make_manifest_connector_factory(
+    ctx: CliContext,
+) -> Callable[[dict], tuple[Any, Any]]:
+    from connectors import get_config_namespace, get_connector_class
+
+    def factory(manifest: dict) -> tuple[Any, Any]:
+        connector_type = manifest["reader"]["type"]
+        connector_cls = get_connector_class(connector_type)
+        namespace = get_config_namespace(connector_type)
+        populate_config_from_manifest(
+            ctx.config_service, manifest, connector_type, namespace
+        )
+        return _connector_reader_converter_from_manifest(
+            manifest, connector_type, connector_cls, ctx.config_service
+        )
+
+    return factory
 
 
 def make_local_files_update_factory() -> Callable[
@@ -139,16 +284,16 @@ def make_local_files_update_factory() -> Callable[
     return factory
 
 
-def wiring_kwargs_for_create(config_service: Any) -> dict[str, Any]:
+def wiring_kwargs_for_create(ctx: CliContext) -> dict[str, Any]:
     return {
-        "connector_factory": make_connector_factory(config_service),
+        "connector_factory": make_connector_factory(ctx),
         "cache_decorator_factory": make_cache_decorator_factory(),
     }
 
 
-def wiring_kwargs_for_update() -> dict[str, Any]:
+def wiring_kwargs_for_update(ctx: CliContext) -> dict[str, Any]:
     return {
-        "manifest_connector_factory": make_manifest_connector_factory(),
+        "manifest_connector_factory": make_manifest_connector_factory(ctx),
         "local_files_update_factory": make_local_files_update_factory(),
     }
 

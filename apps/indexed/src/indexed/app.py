@@ -19,6 +19,7 @@ from typing import Optional  # noqa: E402
 
 import typer  # noqa: E402
 import typer.rich_utils  # noqa: E402
+from indexed_config.errors import IndexedError  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
@@ -361,7 +362,13 @@ def main() -> None:
 
     if len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]:
         print_indexed_banner()
-    app()
+    try:
+        app()
+    except IndexedError as exc:
+        from .errors import exit_code_for, format_cli_error
+
+        _shared_console.print(format_cli_error(exc), style=get_error_style())
+        raise typer.Exit(exit_code_for(exc)) from None
 
 
 if __name__ == "__main__":

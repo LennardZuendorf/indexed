@@ -10,9 +10,9 @@ from typing import Any, List, Optional
 from dataclasses import dataclass
 
 from indexed_config.errors import ConfigurationError
+from protocols import BaseConnector
 
 from .models import SourceConfig, ProgressCallback
-from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
 from core.v1.config_models import get_default_collections_path, get_default_caches_path
@@ -20,18 +20,18 @@ from core.v1.config_models import get_default_collections_path, get_default_cach
 # NOTE: update_collection_factory is imported lazily in _update_one() to avoid
 # circular import: connectors -> core.v1 -> collection_service -> update_collection_factory -> connectors
 
-setup_root_logger()
 
-
-def _build_connector_from_config(
+def _resolve_connector(
     cfg: SourceConfig,
-    config_service: Any,
-    connector_factory: Callable[[SourceConfig], Any] | None = None,
-) -> Any:
-    """Build connector via injected factory (app composition root owns wiring)."""
+    connector: BaseConnector | None = None,
+    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
+) -> BaseConnector:
+    """Resolve connector from injection (app composition root owns wiring)."""
+    if connector is not None:
+        return connector
     if connector_factory is None:
         raise ConfigurationError(
-            "connector_factory must be injected by the app layer; "
+            "connector or connector_factory must be injected by the app layer; "
             "see indexed.bootstrap.build_connector"
         )
     return connector_factory(cfg)
@@ -80,11 +80,12 @@ def _create_one(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
-    connector_factory: Callable[[SourceConfig], Any] | None = None,
+    connector: BaseConnector | None = None,
+    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
     """Create a single collection."""
-    connector = _build_connector_from_config(cfg, config_service, connector_factory)
+    connector = _resolve_connector(cfg, connector, connector_factory)
 
     creator = create_collection_creator(
         collection_name=cfg.name,
@@ -144,7 +145,8 @@ def create(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
-    connector_factory: Callable[[SourceConfig], Any] | None = None,
+    connector: BaseConnector | None = None,
+    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
     """Create collections from source configurations."""
@@ -170,6 +172,7 @@ def create(
             phased_progress=phased_progress,
             collections_path=resolved_collections,
             caches_path=resolved_caches,
+            connector=connector,
             connector_factory=connector_factory,
             cache_decorator_factory=cache_decorator_factory,
         )

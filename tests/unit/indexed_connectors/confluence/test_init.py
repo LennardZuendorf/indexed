@@ -1,6 +1,5 @@
-"""Tests for confluence connector __init__ module."""
+"""Registry membership and public export tests for the Confluence connector."""
 
-from unittest.mock import patch, MagicMock
 from connectors.confluence import ConfluenceConnector, ConfluenceCloudConnector
 
 
@@ -10,33 +9,41 @@ def test_confluence_init_imports():
     assert ConfluenceCloudConnector is not None
 
 
-def test_confluence_init_registration_success():
-    """Test config registration succeeds when ConfigService available."""
-    with patch("connectors.confluence.ConfigService") as mock_config_service:
-        mock_instance = MagicMock()
-        mock_config_service.instance.return_value = mock_instance
+def test_confluence_in_connector_registry() -> None:
+    from connectors.registry import CONNECTOR_REGISTRY
 
-        # Re-import to trigger registration
-        import importlib
-        import connectors.confluence
-
-        importlib.reload(connectors.confluence)
-
-        # Verify registration was attempted
-        # (Can't easily verify without actually importing, but at least we test the try/except)
+    assert "confluence" in CONNECTOR_REGISTRY
+    assert "confluenceCloud" in CONNECTOR_REGISTRY
 
 
-def test_confluence_init_registration_failure():
-    """Test config registration handles exceptions gracefully."""
-    with patch(
-        "connectors.confluence.ConfigService", side_effect=ImportError("Not available")
-    ):
-        # Should not raise
-        import importlib
-        import connectors.confluence
+def test_confluence_in_config_registry() -> None:
+    from connectors.registry import CONFIG_REGISTRY
 
-        importlib.reload(connectors.confluence)
+    assert "confluence" in CONFIG_REGISTRY
+    assert "confluenceCloud" in CONFIG_REGISTRY
 
-        # Should still have the connectors available
-        assert ConfluenceConnector is not None
-        assert ConfluenceCloudConnector is not None
+
+def test_confluence_in_namespace_registry() -> None:
+    from connectors.registry import NAMESPACE_REGISTRY
+
+    assert NAMESPACE_REGISTRY["confluence"] == "sources.confluence"
+    assert NAMESPACE_REGISTRY["confluenceCloud"] == "sources.confluence"
+
+
+def test_get_connector_class_confluence() -> None:
+    from connectors.registry import get_connector_class
+    from connectors.confluence.connector import (
+        ConfluenceConnector,
+        ConfluenceCloudConnector,
+    )
+
+    assert get_connector_class("confluence") is ConfluenceConnector
+    assert get_connector_class("confluenceCloud") is ConfluenceCloudConnector
+
+
+def test_get_config_class_confluence() -> None:
+    from connectors.registry import get_config_class
+    from connectors.confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
+
+    assert get_config_class("confluence") is ConfluenceConfig
+    assert get_config_class("confluenceCloud") is ConfluenceCloudConfig

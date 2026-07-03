@@ -14,12 +14,9 @@ import os
 from loguru import logger
 
 from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCallback
-from utils.logger import setup_root_logger
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 from core.v1.config_models import get_default_collections_path
-
-setup_root_logger()
 
 
 class InspectService:

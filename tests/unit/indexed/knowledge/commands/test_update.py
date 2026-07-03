@@ -9,6 +9,7 @@ from indexed.knowledge.commands.update import (
     _get_config_path,
     _format_update_comparison,
 )
+from tests.unit.indexed.conftest import make_cli_context
 
 runner = CliRunner()
 
@@ -295,6 +296,8 @@ class TestUpdateCommand:
         # Should exit with error
         assert result.exit_code == 1
 
+    @patch("indexed.utils.storage_info.display_storage_mode_for_command")
+    @patch("indexed.runtime.resolve_collections_context")
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
     @patch("indexed.knowledge.commands.update.is_verbose_mode")
@@ -313,10 +316,13 @@ class TestUpdateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        mock_resolve_context,
+        mock_storage_display,
     ):
         """Should ensure credentials are available for the source."""
         mock_verbose.return_value = False
         mock_config = Mock()
+        mock_resolve_context.return_value = make_cli_context(mock_config)
         mock_config_service.instance.return_value = mock_config
 
         # Mock status
@@ -651,6 +657,8 @@ class TestUpdateCommand:
 
         assert result.exit_code == 1
 
+    @patch("indexed.utils.storage_info.display_storage_mode_for_command")
+    @patch("indexed.runtime.resolve_collections_context")
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
     @patch("indexed.knowledge.commands.update.is_verbose_mode")
@@ -671,6 +679,8 @@ class TestUpdateCommand:
         mock_verbose,
         mock_config_service,
         mock_setup_logger,
+        mock_resolve_context,
+        mock_storage_display,
     ):
         """If config is newly created during update, print_info is called with notice."""
         mock_verbose.return_value = False
@@ -679,6 +689,7 @@ class TestUpdateCommand:
         mock_config.store.global_path = "~/.indexed/config.toml"
         # Config did NOT exist before, but DOES exist after
         mock_config.store.has_global_config.side_effect = [False, True]
+        mock_resolve_context.return_value = make_cli_context(mock_config)
         mock_config_service.instance.return_value = mock_config
 
         mock_status = Mock()

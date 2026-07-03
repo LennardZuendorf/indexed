@@ -9,7 +9,6 @@ config handling across the CLI.
 """
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
 import json
 from typing import Any
 
@@ -24,8 +23,6 @@ from core.v1.engine.core.documents_collection_creator import (
 from core.v1.config_models import get_default_collections_path
 
 from utils.performance import log_execution_duration
-
-_OUTLINE_MODIFIED_SINCE_ENV = "INDEXED__sources__outline__modified_since"
 
 
 def create_collection_updater(
@@ -146,18 +143,6 @@ class _UpdatingCollectionCreator:
         self._post_run()
 
 
-def _calculate_update_time(manifest: dict) -> datetime:
-    """Calculate the update cutoff time from manifest."""
-    return datetime.fromisoformat(manifest["lastModifiedDocumentTime"]) - timedelta(
-        days=1
-    )
-
-
-def _calculate_update_date(manifest: dict):
-    """Calculate the update cutoff date from manifest."""
-    return _calculate_update_time(manifest).date()
-
-
 def _create_reader_and_converter(
     manifest: dict,
     manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
@@ -169,173 +154,3 @@ def _create_reader_and_converter(
             "see indexed.bootstrap"
         )
     return manifest_connector_factory(manifest)
-
-
-def _populate_config_from_manifest(
-    config_service: Any,
-    manifest: dict,
-    connector_type: str,
-    namespace: str,
-) -> None:
-    """Populate ConfigService with values from manifest.
-
-    This function sets config values in the ConfigService based on the
-    connector type and manifest data. Credentials are read from environment
-    variables by the connector's from_config() method.
-
-    Args:
-        config_service: ConfigService instance to populate
-        manifest: Collection manifest
-        connector_type: Type of connector (e.g., "jira", "confluenceCloud")
-        namespace: Config namespace for this connector (e.g., "sources.jira")
-    """
-    reader_config = manifest["reader"]
-    update_date = _calculate_update_date(manifest).isoformat()
-
-    if connector_type == "jira":
-        _populate_jira_config(config_service, reader_config, namespace, update_date)
-    elif connector_type == "jiraCloud":
-        _populate_jira_cloud_config(
-            config_service, reader_config, namespace, update_date
-        )
-    elif connector_type == "confluence":
-        _populate_confluence_config(
-            config_service, reader_config, namespace, update_date
-        )
-    elif connector_type == "confluenceCloud":
-        _populate_confluence_cloud_config(
-            config_service, reader_config, namespace, update_date
-        )
-    elif connector_type == "localFiles":
-        _populate_local_files_config(config_service, reader_config, namespace)
-    elif connector_type == "outline":
-        _populate_outline_config(config_service, reader_config, namespace)
-    else:
-        raise ValueError(f"Cannot populate config for type: {connector_type}")
-
-
-def _populate_jira_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    """Populate ConfigService with Jira Server/DC config from manifest."""
-    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
-
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-    # Credentials are read from env vars by the connector's from_config() method
-
-
-def _populate_jira_cloud_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    """Populate ConfigService with Jira Cloud config from manifest."""
-    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
-
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-    # Credentials (email, api_token) are read from env vars by from_config()
-
-
-def _populate_confluence_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    """Populate ConfigService with Confluence Server/DC config from manifest."""
-    query_addition = (
-        f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
-    )
-
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-    config_service.set(
-        f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
-    )
-    # Credentials are read from env vars by the connector's from_config() method
-
-
-def _populate_confluence_cloud_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    """Populate ConfigService with Confluence Cloud config from manifest."""
-    query_addition = (
-        f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
-    )
-
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-    config_service.set(
-        f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
-    )
-    # Credentials (email, api_token) are read from env vars by from_config()
-
-
-def _populate_outline_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-) -> None:
-    """Populate ConfigService with Outline config from manifest."""
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    if reader_config.get("collectionIds") is not None:
-        config_service.set(
-            f"{namespace}.collection_ids", reader_config["collectionIds"]
-        )
-    config_service.set(
-        f"{namespace}.include_attachments",
-        reader_config.get("includeAttachments", True),
-    )
-    if reader_config.get("batchSize") is not None:
-        config_service.set(f"{namespace}.batch_size", reader_config["batchSize"])
-    if reader_config.get("ocrEnabled") is not None:
-        config_service.set(f"{namespace}.ocr_enabled", reader_config["ocrEnabled"])
-    if reader_config.get("downloadInlineImages") is not None:
-        config_service.set(
-            f"{namespace}.download_inline_images", reader_config["downloadInlineImages"]
-        )
-    if reader_config.get("maxConcurrentRequests") is not None:
-        config_service.set(
-            f"{namespace}.max_concurrent_requests",
-            reader_config["maxConcurrentRequests"],
-        )
-    if reader_config.get("maxAttachmentSizeMb") is not None:
-        config_service.set(
-            f"{namespace}.max_attachment_size_mb", reader_config["maxAttachmentSizeMb"]
-        )
-    if reader_config.get("verifySsl") is not None:
-        config_service.set(f"{namespace}.verify_ssl", reader_config["verifySsl"])
-    # api_token read from OUTLINE_API_TOKEN env var by from_config()
-
-
-def _populate_local_files_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-) -> None:
-    """Populate ConfigService with local files config from manifest."""
-    config_service.set(f"{namespace}.path", reader_config["basePath"])
-    config_service.set(
-        f"{namespace}.include_patterns", reader_config.get("includePatterns", [".*"])
-    )
-    config_service.set(f"{namespace}.fail_fast", reader_config.get("failFast", False))
-    config_service.set(
-        f"{namespace}.respect_gitignore", reader_config.get("respectGitignore", True)
-    )

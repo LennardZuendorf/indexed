@@ -7,6 +7,27 @@ import typer
 from indexed.knowledge.commands._create_helpers import execute_create_command
 from indexed_config import ValidationResult
 from core.v1.engine.services import SourceConfig
+from tests.unit.indexed.conftest import TEST_COLLECTIONS_PATH, make_cli_context
+
+
+@pytest.fixture(autouse=True)
+def _patch_runtime_context():
+    def resolve_context(*args, **kwargs):
+        from indexed.knowledge.commands import _create_helpers as helpers
+
+        return make_cli_context(helpers.ConfigService.instance())
+
+    with (
+        patch(
+            "indexed.runtime.resolve_collections_context",
+            side_effect=resolve_context,
+        ),
+        patch(
+            "indexed.utils.storage_info.display_storage_mode_for_command",
+            lambda *args, **kwargs: None,
+        ),
+    ):
+        yield
 
 
 class TestExecuteCreateCommand:
@@ -67,7 +88,9 @@ class TestExecuteCreateCommand:
         )
 
         mock_create.assert_called_once()
-        mock_status.assert_called_once_with(["test-collection"], collections_path=None)
+        mock_status.assert_called_once_with(
+            ["test-collection"], collections_path=str(TEST_COLLECTIONS_PATH)
+        )
         mock_print_success.assert_called_once()
 
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")

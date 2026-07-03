@@ -1,6 +1,5 @@
-"""Tests for files connector __init__ module."""
+"""Registry membership and public export tests for the Files connector."""
 
-from unittest.mock import patch, MagicMock
 from connectors.files import FileSystemConnector
 
 
@@ -9,32 +8,33 @@ def test_files_init_imports():
     assert FileSystemConnector is not None
 
 
-def test_files_init_registration_success():
-    """Test config registration succeeds when ConfigService available."""
-    with patch("connectors.files.ConfigService") as mock_config_service:
-        mock_instance = MagicMock()
-        mock_config_service.instance.return_value = mock_instance
+def test_files_in_connector_registry() -> None:
+    from connectors.registry import CONNECTOR_REGISTRY
 
-        # Re-import to trigger registration
-        import importlib
-        import connectors.files
-
-        importlib.reload(connectors.files)
-
-        # Should not raise
-        assert FileSystemConnector is not None
+    assert "localFiles" in CONNECTOR_REGISTRY
 
 
-def test_files_init_registration_failure():
-    """Test config registration handles exceptions gracefully."""
-    with patch(
-        "connectors.files.ConfigService", side_effect=ImportError("Not available")
-    ):
-        # Should not raise
-        import importlib
-        import connectors.files
+def test_files_in_config_registry() -> None:
+    from connectors.registry import CONFIG_REGISTRY
 
-        importlib.reload(connectors.files)
+    assert "localFiles" in CONFIG_REGISTRY
 
-        # Should still have the connector available
-        assert FileSystemConnector is not None
+
+def test_files_in_namespace_registry() -> None:
+    from connectors.registry import NAMESPACE_REGISTRY
+
+    assert NAMESPACE_REGISTRY["localFiles"] == "sources.files"
+
+
+def test_get_connector_class_files() -> None:
+    from connectors.registry import get_connector_class
+    from connectors.files.connector import FileSystemConnector
+
+    assert get_connector_class("localFiles") is FileSystemConnector
+
+
+def test_get_config_class_files() -> None:
+    from connectors.registry import get_config_class
+    from connectors.files.schema import LocalFilesConfig
+
+    assert get_config_class("localFiles") is LocalFilesConfig

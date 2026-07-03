@@ -1,6 +1,5 @@
-"""Tests for jira connector __init__ module."""
+"""Registry membership and public export tests for the Jira connector."""
 
-from unittest.mock import patch, MagicMock
 from connectors.jira import JiraConnector, JiraCloudConnector
 
 
@@ -10,34 +9,38 @@ def test_jira_init_imports():
     assert JiraCloudConnector is not None
 
 
-def test_jira_init_registration_success():
-    """Test config registration succeeds when ConfigService available."""
-    with patch("connectors.jira.ConfigService") as mock_config_service:
-        mock_instance = MagicMock()
-        mock_config_service.instance.return_value = mock_instance
+def test_jira_in_connector_registry() -> None:
+    from connectors.registry import CONNECTOR_REGISTRY
 
-        # Re-import to trigger registration
-        import importlib
-        import connectors.jira
-
-        importlib.reload(connectors.jira)
-
-        # Should not raise
-        assert JiraConnector is not None
-        assert JiraCloudConnector is not None
+    assert "jira" in CONNECTOR_REGISTRY
+    assert "jiraCloud" in CONNECTOR_REGISTRY
 
 
-def test_jira_init_registration_failure():
-    """Test config registration handles exceptions gracefully."""
-    with patch(
-        "connectors.jira.ConfigService", side_effect=ImportError("Not available")
-    ):
-        # Should not raise
-        import importlib
-        import connectors.jira
+def test_jira_in_config_registry() -> None:
+    from connectors.registry import CONFIG_REGISTRY
 
-        importlib.reload(connectors.jira)
+    assert "jira" in CONFIG_REGISTRY
+    assert "jiraCloud" in CONFIG_REGISTRY
 
-        # Should still have the connectors available
-        assert JiraConnector is not None
-        assert JiraCloudConnector is not None
+
+def test_jira_in_namespace_registry() -> None:
+    from connectors.registry import NAMESPACE_REGISTRY
+
+    assert NAMESPACE_REGISTRY["jira"] == "sources.jira"
+    assert NAMESPACE_REGISTRY["jiraCloud"] == "sources.jira"
+
+
+def test_get_connector_class_jira() -> None:
+    from connectors.registry import get_connector_class
+    from connectors.jira.connector import JiraConnector, JiraCloudConnector
+
+    assert get_connector_class("jira") is JiraConnector
+    assert get_connector_class("jiraCloud") is JiraCloudConnector
+
+
+def test_get_config_class_jira() -> None:
+    from connectors.registry import get_config_class
+    from connectors.jira.schema import JiraConfig, JiraCloudConfig
+
+    assert get_config_class("jira") is JiraConfig
+    assert get_config_class("jiraCloud") is JiraCloudConfig

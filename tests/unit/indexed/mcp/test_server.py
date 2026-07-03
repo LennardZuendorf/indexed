@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import patch, MagicMock
 
 import pytest
+from indexed_config.errors import ConfigurationError
 
 # Import the server module to access the underlying functions
 import indexed.mcp.server as server_module
@@ -75,6 +76,21 @@ def mock_fastmcp_context():
         _current_context.reset(token)
     except Exception:
         yield None
+
+
+@pytest.fixture(autouse=True)
+def disable_mcp_response_cache():
+    """Prevent ResponseCachingMiddleware from leaking data between tests."""
+    from fastmcp.server.middleware.caching import ResponseCachingMiddleware
+
+    original = list(mcp.middleware)
+    mcp.middleware = [
+        middleware
+        for middleware in original
+        if not isinstance(middleware, ResponseCachingMiddleware)
+    ]
+    yield
+    mcp.middleware = original
 
 
 class TestServerInstance:
@@ -197,14 +213,16 @@ class TestSearchToolFunction:
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_search.side_effect = Exception("Search failed")
+        mock_search.side_effect = ConfigurationError("Search failed")
 
         search_tool = _get_tool("search")
         assert search_tool is not None
         result = search_tool.fn("test query")
 
-        assert "error" in result
-        assert "Search failed" in result["error"]
+        assert result == {
+            "error": "Search failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestSearchCollectionToolFunction:
@@ -230,6 +248,7 @@ class TestSearchCollectionToolFunction:
 
         mock_status_item = MagicMock()
         mock_status_item.indexers = ["default_indexer"]
+        mock_status_item.source_type = "localFiles"
         mock_status.return_value = [mock_status_item]
 
         mock_search.return_value = {
@@ -292,15 +311,19 @@ class TestSearchCollectionToolFunction:
 
         mock_status_item = MagicMock()
         mock_status_item.indexers = ["default_indexer"]
+        mock_status_item.source_type = None
         mock_status.return_value = [mock_status_item]
 
-        mock_search.side_effect = Exception("Search failed")
+        mock_search.side_effect = ConfigurationError("Search failed")
 
         search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("my_collection", "test query")
 
-        assert "error" in result
+        assert result == {
+            "error": "Search failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionsListResourceFunction:
@@ -322,14 +345,16 @@ class TestCollectionsListResourceFunction:
 
     @patch.object(resources_module, "svc_status")
     def test_collections_list_handles_error(self, mock_status: MagicMock) -> None:
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         resource = _get_resource("resource://collections")
         assert resource is not None
         result = run_async(resource.fn())
 
-        assert "error" in result
-        assert "Status failed" in result["error"]
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionsStatusListResourceFunction:
@@ -374,14 +399,16 @@ class TestCollectionsStatusListResourceFunction:
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         resource = _get_resource("resource://collections/status")
         assert resource is not None
         result = run_async(resource.fn())
 
-        assert "error" in result
-        assert "Status failed" in result["error"]
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionStatusResourceTemplateFunction:
@@ -439,13 +466,16 @@ class TestCollectionStatusResourceTemplateFunction:
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         template = _get_template("resource://collection/{name}")
         assert template is not None
         result = run_async(template.fn(name="my_collection"))
 
-        assert "error" in result
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestToolRegistration:

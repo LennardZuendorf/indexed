@@ -8,8 +8,8 @@ from indexed_config.errors import ConfigurationError
 
 from core.v1.engine.factories.update_collection_factory import (
     _create_reader_and_converter,
-    _populate_outline_config,
 )
+from indexed.connector_wiring import _populate_outline_config
 
 
 @pytest.mark.unit
