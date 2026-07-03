@@ -8,12 +8,6 @@ from indexed_config import ConfigService
 from indexed_config.errors import ConfigurationError
 from protocols import BaseConnector, SourceConfig
 
-_LEGACY_TYPE_MAP = {"jiraCloud": "jira", "confluenceCloud": "confluence"}
-
-
-def _normalize_connector_type(connector_type: str) -> str:
-    return _LEGACY_TYPE_MAP.get(connector_type, connector_type)
-
 
 def register_app_config(config_service: ConfigService) -> None:
     """Register all config specs — idempotent, raises on failure."""
@@ -57,17 +51,19 @@ def build_connector(
     from connectors.registry import NAMESPACE_REGISTRY
 
     registry = registry or build_connector_registry()
-    key = _normalize_connector_type(cfg.type)
-    cls = registry.get(key)
+    cls = registry.get(cfg.type)
     if cls is None:
         available = ", ".join(sorted(registry))
         raise ConfigurationError(
             f"Unknown connector type: {cfg.type}. Available: {available}"
         )
 
-    namespace = NAMESPACE_REGISTRY.get(key, f"sources.{key}")
+    namespace = NAMESPACE_REGISTRY.get(cfg.type, f"sources.{cfg.type}")
     if cfg.base_url_or_path:
-        config_service.set(f"{namespace}.url", cfg.base_url_or_path)
+        if cfg.type == "localFiles":
+            config_service.set(f"{namespace}.path", cfg.base_url_or_path)
+        else:
+            config_service.set(f"{namespace}.url", cfg.base_url_or_path)
     if cfg.query:
         config_service.set(f"{namespace}.query", cfg.query)
 
