@@ -69,7 +69,14 @@ class ConfigService:
         reset: bool = False,
     ) -> "ConfigService":
         """Get or create the singleton ConfigService."""
-        if cls._instance is None or reset:
+        if (
+            cls._instance is None
+            or reset
+            or (
+                mode_override is not None
+                and cls._instance._mode_override != mode_override
+            )
+        ):
             cls._instance = cls(workspace=workspace, mode_override=mode_override)
         return cls._instance
 
@@ -120,13 +127,14 @@ class ConfigService:
     def load_raw(self) -> Dict[str, Any]:
         """Retrieve the raw configuration for the effective storage mode.
 
-        If mode_override is set, delegates to TomlStore.read() which handles
-        single-mode reads. Otherwise, resolves the storage mode via
-        WorkspaceManager and uses read_for_mode() to read ONE config source.
+        Resolves the storage mode (CLI override or WorkspaceManager) and reads
+        exactly one config.toml via read_for_mode().
         """
-        if self._mode_override:
-            return self._store.read()
-        mode = self._workspace.resolve_storage_mode()
+        mode = (
+            self._mode_override
+            if self._mode_override
+            else self._workspace.resolve_storage_mode()
+        )
         return self._store.read_for_mode(mode)
 
     def get_raw(self) -> Dict[str, Any]:

@@ -34,7 +34,7 @@ class WorkspaceManager:
     def get_preference(self) -> Optional[StorageMode]:
         """Retrieve the storage mode preference for a workspace."""
         global_store = TomlStore(mode_override="global")
-        raw = global_store.read()
+        raw = global_store.read_for_mode("global")
 
         workspace_config = get_by_path(raw, WORKSPACE_PATH, default={}) or {}
         mode = workspace_config.get("mode")
@@ -53,7 +53,7 @@ class WorkspaceManager:
         local_path = str(workspace_path or self._workspace)
 
         global_store = TomlStore(mode_override="global")
-        raw = global_store.read()
+        raw = global_store.read_for_mode("global")
 
         workspace_config: Dict[str, str] = {
             "mode": mode,
@@ -69,7 +69,7 @@ class WorkspaceManager:
     def clear_preference(self) -> bool:
         """Clear any stored workspace preference from global config."""
         global_store = TomlStore(mode_override="global")
-        raw = global_store.read()
+        raw = global_store.read_for_mode("global")
 
         if WORKSPACE_PATH in raw:
             del raw[WORKSPACE_PATH]
@@ -78,8 +78,11 @@ class WorkspaceManager:
         return False
 
     def get_config(self) -> Dict[str, str]:
-        """Retrieve the effective workspace configuration."""
-        raw = self._store.read()
+        """Retrieve the effective workspace configuration.
+
+        Workspace preferences are persisted in global config.toml only.
+        """
+        raw = self._store.read_for_mode("global")
 
         workspace_config = get_by_path(raw, WORKSPACE_PATH, default={}) or {}
 

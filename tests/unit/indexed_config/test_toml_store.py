@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 
 from indexed_config.store import TomlStore
 
@@ -114,18 +115,30 @@ class TestTomlStoreRead:
             # _schema_version is always injected by read()
             assert result == {"_schema_version": "1"}
 
-    def test_read_local_only(self):
-        """read() returns local config when only local exists."""
+    def test_read_local_only_no_merge(self):
+        """read() without mode_override reads only local when local config exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
-            # Create local config
+            global_home = Path(tmpdir) / "home"
+
             local_dir = workspace / ".indexed"
             local_dir.mkdir(parents=True)
-            (local_dir / "config.toml").write_text('[test]\nkey = "local_value"')
+            (local_dir / "config.toml").write_text(
+                '[test]\nkey = "local_value"\nonly_local = "yes"'
+            )
 
-            store = TomlStore(workspace=workspace)
-            result = store.read()
-            assert result.get("test", {}).get("key") == "local_value"
+            global_dir = global_home / ".indexed"
+            global_dir.mkdir(parents=True)
+            (global_dir / "config.toml").write_text(
+                '[test]\nkey = "global_value"\nonly_global = "yes"'
+            )
+
+            with patch.object(Path, "home", return_value=global_home):
+                store = TomlStore(workspace=workspace)
+                with pytest.warns(DeprecationWarning, match="read_for_mode"):
+                    result = store.read()
+                assert result.get("test", {}).get("key") == "local_value"
+                assert "only_global" not in result.get("test", {})
 
     def test_read_with_mode_override_local(self):
         """read() with mode_override='local' only reads local config."""
@@ -139,6 +152,14 @@ class TestTomlStoreRead:
             store = TomlStore(workspace=workspace, mode_override="local")
             result = store.read()
             assert result.get("test", {}).get("key") == "local_value"
+
+    def test_read_without_mode_override_warns(self):
+        """read() without mode_override emits DeprecationWarning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace)
+            with pytest.warns(DeprecationWarning, match="read_for_mode"):
+                store.read()
 
 
 class TestTomlStoreWrite:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
@@ -32,14 +33,11 @@ CURRENT_SCHEMA_VERSION = "1"
 
 
 class TomlStore:
-    """Read/write config with merge: Global, Workspace, ENV.
+    """Read/write config for a single resolved storage mode.
 
-    - Global: ~/.indexed/config.toml (user's home directory)
-    - Workspace: ./.indexed/config.toml (overrides global)
-    - ENV overrides: INDEXED__section__key=value (overrides both)
-
-    The global path has been changed from ~/.config/indexed/ to ~/.indexed/
-    to provide a unified storage location for config, data, and caches.
+    Runtime reads use read_for_mode(mode) — one config.toml (global OR local),
+    then .env overlay and INDEXED__* env vars. TomlStore.read() is deprecated
+    and delegates to read_for_mode without merging global and local TOML.
     """
 
     def __init__(
@@ -138,38 +136,24 @@ class TomlStore:
             return tomllib.load(f)  # type: ignore
 
     def read(self) -> Dict[str, Any]:
-        """Read and merge configuration from all sources.
+        """Read configuration (deprecated — prefer read_for_mode).
 
-        Merge order (later overrides earlier):
-        1. Global config (~/.indexed/config.toml)
-        2. Workspace/local config (./.indexed/config.toml)
-        3. Environment variables (INDEXED__section__key=value)
-
-        If mode_override is set, only that config source is used (no merging
-        between global and local, but env vars still apply).
-
-        Returns:
-            Merged configuration dictionary.
+        When mode_override is set, delegates to read_for_mode without warning.
+        Otherwise emits DeprecationWarning and auto-detects the mode (local when
+        ./.indexed/config.toml exists, else global). Global and local TOML are
+        never merged.
         """
-        data: Dict[str, Any] = {}
+        if self._mode_override:
+            return self.read_for_mode(self._mode_override)
 
-        if self._mode_override == "local":
-            # Only use local config
-            data = self._read_toml_file(self.workspace_path)
-            self._load_dotenv(self._local_env_path)
-        elif self._mode_override == "global":
-            # Only use global config
-            data = self._read_toml_file(self.global_path)
-            self._load_dotenv(self._global_env_path)
-        else:
-            # Normal merge: Global -> Workspace
-            data = deep_merge(data, self._read_toml_file(self.global_path))
-            data = deep_merge(data, self._read_toml_file(self.workspace_path))
-            # Load both .env files (global first, then local overrides)
-            self._load_dotenv(self._global_env_path)
-            self._load_dotenv(self._local_env_path)
-
-        return self._apply_env_and_finalize(data)
+        warnings.warn(
+            "TomlStore.read() without mode_override is deprecated; "
+            "use read_for_mode(mode) with a resolved storage mode.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        mode: StorageMode = "local" if has_local_config(self.workspace) else "global"
+        return self.read_for_mode(mode)
 
     def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
         """Read config for a specific resolved storage mode (no merging).

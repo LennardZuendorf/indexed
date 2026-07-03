@@ -123,11 +123,22 @@ def test_config_service_instance_singleton():
     assert isinstance(instance1, ConfigService)
 
 
+def test_config_service_instance_rebuilds_on_mode_override_change():
+    """instance() recreates singleton when mode_override changes."""
+    ConfigService.reset()
+    global_svc = ConfigService.instance(mode_override="global")
+    local_svc = ConfigService.instance(mode_override="local")
+
+    assert global_svc is not local_svc
+    assert global_svc._mode_override == "global"
+    assert local_svc._mode_override == "local"
+
+
 class TestLoadRawModeResolution:
     """Test that load_raw() resolves the storage mode correctly."""
 
-    def test_load_raw_with_mode_override_uses_store_read(self):
-        """load_raw() delegates to store.read() when mode_override is set."""
+    def test_load_raw_with_mode_override_uses_read_for_mode(self):
+        """load_raw() uses read_for_mode when mode_override is set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             local_dir = workspace / ".indexed"

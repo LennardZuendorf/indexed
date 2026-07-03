@@ -1,7 +1,9 @@
 import importlib
 from unittest.mock import MagicMock, patch
 
+import pytest
 from indexed_config import ConfigService
+from indexed_config.errors import ConfigurationError
 from protocols import SourceConfig
 
 from indexed.bootstrap import (
@@ -15,6 +17,14 @@ def test_import_core_v1_does_not_register_config(monkeypatch):
     ConfigService.instance(reset=True)
     before = len(ConfigService.instance()._registry._specs)  # noqa: SLF001
     importlib.import_module("core.v1")
+    after = len(ConfigService.instance()._registry._specs)
+    assert before == after
+
+
+def test_import_connectors_jira_does_not_register_config():
+    ConfigService.instance(reset=True)
+    before = len(ConfigService.instance()._registry._specs)  # noqa: SLF001
+    importlib.import_module("connectors.jira")
     after = len(ConfigService.instance()._registry._specs)
     assert before == after
 
@@ -56,6 +66,15 @@ def test_build_connector_jira_cloud_returns_cloud_connector():
     config_service.set.assert_any_call("sources.jira.query", "project = TEST")
 
 
+def test_build_connector_unknown_type_raises():
+    config_service = MagicMock()
+    cfg = SourceConfig(
+        name="x", type="outline", base_url_or_path="https://outline.example.com"
+    )
+    with pytest.raises(ConfigurationError, match="Unknown connector type"):
+        build_connector(cfg, config_service, {"localFiles": MagicMock()})
+
+
 def test_build_connector_local_files_sets_path():
     from connectors.files import FileSystemConnector
 
@@ -78,3 +97,18 @@ def test_build_connector_local_files_sets_path():
         if call[0][0].endswith(".url")
     ]
     assert not url_calls
+
+
+def test_build_connector_sets_query_for_remote_types() -> None:
+    from connectors.jira import JiraCloudConnector
+
+    config_service = MagicMock()
+    cfg = SourceConfig(
+        name="j",
+        type="jiraCloud",
+        base_url_or_path="https://jira.example.com",
+        query="project = ABC",
+    )
+    with patch.object(JiraCloudConnector, "from_config", return_value=MagicMock()):
+        build_connector(cfg, config_service, build_connector_registry())
+    config_service.set.assert_any_call("sources.jira.query", "project = ABC")

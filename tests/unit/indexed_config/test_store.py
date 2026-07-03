@@ -99,16 +99,14 @@ def test_toml_store_write():
 
 
 def test_toml_store_read_integrates_env():
-    """Test read() merges global, workspace, and env."""
+    """Test read_for_mode() applies INDEXED__* env overrides."""
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
         store = TomlStore(workspace=workspace)
 
-        # Set env var
         env_vars = {"INDEXED__test__value": "from_env"}
 
         with patch.dict(os.environ, env_vars, clear=False):
-            result = store.read()
+            result = store.read_for_mode("global")
 
-        # Should include env var (even if files don't exist)
-        assert "test" in result or result == {}  # Either merged or empty
+        assert result.get("test", {}).get("value") == "from_env"
