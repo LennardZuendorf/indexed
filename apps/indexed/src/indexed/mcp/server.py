@@ -13,6 +13,8 @@ from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 from core.v1.config_models import CoreV1SearchConfig, MCPConfig
 from indexed_config import ConfigService
 
+from indexed.bootstrap import register_app_config
+
 from .resources import register_resources
 from .tools import register_tools
 
@@ -49,6 +51,8 @@ def _get_search_config() -> CoreV1SearchConfig:
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     """Server lifespan context manager for configuration initialization."""
+    config_service = ConfigService.instance()
+    register_app_config(config_service)
     mcp_config = _get_mcp_config()
     search_config = _get_search_config()
     yield {"mcp_config": mcp_config, "search_config": search_config}

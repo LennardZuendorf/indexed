@@ -15,6 +15,9 @@ import pkgutil
 
 import connectors as connectors_pkg
 
+_UNDISCOVERED = object()
+CONNECTORS: List[Type] | object = _UNDISCOVERED
+
 
 def _discover_connectors() -> List[Type]:
     """Discover connector classes dynamically.
@@ -49,8 +52,12 @@ def _discover_connectors() -> List[Type]:
     return discovered
 
 
-# List of all available connectors (discovered dynamically)
-CONNECTORS = _discover_connectors()
+def _connector_classes() -> List[Type]:
+    """Return discovered connectors, loading lazily on first access."""
+    global CONNECTORS
+    if CONNECTORS is _UNDISCOVERED:
+        CONNECTORS = _discover_connectors()
+    return CONNECTORS  # type: ignore[return-value]
 
 
 def validate_connector_compatibility(connector_class) -> tuple[bool, str]:
@@ -101,7 +108,7 @@ def get_connector_registry() -> Dict[str, Type]:
     """
     registry: Dict[str, Type] = {}
 
-    for connector_class in CONNECTORS:
+    for connector_class in _connector_classes():
         # Skip connectors that don't expose metadata yet
         if not hasattr(connector_class, "META"):
             continue
@@ -132,7 +139,7 @@ def check_all_connectors_compatibility() -> Dict[str, tuple[bool, str]]:
         Dict mapping connector names to (is_compatible, message) tuples
     """
     results: Dict[str, tuple[bool, str]] = {}
-    for connector_class in CONNECTORS:
+    for connector_class in _connector_classes():
         if not hasattr(connector_class, "META"):
             continue
         is_compatible, msg = validate_connector_compatibility(connector_class)
@@ -142,8 +149,4 @@ def check_all_connectors_compatibility() -> Dict[str, tuple[bool, str]]:
 
 __all__ = [
     "get_connector_registry",
-    "list_connector_names",
-    "CONNECTORS",
-    "validate_connector_compatibility",
-    "check_all_connectors_compatibility",
 ]

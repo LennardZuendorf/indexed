@@ -2,6 +2,8 @@
 
 from typing import Any, Callable, Optional
 
+from core.v1.config_models import MCPConfig
+
 
 def resolve_config(ctx: Optional[Any], key: str, loader: Callable[[], Any]) -> Any:
     """Resolve config from lifespan state or fallback to loader."""

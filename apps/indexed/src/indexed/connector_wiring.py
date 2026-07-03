@@ -1,4 +1,4 @@
-"""Temporary connector wiring for app layer until bootstrap.py lands in /3."""
+"""App-layer connector wiring for create/update command paths."""
 
 from __future__ import annotations
 
@@ -9,74 +9,18 @@ from protocols import SourceConfig
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
 
+from .bootstrap import build_connector, build_connector_registry
+
 
 def build_connector_from_source_config(cfg: SourceConfig, config_service: Any) -> Any:
-    """Build connector from SourceConfig — moved from core collection_service."""
-    from connectors.confluence import ConfluenceCloudConnector, ConfluenceConnector
-    from connectors.files import FileSystemConnector
-    from connectors.jira import JiraCloudConnector, JiraConnector
-    from connectors.outline import OutlineConnector
-
-    if cfg.type == "jira":
-        config_service.set("sources.jira.url", cfg.base_url_or_path)
-        config_service.set("sources.jira.query", cfg.query)
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.jira.{key}", value)
-        return JiraConnector.from_config(config_service)
-
-    if cfg.type == "jiraCloud":
-        config_service.set("sources.jira.url", cfg.base_url_or_path)
-        config_service.set("sources.jira.query", cfg.query)
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.jira.{key}", value)
-        return JiraCloudConnector.from_config(config_service)
-
-    if cfg.type == "confluence":
-        config_service.set("sources.confluence.url", cfg.base_url_or_path)
-        config_service.set("sources.confluence.query", cfg.query)
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.confluence.{key}", value)
-        return ConfluenceConnector.from_config(config_service)
-
-    if cfg.type == "confluenceCloud":
-        config_service.set("sources.confluence.url", cfg.base_url_or_path)
-        config_service.set("sources.confluence.query", cfg.query)
-        for key, value in cfg.reader_opts.items():
-            config_service.set(f"sources.confluence.{key}", value)
-        return ConfluenceCloudConnector.from_config(config_service)
-
-    if cfg.type == "localFiles":
-        config_service.set("sources.files.path", cfg.base_url_or_path)
-        if "includePatterns" in cfg.reader_opts:
-            config_service.set(
-                "sources.files.include_patterns", cfg.reader_opts["includePatterns"]
-            )
-        if "failFast" in cfg.reader_opts:
-            config_service.set("sources.files.fail_fast", cfg.reader_opts["failFast"])
-        if "respectGitignore" in cfg.reader_opts:
-            config_service.set(
-                "sources.files.respect_gitignore", cfg.reader_opts["respectGitignore"]
-            )
-        return FileSystemConnector.from_config(config_service)
-
-    if cfg.type == "outline":
-        config_service.set("sources.outline.url", cfg.base_url_or_path)
-        opts = cfg.reader_opts
-        if opts.get("collectionIds") is not None:
-            config_service.set("sources.outline.collection_ids", opts["collectionIds"])
-        if "includeAttachments" in opts:
-            config_service.set(
-                "sources.outline.include_attachments", opts["includeAttachments"]
-            )
-        if "ocrEnabled" in opts:
-            config_service.set("sources.outline.ocr_enabled", opts["ocrEnabled"])
-        return OutlineConnector.from_config(config_service)
-
-    raise ValueError(f"Unknown source type: {cfg.type}")
+    """Build connector from SourceConfig via bootstrap registry."""
+    registry = build_connector_registry()
+    return build_connector(cfg, config_service, registry)
 
 
 def make_connector_factory(config_service: Any) -> Callable[[SourceConfig], Any]:
-    return lambda cfg: build_connector_from_source_config(cfg, config_service)
+    registry = build_connector_registry()
+    return lambda cfg: build_connector(cfg, config_service, registry)
 
 
 def make_cache_decorator_factory() -> Callable[[Any, DiskPersister], Any]:
@@ -212,5 +156,5 @@ def wiring_kwargs_for_update() -> dict[str, Any]:
 def missing_wiring_error(component: str) -> ConfigurationError:
     return ConfigurationError(
         f"{component} must be injected by the app layer; "
-        "see indexed.connector_wiring (bootstrap in /3)"
+        "see indexed.bootstrap.build_connector"
     )

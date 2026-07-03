@@ -143,6 +143,14 @@ def _init_app(
     ctx.ensure_object(dict)
     ctx.obj["mode_override"] = "local" if local else None
 
+    from indexed_config import ConfigService
+
+    from .bootstrap import register_app_config
+
+    register_app_config(
+        ConfigService.instance(mode_override=ctx.obj.get("mode_override"))
+    )
+
     if local:
         from indexed_config import ensure_storage_dirs, get_local_root
 
