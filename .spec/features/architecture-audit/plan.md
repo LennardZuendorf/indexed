@@ -281,7 +281,7 @@ def test_source_config_accepts_jira_type():
 
 **Modify:** `packages/indexed-core/pyproject.toml` — remove `indexed-connectors` from `dependencies` and `[tool.uv.sources]`.
 
-- [ ] Run: `uv sync --all-groups`
+- [x] Run: `uv sync --all-groups`
 
 #### Task 2.2: Import isolation test (write first)
 
@@ -312,7 +312,7 @@ def test_core_does_not_import_connectors_package():
     assert not violations, "core must not import connectors:\n" + "\n".join(violations)
 ```
 
-- [ ] Run test — expect **FAIL** until Task 2.3 complete.
+- [x] Run test — expect **FAIL** until Task 2.3 complete.
 
 #### Task 2.3: Remove connector imports from core (minimal stubs for /10)
 
@@ -328,9 +328,9 @@ def test_core_does_not_import_connectors_package():
 - Remove `from connectors import get_connector_class` and `FileSystemConnector` imports.
 - Accept injected connector or factory from app layer.
 
-- [ ] Run isolation test — expect **PASS**.
-- [ ] Run full suite: `uv run pytest -q` (fix app wiring temporarily if needed).
-- [ ] Commit: `refactor(core): architecture-audit/2 drop connectors dep`
+- [x] Run isolation test — expect **PASS**.
+- [x] Run full suite: `uv run pytest -q` (fix app wiring temporarily if needed).
+- [x] Commit: `refactor(core): architecture-audit/2 drop connectors dep`
 
 **Verification:** `uv run pytest tests/unit/indexed_core/test_import_isolation.py -q && uv run mypy src/`
 
@@ -877,8 +877,8 @@ Forbidden edges (fail non-zero if found via AST walk of `packages/*/src` and `ap
 |------|--------|
 | architecture-audit/0 | DONE |
 | architecture-audit/1 | DONE |
-| architecture-audit/2 | NOT STARTED |
-| architecture-audit/3 | NOT STARTED |
+| architecture-audit/2 | DONE |
+| architecture-audit/3 | IN PROGRESS |
 | architecture-audit/4 | NOT STARTED |
 | architecture-audit/5 | NOT STARTED |
 | architecture-audit/6 | NOT STARTED |
