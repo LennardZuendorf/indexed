@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from loguru import logger
+from utils.retry import execute_with_retry
 
 
 # Window size for concurrent body + attachment fetching
@@ -485,42 +486,25 @@ class OutlineDocumentReader:
 
     def _post_with_retry(self, url: str, json: dict) -> Any:
         """POST with timeout=(5,30) and retry on transient/rate-limit errors."""
-        import time
-
         import requests  # type: ignore[import-untyped]
 
-        for attempt in range(self.number_of_retries):
-            try:
-                resp = requests.post(
-                    url,
-                    headers=self._auth_headers,
-                    json=json,
-                    verify=self.verify_ssl,
-                    timeout=(5, 30),
-                )
-                self._raise_for_status(resp)
-                return resp
-            except OutlineAPIError as exc:
-                if exc.status_code not in (429, 500, 502, 503, 504):
-                    raise
-                if attempt == self.number_of_retries - 1:
-                    raise
-                logger.debug(
-                    "Retry {}/{} after HTTP {}: {}",
-                    attempt + 1,
-                    self.number_of_retries,
-                    exc.status_code,
-                    exc,
-                )
-                time.sleep(self.retry_delay * (2**attempt))
-            except Exception as exc:
-                if attempt == self.number_of_retries - 1:
-                    raise
-                logger.debug(
-                    "Retry {}/{}: {}", attempt + 1, self.number_of_retries, exc
-                )
-                time.sleep(self.retry_delay * (2**attempt))
-        raise RuntimeError("unreachable")  # pragma: no cover
+        def do_request() -> Any:
+            resp = requests.post(
+                url,
+                headers=self._auth_headers,
+                json=json,
+                verify=self.verify_ssl,
+                timeout=(5, 30),
+            )
+            self._raise_for_status(resp)
+            return resp
+
+        return execute_with_retry(
+            do_request,
+            f"POST {url}",
+            self.number_of_retries,
+            self.retry_delay,
+        )
 
     @staticmethod
     def _raise_for_status(resp: Any) -> None:

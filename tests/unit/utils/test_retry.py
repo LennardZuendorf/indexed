@@ -9,6 +9,12 @@ from unittest.mock import Mock, patch
 from utils.retry import execute_with_retry
 
 
+def _transient_exc(message: str = "transient", status_code: int = 503) -> Exception:
+    exc = Exception(message)
+    exc.status_code = status_code
+    return exc
+
+
 class TestExecuteWithRetry:
     """Test retry logic with backoff and rate limiting."""
 
@@ -26,8 +32,8 @@ class TestExecuteWithRetry:
         """Should retry failed function and eventually succeed."""
         func = Mock(
             side_effect=[
-                ValueError("First attempt"),
-                ValueError("Second attempt"),
+                _transient_exc("First attempt"),
+                _transient_exc("Second attempt"),
                 "success",
             ]
         )
@@ -44,13 +50,26 @@ class TestExecuteWithRetry:
     @patch("time.sleep")
     def test_raises_after_all_retries_exhausted(self, mock_sleep):
         """Should raise last exception after all retries fail."""
-        func = Mock(side_effect=ValueError("Persistent error"))
+        func = Mock(side_effect=_transient_exc("Persistent error"))
 
-        with pytest.raises(ValueError, match="Persistent error"):
+        with pytest.raises(Exception, match="Persistent error"):
             execute_with_retry(func, "test_func", retries=3)
 
         assert func.call_count == 3
         assert mock_sleep.call_count == 2  # Sleep between attempts, not after last
+
+    @patch("time.sleep")
+    def test_non_transient_fails_fast(self, mock_sleep):
+        """Should not retry permanent HTTP errors such as 404."""
+        exc = Exception("Not found")
+        exc.status_code = 404
+        func = Mock(side_effect=exc)
+
+        with pytest.raises(Exception, match="Not found"):
+            execute_with_retry(func, "test_func", retries=3)
+
+        assert func.call_count == 1
+        mock_sleep.assert_not_called()
 
     @patch("time.sleep")
     def test_respects_retry_after_header_on_429(self, mock_sleep):
@@ -92,9 +111,9 @@ class TestExecuteWithRetry:
         """Should increase delay exponentially on each retry."""
         func = Mock(
             side_effect=[
-                ValueError("Attempt 1"),
-                ValueError("Attempt 2"),
-                ValueError("Attempt 3"),
+                _transient_exc("Attempt 1"),
+                _transient_exc("Attempt 2"),
+                _transient_exc("Attempt 3"),
                 "success",
             ]
         )
@@ -123,6 +142,16 @@ class TestExecuteWithRetry:
 
         assert result == "success"
 
+    @patch("time.sleep")
+    def test_retries_connection_errors(self, mock_sleep):
+        """Should retry network-level connection failures."""
+        func = Mock(side_effect=[ConnectionError("refused"), "success"])
+
+        result = execute_with_retry(func, "test_func", retries=2)
+
+        assert result == "success"
+        assert func.call_count == 2
+
     def test_preserves_function_return_value(self):
         """Should return exact value from successful function call."""
         expected_value = {"data": [1, 2, 3], "status": "ok"}
@@ -138,7 +167,7 @@ class TestExecuteWithRetry:
         """Should log warning for each failed attempt (verified implicitly)."""
         # This test verifies the retry behavior happens as expected
         # Actual logging is tested by loguru, we just verify the flow
-        func = Mock(side_effect=[RuntimeError("Fail"), "success"])
+        func = Mock(side_effect=[ConnectionError("Fail"), "success"])
 
         result = execute_with_retry(func, "important_operation", retries=2)
 

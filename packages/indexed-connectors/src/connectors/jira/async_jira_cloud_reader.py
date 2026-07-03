@@ -5,13 +5,13 @@ concurrent attachment downloads when enabled.
 """
 
 import asyncio
-import time
 from base64 import b64encode
 from typing import Any
 
 import httpx
 import requests
 from loguru import logger
+from utils.retry import execute_with_retry
 
 
 class JiraCloudAPIError(Exception):
@@ -138,40 +138,23 @@ class AsyncJiraCloudDocumentReader:
 
     def _post_with_retry(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST with retry on transient/rate-limit errors."""
-        for attempt in range(self.number_of_retries):
-            try:
-                response = requests.post(
-                    url,
-                    headers=self._json_headers,
-                    json=body,
-                    timeout=(5, 30),
-                )
-                self._raise_for_status(response)
-                return response.json()
-            except JiraCloudAPIError as exc:
-                if exc.status_code not in (429, 500, 502, 503, 504):
-                    raise
-                if attempt == self.number_of_retries - 1:
-                    raise
-                logger.debug(
-                    "Retry {}/{} after HTTP {}: {}",
-                    attempt + 1,
-                    self.number_of_retries,
-                    exc.status_code,
-                    exc,
-                )
-                time.sleep(self.retry_delay * (2**attempt))
-            except Exception as exc:
-                if attempt == self.number_of_retries - 1:
-                    raise
-                logger.debug(
-                    "Retry {}/{}: {}",
-                    attempt + 1,
-                    self.number_of_retries,
-                    exc,
-                )
-                time.sleep(self.retry_delay * (2**attempt))
-        raise RuntimeError("unreachable")  # pragma: no cover
+
+        def do_request() -> dict[str, Any]:
+            response = requests.post(
+                url,
+                headers=self._json_headers,
+                json=body,
+                timeout=(5, 30),
+            )
+            self._raise_for_status(response)
+            return response.json()
+
+        return execute_with_retry(
+            do_request,
+            f"POST {url}",
+            self.number_of_retries,
+            self.retry_delay,
+        )
 
     @staticmethod
     def _raise_for_status(response: requests.Response) -> None:
