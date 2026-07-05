@@ -17,7 +17,10 @@ _COMMANDS_DIR = (
 
 _COMMAND_FILES = {
     "init": _COMMANDS_DIR / "init.py",
-    "create": _COMMANDS_DIR / "knowledge" / "commands" / "_create_helpers.py",
+    "create": [
+        _COMMANDS_DIR / "knowledge" / "commands" / "create.py",
+        _COMMANDS_DIR / "knowledge" / "commands" / "_create_helpers.py",
+    ],
     "search": _COMMANDS_DIR / "knowledge" / "commands" / "search.py",
     "update": _COMMANDS_DIR / "knowledge" / "commands" / "update.py",
     "remove": _COMMANDS_DIR / "knowledge" / "commands" / "remove.py",
@@ -33,8 +36,10 @@ _STORAGE_INDICATOR_COMMANDS = ["init", "create", "search", "update", "remove"]
 _ALERT_COMMANDS = ["init", "create", "search", "update", "remove"]
 
 
-def _read_source(path: Path) -> str:
-    """Read file source code."""
+def _read_source(path: Path | list[Path]) -> str:
+    """Read file source code. Accepts a single path or a list of paths."""
+    if isinstance(path, list):
+        return "\n".join(p.read_text(encoding="utf-8") for p in path)
     return path.read_text(encoding="utf-8")
 
 

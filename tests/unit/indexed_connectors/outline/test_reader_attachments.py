@@ -95,7 +95,11 @@ def test_oversized_attachment_skipped(reader) -> None:
         client = AsyncMock()
         client.get = mock_get
         return await reader._download_attachment_url(
-            client, semaphore, "https://example.com/big.png", "big.png", "id1"
+            client,
+            semaphore,
+            "https://app.getoutline.com/api/attachments.redirect?id=id1",
+            "big.png",
+            "id1",
         )
 
     result = asyncio.run(run())
@@ -120,7 +124,11 @@ def test_small_attachment_downloaded(reader) -> None:
         client = AsyncMock()
         client.get = mock_get
         return await reader._download_attachment_url(
-            client, semaphore, "https://example.com/img.png", "img.png", "id2"
+            client,
+            semaphore,
+            "https://app.getoutline.com/api/attachments.redirect?id=id2",
+            "img.png",
+            "id2",
         )
 
     result = asyncio.run(run())
@@ -148,7 +156,11 @@ def test_attachment_bytes_are_json_serializable(reader) -> None:
         client = AsyncMock()
         client.get = mock_get
         return await reader._download_attachment_url(
-            client, semaphore, "https://example.com/img.png", "img.png", "id4"
+            client,
+            semaphore,
+            "https://app.getoutline.com/api/attachments.redirect?id=id4",
+            "img.png",
+            "id4",
         )
 
     result = asyncio.run(run())
@@ -172,7 +184,11 @@ def test_failed_download_returns_none(reader) -> None:
         client = AsyncMock()
         client.get = mock_get
         return await reader._download_attachment_url(
-            client, semaphore, "https://bad.host/img.png", "img.png", "id3"
+            client,
+            semaphore,
+            "https://app.getoutline.com/api/attachments.redirect?id=id3",
+            "img.png",
+            "id3",
         )
 
     result = asyncio.run(run())
@@ -192,3 +208,18 @@ def test_list_attachments_failure_returns_empty(reader) -> None:
 
     result = asyncio.run(run())
     assert result == []
+
+
+@pytest.mark.unit
+def test_off_origin_attachment_url_skipped(reader) -> None:
+    """Off-origin attachment URL: no HTTP request made, returns None."""
+
+    async def run():
+        semaphore = asyncio.Semaphore(10)
+        client = AsyncMock()
+        return await reader._download_attachment_url(
+            client, semaphore, "https://evil.attacker.test/steal", "evil.pdf", "att-1"
+        )
+
+    result = asyncio.run(run())
+    assert result is None

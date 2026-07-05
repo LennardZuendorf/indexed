@@ -214,3 +214,21 @@ def build_progress_title(verb: str, collection: str, source_display: str = "") -
     return (
         f"[{heading}]{verb} {type_part}: [{accent}]{collection}[/{accent}][/{heading}]"
     )
+
+
+def build_search_phase_label(query: str, collection: str) -> str:
+    """Build the per-collection phase label for a search progress section.
+
+    The label carries both the collection name and the query so the plain
+    (non-interactive) progress path keeps the full context — that path ignores
+    the section title, so the label must stand on its own. Kept identical for
+    single- and multi-collection searches so both render consistently.
+
+    Args:
+        query: The search query text.
+        collection: Name of the collection being searched.
+
+    Returns:
+        Plain-text label, e.g. ``Searching "docs" Collection for: "auth"``.
+    """
+    return f'Searching "{collection}" Collection for: "{query}"'

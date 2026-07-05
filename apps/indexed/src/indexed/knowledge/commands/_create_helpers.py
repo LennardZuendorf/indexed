@@ -102,12 +102,6 @@ def execute_create_command(
 
         ensure_storage_dirs(get_local_root(config.workspace), is_local=True)
 
-    # Display storage mode indicator (not in verbose mode, to keep logs clean)
-    if not is_verbose_mode():
-        from ...utils.storage_info import display_storage_mode_for_command
-
-        display_storage_mode_for_command(console)
-
     if is_verbose_mode():
         logger.info("Starting %s collection creation...", source_type)
         logger.info("Resolving configuration parameters...")

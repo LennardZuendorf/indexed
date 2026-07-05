@@ -288,6 +288,38 @@ def test_incremental_update_includes_stubs_missing_updated_at() -> None:
 
 
 @pytest.mark.unit
+def test_insecure_tls_logs_warning() -> None:
+    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from unittest.mock import patch
+
+    with patch("connectors.outline.outline_document_reader.logger") as mock_logger:
+        OutlineDocumentReader(
+            base_url="https://app.getoutline.com",
+            api_token="tok",
+            verify_ssl=False,
+        )
+
+    mock_logger.warning.assert_called_once()
+    warning_message = mock_logger.warning.call_args[0][0]
+    assert "TLS certificate verification is DISABLED" in warning_message
+
+
+@pytest.mark.unit
+def test_secure_tls_no_warning() -> None:
+    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from unittest.mock import patch
+
+    with patch("connectors.outline.outline_document_reader.logger") as mock_logger:
+        OutlineDocumentReader(
+            base_url="https://app.getoutline.com",
+            api_token="tok",
+        )
+
+    for call in mock_logger.warning.call_args_list:
+        assert "TLS" not in str(call)
+
+
+@pytest.mark.unit
 def test_get_number_of_documents_uses_stub_count_when_incremental() -> None:
     from connectors.outline.outline_document_reader import OutlineDocumentReader
 

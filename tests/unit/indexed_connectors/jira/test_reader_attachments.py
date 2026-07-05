@@ -81,6 +81,51 @@ class FakeJiraWithAttachments:
         return {"count": len(self._issues)}
 
 
+class FakeJiraWithCloudAttachments:
+    """Fake Jira client returning attachments served from an atlassian.net host."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._issues = [
+            {
+                "key": "ATT-CLOUD",
+                "fields": {
+                    "updated": "2024-01-01T00:00:00.000+0000",
+                    "attachment": [
+                        {
+                            "filename": "cloud.pdf",
+                            "content": "https://acme.atlassian.net/secure/attachment/1/cloud.pdf",
+                            "mimeType": "application/pdf",
+                            "size": 512,
+                        },
+                    ],
+                },
+            },
+        ]
+
+    def jql(
+        self, jql: str, fields=None, start: int = 0, limit: int = 50, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {
+            "issues": self._issues[start : start + limit],
+            "total": len(self._issues),
+        }
+
+    def enhanced_jql(
+        self,
+        jql: str,
+        fields=None,
+        nextPageToken: str | None = None,
+        limit: int = 50,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        start = int(nextPageToken) if nextPageToken else 0
+        batch = self._issues[start : start + limit]
+        return {"issues": batch}
+
+    def approximate_issue_count(self, jql: str) -> dict[str, Any]:
+        return {"count": len(self._issues)}
+
+
 class FakeJiraNoAttachments:
     def __init__(self, **kwargs: Any) -> None:
         self._issues = [
@@ -203,7 +248,7 @@ def test_fetch_attachment_bytes_with_cloud_auth(monkeypatch):
     """Cloud reader uses email+api_token auth for downloads."""
     import connectors.jira.unified_jira_document_reader as mod
 
-    monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
+    monkeypatch.setattr(mod, "Jira", FakeJiraWithCloudAttachments, raising=True)
 
     reader = UnifiedJiraDocumentReader(
         base_url="https://acme.atlassian.net",
@@ -252,3 +297,85 @@ def test_fetch_attachment_bytes_with_basic_auth(monkeypatch):
     assert len(docs[0]["attachments"]) == 1
     call_kwargs = mock_get.call_args
     assert call_kwargs.kwargs["auth"] == ("admin", "secret")
+
+
+# ---------------------------------------------------------------------------
+# Origin guard tests (critical-bugs/1)
+# ---------------------------------------------------------------------------
+
+
+class FakeJiraWithOffOriginAttachment:
+    """Fake Jira client returning one attachment with an off-origin URL."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._issues = [
+            {
+                "key": "ATT-2",
+                "fields": {
+                    "updated": "2024-01-01T00:00:00.000+0000",
+                    "attachment": [
+                        {
+                            "filename": "evil.pdf",
+                            "content": "https://evil.attacker.test/steal-creds",
+                            "mimeType": "application/pdf",
+                            "size": 512,
+                        }
+                    ],
+                },
+            }
+        ]
+
+    def jql(
+        self, jql: str, fields=None, start: int = 0, limit: int = 50, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {
+            "issues": self._issues[start : start + limit],
+            "total": len(self._issues),
+        }
+
+
+def test_off_origin_attachment_skipped_no_http_request(monkeypatch):
+    """Off-origin attachment URL: no HTTP request made, result is empty."""
+    import connectors.jira.unified_jira_document_reader as mod
+
+    monkeypatch.setattr(mod, "Jira", FakeJiraWithOffOriginAttachment, raising=True)
+
+    reader = UnifiedJiraDocumentReader(
+        base_url="https://jira.example.com",
+        query="project = TEST",
+        auth_type=JiraAuthType.SERVER_TOKEN,
+        token="test-token",
+        include_attachments=True,
+    )
+
+    with patch("requests.get") as mock_get:
+        docs = list(reader.read_all_documents())
+
+    mock_get.assert_not_called()
+    assert docs[0]["attachments"] == []
+
+
+def test_same_origin_attachment_still_downloads(monkeypatch):
+    """Same-origin attachment URL: credentialed download proceeds (regression)."""
+    import connectors.jira.unified_jira_document_reader as mod
+
+    monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
+
+    reader = UnifiedJiraDocumentReader(
+        base_url="https://jira.example.com",
+        query="project = TEST",
+        auth_type=JiraAuthType.SERVER_TOKEN,
+        token="test-token",
+        include_attachments=True,
+        max_attachment_size_mb=10,
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = b"attachment bytes"
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("requests.get", return_value=mock_response) as mock_get:
+        docs = list(reader.read_all_documents())
+
+    mock_get.assert_called()
+    assert docs[0]["attachments"][0]["filename"] == "doc.pdf"

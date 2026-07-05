@@ -590,6 +590,159 @@ class TestSearchCommandExecution:
             reset_simple_output()
 
 
+class TestSearchStatusMessages:
+    """Tests verifying correct status/headline messages for search command."""
+
+    def _make_status(self, name: str):
+        from unittest.mock import Mock
+
+        s = Mock()
+        s.name = name
+        s.indexers = ["default"]
+        return s
+
+    def test_single_collection_no_in_1_collection_headline(self, monkeypatch):
+        """Single-collection search: no 'in 1 Collection:' headline, and the phase
+        label (the only text the plain/non-Rich path shows) still carries the
+        collection and query — not just a bare 'Searching outline'."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("outline")]
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: Mock())
+
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+            collections_path=None,
+        ):
+            return {"outline": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        # FakePhased drops the title (like PlainPhasedProgress) and records the
+        # start_phase labels — the regression surface for the plain-progress path.
+        phase_labels: List[str] = []
+
+        class FakePhased:
+            def start_phase(self, label: str):
+                phase_labels.append(label)
+
+            def finish_phase(self, label: str):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(
+            search_cmd, "create_phased_progress", lambda **kw: FakePhased()
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--collection", "outline"])
+
+        assert result.exit_code == 0
+        assert "in 1 Collection:" not in result.stdout
+        # Plain path shows only phase labels — they must carry collection + query.
+        assert any(
+            '"outline"' in lbl and "my-query" in lbl and "Collection for:" in lbl
+            for lbl in phase_labels
+        )
+
+    def test_multi_collection_headline_contains_n_collections(self, monkeypatch):
+        """Multi-collection search must print headline with N Collections and use per-collection phase labels."""
+        from unittest.mock import Mock
+
+        statuses = [self._make_status("col1"), self._make_status("col2")]
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: Mock())
+
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+            collections_path=None,
+        ):
+            return {"col1": {"results": []}, "col2": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        phase_labels: list = []
+
+        class FakePhased:
+            def start_phase(self, label: str):
+                phase_labels.append(label)
+
+            def finish_phase(self, label: str):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(
+            search_cmd, "create_phased_progress", lambda **kw: FakePhased()
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+        assert "in 2 Collections:" in result.stdout
+        assert any("col1" in lbl for lbl in phase_labels)
+        assert any("col2" in lbl for lbl in phase_labels)
+
+    def test_simple_output_no_status_lines(self, monkeypatch):
+        """Simple (--simple) output mode must produce no status/headline lines."""
+        import json
+        from unittest.mock import Mock
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        statuses = [self._make_status("col1")]
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: Mock())
+
+        def fake_svc_search(
+            query,
+            configs,
+            max_docs,
+            max_chunks,
+            include_matched_chunks,
+            progress_callback=None,
+            collections_path=None,
+        ):
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query"])
+
+            assert result.exit_code == 0
+            # Output must be valid JSON — no status lines mixed in
+            parsed = json.loads(result.stdout)
+            assert "query" in parsed
+        finally:
+            reset_simple_output()
+
+
 class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""
 
