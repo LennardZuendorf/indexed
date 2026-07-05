@@ -27,7 +27,7 @@
 #   - "Malformed zip file"
 #
 # Usage:
-#   uv run python tools/validate_wheel.py dist/*.whl
+#   uv run python scripts/validate_wheel.py dist/*.whl
 
 import os
 import struct

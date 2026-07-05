@@ -2,7 +2,7 @@
 # Sync apps/indexed/pyproject.toml version with a release tag.
 #
 # Usage:
-#   uv run python tools/sync_version.py <tag>
+#   uv run python scripts/sync_version.py <tag>
 #
 # The tag may include or omit the 'v' prefix (e.g. 'v0.1.0' or '0.1.0').
 # If the tag is not a valid semver string the script exits successfully with

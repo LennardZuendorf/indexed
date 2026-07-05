@@ -1,4 +1,4 @@
-"""Tests for tools/sync_version.py."""
+"""Tests for scripts/sync_version.py."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_SYNC_VERSION_PATH = _REPO_ROOT / "tools" / "sync_version.py"
+_SYNC_VERSION_PATH = _REPO_ROOT / "scripts" / "sync_version.py"
 
 
 def _load_sync_version():
