@@ -1,12 +1,17 @@
-"""Characterization: CLI search smoke test against an on-disk fixture collection."""
+"""Characterization: CLI search smoke test against a real on-disk collection.
+
+The fixture collection is built through the real engine
+(``DocumentCollectionCreator`` via ``create_collection_creator``) using the
+FileSystem connector, rather than hand-encoding the on-disk format. This keeps
+the test honest: if the persistence/index layout changes, the collection is
+still produced the way the CLI produces it.
+"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import faiss
-import numpy as np
 import pytest
 from typer.testing import CliRunner
 
@@ -33,67 +38,33 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _write_searchable_collection(collections_dir: Path, collection_name: str) -> None:
-    coll_dir = collections_dir / collection_name
-    indexes_dir = coll_dir / "indexes" / INDEXER_NAME
-    docs_dir = coll_dir / "documents"
-    indexes_dir.mkdir(parents=True)
-    docs_dir.mkdir(parents=True)
+def _build_searchable_collection(
+    collections_dir: Path, collection_name: str, source_dir: Path
+) -> None:
+    """Build a real, searchable collection from ``source_dir`` text files.
 
-    num_docs = 2
-    chunks_per_doc = 2
-    dimension = 384
-    mapping: dict[str, dict[str, object]] = {}
-
-    for doc_idx in range(num_docs):
-        doc_id = f"doc-{doc_idx}"
-        for chunk_idx in range(chunks_per_doc):
-            global_idx = doc_idx * chunks_per_doc + chunk_idx
-            mapping[str(global_idx)] = {
-                "documentId": doc_id,
-                "documentUrl": f"https://example.com/{doc_id}",
-                "documentPath": f"{collection_name}/documents/{doc_id}.json",
-                "chunkNumber": chunk_idx,
-            }
-
-    (coll_dir / "indexes" / "index_document_mapping.json").write_text(
-        json.dumps(mapping)
+    Uses the same factory the CLI uses (``create_collection_creator``), which
+    returns a ``DocumentCollectionCreator`` and persists a real FAISS index,
+    document mapping, documents, and manifest via ``DiskPersister``.
+    """
+    from connectors.files.connector import FileSystemConnector
+    from core.v1.engine.factories.create_collection_factory import (
+        create_collection_creator,
     )
 
-    for doc_idx in range(num_docs):
-        doc_id = f"doc-{doc_idx}"
-        doc = {
-            "id": doc_id,
-            "url": f"https://example.com/{doc_id}",
-            "text": f"Smoke test document {doc_idx} about semantic search.",
-            "chunks": [
-                {
-                    "indexedData": f"Chunk {ci} mentions semantic search indexing.",
-                    "chunkNumber": ci,
-                }
-                for ci in range(chunks_per_doc)
-            ],
-            "modifiedTime": "2025-01-01T00:00:00+00:00",
-        }
-        (docs_dir / f"{doc_id}.json").write_text(json.dumps(doc))
-
-    inner_index = faiss.IndexFlatL2(dimension)
-    index = faiss.IndexIDMap(inner_index)
-    vectors = np.random.rand(num_docs * chunks_per_doc, dimension).astype(np.float32)
-    ids = np.arange(num_docs * chunks_per_doc, dtype=np.int64)
-    index.add_with_ids(vectors, ids)
-    faiss.write_index(index, str(indexes_dir / "indexer.faiss"))
-
-    manifest = {
-        "collectionName": collection_name,
-        "updatedTime": "2025-01-01T00:00:00+00:00",
-        "lastModifiedDocumentTime": "2025-01-01T00:00:00+00:00",
-        "numberOfDocuments": num_docs,
-        "numberOfChunks": num_docs * chunks_per_doc,
-        "reader": {"type": "localFiles"},
-        "indexers": [{"name": INDEXER_NAME}],
-    }
-    (coll_dir / "manifest.json").write_text(json.dumps(manifest))
+    connector = FileSystemConnector(
+        path=str(source_dir),
+        include_patterns=["*.txt"],
+    )
+    creator = create_collection_creator(
+        collection_name=collection_name,
+        indexers=[INDEXER_NAME],
+        document_reader=connector.reader,
+        document_converter=connector.converter,
+        use_cache=False,
+        collections_path=str(collections_dir),
+    )
+    creator.run()
 
 
 @pytest.fixture
@@ -104,7 +75,17 @@ def smoke_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     local_root = get_local_root(tmp_path)
     ensure_storage_dirs(local_root, is_local=True)
     collections_dir = local_root / "data" / "collections"
-    _write_searchable_collection(collections_dir, COLLECTION_NAME)
+
+    source_dir = tmp_path / "docs"
+    source_dir.mkdir()
+    (source_dir / "alpha.txt").write_text(
+        "Semantic search finds documents by meaning, not keywords."
+    )
+    (source_dir / "beta.txt").write_text(
+        "This note also discusses semantic search and vector indexing."
+    )
+
+    _build_searchable_collection(collections_dir, COLLECTION_NAME, source_dir)
     return tmp_path
 
 
@@ -130,3 +111,4 @@ def test_cli_search_smoke(smoke_workspace: Path) -> None:
     assert payload["query"] == "semantic search"
     assert payload["total_collections_searched"] >= 1
     assert isinstance(payload["results"], list)
+    assert len(payload["results"]) >= 1

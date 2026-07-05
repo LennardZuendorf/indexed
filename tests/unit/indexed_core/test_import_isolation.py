@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-CORE_ROOT = Path("packages/indexed-core/src/core")
+CORE_ROOT = Path(__file__).resolve().parents[3] / "packages/indexed-core/src/core"
 
 
 def _python_files():
@@ -9,6 +9,9 @@ def _python_files():
 
 
 def test_core_does_not_import_connectors_package():
+    assert _python_files(), (
+        f"CORE_ROOT {CORE_ROOT!r} resolved to zero Python files — path is wrong"
+    )
     violations: list[str] = []
     for path in _python_files():
         tree = ast.parse(path.read_text(), filename=str(path))

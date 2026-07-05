@@ -28,7 +28,7 @@ src/connectors/
 ```
 
 Each connector implements `BaseConnector` (`reader` / `converter` /
-`connector_type`); protocols live in `core/v1/connectors/base.py`.
+`connector_type`); protocols live in the `indexed-protocols` package.
 
 ## Architecture notes
 

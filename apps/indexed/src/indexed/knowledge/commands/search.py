@@ -355,7 +355,6 @@ def search(
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import search as this_module
 
-    index_class = this_module.Index
     svc_search = this_module.svc_search
     source_config_class = this_module.SourceConfig
     status_svc = this_module.status
@@ -364,8 +363,6 @@ def search(
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
-
-    index_class()
 
     simple = is_simple_output()
 
@@ -481,11 +478,7 @@ def search(
 
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
-    if name == "Index":
-        from core.v1 import Index
-
-        return Index
-    elif name == "svc_search":
+    if name == "svc_search":
         from core.v1.engine.services import search
 
         return search

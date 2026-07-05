@@ -5,7 +5,7 @@ Uses FastMCP server lifespan and response caching middleware.
 """
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, TypedDict
+from typing import Any, AsyncIterator, Type, TypedDict
 
 from fastmcp import FastMCP
 from fastmcp.server.middleware.caching import ResponseCachingMiddleware
@@ -28,22 +28,13 @@ class LifespanState(TypedDict):
     cli_context: CliContext
 
 
-def _get_mcp_config() -> MCPConfig:
-    """Load MCP configuration, falling back to defaults."""
+def _get_config(model_cls: Type[Any]) -> Any:
+    """Load configuration for the given model class, falling back to defaults."""
     try:
         provider = ConfigService.instance().bind()
-        return provider.get(MCPConfig)
+        return provider.get(model_cls)
     except Exception:
-        return MCPConfig()
-
-
-def _get_search_config() -> CoreV1SearchConfig:
-    """Load search configuration, falling back to defaults."""
-    try:
-        provider = ConfigService.instance().bind()
-        return provider.get(CoreV1SearchConfig)
-    except Exception:
-        return CoreV1SearchConfig()
+        return model_cls()
 
 
 @asynccontextmanager
@@ -52,8 +43,8 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     config_service = ConfigService.instance()
     register_app_config(config_service)
     cli_context = resolve_collections_context()
-    mcp_config = _get_mcp_config()
-    search_config = _get_search_config()
+    mcp_config = _get_config(MCPConfig)
+    search_config = _get_config(CoreV1SearchConfig)
     yield {
         "mcp_config": mcp_config,
         "search_config": search_config,
@@ -64,5 +55,5 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
 mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
 mcp.add_middleware(ResponseCachingMiddleware())
 
-register_tools(mcp, _get_search_config)
-register_resources(mcp, _get_mcp_config)
+register_tools(mcp, lambda: _get_config(CoreV1SearchConfig))
+register_resources(mcp, lambda: _get_config(MCPConfig))

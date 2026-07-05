@@ -196,7 +196,6 @@ def execute_create_command(
                 logger.info("Creating collection '%s'...", collection)
                 svc_create(
                     [cfg],
-                    config_service=config,
                     use_cache=use_cache,
                     force=force,
                     collections_path=collections_path,
@@ -214,7 +213,6 @@ def execute_create_command(
                 try:
                     svc_create(
                         [cfg],
-                        config_service=config,
                         use_cache=use_cache,
                         force=force,
                         phased_progress=phased,

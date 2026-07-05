@@ -26,3 +26,10 @@ class StorageError(IndexedError):
 
 class StorageConflictError(StorageError):
     """Raised when local and global storage conflict."""
+
+
+def missing_wiring_error(component: str) -> ConfigurationError:
+    """Error for a DI dependency the app composition root failed to inject."""
+    return ConfigurationError(
+        f"{component} must be injected by the app layer; see indexed.bootstrap"
+    )

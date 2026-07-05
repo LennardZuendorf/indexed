@@ -17,9 +17,9 @@ def register_app_config(config_service: ConfigService) -> None:
         CoreV1SearchConfig,
         CoreV1StorageConfig,
     )
-    from connectors.confluence.schema import ConfluenceCloudConfig, ConfluenceConfig
-    from connectors.files.schema import FileSystemConfig, LocalFilesConfig
-    from connectors.jira.schema import JiraCloudConfig, JiraConfig
+    from connectors.confluence.schema import ConfluenceCloudConfig
+    from connectors.files.schema import FileSystemConfig
+    from connectors.jira.schema import JiraCloudConfig
     from connectors.outline.schema import OutlineConfig
     from core.v1.config_models import MCPConfig
 
@@ -29,10 +29,7 @@ def register_app_config(config_service: ConfigService) -> None:
     config_service.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
     config_service.register(MCPConfig, path="mcp")
     config_service.register(FileSystemConfig, path="sources.files")
-    config_service.register(LocalFilesConfig, path="sources.files")
-    config_service.register(JiraConfig, path="sources.jira")
     config_service.register(JiraCloudConfig, path="sources.jira")
-    config_service.register(ConfluenceConfig, path="sources.confluence")
     config_service.register(ConfluenceCloudConfig, path="sources.confluence")
     config_service.register(OutlineConfig, path="sources.outline")
 
@@ -48,7 +45,7 @@ def build_connector(
     config_service: ConfigService,
     registry: dict[str, Type[Any]] | None = None,
 ) -> BaseConnector:
-    from connectors.registry import NAMESPACE_REGISTRY
+    from connectors.registry import get_config_namespace
 
     registry = registry or build_connector_registry()
     cls = registry.get(cfg.type)
@@ -58,7 +55,7 @@ def build_connector(
             f"Unknown connector type: {cfg.type}. Available: {available}"
         )
 
-    namespace = NAMESPACE_REGISTRY.get(cfg.type, f"sources.{cfg.type}")
+    namespace = get_config_namespace(cfg.type)
     if cfg.base_url_or_path:
         if cfg.type == "localFiles":
             config_service.set(f"{namespace}.path", cfg.base_url_or_path)

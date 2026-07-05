@@ -13,19 +13,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PACKAGE_ROOTS: tuple[tuple[Path, str], ...] = (
-    (ROOT / "packages/indexed-core/src/core", "core"),
-    (ROOT / "packages/indexed-connectors/src/connectors", "connectors"),
-    (ROOT / "packages/indexed-config/src/indexed_config", "indexed_config"),
-    (ROOT / "packages/indexed-parsing/src/parsing", "parsing"),
-    (ROOT / "packages/indexed-protocols/src/protocols", "protocols"),
-    (ROOT / "packages/utils/src/utils", "utils"),
-    (ROOT / "apps/indexed/src/indexed", "indexed"),
-)
+
+def _make_package_roots(root: Path) -> tuple[tuple[Path, str], ...]:
+    return (
+        (root / "packages/indexed-core/src/core", "core"),
+        (root / "packages/indexed-connectors/src/connectors", "connectors"),
+        (root / "packages/indexed-config/src/indexed_config", "indexed_config"),
+        (root / "packages/indexed-parsing/src/parsing", "parsing"),
+        (root / "packages/indexed-protocols/src/protocols", "protocols"),
+        (root / "packages/utils/src/utils", "utils"),
+        (root / "apps/indexed/src/indexed", "indexed"),
+    )
+
+
+PACKAGE_ROOTS: tuple[tuple[Path, str], ...] = _make_package_roots(ROOT)
 
 FORBIDDEN: dict[str, frozenset[str]] = {
-    "core": frozenset({"connectors"}),
-    "connectors": frozenset({"core"}),
+    "core": frozenset({"connectors", "indexed"}),
+    "connectors": frozenset({"core", "indexed"}),
     "indexed_config": frozenset({"core", "connectors", "indexed"}),
     "utils": frozenset({"core", "connectors", "indexed"}),
     "parsing": frozenset({"core", "connectors", "indexed"}),
@@ -33,11 +38,12 @@ FORBIDDEN: dict[str, frozenset[str]] = {
 }
 
 
-def _package_for_path(path: Path) -> str | None:
+def _package_for_path(path: Path, root: Path | None = None) -> str | None:
+    pkg_roots = _make_package_roots(root) if root is not None else PACKAGE_ROOTS
     resolved = path.resolve()
-    for root, name in PACKAGE_ROOTS:
+    for pkg_root, name in pkg_roots:
         try:
-            resolved.relative_to(root.resolve())
+            resolved.relative_to(pkg_root.resolve())
         except ValueError:
             continue
         return name
@@ -65,9 +71,10 @@ def _imports_in_file(path: Path) -> list[tuple[int, str]]:
     imports: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            top = _top_level_module(node.module)
-            if top:
-                imports.append((node.lineno, top))
+            if node.level == 0:  # skip relative imports (from . import x)
+                top = _top_level_module(node.module)
+                if top:
+                    imports.append((node.lineno, top))
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 top = _top_level_module(alias.name)
@@ -80,7 +87,7 @@ def check_import_graph(root: Path | None = None) -> list[str]:
     """Return violation messages for forbidden import edges (empty if clean)."""
     violations: list[str] = []
     for path in _iter_python_files(root):
-        source_pkg = _package_for_path(path)
+        source_pkg = _package_for_path(path, root)
         if source_pkg is None:
             continue
         forbidden = FORBIDDEN.get(source_pkg)

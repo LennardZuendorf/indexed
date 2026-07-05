@@ -34,3 +34,33 @@ def test_check_import_graph_function_reports_no_violations() -> None:
     checker = _load_checker()
     violations = checker.check_import_graph(ROOT)
     assert violations == []
+
+
+def test_core_importing_connectors_is_a_violation(tmp_path: Path) -> None:
+    """core -> connectors is a forbidden cross-layer import and must be reported."""
+    checker = _load_checker()
+    core_dir = tmp_path / "packages/indexed-core/src/core"
+    core_dir.mkdir(parents=True)
+    (core_dir / "__init__.py").write_text("from connectors import something\n")
+    connectors_dir = tmp_path / "packages/indexed-connectors/src/connectors"
+    connectors_dir.mkdir(parents=True)
+    (connectors_dir / "__init__.py").write_text("")
+
+    violations = checker.check_import_graph(tmp_path)
+    assert violations, "expected a violation for core -> connectors, got none"
+    assert any("core must not import connectors" in v for v in violations)
+
+
+def test_core_importing_indexed_is_a_violation(tmp_path: Path) -> None:
+    """core -> indexed is a forbidden upward import that the old FORBIDDEN map missed silently."""
+    checker = _load_checker()
+    core_dir = tmp_path / "packages/indexed-core/src/core"
+    core_dir.mkdir(parents=True)
+    (core_dir / "__init__.py").write_text("from indexed import something\n")
+    indexed_dir = tmp_path / "apps/indexed/src/indexed"
+    indexed_dir.mkdir(parents=True)
+    (indexed_dir / "__init__.py").write_text("")
+
+    violations = checker.check_import_graph(tmp_path)
+    assert violations, "expected a violation for core -> indexed, got none"
+    assert any("core must not import indexed" in v for v in violations)

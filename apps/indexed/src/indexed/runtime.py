@@ -25,7 +25,7 @@ def resolve_collections_context(
 
     config_service = ConfigService.instance(
         workspace=workspace,
-        mode_override=mode_override,  # fixed properly in /6
+        mode_override=mode_override,
         reset=mode_override is not None,
     )
     mode = config_service.resolve_storage_mode()

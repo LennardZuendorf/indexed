@@ -16,32 +16,17 @@ from indexed.runtime import resolve_collections_context
 COLLECTION_NAME = "mcp-smoke-collection"
 
 
-def _write_manifest_collection(collections_dir: Path, collection_name: str) -> None:
-    coll_dir = collections_dir / collection_name
-    coll_dir.mkdir(parents=True)
-    manifest = {
-        "collectionName": collection_name,
-        "updatedTime": "2025-01-01T00:00:00+00:00",
-        "lastModifiedDocumentTime": "2025-01-01T00:00:00+00:00",
-        "numberOfDocuments": 1,
-        "numberOfChunks": 2,
-        "reader": {"type": "localFiles"},
-        "indexers": [
-            {"name": "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"}
-        ],
-    }
-    (coll_dir / "manifest.json").write_text(json.dumps(manifest))
-
-
 @pytest.fixture
-def mcp_resource_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def mcp_resource_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write_manifest
+):
     monkeypatch.chdir(tmp_path)
     from indexed_config import ensure_storage_dirs, get_local_root
 
     local_root = get_local_root(tmp_path)
     ensure_storage_dirs(local_root, is_local=True)
     collections_dir = local_root / "data" / "collections"
-    _write_manifest_collection(collections_dir, COLLECTION_NAME)
+    write_manifest(collections_dir, COLLECTION_NAME)
 
     cli_ctx = resolve_collections_context(mode_override="local", workspace=tmp_path)
     mcp_config = MCPConfig()

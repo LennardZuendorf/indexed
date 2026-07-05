@@ -331,7 +331,6 @@ class TestSearchCommandExecution:
         statuses = [self._make_status("col1"), self._make_status("col2")]
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
 
@@ -380,7 +379,6 @@ class TestSearchCommandExecution:
         statuses = [self._make_status("myCol")]
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
 
@@ -420,7 +418,6 @@ class TestSearchCommandExecution:
         statuses = [self._make_status("col1")]
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: True)
 
@@ -459,7 +456,6 @@ class TestSearchCommandExecution:
         statuses = [self._make_status("col1")]
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
 
@@ -501,7 +497,6 @@ class TestSearchCommandExecution:
         statuses = [self._make_status("col1")]
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
         monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
 
@@ -560,7 +555,6 @@ class TestSearchCommandExecution:
         from indexed.utils.simple_output import reset_simple_output, set_simple_output
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
 
         set_simple_output(True)
@@ -580,7 +574,6 @@ class TestSearchCommandExecution:
         from indexed.utils.simple_output import reset_simple_output, set_simple_output
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
-        monkeypatch.setattr(search_cmd, "Index", lambda: None)
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
 
         set_simple_output(True)

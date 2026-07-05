@@ -65,7 +65,7 @@ per subagent.
 
 ```bash
 uv run ruff check . --fix && uv run ruff format   # lint + format
-uv run mypy src/                                   # strict types, 0 errors
+uv run mypy apps/indexed/src packages/*/src        # 0 new errors on touched files
 uv run pytest -q --cov=src                         # full suite, >85% coverage
 bash .agents/skills/spec/scripts/validate.sh       # if .spec/ was touched → 0 errors
 ```
@@ -213,7 +213,7 @@ uv run pytest tests/benchmarks/ --benchmark-only   # benchmarks only
 
 # Quality (must be clean before any push)
 uv run ruff check . --fix && uv run ruff format
-uv run mypy src/
+uv run mypy apps/indexed/src packages/*/src
 ```
 
 - **Tests mirror packages.** Put a test under `tests/unit/<package>/`; shared
@@ -236,6 +236,12 @@ Earned defaults — apply without being asked.
   import. Load them inside `get_embedder()`-style functions, never at module top.
 - **Coverage is measured on installed packages**, not source paths — run from
   root with `--cov=src` so the monorepo packages resolve correctly.
+- **mypy is scoped to 0-new on touched files**, not tree-wide green. Run
+  `uv run mypy apps/indexed/src packages/*/src` (there is no root `src/`); the tree
+  carries ~230 pre-existing untyped-def errors and isn't strict. Baseline before
+  editing, then confirm your files add none.
+- **DI wiring errors go through `missing_wiring_error()`** in `indexed_config.errors`
+  — never hand-roll a "must be injected by the app layer" string.
 - **Config is a singleton.** `ConfigService.get_instance()` — don't re-parse or
   thread config manually; respect the priority chain (CLI > env > workspace > global > defaults).
 - **Connectors are Protocol-based.** New sources implement `BaseConnector`

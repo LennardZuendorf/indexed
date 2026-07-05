@@ -1,6 +1,6 @@
 """Tests for collection service."""
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -14,48 +14,28 @@ from core.v1.engine.services.collection_service import (
 from core.v1.engine.services.models import SourceConfig
 
 
+def _source_config(name: str = "test-collection") -> SourceConfig:
+    return SourceConfig(
+        name=name,
+        type="localFiles",
+        base_url_or_path="./docs",
+        query=None,
+        indexer="test-indexer",
+        reader_opts={},
+    )
+
+
 class TestResolveConnector:
-    """Test connector resolution via injection."""
+    """Test connector resolution via injected factory."""
 
-    def test_raises_when_neither_connector_nor_factory_injected(self):
-        source_config = SourceConfig(
-            name="test-collection",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-
+    def test_raises_when_factory_not_injected(self):
         with pytest.raises(
-            ConfigurationError, match="connector or connector_factory must be injected"
+            ConfigurationError, match="connector_factory must be injected"
         ):
-            _resolve_connector(source_config)
-
-    def test_returns_injected_connector_directly(self):
-        source_config = SourceConfig(
-            name="test-collection",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-        mock_connector = Mock()
-
-        connector = _resolve_connector(source_config, connector=mock_connector)
-
-        assert connector is mock_connector
+            _resolve_connector(_source_config())
 
     def test_delegates_to_injected_factory(self):
-        source_config = SourceConfig(
-            name="test-collection",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
+        source_config = _source_config()
         mock_connector = Mock()
         factory = Mock(return_value=mock_connector)
 
@@ -64,40 +44,12 @@ class TestResolveConnector:
         factory.assert_called_once_with(source_config)
         assert connector is mock_connector
 
-    def test_prefers_explicit_connector_over_factory(self):
-        source_config = SourceConfig(
-            name="test-collection",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-        mock_connector = Mock()
-        factory = Mock()
 
-        connector = _resolve_connector(
-            source_config,
-            connector=mock_connector,
-            connector_factory=factory,
-        )
+class TestCreateOneWithInjectedFactory:
+    """Test _create_one builds via the injected connector factory."""
 
-        factory.assert_not_called()
-        assert connector is mock_connector
-
-
-class TestCreateOneWithInjectedConnector:
-    """Test _create_one uses injected connector without building internally."""
-
-    def test_create_one_uses_injected_connector(self):
-        cfg = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
+    def test_create_one_uses_injected_factory(self):
+        cfg = _source_config("test-col")
         mock_connector = Mock()
         mock_connector.reader = Mock()
         mock_connector.converter = Mock()
@@ -110,9 +62,8 @@ class TestCreateOneWithInjectedConnector:
 
             _create_one(
                 cfg,
-                MagicMock(),
                 use_cache=False,
-                connector=mock_connector,
+                connector_factory=lambda _cfg: mock_connector,
             )
 
             mock_creator_factory.assert_called_once()
@@ -168,15 +119,8 @@ class TestCreateFunction:
     def test_create_with_force_clears_caches(self):
         from core.v1.engine.services.collection_service import create
 
-        cfg = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-        mock_connector = Mock()
+        cfg = _source_config("test-col")
+        factory = Mock()
 
         with patch(
             "core.v1.engine.services.collection_service._clear_caches"
@@ -188,29 +132,16 @@ class TestCreateFunction:
                 with patch(
                     "core.v1.engine.services.collection_service._create_one"
                 ) as mock_create:
-                    create(
-                        [cfg],
-                        config_service=MagicMock(),
-                        force=True,
-                        connector=mock_connector,
-                    )
+                    create([cfg], force=True, connector_factory=factory)
 
                     mock_clear.assert_called_once()
                     mock_create.assert_called_once()
-                    assert mock_create.call_args.kwargs["connector"] is mock_connector
+                    assert mock_create.call_args.kwargs["connector_factory"] is factory
 
     def test_create_with_force_and_existing_collection(self):
         from core.v1.engine.services.collection_service import create
 
-        cfg = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-        mock_connector = Mock()
+        cfg = _source_config("test-col")
 
         with patch("core.v1.engine.services.collection_service._clear_caches"):
             with patch(
@@ -223,35 +154,33 @@ class TestCreateFunction:
                     with patch(
                         "core.v1.engine.services.collection_service._create_one"
                     ):
-                        create(
-                            [cfg],
-                            config_service=MagicMock(),
-                            force=True,
-                            connector=mock_connector,
-                        )
+                        create([cfg], force=True, connector_factory=Mock())
 
                         mock_clear_col.assert_called_once()
 
-    def test_create_initializes_config_service_when_none(self):
-        from core.v1.engine.services.collection_service import create
 
-        cfg = SourceConfig(
-            name="test-col",
-            type="localFiles",
-            base_url_or_path="./docs",
-            query=None,
-            indexer="test-indexer",
-            reader_opts={},
-        )
-        mock_connector = Mock()
+class TestUpdateFunction:
+    """Test update function delegates to the collection updater."""
 
-        with patch("core.v1.engine.services.collection_service._create_one"):
-            with patch("indexed_config.ConfigService") as mock_cs:
-                mock_cs.return_value = MagicMock()
-                create(
-                    [cfg], config_service=None, force=False, connector=mock_connector
-                )
-                mock_cs.assert_called_once()
+    def test_update_delegates_to_updater(self):
+        from core.v1.engine.services.collection_service import update
+
+        cfg = _source_config("test-col")
+        factory = Mock()
+
+        with patch(
+            "core.v1.engine.factories.update_collection_factory.create_collection_updater"
+        ) as mock_factory:
+            mock_updater = Mock()
+            mock_factory.return_value = mock_updater
+
+            update([cfg], manifest_connector_factory=factory)
+
+            mock_factory.assert_called_once()
+            assert (
+                mock_factory.call_args.kwargs["manifest_connector_factory"] is factory
+            )
+            mock_updater.run.assert_called_once()
 
 
 class TestCollectionExists:

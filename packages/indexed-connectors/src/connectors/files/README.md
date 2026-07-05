@@ -36,11 +36,16 @@ connector = FileSystemConnector(
     fail_fast=False  # Continue on errors (default)
 )
 
-# Use with Index
-from core.v1 import Index
+# Use with Core (Factory API)
+from core.v1.engine.factories.create_collection_factory import create_collection_creator
 
-index = Index()
-index.add_collection("my-docs", connector)
+creator = create_collection_creator(
+    collection_name="my-docs",
+    indexers=["indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"],
+    document_reader=connector.reader,
+    document_converter=connector.converter,
+)
+creator.run()
 ```
 
 ### Config-driven Instantiation
@@ -49,7 +54,7 @@ The connector can also be instantiated from configuration, following the BaseCon
 
 ```python
 from connectors.files.connector import FileSystemConnector
-from core.v1.engine.services.config_service import ConfigService
+from indexed_config import ConfigService
 
 config_service = ConfigService()
 connector = FileSystemConnector.from_config(config_service, "sources.docs")
@@ -102,7 +107,7 @@ exclude_patterns=[r".*test.*", r".*\\.min\\..*"]
 
 ## BaseConnector Protocol
 
-The FileSystemConnector implements the `BaseConnector` protocol from `core.v1.connectors.base`:
+The FileSystemConnector implements the `BaseConnector` protocol (defined in the `indexed-protocols` package):
 
 ```python
 @property

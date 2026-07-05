@@ -1,16 +1,7 @@
 """Tests for unified CLI/MCP runtime context resolution."""
 
-import pytest
-
 from indexed_config import ConfigService, get_global_root, get_local_root
 from indexed.runtime import CliContext, resolve_collections_context
-
-
-@pytest.fixture(autouse=True)
-def reset_config_service():
-    ConfigService.instance(reset=True)
-    yield
-    ConfigService.instance(reset=True)
 
 
 def test_resolve_collections_context_global_mode(tmp_path, monkeypatch):

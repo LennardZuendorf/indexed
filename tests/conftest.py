@@ -55,6 +55,7 @@ def isolate_config_paths(tmp_path_factory: pytest.TempPathFactory):
 
 @pytest.fixture(autouse=True)
 def reset_config_service():
-    """Ensure ConfigService cache is cleared between individual tests."""
+    """Ensure ConfigService cache is cleared before and after each test."""
+    ConfigService.reset()
     yield
     ConfigService.reset()

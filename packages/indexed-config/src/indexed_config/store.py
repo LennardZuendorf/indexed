@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sys
-import warnings
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
@@ -36,8 +35,7 @@ class TomlStore:
     """Read/write config for a single resolved storage mode.
 
     Runtime reads use read_for_mode(mode) — one config.toml (global OR local),
-    then .env overlay and INDEXED__* env vars. TomlStore.read() is deprecated
-    and delegates to read_for_mode without merging global and local TOML.
+    then .env overlay and INDEXED__* env vars.
     """
 
     def __init__(
@@ -135,30 +133,10 @@ class TomlStore:
         with open(path, "rb") as f:
             return tomllib.load(f)  # type: ignore
 
-    def read(self) -> Dict[str, Any]:
-        """Read configuration (deprecated — prefer read_for_mode).
-
-        When mode_override is set, delegates to read_for_mode without warning.
-        Otherwise emits DeprecationWarning and auto-detects the mode (local when
-        ./.indexed/config.toml exists, else global). Global and local TOML are
-        never merged.
-        """
-        if self._mode_override:
-            return self.read_for_mode(self._mode_override)
-
-        warnings.warn(
-            "TomlStore.read() without mode_override is deprecated; "
-            "use read_for_mode(mode) with a resolved storage mode.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        mode: StorageMode = "local" if has_local_config(self.workspace) else "global"
-        return self.read_for_mode(mode)
-
     def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
         """Read config for a specific resolved storage mode (no merging).
 
-        Unlike read(), this reads ONE config.toml based on the resolved mode,
+        Reads ONE config.toml based on the resolved mode,
         and loads .env files in priority order:
         1. .indexed/.env from the resolved root (loaded first → gets set)
         2. CWD/.env (loaded second → only fills gaps via override=False)

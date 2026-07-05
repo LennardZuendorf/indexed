@@ -136,21 +136,6 @@ else:
     print(f"Operation succeeded in {duration:.2f}s")
 ```
 
-### Safe Attribute Access
-
-```python
-from utils import safe_str_attr
-
-# Safely get string attribute with fallback
-obj = SomeObject()
-value = safe_str_attr(obj, "name", default="Unknown")
-
-# Handles:
-# - None objects
-# - Missing attributes
-# - Non-string values (converts to string)
-```
-
 ## Architecture
 
 This package is designed as the **base layer** for logging and utilities:
@@ -200,12 +185,6 @@ This package is designed as the **base layer** for logging and utilities:
 | `log_execution_duration(func, identifier, enabled)` | Execute and log duration |
 | `execute_and_measure_duration(func)` | Execute and return (result, error, duration) |
 
-### Utility Functions
-
-| Function | Description |
-|----------|-------------|
-| `safe_str_attr(obj, attr, default)` | Safely get string attribute |
-
 ## Project Structure
 
 ```
@@ -215,8 +194,7 @@ utils/
 │   ├── logger.py            # Loguru configuration
 │   ├── retry.py             # Retry with exponential backoff
 │   ├── batch.py             # Paginated reading
-│   ├── performance.py       # Timing utilities
-│   └── safe_getattr.py      # Safe attribute access
+│   └── performance.py       # Timing utilities
 │
 ├── pyproject.toml
 └── README.md
@@ -261,9 +239,7 @@ uv run mypy packages/utils/src/
 
 3. **Set `enabled=False` on performance logging in production** unless actively profiling.
 
-4. **Use `safe_str_attr` when accessing attributes from external data** to avoid AttributeError exceptions.
-
-5. **Configure logging at application entry point** (CLI main, test setup) not in library code.
+4. **Configure logging at application entry point** (CLI main, test setup) not in library code.
 
 ## License
 

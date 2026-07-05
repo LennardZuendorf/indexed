@@ -148,9 +148,9 @@ def main(ctx: typer.Context) -> None:
 
 def run_impl(
     transport: str = "stdio",
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    log_level: str = "INFO",
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    log_level: Optional[str] = None,
     show_banner: bool = True,
 ) -> None:
     """Run the MCP server using FastMCP Python API directly."""
@@ -160,26 +160,35 @@ def run_impl(
 
     from .server import mcp
 
-    if host == "127.0.0.1" and port == 8000 and log_level == "INFO":
-        try:
-            config_service = ConfigService.instance()
-            register_app_config(config_service)
-            mcp_cfg = config_service.bind().get(MCPConfig)
-            host = mcp_cfg.host
-            port = mcp_cfg.port
-            log_level = mcp_cfg.log_level
-        except Exception:
-            pass
+    cfg_host: str = "127.0.0.1"
+    cfg_port: int = 8000
+    cfg_log_level: str = "INFO"
+
+    try:
+        config_service = ConfigService.instance()
+        register_app_config(config_service)
+        mcp_cfg = config_service.bind().get(MCPConfig)
+        cfg_host = mcp_cfg.host
+        cfg_port = mcp_cfg.port
+        cfg_log_level = mcp_cfg.log_level
+    except Exception:
+        pass
+
+    effective_host: str = host if host is not None else cfg_host
+    effective_port: int = port if port is not None else cfg_port
+    effective_log_level: str = log_level if log_level is not None else cfg_log_level
 
     if transport == "stdio":
-        mcp.run(transport="stdio", show_banner=show_banner, log_level=log_level)
+        mcp.run(
+            transport="stdio", show_banner=show_banner, log_level=effective_log_level
+        )
     else:
         mcp.run(
             transport=transport,  # type: ignore[arg-type]
             show_banner=show_banner,
-            host=host,
-            port=port,
-            log_level=log_level,
+            host=effective_host,
+            port=effective_port,
+            log_level=effective_log_level,
         )
 
 
@@ -191,14 +200,14 @@ def run(
         "-t",
         help="Transport protocol: stdio (default), http, sse, streamable-http",
     ),
-    host: str = typer.Option(
-        "127.0.0.1", "--host", "-h", help="Host to bind (HTTP/SSE/streamable-http)"
+    host: Optional[str] = typer.Option(
+        None, "--host", "-h", help="Host to bind (HTTP/SSE/streamable-http)"
     ),
-    port: int = typer.Option(
-        8000, "--port", "-p", help="Port to bind (HTTP/SSE/streamable-http)"
+    port: Optional[int] = typer.Option(
+        None, "--port", "-p", help="Port to bind (HTTP/SSE/streamable-http)"
     ),
-    log_level: str = typer.Option(
-        "INFO", "--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR)"
+    log_level: Optional[str] = typer.Option(
+        None, "--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR)"
     ),
     no_banner: bool = typer.Option(
         False, "--no-banner", help="Disable the startup banner display"

@@ -12,8 +12,12 @@ from collections.abc import Callable
 import json
 from typing import Any
 
-from indexed_config.errors import ConfigurationError
+from indexed_config.errors import missing_wiring_error
 
+from core.v1.engine.factories._types import (
+    LocalFilesUpdateFactory,
+    ManifestConnectorFactory,
+)
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 from core.v1.engine.core.documents_collection_creator import (
@@ -30,12 +34,8 @@ def create_collection_updater(
     progress_callback=None,
     phased_progress=None,
     collections_path: str | None = None,
-    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
-    local_files_update_factory: Callable[
-        [dict, str, DiskPersister],
-        tuple[Any, Any, list[str], Callable[[], None] | None],
-    ]
-    | None = None,
+    manifest_connector_factory: ManifestConnectorFactory | None = None,
+    local_files_update_factory: LocalFilesUpdateFactory | None = None,
 ):
     """Create a collection updater for incremental updates.
 
@@ -67,12 +67,8 @@ def _create_collection_updater(
     progress_callback=None,
     phased_progress=None,
     collections_path: str | None = None,
-    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
-    local_files_update_factory: Callable[
-        [dict, str, DiskPersister],
-        tuple[Any, Any, list[str], Callable[[], None] | None],
-    ]
-    | None = None,
+    manifest_connector_factory: ManifestConnectorFactory | None = None,
+    local_files_update_factory: LocalFilesUpdateFactory | None = None,
 ):
     """Internal implementation of collection updater creation."""
     resolved_path = collections_path or str(get_default_collections_path())
@@ -90,10 +86,7 @@ def _create_collection_updater(
 
     if connector_type == "localFiles":
         if local_files_update_factory is None:
-            raise ConfigurationError(
-                "local_files_update_factory must be injected by the app layer; "
-                "see indexed.bootstrap"
-            )
+            raise missing_wiring_error("local_files_update_factory")
         document_reader, document_converter, explicit_deletions, post_run = (
             local_files_update_factory(manifest, collection_name, disk_persister)
         )
@@ -145,12 +138,9 @@ class _UpdatingCollectionCreator:
 
 def _create_reader_and_converter(
     manifest: dict,
-    manifest_connector_factory: Callable[[dict], tuple[Any, Any]] | None = None,
+    manifest_connector_factory: ManifestConnectorFactory | None = None,
 ) -> tuple[Any, Any]:
     """Create reader and converter from manifest via injected factory."""
     if manifest_connector_factory is None:
-        raise ConfigurationError(
-            "manifest_connector_factory must be injected by the app layer; "
-            "see indexed.bootstrap"
-        )
+        raise missing_wiring_error("manifest_connector_factory")
     return manifest_connector_factory(manifest)

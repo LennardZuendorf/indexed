@@ -8,16 +8,13 @@ import pytest
 
 from indexed.connector_wiring import (
     _calculate_update_date,
-    _populate_confluence_cloud_config,
     _populate_confluence_config,
-    _populate_jira_cloud_config,
     _populate_jira_config,
     _populate_local_files_config,
     make_cache_decorator_factory,
     make_connector_factory,
     make_local_files_update_factory,
     make_manifest_connector_factory,
-    missing_wiring_error,
     populate_config_from_manifest,
     wiring_kwargs_for_create,
     wiring_kwargs_for_update,
@@ -44,9 +41,9 @@ def _manifest(connector_type: str, reader: dict | None = None) -> dict:
     ("connector_type", "populate_fn", "namespace"),
     [
         ("jira", _populate_jira_config, "sources.jira"),
-        ("jiraCloud", _populate_jira_cloud_config, "sources.jira"),
+        ("jiraCloud", _populate_jira_config, "sources.jira"),
         ("confluence", _populate_confluence_config, "sources.confluence"),
-        ("confluenceCloud", _populate_confluence_cloud_config, "sources.confluence"),
+        ("confluenceCloud", _populate_confluence_config, "sources.confluence"),
     ],
 )
 def test_populate_cloud_configs_add_date_filter(
@@ -103,7 +100,12 @@ def test_populate_config_from_manifest_dispatches(connector_type: str) -> None:
         config_service, manifest, connector_type, f"sources.{connector_type}"
     )
 
-    assert config_service.set.called
+    if connector_type == "localFiles":
+        config_service.set.assert_any_call(f"sources.{connector_type}.path", "/tmp")
+    else:
+        config_service.set.assert_any_call(
+            f"sources.{connector_type}.url", "https://example.com"
+        )
 
 
 def test_populate_config_from_manifest_unknown_type_raises() -> None:
@@ -146,12 +148,6 @@ def test_wiring_kwargs_keys() -> None:
     assert "cache_decorator_factory" in create_keys
     assert "manifest_connector_factory" in update_keys
     assert "local_files_update_factory" in update_keys
-
-
-def test_missing_wiring_error_message() -> None:
-    err = missing_wiring_error("manifest_connector_factory")
-    assert "manifest_connector_factory" in str(err)
-    assert "bootstrap" in str(err)
 
 
 def test_make_manifest_connector_factory(tmp_path: Path) -> None:

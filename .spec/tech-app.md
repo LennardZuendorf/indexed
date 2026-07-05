@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-06-09
+updated: 2026-07-05
 ---
 
 # Tech Branch: App (`apps/indexed`)
@@ -138,8 +138,12 @@ module-level imports (`TYPE_CHECKING`), `__getattr__` module-level lazy loading.
 
 ```python
 def __getattr__(name: str):
-    if name == "index":
-        from core.v1 import Index
-        return Index()
+    """Lazy load heavy dependencies for tests."""
+    if name == "DEFAULT_INDEXER":
+        from core.v1.constants import DEFAULT_INDEXER
+        return DEFAULT_INDEXER
+    if name == "svc_create":
+        from core.v1.engine.services import create
+        return create
     raise AttributeError(f"module has no attribute '{name}'")
 ```

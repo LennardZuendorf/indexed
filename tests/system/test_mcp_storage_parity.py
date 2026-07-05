@@ -2,17 +2,8 @@
 
 import asyncio
 
-import pytest
-
-from indexed_config import ConfigService, ensure_storage_dirs, get_local_root
+from indexed_config import ensure_storage_dirs, get_local_root
 from indexed.runtime import resolve_collections_context
-
-
-@pytest.fixture(autouse=True)
-def reset_config_service():
-    ConfigService.instance(reset=True)
-    yield
-    ConfigService.instance(reset=True)
 
 
 def test_cli_local_and_mcp_lifespan_share_collections_path(tmp_path, monkeypatch):

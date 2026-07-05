@@ -140,15 +140,20 @@ connector = ConfluenceConnector(
 )
 ```
 
-### Using with Core Index
+### Using with Core (Factory API)
 
 ```python
-from core.v1 import Index
+from core.v1.engine.factories.create_collection_factory import create_collection_creator
 from connectors import FileSystemConnector
 
-index = Index()
 connector = FileSystemConnector(path="./docs")
-index.add_collection("my-docs", connector)
+creator = create_collection_creator(
+    collection_name="my-docs",
+    indexers=["indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"],
+    document_reader=connector.reader,
+    document_converter=connector.converter,
+)
+creator.run()
 ```
 
 ### Dynamic Connector Registry

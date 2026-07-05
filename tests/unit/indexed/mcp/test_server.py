@@ -12,8 +12,7 @@ import indexed.mcp.tools as tools_module
 import indexed.mcp.resources as resources_module
 from indexed.mcp.server import (
     mcp,
-    _get_mcp_config,
-    _get_search_config,
+    _get_config,
     lifespan,
 )
 
@@ -112,13 +111,13 @@ class TestConfigLoading:
     def test_get_mcp_config_returns_config(self) -> None:
         from core.v1.config_models import MCPConfig
 
-        config = _get_mcp_config()
+        config = _get_config(MCPConfig)
         assert isinstance(config, MCPConfig)
 
     def test_get_search_config_returns_config(self) -> None:
         from core.v1.config_models import CoreV1SearchConfig
 
-        config = _get_search_config()
+        config = _get_config(CoreV1SearchConfig)
         assert isinstance(config, CoreV1SearchConfig)
 
     def test_get_mcp_config_fallback_on_error(self) -> None:
@@ -126,7 +125,7 @@ class TestConfigLoading:
 
         with patch.object(server_module, "ConfigService") as mock_config:
             mock_config.instance.side_effect = Exception("Config error")
-            config = _get_mcp_config()
+            config = _get_config(MCPConfig)
             assert isinstance(config, MCPConfig)
 
     def test_get_search_config_fallback_on_error(self) -> None:
@@ -134,7 +133,7 @@ class TestConfigLoading:
 
         with patch.object(server_module, "ConfigService") as mock_config:
             mock_config.instance.side_effect = Exception("Config error")
-            config = _get_search_config()
+            config = _get_config(CoreV1SearchConfig)
             assert isinstance(config, CoreV1SearchConfig)
 
 
@@ -142,7 +141,7 @@ class TestSearchToolFunction:
     """Tests for the search tool underlying function."""
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_returns_results(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
@@ -207,7 +206,7 @@ class TestSearchToolFunction:
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_handles_error(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
@@ -230,7 +229,7 @@ class TestSearchCollectionToolFunction:
 
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_returns_results(
         self,
         mock_get_config: MagicMock,
@@ -282,7 +281,7 @@ class TestSearchCollectionToolFunction:
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_not_found(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -299,7 +298,7 @@ class TestSearchCollectionToolFunction:
 
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_handles_error(
         self,
         mock_get_config: MagicMock,
@@ -361,7 +360,7 @@ class TestCollectionsStatusListResourceFunction:
     """Tests for the collections_status_list resource underlying function."""
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collections_status_list_returns_details(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -393,7 +392,7 @@ class TestCollectionsStatusListResourceFunction:
         assert collections[0]["number_of_chunks"] == 500
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collections_status_list_handles_error(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -415,7 +414,7 @@ class TestCollectionStatusResourceTemplateFunction:
     """Tests for the collection_status resource template underlying function."""
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_returns_details(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -444,7 +443,7 @@ class TestCollectionStatusResourceTemplateFunction:
         assert result["number_of_documents"] == 50
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_not_found(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -460,7 +459,7 @@ class TestCollectionStatusResourceTemplateFunction:
         assert "not found" in result["error"]
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_handles_error(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -538,7 +537,7 @@ class TestResourceDispatch:
         assert "alpha" in result.contents[0].content
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_read_collections_status_static(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -564,7 +563,7 @@ class TestResourceDispatch:
         assert "alpha" in result.contents[0].content
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_read_single_collection_template(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -594,15 +593,19 @@ class TestResourceDispatch:
 class TestLifespan:
     """Tests for server lifespan context manager."""
 
-    @patch.object(server_module, "_get_mcp_config")
-    @patch.object(server_module, "_get_search_config")
-    def test_lifespan_yields_config(self, mock_get_search, mock_get_mcp) -> None:
+    @patch.object(server_module, "_get_config")
+    def test_lifespan_yields_config(self, mock_get_config: MagicMock) -> None:
         from core.v1.config_models import MCPConfig, CoreV1SearchConfig
 
         mock_mcp_config = MCPConfig()
         mock_search_config = CoreV1SearchConfig()
-        mock_get_mcp.return_value = mock_mcp_config
-        mock_get_search.return_value = mock_search_config
+
+        def _side_effect(model_cls: type) -> object:
+            if model_cls is MCPConfig:
+                return mock_mcp_config
+            return mock_search_config
+
+        mock_get_config.side_effect = _side_effect
 
         async def run_lifespan():
             async with lifespan(mcp) as state:
@@ -620,7 +623,7 @@ class TestContextHandling:
     """Tests for context handling in tools and resources."""
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_uses_lifespan_context_when_available(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:

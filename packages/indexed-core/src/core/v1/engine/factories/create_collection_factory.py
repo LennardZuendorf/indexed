@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any, Optional
 
-from indexed_config.errors import ConfigurationError
+from indexed_config.errors import missing_wiring_error
 
 from core.v1.engine.core.documents_collection_creator import (
     DocumentCollectionCreator,
@@ -61,9 +61,8 @@ def __create_collection_creator(
 
     if use_cache:
         if cache_decorator_factory is None:
-            raise ConfigurationError(
-                "cache_decorator_factory must be injected by the app layer when "
-                "use_cache=True; see indexed.bootstrap"
+            raise missing_wiring_error(
+                "cache_decorator_factory (required when use_cache=True)"
             )
         cache_disk_persister = DiskPersister(base_path=resolved_caches_path)
         result_document_reader = cache_decorator_factory(

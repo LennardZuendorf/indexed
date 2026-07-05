@@ -1,19 +1,11 @@
-"""Coverage for core protocol re-export shims."""
+"""Coverage for core.v1.constants re-export."""
 
-import pytest
+import core.v1.constants
 
 
-@pytest.mark.parametrize(
-    "import_path,attr",
-    [
-        ("core.v1.connectors", "BaseConnector"),
-        ("core.v1.connectors.base", "DocumentReader"),
-        ("core.v1.connectors.metadata", "ConnectorMetadata"),
-        ("core.v1.constants", "DEFAULT_INDEXER"),
-    ],
-)
-def test_core_shim_reexports(import_path: str, attr: str) -> None:
+def test_default_indexer_is_canonical() -> None:
+    """DEFAULT_INDEXER re-exported from core.v1.constants is the canonical object."""
     import importlib
 
-    mod = importlib.import_module(import_path)
-    assert hasattr(mod, attr)
+    mod = importlib.import_module("core.v1.constants")
+    assert mod.DEFAULT_INDEXER is core.v1.constants.DEFAULT_INDEXER

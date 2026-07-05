@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
-from indexed_config.errors import ConfigurationError
-from protocols import SourceConfig
+from indexed_config.service import ConfigService
+from protocols import BaseConnector, SourceConfig
 
 from core.v1.engine.persisters.disk_persister import DiskPersister
 
@@ -16,7 +16,7 @@ from .runtime import CliContext
 _OUTLINE_MODIFIED_SINCE_ENV = "INDEXED__sources__outline__modified_since"
 
 
-def make_connector_factory(ctx: CliContext) -> Callable[[SourceConfig], Any]:
+def make_connector_factory(ctx: CliContext) -> Callable[[SourceConfig], BaseConnector]:
     """Build connectors via bootstrap using context registry."""
     return lambda cfg: build_connector(cfg, ctx.config_service, ctx.connector_registry)
 
@@ -36,25 +36,12 @@ def _calculate_update_time(manifest: dict) -> datetime:
     )
 
 
-def _calculate_update_date(manifest: dict) -> datetime.date:
+def _calculate_update_date(manifest: dict) -> date:
     return _calculate_update_time(manifest).date()
 
 
 def _populate_jira_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    query_addition = f'AND (created >= "{update_date}" OR updated >= "{update_date}")'
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-
-
-def _populate_jira_cloud_config(
-    config_service: Any,
+    config_service: ConfigService,
     reader_config: dict,
     namespace: str,
     update_date: str,
@@ -67,25 +54,7 @@ def _populate_jira_cloud_config(
 
 
 def _populate_confluence_config(
-    config_service: Any,
-    reader_config: dict,
-    namespace: str,
-    update_date: str,
-) -> None:
-    query_addition = (
-        f'AND (created >= "{update_date}" OR lastModified >= "{update_date}")'
-    )
-    config_service.set(f"{namespace}.url", reader_config["baseUrl"])
-    config_service.set(
-        f"{namespace}.query", f"{reader_config['query']} {query_addition}"
-    )
-    config_service.set(
-        f"{namespace}.read_all_comments", reader_config.get("readAllComments", True)
-    )
-
-
-def _populate_confluence_cloud_config(
-    config_service: Any,
+    config_service: ConfigService,
     reader_config: dict,
     namespace: str,
     update_date: str,
@@ -103,7 +72,7 @@ def _populate_confluence_cloud_config(
 
 
 def _populate_outline_config(
-    config_service: Any,
+    config_service: ConfigService,
     reader_config: dict,
     namespace: str,
 ) -> None:
@@ -138,7 +107,7 @@ def _populate_outline_config(
 
 
 def _populate_local_files_config(
-    config_service: Any,
+    config_service: ConfigService,
     reader_config: dict,
     namespace: str,
 ) -> None:
@@ -153,7 +122,7 @@ def _populate_local_files_config(
 
 
 def populate_config_from_manifest(
-    config_service: Any,
+    config_service: ConfigService,
     manifest: dict,
     connector_type: str,
     namespace: str,
@@ -162,18 +131,10 @@ def populate_config_from_manifest(
     reader_config = manifest["reader"]
     update_date = _calculate_update_date(manifest).isoformat()
 
-    if connector_type == "jira":
+    if connector_type in ("jira", "jiraCloud"):
         _populate_jira_config(config_service, reader_config, namespace, update_date)
-    elif connector_type == "jiraCloud":
-        _populate_jira_cloud_config(
-            config_service, reader_config, namespace, update_date
-        )
-    elif connector_type == "confluence":
+    elif connector_type in ("confluence", "confluenceCloud"):
         _populate_confluence_config(
-            config_service, reader_config, namespace, update_date
-        )
-    elif connector_type == "confluenceCloud":
-        _populate_confluence_cloud_config(
             config_service, reader_config, namespace, update_date
         )
     elif connector_type == "localFiles":
@@ -188,7 +149,7 @@ def _connector_reader_converter_from_manifest(
     manifest: dict,
     connector_type: str,
     connector_cls: Any,
-    config_service: Any,
+    config_service: ConfigService,
 ) -> tuple[Any, Any]:
     import os
 
@@ -296,10 +257,3 @@ def wiring_kwargs_for_update(ctx: CliContext) -> dict[str, Any]:
         "manifest_connector_factory": make_manifest_connector_factory(ctx),
         "local_files_update_factory": make_local_files_update_factory(),
     }
-
-
-def missing_wiring_error(component: str) -> ConfigurationError:
-    return ConfigurationError(
-        f"{component} must be injected by the app layer; "
-        "see indexed.bootstrap.build_connector"
-    )

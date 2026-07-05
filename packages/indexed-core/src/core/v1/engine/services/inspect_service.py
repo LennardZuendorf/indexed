@@ -8,7 +8,6 @@ use cases.
 
 import json
 from typing import List, Optional, Dict
-from dataclasses import dataclass
 import os
 
 from loguru import logger
@@ -420,9 +419,3 @@ def inspect(
         include_index_size=include_index_size,
         progress_callback=progress_callback,
     )
-
-
-# DTO for injected config
-@dataclass
-class InspectArgs:
-    include_index_size: bool = False

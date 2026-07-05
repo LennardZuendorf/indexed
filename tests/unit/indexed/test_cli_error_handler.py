@@ -19,6 +19,7 @@ from indexed.errors import (
     format_cli_error,
     mcp_error_envelope,
 )
+from indexed.utils.components import get_error_style
 
 
 class TestErrorHelpers:
@@ -72,7 +73,7 @@ class TestMainErrorHandler:
         assert exc_info.value.exit_code == 2
         mock_console.print.assert_called_once_with(
             "invalid connector",
-            style=mock_console.print.call_args.kwargs["style"],
+            style=get_error_style(),
         )
 
     @patch("indexed.app.app")
@@ -92,7 +93,10 @@ class TestMainErrorHandler:
             main()
 
         assert exc_info.value.exit_code == 3
-        mock_console.print.assert_called_once()
+        mock_console.print.assert_called_once_with(
+            "storage unavailable",
+            style=get_error_style(),
+        )
 
     @patch("indexed.app.app")
     @patch("indexed.app.bootstrap_logging")

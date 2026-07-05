@@ -32,9 +32,7 @@ def test_create_collection_updater_local_files_with_factory(tmp_path) -> None:
 
     mock_reader = MagicMock()
     mock_converter = MagicMock()
-
-    def local_factory(m, name, persister):
-        return mock_reader, mock_converter, [], None
+    local_factory = MagicMock(return_value=(mock_reader, mock_converter, [], None))
 
     with patch(
         "core.v1.engine.factories.update_collection_factory.load_indexer"
@@ -45,7 +43,13 @@ def test_create_collection_updater_local_files_with_factory(tmp_path) -> None:
             collections_path=str(tmp_path),
             local_files_update_factory=local_factory,
         )
-    assert updater is not None
+
+    local_factory.assert_called_once()
+    call_args = local_factory.call_args
+    assert call_args[0][0]["reader"]["type"] == "localFiles"
+    assert call_args[0][1] == coll
+    assert updater.document_reader is mock_reader
+    assert updater.document_converter is mock_converter
 
 
 @pytest.mark.unit

@@ -1,12 +1,40 @@
+from typing import Any, ClassVar
+
 from protocols import BaseConnector, SourceConfig
-from connectors.jira.connector import JiraConnector
 
 
-def test_jira_connector_satisfies_base_connector_protocol():
-    assert isinstance(JiraConnector, type)
-    # runtime_checkable: instance check after from_config needs mock config — use META
-    assert hasattr(JiraConnector, "META")
-    assert BaseConnector.__name__ == "BaseConnector"
+class _MinimalConnector:
+    """Minimal stub that satisfies the BaseConnector protocol."""
+
+    META: ClassVar[Any] = None
+
+    @property
+    def reader(self):
+        return None
+
+    @property
+    def converter(self):
+        return None
+
+    @property
+    def connector_type(self) -> str:
+        return "minimal"
+
+    @classmethod
+    def config_spec(cls):
+        return {}
+
+    @classmethod
+    def from_config(cls, config_service):
+        return cls()
+
+
+def test_base_connector_protocol_conformance():
+    assert isinstance(_MinimalConnector(), BaseConnector)
+
+
+def test_non_conforming_object_fails_base_connector_check():
+    assert not isinstance(object(), BaseConnector)
 
 
 def test_source_config_accepts_jira_type():

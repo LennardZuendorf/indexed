@@ -32,51 +32,6 @@ uv pip install -e .
 
 ## Usage
 
-### Simple API (Index Class)
-
-The `Index` class provides a clean, high-level interface:
-
-```python
-from core.v1 import Index
-from connectors import FileSystemConnector, JiraCloudConnector
-
-# Create index
-index = Index()
-
-# Add a file system collection
-files = FileSystemConnector(path="./docs")
-index.add_collection("docs", files)
-
-# Add a Jira collection
-jira = JiraCloudConnector(
-    url="https://company.atlassian.net",
-    query="project = PROJ",
-    email="user@example.com",
-    api_token="token",
-)
-index.add_collection("jira-issues", jira)
-
-# Search across all collections
-results = index.search("How do I configure authentication?")
-
-# Search specific collection
-results = index.search("bug in login", collection="jira-issues", max_results=5)
-
-# Update collections
-index.update("docs")  # Update specific collection
-index.update()        # Update all collections
-
-# Check status
-all_status = index.status()
-docs_status = index.status("docs")
-print(f"Documents: {docs_status.number_of_documents}")
-print(f"Chunks: {docs_status.number_of_chunks}")
-
-# List and remove collections
-print(index.list_collections())
-index.remove("old-collection")
-```
-
 ### Service Layer API
 
 For more control, use the service layer directly:
@@ -140,11 +95,6 @@ creator.run()
 indexed-core/
 ├── src/core/
 │   └── v1/
-│       ├── index.py              # High-level Index class
-│       ├── connectors/           # Connector protocol definitions
-│       │   ├── base.py          # BaseConnector protocol
-│       │   └── metadata.py      # Connector metadata
-│       │
 │       └── engine/
 │           ├── core/            # Document processing
 │           │   ├── documents_collection_creator.py
@@ -172,7 +122,7 @@ indexed-core/
 
 ### Connector Protocol
 
-All document sources implement the `BaseConnector` protocol:
+All document sources implement the `BaseConnector` protocol (defined in the `indexed-protocols` package):
 
 ```python
 from typing import Protocol
