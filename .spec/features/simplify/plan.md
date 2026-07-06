@@ -73,7 +73,12 @@ Every unit below cites the R-IDs it satisfies. Do not renumber R-IDs.
    symbol deleted in simplify/2 and every test deleted in simplify/5 is gated on
    a behavior/system/characterization test still covering that behavior. The
    suite stays green *between* deletion categories, not just at the end — a
-   deletion that reddens the suite has removed behavior, not dead weight.
+   deletion that reddens the suite has removed behavior, not dead weight. NOTE:
+   the brittle mechanism tests (shims, protocol stubs, registry-membership,
+   call-shape) were already pruned in **`foundation`'s altitude pass** — which
+   runs before any refactor precisely so those tests don't fight the collapse. This
+   feature only removes tests that die WITH deleted code (simplify/2) and the
+   bulk chrome-rendering tests (simplify/5).
 3. **Architecture-first, then collapse (user decision, 2026-07-06).** The
    `foundation` architecture (facade, typed contracts, corrected wiring) lands
    in the *current* seven-package coordinates; the workspace collapse
@@ -139,15 +144,20 @@ unchanged (no runtime code touched).
 
 ---
 
-### simplify/2 — Dead code + mechanism-test deletion
+### simplify/2 — Dead code deletion (+ paired tests)
 
-**Goal:** Delete every zero-second-implementation symbol and its mechanism
-tests, in the current seven-package tree, suite green between categories.
+**Goal:** Delete every zero-second-implementation symbol, in the current
+seven-package tree, suite green between categories — and with each symbol delete
+the tests that existed only to exercise it (they die WITH their code). The
+standalone brittle mechanism tests (shims, protocol stubs, registry-membership,
+call-shape) were already pruned in **`foundation`'s altitude pass**; this unit
+does NOT re-hunt them — it only removes tests paired with the dead code it
+deletes here.
 
 **Requirements:** R2, R4
 
-**Dependencies:** — (requires the `foundation` harness to cover surviving
-behavior — a cross-feature gate satisfied by the feature gate above)
+**Dependencies:** — (whole-feature gate: `foundation` DONE — its harness and
+altitude prune already in place; no unit-level edge)
 
 **Files:** (see the DELETE-LIST in [tech.md](tech.md))
 
@@ -160,7 +170,7 @@ packages/indexed-core/.../documents_collection_creator.py             # multi-in
 packages/indexed-core/.../ (updating-creator wrapper)                 # _UpdatingCollectionCreator, get_raw() alias
 packages/indexed-connectors/src/connectors/confluence/confluence_cloud_document_reader.py  # DELETE (293), sync, never instantiated
 packages/indexed-core/.../progress (PhasedProgressCallback path)      # collapse two progress systems to one
-tests/**                                                              # test_core_shims.py, 4× registry test_init clones, protocol-stub tests
+tests/**                                                              # ONLY tests paired with the code deleted above (e.g. the SearchArgs / indexer-registry / dead-reader tests). The shim/protocol-stub/registry-membership tests already went in the foundation altitude pass.
 ```
 
 **Test scenarios:**
@@ -239,28 +249,33 @@ empty.
 
 ---
 
-### simplify/5 — Test right-sizing + coverage rescope
+### simplify/5 — Residual test size cleanup + coverage rescope
 
-**Goal:** Delete the remaining mechanism tests (Rich-markup rendering, migration,
-protocol stubs), rescope coverage to core/connectors/config with UI exempt, hit
-the ≤~8k test-LOC target.
+**Goal:** The two altitude passes already happened — `foundation` pruned the
+brittle mechanism tests, and simplify/2/4 deleted tests paired with removed code
+(migration, dead readers, chrome). This unit does the RESIDUAL size-driven
+cleanup only: delete the bulk UI/Rich-component rendering tests (~3.8k LOC) that
+test chrome, rescope the coverage gate to core/connectors/config with the CLI/MCP
+UI exempt, and confirm the ≤~8k test-LOC target. No behavior net is touched — the
+foundation harness stays intact.
 
 **Requirements:** R4
 
-**Dependencies:** simplify/3
+**Dependencies:** simplify/3, simplify/4
 
 **Files:**
 
 ```
-tests/**                                    # DELETE Rich-markup tests (~3.8k), migration tests, stub tests
+tests/**                                    # DELETE the ~3.8k LOC of Rich-component/markup rendering tests (chrome)
 pyproject.toml / .coveragerc                # scope coverage to core/connectors/config; exempt cli/mcp UI
 ```
 
 **Test scenarios:**
 
-- A no-op internal rename leaves the suite green (no structural assertions left).
+- A no-op internal rename leaves the suite green (no structural assertions left —
+  they were removed in the `foundation` altitude pass).
 - Coverage gate on core/connectors/config stays ≥85%.
-- Test corpus reduced toward ≤~8k LOC.
+- Test corpus reduced to ≤~8k LOC; the foundation characterization net remains.
 
 **Verification:** `uv run pytest -q --cov` green ≥85% on scoped packages;
 `find tests -name '*.py' | xargs wc -l` total trends to target; rename-smoke
@@ -304,8 +319,8 @@ AGENTS.md                                       # final ≤100-line contract ref
 | simplify/1 | — | — |
 | simplify/2 | simplify/3 | — (foundation harness, via feature gate) |
 | simplify/3 | simplify/4, simplify/5 | simplify/2 |
-| simplify/4 | simplify/6 | simplify/3 |
-| simplify/5 | simplify/6 | simplify/3 |
+| simplify/4 | simplify/5, simplify/6 | simplify/3 |
+| simplify/5 | simplify/6 | simplify/3, simplify/4 |
 | simplify/6 | — | simplify/4, simplify/5 |
 
 Same-feature dependencies only. The cross-feature gate (`foundation` DONE) is a

@@ -102,14 +102,19 @@ deleted here.
 | Sync confluence-cloud reader | `connectors/confluence/confluence_cloud_document_reader.py` | 293 | never instantiated; async reader borrows only its static helpers |
 | Two-progress-callback system | core/CLI progress (`ProgressCallback` + `PhasedProgressCallback`) | — | collapse to the one `foundation` progress protocol; drop magic phase-string coupling |
 
-## DELETE-LIST (mechanism tests — simplify/2 + simplify/5)
+## DELETE-LIST (tests — split across foundation/1, simplify/2, simplify/5)
 
-- `tests/**/test_core_shims.py` — tautological re-export shim test.
-- 4× registry-membership `test_init.py` clones — assert registry contents.
-- Protocol-conformance stub tests — assert a stub implements a protocol.
-- ~3,770 LOC of Rich-component markup tests — assert rendered markup strings.
-- 632 LOC testing `migration.py` — tests of one-time legacy code (deleted with
-  `migration.py` in simplify/4).
+The brittle *mechanism* tests are pruned earlier, in **foundation/1**'s altitude
+pass, so they don't fight the collapse/contract work — this feature does not
+re-hunt them. Listed here for provenance:
+
+- `tests/**/test_core_shims.py` — tautological re-export shim test. → **foundation/1**
+- 4× registry-membership `test_init.py` clones — assert registry contents. → **foundation/1**
+- Protocol-conformance stub tests — assert a stub implements a protocol. → **foundation/1**
+- Tests paired with code deleted in simplify/2 (SearchArgs, indexer-registry/
+  factory, dead confluence sync reader, `CONFIG_REGISTRY`/`get_config_class`). → **simplify/2** (die with the code)
+- 632 LOC testing `migration.py` — one-time legacy code, dies with `migration.py`. → **simplify/4**
+- ~3,770 LOC of Rich-component markup tests — assert rendered chrome markup. → **simplify/5** (residual size cleanup)
 
 Deletion is category-at-a-time with `uv run pytest -q` green between categories;
 any test that reddens the suite pinned behavior and stays. Keep: behavior,

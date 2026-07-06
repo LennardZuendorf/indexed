@@ -37,12 +37,14 @@ search data path silently truncates most content, a deletions-only update
 orphans on-disk FAISS vectors, `config set null` truncates `config.toml` to zero
 bytes, secrets leak into TOML, missing collections crash with tracebacks, and
 the "contracts" between layers are untyped dicts and a protocol no caller uses.
-None of these can be safely refactored without a behavior net first, so
-foundation/1 builds characterization tests that assert end-to-end behavior, then
-gates every subsequent unit. Bug batches run before the structural work so their
-diffs stay small and bisectable; typed contracts and the facade come last because
-they touch the widest surface and the harness must already prove behavior is
-preserved. The chunker contract is co-designed across foundation/2 (behavioral
+None of these can be safely refactored without first getting the test suite to
+the right altitude, so foundation/1 both **adds** a coarse behavior net (green
+characterization + red bug-specs) and **prunes** the brittle mechanism tests
+that would fight the refactor without catching regressions — then gates every
+subsequent unit. Bug batches run before the structural work so their diffs stay
+small and bisectable (and they turn the red bug-specs green); typed contracts and
+the facade come last because they touch the widest surface and the net must
+already prove behavior is preserved. The chunker contract is co-designed across foundation/2 (behavioral
 fix) and foundation/7 (typed model) — the fix ships first, the model finalizes it.
 
 ---
@@ -68,31 +70,46 @@ other unit prove it does.
 
 ## Key Technical Decisions
 
-1. **Harness first, gate everything.** foundation/1 builds behavior/
-   characterization tests (create→search→update→inspect→remove per source, one
-   MCP stdio smoke, one config round-trip) before any fix or refactor. It is a
-   dependency of all of foundation/2–9. A refactor unit is not startable until
-   the harness covers the behavior it touches. This is the safety net that makes
-   the rest bisectable.
-2. **Architecture in the current 7-package layout** (user decision 2026-07-06).
+1. **Get the suite to the right altitude first — ADD then PRUNE.** foundation/1
+   does two things before any fix or refactor, in this order: (a) **add** a
+   coarse behavior net (create→search→update→inspect→remove per source, MCP
+   smoke, config round-trip) plus red bug-specs for the known defects; (b)
+   **prune** the brittle mechanism tests the net now covers — the
+   import-structure / registry-membership / call-shape tests that will break en
+   masse on the typed-contract, facade, and (later) collapse work without
+   catching a real regression. Order is load-bearing: prune only what the net
+   already covers, never prune-first (that leaves a blind coverage hole). It is a
+   dependency of all of foundation/2–9; a refactor unit is not startable until
+   the net covers the behavior it touches. This is what makes the rest bisectable
+   instead of drowned in mechanism-test noise.
+2. **The net is two distinct kinds of test.** *Characterization* tests pin
+   current **correct** behavior and stay green through every refactor (the net
+   proper). *Red bug-specs* assert the **desired** behavior of the known defects
+   (large-doc fully searchable, delete-then-search consistent, `config set null`
+   safe) — they are red the moment they're written and turn green as
+   foundation/2–6 land. This prevents the classic trap of "characterizing" the
+   buggy behavior and locking it in, and makes the same harness serve as both the
+   refactor net and the bug-fix regression suite.
+3. **Architecture in the current 7-package layout** (user decision 2026-07-06).
    Typed contracts (foundation/7) and the facade + composition module
    (foundation/8) land in today's `packages/*` / `apps/indexed` coordinates. The
    workspace collapse to a single package is deferred to Feature `simplify` — the
    accepted cost is that this architecture lands in old coordinates and then
    moves, mitigated by `git mv` + the harness in `simplify`.
-3. **Two required injected callables replace the `| None` soup.** The four
+4. **Two required injected callables replace the `| None` soup.** The four
    injected `Callable | None` params with runtime `missing_wiring_error` guards
    (`documents_collection_creator` DI, per research.md § Rotten foundations #5)
    collapse to two **required** callables passed by the composition module. No
    optional wiring, no runtime "must be injected by the app layer" guard on the
    happy path.
-4. **Disk format is the compatibility boundary, not Python APIs.** Typed models
+5. **Disk format is the compatibility boundary, not Python APIs.** Typed models
    round-trip today's camelCase collection JSON byte-stable; existing collections
    never re-index. This is what makes a v2 engine a drop-in behind the same
    facade over the same on-disk format.
-5. **Bug batches are parallel and independently verifiable.** foundation/2–6
-   each carry their own regression tests and can be worked in any order once
-   foundation/1 lands; none depends on another.
+6. **Bug batches are parallel and independently verifiable.** foundation/2–6
+   each carry their own regression tests (they turn the red bug-specs from
+   foundation/1 green) and can be worked in any order once foundation/1 lands;
+   none depends on another.
 
 ---
 
@@ -103,11 +120,17 @@ and tests, e.g. `fix(core): foundation/3 persist faiss on deletions-only`.
 
 ---
 
-### foundation/1 — Behavior & characterization test harness
+### foundation/1 — Test altitude: behavior net + prune brittle mechanism tests
 
-**Goal:** Build the end-to-end safety net that asserts BEHAVIOR (not internals)
-and gates every refactor unit, so the fixes and the structural work that follow
-are provably behavior-preserving.
+**Goal:** Get the suite to the right altitude *before* any fix or refactor.
+Two ordered moves: **(a) ADD** a coarse behavior net — green characterization
+tests (assert current CORRECT behavior, stay green through every refactor) plus
+red bug-specs (assert DESIRED behavior of the known defects, red until
+foundation/2–6 fix them). **(b) PRUNE** the brittle mechanism tests the net now
+covers — the ones that would break en masse on the contract/facade/collapse work
+without catching a real regression. Prune ONLY what the net covers; never
+prune-first. This is the safety net *and* the bug-fix regression suite, and it
+stops mechanism-test noise from drowning real breaks in units 2–9.
 
 **Requirements:** R1–R7 (enabling)
 
@@ -116,12 +139,17 @@ are provably behavior-preserving.
 **Files:**
 
 ```
-tests/characterization/**            # new: behavior-asserting E2E tests
+tests/characterization/**            # new/grow: behavior-asserting E2E net (green)
+tests/characterization/test_known_bugs.py  # new: red bug-specs (turn green in 2–6)
 tests/system/**                      # grow: MCP stdio smoke, config round-trip
 tests/conftest.py                    # shared fixtures, stubbed HTTP for cloud sources
+tests/unit/**                        # DELETE brittle mechanism tests the net covers
+                                     #   (registry-membership test_init.py clones,
+                                     #    test_core_shims.py, protocol-stub tests,
+                                     #    import-structure/call-shape assertions)
 ```
 
-**Test scenarios:**
+**Test scenarios (the green net):**
 
 - Per source, a full lifecycle: create → search (assert a known document is the
   top hit, not just "no error") → incremental update → inspect → remove. Files
@@ -132,10 +160,22 @@ tests/conftest.py                    # shared fixtures, stubbed HTTP for cloud s
   seeded collection.
 - One `config get`/`set` round-trip through the real store.
 
-**Verification:** `uv run pytest -q tests/characterization tests/system` green;
-tests fail if a known hit stops being returned or a lifecycle step regresses
-(prove by temporarily breaking a step). Use `tmp_path`; never touch real
-`~/.indexed/`.
+**Red bug-specs (must exist, must be RED on landing):** large document is fully
+searchable (not truncated at 256 tokens); delete-then-search leaves no orphaned
+FAISS ids (no `KeyError`); `config set <k> null` leaves `config.toml` intact;
+secret set routes to `.env` not TOML; missing collection → clean error + non-zero
+exit; markup-injection query does not crash. Each maps to a foundation/2–6 fix.
+
+**Prune criterion:** delete a mechanism test only when a green net test asserts
+the same observable behavior; if nothing covers it and it looks real, keep it
+(it becomes a net test instead). Deletion of tests paired with dead *code* is NOT
+in scope here — that happens with the code in `simplify`.
+
+**Verification:** `uv run pytest -q tests/characterization tests/system` — net
+green (prove by temporarily breaking a lifecycle step); `test_known_bugs.py` runs
+RED (the count of red specs equals the known-bug count, documented in the commit);
+full `uv run pytest -q` still green after the mechanism-test prune (no coverage
+hole). Use `tmp_path`; never touch real `~/.indexed/`.
 
 ---
 
