@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-05
+updated: 2026-07-06
 ---
 
 # Development Plan: indexed
@@ -39,6 +39,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
 | 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `packages/indexed-protocols/`, `apps/indexed/.../bootstrap.py`, `runtime.py`, `scripts/check_import_graph.py` |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
+| 13 | Right-sizing | single package, typed contracts, read-mostly config, honest failures, CLI/tests/process shrunk — all 9 requirements green | 📋 PLANNED | [features/right-sizing/](features/right-sizing/) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -56,8 +57,13 @@ import-graph CI gate. Unblocks v2 core/connectors rewrite.
 
 ## Current Focus
 
-**v2 core/connectors rewrite** — scaffold on the clean graph delivered by Feature 11.
-Scope as a separate feature when ready. Issue #119 (thin commands) remains deferred.
+**Feature 13: Right-sizing** — the 2026-07-06 full audit found ~3k LOC of good
+engine carrying ~18k LOC of packaging/wiring/chrome plus live bugs (dead exit
+codes, unreachable MCP envelope, config.toml mutated at runtime). Right-size
+first ([features/right-sizing/](features/right-sizing/)); the **v2
+core/connectors rewrite** is gated on Feature 13 DONE and then swaps a module
+behind the core facade instead of untangling a workspace. Issue #119 (thin
+commands) is absorbed by right-sizing/6.
 
 ---
 
@@ -76,6 +82,18 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-06: Right-sizing over rewrite-first
+**Decision:** Run a full fresh audit (main + app-layer + packages-layer +
+adversarial overengineering passes); verdict: engine bones are good, the
+exoskeleton is oversized and parts of the foundation are rotten (runtime
+config writes, untyped dict contracts, fictional protocols, dead exit codes,
+unreachable MCP envelope). Scope Feature 13 (right-sizing, 8 units) and gate
+the v2 rewrite on it. Evidence: [features/right-sizing/research.md](features/right-sizing/research.md).
+**Rationale:** A 3-star personal project doesn't need a 7-package workspace,
+1.17× tests-to-source, or 15k LOC of process apparatus; a v2 built on stringly
+dict contracts would re-rot. Typed contracts + one facade make the core swap
+cheap and safe.
 
 ### 2026-07-05: Audit remediation
 **Decision:** Cleaned the residue the architecture-audit branch left on Feature 11
