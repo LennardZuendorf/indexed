@@ -169,6 +169,41 @@ A slim import check enforces these three edges in CI.
 
 ---
 
+### Requirement: R10 — Data-path correctness
+
+The 2026-07-06 deep hunt ([research.md](research.md) § Correctness bugs) found
+the search data path silently discards most content and two reproduced
+corruption paths. Before or alongside the structural work, the system SHALL:
+chunk documents to the embedder's real token window (no silent truncation);
+persist the FAISS index on every mutating operation including deletions-only;
+never destroy the user's `config.toml` or leak secrets into it; and fail
+loudly (documented error, non-zero exit) on missing/corrupt collections instead
+of crashing or reporting success.
+
+#### Scenario: Large document is fully searchable
+
+- **Given** a 5,000-token document with no headings
+- **When** it is indexed and a query matches text near its end
+- **Then** that text is embedded in its own chunk and is findable (not truncated away)
+
+#### Scenario: Delete-then-search stays consistent
+
+- **Given** a collection, one document deleted via incremental update
+- **When** any subsequent query runs
+- **Then** the on-disk FAISS index and mapping agree — no `KeyError`, no whole-collection error
+
+#### Scenario: Config edits are safe and private
+
+- **Given** any `indexed config set` (including `... null` and a secret field)
+- **When** it runs
+- **Then** `config.toml` is never truncated/destroyed and secrets are routed to `.env`, not written or echoed in plaintext
+
+#### Scenario: Missing collection fails cleanly
+
+- **Given** a nonexistent or corrupt collection name
+- **When** `search`/`update`/`inspect` target it
+- **Then** the user sees a "not found"-class error and a non-zero exit — never a traceback or a success exit
+
 ## Non-Goals
 
 - Rewriting the engine (v2 is its own future feature; this feature is the ground-clearing for it).

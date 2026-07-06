@@ -8,8 +8,10 @@ updated: 2026-07-06
 
 # Feature: Right-Sizing — Implementation Plan
 
-Eight units: fix broken behavior on the old tree first (small, safe diffs),
-then one mechanical workspace collapse, then semantic shrinks in final
+Nine units. Unit 0 (critical correctness fixes) ships first and stands alone —
+it repairs the reproduced corruption/data-loss/secret/recall bugs the deep hunt
+found, valuable even if the collapse never happens. Then: fix remaining broken
+behavior, one mechanical workspace collapse, semantic shrinks in final
 coordinates, tests and process last. Each unit leaves the suite green and the
 CLI/MCP usable — no long-lived broken states.
 
@@ -46,6 +48,7 @@ after unit 2 is reviewed against the final layout.
 | R7 | [Tests assert behavior](product.md#requirement-r7--tests-assert-behavior) | right-sizing/7 |
 | R8 | [Right-sized process](product.md#requirement-r8--right-sized-process) | right-sizing/8 |
 | R9 | [Core swap seam preserved](product.md#requirement-r9--core-swap-seam-preserved) | right-sizing/2, right-sizing/3, right-sizing/5 |
+| R10 | [Data-path correctness](product.md#requirement-r10--data-path-correctness) | right-sizing/0 (+ chunker contract lands in right-sizing/3) |
 
 ---
 
@@ -69,6 +72,74 @@ after unit 2 is reviewed against the final layout.
 
 Units are `right-sizing/n`, assigned once, never renumbered. Cite in commits:
 `refactor: right-sizing/2 collapse workspace`.
+
+---
+
+### right-sizing/0 — Critical correctness fixes (ship first, independent of the collapse)
+
+**Goal:** Stop the bleeding. Fix the reproduced corruption/data-loss/secret/
+crash bugs from the deep hunt — these hurt the author *today* and are
+independent of the structural work, so they ship first on the current tree (or
+cherry-pick to a patch release). Full evidence + line refs:
+[research.md](research.md) § Correctness bugs.
+
+**Requirements:** R10 (+ R3 secret/destroy items)
+
+**Dependencies:** —
+
+**Batches (each independently verifiable):**
+
+```
+A. Search recall (the product is broken):
+   - parsing: replace HierarchicalChunker with a token-aware chunker (HybridChunker
+     or a size-bounded splitter); make max_tokens actually bound chunk size;
+     honor the embedder's max_seq_length (256). Fixes bugs #1,#3,#4.
+   - core: code_chunker slice by the byte buffer, not the decoded str (#2).
+   - core: raise max_chunks independently of max_docs; backfill after score
+     filter so max_docs is honored (#5). Fix score_threshold scale+range+desc (#6).
+B. Corruption / destruction:
+   - core: persist FAISS in the deletions-only + explicit-deletions paths (#7).
+   - core: guard zero-chunk batches in embedder + faiss_indexer (#9).
+   - config: atomic write (tmp→fsync→rename) + reject unserializable values
+     BEFORE truncating; this alone kills `config set null` file-loss (#8).
+C. Secrets:
+   - config CLI: route sensitive fields through set_value/.env; mask in inspect;
+     stop echoing (#11). Don't bake INDEXED__* overrides into save_raw (#11).
+   - connectors: fix _url_guard to parse authority the way the HTTP client does
+     (or strip credentials on off-origin) (#12); .env writer quotes values (#31).
+D. Connector content loss:
+   - Jira/Confluence async readers: follow_redirects=True, don't raise on 3xx (#13).
+   - git change-tracker: compare stored content hashes; unquote git C-quoted
+     paths (#14). ADF/storage-format: keep mention/link/media/image text (#15).
+E. Fail-loud + honest CLI:
+   - InspectService omits (not zero-fills) missing collections; callers error
+     with non-zero exit (#19,#22). Escape/disable Rich markup on user/content
+     strings (#23). Stop resetting the logger to WARNING (#24). Don't persist
+     create overrides before success; normalize/validate paths; strip+normalize
+     URLs for cloud detection (#25,#26,#27,#29). update: don't abort the loop,
+     set exit code on failure (#28).
+F. MCP:
+   - remove/relax ResponseCachingMiddleware or add invalidation (#17). Surface
+     per-collection errors instead of dropping them (#18,#21).
+G. Config wiring truth:
+   - register storage under the path the CLI reads, or read what's registered;
+     delete or wire the dead indexing/embedding/storage sections; unify batch
+     size; make CLI honor [core.v1.search] or stop templating it (#20).
+```
+
+**Test scenarios:** one regression test per R10 scenario (large-doc recall,
+delete-then-search, `config set null` leaves file intact, secret→.env not TOML,
+missing collection → clean error + non-zero exit); markup-injection query;
+`--verbose` actually verbose; Jira Cloud attachment indexed against a stub 302.
+
+**Verification:** `uv run pytest -q` green with the new regression tests; manual
+repro of each reproduced bug now passing; `sha256(config.toml)` stable across a
+failing `config set`.
+
+**Note:** batch A's chunker change defines the document/chunk contract, so its
+*final* form lands with the typed models in right-sizing/3 — but the behavioral
+fix ships here first. Everything in unit 0 is valuable even if the collapse
+never happens.
 
 ---
 
@@ -321,6 +392,7 @@ global path) 0 errors on `.spec/`.
 
 | Unit | Blocks | Blocked by |
 |---|---|---|
+| right-sizing/0 | — (independent; chunker contract informs 3) | — |
 | right-sizing/1 | 2 | — |
 | right-sizing/2 | 3 | 1 |
 | right-sizing/3 | 4, 5, 6 | 2 |
@@ -338,6 +410,7 @@ Units 4/5/6 are independent of each other and may run in any order or parallel.
 
 | Unit | Status |
 |---|---|
+| right-sizing/0 | NOT STARTED |
 | right-sizing/1 | NOT STARTED |
 | right-sizing/2 | NOT STARTED |
 | right-sizing/3 | NOT STARTED |
