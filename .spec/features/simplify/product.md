@@ -99,17 +99,21 @@ size target.
 
 ### Requirement: Right-sized process apparatus
 
-The system SHALL consolidate the seven per-package `AGENTS.md` files into one
-root `AGENTS.md` of at most 100 lines, unvendor the checked-in agent skills so
-they install from a lockfile, and trim CI to lint, type-check, test,
-import-check, and wheel-smoke with benchmarks moved to an on-demand workflow.
+The system SHALL consolidate the seven real `AGENTS.md` files (root + six
+per-package) into one root `AGENTS.md` of at most 100 lines, unvendor the
+checked-in agent skills so they install from a lockfile, and trim CI to lint,
+type-check, test, import-check, and wheel-smoke with benchmarks moved to an
+on-demand workflow. The by-design `CLAUDE.md`/`WARP.md` symlinks (multi-tool
+compatibility) SHALL be preserved on the surviving root file, not treated as
+duplication to remove.
 
 #### Scenario: One AGENTS.md
 
 - **Given** the collapsed repository
 - **When** the repository tree is inspected for engineering-contract docs
-- **Then** exactly one `AGENTS.md` exists at the root (≤100 lines), no vendored
-  skill tree is checked in, and CI runs only the trimmed gate set
+- **Then** exactly one real `AGENTS.md` exists at the root (≤100 lines) with its
+  `CLAUDE.md`/`WARP.md` symlinks intact, no vendored skill tree is checked in,
+  and CI runs only the trimmed gate set
 
 ---
 

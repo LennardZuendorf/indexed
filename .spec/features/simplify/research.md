@@ -34,8 +34,14 @@ config 1.6k) + ~25k tests + ~15k process apparatus.
 
 - **9 `pyproject.toml`** total — 8 project files (root + `apps/indexed` + 6
   `packages/*`) + 1 vendored `pandas` under `.venv`. Target: **1**.
-- **14 contract docs** — `AGENTS.md` + `CLAUDE.md` twins under root,
-  `apps/indexed`, and 5 `packages/*`. Target: **1 `AGENTS.md` ≤100 lines**.
+- **7 real `AGENTS.md`** (524 lines: root 271 + `apps/indexed` 49 + 5
+  `packages/*` 32–47). The `CLAUDE.md`/`WARP.md` alongside each are **symlinks
+  to the sibling `AGENTS.md`** — a deliberate multi-tool-compat pattern (Claude
+  Code reads `CLAUDE.md`, Warp `WARP.md`, others `AGENTS.md`) with zero
+  duplicated content; **keep the pattern, don't count it as bloat**. Target:
+  **1 real `AGENTS.md` ≤100 lines at root**, with its `CLAUDE.md`/`WARP.md`
+  symlinks retained; delete the 6 per-package real `AGENTS.md` (and their
+  now-dangling symlinks).
 - `una` wired in root `pyproject.toml` at `[tool.una]` (line 108) and
   `una>=0.7.0` dependency (line 123). Target: **removed**.
 - `scripts/sync_version.py` and `scripts/check_import_graph.py` present. Target:
@@ -67,7 +73,8 @@ config 1.6k) + ~25k tests + ~15k process apparatus.
 
 - `.agents/skills/` vendored tree — ~12,592 LOC; unvendor, install via
   `skills-lock.json`.
-- 14 `AGENTS.md`/`CLAUDE.md` → one root `AGENTS.md` ≤100 lines.
+- 7 real `AGENTS.md` (524 lines) → one root `AGENTS.md` ≤100 lines; keep the
+  root `CLAUDE.md`/`WARP.md` symlinks (multi-tool compat, by design).
 - 8 project `pyproject.toml` + `una` + `sync_version.py` → one build.
 - CI → lint + mypy + test + import-check + wheel-smoke; benchmarks on-demand.
 

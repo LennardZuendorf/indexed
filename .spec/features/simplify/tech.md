@@ -42,9 +42,11 @@ tests/                            # behavior + system + benchmarks + foundation 
 AGENTS.md                         # the only one, ≤100 lines
 ```
 
-Today (verified): 9 `pyproject.toml` (8 project + 1 pandas in `.venv`), 14
-`AGENTS.md`/`CLAUDE.md` under `packages/*`, `apps/indexed`, and root. Target: one
-`pyproject.toml`, one `AGENTS.md`.
+Today (verified): 9 `pyproject.toml` (8 project + 1 pandas in `.venv`); 7 real
+`AGENTS.md` (root + `apps/indexed` + 5 `packages/*`, 524 lines) each with a
+`CLAUDE.md`/`WARP.md` symlink beside it (multi-tool compat, by design — not
+duplicated content). Target: one `pyproject.toml`, one root `AGENTS.md` (its
+`CLAUDE.md`/`WARP.md` symlinks kept).
 
 ## Module edges (replace the workspace + import-graph apparatus)
 
@@ -149,8 +151,11 @@ Rich-markup *tests* go with them (simplify/5). Rendering/escaping correctness is
   (`.agents/` measures 10,885 LOC of `.md`/`.py`/`.sh` in the current tree),
   larger than core+config+connectors combined. Delete it; install via
   `skills-lock.json`.
-- **One `AGENTS.md`** — absorb the 7 per-package `AGENTS.md` (+ their `CLAUDE.md`
-  twins) into a single root `AGENTS.md` ≤100 lines.
+- **One `AGENTS.md`** — absorb the 6 per-package real `AGENTS.md` (`apps/indexed`
+  + 5 `packages/*`) into the root `AGENTS.md` ≤100 lines, and delete their
+  dangling `CLAUDE.md` symlinks. **Keep** the root `CLAUDE.md`/`WARP.md`
+  symlinks → `AGENTS.md`: that multi-tool-compat pattern is deliberate, it just
+  applies to one file now instead of seven.
 - **CI trim** — reduce to lint (ruff) + type-check (mypy) + test (pytest) +
   import-check (`check_imports.py`) + wheel-smoke (clean-venv `--help`); move
   benchmarks to an on-demand workflow.

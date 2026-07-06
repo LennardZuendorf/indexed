@@ -36,7 +36,8 @@ source, 1,410 test functions), a large fraction asserting mechanism (registry
 membership, shims, protocol stubs, ~3,770 LOC of Rich-markup tests, 632 LOC on
 one-time `migration.py`). The process apparatus is another ~15k: `.agents/`
 vendored skills alone are 12,592 LOC — larger than core+config+connectors
-combined — plus fourteen `AGENTS.md`/`CLAUDE.md` files and eight per-package
+combined — plus 7 real `AGENTS.md` (524 lines; the `CLAUDE.md`/`WARP.md`
+alongside are by-design symlinks, kept) and eight per-package
 `pyproject.toml`s under a `una` bundler. `config/cli.py` is 1,959 LOC (bigger
 than the whole config package it fronts); `create.py` is 992 LOC of four
 ~230-line clones. None of this is behavior — it is generality with no second
@@ -103,8 +104,9 @@ commits and tests during impl (`refactor(simplify): simplify/3 ...`).
 ### simplify/1 — Process apparatus reduction
 
 **Goal:** Shrink the engineering apparatus with zero runtime-code change:
-unvendor the checked-in agent skills, collapse fourteen contract docs to one
-root `AGENTS.md`, trim CI.
+unvendor the checked-in agent skills, collapse the 7 real `AGENTS.md` (524
+lines) to one root file (keeping its by-design `CLAUDE.md`/`WARP.md` symlinks),
+trim CI.
 
 **Requirements:** R5
 
@@ -116,20 +118,24 @@ root `AGENTS.md`, trim CI.
 .agents/skills/**                          # DELETE vendored tree (~12.6k LOC), install via skills-lock.json
 skills-lock.json                           # ensure it pins the unvendored skills
 AGENTS.md                                   # rewrite as the ONE contract, ≤100 lines
-packages/*/AGENTS.md packages/*/CLAUDE.md   # DELETE (absorb into root)
-apps/indexed/AGENTS.md apps/indexed/CLAUDE.md  # DELETE (absorb into root)
+CLAUDE.md WARP.md                            # KEEP as symlinks → AGENTS.md (multi-tool compat, by design)
+packages/*/AGENTS.md apps/indexed/AGENTS.md  # DELETE the 6 per-package real files (absorb into root)
+packages/*/CLAUDE.md apps/indexed/CLAUDE.md  # DELETE the now-dangling per-package symlinks
 .github/workflows/*.yml                     # trim to lint+mypy+test+import-check+wheel-smoke; benchmarks on-demand
 ```
 
 **Test scenarios:**
 
-- Exactly one `AGENTS.md` remains, at the root, ≤100 lines.
+- Exactly one **real** `AGENTS.md` remains, at the root, ≤100 lines; its root
+  `CLAUDE.md`/`WARP.md` symlinks still resolve to it (the multi-tool pattern is
+  preserved, just applied to one file).
 - No `.agents/skills/` tree is checked in; skills resolve from the lockfile.
 - CI runs only the trimmed gate set; benchmark workflow is on-demand.
 
-**Verification:** `find . -name AGENTS.md -not -path './.venv/*'` → one path;
-`wc -l AGENTS.md` ≤100; skills list resolves from lock; CI config diff shows the
-trimmed jobs. Full suite unchanged (no runtime code touched).
+**Verification:** `find . -name AGENTS.md -type f -not -path './.venv/*'` → one
+path; `wc -l AGENTS.md` ≤100; `readlink CLAUDE.md WARP.md` → `AGENTS.md`; skills
+list resolves from lock; CI config diff shows the trimmed jobs. Full suite
+unchanged (no runtime code touched).
 
 ---
 
