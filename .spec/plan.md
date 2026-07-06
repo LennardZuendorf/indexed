@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-05
+updated: 2026-07-06
 ---
 
 # Development Plan: indexed
@@ -39,6 +39,8 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
 | 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `packages/indexed-protocols/`, `apps/indexed/.../bootstrap.py`, `runtime.py`, `scripts/check_import_graph.py` |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
+| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | 📋 PLANNED | [features/foundation/](features/foundation/) |
+| 14 | Simplify (codebase reduction) | single package; dead code + mechanism tests deleted; CLI/config chrome + process apparatus shrunk — R1–R5 green | 📋 PLANNED | [features/simplify/](features/simplify/) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -56,8 +58,22 @@ import-graph CI gate. Unblocks v2 core/connectors rewrite.
 
 ## Current Focus
 
-**v2 core/connectors rewrite** — scaffold on the clean graph delivered by Feature 11.
-Scope as a separate feature when ready. Issue #119 (thin commands) remains deferred.
+**Feature 13: Foundation** then **Feature 14: Simplify** — the 2026-07-06 full
+audit (main + app/packages/overengineering passes + a 5-agent correctness hunt)
+found ~3k LOC of sound engine carrying ~18k LOC of packaging/wiring/chrome, plus
+~33 confirmed behavioral bugs — several corruption/data-loss/secret-leak class
+(search silently truncates most content; deletions-only update orphans FAISS
+vectors; `config set null` zeroes `config.toml`; secrets written to TOML).
+
+Sequenced deliberately: **Foundation** ([features/foundation/](features/foundation/))
+fixes every bug behind a characterization harness (unit foundation/1 — tests
+before refactor) and lays the typed-contract + core-swap facade, all in the
+current 7-package layout. **Simplify** ([features/simplify/](features/simplify/))
+is gated on Foundation DONE and collapses to a single package, deletes dead code
++ mechanism tests, and shrinks CLI/config/process — so deletion happens against
+correct, tested, stable contracts. The **v2 core/connectors rewrite** is gated
+on both, then swaps a module behind the facade. Issue #119 (thin commands) is
+absorbed by simplify/4.
 
 ---
 
@@ -76,6 +92,25 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-06: Split right-sizing into Foundation + Simplify
+**Decision:** After the full audit (main + app/packages/overengineering passes)
+and a 5-agent deep correctness hunt that confirmed ~33 behavioral bugs — several
+corruption/data-loss/secret class — split the original single right-sizing
+feature into two: **Feature 13 Foundation** (architecture & correctness: fix
+every bug behind a characterization harness, land typed contracts + core-swap
+facade, in the current layout) and **Feature 14 Simplify** (codebase reduction:
+collapse to one package, delete dead code + mechanism tests, shrink chrome).
+Foundation is gated first; Simplify is gated on Foundation DONE; the v2 rewrite
+on both. Per user decision, architecture lands in the current 7-package layout
+and the workspace collapse is deferred to Simplify. Tests-before-refactor is
+enforced structurally: foundation/1 is the harness that gates every refactor
+unit. Evidence + full bug catalogue: [features/foundation/tech-bugfixes.md](features/foundation/tech-bugfixes.md);
+size inventory: [features/simplify/research.md](features/simplify/research.md).
+**Rationale:** A 3-star personal project doesn't need a 7-package workspace,
+1.17× tests-to-source, or 15k LOC of process apparatus; a v2 built on stringly
+dict contracts would re-rot. Typed contracts + one facade make the core swap
+cheap and safe.
 
 ### 2026-07-05: Audit remediation
 **Decision:** Cleaned the residue the architecture-audit branch left on Feature 11
