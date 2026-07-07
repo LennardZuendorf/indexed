@@ -209,6 +209,29 @@ class ChangeTracker:
             **uncommitted,
         }
 
+        # Reconcile against the stored content hashes from the prior run so a
+        # revert to a previously-indexed (but not HEAD) state is still caught:
+        # git diff/status only compare HEAD vs working tree, so a file edited
+        # then reverted back to its committed content is invisible to git even
+        # though the *indexed* content is the stale edited version (D2).
+        if state.file_hashes:
+            import xxhash
+
+            for rel in current_rel:
+                if rel in merged:
+                    continue  # git already classified it
+                old = state.file_hashes.get(rel)
+                if old is None:
+                    merged[rel] = "added"
+                    continue
+                fp = os.path.join(self._base_path, rel)
+                try:
+                    new = xxhash.xxh64(Path(fp).read_bytes()).hexdigest()
+                except OSError:
+                    continue
+                if old != new:  # catches reverted-to-stale-indexed edits
+                    merged[rel] = "modified"
+
         # Detect files that were indexed before but are no longer in the current
         # walk (e.g. newly added to .gitignore, matched a new exclude pattern, or
         # deleted outside of git). git diff/status won't surface these.
@@ -218,6 +241,26 @@ class ChangeTracker:
                     merged[rel] = "deleted"
 
         return [FileChange(path=p, status=s) for p, s in merged.items()]
+
+    @staticmethod
+    def _git_unquote(path: str) -> str:
+        """Unquote a git C-quoted path (octal-escaped non-ASCII/whitespace).
+
+        git wraps the whole field in double quotes and C-escapes bytes outside
+        the printable ASCII range (e.g. ``"caf\\303\\251.txt"`` for
+        ``café.txt``). Left un-decoded, the quoted/escaped string never matches
+        a real relative path, so those files are silently dropped from the
+        change set (D2). Non-quoted paths are returned unchanged.
+        """
+        if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
+            return (
+                path[1:-1]
+                .encode("latin-1")
+                .decode("unicode_escape")
+                .encode("latin-1")
+                .decode("utf-8", "replace")
+            )
+        return path
 
     def _git_path_to_rel(self, git_path: str, git_toplevel: str | None) -> str | None:
         """Convert a repo-root-relative git path to a base_path-relative path.
@@ -248,21 +291,24 @@ class ChangeTracker:
             parts = line.split("\t")
             code = parts[0][0]
             if code == "D":
-                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                rel = self._git_path_to_rel(self._git_unquote(parts[1]), git_toplevel)
                 if rel is not None:
                     result[rel] = "deleted"
             elif code == "A":
-                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                rel = self._git_path_to_rel(self._git_unquote(parts[1]), git_toplevel)
                 if rel is not None and rel in current_rel:
                     result[rel] = "added"
             elif code == "M":
-                rel = self._git_path_to_rel(parts[1], git_toplevel)
+                rel = self._git_path_to_rel(self._git_unquote(parts[1]), git_toplevel)
                 if rel is not None and rel in current_rel:
                     result[rel] = "modified"
             elif code == "R":
-                old_rel = self._git_path_to_rel(parts[1], git_toplevel)
+                old_rel = self._git_path_to_rel(
+                    self._git_unquote(parts[1]), git_toplevel
+                )
+                new_field = parts[2] if len(parts) > 2 else parts[1]
                 new_rel = self._git_path_to_rel(
-                    parts[2] if len(parts) > 2 else parts[1], git_toplevel
+                    self._git_unquote(new_field), git_toplevel
                 )
                 if old_rel is not None:
                     result[old_rel] = "deleted"
@@ -287,18 +333,25 @@ class ChangeTracker:
             xy = line[:2]
             git_path = line[3:].strip()
 
-            # Handle renames: "old -> new" format
+            # Handle renames: "old -> new" format. Each half is quoted
+            # independently by git, not the whole "old -> new" field, so
+            # unquoting happens per-half after the split (unquoting the raw
+            # field first would corrupt a quoted half containing " -> ").
             if " -> " in git_path:
                 old_part, new_part = git_path.split(" -> ", 1)
-                old_rel = self._git_path_to_rel(old_part.strip(), git_toplevel)
-                new_rel = self._git_path_to_rel(new_part.strip(), git_toplevel)
+                old_rel = self._git_path_to_rel(
+                    self._git_unquote(old_part.strip()), git_toplevel
+                )
+                new_rel = self._git_path_to_rel(
+                    self._git_unquote(new_part.strip()), git_toplevel
+                )
                 if old_rel is not None:
                     result[old_rel] = "deleted"
                 if new_rel is not None and new_rel in current_rel:
                     result[new_rel] = "added"
                 continue
 
-            rel = self._git_path_to_rel(git_path, git_toplevel)
+            rel = self._git_path_to_rel(self._git_unquote(git_path), git_toplevel)
             if rel is None:
                 continue
 
