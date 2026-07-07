@@ -363,8 +363,20 @@ def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) 
 
     Kept to avoid breaking imports during the migration. New code should call
     ``bootstrap_logging`` directly with the full verbosity matrix.
+
+    When ``level_str`` is ``None`` and logging has already been configured
+    (normally by the app callback, which resolves ``--verbose``/
+    ``--log-level``/``INDEXED_LOG_LEVEL`` once and calls ``bootstrap_logging``
+    directly), this is a no-op: it must NOT reset the level back to WARNING
+    and clobber the callback's resolved level — that silently defeated every
+    knowledge command's verbosity flags (foundation/6c bug E3). Falls back to
+    WARNING only when nothing has configured logging yet in this process.
     """
-    bootstrap_logging(level=level_str or "WARNING", json_mode=json_mode)
+    if level_str is None:
+        if _LOGGING_CONFIGURED:
+            return
+        level_str = "WARNING"
+    bootstrap_logging(level=level_str, json_mode=json_mode)
 
 
 __all__ = [

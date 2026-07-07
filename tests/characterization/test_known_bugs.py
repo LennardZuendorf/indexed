@@ -665,7 +665,6 @@ def test_bug_e2_rich_markup_injection_does_not_crash() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e3_verbose_flag_is_honored(local_workspace) -> None:
     """E3: ``--verbose`` must actually raise the effective log level (each command
     calls ``setup_root_logger(None)`` → ``bootstrap_logging("WARNING")`` today,
