@@ -406,10 +406,10 @@ def search(
             if simple:
                 # Simple/JSON output is a machine-readable envelope: report the
                 # error as data (like the "no collections at all" branch above)
-                # rather than raising — never a raw traceback for a missing
-                # collection (foundation/6 E1).
+                # — but a JSON error body must still exit non-zero, never 0
+                # (foundation/6 E1: never a traceback, never a silent success).
                 print_json({"error": f"Collection '{collection}' not found"})
-                return
+                raise typer.Exit(1)
             print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
@@ -440,12 +440,20 @@ def search(
 
     collections_to_search = [c for c in collections_to_search if c in search_configs]
     if not collections_to_search:
+        # A specific collection was named but turned out unsearchable (corrupt
+        # manifest / no indexers): that is a failed request, not just "nothing
+        # to search" — exit non-zero. Searching ALL collections and finding
+        # none searchable stays a soft no-op (exit 0), same as "no collections
+        # found" above.
+        named_collection_requested = collection is not None
         if simple:
             print_json({"error": "No searchable collections available"})
-            return
-        console.print(
-            f"[{get_dim_style()}]No searchable collections available[/{get_dim_style()}]"
-        )
+        else:
+            console.print(
+                f"[{get_dim_style()}]No searchable collections available[/{get_dim_style()}]"
+            )
+        if named_collection_requested:
+            raise typer.Exit(1)
         return
 
     # Search each collection with phased progress

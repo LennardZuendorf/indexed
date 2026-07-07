@@ -624,9 +624,17 @@ def test_bug_e1_missing_collection_fails_cleanly(local_workspace) -> None:
     search = _local(
         "--simple-output", "search", "hello", "--collection", "nonexistent-xyz"
     )
-    assert search.exception is None, (
-        f"search of a missing collection must not raise a traceback: "
+    assert search.exit_code != 0, (
+        f"search --simple-output of a missing collection must exit non-zero, "
+        f"got {search.exit_code}"
+    )
+    assert not isinstance(search.exception, IndexError), (
+        f"search of a missing collection must not raise a raw IndexError: "
         f"{search.exception!r}"
+    )
+    assert "Traceback" not in search.output, (
+        f"search of a missing collection must not print a raw traceback:\n"
+        f"{search.output}"
     )
 
     update = _local("update", "nonexistent-xyz")

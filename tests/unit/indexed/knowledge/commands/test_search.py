@@ -324,6 +324,52 @@ class TestSearchCommandExecution:
         s.indexers = ["default"]
         return s
 
+    def test_search_named_collection_unavailable_exits_nonzero(self, monkeypatch):
+        """A named collection whose status has no indexers (corrupt/unavailable)
+        is a failed request, not a soft no-op — it must exit non-zero rather
+        than the 0 a "search all, none searchable" fleet gets (foundation/6
+        E1 same-theme gap)."""
+        from unittest.mock import Mock
+
+        broken_status = Mock()
+        broken_status.name = "broken"
+        broken_status.indexers = []  # no indexers => unavailable/corrupt
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [broken_status])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--collection", "broken"])
+
+        assert result.exit_code != 0
+        assert "No searchable collections available" in result.stdout
+
+    def test_search_simple_named_collection_unavailable_exits_nonzero(
+        self, monkeypatch
+    ):
+        """Same as above, but through the --simple-output JSON envelope path."""
+        from unittest.mock import Mock
+
+        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+
+        broken_status = Mock()
+        broken_status.name = "broken"
+        broken_status.indexers = []
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [broken_status])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["my-query", "--collection", "broken"]
+            )
+
+            assert result.exit_code != 0
+            assert '"error": "No searchable collections available"' in result.stdout
+        finally:
+            reset_simple_output()
+
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
         from unittest.mock import Mock, MagicMock
@@ -569,9 +615,8 @@ class TestSearchCommandExecution:
 
     def test_search_simple_output_missing_collection(self, monkeypatch):
         """In simple output mode, a missing collection is reported as a JSON
-        error envelope (data, not a raised exit) — consistent with the
-        "no collections at all" branch and never a raw traceback
-        (foundation/6 E1)."""
+        error envelope AND exits non-zero — a JSON error body must never look
+        like success to a caller checking the exit code (foundation/6 E1)."""
         import json
 
         from indexed.utils.simple_output import reset_simple_output, set_simple_output
@@ -585,8 +630,8 @@ class TestSearchCommandExecution:
                 search_cmd.app, ["my-query", "--collection", "missing"]
             )
 
-            assert result.exit_code == 0
-            assert result.exception is None
+            assert result.exit_code != 0
+            assert not isinstance(result.exception, IndexError)
             parsed = json.loads(result.stdout)
             assert "error" in parsed
             assert "missing" in parsed["error"]
