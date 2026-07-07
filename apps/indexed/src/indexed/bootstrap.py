@@ -25,7 +25,11 @@ def register_app_config(config_service: ConfigService) -> None:
 
     config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
     config_service.register(CoreV1SearchConfig, path="core.v1.search")
-    config_service.register(CoreV1StorageConfig, path="core.v1.vector_store")
+    # Registered path must match what config/cli.py's schema/template and
+    # `config set core.v1.storage.*` actually write — it was previously
+    # registered under "core.v1.vector_store", so storage overrides were
+    # silently never validated/bound (foundation/6 E12).
+    config_service.register(CoreV1StorageConfig, path="core.v1.storage")
     config_service.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
     config_service.register(MCPConfig, path="mcp")
     config_service.register(FileSystemConfig, path="sources.files")

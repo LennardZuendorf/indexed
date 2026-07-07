@@ -100,7 +100,10 @@ class TestFormatSearchResults:
     def test_format_search_results_skips_error_collections_and_uses_scores(
         self, monkeypatch
     ) -> None:
-        """Collections with errors should be ignored, and best chunk is chosen by score."""
+        """Collections with errors are excluded from chunk ranking (best chunk
+        still chosen by score across the surviving collections), but the
+        failure itself must be surfaced, not silently dropped (foundation/6
+        E10, CLI twin of the MCP formatting bug)."""
         outputs: List[str] = []
 
         def fake_print(*args, **kwargs):
@@ -136,13 +139,20 @@ class TestFormatSearchResults:
             },
         }
 
-        search_cmd.format_search_results("query", results=results, limit=5)
+        with patch.object(search_cmd, "print_error") as mock_error:
+            search_cmd.format_search_results("query", results=results, limit=5)
 
         # We at least expect the header for the best match section and no crash
         joined = "\n".join(outputs)
         assert "Best Matched Search Result" in joined
         # Detailed Rich rendering of chunks is handled by components and not
         # asserted here to avoid coupling tests to layout details.
+
+        # The failed collection must reach the user instead of vanishing.
+        mock_error.assert_called_once()
+        error_message = mock_error.call_args[0][0]
+        assert "error-collection" in error_message
+        assert "index unavailable" in error_message
 
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
@@ -257,8 +267,12 @@ class TestFormatSearchResults:
         assert "col" in joined
         assert "high" in joined
 
-    def test_show_all_results_compact_skips_error_and_empty(self, monkeypatch):
-        """Collections with errors or empty results should be skipped."""
+    def test_show_all_results_compact_skips_empty_but_surfaces_errors(
+        self, monkeypatch
+    ):
+        """Empty (no-match) collections stay silently skipped, but a failed
+        collection must be surfaced — not reported as a bare "no results"
+        (foundation/6 E10, CLI twin of the MCP formatting bug)."""
         outputs: List[str] = []
 
         def fake_print(*args, **kwargs):
@@ -269,18 +283,25 @@ class TestFormatSearchResults:
             search_cmd, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
-            "error-coll": {"error": "unavailable"},
-            "empty-coll": {"results": []},
-        }
-        search_cmd._show_all_results_compact(results, limit=10)
+        with patch.object(search_cmd, "print_error") as mock_error:
+            results: Dict[str, Any] = {
+                "error-coll": {"error": "unavailable"},
+                "empty-coll": {"results": []},
+            }
+            search_cmd._show_all_results_compact(results, limit=10)
+
+        # The failed collection is reported via print_error, naming both the
+        # collection and the underlying error.
+        mock_error.assert_called_once()
+        error_message = mock_error.call_args[0][0]
+        assert "error-coll" in error_message
+        assert "unavailable" in error_message
 
         joined = "\n".join(outputs)
-        # Neither collection should appear as a header
-        assert "error-coll" not in joined
+        # empty-coll has no matches — stays silent, not a failure.
         assert "empty-coll" not in joined
-        # Should show no results message
-        assert "No results found" in joined
+        # A real failure must not be reported as a soft "no results found".
+        assert "No results found" not in joined
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
@@ -398,6 +419,7 @@ class TestSearchCommandExecution:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -437,6 +459,7 @@ class TestSearchCommandExecution:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -476,6 +499,7 @@ class TestSearchCommandExecution:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -514,6 +538,7 @@ class TestSearchCommandExecution:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -555,6 +580,7 @@ class TestSearchCommandExecution:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -668,6 +694,7 @@ class TestSearchStatusMessages:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -722,6 +749,7 @@ class TestSearchStatusMessages:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -773,6 +801,7 @@ class TestSearchStatusMessages:
             max_docs,
             max_chunks,
             include_matched_chunks,
+            score_threshold=None,
             progress_callback=None,
             collections_path=None,
         ):
@@ -796,7 +825,9 @@ class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""
 
     def test_compact_skips_error_collections(self, monkeypatch):
-        """format_search_results_compact should skip error collections."""
+        """format_search_results_compact excludes error collections from the
+        results listing, but must still surface the failure (foundation/6
+        E10, CLI twin of the MCP formatting bug)."""
         outputs: List[str] = []
 
         def fake_print(*args, **kwargs):
@@ -807,15 +838,21 @@ class TestFormatSearchResultsCompactEdgeCases:
             search_cmd, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
-            "error-coll": {"error": "unavailable"},
-            "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
-        }
-        search_cmd.format_search_results_compact("query", results=results)
+        with patch.object(search_cmd, "print_error") as mock_error:
+            results: Dict[str, Any] = {
+                "error-coll": {"error": "unavailable"},
+                "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
+            }
+            search_cmd.format_search_results_compact("query", results=results)
 
         joined = "\n".join(outputs)
         assert "error-coll" not in joined
         assert "good-coll" in joined
+
+        mock_error.assert_called_once()
+        error_message = mock_error.call_args[0][0]
+        assert "error-coll" in error_message
+        assert "unavailable" in error_message
 
     def test_compact_skips_empty_collections(self, monkeypatch):
         """format_search_results_compact should skip collections with no results."""

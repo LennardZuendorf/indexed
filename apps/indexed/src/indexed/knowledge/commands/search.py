@@ -46,6 +46,48 @@ class ChunkInfo(TypedDict):
 # --- SEARCH FORMATTER FUNCTIONS (moved from search_formatter.py) ---
 
 
+def _load_search_config() -> Any:
+    """Load ``[core.v1.search]`` so the CLI honors the same
+    max_docs/max_chunks/score_threshold as MCP (foundation/6 E12 — the CLI
+    used to hardcode from ``--limit`` only, so CLI and MCP disagreed on the
+    same query). Falls back to model defaults when the section isn't
+    registered/set, mirroring ``mcp/server.py::_get_config``.
+
+    Re-registers app config defensively before binding: ``resolve_collections_
+    context(mode_override=...)`` (already called earlier in this command)
+    forces ``ConfigService.instance(reset=True)`` for a non-None override,
+    which replaces the singleton and drops the specs the app callback
+    registered — the same defensive re-register ``mcp/cli.py::run_impl``
+    already relies on before its own ``bind()`` call.
+    """
+    from core.v1.config_models import CoreV1SearchConfig
+    from indexed.bootstrap import register_app_config
+    from indexed_config import ConfigService
+
+    try:
+        config_service = ConfigService.instance()
+        register_app_config(config_service)
+        provider = config_service.bind()
+        return provider.get(CoreV1SearchConfig)
+    except Exception:
+        return CoreV1SearchConfig()
+
+
+def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
+    """Surface a per-collection search failure instead of silently skipping it.
+
+    Mirrors the MCP-side fix (``mcp/formatting.py``): a failed collection must
+    reach the user as "index failed", not vanish via a bare ``continue``
+    (foundation/6 E10, CLI twin of the same bug).
+    """
+    for collection_name, error in failed:
+        # collection_name/error are content-derived — escape before entering
+        # markup (foundation/6c bug E2).
+        print_error(
+            f"Collection '{escape(str(collection_name))}' failed: {escape(str(error))}"
+        )
+
+
 def format_search_results(
     query: str,
     results: Dict[str, Any],
@@ -73,9 +115,11 @@ def format_search_results(
     # Collect all chunks across all collections with their metadata
     all_chunks: List[ChunkInfo] = []
     total_docs = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -99,11 +143,16 @@ def format_search_results(
                     )
                 )
 
+    if failed_collections:
+        _print_collection_errors(failed_collections)
+        console.print()
+
     if not all_chunks:
-        print_warning(
-            f'No results found for "{query}". '
-            f"Try broadening your search terms or checking collection contents."
-        )
+        if not failed_collections:
+            print_warning(
+                f'No results found for "{query}". '
+                f"Try broadening your search terms or checking collection contents."
+            )
         console.print()
         return
 
@@ -225,9 +274,11 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
 def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
     """Show all results in compact format when content is hidden."""
     total_results = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -249,11 +300,15 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
         console.print()
 
+    if failed_collections:
+        _print_collection_errors(failed_collections)
+        console.print()
+
     # Summary
     console.print()
     if total_results > 0:
         console.print(create_summary("Search Result", f"{total_results} results"))
-    else:
+    elif not failed_collections:
         console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
@@ -273,9 +328,11 @@ def format_search_results_compact(
     """
 
     total_results = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -307,11 +364,15 @@ def format_search_results_compact(
 
         console.print()
 
+    if failed_collections:
+        _print_collection_errors(failed_collections)
+        console.print()
+
     # Summary
     console.print()
     if total_results > 0:
         console.print(create_summary("Search Result", f"{total_results} results"))
-    else:
+    elif not failed_collections:
         console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
@@ -324,8 +385,14 @@ def search(
     collection: str = typer.Option(
         None, "--collection", "-c", help="Collection name to search"
     ),
-    limit: int = typer.Option(
-        5, "--limit", "-l", help="Number of results to display per collection"
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        "-l",
+        help=(
+            "Number of results per collection (default: configured "
+            "core.v1.search.max_docs)"
+        ),
     ),
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
@@ -450,6 +517,17 @@ def search(
         )
 
     collections_to_search = [c for c in collections_to_search if c in search_configs]
+
+    # Resolve effective search limits: an explicit --limit always wins (and
+    # keeps the historical max_chunks = limit * 3 ratio); otherwise fall back
+    # to the registered [core.v1.search] section so CLI and MCP agree on the
+    # same query (foundation/6 E12).
+    search_cfg = _load_search_config()
+    effective_max_docs = limit if limit is not None else search_cfg.max_docs
+    effective_max_chunks = limit * 3 if limit is not None else search_cfg.max_chunks
+    score_threshold = search_cfg.score_threshold
+    display_limit = effective_max_docs
+
     if not collections_to_search:
         # A specific collection was named but turned out unsearchable (corrupt
         # manifest / no indexers): that is a failed request, not just "nothing
@@ -477,8 +555,9 @@ def search(
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
+                    max_docs=effective_max_docs,
+                    max_chunks=effective_max_chunks,
+                    score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
                 )
@@ -496,8 +575,9 @@ def search(
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
+                    max_docs=effective_max_docs,
+                    max_chunks=effective_max_chunks,
+                    score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
                 )
@@ -510,9 +590,11 @@ def search(
 
         print_json(format_search_results_for_llm(results, query))
     elif compact:
-        format_search_results_compact(query, results, limit=limit)
+        format_search_results_compact(query, results, limit=display_limit)
     else:
-        format_search_results(query, results, limit=limit, show_content=not no_content)
+        format_search_results(
+            query, results, limit=display_limit, show_content=not no_content
+        )
 
 
 def __getattr__(name: str):

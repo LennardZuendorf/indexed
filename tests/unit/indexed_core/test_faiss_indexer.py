@@ -35,6 +35,8 @@ class TestFaissIndexerEmptyBatch:
 
 class TestFaissIndexerIndexTexts:
     def test_index_texts_embeds_and_adds(self):
+        """foundation/6 E12: with no config registered, falls back to the
+        embedder's own default (128) instead of the old hardcoded 64."""
         indexer, embedder = _make_indexer()
         embedder.embed_batch.return_value = np.array([[0.1] * 8, [0.2] * 8])
         indexer.faiss_index = MagicMock()
@@ -42,9 +44,32 @@ class TestFaissIndexerIndexTexts:
         indexer.index_texts([1, 2], ["a", "b"])
 
         embedder.embed_batch.assert_called_once_with(
-            ["a", "b"], batch_size=64, progress_callback=None
+            ["a", "b"], batch_size=128, progress_callback=None
         )
         indexer.faiss_index.add_with_ids.assert_called_once()
+
+    def test_index_texts_honors_registered_embedding_batch_size(self):
+        """foundation/6 E12: a registered [core.v1.embedding] batch_size must
+        actually be read instead of a hardcoded value."""
+        from indexed_config import ConfigService
+        from core.v1.config_models import CoreV1EmbeddingConfig
+
+        ConfigService.reset()
+        svc = ConfigService.instance()
+        svc.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
+        # In-memory only (never touches disk) — see ConfigService.set_overlay.
+        svc.set_overlay("core.v1.embedding.batch_size", 7)
+
+        indexer, embedder = _make_indexer()
+        embedder.embed_batch.return_value = np.array([[0.1] * 8, [0.2] * 8])
+        indexer.faiss_index = MagicMock()
+
+        indexer.index_texts([1, 2], ["a", "b"])
+
+        embedder.embed_batch.assert_called_once_with(
+            ["a", "b"], batch_size=7, progress_callback=None
+        )
+        ConfigService.reset()
 
 
 class TestFaissIndexerRemoveIds:
