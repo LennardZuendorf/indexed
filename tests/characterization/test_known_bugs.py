@@ -253,7 +253,6 @@ def test_bug_a6_score_threshold_accepts_real_l2_range() -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_B)
 def test_bug_b1_deletions_only_update_persists_faiss(
     local_workspace,
 ) -> None:
@@ -294,7 +293,6 @@ def test_bug_b1_deletions_only_update_persists_faiss(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_B)
 def test_bug_b2_zero_chunk_batch_does_not_crash_indexer() -> None:
     """B2: indexing zero chunks (a source of empty-body documents) must be a
     safe no-op, not a crash (``encode([])`` returns shape ``(0,)`` which FAISS
@@ -316,7 +314,6 @@ def test_bug_b2_zero_chunk_batch_does_not_crash_indexer() -> None:
     assert indexer.get_size() == 0
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_B)
 def test_bug_b3_config_set_null_preserves_file(local_workspace) -> None:
     """B3: a ``config set`` with an unserializable value (``null`` → ``None``)
     must leave ``config.toml`` byte-identical (today ``TomlStore.write`` truncates
@@ -335,7 +332,6 @@ def test_bug_b3_config_set_null_preserves_file(local_workspace) -> None:
     assert after == before, "a failed set must leave config.toml byte-identical"
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_B)
 def test_bug_b4_failed_create_preserves_existing_collection(tmp_path: Path) -> None:
     """B4: a create that fails mid-build must leave the pre-existing collection
     intact (today ``__create_collection`` deletes the collection folder up front,

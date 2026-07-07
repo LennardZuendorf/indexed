@@ -76,6 +76,27 @@ class DiskPersister:
         directory_path = self._safe_join(self.base_path, folder_name)
         os.makedirs(directory_path)
 
+    def replace_folder(self, src_folder_name: str, dest_folder_name: str) -> None:
+        """Swap ``src_folder_name`` into ``dest_folder_name``'s place (B4).
+
+        Used by the build-aside/rename-swap create path: the destination is
+        only ever removed AFTER the fully-built replacement already exists on
+        disk under ``src_folder_name``, so a crash mid-build never leaves
+        neither version present. If a destination already exists, it is
+        first moved aside (a cheap rename, not a copy) so both the old and
+        new data are present on disk simultaneously until the final rename.
+        """
+        src_path = self._safe_join(self.base_path, src_folder_name)
+        dest_path = self._safe_join(self.base_path, dest_folder_name)
+
+        if os.path.exists(dest_path):
+            trash_path = f"{dest_path}.trash-{os.getpid()}"
+            os.rename(dest_path, trash_path)
+            os.rename(src_path, dest_path)
+            shutil.rmtree(trash_path, ignore_errors=True)
+        else:
+            os.rename(src_path, dest_path)
+
     def remove_folder(self, folder_name):
         directory_path = self._safe_join(self.base_path, folder_name)
 

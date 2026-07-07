@@ -112,6 +112,56 @@ class TestDiskPersisterFileOperations:
         assert sorted(disk_persister.read_folder_files("sub")) == ["a.txt", "b.txt"]
 
 
+class TestDiskPersisterReplaceFolder:
+    """B4: replace_folder swaps a staged build into place without ever
+    destroying the destination before the replacement is durable."""
+
+    def test_replace_folder_renames_when_destination_absent(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("data", "staging/file.txt")
+
+        disk_persister.replace_folder("staging", "final")
+
+        assert not (tmp_path / "staging").exists()
+        assert (tmp_path / "final" / "file.txt").read_text() == "data"
+
+    def test_replace_folder_swaps_out_existing_destination(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """An existing destination is moved aside and removed only after the
+        staged replacement is already in its place — never deleted first."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("old", "final/file.txt")
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("new", "staging/file.txt")
+
+        disk_persister.replace_folder("staging", "final")
+
+        assert (tmp_path / "final" / "file.txt").read_text() == "new"
+        assert not (tmp_path / "staging").exists()
+        assert not any(tmp_path.glob("final.trash-*"))
+
+    def test_replace_folder_never_removes_destination_before_source_exists(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """If the rename of the source into place fails, the destination
+        must still exist (moved-aside, not deleted outright)."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("old", "final/marker.txt")
+        # No "staging" folder created -> os.rename(src, dest) will raise.
+
+        with pytest.raises(OSError):
+            disk_persister.replace_folder("staging", "final")
+
+        # The original data must still be reachable (either at "final" or
+        # under a recoverable trash-named sibling) — never gone.
+        assert (tmp_path / "final" / "marker.txt").exists() or any(
+            (p / "marker.txt").exists() for p in tmp_path.glob("final.trash-*")
+        )
+
+
 class TestDiskPersisterFaissOperations:
     """save_faiss_index and read_faiss_index use native faiss I/O atomically."""
 

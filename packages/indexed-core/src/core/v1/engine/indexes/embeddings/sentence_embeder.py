@@ -48,17 +48,11 @@ class SentenceEmbedder:
             numpy array of embeddings with shape (len(texts), embedding_dim).
         """
         if not texts:
-            if progress_callback is not None:
-                import numpy as _np
-
-                return _np.vstack([])
-            empty_result: np.ndarray = self.model.encode(
-                texts,
-                batch_size=batch_size,
-                show_progress_bar=False,
-                convert_to_numpy=True,
-            )
-            return empty_result
+            # B2: an empty batch is a safe no-op. `np.vstack([])`/
+            # `model.encode([])` both return shape (0,), which the FAISS
+            # indexer's add_with_ids can't unpack — return a properly-shaped
+            # empty (0, dim) array instead.
+            return self._empty_embeddings()
 
         max_len = self.max_seq_length
         tokenizer = self.model.tokenizer
@@ -113,6 +107,12 @@ class SentenceEmbedder:
                 progress_callback(1)
 
         return _np.vstack(vectors)
+
+    def _empty_embeddings(self) -> np.ndarray:
+        """Return a properly-shaped ``(0, dim)`` empty embedding array (B2)."""
+        import numpy as _np
+
+        return _np.empty((0, self.get_number_of_dimensions()), dtype=_np.float32)
 
     def _embed_over_window(self, text: str, tokenizer: Any, max_len: int) -> np.ndarray:
         """Embed *text* exceeding the model window.

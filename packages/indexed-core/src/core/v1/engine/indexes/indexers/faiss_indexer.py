@@ -24,6 +24,11 @@ class FaissIndexer:
         return self.name
 
     def index_texts(self, ids, texts, progress_callback=None):
+        if not ids or not texts:
+            # B2: a zero-chunk batch is a safe no-op (mirrors the existing
+            # empty-remove_ids no-op below) instead of crashing on the
+            # malformed shape an empty encode() call can produce.
+            return
         embeddings = self.embedder.embed_batch(
             texts, batch_size=64, progress_callback=progress_callback
         )

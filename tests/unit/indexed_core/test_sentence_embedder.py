@@ -123,15 +123,34 @@ class TestSentenceEmbedderBatch:
 
     @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
     def test_embed_batch_empty_list(self, mock_get_model):
-        """Empty input must not consult the tokenizer at all."""
+        """B2: empty input must not consult the tokenizer/model.encode at all
+        and must return a properly-shaped ``(0, dim)`` array — not
+        ``np.vstack([])`` (shape ``(0,)``), which the FAISS indexer's
+        ``add_with_ids`` cannot unpack."""
         mock_model = MagicMock()
-        mock_model.encode.return_value = np.array([])
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         mock_get_model.return_value = mock_model
 
         embedder = SentenceEmbedder()
-        embedder.embed_batch([])
+        result = embedder.embed_batch([])
 
         mock_model.tokenizer.encode.assert_not_called()
+        mock_model.encode.assert_not_called()
+        assert result.shape == (0, 384)
+
+    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    def test_embed_batch_empty_list_with_progress_callback(self, mock_get_model):
+        """B2: the empty-input guard applies regardless of progress_callback
+        (previously only the callback-less branch avoided the malformed
+        ``np.vstack([])`` shape)."""
+        mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_get_model.return_value = mock_model
+
+        embedder = SentenceEmbedder()
+        result = embedder.embed_batch([], progress_callback=MagicMock())
+
+        assert result.shape == (0, 384)
 
     @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
     def test_embed_batch_splits_over_window_text(self, mock_get_model):

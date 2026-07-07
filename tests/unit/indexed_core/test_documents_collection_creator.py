@@ -221,8 +221,12 @@ class TestCreateCollection:
 
         creator.run()
 
-        # Verify the collection was created
-        persister.create_folder.assert_called_once_with("test-col")
+        # Verify the collection was built aside then swapped into place (B4):
+        # create_folder targets a staging dir, not the final name directly.
+        persister.create_folder.assert_called_once()
+        (staging_name,), _ = persister.create_folder.call_args
+        assert staging_name.startswith("test-col.tmp-")
+        persister.replace_folder.assert_called_once_with(staging_name, "test-col")
         indexer.index_texts.assert_called_once()
         persister.save_faiss_index.assert_called_once()
 
