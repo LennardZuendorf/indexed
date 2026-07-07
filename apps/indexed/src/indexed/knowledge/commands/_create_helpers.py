@@ -97,6 +97,11 @@ def execute_create_command(
     collections_path = str(cli_ctx.collections_path)
     caches_path = str(cli_ctx.caches_path)
 
+    # Start this create run with a clean in-memory overlay (R3) so a stale
+    # override from a prior (possibly failed) create in the same process can
+    # never leak into this one (foundation/6b bug E4).
+    config.clear_overlay()
+
     if local or mode_override == "local":
         from indexed_config import ensure_storage_dirs, get_local_root
 
@@ -134,12 +139,13 @@ def execute_create_command(
     # Phase 1c: Ensure credentials (interactive prompt + .env persistence)
     ensure_credentials_for_source(source_type, config, namespace=namespace)
 
-    # Also set CLI overrides in config for connector to read
+    # Make CLI overrides visible to the connector's from_config() read via the
+    # in-memory overlay only — never persisted to config.toml (R3; a failed
+    # create must not leave the override on disk, foundation/6b bug E4).
     for key, value in cli_overrides.items():
         if is_credential_field(key):
             continue
-        field_info = validation.field_info.get(key)
-        config.set_value(f"{namespace}.{key}", value, field_info=field_info)
+        config.set_overlay(f"{namespace}.{key}", value)
 
     # Log resolved configuration in verbose mode
     if is_verbose_mode():

@@ -1,6 +1,50 @@
 """Tests for the upgraded FilesDocumentReader."""
 
-from connectors.files.files_document_reader import FilesDocumentReader
+import os
+
+import pytest
+
+from connectors.files.files_document_reader import (
+    FilesDocumentReader,
+    normalize_base_path,
+)
+
+
+class TestNormalizeBasePath:
+    """E5/E7: shared path-normalization helper."""
+
+    def test_empty_string_rejected(self):
+        with pytest.raises(ValueError):
+            normalize_base_path("")
+
+    def test_whitespace_only_rejected(self):
+        with pytest.raises(ValueError):
+            normalize_base_path("   ")
+
+    def test_relative_path_resolved_absolute(self):
+        result = normalize_base_path("./some/relative/docs")
+        assert os.path.isabs(result)
+
+    def test_already_absolute_path_unchanged(self, tmp_path):
+        result = normalize_base_path(str(tmp_path))
+        assert result == str(tmp_path)
+
+    def test_user_expansion(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = normalize_base_path("~/docs")
+        assert result == str(tmp_path / "docs")
+
+
+class TestFilesDocumentReaderBasePathNormalization:
+    """E7: get_reader_details()['basePath'] must be absolute."""
+
+    def test_relative_base_path_stored_absolute(self):
+        reader = FilesDocumentReader(base_path="./some/relative/docs")
+        assert os.path.isabs(reader.get_reader_details()["basePath"])
+
+    def test_empty_base_path_rejected(self):
+        with pytest.raises(ValueError):
+            FilesDocumentReader(base_path="")
 
 
 class TestFilesDocumentReaderParsed:

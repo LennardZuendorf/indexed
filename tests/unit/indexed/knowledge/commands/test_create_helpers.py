@@ -92,6 +92,9 @@ class TestExecuteCreateCommand:
             ["test-collection"], collections_path=str(TEST_COLLECTIONS_PATH)
         )
         mock_print_success.assert_called_once()
+        # E4: each run starts with a clean in-memory overlay so a stale
+        # override from a prior (possibly failed) create can't leak in.
+        mock_config.clear_overlay.assert_called_once()
 
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
     @patch("indexed.knowledge.commands._create_helpers.ConfigService")
@@ -585,7 +588,7 @@ class TestExecuteCreateCommand:
         mock_apply_cli_creds,
         mock_ensure_creds,
     ):
-        """Should not write credential fields via generic config.set_value loop."""
+        """Should not write credential fields via generic config.set_overlay loop."""
         mock_config = Mock()
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
@@ -627,8 +630,16 @@ class TestExecuteCreateCommand:
             force=False,
         )
 
+        # Non-credential CLI overrides go to the in-memory overlay only
+        # (never persisted to config.toml — R3; foundation/6b bug E4).
+        set_overlay_calls = [
+            call.args[0] for call in mock_config.set_overlay.call_args_list if call.args
+        ]
+        assert "sources.outline.url" in set_overlay_calls
+        assert "sources.outline.api_token" not in set_overlay_calls
+
+        # Credential fields must never reach either write path via this loop.
         set_value_calls = [
             call.args[0] for call in mock_config.set_value.call_args_list if call.args
         ]
-        assert "sources.outline.url" in set_value_calls
         assert "sources.outline.api_token" not in set_value_calls

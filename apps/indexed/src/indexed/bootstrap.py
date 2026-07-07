@@ -56,12 +56,14 @@ def build_connector(
         )
 
     namespace = get_config_namespace(cfg.type)
+    # In-memory overlay only (R3): a failed create must not leave the
+    # override on disk (foundation/6b bug E4) — see ConfigService.set_overlay.
     if cfg.base_url_or_path:
         if cfg.type == "localFiles":
-            config_service.set(f"{namespace}.path", cfg.base_url_or_path)
+            config_service.set_overlay(f"{namespace}.path", cfg.base_url_or_path)
         else:
-            config_service.set(f"{namespace}.url", cfg.base_url_or_path)
+            config_service.set_overlay(f"{namespace}.url", cfg.base_url_or_path)
     if cfg.query:
-        config_service.set(f"{namespace}.query", cfg.query)
+        config_service.set_overlay(f"{namespace}.query", cfg.query)
 
     return cls.from_config(config_service)  # type: ignore[return-value]

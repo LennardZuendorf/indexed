@@ -24,6 +24,27 @@ from .schema import DEFAULT_EXCLUDED_DIRS
 from .v1_adapter import V1FormatAdapter
 
 
+def normalize_base_path(raw_path: str) -> str:
+    """Validate and normalize a files-source path.
+
+    Shared by the CLI create prompt (foundation/6b bug E5) and this reader's
+    ``basePath`` storage (bug E7):
+
+    - Rejects empty/whitespace-only input. ``Path("")`` is equal to
+      ``Path(".")`` and would otherwise pass existence checks and silently
+      resolve to the current working directory.
+    - Expands ``~`` and resolves to an absolute path so the stored value is
+      stable regardless of the caller's CWD (an ``update`` run from a
+      different directory still reads the originally intended directory).
+
+    Raises:
+        ValueError: if ``raw_path`` is empty or whitespace-only.
+    """
+    if not raw_path or not raw_path.strip():
+        raise ValueError("Path is required")
+    return str(Path(raw_path).expanduser().resolve())
+
+
 class FilesDocumentReader:
     """Read and parse files from a local directory."""
 
@@ -41,7 +62,10 @@ class FilesDocumentReader:
         excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
     ) -> None:
-        self.base_path = base_path
+        # Stored expanded + absolute so a later `update` from a different
+        # CWD still reads the originally intended directory (foundation/6b
+        # bug E7); see get_reader_details()["basePath"].
+        self.base_path = normalize_base_path(base_path)
         self.include_patterns = include_patterns or ["*"]
         self.fail_fast = fail_fast
         self.start_from_time = start_from_time

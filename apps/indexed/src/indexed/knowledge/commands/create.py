@@ -1,6 +1,7 @@
 """Create command for adding collections (hardcoded subcommands)."""
 
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from core.v1.engine.services import SourceConfig
@@ -59,10 +60,17 @@ def _is_cloud(url: str) -> bool:
     """
     Determine whether a given Atlassian base URL refers to the cloud-hosted service.
 
+    Strips whitespace and a trailing slash, then detects on the *parsed
+    host* rather than a raw ``endswith`` on the whole URL string, so
+    ``"https://x.atlassian.net/ "`` (trailing slash + whitespace) still
+    routes to Cloud (foundation/6b bug E6).
+
     Returns:
-        True if the URL ends with ".atlassian.net", False otherwise.
+        True if the URL's host is a ``*.atlassian.net`` domain, False otherwise.
     """
-    return url.endswith(".atlassian.net")
+    normalized = url.strip().rstrip("/")
+    host = urlsplit(normalized).hostname or ""
+    return host.lower().endswith(".atlassian.net")
 
 
 def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
@@ -196,16 +204,26 @@ def create_files(
             console.print()
 
         for field_name in validation.missing:
-            field_info = validation.field_info[field_name]
-
             if is_verbose_mode():
                 logger.info("Prompting for missing field: %s", field_name)
 
             # Prompt based on field name
             if field_name == "path":
-                value = console.input(
+                from connectors.files.files_document_reader import (
+                    normalize_base_path,
+                )
+
+                raw_path = console.input(
                     f"[{get_accent_style()}]Path to files or directory[/{get_accent_style()}]: "
                 )
+                # Reject empty input instead of silently indexing the CWD —
+                # Path("") == Path(".") passes existence validation
+                # (foundation/6b bug E5); shares E7's normalization helper.
+                try:
+                    value = normalize_base_path(raw_path)
+                except ValueError:
+                    print_error("Path is required")
+                    raise typer.Exit(1)
             elif field_name == "include_patterns":
                 patterns_input = console.input(
                     f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [*]: "
@@ -235,16 +253,13 @@ def create_files(
                     f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
                 )
 
-            # Save using ConfigService
-            config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+            # In-memory overlay only — never persisted to config.toml (R3;
+            # foundation/6b bug E4). Files has no sensitive fields.
+            config.set_overlay(f"{ns}.{field_name}", value)
             validation.present[field_name] = value
 
             if is_verbose_mode():
-                logger.info(
-                    "Saved %s to %s",
-                    field_name,
-                    "env" if field_info.get("sensitive") else "config",
-                )
+                logger.info("Saved %s to in-memory overlay", field_name)
 
     def build_files_source_config(
         present: Dict[str, Any], coll_name: str
@@ -442,7 +457,8 @@ def create_jira(
                 value = prompt_credential_field(
                     field_name, field_info, config, ns, source_type
                 )
-            # Handle non-credential fields
+            # Handle non-credential fields — in-memory overlay only, never
+            # persisted to config.toml (R3; foundation/6b bug E4).
             elif field_name in ["query", "jql"]:
                 value = (
                     console.input(
@@ -450,13 +466,13 @@ def create_jira(
                     )
                     or "project = PROJ"
                 )
-                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+                config.set_overlay(f"{ns}.{field_name}", value)
             else:
                 # Generic fallback
                 value = console.input(
                     f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
                 )
-                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+                config.set_overlay(f"{ns}.{field_name}", value)
 
             validation.present[field_name] = value
 
@@ -464,7 +480,7 @@ def create_jira(
                 logger.info(
                     "Saved %s to %s",
                     field_name,
-                    "env" if field_info.get("sensitive") else "config",
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
                 )
 
     def build_jira_source_config(
@@ -690,7 +706,8 @@ def create_confluence(
                 value = prompt_credential_field(
                     field_name, field_info, config, ns, source_type
                 )
-            # Handle non-credential fields
+            # Handle non-credential fields — in-memory overlay only, never
+            # persisted to config.toml (R3; foundation/6b bug E4).
             elif field_name in ["query", "cql"]:
                 value = (
                     console.input(
@@ -698,13 +715,13 @@ def create_confluence(
                     )
                     or "type=page"
                 )
-                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+                config.set_overlay(f"{ns}.{field_name}", value)
             else:
                 # Generic fallback
                 value = console.input(
                     f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
                 )
-                config.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+                config.set_overlay(f"{ns}.{field_name}", value)
 
             validation.present[field_name] = value
 
@@ -712,7 +729,7 @@ def create_confluence(
                 logger.info(
                     "Saved %s to %s",
                     field_name,
-                    "env" if field_info.get("sensitive") else "config",
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
                 )
 
     def build_confluence_source_config(
@@ -898,10 +915,12 @@ def create_outline(
                     field_name, field_info, cfg, ns, source_type
                 )
             else:
+                # In-memory overlay only — never persisted to config.toml
+                # (R3; foundation/6b bug E4).
                 value = console.input(
                     f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
                 )
-                cfg.set_value(f"{ns}.{field_name}", value, field_info=field_info)
+                cfg.set_overlay(f"{ns}.{field_name}", value)
 
             validation.present[field_name] = value
 
@@ -909,7 +928,7 @@ def create_outline(
                 logger.info(
                     "Saved %s to %s",
                     field_name,
-                    "env" if field_info.get("sensitive") else "config",
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
                 )
 
     def build_outline_source_config(

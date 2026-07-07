@@ -36,6 +36,16 @@ class TestIsCloud:
         assert _is_cloud("https://atlassian.net.example.com") is False
         assert _is_cloud("atlassian.net") is False
 
+    def test_trailing_slash_and_whitespace_still_detected_as_cloud(self):
+        """E6: normalize whitespace + trailing slash; detect on parsed host."""
+        assert _is_cloud("https://x.atlassian.net/ ") is True
+        assert _is_cloud("  https://company.atlassian.net  ") is True
+        assert _is_cloud("https://company.atlassian.net/") is True
+
+    def test_case_insensitive_host_detected_as_cloud(self):
+        """Host comparison must not be case-sensitive."""
+        assert _is_cloud("https://COMPANY.ATLASSIAN.NET") is True
+
 
 class TestCreateFiles:
     """Test create_files command."""
@@ -378,6 +388,59 @@ class TestPromptMissingFilesFields:
         )
         prompt_fn(validation, mock_config, "sources.files")
         assert validation.present["path"] == "/my/path"
+
+        # E4: the prompted value goes to the in-memory overlay only — never
+        # persisted to config.toml.
+        mock_config.set_overlay.assert_called_once_with(
+            "sources.files.path", "/my/path"
+        )
+        mock_config.set_value.assert_not_called()
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    @patch("indexed.knowledge.commands.create.print_error")
+    def test_empty_path_input_is_rejected(
+        self, mock_print_error, mock_console, mock_config_service, mock_execute
+    ):
+        """E5: pressing Enter at the path prompt must be rejected, not
+        silently accepted as '' (which equals Path('.') and would index the
+        CWD)."""
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = ""
+        validation = SimpleNamespace(
+            missing=["path"], field_info={"path": {}}, present={}
+        )
+        with pytest.raises(typer.Exit):
+            prompt_fn(validation, mock_config, "sources.files")
+
+        mock_print_error.assert_called()
+        assert "path" not in validation.present
+
+    @patch("indexed.knowledge.commands.create.execute_create_command")
+    @patch("indexed.knowledge.commands.create.ConfigService")
+    @patch("indexed.knowledge.commands.create.console")
+    def test_relative_path_input_normalized_to_absolute(
+        self, mock_console, mock_config_service, mock_execute
+    ):
+        """E7: the prompted path is normalized (expanduser + resolve) via the
+        shared helper, so it is stored absolute."""
+        import os
+        from types import SimpleNamespace
+
+        prompt_fn, mock_config = _capture_prompt_fn(
+            create_files, self._default_kwargs, mock_config_service, mock_execute
+        )
+        mock_console.input.return_value = "./relative/docs"
+        validation = SimpleNamespace(
+            missing=["path"], field_info={"path": {}}, present={}
+        )
+        prompt_fn(validation, mock_config, "sources.files")
+        assert os.path.isabs(validation.present["path"])
 
     @patch("indexed.knowledge.commands.create.execute_create_command")
     @patch("indexed.knowledge.commands.create.ConfigService")
