@@ -78,7 +78,9 @@ class ConfluenceCloudDocumentReader:
             )
 
         # Ensure base_url has the correct Cloud format
-        if not base_url.endswith(".atlassian.net"):
+        from .._url_guard import is_cloud_host
+
+        if not is_cloud_host(base_url):
             raise ValueError(
                 "Base URL must be a Confluence Cloud URL (ending with .atlassian.net)"
             )

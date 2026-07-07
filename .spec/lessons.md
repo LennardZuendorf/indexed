@@ -311,3 +311,17 @@ port is a different origin for credential purposes; fail closed.
   `loguru.remove()`s sinks and resets `utils.logger._LOGGING_CONFIGURED = False`
   after each test. Same class of leak as the `simple_output` module global —
   reset both.
+- **`url.endswith(".domain")` on a full URL is incomplete-substring sanitization
+  (CodeQL `py/incomplete-url-substring-sanitization`, HIGH).** The Atlassian
+  Cloud discriminators in the Jira/Confluence readers did
+  `base_url.endswith(".atlassian.net")` on the raw URL, so
+  `https://evil.com/x.atlassian.net` was misclassified as Cloud (would route
+  credentialed requests off-host). Fix: a shared `is_cloud_host(url)` in
+  `connectors/_url_guard.py` that extracts the host via the existing
+  `_client_host` (the urllib3-accurate authority parse) BEFORE the `.endswith`
+  check, with a scheme-less bare-host fallback for back-compat. Always parse the
+  host first — the parsed-host form is both correct and what the scanner
+  recognizes as sanitized; a bare-string `endswith`/`in` on a URL is not. Mirrors
+  `create.py::_is_cloud`. Editing a line CodeQL already (heuristically) flags
+  re-fingerprints it as a *new* PR alert even when the edit makes it safer —
+  expect the "1 new alert" to be the line you just touched.

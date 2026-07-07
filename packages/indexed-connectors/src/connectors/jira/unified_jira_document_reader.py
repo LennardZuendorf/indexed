@@ -151,7 +151,9 @@ class UnifiedJiraDocumentReader:
         Raises:
             ValueError: If URL format doesn't match the auth type
         """
-        is_cloud_url = base_url.endswith(".atlassian.net")
+        from .._url_guard import is_cloud_host
+
+        is_cloud_url = is_cloud_host(base_url)
 
         if auth_type == JiraAuthType.CLOUD and not is_cloud_url:
             raise ValueError(

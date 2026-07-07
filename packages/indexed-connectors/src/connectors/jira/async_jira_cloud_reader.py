@@ -49,7 +49,9 @@ class AsyncJiraCloudDocumentReader:
             raise ValueError(
                 "Cloud authentication requires both 'email' and 'api_token'"
             )
-        if not base_url.endswith(".atlassian.net"):
+        from .._url_guard import is_cloud_host
+
+        if not is_cloud_host(base_url):
             raise ValueError("Cloud URLs must end with .atlassian.net")
 
         self.base_url = base_url

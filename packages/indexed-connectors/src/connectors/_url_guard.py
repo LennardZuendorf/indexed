@@ -62,6 +62,26 @@ def _client_host(url: str) -> str | None:
     return host.rstrip(".").lower() or None
 
 
+def is_cloud_host(url: str) -> bool:
+    """Return True iff ``url``'s *host* is an Atlassian Cloud (``*.atlassian.net``) domain.
+
+    The host is extracted (via :func:`_client_host`, the same authority parse the
+    HTTP client uses) *before* the suffix check, so a raw-URL substring such as
+    ``https://evil.com/x.atlassian.net`` does not match — closing the incomplete
+    URL-substring sanitization hole that a bare ``url.endswith(".atlassian.net")``
+    leaves open. A scheme-less value (``company.atlassian.net``) is treated as a
+    bare host for backwards compatibility. Empty/hostless input returns False
+    (fail closed).
+    """
+    normalized = url.strip().rstrip("/")
+    host = _client_host(normalized)
+    if host is None:
+        # No scheme — treat the leading authority segment as a bare host.
+        authority = re.split(r"[/?#\\]", normalized, maxsplit=1)[0]
+        host = authority.rsplit("@", 1)[-1].split(":", 1)[0].rstrip(".").lower()
+    return host.endswith(".atlassian.net")
+
+
 def is_same_origin(url: str, base_url: str) -> bool:
     """Return True iff url and base_url share scheme + host + effective port.
 
