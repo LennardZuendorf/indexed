@@ -1,5 +1,6 @@
 """Origin guard for credentialed attachment fetches."""
 
+import re
 from urllib.parse import urlsplit, SplitResult
 
 
@@ -39,14 +40,39 @@ def _effective_port(parts: SplitResult) -> int | None:
     return None
 
 
+def _client_host(url: str) -> str | None:
+    """Extract the host the way the actual HTTP client (requests/urllib3) does.
+
+    ``urllib.parse.urlsplit`` follows RFC 3986 and does not treat a backslash
+    as an authority delimiter, but urllib3 does — so for an authority like
+    ``evil.com\\@good.com``, ``urlsplit`` reports host ``good.com`` while the
+    real request is sent to ``evil.com`` (C3: the parser differential a
+    same-origin check must not trust). Mirror urllib3's split: cut the
+    authority at the first of ``/ ? # \\`` after ``scheme://``, take the host
+    after the last ``@`` (drop credentials), then drop the port and normalize
+    a legitimate trailing FQDN dot (``good.com.`` == ``good.com``).
+    """
+    if "://" not in url:
+        return None
+    rest = url.split("://", 1)[-1]
+    authority = re.split(r"[/?#\\]", rest, maxsplit=1)[0]
+    if not authority:
+        return None
+    host = authority.rsplit("@", 1)[-1].split(":", 1)[0].strip()
+    return host.rstrip(".").lower() or None
+
+
 def is_same_origin(url: str, base_url: str) -> bool:
     """Return True iff url and base_url share scheme + host + effective port.
 
-    Ports are normalized to the scheme default (443 for HTTPS, 80 for HTTP), so a
-    base URL stored without an explicit port still matches a default-port
-    attachment, while a non-default port (e.g. ``:8443``) is treated as a
-    different origin — credentials must not leak to a different service on the
-    same host. Malformed or hostless urls return False (fail closed).
+    Host comparison uses ``_client_host``, which parses the authority the same
+    way the HTTP client does (C3) rather than ``urlsplit``'s RFC-3986 view —
+    otherwise the guard can approve a URL whose credentials the client actually
+    routes to a different (attacker) host. Ports are normalized to the scheme
+    default (443 for HTTPS, 80 for HTTP), so a base URL stored without an
+    explicit port still matches a default-port attachment, while a non-default
+    port (e.g. ``:8443``) is treated as a different origin. Malformed or
+    hostless urls return False (fail closed).
     """
     try:
         parsed = urlsplit(url)
@@ -54,11 +80,16 @@ def is_same_origin(url: str, base_url: str) -> bool:
     except Exception:
         return False
 
-    if not parsed.hostname or not base.hostname or not parsed.scheme or not base.scheme:
+    if not parsed.scheme or not base.scheme:
+        return False
+
+    client_host = _client_host(url)
+    base_host = _client_host(base_url)
+    if not client_host or not base_host:
         return False
 
     return (
         parsed.scheme.lower() == base.scheme.lower()
-        and parsed.hostname.lower() == base.hostname.lower()
+        and client_host == base_host
         and _effective_port(parsed) == _effective_port(base)
     )
