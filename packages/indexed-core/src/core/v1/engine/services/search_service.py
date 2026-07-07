@@ -18,6 +18,11 @@ from core.v1.engine.factories.search_collection_factory import (
 )
 from core.v1.config_models import get_default_collections_path
 
+# When a score threshold is active, request this many times `max_docs` from
+# the searcher so filtered-out slots can be backfilled from the next-best
+# surviving documents (bug A5) instead of being lost by an earlier truncation.
+_BACKFILL_OVERFETCH_FACTOR = 3
+
 
 class SearchService:
     """Stateful search service that caches DocumentCollectionSearcher instances.
@@ -131,14 +136,18 @@ class SearchService:
     ) -> Dict[str, Any]:
         """Filter search results by score threshold.
 
-        For FAISS L2 distance, lower scores indicate better matches. This method
-        filters out documents where the best (lowest) matching chunk score exceeds
-        the threshold, and removes chunks that exceed the threshold within each
-        document.
+        Scores are squared-L2 distance in [0, 4] (embeddings are
+        unit-normalized) — lower is more similar. This method filters out
+        documents where the best (lowest) matching chunk score exceeds the
+        threshold, and removes chunks that exceed the threshold within each
+        document. Callers should apply this BEFORE truncating to `max_docs`
+        so filtered-out slots can be backfilled from the next-best surviving
+        documents (bug A5) — truncating first and filtering after would lose
+        those candidates permanently.
 
         Args:
             result (Dict[str, Any]): Search result dictionary containing 'results' key.
-            score_threshold (float): Maximum distance score allowed.
+            score_threshold (float): Maximum squared-L2 distance allowed.
 
         Returns:
             Dict[str, Any]: Filtered result with same structure but fewer documents/chunks.
@@ -270,10 +279,20 @@ class SearchService:
 
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
+
+                # Filter-before-truncate + backfill (bug A5): when a score
+                # threshold is active, ask the searcher for more documents
+                # than requested so that documents dropped by the filter can
+                # be backfilled from the next-best surviving ones, THEN
+                # truncate to max_docs after filtering.
+                searcher_max_docs = max_docs
+                if score_threshold is not None and max_docs is not None:
+                    searcher_max_docs = max_docs * _BACKFILL_OVERFETCH_FACTOR
+
                 result = searcher.search(
                     text=query,
                     max_number_of_chunks=max_chunks,
-                    max_number_of_documents=max_docs,
+                    max_number_of_documents=searcher_max_docs,
                     include_text_content=include_full_text,
                     include_all_chunks_content=include_all_chunks,
                     include_matched_chunks_content=include_matched_chunks,
@@ -282,6 +301,8 @@ class SearchService:
                 # Apply score threshold filtering if specified
                 if score_threshold is not None and isinstance(result, dict):
                     result = self._filter_by_score(result, score_threshold)
+                    if max_docs is not None and "results" in result:
+                        result = {**result, "results": result["results"][:max_docs]}
 
                 results[cfg.name] = result
                 num_docs = (
