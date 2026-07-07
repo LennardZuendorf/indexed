@@ -53,21 +53,17 @@ def _load_search_config() -> Any:
     same query). Falls back to model defaults when the section isn't
     registered/set, mirroring ``mcp/server.py::_get_config``.
 
-    Re-registers app config defensively before binding: ``resolve_collections_
-    context(mode_override=...)`` (already called earlier in this command)
-    forces ``ConfigService.instance(reset=True)`` for a non-None override,
-    which replaces the singleton and drops the specs the app callback
-    registered — the same defensive re-register ``mcp/cli.py::run_impl``
-    already relies on before its own ``bind()`` call.
+    No defensive re-register needed here: ``resolve_collections_context``
+    (already called earlier in this command) now re-registers app config
+    itself right after resolving/resetting the singleton, so the specs are
+    guaranteed to be present by the time this binds (foundation/6d root-cause
+    fix — see ``runtime.py``).
     """
     from core.v1.config_models import CoreV1SearchConfig
-    from indexed.bootstrap import register_app_config
     from indexed_config import ConfigService
 
     try:
-        config_service = ConfigService.instance()
-        register_app_config(config_service)
-        provider = config_service.bind()
+        provider = ConfigService.instance().bind()
         return provider.get(CoreV1SearchConfig)
     except Exception:
         return CoreV1SearchConfig()

@@ -21,13 +21,21 @@ def resolve_collections_context(
     *,
     workspace: Path | None = None,
 ) -> CliContext:
-    from indexed.bootstrap import build_connector_registry
+    from indexed.bootstrap import build_connector_registry, register_app_config
 
     config_service = ConfigService.instance(
         workspace=workspace,
         mode_override=mode_override,
         reset=mode_override is not None,
     )
+    # `reset=True` above replaces the singleton with a fresh, empty
+    # ConfigRegistry whenever a non-None mode_override is passed — even when
+    # unchanged from what's already active. Re-registering here (idempotent,
+    # plain dict writes) restores the specs for every caller (create/update/
+    # search/inspect/remove/MCP), fixing the root cause instead of leaving
+    # each caller to defensively re-register before its own `.bind()`
+    # (foundation/6d E12 follow-up).
+    register_app_config(config_service)
     mode = config_service.resolve_storage_mode()
     resolver = config_service.resolver
     return CliContext(
