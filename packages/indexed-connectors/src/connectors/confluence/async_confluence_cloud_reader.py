@@ -273,9 +273,15 @@ class AsyncConfluenceCloudDocumentReader:
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         attachments_map: dict = {}
 
+        # Atlassian Cloud serves attachment bytes via a 302 redirect to a
+        # media/S3 CDN — follow_redirects=True is required or every
+        # attachment download fails on the redirect (D1). The CDN is a
+        # legitimate off-origin host, so _url_guard is deliberately not
+        # applied to this client (see .spec/features/foundation/tech-connectors.md R6.1).
         async with httpx.AsyncClient(
             auth=(self.email, self.api_token),
             timeout=60.0,
+            follow_redirects=True,
             limits=httpx.Limits(
                 max_connections=self.max_concurrent_requests,
                 max_keepalive_connections=5,
@@ -342,7 +348,14 @@ class AsyncConfluenceCloudDocumentReader:
             async with semaphore:
                 try:
                     resp = await client.get(download_url)
-                    resp.raise_for_status()
+                    # The 302 to the CDN is already followed by the client
+                    # above; only a real (4xx/5xx) failure should skip the
+                    # attachment here (D1).
+                    if not resp.is_success:
+                        logger.warning(
+                            f"Failed to download attachment: HTTP {resp.status_code}"
+                        )
+                        continue
                     downloaded.append(
                         {
                             "filename": att.get("title", "unknown"),
