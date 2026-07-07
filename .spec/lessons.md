@@ -232,22 +232,34 @@ port is a different origin for credential purposes; fail closed.
 
 ## MCP freshness/errors & dead config sections (foundation/6d, 2026-07-07)
 
-- **`resolve_collections_context(mode_override=...)` silently wipes registered
-  config specs.** It calls `ConfigService.instance(mode_override=..., reset=
-  mode_override is not None)` — `reset=True` unconditionally replaces the
-  singleton (fresh, empty `ConfigRegistry`) any time a non-None override is
-  passed, even when the override is identical to what's already active. Every
-  knowledge command calls this *after* the app callback's `register_app_config`,
-  so any command that later needs `ConfigService.instance().bind()` gets a
-  `KeyError: spec not found` — not because the spec was never registered, but
-  because a later, unrelated call silently discarded it. Fix locally: re-call
-  `register_app_config(ConfigService.instance())` immediately before `.bind()`
-  (idempotent, cheap) — the same defensive pattern `mcp/cli.py::run_impl`
-  already uses before its own `bind()`. This is a real landmine for any future
-  config-architecture work (foundation/7-9): the root fix is to stop forcing
-  `reset=True` on unchanged mode_override in `runtime.py`, but that function is
-  shared by every knowledge command + MCP lifespan, so it was left alone here
-  and the narrower per-call re-register was used instead.
+- **`resolve_collections_context(mode_override=...)` used to silently wipe
+  registered config specs — now fixed at the root.** It calls
+  `ConfigService.instance(mode_override=..., reset=mode_override is not None)`
+  — `reset=True` unconditionally replaces the singleton (fresh, empty
+  `ConfigRegistry`) any time a non-None override is passed, even when the
+  override is identical to what's already active. Every knowledge command
+  calls this *after* the app callback's `register_app_config`, so a bare
+  reset silently dropped every registered spec for the rest of that command —
+  including `FaissIndexer._resolve_embedding_batch_size()`, which fell back to
+  its hardcoded 128 default in `--local` mode (the mode create/update/tests
+  actually use) instead of honoring `core.v1.embedding.batch_size`.
+  **Root-cause fix (this task):** `resolve_collections_context` now calls
+  `register_app_config(config_service)` itself, right after obtaining/resetting
+  the singleton and before returning the `CliContext` — `register_app_config`
+  is idempotent (plain dict registration), so this is free for the already-hot
+  path and restores the specs for **every** caller (create/update/search/
+  inspect/remove/MCP) in one place instead of leaving each caller to guess it
+  needs a defensive re-register. `search.py::_load_search_config`'s per-call
+  `register_app_config` re-register (the original 6d workaround) has been
+  removed as redundant — it now just binds directly, relying on the runtime
+  fix. **Do not reintroduce the per-caller defensive re-register pattern**
+  for callers that go through `resolve_collections_context`; only call sites
+  that build their own `ConfigService.instance()` *without* going through
+  `resolve_collections_context` (e.g. `mcp/cli.py::run_impl`, which resolves
+  config before any storage-mode override) still need their own explicit
+  `register_app_config` call. The remaining "is this settable-but-unread
+  knob truly dead" audit for `core.v1.indexing` / the rest of
+  `core.v1.embedding` is unchanged — still deferred to foundation/7-9.
 - **Two console-output test patterns coexist in `search.py` and don't compose.**
   Some tests monkeypatch `search_cmd.console` (a module-local rebinding) and
   capture via a fake `.print`; but `print_error`/`print_warning` (from

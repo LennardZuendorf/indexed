@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-03
+updated: 2026-07-07
 ---
 
 # Tech Spec: indexed
@@ -302,7 +302,9 @@ imports the other's concrete types for wiring.
 `apps/indexed/src/indexed/bootstrap.py` is the **only** module that registers config
 specs and builds connectors from the registry:
 
-- `register_app_config(config_service)` — idempotent; called from CLI callback and MCP lifespan
+- `register_app_config(config_service)` — idempotent; called from the CLI callback,
+  MCP lifespan, and `resolve_collections_context` itself (so specs survive the
+  singleton reset a non-None `mode_override` forces — foundation/6d)
 - `build_connector_registry()` / `build_connector(cfg, config_service, registry)`
 
 `apps/indexed/src/indexed/runtime.py` exposes `CliContext` and

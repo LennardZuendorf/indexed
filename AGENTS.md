@@ -280,12 +280,16 @@ Earned defaults — apply without being asked.
   free (cost is O(N·d) regardless of k) — prefer "fetch everything, group, cap" over
   a tuned multiplier when fixing top-k starvation. Full detail in `.spec/lessons.md`.
 - **`resolve_collections_context(mode_override=...)` force-resets the
-  `ConfigService` singleton** (`reset=mode_override is not None`), which drops
-  any specs a prior `register_app_config` call registered — even when the
-  override didn't change. Any command that calls `.bind()` after it must
-  defensively re-call `register_app_config(ConfigService.instance())` first
-  (mirrors the existing `mcp/cli.py::run_impl` pattern). Full detail in
-  `.spec/lessons.md`.
+  `ConfigService` singleton** (`reset=mode_override is not None`), which used
+  to drop any specs a prior `register_app_config` call registered — even when
+  the override didn't change. Fixed at the root: `resolve_collections_context`
+  now calls `register_app_config(config_service)` itself right after
+  obtaining/resetting the instance, so every caller (create/update/search/
+  inspect/remove/MCP) gets the specs back for free. Don't add a per-caller
+  defensive re-register for anything that goes through
+  `resolve_collections_context` — only call sites that build their own
+  `ConfigService.instance()` outside it (e.g. `mcp/cli.py::run_impl`) still
+  need one. Full detail in `.spec/lessons.md`.
 
 ---
 
