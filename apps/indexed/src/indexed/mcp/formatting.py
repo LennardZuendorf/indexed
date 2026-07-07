@@ -22,9 +22,16 @@ def format_search_results_for_llm(
     }
 
     all_chunks: List[Dict[str, Any]] = []
+    # A failed collection must reach the agent as "index failed", not a
+    # silent "0 matches" (foundation/6 E10) — collected here and always
+    # included in the envelope below, even when empty.
+    collection_errors: List[Dict[str, Any]] = []
 
     for collection_name, collection_data in raw_results.items():
         if isinstance(collection_data, dict) and "error" in collection_data:
+            collection_errors.append(
+                {"collection": collection_name, "error": collection_data["error"]}
+            )
             continue
 
         formatted["total_collections_searched"] += 1
@@ -72,5 +79,6 @@ def format_search_results_for_llm(
         formatted["results"].append(chunk)
 
     formatted["total_chunks_found"] = len(all_chunks)
+    formatted["collection_errors"] = collection_errors
 
     return formatted
