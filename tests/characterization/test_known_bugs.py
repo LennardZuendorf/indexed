@@ -466,7 +466,6 @@ def test_bug_c4_env_writer_quotes_secrets(tmp_path: Path, monkeypatch) -> None:
 # ===========================================================================
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_D)
 def test_bug_d1_jira_attachment_follows_redirect(monkeypatch) -> None:
     """D1: a Jira Cloud attachment served via a 302 to the media host must be
     downloaded (the async client lacks ``follow_redirects`` and
@@ -545,7 +544,6 @@ def test_bug_d1_jira_attachment_follows_redirect(monkeypatch) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_D)
 def test_bug_d2_change_tracker_unquotes_non_ascii_paths(tmp_path: Path) -> None:
     """D2: the git change-tracker must C-unquote git's octal-escaped path output
     so non-ASCII filenames are matched (``"caf\\303\\251.txt"`` is compared raw
@@ -562,7 +560,6 @@ def test_bug_d2_change_tracker_unquotes_non_ascii_paths(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_D)
 def test_bug_d3_jira_adf_leaf_nodes_extracted() -> None:
     """D3: ADF leaf nodes carry their data in ``attrs`` (mention display name,
     inlineCard url); ``_parse_adf_nodes`` walks only ``content`` today → these are
@@ -599,7 +596,6 @@ def test_bug_d3_jira_adf_leaf_nodes_extracted() -> None:
     assert "https://example.com/card" in text, "inlineCard url must be in the text"
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_D)
 def test_bug_d4_confluence_image_filename_extracted() -> None:
     """D4: Confluence storage-format ``ac:image``/``ri:attachment`` filenames live
     in attributes; ``get_text()`` extracts only text nodes today → the filename is
