@@ -1,14 +1,18 @@
 """Indexed MCP Server using FastMCP.
 
 Provides search and inspect capabilities for document collections via MCP tools and resources.
-Uses FastMCP server lifespan and response caching middleware.
+Uses FastMCP server lifespan for configuration initialization.
+
+No response-caching middleware is registered: the searcher cache in
+``SearchService`` already provides the latency win, and a TTL cache here would
+serve stale results (including cached error envelopes) for up to an hour after
+a re-index (foundation/6 E9).
 """
 
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Type, TypedDict
 
 from fastmcp import FastMCP
-from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 
 from core.v1.config_models import CoreV1SearchConfig, MCPConfig
 from indexed_config import ConfigService
@@ -53,7 +57,6 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
 
 
 mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
-mcp.add_middleware(ResponseCachingMiddleware())
 
 register_tools(mcp, lambda: _get_config(CoreV1SearchConfig))
 register_resources(mcp, lambda: _get_config(MCPConfig))
