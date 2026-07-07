@@ -1,6 +1,7 @@
 """Config command for managing index configuration."""
 
 import json
+import re
 import webbrowser
 from typing import Any, Optional
 from collections import defaultdict
@@ -83,11 +84,35 @@ def _value_to_default_str(value: Any) -> str:
         return str(value)
 
 
+# F5: float()/json.loads() happily parse these as non-finite numbers, but a
+# user typing them as a config value almost certainly means the literal word
+# (e.g. a free-text field containing "nan"), not IEEE NaN/Infinity.
+_NON_FINITE_FLOAT_WORDS = {
+    "nan",
+    "inf",
+    "+inf",
+    "-inf",
+    "infinity",
+    "+infinity",
+    "-infinity",
+}
+
+# A genuine int/float literal never leads with a zero before another digit —
+# a zero-padded string like "001" is an identifier (version, ticket number,
+# ...) that must stay a string, not become the int 1.
+_LEADING_ZERO_NUMERIC_RE = re.compile(r"^[+-]?0\d")
+
+
 def _coerce_value(value: str) -> Any:
     """
     Convert a string to an appropriate Python type.
 
-    Attempts to interpret the input as a boolean, integer, float, or JSON value (list/dict); if none apply, returns the original string.
+    Attempts to interpret the input as a boolean, integer, float, or JSON
+    value (list/dict); if none apply, returns the original string. Only
+    coerces values that are genuinely numeric/bool/json (F5) — a string that
+    merely *resembles* one (a zero-padded id like ``"001"``, or the word
+    ``"nan"``) is returned unchanged so identifiers and literal words are
+    never silently mangled into numbers.
 
     Parameters:
         value (str): The input string to coerce.
@@ -100,17 +125,21 @@ def _coerce_value(value: str) -> Any:
     if low in {"true", "false"}:
         return low == "true"
 
-    # Try int (handles both positive and negative integers properly)
-    try:
-        return int(value)
-    except ValueError:
-        pass
+    if low in _NON_FINITE_FLOAT_WORDS:
+        return value
 
-    # Try float
-    try:
-        return float(value)
-    except ValueError:
-        pass
+    if not _LEADING_ZERO_NUMERIC_RE.match(value):
+        # Try int (handles both positive and negative integers properly)
+        try:
+            return int(value)
+        except ValueError:
+            pass
+
+        # Try float
+        try:
+            return float(value)
+        except ValueError:
+            pass
 
     # Try JSON (for lists/dicts)
     try:
@@ -1621,7 +1650,18 @@ def set_config(
         if is_secret:
             print_success("Secret saved to .env (kept out of config.toml)")
         else:
-            print_success("Configuration saved to .indexed/config.toml")
+            # F4: name the actual resolved destination (global or workspace
+            # config.toml) instead of a hardcoded literal that reads as the
+            # local CWD file while the write may have gone to ~/.indexed/.
+            # Printed as its own plain (unwrapped) line — like the existing
+            # "Location: ..." convention below — since the fixed-width
+            # success card would otherwise fold a long path mid-word.
+            print_success("Configuration saved")
+            target_path = config.store.resolved_config_path()
+            console.print(
+                f"[{get_secondary_style()}]Location: {target_path}[/{get_secondary_style()}]",
+                soft_wrap=True,
+            )
         console.print()
 
     except Exception as e:
