@@ -1180,3 +1180,64 @@ class TestStorageIndicatorOrdering:
             )
 
         mock_display.assert_called_once()
+
+
+class TestCreateFailureConfigRestore:
+    """Review Finding 1 (foundation/6b): a failed create must leave
+    config.toml byte-identical to before the run, even when a credential
+    (Jira Cloud email) was interactively prompted and persisted to disk
+    (``ensure_atlassian_cloud_credentials`` writes it via
+    ``set_value(..., sensitive=False)``) before the create itself failed.
+
+    This is distinct from bug E4 (CLI-override overlay, e.g. --path/--url):
+    E4 already keeps those in-memory-only. This covers the credential-prompt
+    write path, which goes straight to config.toml regardless of the E4 fix.
+    """
+
+    @patch("indexed.knowledge.commands._create_helpers.svc_create")
+    def test_failed_jira_create_restores_config_toml(
+        self, mock_svc_create, local_workspace
+    ):
+        from typer.testing import CliRunner
+
+        from indexed.app import app
+
+        mock_svc_create.side_effect = RuntimeError("simulated create failure")
+
+        config_toml = local_workspace.local_root / "config.toml"
+        before = config_toml.read_bytes() if config_toml.exists() else None
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--local",
+                "--log-level",
+                "ERROR",
+                "create",
+                "jira",
+                "--collection",
+                "f1-jira",
+                "--url",
+                "https://f1.atlassian.net",
+                "--jql",
+                "project = F1",
+                "--token",
+                "fake-token",
+            ],
+            input="prompted-email@example.com\n",
+        )
+
+        assert result.exit_code != 0, result.stdout
+
+        after = config_toml.read_bytes() if config_toml.exists() else None
+        assert after == before, (
+            "a failed create must leave config.toml byte-identical to "
+            "before the command ran, including any prompted email"
+        )
+        text = after.decode() if after else ""
+        assert "prompted-email@example.com" not in text, (
+            "a failed create must not leave the prompted email in config.toml"
+        )
+        assert "f1.atlassian.net" not in text
+        assert "project = F1" not in text

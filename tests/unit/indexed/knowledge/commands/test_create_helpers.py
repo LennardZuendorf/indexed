@@ -94,7 +94,10 @@ class TestExecuteCreateCommand:
         mock_print_success.assert_called_once()
         # E4: each run starts with a clean in-memory overlay so a stale
         # override from a prior (possibly failed) create can't leak in.
-        mock_config.clear_overlay.assert_called_once()
+        # Review Finding 2: the overlay is also cleared in a `finally` at the
+        # end of every run (start-clear + finally-clear = 2 calls here) so it
+        # never dangles process-global state after a run finishes.
+        assert mock_config.clear_overlay.call_count == 2
 
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
     @patch("indexed.knowledge.commands._create_helpers.ConfigService")
@@ -210,6 +213,9 @@ class TestExecuteCreateCommand:
             )
 
         mock_print_error.assert_called()
+        # Review Finding 2: the overlay must still be cleared on a failed run
+        # (finally-clear runs regardless of the raised typer.Exit).
+        mock_config.clear_overlay.assert_called()
 
     @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
     @patch("indexed.knowledge.commands._create_helpers.ConfigService")
