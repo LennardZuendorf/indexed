@@ -74,6 +74,7 @@ def test_enrich_with_attachments_downloads():
     async def fake_get(url, **kwargs):
         resp = MagicMock()
         resp.content = b"pdf bytes"
+        resp.is_success = True
         resp.raise_for_status = MagicMock()
         return resp
 
@@ -138,3 +139,62 @@ def test_fetch_attachment_bytes_failure_returns_none():
             assert result is None
 
     asyncio.run(run())
+
+
+def test_fetch_attachment_bytes_http_error_returns_none_without_raising():
+    """D1: a 4xx/5xx response is a real failure — returns None, no raise."""
+    reader = _make_reader(include_attachments=True)
+
+    async def run():
+        sem = asyncio.Semaphore(10)
+        async with AsyncMock() as client:
+            resp = MagicMock()
+            resp.is_success = False
+            resp.status_code = 404
+            client.get = AsyncMock(return_value=resp)
+            result = await reader._fetch_attachment_bytes(client, sem, "https://bad")
+            assert result is None
+
+    asyncio.run(run())
+
+
+def test_enrich_with_attachments_client_follows_redirects():
+    """D1: the attachment download client must be constructed with
+    follow_redirects=True so the Cloud media/CDN 302 is followed."""
+    reader = _make_reader(include_attachments=True)
+
+    issues = [
+        {
+            "key": "T-1",
+            "fields": {
+                "attachment": [
+                    {
+                        "filename": "report.pdf",
+                        "content": "https://acme.atlassian.net/att/1",
+                        "mimeType": "application/pdf",
+                        "size": 1024,
+                    },
+                ]
+            },
+        }
+    ]
+
+    async def fake_get(url, **kwargs):
+        resp = MagicMock()
+        resp.content = b"pdf bytes"
+        resp.is_success = True
+        return resp
+
+    with patch(
+        "connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
+    ) as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value = mock_client
+
+        asyncio.run(reader._enrich_with_attachments(issues))
+
+    _, kwargs = MockClient.call_args
+    assert kwargs.get("follow_redirects") is True
