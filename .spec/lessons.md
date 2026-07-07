@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-05
+updated: 2026-07-07
 ---
 
 # Lessons Learned
@@ -148,3 +148,38 @@ sent to a different service on the same host. The permissive behavior was justif
 default (443/80) — instead of dropping it. That keeps `https://host` ≡ `https://host:443`
 (the reason ports were skipped) while correctly rejecting non-default ports. A different
 port is a different origin for credential purposes; fail closed.
+
+---
+
+## Behavior-net harness (foundation/1, 2026-07-07)
+
+- **Warm the engine via `import core.v1.engine.services` first.** The engine has a
+  cold-import cycle (`documents_collection_creator` imports `services.models` →
+  `services/__init__` → `collection_service` → `create_collection_factory` → back to
+  the creator). In a fresh process, importing a factory / creator / searcher
+  **directly** fails cold; importing the `services` **package** first resolves it.
+  Any test that touches the engine outside the CLI must warm that import first
+  (`tests/characterization/test_lifecycle_cloud.py`, `test_known_bugs.py`). This is
+  the same cycle foundation/7 removes by breaking the engine→services upward import.
+- **Stub HTTP at the `read_documents` boundary; run FAISS + embeddings for real.**
+  The cloud lifecycle nets build the real reader+converter and patch only the HTTP
+  client (`jira…Jira`, `confluence…requests.get`, `outline…requests.post` +
+  `httpx.AsyncClient`). Drive create via `create_collection_creator`, update via
+  `create_collection_updater(manifest_connector_factory=…)`, inspect via
+  `InspectService.status`, remove via `collection_service.clear`. A shared mutable
+  doc-list backs the stub so `add_update()` grows the source for the update leg.
+- **Known-hit, not "no error".** Assert a *specific* document is the top hit and that
+  a *different* query ranks a *different* document first. That is what proves recall
+  and is exactly what the pruned mechanism tests could not assert.
+- **Config isolation patches `Path.home()`**, so the HF model cache can miss on the
+  first model-using test of a session and re-download once into the sandbox. Harmless
+  where the network is available; gate model-dependent specs on `model_available()`.
+- **Verify red bug-specs fail for the RIGHT reason.** Run them with
+  `pytest --runxfail --tb=line` and confirm each fails on a genuine assertion about
+  the desired behavior (or the bug's own exception) — never a spurious
+  `AttributeError`/`ImportError`. A spec that xfails on a typo never flips to xpass
+  when the bug is fixed, so it silently stops guarding.
+- **Prune only net-covered mechanism tests; promote when unsure.** Registry-membership
+  `test_init.py` clones were replaced by one behavior-focused
+  `test_connector_registry.py` (public `get_connector_class`/`list_connector_types`)
+  before deleting them — "promote into the net, then delete", never delete-first.

@@ -264,6 +264,12 @@ Earned defaults — apply without being asked.
 - **Audit Cloud readers before applying credential guards.** Cloud APIs often
   serve attachment content from off-origin CDNs — the origin guard must be
   selectively excluded or it silently drops all attachments.
+- **Behavior nets assert known-hit, not "no error".** The `tests/characterization`
+  lifecycle nets stub HTTP at the `read_documents` boundary but run FAISS +
+  embeddings for real, and assert a *specific* document is the top hit. Warm the
+  engine with `import core.v1.engine.services` first (cold-import cycle), and verify
+  red bug-specs with `pytest --runxfail` so each fails for the right reason. Full
+  detail in `.spec/lessons.md`.
 
 ---
 

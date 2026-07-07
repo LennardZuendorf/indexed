@@ -3,7 +3,7 @@ type: feature-plan
 feature: foundation
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-07-06
+updated: 2026-07-07
 ---
 
 # Feature: Foundation — Implementation Plan
@@ -520,7 +520,7 @@ foundation/9 is independent after foundation/1.
 
 | Unit | Status |
 |---|---|
-| foundation/1 | NOT STARTED |
+| foundation/1 | DONE |
 | foundation/2 | NOT STARTED |
 | foundation/3 | NOT STARTED |
 | foundation/4 | NOT STARTED |
