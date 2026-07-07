@@ -382,7 +382,6 @@ def test_bug_b4_failed_create_preserves_existing_collection(tmp_path: Path) -> N
 # ===========================================================================
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_C)
 def test_bug_c1_config_set_secret_never_hits_toml_or_stdout(
     local_workspace,
 ) -> None:
@@ -401,7 +400,6 @@ def test_bug_c1_config_set_secret_never_hits_toml_or_stdout(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_C)
 def test_bug_c2_env_secret_not_baked_into_config(local_workspace, monkeypatch) -> None:
     """C2: an ``INDEXED__*`` env-supplied secret must stay an in-memory overlay —
     an unrelated ``config set`` must not round-trip it into ``config.toml`` (today
@@ -418,7 +416,6 @@ def test_bug_c2_env_secret_not_baked_into_config(local_workspace, monkeypatch) -
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_C)
 def test_bug_c3_url_guard_rejects_backslash_authority() -> None:
     """C3: ``is_same_origin`` must reject a parser-differential authority like
     ``https://evil.com\\@good.com`` (urlsplit sees host ``good.com`` and approves,
@@ -428,7 +425,6 @@ def test_bug_c3_url_guard_rejects_backslash_authority() -> None:
     assert is_same_origin("https://evil.com\\@good.com/x", "https://good.com") is False
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_C)
 def test_bug_c4_env_writer_quotes_secrets(tmp_path: Path) -> None:
     """C4: a secret containing ``" #"`` must survive a dotenv round-trip
     byte-identical (the writer emits unquoted ``KEY=value`` today, so ``#`` starts
