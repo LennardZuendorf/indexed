@@ -11,6 +11,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ._model_window import count_tokens, effective_max_tokens, get_markdown_chunker
 from .schema import ParsedChunk, ParsedDocument
 
 
@@ -18,8 +19,11 @@ class PlaintextParser:
     """Parse plain-text and markdown files."""
 
     def __init__(self, *, max_tokens: int = 512) -> None:
-        self._max_tokens = max_tokens
-        self._max_chars = max_tokens * 4  # rough estimate
+        # Clamp to the embedder's real token window (bug A4) — a requested
+        # budget above the model's max_seq_length would otherwise produce
+        # chunks whose tail is silently truncated at embed time.
+        self._max_tokens = effective_max_tokens(max_tokens)
+        self._max_chars = self._max_tokens * 4  # rough estimate, last-resort fallback
 
     def parse(self, file_path: Path) -> ParsedDocument:
         """Parse *file_path* and return a ``ParsedDocument``."""
@@ -39,16 +43,12 @@ class PlaintextParser:
         """Use Docling for structure-aware markdown chunking."""
         try:
             from docling.document_converter import DocumentConverter
-            from docling_core.transforms.chunker import HierarchicalChunker
 
             converter = DocumentConverter()
             result = converter.convert(str(file_path))
             doc = result.document
 
-            chunker = HierarchicalChunker(
-                max_tokens=self._max_tokens,
-                include_metadata=True,
-            )
+            chunker = get_markdown_chunker()
             raw_chunks = list(chunker.chunk(doc))
 
             chunks: list[ParsedChunk] = []
@@ -124,49 +124,78 @@ class PlaintextParser:
         )
 
     def _split_paragraphs(self, text: str, file_path: str) -> list[ParsedChunk]:
-        """Split *text* into chunks at paragraph boundaries."""
-        if len(text) <= self._max_chars:
-            return [
-                ParsedChunk(
-                    text=text,
-                    contextualized_text=f"{file_path}\n{text}",
-                    metadata={"file_path": file_path},
-                    source_type="plaintext",
-                )
-            ]
+        """Split *text* into window-sized chunks.
 
-        paragraphs = text.split("\n\n")
+        Splits on blank-line paragraph boundaries first (prose); falls back to
+        single newlines when there are none (CSV/JSON/YAML/log/XML — bug A3),
+        and to a hard word/character window when even a single paragraph or
+        line alone exceeds the model's token window (bug A1/A4). Every chunk
+        this returns tokenizes to at most ``self._max_tokens`` under the
+        default embedding tokenizer.
+        """
+        if count_tokens(text) <= self._max_tokens:
+            return [self._make_plaintext_chunk(text, file_path)]
+
+        units = text.split("\n\n")
+        sep = "\n\n"
+        if len(units) == 1:
+            units = text.split("\n")
+            sep = "\n"
+
+        pieces: list[str] = []
+        for unit in units:
+            pieces.extend(self._bound_to_window(unit))
+
         chunks: list[ParsedChunk] = []
         buf: list[str] = []
-        buf_len = 0
+        buf_tokens = 0
 
-        for para in paragraphs:
-            para_len = len(para)
-            if buf_len + para_len + 2 > self._max_chars and buf:
-                chunk_text = "\n\n".join(buf)
-                chunks.append(
-                    ParsedChunk(
-                        text=chunk_text,
-                        contextualized_text=f"{file_path}\n{chunk_text}",
-                        metadata={"file_path": file_path},
-                        source_type="plaintext",
-                    )
-                )
-                buf.clear()
-                buf_len = 0
-
-            buf.append(para)
-            buf_len += para_len + 2
+        for piece in pieces:
+            piece_tokens = count_tokens(piece)
+            if buf and buf_tokens + piece_tokens > self._max_tokens:
+                chunks.append(self._make_plaintext_chunk(sep.join(buf), file_path))
+                buf = []
+                buf_tokens = 0
+            buf.append(piece)
+            buf_tokens += piece_tokens
 
         if buf:
-            chunk_text = "\n\n".join(buf)
-            chunks.append(
-                ParsedChunk(
-                    text=chunk_text,
-                    contextualized_text=f"{file_path}\n{chunk_text}",
-                    metadata={"file_path": file_path},
-                    source_type="plaintext",
-                )
-            )
+            chunks.append(self._make_plaintext_chunk(sep.join(buf), file_path))
 
         return chunks
+
+    def _bound_to_window(self, unit: str) -> list[str]:
+        """Split *unit* further if it alone exceeds the token window."""
+        if count_tokens(unit) <= self._max_tokens:
+            return [unit]
+
+        words = unit.split(" ")
+        if len(words) == 1:
+            # A single unsplittable run (no spaces) — hard-slice by
+            # characters as a last resort; conservative ratio so the slice
+            # stays inside the window even for dense (punctuation-heavy) text.
+            step = max(1, self._max_chars // 4)
+            return [unit[i : i + step] for i in range(0, len(unit), step)] or [unit]
+
+        out: list[str] = []
+        buf: list[str] = []
+        buf_tokens = 0
+        for word in words:
+            word_tokens = count_tokens(word)
+            if buf and buf_tokens + word_tokens > self._max_tokens:
+                out.append(" ".join(buf))
+                buf = []
+                buf_tokens = 0
+            buf.append(word)
+            buf_tokens += word_tokens
+        if buf:
+            out.append(" ".join(buf))
+        return out
+
+    def _make_plaintext_chunk(self, text: str, file_path: str) -> ParsedChunk:
+        return ParsedChunk(
+            text=text,
+            contextualized_text=f"{file_path}\n{text}",
+            metadata={"file_path": file_path},
+            source_type="plaintext",
+        )

@@ -1285,7 +1285,7 @@ version = "0.1.0"
 source = { editable = "packages/indexed-parsing" }
 dependencies = [
     { name = "docling" },
-    { name = "docling-core" },
+    { name = "docling-core", extra = ["chunking"] },
     { name = "loguru" },
     { name = "tree-sitter" },
     { name = "tree-sitter-c" },
@@ -1302,7 +1302,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docling", specifier = ">=2.70.0" },
-    { name = "docling-core", specifier = ">=2.8.0" },
+    { name = "docling-core", extras = ["chunking"], specifier = ">=2.8.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-c", specifier = ">=0.23" },
