@@ -1,9 +1,12 @@
 """Tests for parsing.plaintext_parser — PlaintextParser."""
 
+import base64
+import os
 from pathlib import Path
 
 import pytest
 
+from parsing._model_window import count_tokens
 from parsing.plaintext_parser import PlaintextParser
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
@@ -88,6 +91,34 @@ class TestPlaintextParser:
         assert len(doc.chunks) >= 1
         assert doc.metadata["format"] == ".rst"
         assert doc.chunks[0].source_type == "plaintext"
+
+    def test_embedded_unsplittable_blob_stays_within_window(
+        self, parser: PlaintextParser, tmp_path: Path
+    ):
+        """An oversized word (base64 blob/URL/hash/JWT) embedded inside an
+        otherwise multi-word structured line must still be hard-sliced to fit
+        the token window — not appended to ``buf`` unbounded and flushed as
+        one oversize chunk. Regression for the finding in ``_bound_to_window``'s
+        word-packing loop: the whole-unit char-slice fallback only fired when
+        the ENTIRE unit had no spaces, so a single unsplittable run sitting
+        inside a multi-word JSON/log line sailed through unbounded.
+        """
+        blob = base64.b64encode(os.urandom(1600)).decode()
+        lines = [
+            '{"id": %d, "msg": "log line filler text here", "blob": "%s"}' % (i, blob)
+            for i in range(30)
+        ]
+        f = tmp_path / "structured.json"
+        f.write_text("\n".join(lines))
+
+        doc = parser.parse(f)
+
+        assert len(doc.chunks) > 1
+        token_counts = [count_tokens(c.text) for c in doc.chunks]
+        assert max(token_counts) <= parser._max_tokens, (
+            f"every chunk must tokenize to at most {parser._max_tokens} "
+            f"tokens; got a chunk of {max(token_counts)} tokens"
+        )
 
     def test_parse_md_still_attempts_docling(
         self, parser: PlaintextParser, tmp_path: Path, monkeypatch

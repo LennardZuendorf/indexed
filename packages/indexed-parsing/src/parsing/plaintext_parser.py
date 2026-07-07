@@ -172,16 +172,25 @@ class PlaintextParser:
         words = unit.split(" ")
         if len(words) == 1:
             # A single unsplittable run (no spaces) — hard-slice by
-            # characters as a last resort; conservative ratio so the slice
-            # stays inside the window even for dense (punctuation-heavy) text.
-            step = max(1, self._max_chars // 4)
-            return [unit[i : i + step] for i in range(0, len(unit), step)] or [unit]
+            # characters as a last resort.
+            return self._slice_by_chars(unit)
 
         out: list[str] = []
         buf: list[str] = []
         buf_tokens = 0
         for word in words:
             word_tokens = count_tokens(word)
+            if word_tokens > self._max_tokens:
+                # A single word alone overflows the window (a base64 blob,
+                # URL, hash, or JWT embedded in an otherwise multi-word
+                # line/paragraph) — flush what's buffered, then hard-slice
+                # this word too, so it never survives into an oversize chunk.
+                if buf:
+                    out.append(" ".join(buf))
+                    buf = []
+                    buf_tokens = 0
+                out.extend(self._slice_by_chars(word))
+                continue
             if buf and buf_tokens + word_tokens > self._max_tokens:
                 out.append(" ".join(buf))
                 buf = []
@@ -191,6 +200,17 @@ class PlaintextParser:
         if buf:
             out.append(" ".join(buf))
         return out
+
+    def _slice_by_chars(self, text: str) -> list[str]:
+        """Hard-slice *text* by characters as a last resort.
+
+        Used for unsplittable runs with no internal spaces — either a whole
+        unit (line/paragraph) or a single oversized word found mid-unit
+        (e.g. a base64 blob, URL, hash, or JWT). Conservative ratio so the
+        slice stays inside the window even for dense (punctuation-heavy) text.
+        """
+        step = max(1, self._max_chars // 4)
+        return [text[i : i + step] for i in range(0, len(text), step)] or [text]
 
     def _make_plaintext_chunk(self, text: str, file_path: str) -> ParsedChunk:
         return ParsedChunk(

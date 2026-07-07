@@ -205,7 +205,7 @@ class SearchService:
                 Defaults to 10 if not specified.
             score_threshold (Optional[float]): Maximum distance score for results.
                 Results with scores above this threshold are filtered out. For FAISS
-                L2 distance, lower scores indicate better matches.
+                squared L2 distance, lower scores indicate better matches.
             include_full_text (bool): Whether to include full document text in results.
                 Defaults to False.
             include_all_chunks (bool): Whether to include all chunks content in results.

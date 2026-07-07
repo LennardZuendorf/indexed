@@ -18,6 +18,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from loguru import logger
+
 # Must match `SentenceEmbedder`'s default model name
 # (core.v1.engine.indexes.embeddings.sentence_embeder.SentenceEmbedder).
 DEFAULT_TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -47,6 +49,11 @@ def count_tokens(text: str) -> int:
     try:
         return len(_get_tokenizer().encode(text, add_special_tokens=False))
     except Exception:
+        logger.opt(exception=True).warning(
+            "Tokenizer unavailable for {}; falling back to char-count "
+            "estimate (bug A1 may resurface if chunkers stay on this path)",
+            DEFAULT_TOKENIZER_MODEL,
+        )
         return len(text) // 3 + 1
 
 
@@ -76,6 +83,11 @@ def get_markdown_chunker() -> Any:
         )
         return HybridChunker(tokenizer=tokenizer)
     except Exception:
+        logger.opt(exception=True).warning(
+            "Token-aware HybridChunker unavailable (tokenizer failed to "
+            "load); falling back to unbounded HierarchicalChunker — "
+            "markdown chunks may exceed the model window (bug A1)"
+        )
         from docling_core.transforms.chunker import HierarchicalChunker
 
         return HierarchicalChunker()
