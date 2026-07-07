@@ -638,6 +638,147 @@ class TestUnifiedJiraDocumentConverter:
         assert "line1" in result[0]["text"]
         assert "line2" in result[0]["text"]
 
+    def test_adf_list_items_separated_by_newline(self):
+        """D3: sibling list items must not be run together on one line."""
+        document = {
+            "key": "LIST-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "List separator",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "bulletList",
+                            "content": [
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Alpha"}
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Beta"}
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = self.converter.convert(document)
+        text = result[0]["text"]
+        assert "- Alpha\n" in text and "- Beta" in text, (
+            f"list items must be newline-separated: {text!r}"
+        )
+        assert "Alpha  - Beta" not in text, (
+            f"sibling list items must not run together with no separator: {text!r}"
+        )
+
+    def test_adf_mention_and_inline_card_extracted(self):
+        """D3: mention display name and inlineCard url must not be dropped."""
+        document = {
+            "key": "MEN-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Mentions",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {"type": "text", "text": "Assigned to "},
+                                {
+                                    "type": "mention",
+                                    "attrs": {"id": "557058:abc", "text": "@Alice"},
+                                },
+                                {"type": "text", "text": " see "},
+                                {
+                                    "type": "inlineCard",
+                                    "attrs": {"url": "https://example.com/card"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = self.converter.convert(document)
+        text = result[0]["text"]
+        assert "@Alice" in text
+        assert "https://example.com/card" in text
+
+    def test_adf_media_emoji_date_status_extracted(self):
+        """D3: media/emoji/date/status leaf attrs contribute to the text."""
+        document = {
+            "key": "LEAF-1",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Leaf nodes",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "media",
+                                    "attrs": {
+                                        "id": "media-1",
+                                        "alt": "screenshot.png",
+                                    },
+                                },
+                                {
+                                    "type": "emoji",
+                                    "attrs": {
+                                        "shortName": ":smile:",
+                                        "text": "😀",
+                                    },
+                                },
+                                {
+                                    "type": "date",
+                                    "attrs": {"timestamp": "1700000000000"},
+                                },
+                                {
+                                    "type": "status",
+                                    "attrs": {"text": "In Progress"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = self.converter.convert(document)
+        text = result[0]["text"]
+        assert "screenshot.png" in text
+        assert "\U0001f600" in text
+        assert "1700000000000" in text
+        assert "In Progress" in text
+
     def test_unknown_adf_node_with_content(self):
         """Unknown ADF node types with content are parsed recursively."""
         converter = UnifiedJiraDocumentConverter()

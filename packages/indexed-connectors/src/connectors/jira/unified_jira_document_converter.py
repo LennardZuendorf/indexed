@@ -142,9 +142,15 @@ class UnifiedJiraDocumentConverter:
                     texts.append(f"{'#' * int(level)} {heading_text}")
 
             elif node_type in ("bulletList", "orderedList"):
-                list_items = self._parse_adf_nodes(
-                    node.get("content", []), depth + 1, block_level=True
-                )
+                # Render each list item independently, then join siblings with
+                # "\n" — the shared block_level/depth join below returns
+                # "".join(...) for depth>0, which runs sibling items together
+                # with no separator when rendered as one combined call.
+                item_texts = [
+                    self._parse_adf_nodes([child], depth + 1, block_level=True)
+                    for child in node.get("content", [])
+                ]
+                list_items = "\n".join(t for t in item_texts if t)
                 if list_items:
                     texts.append(list_items)
 
@@ -177,6 +183,27 @@ class UnifiedJiraDocumentConverter:
 
             elif node_type == "hardBreak":
                 texts.append("\n")
+
+            elif node_type == "mention":
+                # Assignee/reporter mentions carry their display name in
+                # attrs, not content — dropped without this (D3).
+                texts.append(node.get("attrs", {}).get("text", ""))
+
+            elif node_type in ("inlineCard", "blockCard"):
+                # Linked URLs live in attrs; the card has no text content.
+                texts.append(node.get("attrs", {}).get("url", ""))
+
+            elif node_type == "media":
+                attrs = node.get("attrs", {})
+                texts.append(attrs.get("alt") or attrs.get("id", ""))
+
+            elif node_type == "emoji":
+                attrs = node.get("attrs", {})
+                texts.append(attrs.get("text") or attrs.get("shortName", ""))
+
+            elif node_type in ("date", "status"):
+                attrs = node.get("attrs", {})
+                texts.append(attrs.get("text") or attrs.get("timestamp", ""))
 
             elif "content" in node:
                 nested = self._parse_adf_nodes(
