@@ -253,6 +253,36 @@ class TestUnifiedConfluenceDocumentConverter:
         assert len(body_chunks) == 1
         assert body_chunks[0]["metadata"] == {"headings": ["H1"]}
 
+    def test_ac_image_filename_extracted(self):
+        """D4: ac:image/ri:attachment filenames must appear in cleaned text."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        body_html = (
+            '<p>See <ac:image><ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+        )
+        doc = _make_server_doc(body_html=body_html)
+        result = converter.convert(doc)
+        assert "diagram.png" in result[0]["text"]
+
+    def test_ac_link_content_title_extracted(self):
+        """D4: ac:link/ri:page content-title must appear in cleaned text."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        body_html = (
+            '<p>See <ac:link><ri:page ri:content-title="Design Doc"/></ac:link></p>'
+        )
+        doc = _make_server_doc(body_html=body_html)
+        result = converter.convert(doc)
+        assert "Design Doc" in result[0]["text"]
+
+    def test_get_cleaned_body_static_call(self):
+        """D4 spec calls _get_cleaned_body directly with a raw storage dict."""
+        xml = (
+            '<p>See <ac:image><ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+        )
+        text = UnifiedConfluenceDocumentConverter._get_cleaned_body(
+            {"body": {"storage": {"value": xml}}}
+        )
+        assert "diagram.png" in text
+
     def test_no_comments_key(self):
         """Document without comments key should not crash."""
         converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
