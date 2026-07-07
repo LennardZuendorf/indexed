@@ -183,3 +183,49 @@ port is a different origin for credential purposes; fail closed.
   `test_init.py` clones were replaced by one behavior-focused
   `test_connector_registry.py` (public `get_connector_class`/`list_connector_types`)
   before deleting them — "promote into the net, then delete", never delete-first.
+
+---
+
+## Search recall fixes (foundation/2, 2026-07-07)
+
+- **A cross-package layering rule can be honored without duplicating the model.**
+  `indexed-parsing` must not import `indexed-core` (its own `CLAUDE.md`), but the
+  chunkers still need the embedder's real token window. Resolution: the embedder
+  (`SentenceEmbedder.max_seq_length`) stays the single **dynamic** source of truth
+  (reads `self.model.max_seq_length` live); `indexed-parsing` gets its own
+  `_model_window.py` with a **documented, hardcoded** `DEFAULT_MODEL_MAX_SEQ_LENGTH
+  = 256` that must track the embedder's default model. It loads a `transformers`
+  tokenizer directly (a third-party ML lib, not "core engine") for real token
+  counting/splitting — lazy-loaded exactly like the existing Docling/tree-sitter
+  imports in that package. Two numbers, one documented link between them, no
+  forbidden import.
+- **`HybridChunker` was already the right token-aware chunker** — the
+  `DoclingParser` docstring claimed it, the code used `HierarchicalChunker`
+  (heading-only, no size bound) instead. Docling's default tokenizer for
+  `HybridChunker`/`get_default_tokenizer()` is `sentence-transformers/all-MiniLM-L6-v2`
+  itself, so it lines up with this project's default embedding model out of the
+  box — build a `HuggingFaceTokenizer(tokenizer=..., max_tokens=...)` explicitly
+  with `local_files_only=True` rather than relying on the library default, which
+  calls `hf_hub_download`/`AutoTokenizer.from_pretrained` without it (an
+  unnecessary network attempt even when cached). Needs the `docling-core[chunking]`
+  extra (`transformers` + `semchunk`) — add it to the owning package's
+  `pyproject.toml` even if the workspace venv already has it transitively.
+- **Real token-bounded splitting beats char-per-token heuristics.** A
+  `chars ≈ tokens * 4` estimate is not a safe upper bound for punctuation/number-
+  heavy text (logs, code, CSV) — it can undercount tokens and still emit an
+  oversize chunk. Split (paragraphs → lines → words → hard char slices) using the
+  real tokenizer's count at each level; only fall back to a char-based slice for a
+  single unsplittable run with no whitespace at all.
+- **FAISS `IndexFlatL2` over-fetching is nearly free.** Its search cost is
+  dominated by the O(N·d) distance computation against every vector; asking for
+  `k=N` instead of `k=15` barely changes wall time (confirmed against a 10k-vector
+  benchmark fixture). This makes "over-fetch the whole index, group, then cap" a
+  cheap and robust fix for top-k starvation — no tuning a multiplier constant, no
+  risk of an unlucky corpus defeating it — at the documented <100k-doc scale;
+  bound it with a ceiling constant for the pathological large-index case.
+- **Filter-before-truncate needs the truncation moved, not just reordered.** The
+  searcher enforces `max_docs` internally (needed to fix starvation); to let
+  `_filter_by_score` backfill filtered-out slots, the caller must ask the searcher
+  for `max_docs * OVERFETCH_FACTOR` candidates when a threshold is active, filter
+  that wider set, THEN slice to the real `max_docs` — truncating to the final
+  count before filtering discards the very candidates that would have backfilled.

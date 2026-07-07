@@ -270,6 +270,15 @@ Earned defaults — apply without being asked.
   engine with `import core.v1.engine.services` first (cold-import cycle), and verify
   red bug-specs with `pytest --runxfail` so each fails for the right reason. Full
   detail in `.spec/lessons.md`.
+- **A layering rule doesn't force duplicating a model into two packages.** When
+  `indexed-parsing` needed the embedder's real token window but must not import
+  `indexed-core`, the fix was a documented, hardcoded constant local to `parsing`
+  (`_model_window.py`) kept in sync with the embedder's own dynamic
+  `SentenceEmbedder.max_seq_length` property — plus loading the tokenizer
+  (a third-party ML lib, not "core engine") directly, lazily, like the existing
+  Docling/tree-sitter imports. FAISS `IndexFlatL2` over-fetching is also nearly
+  free (cost is O(N·d) regardless of k) — prefer "fetch everything, group, cap" over
+  a tuned multiplier when fixing top-k starvation. Full detail in `.spec/lessons.md`.
 
 ---
 

@@ -521,7 +521,7 @@ foundation/9 is independent after foundation/1.
 | Unit | Status |
 |---|---|
 | foundation/1 | DONE |
-| foundation/2 | NOT STARTED |
+| foundation/2 | DONE |
 | foundation/3 | NOT STARTED |
 | foundation/4 | NOT STARTED |
 | foundation/5 | NOT STARTED |
