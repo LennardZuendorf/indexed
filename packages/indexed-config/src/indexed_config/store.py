@@ -351,33 +351,55 @@ class TomlStore:
         # `${...}` expansion from corrupting secrets (C4).
         load_dotenv(str(path), override=False, interpolate=False)
 
+    def _resolve_write_target(self, *, to_global: bool = False) -> Path:
+        """
+        Determine which config.toml ``write()`` would target right now, without writing.
+
+        The destination is chosen as follows:
+        - If `to_global` is True, the global config.
+        - Else if the instance `mode_override` is "global", the global config.
+        - Else if `mode_override` is "local", the workspace config.
+        - Otherwise, the workspace config if it already exists, else the
+          global config (same auto-detection as StorageResolver.resolve_root).
+
+        Parameters:
+            to_global (bool): If True, force the global config; otherwise follow the mode override or auto-detect.
+
+        Returns:
+            Path: The config.toml path ``write()`` would target for this input.
+        """
+        if to_global:
+            return self.global_path
+        if self._mode_override == "global":
+            return self.global_path
+        if self._mode_override == "local":
+            return self.workspace_path
+        # Default: follow auto-detection (same as StorageResolver.resolve_root)
+        # Write to local only if a local config already exists; otherwise global
+        if has_local_config(self.workspace):
+            return self.workspace_path
+        return self.global_path
+
+    def resolved_config_path(self) -> Path:
+        """Return the config.toml path a plain ``write()`` would target right now.
+
+        Lets a caller snapshot/restore the exact file a subsequent ``set()``/
+        ``save_raw()`` will touch (foundation/6b review Finding 1) without
+        duplicating ``write()``'s target-selection logic.
+        """
+        return self._resolve_write_target()
+
     def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
         """
         Write the given configuration mapping to the appropriate TOML config file (workspace or global).
 
-        The destination is chosen as follows:
-        - If `to_global` is True, write to the global config.
-        - Else if the instance `mode_override` is "global", write to the global config.
-        - Else if `mode_override` is "local", write to the workspace config.
-        - Otherwise, write to the workspace config (backward-compatible default).
+        The destination is chosen as described in ``_resolve_write_target()``.
 
         Parameters:
             data (Mapping[str, Any]): Configuration data to persist.
             to_global (bool): If True, force writing to the global config; otherwise follow the mode override or default to the workspace.
         """
-        if to_global:
-            target = self.global_path
-        elif self._mode_override == "global":
-            target = self.global_path
-        elif self._mode_override == "local":
-            target = self.workspace_path
-        else:
-            # Default: follow auto-detection (same as StorageResolver.resolve_root)
-            # Write to local only if a local config already exists; otherwise global
-            if has_local_config(self.workspace):
-                target = self.workspace_path
-            else:
-                target = self.global_path
+        target = self._resolve_write_target(to_global=to_global)
 
         # Build output dict, stripping internal marker and ensuring _meta
         out = dict(data)
