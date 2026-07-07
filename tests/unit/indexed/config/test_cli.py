@@ -12,6 +12,8 @@ from indexed.config.cli import (
     _format_config_value,
     _group_config_by_section,
     _is_sensitive_key,
+    _mask_sensitive_raw,
+    _masked_config_value,
     _merge_with_defaults,
     _value_to_default_str,
     _get_sensitive_env_value,
@@ -152,6 +154,40 @@ class TestIsSensitiveKey:
         assert _is_sensitive_key("jira.url") is False
 
 
+class TestMaskedConfigValue:
+    """Test _masked_config_value function (C1)."""
+
+    def test_masks_sensitive_value(self):
+        """A set sensitive value must render as a fixed mask, not plaintext."""
+        assert _masked_config_value("sources.jira.api_token", "supersecret123") == (
+            "*****"
+        )
+
+    def test_does_not_mask_non_sensitive_value(self):
+        """Non-sensitive keys must render normally."""
+        assert _masked_config_value("sources.jira.url", "https://x.test") == (
+            "https://x.test"
+        )
+
+    def test_unset_sensitive_value_not_masked_as_secret(self):
+        """An unset sensitive key still shows '(not set)', not a mask."""
+        assert _masked_config_value("sources.jira.api_token", None) == "(not set)"
+
+
+class TestMaskSensitiveRaw:
+    """Test _mask_sensitive_raw function (C1 — --simple-output JSON path)."""
+
+    def test_masks_nested_sensitive_leaf(self):
+        raw = {"sources": {"jira": {"api_token": "supersecret123", "url": "x"}}}
+        masked = _mask_sensitive_raw(raw)
+        assert masked["sources"]["jira"]["api_token"] == "*****"
+        assert masked["sources"]["jira"]["url"] == "x"
+
+    def test_leaves_non_sensitive_data_untouched(self):
+        raw = {"core": {"v1": {"indexing": {"chunk_size": 512}}}}
+        assert _mask_sensitive_raw(raw) == raw
+
+
 class TestInspect:
     """Test inspect command."""
 
@@ -211,7 +247,37 @@ class TestSetConfig:
             app, ["config", "set", "core.v1.indexing.chunk_size", "1024"]
         )
         assert result.exit_code == 0
-        mock_config.set.assert_called_once()
+        # Non-sensitive keys route through set_value() (which itself calls
+        # set() on a real ConfigService); field_info marks it not-sensitive.
+        mock_config.set_value.assert_called_once_with(
+            "core.v1.indexing.chunk_size", 1024, field_info={"sensitive": False}
+        )
+
+    @patch("indexed.config.cli.ConfigService")
+    def test_set_config_secret_routes_to_env_and_masks_output(
+        self, mock_config_service
+    ):
+        """C1: a sensitive key must route to .env (sensitive=True) and never
+        echo the plaintext value to stdout."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = []
+        mock_config_service.instance.return_value = mock_config
+
+        from indexed.app import app
+
+        result = runner.invoke(
+            app, ["config", "set", "sources.jira.api_token", "supersecret123"]
+        )
+        assert result.exit_code == 0
+        assert "supersecret123" not in result.stdout
+        mock_config.set_value.assert_called_once_with(
+            "sources.jira.api_token",
+            "supersecret123",
+            field_info={"sensitive": True},
+        )
+        # set() (the plaintext-TOML path) must never be called directly.
+        mock_config.set.assert_not_called()
 
     @patch("indexed.config.cli.ConfigService")
     def test_set_config_dry_run(self, mock_config_service):

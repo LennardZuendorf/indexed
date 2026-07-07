@@ -208,6 +208,37 @@ def _is_sensitive_key(key: str) -> bool:
     return any(pattern in key_name for pattern in sensitive_patterns)
 
 
+def _masked_config_value(key: str, value: Any) -> str:
+    """Format a config value for display, masking sensitive values (C1).
+
+    Mirrors the masking already used by the interactive editor: a sensitive
+    key (per ``_is_sensitive_key``) with a real value shows a fixed mask
+    instead of the plaintext; unset/empty values still show as such.
+    """
+    formatted = _format_config_value(value)
+    if _is_sensitive_key(key) and formatted not in ("(not set)", "(empty)"):
+        return "*****"
+    return formatted
+
+
+def _mask_sensitive_raw(data: dict) -> dict:
+    """Return a deep copy of a raw config dict with sensitive leaves masked.
+
+    Used for machine-readable output (``--simple-output`` JSON) so a secret
+    that reached the merged config (e.g. via an ``INDEXED__*`` env override)
+    is never dumped in cleartext (C1).
+    """
+    masked: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            masked[key] = _mask_sensitive_raw(value)
+        elif _is_sensitive_key(key) and value not in (None, ""):
+            masked[key] = "*****"
+        else:
+            masked[key] = value
+    return masked
+
+
 def _get_sensitive_env_value(key: str) -> Optional[str]:
     """
     Return a masked value if the given configuration key has a corresponding environment variable set.
@@ -923,7 +954,7 @@ def inspect(
     from ..utils.simple_output import is_simple_output, print_json
 
     if is_simple_output():
-        print_json(raw)
+        print_json(_mask_sensitive_raw(raw))
         return
 
     # Normalize section argument
@@ -1017,7 +1048,7 @@ def inspect(
                     parts = key.split(".", 1)
                     category = parts[0] if len(parts) > 1 else section_name
                     subkey = parts[1] if len(parts) > 1 else key
-                    value = _format_config_value(info["value"])
+                    value = _masked_config_value(key, info["value"])
                     rows.append((category, subkey, value))
 
         if rows:
@@ -1045,7 +1076,7 @@ def inspect(
                     else:
                         category = "core"
                         subkey = key
-                    value = _format_config_value(info["value"])
+                    value = _masked_config_value(key, info["value"])
                     rows.append((category, subkey, value))
 
         if rows:
@@ -1068,7 +1099,7 @@ def inspect(
         rows = []
         for key, info in sorted(section_data.items()):
             if should_show_key(section_name, key, info["is_default"]):
-                value = _format_config_value(info["value"])
+                value = _masked_config_value(key, info["value"])
                 rows.append((section_name, key, value))
 
         if rows and show_defaults:
@@ -1128,7 +1159,7 @@ def inspect(
                     else:
                         category = section_name
                         subkey = key
-                    value = _format_config_value(info["value"])
+                    value = _masked_config_value(key, info["value"])
                     select_rows.append((category, subkey, value))
 
         if select_rows:
@@ -1517,8 +1548,8 @@ def set_config(
 
         rows = [("Key", key)]
         if old_value is not None:
-            rows.append(("Previous", _format_config_value(old_value)))
-        rows.append(("New", _format_config_value(coerced)))
+            rows.append(("Previous", _masked_config_value(key, old_value)))
+        rows.append(("New", _masked_config_value(key, coerced)))
 
         card = create_detail_card(title="Change Summary", rows=rows)
         console.print(card)
@@ -1529,8 +1560,13 @@ def set_config(
         console.print()
         return
 
+    is_secret = _is_sensitive_key(key)
+    # Secrets are written to .env as-typed (no type coercion, e.g. a purely
+    # numeric token must not silently become an int).
+    write_value = value if is_secret else coerced
+
     try:
-        config.set(key, coerced)
+        config.set_value(key, write_value, field_info={"sensitive": is_secret})
 
         # Validate
         errs = config.validate()
@@ -1553,13 +1589,16 @@ def set_config(
 
         rows = [("Key", key)]
         if old_value is not None:
-            rows.append(("Previous", _format_config_value(old_value)))
-        rows.append(("New", _format_config_value(coerced)))
+            rows.append(("Previous", _masked_config_value(key, old_value)))
+        rows.append(("New", _masked_config_value(key, coerced)))
 
         card = create_detail_card(title="Change Summary", rows=rows)
         console.print(card)
         console.print()
-        print_success("Configuration saved to .indexed/config.toml")
+        if is_secret:
+            print_success("Secret saved to .env (kept out of config.toml)")
+        else:
+            print_success("Configuration saved to .indexed/config.toml")
         console.print()
 
     except Exception as e:
@@ -1641,7 +1680,7 @@ def delete_config(
 
         rows = [
             ("Key", key),
-            ("Value", _format_config_value(current_value)),
+            ("Value", _masked_config_value(key, current_value)),
         ]
 
         card = create_detail_card(title="Current Value", rows=rows)
