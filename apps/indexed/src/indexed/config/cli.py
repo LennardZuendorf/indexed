@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import typer
+from loguru import logger
 
 # Raw Rich components — used for interactive selection menus and validation error cards
 # that don't fit the card-based design system components
@@ -1565,8 +1566,30 @@ def set_config(
     # numeric token must not silently become an int).
     write_value = value if is_secret else coerced
 
+    field_info: dict[str, Any] = {"sensitive": is_secret}
+    if is_secret:
+        # Resolve the connector-declared .env key (e.g. "sources.jira.api_token"
+        # -> "ATLASSIAN_TOKEN") so the secret lands where the connector reads
+        # it, instead of a fallback derived from the last dot-path segment.
+        resolved_env_var = config.resolve_sensitive_env_var(key)
+        if resolved_env_var:
+            field_info["env_var"] = resolved_env_var
+        else:
+            fallback_env_var = key.split(".")[-1].upper()
+            logger.warning(
+                "No registered connector field for '{}'; saving to .env key "
+                "'{}', which may not be what the connector reads",
+                key,
+                fallback_env_var,
+            )
+            console.print()
+            print_warning(
+                f"No connector mapping found for '{key}' — saved under "
+                f"'.env' key '{fallback_env_var}' (best-effort fallback)"
+            )
+
     try:
-        config.set_value(key, write_value, field_info={"sensitive": is_secret})
+        config.set_value(key, write_value, field_info=field_info)
 
         # Validate
         errs = config.validate()

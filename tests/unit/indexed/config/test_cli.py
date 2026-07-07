@@ -258,10 +258,14 @@ class TestSetConfig:
         self, mock_config_service
     ):
         """C1: a sensitive key must route to .env (sensitive=True) and never
-        echo the plaintext value to stdout."""
+        echo the plaintext value to stdout. It must also resolve the
+        connector-declared env var name (via resolve_sensitive_env_var) and
+        pass it through as field_info["env_var"], so the secret lands where
+        the connector actually reads it (foundation/4 review finding 1)."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {}
         mock_config.validate.return_value = []
+        mock_config.resolve_sensitive_env_var.return_value = "ATLASSIAN_TOKEN"
         mock_config_service.instance.return_value = mock_config
 
         from indexed.app import app
@@ -271,13 +275,93 @@ class TestSetConfig:
         )
         assert result.exit_code == 0
         assert "supersecret123" not in result.stdout
+        mock_config.resolve_sensitive_env_var.assert_called_once_with(
+            "sources.jira.api_token"
+        )
         mock_config.set_value.assert_called_once_with(
             "sources.jira.api_token",
             "supersecret123",
-            field_info={"sensitive": True},
+            field_info={"sensitive": True, "env_var": "ATLASSIAN_TOKEN"},
         )
         # set() (the plaintext-TOML path) must never be called directly.
         mock_config.set.assert_not_called()
+
+    @patch("indexed.config.cli.ConfigService")
+    def test_set_config_secret_unmapped_key_warns_and_falls_back(
+        self, mock_config_service
+    ):
+        """A sensitive key with no registered connector mapping must still be
+        saved (best-effort fallback to the last dot-path segment, uppercased)
+        but must surface a warning rather than claim unconditional success."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = []
+        mock_config.resolve_sensitive_env_var.return_value = None
+        mock_config_service.instance.return_value = mock_config
+
+        from indexed.app import app
+
+        result = runner.invoke(
+            app, ["config", "set", "sources.unknown.api_token", "supersecret123"]
+        )
+        assert result.exit_code == 0
+        assert "supersecret123" not in result.stdout
+        mock_config.set_value.assert_called_once_with(
+            "sources.unknown.api_token",
+            "supersecret123",
+            field_info={"sensitive": True},
+        )
+        assert "no connector mapping" in result.stdout.lower()
+
+    def test_set_config_secret_lands_at_connector_readable_env_key(
+        self, local_workspace
+    ):
+        """Regression (foundation/4 review finding 1): the secret written by
+        ``config set sources.jira.api_token <value>`` must land at the .env
+        key the jira connector actually reads (JiraCloudConfig.api_token's
+        ``env: ATLASSIAN_TOKEN`` hint) — not the naive last-segment fallback
+        ``API_TOKEN``, which no connector reads. Drives the real CLI + a real
+        (unmocked) ConfigService so the connector registry is populated the
+        way production populates it."""
+        from connectors.jira.schema import JiraCloudConfig
+        from indexed.app import app
+        from indexed_config.env_writer import EnvFileWriter
+
+        expected_var = EnvFileWriter.get_env_var_name(
+            "api_token", JiraCloudConfig.model_fields["api_token"]
+        )
+        assert expected_var == "ATLASSIAN_TOKEN"
+
+        result = runner.invoke(
+            app,
+            [
+                "--local",
+                "--log-level",
+                "ERROR",
+                "config",
+                "set",
+                "sources.jira.api_token",
+                "supersecret123",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout
+
+        env_path = local_workspace.local_root / ".env"
+        assert env_path.exists(), ".env must be created"
+        env_text = env_path.read_text()
+
+        assert f"{expected_var}=" in env_text, (
+            f"secret must be written under the connector-readable key "
+            f"{expected_var!r}, got: {env_text!r}"
+        )
+        assert "API_TOKEN=" not in env_text, (
+            "secret must not land under the naive fallback key API_TOKEN "
+            f"(got: {env_text!r})"
+        )
+
+        from dotenv import dotenv_values
+
+        assert dotenv_values(str(env_path)).get(expected_var) == "supersecret123"
 
     @patch("indexed.config.cli.ConfigService")
     def test_set_config_dry_run(self, mock_config_service):
