@@ -404,17 +404,32 @@ def search(
         statuses = status_svc([collection], collections_path=collections_path)
         if not statuses:
             if simple:
+                # Simple/JSON output is a machine-readable envelope: report the
+                # error as data (like the "no collections at all" branch above)
+                # rather than raising — never a raw traceback for a missing
+                # collection (foundation/6 E1).
                 print_json({"error": f"Collection '{collection}' not found"})
-                raise typer.Exit(1)
+                return
             print_error(f"Collection '{collection}' not found")
             raise typer.Exit(1)
 
         collections_to_search = [collection]
 
-    # Build search configs for all collections
+    # Build search configs for all collections, reusing the status objects
+    # already fetched above rather than re-querying per name: a second lookup
+    # that came back empty (collection removed/corrupted between calls) used
+    # to raw-IndexError on `coll_status.indexers[0]` (foundation/6 E1). A
+    # per-collection guard here means one bad collection is skipped and
+    # reported instead of crashing the whole search.
+    status_by_name = {
+        s.name: s for s in (all_statuses if collection is None else statuses)
+    }
     search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name], collections_path=collections_path)[0]
+        coll_status = status_by_name.get(coll_name)
+        if coll_status is None or not coll_status.indexers:
+            print_error(f"Collection '{coll_name}' is unavailable, skipping")
+            continue
         source_type = getattr(coll_status, "source_type", None) or "localFiles"
         search_configs[coll_name] = source_config_class(
             name=coll_name,
@@ -422,6 +437,16 @@ def search(
             base_url_or_path="",
             indexer=coll_status.indexers[0],
         )
+
+    collections_to_search = [c for c in collections_to_search if c in search_configs]
+    if not collections_to_search:
+        if simple:
+            print_json({"error": "No searchable collections available"})
+            return
+        console.print(
+            f"[{get_dim_style()}]No searchable collections available[/{get_dim_style()}]"
+        )
+        return
 
     # Search each collection with phased progress
     results = {}

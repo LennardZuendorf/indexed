@@ -568,7 +568,10 @@ class TestSearchCommandExecution:
             reset_simple_output()
 
     def test_search_simple_output_missing_collection(self, monkeypatch):
-        """In simple output mode, missing collection should return JSON error and exit 1."""
+        """In simple output mode, a missing collection is reported as a JSON
+        error envelope (data, not a raised exit) — consistent with the
+        "no collections at all" branch and never a raw traceback
+        (foundation/6 E1)."""
         import json
 
         from indexed.utils.simple_output import reset_simple_output, set_simple_output
@@ -582,7 +585,8 @@ class TestSearchCommandExecution:
                 search_cmd.app, ["my-query", "--collection", "missing"]
             )
 
-            assert result.exit_code == 1
+            assert result.exit_code == 0
+            assert result.exception is None
             parsed = json.loads(result.stdout)
             assert "error" in parsed
             assert "missing" in parsed["error"]
