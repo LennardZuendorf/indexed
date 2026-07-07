@@ -180,11 +180,12 @@ class DocumentCollectionCreator:
 
         if len(document_ids) == 0:
             # Only deletions — update manifest counts without re-indexing.
-            # B1: __remove_explicit_deletions already mutated the in-memory
-            # FAISS index via remove_ids; persist it here too so the on-disk
-            # indexer.faiss and the mapping JSONs it just saved stay in sync
-            # (belt-and-suspenders with the save inside that method).
-            self.__persist_faiss_indexes()
+            # B1: this branch is only reached when self.explicit_deletions is
+            # non-empty (see the guard above), so __remove_explicit_deletions
+            # already persisted the FAISS index to disk after mutating it via
+            # remove_ids. The on-disk indexer.faiss is already in sync with
+            # the mapping JSONs it just saved — persisting again here would
+            # just be a redundant write.
             manifest["updatedTime"] = update_time.isoformat()
             manifest["numberOfDocuments"] = len(
                 self.persister.read_folder_files(f"{self._storage_name}/documents")
@@ -476,8 +477,9 @@ class DocumentCollectionCreator:
     def __persist_faiss_indexes(self) -> None:
         """Write every indexer's FAISS index to disk (B1).
 
-        Invoked from every mutating branch — add, remove-then-add,
-        deletions-only, and explicit-deletions — so the on-disk
+        Invoked exactly once per mutating branch — add, remove-then-add, and
+        explicit-deletions (which also covers a deletions-only update, since
+        that path falls through from explicit-deletions) — so the on-disk
         ``indexer.faiss`` never outlives the mapping JSONs that key into it.
         """
         for indexer in self.document_indexers:

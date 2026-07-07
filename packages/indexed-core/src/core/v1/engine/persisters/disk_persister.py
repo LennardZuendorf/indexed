@@ -1,6 +1,8 @@
 import os
 import shutil
 
+from loguru import logger
+
 
 class DiskPersister:
     def __init__(self, base_path):
@@ -85,6 +87,14 @@ class DiskPersister:
         neither version present. If a destination already exists, it is
         first moved aside (a cheap rename, not a copy) so both the old and
         new data are present on disk simultaneously until the final rename.
+
+        If the final rename (moving the built replacement into place) fails,
+        we roll back by renaming the moved-aside original back to
+        ``dest_folder_name`` so the ORIGINAL collection is restored under its
+        expected name, then re-raise the original error. If the rollback
+        itself cannot complete, or a trash/staging directory otherwise
+        survives cleanup, a warning names the residual path so a
+        partial-failure state is observable rather than silent.
         """
         src_path = self._safe_join(self.base_path, src_folder_name)
         dest_path = self._safe_join(self.base_path, dest_folder_name)
@@ -92,8 +102,32 @@ class DiskPersister:
         if os.path.exists(dest_path):
             trash_path = f"{dest_path}.trash-{os.getpid()}"
             os.rename(dest_path, trash_path)
-            os.rename(src_path, dest_path)
+            try:
+                os.rename(src_path, dest_path)
+            except Exception as swap_error:
+                try:
+                    os.rename(trash_path, dest_path)
+                except OSError as rollback_error:
+                    logger.warning(
+                        f"replace_folder rollback failed after swap error "
+                        f"({swap_error!r}): original collection may be "
+                        f"stranded at {trash_path!r} and the built "
+                        f"replacement at {src_path!r} ({rollback_error!r})"
+                    )
+                else:
+                    logger.warning(
+                        f"replace_folder swap failed ({swap_error!r}); rolled "
+                        f"back {dest_folder_name!r} to its original contents, "
+                        f"but the built replacement remains stranded at "
+                        f"{src_path!r} and was not cleaned up"
+                    )
+                raise
             shutil.rmtree(trash_path, ignore_errors=True)
+            if os.path.exists(trash_path):
+                logger.warning(
+                    f"replace_folder: residual trash directory left behind "
+                    f"at {trash_path!r}"
+                )
         else:
             os.rename(src_path, dest_path)
 
@@ -102,6 +136,10 @@ class DiskPersister:
 
         if os.path.exists(directory_path):
             shutil.rmtree(directory_path, ignore_errors=True)
+            if os.path.exists(directory_path):
+                logger.warning(
+                    f"remove_folder: directory not fully removed: {directory_path!r}"
+                )
 
     def remove_file(self, file_path):
         path = self._safe_join(self.base_path, file_path)

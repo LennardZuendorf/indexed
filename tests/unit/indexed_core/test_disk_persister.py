@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -160,6 +161,38 @@ class TestDiskPersisterReplaceFolder:
         assert (tmp_path / "final" / "marker.txt").exists() or any(
             (p / "marker.txt").exists() for p in tmp_path.glob("final.trash-*")
         )
+
+    def test_replace_folder_rolls_back_on_second_rename_failure(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """If the destination has already been moved aside but the final
+        rename (staged replacement -> destination name) then fails, the
+        ORIGINAL collection must be restored under its expected name
+        (rollback) and the original error must still propagate — the
+        collection must never be left stranded under a ``.trash-*`` name
+        with nothing present at the destination."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("original", "final/marker.txt")
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("new", "staging/marker.txt")
+
+        real_rename = os.rename
+        call_count = {"n": 0}
+
+        def flaky_rename(src, dst):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise OSError("simulated failure on second rename")
+            return real_rename(src, dst)
+
+        with patch("os.rename", side_effect=flaky_rename):
+            with pytest.raises(OSError, match="simulated failure on second rename"):
+                disk_persister.replace_folder("staging", "final")
+
+        # Rollback: the ORIGINAL collection is restored at "final", intact.
+        assert (tmp_path / "final" / "marker.txt").read_text() == "original"
+        # No trash directory should remain after a successful rollback.
+        assert not any(tmp_path.glob("final.trash-*"))
 
 
 class TestDiskPersisterFaissOperations:
