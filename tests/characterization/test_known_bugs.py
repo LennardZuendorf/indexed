@@ -859,7 +859,6 @@ def test_bug_e12_cli_search_honors_config_max_docs(local_workspace) -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_F)
 def test_bug_f1_index_size_is_bytes_not_vector_count(local_workspace) -> None:
     """F1: ``inspect`` must report a real index byte size, not the vector count
     formatted as bytes (``get_size()`` returns ``ntotal`` today → "100 B" for 100
@@ -888,7 +887,6 @@ def test_bug_f1_index_size_is_bytes_not_vector_count(local_workspace) -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_F)
 def test_bug_f2_created_time_is_populated(local_workspace) -> None:
     """F2: a freshly created collection must report a ``createdTime`` (the
     manifest writer never sets the key → ``created_time`` is always ``None``)."""
@@ -908,7 +906,6 @@ def test_bug_f2_created_time_is_populated(local_workspace) -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_F)
 def test_bug_f3_avg_doc_size_excludes_index(local_workspace) -> None:
     """F3: ``avg_doc_size`` must be computed from document bytes only — today it is
     ``disk_size / n_docs``, which includes the FAISS index, so ``avg * n`` equals
@@ -936,7 +933,6 @@ def test_bug_f3_avg_doc_size_excludes_index(local_workspace) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_F)
 def test_bug_f4_config_set_reports_true_destination(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -964,7 +960,6 @@ def test_bug_f4_config_set_reports_true_destination(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_F)
 def test_bug_f5_coerce_value_preserves_string_types() -> None:
     """F5: ``_coerce_value`` must not over-coerce string values — ``"001"`` and
     ``"nan"`` must survive as strings (they become ``1`` and ``float('nan')``
