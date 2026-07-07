@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-import typer
 from indexed_config.errors import (
     ConfigValidationError,
     ConfigurationError,
@@ -65,12 +64,12 @@ class TestMainErrorHandler:
     ) -> None:
         mock_app.side_effect = ConfigurationError("invalid connector")
 
-        with pytest.raises(typer.Exit) as exc_info:
+        with pytest.raises(SystemExit) as exc_info:
             from indexed.app import main
 
             main()
 
-        assert exc_info.value.exit_code == 2
+        assert exc_info.value.code == 2
         mock_console.print.assert_called_once_with(
             "invalid connector",
             style=get_error_style(),
@@ -87,12 +86,12 @@ class TestMainErrorHandler:
     ) -> None:
         mock_app.side_effect = StorageError("storage unavailable")
 
-        with pytest.raises(typer.Exit) as exc_info:
+        with pytest.raises(SystemExit) as exc_info:
             from indexed.app import main
 
             main()
 
-        assert exc_info.value.exit_code == 3
+        assert exc_info.value.code == 3
         mock_console.print.assert_called_once_with(
             "storage unavailable",
             style=get_error_style(),
