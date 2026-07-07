@@ -681,7 +681,6 @@ def test_bug_e3_verbose_flag_is_honored(local_workspace) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e4_failed_create_does_not_persist_overrides(local_workspace) -> None:
     """E4: a failed ``create`` must not persist its CLI overrides to
     ``config.toml`` (the bad path is written before creation is attempted today →
@@ -707,7 +706,6 @@ def test_bug_e4_failed_create_does_not_persist_overrides(local_workspace) -> Non
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e5_empty_files_path_is_rejected(local_workspace) -> None:
     """E5: pressing Enter at the files-path prompt must be rejected, not accepted
     as ``""`` (which equals ``Path(".")`` and indexes the whole CWD today)."""
@@ -719,7 +717,6 @@ def test_bug_e5_empty_files_path_is_rejected(local_workspace) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e6_cloud_detection_normalizes_url() -> None:
     """E6: Cloud/Server detection must normalize whitespace and a trailing slash
     (``endswith(".atlassian.net")`` misroutes ``https://x.atlassian.net/`` to
@@ -729,7 +726,6 @@ def test_bug_e6_cloud_detection_normalizes_url() -> None:
     assert _is_cloud("https://x.atlassian.net/ ") is True
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e7_files_path_stored_normalized() -> None:
     """E7: the files source path must be stored expanded + absolute in the reader
     details / manifest (it is stored raw today, so an ``update`` from a different
