@@ -27,6 +27,7 @@ from __future__ import annotations
 import core.v1.engine.services  # noqa: F401
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -425,22 +426,39 @@ def test_bug_c3_url_guard_rejects_backslash_authority() -> None:
     assert is_same_origin("https://evil.com\\@good.com/x", "https://good.com") is False
 
 
-def test_bug_c4_env_writer_quotes_secrets(tmp_path: Path) -> None:
-    """C4: a secret containing ``" #"`` must survive a dotenv round-trip
-    byte-identical (the writer emits unquoted ``KEY=value`` today, so ``#`` starts
-    a comment and the token is truncated on reload)."""
-    from dotenv import dotenv_values
+def test_bug_c4_env_writer_quotes_secrets(tmp_path: Path, monkeypatch) -> None:
+    """C4: secrets containing dotenv-special sequences — `` " #"`` (comment
+    start) and ``${...}`` (variable interpolation) — must survive a reload
+    through the app's own dotenv path byte-identical.
 
+    The writer emits unquoted ``KEY=value`` today, so `` #`` starts a comment
+    and truncates the token on reload. Quoting alone does not fully fix this:
+    python-dotenv's default ``interpolate=True`` mangles ``${...}`` regardless
+    of quote style, so the real fix is load-side (``interpolate=False`` on
+    both ``load_dotenv()`` call sites in ``TomlStore``) — this spec reloads
+    through ``TomlStore._load_dotenv`` (the app's actual dotenv path), not a
+    bare ``dotenv_values()`` call, so it exercises that fix directly."""
     from indexed_config.env_writer import EnvFileWriter
+    from indexed_config.store import TomlStore
 
     env_path = tmp_path / ".env"
-    secret = "abc #x def"
-    EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", secret)
+    secrets = {
+        "JIRA_TOKEN": "abc #x def",
+        "CONF_TOKEN": "abc${y}def",
+    }
+    writer = EnvFileWriter(lambda: str(env_path))
+    for key, value in secrets.items():
+        monkeypatch.delenv(key, raising=False)
+        writer.write(key, value)
 
-    reloaded = dotenv_values(str(env_path)).get("JIRA_TOKEN")
-    assert reloaded == secret, (
-        f"token must round-trip unchanged through dotenv (got {reloaded!r})"
-    )
+    TomlStore(workspace=tmp_path)._load_dotenv(env_path)
+
+    for key, expected in secrets.items():
+        actual = os.environ.get(key)
+        assert actual == expected, (
+            f"{key} must round-trip unchanged through the app's dotenv load "
+            f"path (got {actual!r})"
+        )
 
 
 # ===========================================================================

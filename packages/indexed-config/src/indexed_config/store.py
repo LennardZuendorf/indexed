@@ -191,10 +191,16 @@ class TomlStore:
         return data
 
     def _load_cwd_dotenv(self) -> None:
-        """Load CWD/.env with override=False (fills gaps only)."""
+        """Load CWD/.env with override=False (fills gaps only).
+
+        ``interpolate=False`` (C4): `.env` here is secrets-only, never used
+        for ``${VAR}`` composition, so disabling python-dotenv's default
+        interpolation is the only way to stop a secret containing a literal
+        ``${...}`` sequence from being silently mangled on load.
+        """
         cwd_env = self.workspace / ".env"
         if cwd_env.exists():
-            load_dotenv(str(cwd_env), override=False)
+            load_dotenv(str(cwd_env), override=False, interpolate=False)
 
     def get_resolved_env_path(self, mode: StorageMode) -> str:
         """Return the .env file path for a specific resolved mode.
@@ -327,7 +333,12 @@ class TomlStore:
         """
         Load variables from a .env file into the process environment using python-dotenv.
 
-        Uses python-dotenv for full .env file compatibility including multiline values, export prefixes, escaped characters, and variable expansion.
+        Uses python-dotenv for full .env file compatibility including multiline
+        values, export prefixes, and escaped characters. Variable expansion
+        (``${VAR}`` interpolation) is disabled (C4): `.env` here is
+        secrets-only and never used for composition, so a secret containing a
+        literal ``${...}`` sequence must survive unchanged rather than being
+        silently mangled by python-dotenv's default interpolation.
 
         Parameters:
             env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the store's configured env_path.
@@ -336,8 +347,9 @@ class TomlStore:
         if not path.exists():
             return
 
-        # Use python-dotenv with override=False to preserve existing env vars
-        load_dotenv(str(path), override=False)
+        # override=False preserves existing env vars; interpolate=False stops
+        # `${...}` expansion from corrupting secrets (C4).
+        load_dotenv(str(path), override=False, interpolate=False)
 
     def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
         """
