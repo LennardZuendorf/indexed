@@ -137,8 +137,9 @@ class InspectService:
         Returns:
             List[CollectionStatus]: List of status objects containing metadata
                                    for each requested collection. Collections
-                                   that cannot be read will have default/empty
-                                   values but will still be included in the result.
+                                   that are missing or whose manifest cannot be
+                                   read are OMITTED from the result rather than
+                                   returned as a zero-filled placeholder.
 
         Example:
             >>> service = InspectService()
@@ -202,22 +203,10 @@ class InspectService:
                 statuses.append(status)
 
             except Exception as e:
+                # Missing/unreadable collections are OMITTED, not zero-filled —
+                # a placeholder here would defeat every downstream "not found"
+                # guard (see foundation/6 E1/E11).
                 logger.error(f"Error getting status for collection {name}: {e}")
-                # Add error status
-                statuses.append(
-                    CollectionStatus(
-                        name=name,
-                        number_of_documents=0,
-                        number_of_chunks=0,
-                        updated_time="",
-                        last_modified_document_time="",
-                        indexers=[],
-                        index_size=None,
-                        source_type=None,
-                        relative_path=None,
-                        disk_size_bytes=None,
-                    )
-                )
 
         return statuses
 
@@ -245,6 +234,9 @@ class InspectService:
         Returns:
             List[CollectionInfo]: List of detailed info objects containing comprehensive
                                  metadata and computed statistics for each collection.
+                                 Collections that are missing or whose manifest cannot
+                                 be read are OMITTED, not returned as a zero-filled
+                                 placeholder.
 
         Example:
             >>> service = InspectService()
@@ -306,16 +298,9 @@ class InspectService:
                 infos.append(info)
 
             except Exception as e:
+                # Missing/unreadable collections are OMITTED, not zero-filled —
+                # see status() above for the same rationale.
                 logger.error(f"Error inspecting collection {name}: {e}")
-                # Add minimal error info
-                infos.append(
-                    CollectionInfo(
-                        name=name,
-                        source_type=None,
-                        number_of_documents=0,
-                        number_of_chunks=0,
-                    )
-                )
 
         return infos
 
