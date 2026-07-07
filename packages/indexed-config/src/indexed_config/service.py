@@ -180,15 +180,30 @@ class ConfigService:
         """Retrieve a value from merged config using a dot-separated path."""
         return get_by_path(self.load_raw(), dot_path)
 
+    def _disk_baseline(self) -> Dict[str, Any]:
+        """Return the on-disk config for the resolved mode, no env overlay.
+
+        set()/delete() persist THIS baseline plus their single change — never
+        the env-merged view from load_raw() — so an INDEXED__*-supplied value
+        (e.g. a secret provided only via env) is never baked into config.toml
+        by an unrelated write (C2).
+        """
+        mode = (
+            self._mode_override
+            if self._mode_override
+            else self._workspace.resolve_storage_mode()
+        )
+        return self._store.read_disk_only_for_mode(mode)
+
     def set(self, dot_path: str, value: Any) -> None:
         """Set a value at the given dot-path and persist."""
-        raw = self.load_raw()
+        raw = self._disk_baseline()
         set_by_path(raw, dot_path, value)
         self.save_raw(raw)
 
     def delete(self, dot_path: str) -> bool:
         """Delete a value at a dot-path and persist if changed."""
-        raw = self.load_raw()
+        raw = self._disk_baseline()
         changed = delete_by_path(raw, dot_path)
         if changed:
             self.save_raw(raw)

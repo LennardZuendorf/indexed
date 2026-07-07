@@ -110,3 +110,23 @@ def test_toml_store_read_integrates_env():
             result = store.read_for_mode("global")
 
         assert result.get("test", {}).get("value") == "from_env"
+
+
+def test_toml_store_read_disk_only_ignores_env(tmp_path: Path):
+    """C2: read_disk_only_for_mode() must NOT merge INDEXED__* env vars —
+    it's the baseline set()/delete() persist so env-supplied secrets never
+    get baked into config.toml."""
+    store = TomlStore(workspace=tmp_path, mode_override="local")
+    store.write({"test": {"value": "on_disk"}})
+
+    env_vars = {"INDEXED__test__value": "from_env", "INDEXED__test__other": "secret"}
+    with patch.dict(os.environ, env_vars, clear=False):
+        disk_only = store.read_disk_only_for_mode("local")
+        merged = store.read_for_mode("local")
+
+    assert disk_only["test"]["value"] == "on_disk"
+    assert "other" not in disk_only["test"]
+    # Sanity: the merged (env-overlaid) view DOES pick up the env value —
+    # confirms disk_only is genuinely bypassing the overlay, not just broken.
+    assert merged["test"]["value"] == "from_env"
+    assert merged["test"]["other"] == "secret"

@@ -171,3 +171,22 @@ def test_unknown_keys_preserved(config_service):
     # Should not cause validation errors for unknown sections
     raw = config_service.load_raw()
     assert raw["unknown"]["section"]["key"] == "preserved_value"
+
+
+def test_set_does_not_bake_env_override_into_disk(temp_workspace):
+    """C2: an unrelated set() must not persist an INDEXED__*-supplied value —
+    env overrides stay an in-memory overlay, never written to config.toml."""
+    ConfigService.reset()
+    svc = ConfigService.instance(workspace=temp_workspace, mode_override="local")
+
+    os.environ["INDEXED__sources__jira__api_token"] = "envsecretXYZ"
+    try:
+        svc.set("unrelated.key", "value")
+
+        config_toml = temp_workspace / ".indexed" / "config.toml"
+        toml_text = config_toml.read_text()
+        assert "envsecretXYZ" not in toml_text
+        assert "unrelated" in toml_text
+    finally:
+        del os.environ["INDEXED__sources__jira__api_token"]
+        ConfigService.reset()

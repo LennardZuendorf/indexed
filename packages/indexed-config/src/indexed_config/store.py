@@ -160,6 +160,26 @@ class TomlStore:
 
         return self._apply_env_and_finalize(data)
 
+    def read_disk_only_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
+        """Read config.toml for a resolved storage mode, with NO env overlay.
+
+        Unlike read_for_mode(), this does not merge .env or INDEXED__* env
+        vars — used as the persistence baseline for set()/delete() so an
+        env-supplied value (e.g. a secret set only via INDEXED__*) is never
+        round-tripped into config.toml by an unrelated write (C2).
+
+        Args:
+            mode: The resolved storage mode ("global" or "local").
+
+        Returns:
+            Configuration dictionary read from disk only.
+        """
+        path = self.workspace_path if mode == "local" else self.global_path
+        data = self._read_toml_file(path)
+        schema_version = data.pop("_meta", {}).get("schema_version", "1")
+        data["_schema_version"] = schema_version
+        return data
+
     def _apply_env_and_finalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Apply INDEXED__* env overrides and extract schema version."""
         env_data = self._env_to_mapping()
