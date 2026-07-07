@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from .env_writer import EnvFileWriter
 from .errors import ConfigValidationError
-from .path_utils import get_by_path, set_by_path, delete_by_path
+from .path_utils import get_by_path, set_by_path, delete_by_path, deep_merge
 from .registry import ConfigRegistry
 from .store import TomlStore
 from .provider import Provider
@@ -57,6 +57,11 @@ class ConfigService:
             self._store, self._resolver, self._workspace_path, mode_override
         )
         self._env_writer = EnvFileWriter(self._resolved_env_path)
+        # In-memory-only overrides (R3): merged on top of load_raw() but never
+        # written to disk. Lets create/update pass CLI overrides & prompted
+        # values through to from_config() reads without persisting them
+        # (foundation/6b, bug E4). Cleared per runtime flow via clear_overlay().
+        self._overlay: Dict[str, Any] = {}
 
     # ── Singleton ────────────────────────────────────────────────────────
 
@@ -135,7 +140,10 @@ class ConfigService:
             if self._mode_override
             else self._workspace.resolve_storage_mode()
         )
-        return self._store.read_for_mode(mode)
+        raw = self._store.read_for_mode(mode)
+        if self._overlay:
+            raw = deep_merge(raw, self._overlay)
+        return raw
 
     def get_raw(self) -> Dict[str, Any]:
         """Retrieve the merged raw configuration (alias for load_raw)."""
@@ -296,6 +304,21 @@ class ConfigService:
             self._env_writer.write(env_var, value)
         else:
             self.set(dot_path, value)
+
+    def set_overlay(self, dot_path: str, value: Any) -> None:
+        """Apply an in-memory-only override — never persisted to config.toml.
+
+        ``load_raw()`` (and therefore ``get()``/``bind()``/``validate()``)
+        merges this overlay on top of the on-disk + env config, so
+        ``from_config()`` reads see it, but ``set()``/``save_raw()`` never
+        do — a failed ``create`` (or a value only meant for this run) leaves
+        no trace on disk (R3; foundation/6b bug E4).
+        """
+        set_by_path(self._overlay, dot_path, value)
+
+    def clear_overlay(self) -> None:
+        """Clear all in-memory overrides — call at the start of a new runtime flow."""
+        self._overlay = {}
 
     def resolve_sensitive_env_var(self, dot_path: str) -> Optional[str]:
         """Resolve the connector-declared `.env` key for a sensitive dot-path.
