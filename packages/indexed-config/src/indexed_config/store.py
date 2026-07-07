@@ -347,16 +347,33 @@ class TomlStore:
             else:
                 target = self.global_path
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-
         # Build output dict, stripping internal marker and ensuring _meta
         out = dict(data)
         out.pop("_schema_version", None)
         if "_meta" not in out:
             out["_meta"] = {"schema_version": CURRENT_SCHEMA_VERSION}
 
-        with open(target, "w", encoding="utf-8") as f:
-            tomlkit.dump(out, f)
+        # B3: serialize BEFORE touching the target file, so an unserializable
+        # value (e.g. `None`) raises here and the existing file is never
+        # opened/truncated. Then write atomically (tmp -> fsync -> replace),
+        # mirroring the collections persister's tmp -> fsync -> os.replace
+        # pattern (disk_persister.py) instead of truncating in "w" mode.
+        serialized = tomlkit.dumps(out)
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(serialized)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, target)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def write_to_global(self, data: Mapping[str, Any]) -> None:
         """
