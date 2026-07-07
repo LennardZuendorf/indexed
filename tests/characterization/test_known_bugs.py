@@ -773,7 +773,6 @@ def test_bug_e8_update_all_continues_past_failure(local_workspace, monkeypatch) 
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e9_mcp_has_no_response_caching() -> None:
     """E9: the MCP server must not serve stale results — the ~1h
     ``ResponseCachingMiddleware`` (with no re-index invalidation) must be gone."""
@@ -786,7 +785,6 @@ def test_bug_e9_mcp_has_no_response_caching() -> None:
     ), "ResponseCachingMiddleware must not be registered on the MCP server"
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e10_mcp_surfaces_per_collection_failure() -> None:
     """E10: a per-collection search failure must be surfaced to the LLM, not
     ``continue``d past (an agent sees "0 matches" instead of "index failed"
@@ -823,7 +821,6 @@ def test_bug_e11_missing_collection_not_reported_healthy(local_workspace) -> Non
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e12_cli_search_honors_config_max_docs(local_workspace) -> None:
     """E12: the CLI ``search`` must honor ``[core.v1.search] max_docs`` so CLI and
     MCP agree (the CLI ignores the section entirely today, using only ``--limit``)."""
