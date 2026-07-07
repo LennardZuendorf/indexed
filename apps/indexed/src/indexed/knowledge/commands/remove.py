@@ -1,6 +1,6 @@
 """Remove command for removing collections."""
 
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 
 import typer
 from rich.prompt import Confirm
@@ -18,6 +18,7 @@ from ...utils.components import (
     get_dim_style,
     print_success,
     print_error,
+    print_warning,
 )
 from ...utils.format import format_size, format_time, format_source_type
 from ...utils.simple_output import is_simple_output, print_json
@@ -27,6 +28,55 @@ from ...utils.context_managers import NoOpContext
 from ...utils.storage_info import display_storage_mode_for_command
 
 app = typer.Typer(help="Remove collections")
+
+
+def _remove_corrupt_collection(
+    collection: str,
+    collections_path: str,
+    simple: bool,
+    force: bool,
+    clear_svc: Callable[..., None],
+) -> None:
+    """Remove a collection that exists on disk but is unreadable/corrupt.
+
+    ``inspect()`` OMITS collections whose manifest can't be parsed (foundation/6
+    E1), so the normal name lookup above never finds them — but the directory
+    still occupies disk space, and a user must still be able to remove/recover
+    it (foundation/6 regression fix). There is no valid metadata to show here,
+    so this path skips the detail card and goes straight to confirm-then-delete.
+    """
+    if simple:
+        try:
+            clear_svc([collection], collections_path=collections_path)
+            print_json(
+                {
+                    "status": "removed",
+                    "collection": collection,
+                    "note": "collection was corrupt/unreadable",
+                }
+            )
+        except Exception as e:
+            print_json({"status": "error", "collection": collection, "error": str(e)})
+            raise typer.Exit(1)
+        return
+
+    print_warning(f"Collection '{collection}' is present but corrupt/unreadable")
+
+    if not force:
+        if not Confirm.ask(
+            f"[{get_error_style()}]This action cannot be undone! Remove it anyway?[/{get_error_style()}]",
+            default=False,
+        ):
+            console.print(f"[{get_dim_style()}]Cancelled[/{get_dim_style()}]")
+            raise typer.Exit(0)
+
+    try:
+        clear_svc([collection], collections_path=collections_path)
+        console.print()
+        print_success(f"Collection '{collection}' removed")
+    except Exception as e:
+        print_error(f"Failed to remove '{collection}': {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -66,6 +116,7 @@ def remove(
 
     clear_svc = this_module.clear
     inspect_svc = this_module.inspect
+    collection_exists_svc = this_module.collection_exists
     setup_root_logger_svc = this_module.setup_root_logger
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
@@ -85,13 +136,6 @@ def remove(
     # Fetch all collections to validate
     all_collections = inspect_svc(collections_path=collections_path)
 
-    if not all_collections:
-        console.print(f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]")
-        console.print(
-            f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
-        )
-        return
-
     # Find the target collection
     target_collection = None
     for coll in all_collections:
@@ -99,14 +143,32 @@ def remove(
             target_collection = coll
             break
 
-    if not target_collection:
-        print_error(f"Collection '{collection}' not found")
-        if all_collections:
-            console.print(
-                f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+    if target_collection is None:
+        # inspect() OMITS collections whose manifest can't be read (foundation/6
+        # E1) — but a directory that still exists on disk, corrupt or not,
+        # must remain removable. Fall back to a raw existence check before
+        # reporting "not found" (foundation/6 regression fix).
+        if collection_exists_svc(collection, collections_path=collections_path):
+            _remove_corrupt_collection(
+                collection, collections_path, simple, force, clear_svc
             )
-            for coll in all_collections:
-                console.print(f"  • {coll.name}")
+            return
+
+        if not all_collections:
+            console.print(
+                f"\n[{get_dim_style()}]No collections found[/{get_dim_style()}]"
+            )
+            console.print(
+                f"[{get_dim_style()}]Get started: indexed index create [source][/{get_dim_style()}]"
+            )
+            return
+
+        print_error(f"Collection '{collection}' not found")
+        console.print(
+            f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
+        )
+        for coll in all_collections:
+            console.print(f"  • {coll.name}")
         console.print()
         raise typer.Exit(1)
 
@@ -195,6 +257,10 @@ def __getattr__(name: str):
         from core.v1.engine.services import inspect
 
         return inspect
+    elif name == "collection_exists":
+        from core.v1.engine.services import collection_exists
+
+        return collection_exists
     elif name == "setup_root_logger":
         from ...utils.logging import setup_root_logger
 

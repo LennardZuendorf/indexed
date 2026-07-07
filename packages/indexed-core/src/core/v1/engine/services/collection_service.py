@@ -66,6 +66,18 @@ def _collection_exists(name: str, collections_path: Optional[str] = None) -> boo
     return persister.is_path_exists(name)
 
 
+def collection_exists(name: str, collections_path: Optional[str] = None) -> bool:
+    """Public raw on-disk existence check (present, independent of readability).
+
+    ``InspectService`` OMITS collections whose manifest can't be read (a
+    corrupt/missing manifest), so a corrupt-but-present collection never shows
+    up in ``inspect()``/``status()``. CLI commands that need to distinguish
+    "truly not found" from "present but corrupt" (``remove``, ``inspect``) use
+    this instead of re-implementing the disk check (foundation/6 regression fix).
+    """
+    return _collection_exists(name, collections_path)
+
+
 def _create_one(
     cfg: SourceConfig,
     use_cache: bool,

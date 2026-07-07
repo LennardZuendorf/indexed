@@ -201,6 +201,7 @@ def inspect_collections(
     from indexed.runtime import resolve_collections_context
 
     inspect_svc = this_module.inspect
+    collection_exists_svc = this_module.collection_exists
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
@@ -218,6 +219,15 @@ def inspect_collections(
             exists = any(c.name == name for c in all_collections)
 
             if not exists:
+                # inspect() OMITS collections whose manifest can't be read
+                # (foundation/6 E1) — but a directory that still exists on
+                # disk, corrupt or not, deserves an honest status rather than
+                # a misleading "not found" (foundation/6 regression fix).
+                if collection_exists_svc(name, collections_path=collections_path):
+                    print_error(f"Collection '{name}' is corrupt or unreadable")
+                    console.print()
+                    raise typer.Exit(1)
+
                 print_error(f"Collection '{name}' not found")
                 if all_collections:
                     console.print(
@@ -259,6 +269,10 @@ def __getattr__(name: str):
         from core.v1.engine.services import inspect
 
         return inspect
+    elif name == "collection_exists":
+        from core.v1.engine.services import collection_exists
+
+        return collection_exists
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 

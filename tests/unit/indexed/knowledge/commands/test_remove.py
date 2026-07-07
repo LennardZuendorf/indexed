@@ -38,6 +38,29 @@ def _patch_runtime_context():
         yield
 
 
+def _make_corrupt_test_ctx(collections_dir):
+    """Build a CliContext stand-in pointed at a real tmp collections dir.
+
+    ``display_storage_mode_for_command`` re-imports and calls
+    ``resolve_collections_context`` fresh at call time (lazy import), so
+    overriding the module-level function also affects that second call — the
+    stand-in needs the same shape (``config_service.load_raw``) it expects.
+    """
+    from unittest.mock import MagicMock
+
+    mock_config = MagicMock()
+    mock_config.load_raw.return_value = {}
+    return type(
+        "Ctx",
+        (),
+        {
+            "collections_path": collections_dir,
+            "mode": "local",
+            "config_service": mock_config,
+        },
+    )()
+
+
 def _make_collection(name: str = "docs") -> CollectionInfo:
     return CollectionInfo(
         name=name,
@@ -227,3 +250,55 @@ class TestRemoveCommand:
         assert result.exit_code == 1
         assert "Failed to remove" in result.stdout
         assert "permission denied" in result.stdout
+
+    def test_remove_corrupt_collection_deletes_directory(self, monkeypatch, tmp_path):
+        """A collection present on disk with a corrupt/unreadable manifest must
+        still be removable — ``inspect()`` OMITS it (foundation/6 E1), so the
+        normal name lookup can't find it, but the on-disk fallback must let
+        ``remove`` delete the directory instead of reporting "not found"
+        (foundation/6 regression fix)."""
+        collections_dir = tmp_path / "collections"
+        collections_dir.mkdir()
+        corrupt_dir = collections_dir / "corrupt-coll"
+        corrupt_dir.mkdir()
+        (corrupt_dir / "manifest.json").write_text("{ not valid json")
+
+        ctx = _make_corrupt_test_ctx(collections_dir)
+        monkeypatch.setattr(
+            "indexed.runtime.resolve_collections_context", lambda *a, **kw: ctx
+        )
+
+        result = runner.invoke(remove_cmd.app, ["corrupt-coll", "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert not corrupt_dir.exists(), (
+            "the corrupt collection directory must actually be deleted"
+        )
+
+    def test_remove_corrupt_collection_simple_output(self, monkeypatch, tmp_path):
+        """Simple output mode must also delete a corrupt collection and report
+        it via JSON rather than a plain-text "not found"."""
+        import json
+
+        collections_dir = tmp_path / "collections"
+        collections_dir.mkdir()
+        corrupt_dir = collections_dir / "corrupt-coll"
+        corrupt_dir.mkdir()
+        (corrupt_dir / "manifest.json").write_text("{ not valid json")
+
+        ctx = _make_corrupt_test_ctx(collections_dir)
+        monkeypatch.setattr(
+            "indexed.runtime.resolve_collections_context", lambda *a, **kw: ctx
+        )
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(remove_cmd.app, ["corrupt-coll"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.stdout
+        assert not corrupt_dir.exists()
+        parsed = json.loads(result.stdout)
+        assert parsed["status"] == "removed"
+        assert parsed["collection"] == "corrupt-coll"

@@ -10,6 +10,7 @@ from core.v1.engine.services.collection_service import (
     _resolve_connector,
     _create_one,
     _collection_exists,
+    collection_exists,
 )
 from core.v1.engine.services.models import SourceConfig
 
@@ -213,3 +214,19 @@ class TestCollectionExists:
 
             assert result is False
             mock_persister.is_path_exists.assert_called_once_with("non-existent")
+
+    def test_public_collection_exists_delegates_to_private_helper(self):
+        """The public ``collection_exists`` wrapper (used by CLI commands to
+        detect a present-but-corrupt collection) must delegate to the same
+        on-disk check as ``_collection_exists``."""
+        with patch(
+            "core.v1.engine.services.collection_service.DiskPersister"
+        ) as mock_persister_class:
+            mock_persister = Mock()
+            mock_persister.is_path_exists.return_value = True
+            mock_persister_class.return_value = mock_persister
+
+            result = collection_exists("corrupt-coll", collections_path="/tmp/x")
+
+            assert result is True
+            mock_persister.is_path_exists.assert_called_once_with("corrupt-coll")
