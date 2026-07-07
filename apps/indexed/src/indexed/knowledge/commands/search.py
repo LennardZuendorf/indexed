@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
+from rich.markup import escape
 
 if TYPE_CHECKING:
     pass
@@ -180,9 +181,12 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
         excerpt if len(excerpt) <= max_length else excerpt[:max_length] + "..."
     )
 
-    # Use a subtle dim/muted style for the excerpt card with same width as meta card
+    # Use a subtle dim/muted style for the excerpt card with same width as meta card.
+    # `display_excerpt` is indexed document content — untrusted — so it must be
+    # escaped before entering this markup string; the surrounding dim-style
+    # tags are ours and stay as-is (foundation/6c bug E2).
     excerpt_panel = Panel(
-        f"[{get_dim_style()}]{display_excerpt}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(display_excerpt)}[/{get_dim_style()}]"
         if excerpt
         else f"[{get_dim_style()}][No excerpt available][/{get_dim_style()}]",
         title="Top Result Excerpt",
@@ -207,11 +211,14 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
         chunk_score = str(score)
 
     # Format: collection / document / part / match_id
+    # collection/doc_id/chunk_score are user/content-derived (collection name,
+    # document path or URL, indexed data) — escape before entering this markup
+    # string; the surrounding style tags are ours (foundation/6c bug E2).
     console.print(
-        f"  • [{get_accent_style()}]{collection}[/{get_accent_style()}] / "
-        f"{doc_id} / "
+        f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
+        f"{escape(str(doc_id))} / "
         f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
-        f"[{get_dim_style()}]{chunk_score}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]"
     )
 
 
@@ -229,15 +236,16 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
         total_results += len(documents)
 
-        # Collection header
+        # Collection header — collection_name/doc_id are content-derived, so
+        # escape them before entering markup (foundation/6c bug E2).
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
+            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
         for i, doc in enumerate(documents[:limit], 1):
             doc_id = doc.get("id", "Unknown")
-            console.print(f"  {i}. {doc_id}")
+            console.print(f"  {i}. {escape(str(doc_id))}")
 
         console.print()
 
@@ -276,9 +284,10 @@ def format_search_results_compact(
 
         total_results += len(documents)
 
-        # Collection header
+        # Collection header — collection_name/doc_id are content-derived, so
+        # escape them before entering markup (foundation/6c bug E2).
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
+            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -291,10 +300,10 @@ def format_search_results_compact(
                     f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
                 )
                 console.print(
-                    f"  {i}. {doc_id}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
+                    f"  {i}. {escape(str(doc_id))}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
                 )
             else:
-                console.print(f"  {i}. {doc_id}")
+                console.print(f"  {i}. {escape(str(doc_id))}")
 
         console.print()
 
@@ -396,8 +405,10 @@ def search(
 
         collections_to_search = [s.name for s in all_statuses]
         if not simple:
+            # `query` is user input — escape before entering markup, the
+            # surrounding style tags are ours (foundation/6c bug E2).
             console.print(
-                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{escape(query)}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
             )
     else:
         # Search specific collection

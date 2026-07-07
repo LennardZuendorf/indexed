@@ -3,6 +3,7 @@
 from typing import Any, Optional
 
 import typer
+from rich.text import Text
 
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
@@ -131,8 +132,15 @@ def _format_update_comparison(before, after):
         Size (human-readable bytes with delta), and Updated (human-readable timestamp). Missing attributes are omitted.
     """
 
-    def format_change(before_val, after_val):
-        """Format a value change with color coding."""
+    def format_change(before_val, after_val) -> "str | Text":
+        """Format a value change with color coding.
+
+        Returns a pre-built ``Text`` (never a bare markup string) — deltas are
+        our own numbers, not user/document content, so the color tags here are
+        legitimate and must render as styled markup rather than the literal
+        text `create_info_rows_with_spacing` now gives plain strings
+        (foundation/6c bug E2).
+        """
         if before_val is None or after_val is None:
             return f"{before_val} → {after_val}"
 
@@ -141,14 +149,20 @@ def _format_update_comparison(before, after):
         dim = get_dim_style()
         delta = after_val - before_val
         if delta > 0:
-            return f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
+            return Text.from_markup(
+                f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
+            )
         elif delta < 0:
-            return f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
+            return Text.from_markup(
+                f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
+            )
         else:
-            return f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
+            return Text.from_markup(
+                f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
+            )
 
-    def format_size_change(before_bytes, after_bytes):
-        """Format size change with proper units."""
+    def format_size_change(before_bytes, after_bytes) -> "str | Text":
+        """Format size change with proper units (see format_change docstring)."""
         from indexed.utils.format import format_size
 
         if before_bytes is None or after_bytes is None:
@@ -161,14 +175,20 @@ def _format_update_comparison(before, after):
         dim = get_dim_style()
         delta = after_bytes - before_bytes
         if delta > 0:
-            return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
+            return Text.from_markup(
+                f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
+            )
         elif delta < 0:
-            return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
+            return Text.from_markup(
+                f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
+            )
         else:
-            return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
+            return Text.from_markup(
+                f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
+            )
 
     # Build info rows for the card
-    rows = []
+    rows: list[tuple[str, "str | Text"]] = []
 
     # Collection name
     rows.append(("Collection", after.name))

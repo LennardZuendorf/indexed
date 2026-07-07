@@ -641,7 +641,6 @@ def test_bug_e1_missing_collection_fails_cleanly(local_workspace) -> None:
     assert update.exit_code != 0, "update of a missing collection must exit non-zero"
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e2_rich_markup_injection_does_not_crash() -> None:
     """E2: rendering a search result whose content carries Rich markup like
     ``[/bold]`` (or ``arr[i]``) must not crash and must show both substrings
