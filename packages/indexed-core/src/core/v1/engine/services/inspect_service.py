@@ -105,6 +105,20 @@ class InspectService:
 
     def _calculate_disk_size(self, collection_name: str) -> int:
         base_dir = os.path.join(self._persister.base_path, collection_name)
+        return self._calculate_dir_size(base_dir)
+
+    def _calculate_documents_size(self, collection_name: str) -> int:
+        """Byte total of the ``documents/`` subfolder only (F3).
+
+        Used to compute ``avg_doc_size_bytes`` from document content alone,
+        excluding the manifest and the FAISS index files that also live under
+        the collection directory.
+        """
+        docs_dir = os.path.join(self._persister.base_path, collection_name, "documents")
+        return self._calculate_dir_size(docs_dir)
+
+    @staticmethod
+    def _calculate_dir_size(base_dir: str) -> int:
         total = 0
         for root, _dirs, files in os.walk(base_dir):
             for f in files:
@@ -115,6 +129,27 @@ class InspectService:
                     # Ignore files that cannot be accessed
                     pass
         return total
+
+    def _get_index_file_size_bytes(
+        self, collection_name: str, indexer_name: str
+    ) -> Optional[int]:
+        """Real on-disk byte size of the collection's FAISS index file (F1).
+
+        This is a file size via ``os.path.getsize`` — distinct from
+        ``indexer.get_size()`` (the FAISS ``ntotal`` vector count), which was
+        previously reported here as if it were a byte size.
+        """
+        index_path = os.path.join(
+            self._persister.base_path,
+            collection_name,
+            "indexes",
+            indexer_name,
+            "indexer.faiss",
+        )
+        try:
+            return os.path.getsize(index_path)
+        except OSError:
+            return None
 
     def status(
         self,
@@ -263,13 +298,16 @@ class InspectService:
             try:
                 manifest = self._read_manifest(name)
 
-                # Get index size if requested
-                index_size = None
+                # F1: the real on-disk byte size of the index file — distinct
+                # from the FAISS vector count (already reported via
+                # number_of_chunks); never format a vector count as bytes.
+                index_size_bytes = None
                 if include_index_size and manifest.get("indexers"):
                     try:
                         first_indexer = manifest["indexers"][0]["name"]
-                        indexer = load_indexer(first_indexer, name, self._persister)
-                        index_size = indexer.get_size()
+                        index_size_bytes = self._get_index_file_size_bytes(
+                            name, first_indexer
+                        )
                     except Exception as e:
                         logger.warning(f"Could not get index size for {name}: {e}")
 
@@ -278,16 +316,30 @@ class InspectService:
                 abs_path = os.path.join(self._persister.base_path, name)
                 relative_path = os.path.relpath(abs_path, start=os.getcwd())
                 disk_size = self._calculate_disk_size(name)
+                number_of_documents = manifest.get("numberOfDocuments", 0)
 
-                # Build CollectionInfo (averages computed in __post_init__)
+                # F3: average document size computed from document bytes
+                # only (excludes the manifest/index files also present under
+                # disk_size_bytes), passed explicitly so CollectionInfo's
+                # __post_init__ doesn't fall back to the disk-size-inclusive
+                # calculation.
+                avg_doc_size_bytes = None
+                if number_of_documents > 0:
+                    avg_doc_size_bytes = (
+                        self._calculate_documents_size(name) / number_of_documents
+                    )
+
+                # Build CollectionInfo (avg_chunks_per_doc computed in
+                # __post_init__)
                 info = CollectionInfo(
                     name=name,
                     source_type=source_type,
-                    number_of_documents=manifest.get("numberOfDocuments", 0),
+                    number_of_documents=number_of_documents,
                     number_of_chunks=manifest.get("numberOfChunks", 0),
                     relative_path=relative_path,
                     disk_size_bytes=disk_size,
-                    index_size_bytes=index_size,
+                    index_size_bytes=index_size_bytes,
+                    avg_doc_size_bytes=avg_doc_size_bytes,
                     created_time=manifest.get("createdTime"),
                     updated_time=manifest.get("updatedTime", ""),
                     last_modified_document_time=manifest.get(

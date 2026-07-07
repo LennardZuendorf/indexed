@@ -546,6 +546,11 @@ class DocumentCollectionCreator:
 
         return {
             "collectionName": self.collection_name,
+            # F2: additive, CREATE-only key — existing collections written
+            # before this key existed have no "createdTime" and must keep
+            # loading fine (inspect_service reads it via manifest.get(),
+            # defaulting to None).
+            "createdTime": update_time.isoformat(),
             "updatedTime": update_time.isoformat(),
             "lastModifiedDocumentTime": last_modified_document_time.isoformat(),
             "numberOfDocuments": number_of_documents,
