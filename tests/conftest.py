@@ -74,6 +74,53 @@ def reset_config_service():
     ConfigService.reset()
 
 
+@pytest.fixture(autouse=True)
+def reset_simple_output_state():
+    """Clear the process-global ``simple_output`` flag/cache around every test.
+
+    ``indexed.utils.simple_output`` keeps a module-level ``_simple_output_flag``
+    and ``_resolved_cache``; a test that toggles simple-output mode can otherwise
+    leak that state into a later test, making CLI-output assertions order-dependent.
+    Reset before and after each test so every test starts from the unset default.
+    Imported lazily so non-app tests don't couple to the ``indexed`` package.
+    """
+    try:
+        from indexed.utils.simple_output import reset_simple_output
+    except Exception:
+        yield
+        return
+    reset_simple_output()
+    yield
+    reset_simple_output()
+
+
+@pytest.fixture(autouse=True)
+def _reset_app_logging_state():
+    """Reset loguru sinks + the app's logging-configured flag between tests.
+
+    The CLI configures loguru exactly once per process, guarded by the
+    module-global ``utils.logger._LOGGING_CONFIGURED``. Within a single test
+    process, many ``CliRunner`` invocations share that global, so a command
+    that installs a stdout log sink (e.g. ``create``) leaks it into a later
+    command, whose diagnostic logs then corrupt stdout — an inspect-error line
+    gets prepended to ``--simple-output`` JSON, making output assertions
+    order-dependent. In production each command is its own process, so this only
+    bites tests. Reset after each test so every test starts from unconfigured
+    logging. Imported lazily so non-app tests don't couple to these packages.
+    """
+    yield
+    try:
+        from loguru import logger as _loguru_logger
+
+        import utils.logger as _ulog
+
+        _loguru_logger.remove()
+        _ulog._LOGGING_CONFIGURED = False
+        _ulog._CURRENT_LOG_LEVEL = None
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Behavior-net scaffolding (foundation/1)
 # ---------------------------------------------------------------------------
