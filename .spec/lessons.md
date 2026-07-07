@@ -285,3 +285,29 @@ port is a different origin for credential purposes; fail closed.
   tests.** It's in-memory only (never touches disk), so a test can register a
   spec and set a value without a `tmp_path`/`monkeypatch.chdir` dance — just
   `svc.register(Model, path=...)` then `svc.set_overlay("path.key", value)`.
+
+## Foundation bug-batch closeout (2026-07-07)
+
+- **Additive manifest keys keep old collections loadable (F2).** To add
+  `createdTime` without breaking byte-compat: write the new key ONLY in the
+  brand-new-collection branch of `__create_manifest_content`; the update branch
+  spreads `**existing_manifest` first, so an old manifest without the key
+  round-trips untouched and readers use `manifest.get("createdTime")` → `None`.
+  Never add a key on the update path (it would rewrite every existing manifest).
+- **Guard zero-padded / non-finite words before numeric coercion (F5).**
+  `_coerce_value` must not mangle string-typed config values: reject leading-zero
+  runs (`^[+-]?0\d`) and non-finite words (`nan`/`inf`) BEFORE `json.loads`/
+  `float()`, so `"001"`→`"001"` and `"nan"`→`"nan"` while genuine numerics still
+  coerce. Report the real index FILE byte size via `os.path.getsize()` (not the
+  FAISS `ntotal` vector count) and compute `avg_doc_size` from the `documents/`
+  folder only, excluding the index (F1/F3).
+- **Loguru config leaks across CliRunner invocations in one test process.** The
+  CLI configures loguru once per process (guarded by `_LOGGING_CONFIGURED`); in a
+  test process many `CliRunner` invokes share it, so a command that installs a
+  stdout log sink (`create`) leaks it into a later command whose diagnostic logs
+  then corrupt stdout (an inspect-error line prepended to `--simple-output`
+  JSON), making output assertions order-dependent. Production runs one process
+  per command, so it only bites tests. Fix: an autouse conftest fixture that
+  `loguru.remove()`s sinks and resets `utils.logger._LOGGING_CONFIGURED = False`
+  after each test. Same class of leak as the `simple_output` module global —
+  reset both.

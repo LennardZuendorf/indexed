@@ -522,10 +522,10 @@ foundation/9 is independent after foundation/1.
 |---|---|
 | foundation/1 | DONE |
 | foundation/2 | DONE |
-| foundation/3 | NOT STARTED |
-| foundation/4 | NOT STARTED |
-| foundation/5 | NOT STARTED |
-| foundation/6 | NOT STARTED |
+| foundation/3 | DONE |
+| foundation/4 | DONE |
+| foundation/5 | DONE |
+| foundation/6 | DONE |
 | foundation/7 | NOT STARTED |
 | foundation/8 | NOT STARTED |
 | foundation/9 | NOT STARTED |
