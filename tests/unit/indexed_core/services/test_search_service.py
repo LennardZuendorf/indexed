@@ -157,6 +157,52 @@ class TestSearchService:
         )
 
     @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    def test_search_with_score_threshold_overfetches_and_backfills(self, mock_factory):
+        """A5: when score_threshold is set, the searcher must be asked for more
+        than max_docs documents so that documents dropped by the filter can be
+        backfilled from the next-best surviving ones, then the final result is
+        truncated back to max_docs (filter-before-truncate + backfill)."""
+        mock_searcher = Mock()
+        # 4 candidate docs ranked best (lowest score) to worst; rank-1 fails
+        # the threshold, so rank-4 must backfill into the top-2 result.
+        mock_searcher.search.return_value = {
+            "results": [
+                {"id": "doc-1", "matchedChunks": [{"score": 3.0}]},  # filtered out
+                {"id": "doc-2", "matchedChunks": [{"score": 0.5}]},
+                {"id": "doc-3", "matchedChunks": [{"score": 0.6}]},
+                {"id": "doc-4", "matchedChunks": [{"score": 0.7}]},
+            ]
+        }
+        mock_factory.return_value = mock_searcher
+
+        service = SearchService()
+        configs = [
+            SourceConfig(
+                name="test-collection",
+                type="localFiles",
+                base_url_or_path="./docs",
+                indexer="test-indexer",
+            )
+        ]
+
+        result = service.search(
+            query="test query",
+            configs=configs,
+            max_docs=2,
+            score_threshold=1.0,
+        )
+
+        # Searcher must be over-fetched (more than the requested max_docs=2)
+        # so filtering has candidates left to backfill from.
+        call_kwargs = mock_searcher.search.call_args.kwargs
+        assert call_kwargs["max_number_of_documents"] > 2
+
+        # Final result is truncated to max_docs AFTER filtering: doc-1 is
+        # dropped by the threshold and doc-3 backfills its slot.
+        doc_ids = [doc["id"] for doc in result["test-collection"]["results"]]
+        assert doc_ids == ["doc-2", "doc-3"]
+
+    @patch("core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_auto_discovery(self, mock_factory):
         """Test search with auto-discovery (configs=None)."""
         mock_searcher = Mock()

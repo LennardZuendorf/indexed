@@ -87,7 +87,6 @@ def _search_service(collections_dir: Path):
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a1_chunker_respects_model_token_window(tmp_path: Path) -> None:
     """A1: a large headingless doc must be split into chunks that each fit the
     embedder's ``max_seq_length`` (max_tokens is ignored today → oversize chunks
@@ -121,7 +120,6 @@ def test_bug_a1_chunker_respects_model_token_window(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a2_code_chunker_slices_bytes_not_decoded_str(tmp_path: Path) -> None:
     """A2: a code file whose first function contains a non-ASCII comment must
     still yield byte-exact chunks for later functions (tree-sitter byte offsets
@@ -149,7 +147,6 @@ def test_bug_a2_code_chunker_slices_bytes_not_decoded_str(tmp_path: Path) -> Non
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a3_plaintext_splitter_handles_no_blank_lines(tmp_path: Path) -> None:
     """A3: a large file with no blank lines (e.g. a log) must split into multiple
     chunks (the generic splitter breaks only on ``\\n\\n`` today → one chunk that
@@ -174,7 +171,6 @@ def test_bug_a3_plaintext_splitter_handles_no_blank_lines(tmp_path: Path) -> Non
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a4_embedder_distinguishes_beyond_model_window() -> None:
     """A4: two documents sharing an identical 256-token prefix but differing
     suffixes must embed to a non-zero distance (the model truncates at 256 with
@@ -204,7 +200,6 @@ def test_bug_a4_embedder_distinguishes_beyond_model_window() -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a5_topk_starvation_returns_all_matching_docs(
     local_workspace, tmp_path: Path
 ) -> None:
@@ -242,7 +237,6 @@ def test_bug_a5_topk_starvation_returns_all_matching_docs(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_A)
 def test_bug_a6_score_threshold_accepts_real_l2_range() -> None:
     """A6: ``score_threshold`` must accept the engine's real squared-L2 range
     (``[0, 4]``); today it is capped at ``le=1.0``, so a sane 1.5 threshold (the
