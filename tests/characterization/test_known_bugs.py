@@ -617,7 +617,6 @@ def test_bug_d4_confluence_image_filename_extracted() -> None:
 # ===========================================================================
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e1_missing_collection_fails_cleanly(local_workspace) -> None:
     """E1: a missing collection must produce a clean non-zero exit — never a raw
     ``IndexError`` traceback for ``search -c`` and never exit 0 for ``update``
@@ -742,7 +741,6 @@ def test_bug_e7_files_path_stored_normalized() -> None:
 
 
 @needs_model
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e8_update_all_continues_past_failure(local_workspace, monkeypatch) -> None:
     """E8: ``update`` (all) must attempt every collection even when one fails
     (today it ``break``s the loop on the first failure → later collections stay
@@ -806,7 +804,6 @@ def test_bug_e10_mcp_surfaces_per_collection_failure() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason=FIX_E)
 def test_bug_e11_missing_collection_not_reported_healthy(local_workspace) -> None:
     """E11: a nonexistent collection must not be reported as a zero-filled healthy
     status (the placeholder returned by ``InspectService.status`` makes MCP show a
