@@ -173,3 +173,36 @@ class TestF3AvgDocSizeExcludesIndex:
         info = InspectService(collections_path=str(tmp_path)).inspect(["coll"])[0]
 
         assert info.avg_doc_size_bytes is None
+
+
+class TestDiscoveryFiltersInternalDirs:
+    """Build-aside staging / swap-rollback dirs must never surface as collections."""
+
+    def test_status_omits_tmp_and_trash_dirs(self, tmp_path):
+        base = {
+            "updatedTime": "2026-07-07T00:00:00+00:00",
+            "lastModifiedDocumentTime": "2026-07-07T00:00:00+00:00",
+            "numberOfDocuments": 1,
+            "numberOfChunks": 1,
+            "reader": {"type": "localFiles"},
+            "indexers": [{"name": "idx"}],
+        }
+        _write_collection(tmp_path, "docs", manifest={"collectionName": "docs", **base})
+        # A staging dir from an interrupted durable create, and a trash dir from
+        # a failed swap-rollback cleanup — each holds a valid manifest but is an
+        # internal artifact, not a real collection.
+        _write_collection(
+            tmp_path,
+            "docs.tmp-12345-abcd1234",
+            manifest={"collectionName": "docs.tmp-12345-abcd1234", **base},
+        )
+        _write_collection(
+            tmp_path,
+            "docs.trash-12345",
+            manifest={"collectionName": "docs.trash-12345", **base},
+        )
+
+        names = {
+            s.name for s in InspectService(collections_path=str(tmp_path)).status()
+        }
+        assert names == {"docs"}

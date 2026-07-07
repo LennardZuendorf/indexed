@@ -7,6 +7,7 @@ use cases.
 """
 
 import json
+import re
 from typing import List, Optional, Dict
 import os
 
@@ -16,6 +17,11 @@ from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCa
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 from core.v1.config_models import get_default_collections_path
+
+# Transient directories the durable-create path leaves aside:
+# `<name>.tmp-<pid>-<hex>` staging dirs and `<name>.trash-<pid>` rollback dirs.
+# These must never be reported as real collections.
+_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+")
 
 
 class InspectService:
@@ -97,7 +103,15 @@ class InspectService:
                     collection_name = os.path.dirname(item).split(os.sep)[
                         0
                     ] or os.path.dirname(item)
-                    if collection_name:
+                    # Skip the transient build-aside/rollback directories the
+                    # durable-create path leaves on disk (`<name>.tmp-<pid>-<hex>`
+                    # staging dirs; `<name>.trash-<pid>` swap-rollback dirs). A
+                    # hard kill mid-create, or a failed cleanup, can otherwise
+                    # leave a valid manifest in one of these and surface it as a
+                    # phantom collection in status/search/inspect.
+                    if collection_name and not _INTERNAL_COLLECTION_DIR_RE.search(
+                        collection_name
+                    ):
                         collections.add(collection_name)
             return sorted(collections)
         except Exception:
