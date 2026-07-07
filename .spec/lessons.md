@@ -229,3 +229,47 @@ port is a different origin for credential purposes; fail closed.
   for `max_docs * OVERFETCH_FACTOR` candidates when a threshold is active, filter
   that wider set, THEN slice to the real `max_docs` — truncating to the final
   count before filtering discards the very candidates that would have backfilled.
+
+## MCP freshness/errors & dead config sections (foundation/6d, 2026-07-07)
+
+- **`resolve_collections_context(mode_override=...)` silently wipes registered
+  config specs.** It calls `ConfigService.instance(mode_override=..., reset=
+  mode_override is not None)` — `reset=True` unconditionally replaces the
+  singleton (fresh, empty `ConfigRegistry`) any time a non-None override is
+  passed, even when the override is identical to what's already active. Every
+  knowledge command calls this *after* the app callback's `register_app_config`,
+  so any command that later needs `ConfigService.instance().bind()` gets a
+  `KeyError: spec not found` — not because the spec was never registered, but
+  because a later, unrelated call silently discarded it. Fix locally: re-call
+  `register_app_config(ConfigService.instance())` immediately before `.bind()`
+  (idempotent, cheap) — the same defensive pattern `mcp/cli.py::run_impl`
+  already uses before its own `bind()`. This is a real landmine for any future
+  config-architecture work (foundation/7-9): the root fix is to stop forcing
+  `reset=True` on unchanged mode_override in `runtime.py`, but that function is
+  shared by every knowledge command + MCP lifespan, so it was left alone here
+  and the narrower per-call re-register was used instead.
+- **Two console-output test patterns coexist in `search.py` and don't compose.**
+  Some tests monkeypatch `search_cmd.console` (a module-local rebinding) and
+  capture via a fake `.print`; but `print_error`/`print_warning` (from
+  `utils.components.alerts`) hold their own reference to the *real* shared
+  console, so patching `search_cmd.console` never captures their output. To
+  assert on `print_error`/`print_warning` calls, patch the name in the calling
+  module's namespace instead — `patch.object(search_cmd, "print_error")` — not
+  the console object.
+- **A settable-but-unread config knob isn't automatically "dead" everywhere.**
+  E12 named three sections (`core.v1.indexing`, `core.v1.embedding`,
+  `core.v1.storage`) as registered-but-unread. Only `embedding.batch_size` was
+  wired into the engine (`FaissIndexer.index_texts`, replacing the hardcoded
+  64) because the brief scoped it explicitly and it's a single, low-risk read.
+  `core.v1.indexing` (chunk_size/chunk_overlap) and the rest of
+  `core.v1.embedding` (model_name/provider/dimension/device) remain registered
+  but unread by design — wiring chunk_size risks colliding with foundation/2's
+  token-window chunking (which now sizes off the model directly, not this
+  config), and wiring model_name is a bigger factory-selection change outside
+  this unit's remit. Left as a known residual for whoever does the
+  config-architecture pass (foundation/7-9): delete or wire them then, backed
+  by the full picture rather than a narrow bugfix task.
+- **`ConfigService.set_overlay()` is the right tool for config-dependent unit
+  tests.** It's in-memory only (never touches disk), so a test can register a
+  spec and set a value without a `tmp_path`/`monkeypatch.chdir` dance — just
+  `svc.register(Model, path=...)` then `svc.set_overlay("path.key", value)`.

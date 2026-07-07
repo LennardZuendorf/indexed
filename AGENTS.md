@@ -1,7 +1,7 @@
 # AGENTS.md — indexed Engineering Guide
 
 **Repository:** indexed v0.1.0 · Python monorepo (uv + una)
-**Last Updated:** 2026-06-21
+**Last Updated:** 2026-07-07
 
 This is the operating contract for any agent working in this repo. Read it
 fully before acting. The four sections are load-bearing:
@@ -279,6 +279,13 @@ Earned defaults — apply without being asked.
   Docling/tree-sitter imports. FAISS `IndexFlatL2` over-fetching is also nearly
   free (cost is O(N·d) regardless of k) — prefer "fetch everything, group, cap" over
   a tuned multiplier when fixing top-k starvation. Full detail in `.spec/lessons.md`.
+- **`resolve_collections_context(mode_override=...)` force-resets the
+  `ConfigService` singleton** (`reset=mode_override is not None`), which drops
+  any specs a prior `register_app_config` call registered — even when the
+  override didn't change. Any command that calls `.bind()` after it must
+  defensively re-call `register_app_config(ConfigService.instance())` first
+  (mirrors the existing `mcp/cli.py::run_impl` pattern). Full detail in
+  `.spec/lessons.md`.
 
 ---
 
