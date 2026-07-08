@@ -365,10 +365,21 @@ def main() -> None:
     try:
         app()
     except IndexedError as exc:
+        from rich.markup import escape
+
         from .errors import exit_code_for, format_cli_error
 
-        _shared_console.print(format_cli_error(exc), style=get_error_style())
-        raise typer.Exit(exit_code_for(exc)) from None
+        # The error message can embed configuration/collection values supplied
+        # by the user — escape before it enters this styled print so markup
+        # like `[/bold]` renders verbatim instead of raising `MarkupError`
+        # (foundation/6c bug E2).
+        _shared_console.print(escape(format_cli_error(exc)), style=get_error_style())
+        # `app()` already ran (and exited) the click runner — `typer.Exit`
+        # raised here would be uncaught (no click main() left to interpret
+        # it), producing a traceback and losing the mapped exit code
+        # (foundation/6 E1). `sys.exit` is the correct process-exit primitive
+        # outside the runner.
+        sys.exit(exit_code_for(exc))
 
 
 if __name__ == "__main__":

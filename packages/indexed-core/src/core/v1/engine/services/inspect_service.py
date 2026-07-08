@@ -7,6 +7,7 @@ use cases.
 """
 
 import json
+import re
 from typing import List, Optional, Dict
 import os
 
@@ -16,6 +17,11 @@ from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCa
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 from core.v1.config_models import get_default_collections_path
+
+# Transient directories the durable-create path leaves aside:
+# `<name>.tmp-<pid>-<hex>` staging dirs and `<name>.trash-<pid>` rollback dirs.
+# These must never be reported as real collections.
+_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+")
 
 
 class InspectService:
@@ -97,7 +103,15 @@ class InspectService:
                     collection_name = os.path.dirname(item).split(os.sep)[
                         0
                     ] or os.path.dirname(item)
-                    if collection_name:
+                    # Skip the transient build-aside/rollback directories the
+                    # durable-create path leaves on disk (`<name>.tmp-<pid>-<hex>`
+                    # staging dirs; `<name>.trash-<pid>` swap-rollback dirs). A
+                    # hard kill mid-create, or a failed cleanup, can otherwise
+                    # leave a valid manifest in one of these and surface it as a
+                    # phantom collection in status/search/inspect.
+                    if collection_name and not _INTERNAL_COLLECTION_DIR_RE.search(
+                        collection_name
+                    ):
                         collections.add(collection_name)
             return sorted(collections)
         except Exception:
@@ -105,6 +119,20 @@ class InspectService:
 
     def _calculate_disk_size(self, collection_name: str) -> int:
         base_dir = os.path.join(self._persister.base_path, collection_name)
+        return self._calculate_dir_size(base_dir)
+
+    def _calculate_documents_size(self, collection_name: str) -> int:
+        """Byte total of the ``documents/`` subfolder only (F3).
+
+        Used to compute ``avg_doc_size_bytes`` from document content alone,
+        excluding the manifest and the FAISS index files that also live under
+        the collection directory.
+        """
+        docs_dir = os.path.join(self._persister.base_path, collection_name, "documents")
+        return self._calculate_dir_size(docs_dir)
+
+    @staticmethod
+    def _calculate_dir_size(base_dir: str) -> int:
         total = 0
         for root, _dirs, files in os.walk(base_dir):
             for f in files:
@@ -115,6 +143,27 @@ class InspectService:
                     # Ignore files that cannot be accessed
                     pass
         return total
+
+    def _get_index_file_size_bytes(
+        self, collection_name: str, indexer_name: str
+    ) -> Optional[int]:
+        """Real on-disk byte size of the collection's FAISS index file (F1).
+
+        This is a file size via ``os.path.getsize`` — distinct from
+        ``indexer.get_size()`` (the FAISS ``ntotal`` vector count), which was
+        previously reported here as if it were a byte size.
+        """
+        index_path = os.path.join(
+            self._persister.base_path,
+            collection_name,
+            "indexes",
+            indexer_name,
+            "indexer.faiss",
+        )
+        try:
+            return os.path.getsize(index_path)
+        except OSError:
+            return None
 
     def status(
         self,
@@ -137,8 +186,9 @@ class InspectService:
         Returns:
             List[CollectionStatus]: List of status objects containing metadata
                                    for each requested collection. Collections
-                                   that cannot be read will have default/empty
-                                   values but will still be included in the result.
+                                   that are missing or whose manifest cannot be
+                                   read are OMITTED from the result rather than
+                                   returned as a zero-filled placeholder.
 
         Example:
             >>> service = InspectService()
@@ -202,22 +252,10 @@ class InspectService:
                 statuses.append(status)
 
             except Exception as e:
+                # Missing/unreadable collections are OMITTED, not zero-filled —
+                # a placeholder here would defeat every downstream "not found"
+                # guard (see foundation/6 E1/E11).
                 logger.error(f"Error getting status for collection {name}: {e}")
-                # Add error status
-                statuses.append(
-                    CollectionStatus(
-                        name=name,
-                        number_of_documents=0,
-                        number_of_chunks=0,
-                        updated_time="",
-                        last_modified_document_time="",
-                        indexers=[],
-                        index_size=None,
-                        source_type=None,
-                        relative_path=None,
-                        disk_size_bytes=None,
-                    )
-                )
 
         return statuses
 
@@ -245,6 +283,9 @@ class InspectService:
         Returns:
             List[CollectionInfo]: List of detailed info objects containing comprehensive
                                  metadata and computed statistics for each collection.
+                                 Collections that are missing or whose manifest cannot
+                                 be read are OMITTED, not returned as a zero-filled
+                                 placeholder.
 
         Example:
             >>> service = InspectService()
@@ -271,13 +312,16 @@ class InspectService:
             try:
                 manifest = self._read_manifest(name)
 
-                # Get index size if requested
-                index_size = None
+                # F1: the real on-disk byte size of the index file — distinct
+                # from the FAISS vector count (already reported via
+                # number_of_chunks); never format a vector count as bytes.
+                index_size_bytes = None
                 if include_index_size and manifest.get("indexers"):
                     try:
                         first_indexer = manifest["indexers"][0]["name"]
-                        indexer = load_indexer(first_indexer, name, self._persister)
-                        index_size = indexer.get_size()
+                        index_size_bytes = self._get_index_file_size_bytes(
+                            name, first_indexer
+                        )
                     except Exception as e:
                         logger.warning(f"Could not get index size for {name}: {e}")
 
@@ -286,16 +330,30 @@ class InspectService:
                 abs_path = os.path.join(self._persister.base_path, name)
                 relative_path = os.path.relpath(abs_path, start=os.getcwd())
                 disk_size = self._calculate_disk_size(name)
+                number_of_documents = manifest.get("numberOfDocuments", 0)
 
-                # Build CollectionInfo (averages computed in __post_init__)
+                # F3: average document size computed from document bytes
+                # only (excludes the manifest/index files also present under
+                # disk_size_bytes), passed explicitly so CollectionInfo's
+                # __post_init__ doesn't fall back to the disk-size-inclusive
+                # calculation.
+                avg_doc_size_bytes = None
+                if number_of_documents > 0:
+                    avg_doc_size_bytes = (
+                        self._calculate_documents_size(name) / number_of_documents
+                    )
+
+                # Build CollectionInfo (avg_chunks_per_doc computed in
+                # __post_init__)
                 info = CollectionInfo(
                     name=name,
                     source_type=source_type,
-                    number_of_documents=manifest.get("numberOfDocuments", 0),
+                    number_of_documents=number_of_documents,
                     number_of_chunks=manifest.get("numberOfChunks", 0),
                     relative_path=relative_path,
                     disk_size_bytes=disk_size,
-                    index_size_bytes=index_size,
+                    index_size_bytes=index_size_bytes,
+                    avg_doc_size_bytes=avg_doc_size_bytes,
                     created_time=manifest.get("createdTime"),
                     updated_time=manifest.get("updatedTime", ""),
                     last_modified_document_time=manifest.get(
@@ -306,16 +364,9 @@ class InspectService:
                 infos.append(info)
 
             except Exception as e:
+                # Missing/unreadable collections are OMITTED, not zero-filled —
+                # see status() above for the same rationale.
                 logger.error(f"Error inspecting collection {name}: {e}")
-                # Add minimal error info
-                infos.append(
-                    CollectionInfo(
-                        name=name,
-                        source_type=None,
-                        number_of_documents=0,
-                        number_of_chunks=0,
-                    )
-                )
 
         return infos
 

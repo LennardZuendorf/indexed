@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
 from rich.console import Console
+from rich.markup import escape
 from rich.prompt import Prompt
+from rich.text import Text
 
 from .components import create_detail_card, print_warning
 from .components.theme import (
@@ -60,11 +62,18 @@ def show_config_differences(
         console.print(f"[{get_dim_style()}]No differences found.[/{get_dim_style()}]")
         return
 
-    rows: list[tuple[str, str]] = [
+    # The warning/accent tags below are legitimate styling this function adds
+    # itself; the config values they wrap are user-set and must be escaped
+    # before entering the markup string, and the row values passed to
+    # `create_detail_card` must be pre-built `Text` — plain strings are now
+    # rendered literally, never markup-parsed (foundation/6c bug E2).
+    rows: list[tuple[str, "str | Text"]] = [
         (
             path,
-            f"[{get_warning_style()}]{format_value(local_val)}[/{get_warning_style()}]"
-            f" → [{get_accent_style()}]{format_value(global_val)}[/{get_accent_style()}]",
+            Text.from_markup(
+                f"[{get_warning_style()}]{escape(format_value(local_val))}[/{get_warning_style()}]"
+                f" → [{get_accent_style()}]{escape(format_value(global_val))}[/{get_accent_style()}]"
+            ),
         )
         for path, (local_val, global_val) in differences.items()
     ]

@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-06-09
+updated: 2026-07-07
 ---
 
 # Tech Branch: Core Engine (`indexed-core`)
@@ -50,6 +50,13 @@ def model(self):
 
 `embed_batch` defaults to `DEFAULT_EMBEDDING_BATCH_SIZE = 128` (configurable per call).
 
+### Chunk-size invariant
+
+Every chunk must tokenize to **≤ the embedder's `max_seq_length`** (256 for the
+default `all-MiniLM-L6-v2`), read live from the embedder — never a hardcoded 512.
+Oversized text is split down to the token window (see [tech-parsing.md](tech-parsing.md))
+so no content is silently truncated at embed time.
+
 ---
 
 ## FAISS Indexing
@@ -77,10 +84,11 @@ distances, indices = index.search(query_vec, k=10)
 
 ### Similarity scoring
 
-FAISS returns L2 distances. The raw distance is used directly as the result
-`score` — **lower means more similar** (it is not normalized to 0–1). Threshold
-filtering (`min_score` / `score_threshold`) keeps chunks whose score (distance)
-is **≤** the threshold.
+Embeddings are unit-normalized, so `IndexFlatL2` returns **squared** L2 distance
+in **[0, 4]** — used directly as the result `score`, **lower means more similar**
+(monotonic with cosine; not normalized to 0–1). Threshold filtering
+(`min_score` / `score_threshold`) keeps chunks whose score is **≤** the threshold;
+the configurable range is **[0, 4]** (a sane cutoff is >1.0), not [0, 1].
 
 ---
 
@@ -88,6 +96,14 @@ is **≤** the threshold.
 
 `DiskPersister` atomic writes: write temp file → `fsync()` → rename (atomic on POSIX).
 Prevents corruption from process/system crashes and disk-full errors.
+
+**Durability invariants:**
+- The FAISS index is persisted on **every** mutating path — create, add,
+  remove-then-add, deletions-only, and explicit-deletions — so on-disk vectors
+  never outlive their mapping keys (no orphaned ids / `KeyError` on later search).
+- A failed `create` **builds aside and rename-swaps** into place, so an error
+  mid-run never destroys the prior collection of the same name.
+- A zero-chunk batch (e.g. an empty-body document) is a **no-op**, not a crash.
 
 On-disk layout (dirs owned by `indexed-config`): [tech-config.md](tech-config.md) § Storage Directory Structure.
 

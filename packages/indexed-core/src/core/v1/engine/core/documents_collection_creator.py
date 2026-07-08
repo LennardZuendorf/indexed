@@ -1,3 +1,5 @@
+import os
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -53,6 +55,10 @@ class DocumentCollectionCreator:
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
+        # B4: the folder actually read/written by this run. Equal to
+        # `collection_name` for every path except a CREATE build-aside window,
+        # where it points at a staging directory until the rename-swap.
+        self._storage_name = collection_name
         self.document_reader = document_reader
         self.document_converter = document_converter
         self.document_indexers = document_indexers
@@ -74,54 +80,71 @@ class DocumentCollectionCreator:
         raise ValueError(f"Unknown operation type: {self.operation_type}")
 
     def __create_collection(self):
-        self.persister.remove_folder(self.collection_name)
-        self.persister.create_folder(self.collection_name)
+        # B4: build the new collection into an aside (staging) directory and
+        # rename-swap it into place only on success. The existing collection
+        # (if any) is never touched up front, so a failed/crashed build never
+        # destroys it.
+        staging_name = self.__staging_collection_name()
+        self._storage_name = staging_name
+        self.persister.create_folder(staging_name)
 
-        update_time = datetime.now(timezone.utc)
+        try:
+            update_time = datetime.now(timezone.utc)
 
-        document_ids, number_of_expected_documents = log_execution_duration(
-            lambda: self.__read_documents(),
-            identifier=f"Reading documents for collection: {self.collection_name}",
-        )
-
-        if len(document_ids) == 0:
-            self.persister.remove_folder(self.collection_name)
-            reader = self.document_reader
-            if hasattr(reader, "reader"):
-                reader = reader.reader
-            details = []
-            base_path = getattr(reader, "base_path", None)
-            include_patterns = getattr(reader, "include_patterns", None)
-            if base_path:
-                details.append(f"source path: {base_path}")
-            if include_patterns is not None:
-                details.append(f"include patterns: {include_patterns}")
-            detail_str = f" ({', '.join(details)})" if details else ""
-            raise ValueError(
-                f"No documents found for collection '{self.collection_name}'{detail_str}. "
-                "Check that the source path exists and contains readable files."
+            document_ids, number_of_expected_documents = log_execution_duration(
+                lambda: self.__read_documents(),
+                identifier=f"Reading documents for collection: {self.collection_name}",
             )
 
-        last_modified_document_time, number_of_chunks = log_execution_duration(
-            lambda: self.__index_documents_for_new_collection(document_ids),
-            identifier=f"Indexing documents for collection: {self.collection_name}",
-        )
+            if len(document_ids) == 0:
+                reader = self.document_reader
+                if hasattr(reader, "reader"):
+                    reader = reader.reader
+                details = []
+                base_path = getattr(reader, "base_path", None)
+                include_patterns = getattr(reader, "include_patterns", None)
+                if base_path:
+                    details.append(f"source path: {base_path}")
+                if include_patterns is not None:
+                    details.append(f"include patterns: {include_patterns}")
+                detail_str = f" ({', '.join(details)})" if details else ""
+                raise ValueError(
+                    f"No documents found for collection '{self.collection_name}'{detail_str}. "
+                    "Check that the source path exists and contains readable files."
+                )
 
-        if self.phased_progress:
-            self.phased_progress.finish_phase("Generating Embeddings")
-
-        manifest = self.__create_manifest_file(
-            update_time, last_modified_document_time, number_of_chunks
-        )
-
-        if number_of_expected_documents != len(document_ids):
-            logger.warning(
-                f"Expected number of documents: {number_of_expected_documents} does not match actual number of read documents: {len(document_ids)}. Usually it happens when an error occurs during document reading. Please check logs for more details."
+            last_modified_document_time, number_of_chunks = log_execution_duration(
+                lambda: self.__index_documents_for_new_collection(document_ids),
+                identifier=f"Indexing documents for collection: {self.collection_name}",
             )
 
-        logger.info(
-            f"Collection successfully created: \n{_json_dumps(manifest, indent=True)}"
-        )
+            if self.phased_progress:
+                self.phased_progress.finish_phase("Generating Embeddings")
+
+            manifest = self.__create_manifest_file(
+                update_time, last_modified_document_time, number_of_chunks
+            )
+
+            if number_of_expected_documents != len(document_ids):
+                logger.warning(
+                    f"Expected number of documents: {number_of_expected_documents} does not match actual number of read documents: {len(document_ids)}. Usually it happens when an error occurs during document reading. Please check logs for more details."
+                )
+
+            logger.info(
+                f"Collection successfully created: \n{_json_dumps(manifest, indent=True)}"
+            )
+        except Exception:
+            # Discard only the aside directory — the prior collection (if any)
+            # was never removed and is still intact.
+            self.persister.remove_folder(staging_name)
+            raise
+        finally:
+            self._storage_name = self.collection_name
+
+        self.persister.replace_folder(staging_name, self.collection_name)
+
+    def __staging_collection_name(self) -> str:
+        return f"{self.collection_name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
     def __update_collection(self):
         if not self.persister.is_path_exists(self.collection_name):
@@ -156,10 +179,16 @@ class DocumentCollectionCreator:
             return
 
         if len(document_ids) == 0:
-            # Only deletions — update manifest counts without re-indexing
+            # Only deletions — update manifest counts without re-indexing.
+            # B1: this branch is only reached when self.explicit_deletions is
+            # non-empty (see the guard above), so __remove_explicit_deletions
+            # already persisted the FAISS index to disk after mutating it via
+            # remove_ids. The on-disk indexer.faiss is already in sync with
+            # the mapping JSONs it just saved — persisting again here would
+            # just be a redundant write.
             manifest["updatedTime"] = update_time.isoformat()
             manifest["numberOfDocuments"] = len(
-                self.persister.read_folder_files(f"{self.collection_name}/documents")
+                self.persister.read_folder_files(f"{self._storage_name}/documents")
             )
             manifest["numberOfChunks"] = self.document_indexers[0].get_size()
             self.__save_json_file(manifest, self.__build_manifest_path())
@@ -225,7 +254,7 @@ class DocumentCollectionCreator:
         for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
             for converted_document in self.document_converter.convert(document):
                 document_path = (
-                    f"{self.collection_name}/documents/{converted_document['id']}.json"
+                    f"{self._storage_name}/documents/{converted_document['id']}.json"
                 )
                 self.__save_json_file(converted_document, document_path)
 
@@ -302,10 +331,20 @@ class DocumentCollectionCreator:
             index_item_ids = []
 
             for document_id in batch_document_ids:
-                document_path = f"{self.collection_name}/documents/{document_id}.json"
+                # B4: physical reads target the storage location currently in
+                # use (the staging dir mid-CREATE, or the real folder for an
+                # UPDATE); the path recorded in the mapping must be the FINAL
+                # collection name so search still resolves it after the
+                # build-aside rename-swap.
+                physical_document_path = (
+                    f"{self._storage_name}/documents/{document_id}.json"
+                )
+                stored_document_path = (
+                    f"{self.collection_name}/documents/{document_id}.json"
+                )
 
                 converted_document = _json_loads(
-                    self.persister.read_text_file(document_path)
+                    self.persister.read_text_file(physical_document_path)
                 )
 
                 modified_document_time = datetime.fromisoformat(
@@ -328,7 +367,7 @@ class DocumentCollectionCreator:
                     index_mapping[last_index_item_id] = {
                         "documentId": converted_document["id"],
                         "documentUrl": converted_document["url"],
-                        "documentPath": document_path,
+                        "documentPath": stored_document_path,
                         "chunkNumber": chunk_number,
                     }
 
@@ -366,12 +405,8 @@ class DocumentCollectionCreator:
                     )
                 )
 
-        for indexer in self.document_indexers:
-            # Save in native FAISS format for memory-mapped loading
-            self.persister.save_faiss_index(
-                indexer.get_faiss_index(),
-                f"{self.__build_index_base_path(indexer)}/indexer.faiss",
-            )
+        # Save in native FAISS format for memory-mapped loading
+        self.__persist_faiss_indexes()
 
         index_info = {
             "lastIndexItemId": last_index_item_id,
@@ -415,7 +450,7 @@ class DocumentCollectionCreator:
             return
 
         for doc_id in doc_ids:
-            doc_file = f"{self.collection_name}/documents/{doc_id}.json"
+            doc_file = f"{self._storage_name}/documents/{doc_id}.json"
             if self.persister.is_path_exists(doc_file):
                 self.persister.remove_file(doc_file)
 
@@ -430,22 +465,40 @@ class DocumentCollectionCreator:
             doc_ids, index_mapping, reverse_index_mapping
         )
 
+        # B1: remove_ids only mutated the in-memory FAISS index above — persist
+        # it to disk here so the on-disk indexer.faiss doesn't outlive the
+        # mapping keys we're about to save (bug: orphan vectors -> KeyError).
+        self.__persist_faiss_indexes()
         self.__save_json_file(index_mapping, self.__build_index_mapping_path())
         self.__save_json_file(
             reverse_index_mapping, self.__build_reverse_index_mapping_path()
         )
 
+    def __persist_faiss_indexes(self) -> None:
+        """Write every indexer's FAISS index to disk (B1).
+
+        Invoked exactly once per mutating branch — add, remove-then-add, and
+        explicit-deletions (which also covers a deletions-only update, since
+        that path falls through from explicit-deletions) — so the on-disk
+        ``indexer.faiss`` never outlives the mapping JSONs that key into it.
+        """
+        for indexer in self.document_indexers:
+            self.persister.save_faiss_index(
+                indexer.get_faiss_index(),
+                f"{self.__build_index_base_path(indexer)}/indexer.faiss",
+            )
+
     def __build_reverse_index_mapping_path(self):
-        return f"{self.collection_name}/indexes/reverse_index_document_mapping.json"
+        return f"{self._storage_name}/indexes/reverse_index_document_mapping.json"
 
     def __build_index_mapping_path(self):
-        return f"{self.collection_name}/indexes/index_document_mapping.json"
+        return f"{self._storage_name}/indexes/index_document_mapping.json"
 
     def __build_index_info_path(self):
-        return f"{self.collection_name}/indexes/index_info.json"
+        return f"{self._storage_name}/indexes/index_info.json"
 
     def __build_index_base_path(self, indexer):
-        return f"{self.collection_name}/indexes/{indexer.get_name()}"
+        return f"{self._storage_name}/indexes/{indexer.get_name()}"
 
     def __batch_items(self, items, batch_size):
         return [items[i : i + batch_size] for i in range(0, len(items), batch_size)]
@@ -469,7 +522,7 @@ class DocumentCollectionCreator:
         return manifest_content
 
     def __build_manifest_path(self):
-        return f"{self.collection_name}/manifest.json"
+        return f"{self._storage_name}/manifest.json"
 
     def __create_manifest_content(
         self,
@@ -479,7 +532,7 @@ class DocumentCollectionCreator:
         existing_manifest=None,
     ):
         number_of_documents = len(
-            self.persister.read_folder_files(f"{self.collection_name}/documents")
+            self.persister.read_folder_files(f"{self._storage_name}/documents")
         )
 
         if existing_manifest:
@@ -493,6 +546,11 @@ class DocumentCollectionCreator:
 
         return {
             "collectionName": self.collection_name,
+            # F2: additive, CREATE-only key — existing collections written
+            # before this key existed have no "createdTime" and must keep
+            # loading fine (inspect_service reads it via manifest.get(),
+            # defaulting to None).
+            "createdTime": update_time.isoformat(),
             "updatedTime": update_time.isoformat(),
             "lastModifiedDocumentTime": last_modified_document_time.isoformat(),
             "numberOfDocuments": number_of_documents,

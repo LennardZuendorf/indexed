@@ -160,6 +160,26 @@ class TomlStore:
 
         return self._apply_env_and_finalize(data)
 
+    def read_disk_only_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
+        """Read config.toml for a resolved storage mode, with NO env overlay.
+
+        Unlike read_for_mode(), this does not merge .env or INDEXED__* env
+        vars — used as the persistence baseline for set()/delete() so an
+        env-supplied value (e.g. a secret set only via INDEXED__*) is never
+        round-tripped into config.toml by an unrelated write (C2).
+
+        Args:
+            mode: The resolved storage mode ("global" or "local").
+
+        Returns:
+            Configuration dictionary read from disk only.
+        """
+        path = self.workspace_path if mode == "local" else self.global_path
+        data = self._read_toml_file(path)
+        schema_version = data.pop("_meta", {}).get("schema_version", "1")
+        data["_schema_version"] = schema_version
+        return data
+
     def _apply_env_and_finalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Apply INDEXED__* env overrides and extract schema version."""
         env_data = self._env_to_mapping()
@@ -171,10 +191,16 @@ class TomlStore:
         return data
 
     def _load_cwd_dotenv(self) -> None:
-        """Load CWD/.env with override=False (fills gaps only)."""
+        """Load CWD/.env with override=False (fills gaps only).
+
+        ``interpolate=False`` (C4): `.env` here is secrets-only, never used
+        for ``${VAR}`` composition, so disabling python-dotenv's default
+        interpolation is the only way to stop a secret containing a literal
+        ``${...}`` sequence from being silently mangled on load.
+        """
         cwd_env = self.workspace / ".env"
         if cwd_env.exists():
-            load_dotenv(str(cwd_env), override=False)
+            load_dotenv(str(cwd_env), override=False, interpolate=False)
 
     def get_resolved_env_path(self, mode: StorageMode) -> str:
         """Return the .env file path for a specific resolved mode.
@@ -307,7 +333,12 @@ class TomlStore:
         """
         Load variables from a .env file into the process environment using python-dotenv.
 
-        Uses python-dotenv for full .env file compatibility including multiline values, export prefixes, escaped characters, and variable expansion.
+        Uses python-dotenv for full .env file compatibility including multiline
+        values, export prefixes, and escaped characters. Variable expansion
+        (``${VAR}`` interpolation) is disabled (C4): `.env` here is
+        secrets-only and never used for composition, so a secret containing a
+        literal ``${...}`` sequence must survive unchanged rather than being
+        silently mangled by python-dotenv's default interpolation.
 
         Parameters:
             env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the store's configured env_path.
@@ -316,38 +347,59 @@ class TomlStore:
         if not path.exists():
             return
 
-        # Use python-dotenv with override=False to preserve existing env vars
-        load_dotenv(str(path), override=False)
+        # override=False preserves existing env vars; interpolate=False stops
+        # `${...}` expansion from corrupting secrets (C4).
+        load_dotenv(str(path), override=False, interpolate=False)
+
+    def _resolve_write_target(self, *, to_global: bool = False) -> Path:
+        """
+        Determine which config.toml ``write()`` would target right now, without writing.
+
+        The destination is chosen as follows:
+        - If `to_global` is True, the global config.
+        - Else if the instance `mode_override` is "global", the global config.
+        - Else if `mode_override` is "local", the workspace config.
+        - Otherwise, the workspace config if it already exists, else the
+          global config (same auto-detection as StorageResolver.resolve_root).
+
+        Parameters:
+            to_global (bool): If True, force the global config; otherwise follow the mode override or auto-detect.
+
+        Returns:
+            Path: The config.toml path ``write()`` would target for this input.
+        """
+        if to_global:
+            return self.global_path
+        if self._mode_override == "global":
+            return self.global_path
+        if self._mode_override == "local":
+            return self.workspace_path
+        # Default: follow auto-detection (same as StorageResolver.resolve_root)
+        # Write to local only if a local config already exists; otherwise global
+        if has_local_config(self.workspace):
+            return self.workspace_path
+        return self.global_path
+
+    def resolved_config_path(self) -> Path:
+        """Return the config.toml path a plain ``write()`` would target right now.
+
+        Lets a caller snapshot/restore the exact file a subsequent ``set()``/
+        ``save_raw()`` will touch (foundation/6b review Finding 1) without
+        duplicating ``write()``'s target-selection logic.
+        """
+        return self._resolve_write_target()
 
     def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
         """
         Write the given configuration mapping to the appropriate TOML config file (workspace or global).
 
-        The destination is chosen as follows:
-        - If `to_global` is True, write to the global config.
-        - Else if the instance `mode_override` is "global", write to the global config.
-        - Else if `mode_override` is "local", write to the workspace config.
-        - Otherwise, write to the workspace config (backward-compatible default).
+        The destination is chosen as described in ``_resolve_write_target()``.
 
         Parameters:
             data (Mapping[str, Any]): Configuration data to persist.
             to_global (bool): If True, force writing to the global config; otherwise follow the mode override or default to the workspace.
         """
-        if to_global:
-            target = self.global_path
-        elif self._mode_override == "global":
-            target = self.global_path
-        elif self._mode_override == "local":
-            target = self.workspace_path
-        else:
-            # Default: follow auto-detection (same as StorageResolver.resolve_root)
-            # Write to local only if a local config already exists; otherwise global
-            if has_local_config(self.workspace):
-                target = self.workspace_path
-            else:
-                target = self.global_path
-
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = self._resolve_write_target(to_global=to_global)
 
         # Build output dict, stripping internal marker and ensuring _meta
         out = dict(data)
@@ -355,8 +407,27 @@ class TomlStore:
         if "_meta" not in out:
             out["_meta"] = {"schema_version": CURRENT_SCHEMA_VERSION}
 
-        with open(target, "w", encoding="utf-8") as f:
-            tomlkit.dump(out, f)
+        # B3: serialize BEFORE touching the target file, so an unserializable
+        # value (e.g. `None`) raises here and the existing file is never
+        # opened/truncated. Then write atomically (tmp -> fsync -> replace),
+        # mirroring the collections persister's tmp -> fsync -> os.replace
+        # pattern (disk_persister.py) instead of truncating in "w" mode.
+        serialized = tomlkit.dumps(out)
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(serialized)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, target)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def write_to_global(self, data: Mapping[str, Any]) -> None:
         """

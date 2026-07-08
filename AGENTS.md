@@ -1,7 +1,7 @@
 # AGENTS.md — indexed Engineering Guide
 
 **Repository:** indexed v0.1.0 · Python monorepo (uv + una)
-**Last Updated:** 2026-06-21
+**Last Updated:** 2026-07-07
 
 This is the operating contract for any agent working in this repo. Read it
 fully before acting. The four sections are load-bearing:
@@ -264,6 +264,32 @@ Earned defaults — apply without being asked.
 - **Audit Cloud readers before applying credential guards.** Cloud APIs often
   serve attachment content from off-origin CDNs — the origin guard must be
   selectively excluded or it silently drops all attachments.
+- **Behavior nets assert known-hit, not "no error".** The `tests/characterization`
+  lifecycle nets stub HTTP at the `read_documents` boundary but run FAISS +
+  embeddings for real, and assert a *specific* document is the top hit. Warm the
+  engine with `import core.v1.engine.services` first (cold-import cycle), and verify
+  red bug-specs with `pytest --runxfail` so each fails for the right reason. Full
+  detail in `.spec/lessons.md`.
+- **A layering rule doesn't force duplicating a model into two packages.** When
+  `indexed-parsing` needed the embedder's real token window but must not import
+  `indexed-core`, the fix was a documented, hardcoded constant local to `parsing`
+  (`_model_window.py`) kept in sync with the embedder's own dynamic
+  `SentenceEmbedder.max_seq_length` property — plus loading the tokenizer
+  (a third-party ML lib, not "core engine") directly, lazily, like the existing
+  Docling/tree-sitter imports. FAISS `IndexFlatL2` over-fetching is also nearly
+  free (cost is O(N·d) regardless of k) — prefer "fetch everything, group, cap" over
+  a tuned multiplier when fixing top-k starvation. Full detail in `.spec/lessons.md`.
+- **`resolve_collections_context(mode_override=...)` force-resets the
+  `ConfigService` singleton** (`reset=mode_override is not None`), which used
+  to drop any specs a prior `register_app_config` call registered — even when
+  the override didn't change. Fixed at the root: `resolve_collections_context`
+  now calls `register_app_config(config_service)` itself right after
+  obtaining/resetting the instance, so every caller (create/update/search/
+  inspect/remove/MCP) gets the specs back for free. Don't add a per-caller
+  defensive re-register for anything that goes through
+  `resolve_collections_context` — only call sites that build their own
+  `ConfigService.instance()` outside it (e.g. `mcp/cli.py::run_impl`) still
+  need one. Full detail in `.spec/lessons.md`.
 
 ---
 

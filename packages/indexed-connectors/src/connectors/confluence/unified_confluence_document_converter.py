@@ -122,6 +122,15 @@ class UnifiedConfluenceDocumentConverter:
         if not html:
             return ""
         soup = BeautifulSoup(html, "html.parser")
+        # Confluence storage XML puts link titles and image filenames in
+        # attributes of custom ri:* tags (e.g.
+        # <ac:image><ri:attachment ri:filename="diagram.png"/></ac:image>),
+        # which get_text() ignores because the tags hold no element text —
+        # materialize that attribute text before extraction (D4).
+        for ri in soup.find_all(["ri:page", "ri:attachment", "ri:blog-post"]):
+            title = ri.get("ri:content-title") or ri.get("ri:filename")
+            if title:
+                ri.insert_after(soup.new_string(f" {title} "))
         return soup.get_text(separator=os.linesep, strip=True)
 
     @staticmethod

@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-07-05
+updated: 2026-07-07
 ---
 
 # Tech Branch: App (`apps/indexed`)
@@ -66,6 +66,13 @@ All terminal output via `rich`:
 - **Accent:** teal (`#00D4AA`) for commands/highlights
 - **Secondary:** dim/grey for metadata
 
+### Markup safety
+
+User-supplied query text and indexed content are **Rich-escaped**
+(`rich.markup.escape` / `Text`) before display — never build markup from
+untrusted content. A `[/...]` or `arr[i]` in a query or document must render
+literally, never raise `MarkupError` and never silently drop the text.
+
 ---
 
 ## Logging Strategy
@@ -83,6 +90,17 @@ All terminal output via `rich`:
 Embedded `FastMCP` server (`apps/indexed/src/indexed/mcp/`), decomposed into
 `server.py`, `tools.py`, `resources.py`, `formatting.py`, `config.py`. Reuses the
 same `SearchService` + `ConfigService` as the CLI — agent sees what the user sees.
+
+### Freshness & error envelopes
+
+- **No response caching.** The server registers no response-caching middleware —
+  a `search` after a re-index reflects the latest on-disk index (core's searcher
+  cache already provides the latency win and invalidates on load).
+- **Failures are surfaced, never swallowed.** A per-collection failure is reported
+  in the result envelope (an `{error: …}` entry), never dropped as a silent
+  "0 matches"; the boundary envelopes **every** exception (core raises
+  `IndexedError` for missing/corrupt collections) so the agent sees "index
+  failed", not empty results.
 
 ### Tools
 

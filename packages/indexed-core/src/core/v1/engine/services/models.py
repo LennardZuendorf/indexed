@@ -68,9 +68,15 @@ class CollectionInfo:
 
         # Calculate averages
         if self.number_of_documents > 0:
-            self.avg_chunks_per_doc = self.number_of_chunks / self.number_of_documents
+            if self.avg_chunks_per_doc is None:
+                self.avg_chunks_per_doc = (
+                    self.number_of_chunks / self.number_of_documents
+                )
 
-            if self.disk_size_bytes:
+            # F3: only fall back to the disk-size-inclusive estimate when the
+            # caller didn't already pass a (document-bytes-only) value — the
+            # inspect service now computes this itself, excluding the index.
+            if self.avg_doc_size_bytes is None and self.disk_size_bytes:
                 self.avg_doc_size_bytes = (
                     self.disk_size_bytes / self.number_of_documents
                 )

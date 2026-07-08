@@ -124,6 +124,30 @@ class TestInspectCollectionsCommand:
         assert "docs" in result.stdout
         assert "jira" in result.stdout
 
+    def test_inspect_corrupt_collection_reports_unreadable(self, monkeypatch, tmp_path):
+        """A collection present on disk with a corrupt/unreadable manifest must
+        be reported honestly (and exit non-zero) — ``inspect()`` OMITS it
+        (foundation/6 E1), so it must not be misreported as "not found"
+        (foundation/6 regression fix)."""
+        collections_dir = tmp_path / "collections"
+        collections_dir.mkdir()
+        corrupt_dir = collections_dir / "corrupt-coll"
+        corrupt_dir.mkdir()
+        (corrupt_dir / "manifest.json").write_text("{ not valid json")
+
+        ctx = type("Ctx", (), {"collections_path": collections_dir})()
+        monkeypatch.setattr(
+            "indexed.runtime.resolve_collections_context", lambda *a, **kw: ctx
+        )
+
+        result = runner.invoke(inspect_cmd.app, ["corrupt-coll"])
+
+        assert result.exit_code != 0
+        assert "not found" not in result.stdout.lower()
+        assert (
+            "corrupt" in result.stdout.lower() or "unreadable" in result.stdout.lower()
+        )
+
     def test_inspect_specific_collection_simple_output(self, monkeypatch):
         """Simple output for a specific collection should contain core fields."""
         from indexed.utils.simple_output import reset_simple_output, set_simple_output

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -110,6 +111,88 @@ class TestDiskPersisterFileOperations:
         disk_persister.save_text_file("x", "sub/a.txt")
         disk_persister.save_text_file("y", "sub/b.txt")
         assert sorted(disk_persister.read_folder_files("sub")) == ["a.txt", "b.txt"]
+
+
+class TestDiskPersisterReplaceFolder:
+    """B4: replace_folder swaps a staged build into place without ever
+    destroying the destination before the replacement is durable."""
+
+    def test_replace_folder_renames_when_destination_absent(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("data", "staging/file.txt")
+
+        disk_persister.replace_folder("staging", "final")
+
+        assert not (tmp_path / "staging").exists()
+        assert (tmp_path / "final" / "file.txt").read_text() == "data"
+
+    def test_replace_folder_swaps_out_existing_destination(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """An existing destination is moved aside and removed only after the
+        staged replacement is already in its place — never deleted first."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("old", "final/file.txt")
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("new", "staging/file.txt")
+
+        disk_persister.replace_folder("staging", "final")
+
+        assert (tmp_path / "final" / "file.txt").read_text() == "new"
+        assert not (tmp_path / "staging").exists()
+        assert not any(tmp_path.glob("final.trash-*"))
+
+    def test_replace_folder_never_removes_destination_before_source_exists(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """If the rename of the source into place fails, the destination
+        must still exist (moved-aside, not deleted outright)."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("old", "final/marker.txt")
+        # No "staging" folder created -> os.rename(src, dest) will raise.
+
+        with pytest.raises(OSError):
+            disk_persister.replace_folder("staging", "final")
+
+        # The original data must still be reachable (either at "final" or
+        # under a recoverable trash-named sibling) — never gone.
+        assert (tmp_path / "final" / "marker.txt").exists() or any(
+            (p / "marker.txt").exists() for p in tmp_path.glob("final.trash-*")
+        )
+
+    def test_replace_folder_rolls_back_on_second_rename_failure(
+        self, disk_persister: DiskPersister, tmp_path: Path
+    ) -> None:
+        """If the destination has already been moved aside but the final
+        rename (staged replacement -> destination name) then fails, the
+        ORIGINAL collection must be restored under its expected name
+        (rollback) and the original error must still propagate — the
+        collection must never be left stranded under a ``.trash-*`` name
+        with nothing present at the destination."""
+        disk_persister.create_folder("final")
+        disk_persister.save_text_file("original", "final/marker.txt")
+        disk_persister.create_folder("staging")
+        disk_persister.save_text_file("new", "staging/marker.txt")
+
+        real_rename = os.rename
+        call_count = {"n": 0}
+
+        def flaky_rename(src, dst):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise OSError("simulated failure on second rename")
+            return real_rename(src, dst)
+
+        with patch("os.rename", side_effect=flaky_rename):
+            with pytest.raises(OSError, match="simulated failure on second rename"):
+                disk_persister.replace_folder("staging", "final")
+
+        # Rollback: the ORIGINAL collection is restored at "final", intact.
+        assert (tmp_path / "final" / "marker.txt").read_text() == "original"
+        # No trash directory should remain after a successful rollback.
+        assert not any(tmp_path.glob("final.trash-*"))
 
 
 class TestDiskPersisterFaissOperations:

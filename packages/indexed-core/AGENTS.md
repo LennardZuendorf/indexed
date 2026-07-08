@@ -38,8 +38,8 @@ src/core/v1/
   `@property` — loaded/cached on first access, **never at import**. `embed_batch`
   default batch size 128.
 - **FAISS:** only `IndexFlatL2` today (exact L2). Correct for <50k docs. Score is
-  the raw L2 **distance — lower is more similar**, not normalized; `min_score`
-  filters keep score ≤ threshold.
+  **squared** L2 distance in `[0, 4]` (embeddings are unit-normalized) — lower is
+  more similar; `score_threshold` filters keep score ≤ threshold.
 - **Searcher caching:** loaded FAISS indexes are reused across queries — the main
   search-latency optimization (target <1s for 10k–100k docs).
 - **Persistence:** `DiskPersister` writes atomically; on-disk layout is owned by

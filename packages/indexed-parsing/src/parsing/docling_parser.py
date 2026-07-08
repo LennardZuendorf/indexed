@@ -9,6 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ._model_window import effective_max_tokens, get_markdown_chunker
 from .schema import ParsedChunk, ParsedDocument
 
 
@@ -24,7 +25,9 @@ class DoclingParser:
     ) -> None:
         self._ocr = ocr
         self._table_structure = table_structure
-        self._max_tokens = max_tokens
+        # Clamp to the embedder's real token window (bug A4) — see A1's fix
+        # note in `_model_window.py`.
+        self._max_tokens = effective_max_tokens(max_tokens)
 
         # Lazily initialised on first call to ``parse``.
         self._converter: object | None = None
@@ -52,16 +55,14 @@ class DoclingParser:
         )
 
         from docling.datamodel.base_models import FormatToExtensions
-        from docling_core.transforms.chunker import HierarchicalChunker
 
         self._supported_extensions = frozenset(
             f".{ext.lower()}" for exts in FormatToExtensions.values() for ext in exts
         )
 
-        self._chunker = HierarchicalChunker(
-            max_tokens=self._max_tokens,
-            include_metadata=True,
-        )
+        # Token-aware chunker (bug A1) — HierarchicalChunker silently dropped
+        # max_tokens/include_metadata (neither is a real field on it).
+        self._chunker = get_markdown_chunker()
 
     # -- public API -------------------------------------------------------
 

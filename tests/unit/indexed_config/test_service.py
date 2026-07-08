@@ -221,3 +221,56 @@ class TestResolvedEnvPath:
                 env_path = service._resolved_env_path()
                 expected = str(workspace / ".indexed" / ".env")
                 assert env_path == expected
+
+
+class TestInMemoryOverlay:
+    """R3 / foundation/6b bug E4: set_overlay() must never touch disk."""
+
+    def test_set_overlay_visible_via_get(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = ConfigService(workspace=Path(tmpdir), mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+            assert service.get("sources.files.path") == "/bad/path"
+
+    def test_set_overlay_does_not_write_to_disk(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            config_path = workspace / ".indexed" / "config.toml"
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+
+            assert (
+                not config_path.exists() or "/bad/path" not in config_path.read_text()
+            )
+
+    def test_set_overlay_wins_over_disk_value(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text(
+                '[sources.files]\npath = "/old/path"'
+            )
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set_overlay("sources.files.path", "/new/path")
+            assert service.get("sources.files.path") == "/new/path"
+
+    def test_clear_overlay_removes_all_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = ConfigService(workspace=Path(tmpdir), mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+            service.clear_overlay()
+            assert service.get("sources.files.path") is None
+
+    def test_set_still_persists_to_disk(self):
+        """Only set()/set_value() (the real writer) touches config.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            config_path = workspace / ".indexed" / "config.toml"
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set("sources.files.path", "/real/path")
+
+            assert "/real/path" in config_path.read_text()

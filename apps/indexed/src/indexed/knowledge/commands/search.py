@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
+from rich.markup import escape
 
 if TYPE_CHECKING:
     pass
@@ -45,6 +46,44 @@ class ChunkInfo(TypedDict):
 # --- SEARCH FORMATTER FUNCTIONS (moved from search_formatter.py) ---
 
 
+def _load_search_config() -> Any:
+    """Load ``[core.v1.search]`` so the CLI honors the same
+    max_docs/max_chunks/score_threshold as MCP (foundation/6 E12 — the CLI
+    used to hardcode from ``--limit`` only, so CLI and MCP disagreed on the
+    same query). Falls back to model defaults when the section isn't
+    registered/set, mirroring ``mcp/server.py::_get_config``.
+
+    No defensive re-register needed here: ``resolve_collections_context``
+    (already called earlier in this command) now re-registers app config
+    itself right after resolving/resetting the singleton, so the specs are
+    guaranteed to be present by the time this binds (foundation/6d root-cause
+    fix — see ``runtime.py``).
+    """
+    from core.v1.config_models import CoreV1SearchConfig
+    from indexed_config import ConfigService
+
+    try:
+        provider = ConfigService.instance().bind()
+        return provider.get(CoreV1SearchConfig)
+    except Exception:
+        return CoreV1SearchConfig()
+
+
+def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
+    """Surface a per-collection search failure instead of silently skipping it.
+
+    Mirrors the MCP-side fix (``mcp/formatting.py``): a failed collection must
+    reach the user as "index failed", not vanish via a bare ``continue``
+    (foundation/6 E10, CLI twin of the same bug).
+    """
+    for collection_name, error in failed:
+        # collection_name/error are content-derived — escape before entering
+        # markup (foundation/6c bug E2).
+        print_error(
+            f"Collection '{escape(str(collection_name))}' failed: {escape(str(error))}"
+        )
+
+
 def format_search_results(
     query: str,
     results: Dict[str, Any],
@@ -72,9 +111,11 @@ def format_search_results(
     # Collect all chunks across all collections with their metadata
     all_chunks: List[ChunkInfo] = []
     total_docs = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -98,11 +139,16 @@ def format_search_results(
                     )
                 )
 
+    if failed_collections:
+        _print_collection_errors(failed_collections)
+        console.print()
+
     if not all_chunks:
-        print_warning(
-            f'No results found for "{query}". '
-            f"Try broadening your search terms or checking collection contents."
-        )
+        if not failed_collections:
+            print_warning(
+                f'No results found for "{query}". '
+                f"Try broadening your search terms or checking collection contents."
+            )
         console.print()
         return
 
@@ -180,9 +226,12 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
         excerpt if len(excerpt) <= max_length else excerpt[:max_length] + "..."
     )
 
-    # Use a subtle dim/muted style for the excerpt card with same width as meta card
+    # Use a subtle dim/muted style for the excerpt card with same width as meta card.
+    # `display_excerpt` is indexed document content — untrusted — so it must be
+    # escaped before entering this markup string; the surrounding dim-style
+    # tags are ours and stay as-is (foundation/6c bug E2).
     excerpt_panel = Panel(
-        f"[{get_dim_style()}]{display_excerpt}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(display_excerpt)}[/{get_dim_style()}]"
         if excerpt
         else f"[{get_dim_style()}][No excerpt available][/{get_dim_style()}]",
         title="Top Result Excerpt",
@@ -207,20 +256,25 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
         chunk_score = str(score)
 
     # Format: collection / document / part / match_id
+    # collection/doc_id/chunk_score are user/content-derived (collection name,
+    # document path or URL, indexed data) — escape before entering this markup
+    # string; the surrounding style tags are ours (foundation/6c bug E2).
     console.print(
-        f"  • [{get_accent_style()}]{collection}[/{get_accent_style()}] / "
-        f"{doc_id} / "
+        f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
+        f"{escape(str(doc_id))} / "
         f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
-        f"[{get_dim_style()}]{chunk_score}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]"
     )
 
 
 def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
     """Show all results in compact format when content is hidden."""
     total_results = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -229,23 +283,28 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
         total_results += len(documents)
 
-        # Collection header
+        # Collection header — collection_name/doc_id are content-derived, so
+        # escape them before entering markup (foundation/6c bug E2).
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
+            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
         for i, doc in enumerate(documents[:limit], 1):
             doc_id = doc.get("id", "Unknown")
-            console.print(f"  {i}. {doc_id}")
+            console.print(f"  {i}. {escape(str(doc_id))}")
 
+        console.print()
+
+    if failed_collections:
+        _print_collection_errors(failed_collections)
         console.print()
 
     # Summary
     console.print()
     if total_results > 0:
         console.print(create_summary("Search Result", f"{total_results} results"))
-    else:
+    elif not failed_collections:
         console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
@@ -265,9 +324,11 @@ def format_search_results_compact(
     """
 
     total_results = 0
+    failed_collections: List[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
+            failed_collections.append((collection_name, collection_results["error"]))
             continue
 
         documents = collection_results.get("results", [])
@@ -276,9 +337,10 @@ def format_search_results_compact(
 
         total_results += len(documents)
 
-        # Collection header
+        # Collection header — collection_name/doc_id are content-derived, so
+        # escape them before entering markup (foundation/6c bug E2).
         console.print(
-            f"[{get_accent_style()}]{collection_name}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
+            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
         )
 
         # List results
@@ -291,18 +353,22 @@ def format_search_results_compact(
                     f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
                 )
                 console.print(
-                    f"  {i}. {doc_id}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
+                    f"  {i}. {escape(str(doc_id))}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
                 )
             else:
-                console.print(f"  {i}. {doc_id}")
+                console.print(f"  {i}. {escape(str(doc_id))}")
 
+        console.print()
+
+    if failed_collections:
+        _print_collection_errors(failed_collections)
         console.print()
 
     # Summary
     console.print()
     if total_results > 0:
         console.print(create_summary("Search Result", f"{total_results} results"))
-    else:
+    elif not failed_collections:
         console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
 
     console.print()
@@ -315,8 +381,14 @@ def search(
     collection: str = typer.Option(
         None, "--collection", "-c", help="Collection name to search"
     ),
-    limit: int = typer.Option(
-        5, "--limit", "-l", help="Number of results to display per collection"
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        "-l",
+        help=(
+            "Number of results per collection (default: configured "
+            "core.v1.search.max_docs)"
+        ),
     ),
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
@@ -396,14 +468,20 @@ def search(
 
         collections_to_search = [s.name for s in all_statuses]
         if not simple:
+            # `query` is user input — escape before entering markup, the
+            # surrounding style tags are ours (foundation/6c bug E2).
             console.print(
-                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{query}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
+                f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{escape(query)}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
             )
     else:
         # Search specific collection
         statuses = status_svc([collection], collections_path=collections_path)
         if not statuses:
             if simple:
+                # Simple/JSON output is a machine-readable envelope: report the
+                # error as data (like the "no collections at all" branch above)
+                # — but a JSON error body must still exit non-zero, never 0
+                # (foundation/6 E1: never a traceback, never a silent success).
                 print_json({"error": f"Collection '{collection}' not found"})
                 raise typer.Exit(1)
             print_error(f"Collection '{collection}' not found")
@@ -411,10 +489,21 @@ def search(
 
         collections_to_search = [collection]
 
-    # Build search configs for all collections
+    # Build search configs for all collections, reusing the status objects
+    # already fetched above rather than re-querying per name: a second lookup
+    # that came back empty (collection removed/corrupted between calls) used
+    # to raw-IndexError on `coll_status.indexers[0]` (foundation/6 E1). A
+    # per-collection guard here means one bad collection is skipped and
+    # reported instead of crashing the whole search.
+    status_by_name = {
+        s.name: s for s in (all_statuses if collection is None else statuses)
+    }
     search_configs = {}
     for coll_name in collections_to_search:
-        coll_status = status_svc([coll_name], collections_path=collections_path)[0]
+        coll_status = status_by_name.get(coll_name)
+        if coll_status is None or not coll_status.indexers:
+            print_error(f"Collection '{coll_name}' is unavailable, skipping")
+            continue
         source_type = getattr(coll_status, "source_type", None) or "localFiles"
         search_configs[coll_name] = source_config_class(
             name=coll_name,
@@ -422,6 +511,35 @@ def search(
             base_url_or_path="",
             indexer=coll_status.indexers[0],
         )
+
+    collections_to_search = [c for c in collections_to_search if c in search_configs]
+
+    # Resolve effective search limits: an explicit --limit always wins (and
+    # keeps the historical max_chunks = limit * 3 ratio); otherwise fall back
+    # to the registered [core.v1.search] section so CLI and MCP agree on the
+    # same query (foundation/6 E12).
+    search_cfg = _load_search_config()
+    effective_max_docs = limit if limit is not None else search_cfg.max_docs
+    effective_max_chunks = limit * 3 if limit is not None else search_cfg.max_chunks
+    score_threshold = search_cfg.score_threshold
+    display_limit = effective_max_docs
+
+    if not collections_to_search:
+        # A specific collection was named but turned out unsearchable (corrupt
+        # manifest / no indexers): that is a failed request, not just "nothing
+        # to search" — exit non-zero. Searching ALL collections and finding
+        # none searchable stays a soft no-op (exit 0), same as "no collections
+        # found" above.
+        named_collection_requested = collection is not None
+        if simple:
+            print_json({"error": "No searchable collections available"})
+        else:
+            console.print(
+                f"[{get_dim_style()}]No searchable collections available[/{get_dim_style()}]"
+            )
+        if named_collection_requested:
+            raise typer.Exit(1)
+        return
 
     # Search each collection with phased progress
     results = {}
@@ -433,8 +551,9 @@ def search(
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
+                    max_docs=effective_max_docs,
+                    max_chunks=effective_max_chunks,
+                    score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
                 )
@@ -452,8 +571,9 @@ def search(
                 result = svc_search(
                     query,
                     configs=[search_configs[coll_name]],
-                    max_docs=limit,
-                    max_chunks=limit * 3,
+                    max_docs=effective_max_docs,
+                    max_chunks=effective_max_chunks,
+                    score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
                 )
@@ -466,9 +586,11 @@ def search(
 
         print_json(format_search_results_for_llm(results, query))
     elif compact:
-        format_search_results_compact(query, results, limit=limit)
+        format_search_results_compact(query, results, limit=display_limit)
     else:
-        format_search_results(query, results, limit=limit, show_content=not no_content)
+        format_search_results(
+            query, results, limit=display_limit, show_content=not no_content
+        )
 
 
 def __getattr__(name: str):

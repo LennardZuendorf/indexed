@@ -49,7 +49,9 @@ class AsyncJiraCloudDocumentReader:
             raise ValueError(
                 "Cloud authentication requires both 'email' and 'api_token'"
             )
-        if not base_url.endswith(".atlassian.net"):
+        from .._url_guard import is_cloud_host
+
+        if not is_cloud_host(base_url):
             raise ValueError("Cloud URLs must end with .atlassian.net")
 
         self.base_url = base_url
@@ -182,8 +184,14 @@ class AsyncJiraCloudDocumentReader:
         """Download attachment bytes for all issues concurrently."""
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
 
+        # Atlassian Cloud serves attachment bytes via a 302 redirect to a
+        # media/S3 CDN — follow_redirects=True is required or every
+        # attachment download fails on the redirect (D1). The CDN is a
+        # legitimate off-origin host, so _url_guard is deliberately not
+        # applied to this client (see .spec/features/foundation/tech-connectors.md R6.1).
         async with httpx.AsyncClient(
             timeout=60.0,
+            follow_redirects=True,
             limits=httpx.Limits(
                 max_connections=self.max_concurrent_requests,
                 max_keepalive_connections=5,
@@ -231,7 +239,14 @@ class AsyncJiraCloudDocumentReader:
                         "Accept": "application/octet-stream",
                     },
                 )
-                response.raise_for_status()
+                # The 302 to the CDN is already followed by the client above;
+                # only a real (4xx/5xx) failure should short-circuit here (D1).
+                if not response.is_success:
+                    logger.warning(
+                        f"Failed to download attachment {url}: "
+                        f"HTTP {response.status_code}"
+                    )
+                    return None
                 return response.content
             except Exception as e:
                 logger.warning(f"Failed to download attachment {url}: {e}")

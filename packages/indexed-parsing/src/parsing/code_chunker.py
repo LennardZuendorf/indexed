@@ -7,6 +7,7 @@ from typing import Any
 
 from loguru import logger
 
+from ._model_window import effective_max_tokens
 from .schema import ParsedChunk
 
 # ---------------------------------------------------------------------------
@@ -94,9 +95,11 @@ class CodeChunker:
     """Chunk source files at semantic AST boundaries using tree-sitter."""
 
     def __init__(self, *, max_tokens: int = 512) -> None:
-        self._max_tokens = max_tokens
+        # Clamp to the embedder's real token window (bug A4) — see the note
+        # in `_model_window.py`.
+        self._max_tokens = effective_max_tokens(max_tokens)
         # rough chars-per-token estimate for code
-        self._max_chars = max_tokens * 4
+        self._max_chars = self._max_tokens * 4
 
     def chunk_file(self, path: Path) -> list[ParsedChunk]:
         """Parse *path* and return chunks split at semantic boundaries."""
@@ -112,13 +115,12 @@ class CodeChunker:
             language = _get_language(lang_name)
             parser = tree_sitter.Parser(language)
 
-            source = path.read_bytes()
-            tree = parser.parse(source)
-            source_text = source.decode(errors="replace")
+            source_bytes = path.read_bytes()
+            tree = parser.parse(source_bytes)
 
             semantic = SEMANTIC_NODES.get(lang_name, frozenset())
             raw = self._walk_nodes(
-                tree.root_node, source_text, semantic, str(path), lang_name
+                tree.root_node, source_bytes, semantic, str(path), lang_name
             )
 
             return raw if raw else self._line_fallback(path)
@@ -134,18 +136,27 @@ class CodeChunker:
     def _walk_nodes(
         self,
         node: Any,
-        source: str,
+        source: bytes,
         semantic: frozenset[str],
         file_path: str,
         language: str,
     ) -> list[ParsedChunk]:
-        """Walk children of *node* and split at semantic boundaries."""
+        """Walk children of *node* and split at semantic boundaries.
+
+        ``source`` is the raw file **bytes** — tree-sitter's
+        ``start_byte``/``end_byte`` offsets are byte positions, so the slice
+        must happen on the bytes buffer and be decoded per node (bug A2).
+        Slicing a pre-decoded ``str`` with byte offsets misaligns by one
+        position per multibyte character, shifting every later slice.
+        """
         chunks: list[ParsedChunk] = []
         accumulator: list[str] = []
         acc_start: int | None = None
 
         for child in node.children:
-            text = source[child.start_byte : child.end_byte]
+            text = source[child.start_byte : child.end_byte].decode(
+                "utf-8", errors="replace"
+            )
 
             if child.type in semantic:
                 # flush accumulated non-semantic text

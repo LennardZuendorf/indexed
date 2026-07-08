@@ -104,7 +104,10 @@ class CoreV1SearchConfig(BaseModel):
         description="Include matched chunk content (required for LLM usage)",
     )
     score_threshold: Optional[float] = Field(
-        default=None, ge=0.0, le=1.0, description="Minimum similarity score threshold"
+        default=None,
+        ge=0.0,
+        le=4.0,
+        description="Maximum squared-L2 distance (lower = closer; range 0-4)",
     )
 
 

@@ -272,6 +272,43 @@ class TestChangeTrackerGit:
         assert len(deleted) == 1
         assert deleted[0].path == "initial.txt"
 
+    def test_reverted_edit_reindexed(self, git_repo):
+        """D2: a file edited (and indexed) then reverted back to its committed
+        content must be re-scanned — git HEAD/working-tree are unchanged, so
+        only the stored-hash reconcile catches it."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+
+        # Simulate: the last successful run indexed an *edited* (uncommitted)
+        # version of the file.
+        f.write_text("edited content that was indexed")
+        state = tracker.build_state([str(f)])
+
+        # The working tree is now reverted back to the committed content —
+        # git sees no diff at all (HEAD unchanged, working tree == HEAD).
+        f.write_text("initial")
+
+        changes = tracker.detect_changes([str(f)], state)
+        assert len(changes) == 1, f"Expected the revert to be detected, got {changes}"
+        assert changes[0].status == "modified"
+        assert changes[0].path == "initial.txt"
+
+    def test_non_ascii_filename_added_and_detected(self, git_repo):
+        """D2: a non-ASCII filename must survive git's C-quoting round trip so
+        it is detected as added, not silently dropped."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        original = git_repo / "initial.txt"
+        state = tracker.build_state([str(original)])
+
+        new_file = git_repo / "café.py"
+        new_file.write_text("print('café')")
+
+        changes = tracker.detect_changes([str(original), str(new_file)], state)
+        statuses = {ch.path: ch.status for ch in changes}
+        assert statuses.get("café.py") == "added", (
+            f"non-ASCII filename must be detected as added, got {statuses!r}"
+        )
+
 
 class TestParseDiffNameStatus:
     """Unit tests for _parse_diff_name_status without a real git repo."""
@@ -333,6 +370,21 @@ class TestParseDiffNameStatus:
         output = "M\tother/file.txt\n"
         result = tracker._parse_diff_name_status(output, str(tmp_path), {"file.txt"})
         assert result == {}
+
+    def test_c_quoted_non_ascii_path_unquoted(self, tmp_path):
+        """D2: git's C-quoted octal-escaped form must be unquoted to match."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'M\t"caf\\303\\251.txt"\n'
+        result = tracker._parse_diff_name_status(output, None, {"café.txt"})
+        assert result == {"café.txt": "modified"}
+
+    def test_c_quoted_rename_both_halves_unquoted(self, tmp_path):
+        """D2: each half of a rename is unquoted independently."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'R100\t"old\\303\\251.txt"\t"new\\303\\251.txt"\n'
+        result = tracker._parse_diff_name_status(output, None, {"newé.txt"})
+        assert result["oldé.txt"] == "deleted"
+        assert result["newé.txt"] == "added"
 
 
 class TestParseStatusPorcelain:
@@ -399,6 +451,46 @@ class TestParseStatusPorcelain:
         output = " M other/file.txt\n"
         result = tracker._parse_status_porcelain(output, str(tmp_path), {"file.txt"})
         assert result == {}
+
+    def test_c_quoted_non_ascii_path_unquoted(self, tmp_path):
+        """D2: git's C-quoted octal-escaped form must be unquoted to match."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'M  "caf\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"café.txt"})
+        assert result == {"café.txt": "modified"}
+
+    def test_c_quoted_untracked_path_unquoted(self, tmp_path):
+        """D2: an untracked non-ASCII path must also be unquoted."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = '?? "caf\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"café.txt"})
+        assert result == {"café.txt": "added"}
+
+    def test_c_quoted_rename_both_halves_unquoted(self, tmp_path):
+        """D2: each half of a rename is unquoted independently, and the whole
+        '"old" -> "new"' field is not treated as one big quoted blob."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'R  "old\\303\\251.txt" -> "new\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"newé.txt"})
+        assert result["oldé.txt"] == "deleted"
+        assert result["newé.txt"] == "added"
+
+
+class TestGitUnquote:
+    """Unit tests for the _git_unquote C-quote helper."""
+
+    def test_unquoted_path_passthrough(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote("plain/path.txt") == "plain/path.txt"
+
+    def test_c_quoted_non_ascii_decoded(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote('"caf\\303\\251.txt"') == "café.txt"
+
+    def test_quoted_ascii_with_special_chars(self, tmp_path):
+        """A quoted path with an escaped tab/quote still round-trips."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote('"a\\tb.txt"') == "a\tb.txt"
 
 
 class TestChangeTrackerMtime:

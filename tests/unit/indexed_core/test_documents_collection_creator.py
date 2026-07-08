@@ -221,8 +221,12 @@ class TestCreateCollection:
 
         creator.run()
 
-        # Verify the collection was created
-        persister.create_folder.assert_called_once_with("test-col")
+        # Verify the collection was built aside then swapped into place (B4):
+        # create_folder targets a staging dir, not the final name directly.
+        persister.create_folder.assert_called_once()
+        (staging_name,), _ = persister.create_folder.call_args
+        assert staging_name.startswith("test-col.tmp-")
+        persister.replace_folder.assert_called_once_with(staging_name, "test-col")
         indexer.index_texts.assert_called_once()
         persister.save_faiss_index.assert_called_once()
 
@@ -320,6 +324,11 @@ class TestUpdateCollectionWithDeletions:
 
         # Should update manifest with new counts
         assert mock_persister.save_text_file.called
+
+        # B1 + no redundant work: __remove_explicit_deletions already
+        # persists the FAISS index once; the deletions-only fallthrough must
+        # not persist it a second time.
+        mock_persister.save_faiss_index.assert_called_once()
 
 
 class TestUpdateCollectionNonExistent:

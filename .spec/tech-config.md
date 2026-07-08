@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-06-09
+updated: 2026-07-07
 ---
 
 # Tech Branch: Config (`indexed-config`)
@@ -45,6 +45,22 @@ vars never overridden.
 | 3 (lowest) | `CWD/.env` | standard project .env, fills gaps only |
 
 `INDEXED__*` env variables are mapped into the TOML config dict separately (not via `.env`).
+
+---
+
+## Read-Mostly Config & Write Safety
+
+`config.toml` is **user-owned**: `create` / `update` / `search` never write it.
+CLI-arg overrides, date-stamped incremental queries, and cutoffs live in an
+**in-memory overlay** (`ConfigService.set_overlay`); `INDEXED__*` env values are
+applied on top but **never** baked back into TOML. Only `indexed config set`
+persists, and it writes **atomically** — serialize → validate → tmp → `fsync` →
+`os.replace` — rejecting unserializable input (e.g. `null`) **before** the target
+file is touched, so a bad value can never truncate `config.toml`.
+
+**Secrets** (`_is_sensitive_key`) route to the resolved `.env`, never TOML; they
+are **quoted** so a value containing ` #` or `${...}` survives a dotenv reload
+intact, and are **masked** on `config inspect` / `set` output.
 
 ---
 
@@ -138,6 +154,13 @@ transport = "stdio"
 host = "127.0.0.1"
 port = 8000
 ```
+
+> **Note:** `[core.v1.indexing]` (`chunk_size`/`chunk_overlap`) and most of
+> `[core.v1.embedding]` are currently **registered but unread** — effective
+> chunking uses the embedder's token window ([tech-core.md](tech-core.md)
+> § Chunk-size invariant), not `chunk_size`. Only `embedding.batch_size` and
+> `[core.v1.search]` are wired today. Tracked for wiring/removal in a later
+> config pass.
 
 ---
 

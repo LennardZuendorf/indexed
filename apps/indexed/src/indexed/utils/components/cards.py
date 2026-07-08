@@ -5,7 +5,7 @@ This module provides reusable card (panel) components for displaying
 information in bordered containers with consistent styling.
 """
 
-from typing import Optional
+from typing import Optional, Sequence
 from rich.panel import Panel
 from rich.console import Group
 from rich.table import Table
@@ -20,10 +20,21 @@ from .theme import (
 )
 
 
-def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
+def create_info_rows_with_spacing(rows: Sequence[tuple[str, "str | Text"]]) -> list:
     """
     Create info rows with proper spacing between the label and the value.
     Uses a Rich Table with two columns for neat alignment.
+
+    ``value`` is always rendered literally (never parsed as Rich markup)
+    unless the caller passes an already-built ``rich.text.Text`` — e.g.
+    ``Text.from_markup(...)`` for deliberately styled content such as a
+    color-coded delta. Plain ``str`` values may be user/content-derived
+    (search excerpts, document ids, config values) and must never be
+    interpreted as markup: a value containing ``[/bold]`` or ``arr[i]``
+    would otherwise crash ``Text.from_markup`` or have the bracketed
+    portion silently swallowed (foundation/6c bug E2). Callers that need
+    styled output must build a ``Text`` themselves — do not rely on this
+    function to guess intent from bracket characters.
     """
     table = Table.grid(expand=True, padding=(0, 1))
     # Set appropriate alignment and style for columns
@@ -34,12 +45,11 @@ def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
     value_style = get_value_style()
     for label, value in rows:
         label_text = str(label)
-        # Check if value contains Rich markup
-        if "[" in str(value) and "]" in str(value):
-            # Value contains markup, don't apply additional styling
-            value_text = Text.from_markup(str(value))
+        if isinstance(value, Text):
+            # Caller deliberately built styled markup — use as-is.
+            value_text = value
         else:
-            # Plain text, apply value style
+            # Plain/untrusted content: literal text, never markup-parsed.
             value_text = Text(str(value), style=value_style)
         table.add_row(label_text, value_text)
     return [table]
@@ -47,7 +57,7 @@ def create_info_rows_with_spacing(rows: list[tuple[str, str]]) -> list:
 
 def create_info_card(
     title: str,
-    rows: list[tuple[str, str]],
+    rows: Sequence[tuple[str, "str | Text"]],
     width: Optional[int] = None,
     subtitle: Optional[str] = None,
 ) -> Panel:
@@ -90,7 +100,7 @@ def create_info_card(
 
 def create_detail_card(
     title: str,
-    rows: list[tuple[str, str]],
+    rows: Sequence[tuple[str, "str | Text"]],
     subtitle: Optional[str] = None,
 ) -> Panel:
     """Create a fixed-width detail card for single item display.

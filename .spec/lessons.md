@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-05
+updated: 2026-07-07
 ---
 
 # Lessons Learned
@@ -148,3 +148,180 @@ sent to a different service on the same host. The permissive behavior was justif
 default (443/80) — instead of dropping it. That keeps `https://host` ≡ `https://host:443`
 (the reason ports were skipped) while correctly rejecting non-default ports. A different
 port is a different origin for credential purposes; fail closed.
+
+---
+
+## Behavior-net harness (foundation/1, 2026-07-07)
+
+- **Warm the engine via `import core.v1.engine.services` first.** The engine has a
+  cold-import cycle (`documents_collection_creator` imports `services.models` →
+  `services/__init__` → `collection_service` → `create_collection_factory` → back to
+  the creator). In a fresh process, importing a factory / creator / searcher
+  **directly** fails cold; importing the `services` **package** first resolves it.
+  Any test that touches the engine outside the CLI must warm that import first
+  (`tests/characterization/test_lifecycle_cloud.py`, `test_known_bugs.py`). This is
+  the same cycle foundation/7 removes by breaking the engine→services upward import.
+- **Stub HTTP at the `read_documents` boundary; run FAISS + embeddings for real.**
+  The cloud lifecycle nets build the real reader+converter and patch only the HTTP
+  client (`jira…Jira`, `confluence…requests.get`, `outline…requests.post` +
+  `httpx.AsyncClient`). Drive create via `create_collection_creator`, update via
+  `create_collection_updater(manifest_connector_factory=…)`, inspect via
+  `InspectService.status`, remove via `collection_service.clear`. A shared mutable
+  doc-list backs the stub so `add_update()` grows the source for the update leg.
+- **Known-hit, not "no error".** Assert a *specific* document is the top hit and that
+  a *different* query ranks a *different* document first. That is what proves recall
+  and is exactly what the pruned mechanism tests could not assert.
+- **Config isolation patches `Path.home()`**, so the HF model cache can miss on the
+  first model-using test of a session and re-download once into the sandbox. Harmless
+  where the network is available; gate model-dependent specs on `model_available()`.
+- **Verify red bug-specs fail for the RIGHT reason.** Run them with
+  `pytest --runxfail --tb=line` and confirm each fails on a genuine assertion about
+  the desired behavior (or the bug's own exception) — never a spurious
+  `AttributeError`/`ImportError`. A spec that xfails on a typo never flips to xpass
+  when the bug is fixed, so it silently stops guarding.
+- **Prune only net-covered mechanism tests; promote when unsure.** Registry-membership
+  `test_init.py` clones were replaced by one behavior-focused
+  `test_connector_registry.py` (public `get_connector_class`/`list_connector_types`)
+  before deleting them — "promote into the net, then delete", never delete-first.
+
+---
+
+## Search recall fixes (foundation/2, 2026-07-07)
+
+- **A cross-package layering rule can be honored without duplicating the model.**
+  `indexed-parsing` must not import `indexed-core` (its own `CLAUDE.md`), but the
+  chunkers still need the embedder's real token window. Resolution: the embedder
+  (`SentenceEmbedder.max_seq_length`) stays the single **dynamic** source of truth
+  (reads `self.model.max_seq_length` live); `indexed-parsing` gets its own
+  `_model_window.py` with a **documented, hardcoded** `DEFAULT_MODEL_MAX_SEQ_LENGTH
+  = 256` that must track the embedder's default model. It loads a `transformers`
+  tokenizer directly (a third-party ML lib, not "core engine") for real token
+  counting/splitting — lazy-loaded exactly like the existing Docling/tree-sitter
+  imports in that package. Two numbers, one documented link between them, no
+  forbidden import.
+- **`HybridChunker` was already the right token-aware chunker** — the
+  `DoclingParser` docstring claimed it, the code used `HierarchicalChunker`
+  (heading-only, no size bound) instead. Docling's default tokenizer for
+  `HybridChunker`/`get_default_tokenizer()` is `sentence-transformers/all-MiniLM-L6-v2`
+  itself, so it lines up with this project's default embedding model out of the
+  box — build a `HuggingFaceTokenizer(tokenizer=..., max_tokens=...)` explicitly
+  with `local_files_only=True` rather than relying on the library default, which
+  calls `hf_hub_download`/`AutoTokenizer.from_pretrained` without it (an
+  unnecessary network attempt even when cached). Needs the `docling-core[chunking]`
+  extra (`transformers` + `semchunk`) — add it to the owning package's
+  `pyproject.toml` even if the workspace venv already has it transitively.
+- **Real token-bounded splitting beats char-per-token heuristics.** A
+  `chars ≈ tokens * 4` estimate is not a safe upper bound for punctuation/number-
+  heavy text (logs, code, CSV) — it can undercount tokens and still emit an
+  oversize chunk. Split (paragraphs → lines → words → hard char slices) using the
+  real tokenizer's count at each level; only fall back to a char-based slice for a
+  single unsplittable run with no whitespace at all.
+- **FAISS `IndexFlatL2` over-fetching is nearly free.** Its search cost is
+  dominated by the O(N·d) distance computation against every vector; asking for
+  `k=N` instead of `k=15` barely changes wall time (confirmed against a 10k-vector
+  benchmark fixture). This makes "over-fetch the whole index, group, then cap" a
+  cheap and robust fix for top-k starvation — no tuning a multiplier constant, no
+  risk of an unlucky corpus defeating it — at the documented <100k-doc scale;
+  bound it with a ceiling constant for the pathological large-index case.
+- **Filter-before-truncate needs the truncation moved, not just reordered.** The
+  searcher enforces `max_docs` internally (needed to fix starvation); to let
+  `_filter_by_score` backfill filtered-out slots, the caller must ask the searcher
+  for `max_docs * OVERFETCH_FACTOR` candidates when a threshold is active, filter
+  that wider set, THEN slice to the real `max_docs` — truncating to the final
+  count before filtering discards the very candidates that would have backfilled.
+
+## MCP freshness/errors & dead config sections (foundation/6d, 2026-07-07)
+
+- **`resolve_collections_context(mode_override=...)` used to silently wipe
+  registered config specs — now fixed at the root.** It calls
+  `ConfigService.instance(mode_override=..., reset=mode_override is not None)`
+  — `reset=True` unconditionally replaces the singleton (fresh, empty
+  `ConfigRegistry`) any time a non-None override is passed, even when the
+  override is identical to what's already active. Every knowledge command
+  calls this *after* the app callback's `register_app_config`, so a bare
+  reset silently dropped every registered spec for the rest of that command —
+  including `FaissIndexer._resolve_embedding_batch_size()`, which fell back to
+  its hardcoded 128 default in `--local` mode (the mode create/update/tests
+  actually use) instead of honoring `core.v1.embedding.batch_size`.
+  **Root-cause fix (this task):** `resolve_collections_context` now calls
+  `register_app_config(config_service)` itself, right after obtaining/resetting
+  the singleton and before returning the `CliContext` — `register_app_config`
+  is idempotent (plain dict registration), so this is free for the already-hot
+  path and restores the specs for **every** caller (create/update/search/
+  inspect/remove/MCP) in one place instead of leaving each caller to guess it
+  needs a defensive re-register. `search.py::_load_search_config`'s per-call
+  `register_app_config` re-register (the original 6d workaround) has been
+  removed as redundant — it now just binds directly, relying on the runtime
+  fix. **Do not reintroduce the per-caller defensive re-register pattern**
+  for callers that go through `resolve_collections_context`; only call sites
+  that build their own `ConfigService.instance()` *without* going through
+  `resolve_collections_context` (e.g. `mcp/cli.py::run_impl`, which resolves
+  config before any storage-mode override) still need their own explicit
+  `register_app_config` call. The remaining "is this settable-but-unread
+  knob truly dead" audit for `core.v1.indexing` / the rest of
+  `core.v1.embedding` is unchanged — still deferred to foundation/7-9.
+- **Two console-output test patterns coexist in `search.py` and don't compose.**
+  Some tests monkeypatch `search_cmd.console` (a module-local rebinding) and
+  capture via a fake `.print`; but `print_error`/`print_warning` (from
+  `utils.components.alerts`) hold their own reference to the *real* shared
+  console, so patching `search_cmd.console` never captures their output. To
+  assert on `print_error`/`print_warning` calls, patch the name in the calling
+  module's namespace instead — `patch.object(search_cmd, "print_error")` — not
+  the console object.
+- **A settable-but-unread config knob isn't automatically "dead" everywhere.**
+  E12 named three sections (`core.v1.indexing`, `core.v1.embedding`,
+  `core.v1.storage`) as registered-but-unread. Only `embedding.batch_size` was
+  wired into the engine (`FaissIndexer.index_texts`, replacing the hardcoded
+  64) because the brief scoped it explicitly and it's a single, low-risk read.
+  `core.v1.indexing` (chunk_size/chunk_overlap) and the rest of
+  `core.v1.embedding` (model_name/provider/dimension/device) remain registered
+  but unread by design — wiring chunk_size risks colliding with foundation/2's
+  token-window chunking (which now sizes off the model directly, not this
+  config), and wiring model_name is a bigger factory-selection change outside
+  this unit's remit. Left as a known residual for whoever does the
+  config-architecture pass (foundation/7-9): delete or wire them then, backed
+  by the full picture rather than a narrow bugfix task.
+- **`ConfigService.set_overlay()` is the right tool for config-dependent unit
+  tests.** It's in-memory only (never touches disk), so a test can register a
+  spec and set a value without a `tmp_path`/`monkeypatch.chdir` dance — just
+  `svc.register(Model, path=...)` then `svc.set_overlay("path.key", value)`.
+
+## Foundation bug-batch closeout (2026-07-07)
+
+- **Additive manifest keys keep old collections loadable (F2).** To add
+  `createdTime` without breaking byte-compat: write the new key ONLY in the
+  brand-new-collection branch of `__create_manifest_content`; the update branch
+  spreads `**existing_manifest` first, so an old manifest without the key
+  round-trips untouched and readers use `manifest.get("createdTime")` → `None`.
+  Never add a key on the update path (it would rewrite every existing manifest).
+- **Guard zero-padded / non-finite words before numeric coercion (F5).**
+  `_coerce_value` must not mangle string-typed config values: reject leading-zero
+  runs (`^[+-]?0\d`) and non-finite words (`nan`/`inf`) BEFORE `json.loads`/
+  `float()`, so `"001"`→`"001"` and `"nan"`→`"nan"` while genuine numerics still
+  coerce. Report the real index FILE byte size via `os.path.getsize()` (not the
+  FAISS `ntotal` vector count) and compute `avg_doc_size` from the `documents/`
+  folder only, excluding the index (F1/F3).
+- **Loguru config leaks across CliRunner invocations in one test process.** The
+  CLI configures loguru once per process (guarded by `_LOGGING_CONFIGURED`); in a
+  test process many `CliRunner` invokes share it, so a command that installs a
+  stdout log sink (`create`) leaks it into a later command whose diagnostic logs
+  then corrupt stdout (an inspect-error line prepended to `--simple-output`
+  JSON), making output assertions order-dependent. Production runs one process
+  per command, so it only bites tests. Fix: an autouse conftest fixture that
+  `loguru.remove()`s sinks and resets `utils.logger._LOGGING_CONFIGURED = False`
+  after each test. Same class of leak as the `simple_output` module global —
+  reset both.
+- **`url.endswith(".domain")` on a full URL is incomplete-substring sanitization
+  (CodeQL `py/incomplete-url-substring-sanitization`, HIGH).** The Atlassian
+  Cloud discriminators in the Jira/Confluence readers did
+  `base_url.endswith(".atlassian.net")` on the raw URL, so
+  `https://evil.com/x.atlassian.net` was misclassified as Cloud (would route
+  credentialed requests off-host). Fix: a shared `is_cloud_host(url)` in
+  `connectors/_url_guard.py` that extracts the host via the existing
+  `_client_host` (the urllib3-accurate authority parse) BEFORE the `.endswith`
+  check, with a scheme-less bare-host fallback for back-compat. Always parse the
+  host first — the parsed-host form is both correct and what the scanner
+  recognizes as sanitized; a bare-string `endswith`/`in` on a URL is not. Mirrors
+  `create.py::_is_cloud`. Editing a line CodeQL already (heuristically) flags
+  re-fingerprints it as a *new* PR alert even when the edit makes it safer —
+  expect the "1 new alert" to be the line you just touched.

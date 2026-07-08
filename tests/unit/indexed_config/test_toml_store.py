@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from indexed_config.store import TomlStore
 
 
@@ -158,6 +160,76 @@ class TestTomlStoreWrite:
 
                 global_path = Path(tmpdir) / ".indexed" / "config.toml"
                 assert global_path.exists()
+
+
+class TestTomlStoreAtomicWrite:
+    """B3: write() must serialize + validate BEFORE touching the target file,
+    then write atomically (tmp -> fsync -> os.replace)."""
+
+    def test_write_rejects_unserializable_value_leaves_file_untouched(self):
+        """An unserializable value (e.g. None) must raise before the existing
+        config.toml is opened/truncated — the file stays byte-identical."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace, mode_override="local")
+
+            store.write({"core": {"chunk_size": 512}})
+            config_path = store.workspace_path
+            before = config_path.read_bytes()
+            assert before
+
+            with pytest.raises(Exception):
+                store.write({"core": {"chunk_size": None}})
+
+            after = config_path.read_bytes()
+            assert after == before, "a failed write must not touch the target file"
+
+    def test_write_leaves_no_tmp_file_on_rejection(self):
+        """The tmp file created for an unserializable value must be cleaned
+        up (there is nothing to clean up here since serialization happens
+        before the tmp file is ever opened, but no stray .tmp may remain)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace, mode_override="local")
+
+            with pytest.raises(Exception):
+                store.write({"core": {"chunk_size": None}})
+
+            config_dir = store.workspace_path.parent
+            assert not (config_dir.exists() and any(config_dir.glob("*.tmp"))), (
+                "no .tmp artifact may remain after a rejected write"
+            )
+
+    def test_write_is_atomic_no_tmp_file_remains(self):
+        """A successful write leaves no .tmp file behind."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace, mode_override="local")
+
+            store.write({"core": {"chunk_size": 512}})
+
+            config_dir = store.workspace_path.parent
+            assert not any(config_dir.glob("*.tmp"))
+
+    def test_write_cleans_up_tmp_on_replace_failure(self):
+        """When os.replace fails mid-write, the tmp file is removed and the
+        prior config.toml (if any) is left untouched."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            store = TomlStore(workspace=workspace, mode_override="local")
+
+            store.write({"core": {"chunk_size": 512}})
+            config_path = store.workspace_path
+            before = config_path.read_bytes()
+
+            with patch(
+                "indexed_config.store.os.replace", side_effect=OSError("disk full")
+            ):
+                with pytest.raises(OSError, match="disk full"):
+                    store.write({"core": {"chunk_size": 999}})
+
+            assert config_path.read_bytes() == before
+            assert not any(config_path.parent.glob("*.tmp"))
 
 
 class TestTomlStoreConflictDetection:

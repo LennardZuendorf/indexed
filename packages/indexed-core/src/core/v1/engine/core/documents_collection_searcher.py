@@ -10,6 +10,14 @@ except ImportError:
         return json.loads(data)
 
 
+# Upper bound on how many FAISS neighbours a doc-grouped search will fetch.
+# The over-fetch (see `search()`) is what prevents a single many-chunk
+# document from starving other matching documents out of the top-k (bug A5).
+# FAISS's flat index is an exact brute-force search, so a larger k is cheap
+# at the supported scale (<100k chunks) — this just bounds the worst case.
+_OVERFETCH_CEILING = 10_000
+
+
 class DocumentCollectionSearcher:
     def __init__(self, collection_name, indexer, persister):
         self.collection_name = collection_name
@@ -38,7 +46,16 @@ class DocumentCollectionSearcher:
         include_all_chunks_content=False,
         include_matched_chunks_content=False,
     ):
-        scores, indexes = self.indexer.search(text, max_number_of_chunks)
+        # Over-fetch the FAISS neighbour pool independently of the output
+        # chunk cap so grouping-by-document isn't starved by one dominant
+        # document filling the top-k (bug A5). `max_number_of_chunks` becomes
+        # a hard cap on *output* chunks, applied in `__build_results`, not the
+        # FAISS fetch size.
+        fetch_k = max(
+            max_number_of_chunks,
+            min(self.indexer.get_size(), _OVERFETCH_CEILING),
+        )
+        scores, indexes = self.indexer.search(text, fetch_k)
 
         results = self.__build_results(
             scores,
@@ -46,9 +63,9 @@ class DocumentCollectionSearcher:
             include_text_content,
             include_all_chunks_content,
             include_matched_chunks_content,
+            max_docs=max_number_of_documents,
+            max_chunks=max_number_of_chunks,
         )
-        if max_number_of_documents:
-            results = results[:max_number_of_documents]
 
         return {
             "collectionName": self.collection_name,
@@ -63,21 +80,41 @@ class DocumentCollectionSearcher:
         include_text_content,
         include_all_chunks_content,
         include_matched_chunks_content,
+        max_docs=None,
+        max_chunks=None,
     ):
         index_document_mapping = self._get_mapping()
 
         result = {}
+        total_chunks = 0
 
         for result_number in range(0, len(indexes[0])):
+            # Once both caps are satisfied, nothing further in the (ranked)
+            # pool can improve the result — stop early.
+            if (
+                max_docs is not None
+                and len(result) >= max_docs
+                and max_chunks is not None
+                and total_chunks >= max_chunks
+            ):
+                break
+
             index_id = indexes[0][result_number]
             # Skip invalid indices (FAISS returns -1 when there aren't enough results)
             if index_id < 0:
                 continue
             mapping = index_document_mapping[str(index_id)]
+            document_id = mapping["documentId"]
 
-            if mapping["documentId"] not in result:
-                result[mapping["documentId"]] = {
-                    "id": mapping["documentId"],
+            if document_id not in result:
+                if max_docs is not None and len(result) >= max_docs:
+                    # Doc cap reached — don't admit new documents, but keep
+                    # scanning: a document already admitted may still gain
+                    # matching chunks further down the ranked pool.
+                    continue
+
+                result[document_id] = {
+                    "id": document_id,
                     "url": mapping["documentUrl"],
                     "path": mapping["documentPath"],
                     "matchedChunks": [
@@ -89,22 +126,31 @@ class DocumentCollectionSearcher:
                         )
                     ],
                 }
+                total_chunks += 1
 
                 if include_all_chunks_content or include_text_content:
                     document = self.__get_document(mapping["documentPath"])
 
                     if include_all_chunks_content:
-                        result[mapping["documentId"]]["allChunks"] = document["chunks"]
+                        result[document_id]["allChunks"] = document["chunks"]
 
                     if include_text_content:
-                        result[mapping["documentId"]]["text"] = document["text"]
+                        result[document_id]["text"] = document["text"]
 
             else:
-                result[mapping["documentId"]]["matchedChunks"].append(
+                # Enrichment chunks for an already-admitted document are
+                # capped by max_chunks; discovering a *new* document above is
+                # never blocked by this cap (that would reintroduce A5's
+                # starvation).
+                if max_chunks is not None and total_chunks >= max_chunks:
+                    continue
+
+                result[document_id]["matchedChunks"].append(
                     self.__build_chunk_result(
                         mapping, scores, result_number, include_matched_chunks_content
                     )
                 )
+                total_chunks += 1
 
         return list(result.values())
 

@@ -1,8 +1,9 @@
 """Update command for refreshing collections."""
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
+from rich.text import Text
 
 from indexed_config import ConfigService
 from ...utils.logging import is_verbose_mode
@@ -131,8 +132,15 @@ def _format_update_comparison(before, after):
         Size (human-readable bytes with delta), and Updated (human-readable timestamp). Missing attributes are omitted.
     """
 
-    def format_change(before_val, after_val):
-        """Format a value change with color coding."""
+    def format_change(before_val, after_val) -> "str | Text":
+        """Format a value change with color coding.
+
+        Returns a pre-built ``Text`` (never a bare markup string) — deltas are
+        our own numbers, not user/document content, so the color tags here are
+        legitimate and must render as styled markup rather than the literal
+        text `create_info_rows_with_spacing` now gives plain strings
+        (foundation/6c bug E2).
+        """
         if before_val is None or after_val is None:
             return f"{before_val} → {after_val}"
 
@@ -141,14 +149,20 @@ def _format_update_comparison(before, after):
         dim = get_dim_style()
         delta = after_val - before_val
         if delta > 0:
-            return f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
+            return Text.from_markup(
+                f"{before_val} → {after_val} ([{success}]+{delta}[/{success}])"
+            )
         elif delta < 0:
-            return f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
+            return Text.from_markup(
+                f"{before_val} → {after_val} ([{error}]{delta}[/{error}])"
+            )
         else:
-            return f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
+            return Text.from_markup(
+                f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
+            )
 
-    def format_size_change(before_bytes, after_bytes):
-        """Format size change with proper units."""
+    def format_size_change(before_bytes, after_bytes) -> "str | Text":
+        """Format size change with proper units (see format_change docstring)."""
         from indexed.utils.format import format_size
 
         if before_bytes is None or after_bytes is None:
@@ -161,14 +175,20 @@ def _format_update_comparison(before, after):
         dim = get_dim_style()
         delta = after_bytes - before_bytes
         if delta > 0:
-            return f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
+            return Text.from_markup(
+                f"{before_str} → {after_str} ([{success}]+{format_size(delta)}[/{success}])"
+            )
         elif delta < 0:
-            return f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
+            return Text.from_markup(
+                f"{before_str} → {after_str} ([{error}]{format_size(abs(delta))}[/{error}])"
+            )
         else:
-            return f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
+            return Text.from_markup(
+                f"{before_str} → {after_str} [{dim}](no change)[/{dim}]"
+            )
 
     # Build info rows for the card
-    rows = []
+    rows: list[tuple[str, "str | Text"]] = []
 
     # Collection name
     rows.append(("Collection", after.name))
@@ -319,11 +339,14 @@ def update(
             raise typer.Exit(1)
         before_data[coll_name] = inspect_result[0]
 
-    # Update each collection with individual progress
-    update_error = None
+    # Update each collection with individual progress. A per-collection
+    # failure must not abort the remaining collections (foundation/6 E8):
+    # every collection is attempted and failures are collected so a single
+    # bad collection can't leave later ones stale/unlisted.
     config_was_created = False
     updated_collections = []
     successfully_updated: list[str] = []
+    failed_collections: list[str] = []
     total_docs = 0
     total_chunks = 0
     docs_delta = 0
@@ -334,6 +357,7 @@ def update(
         coll_statuses = svc_status([coll_name], collections_path=collections_path)
         if not coll_statuses:
             print_error(f"Collection '{coll_name}' not found during update")
+            failed_collections.append(coll_name)
             continue
         coll_status = coll_statuses[0]
 
@@ -344,6 +368,7 @@ def update(
 
         if not coll_status.indexers:
             print_error(f"Collection '{coll_name}' has no indexers configured")
+            failed_collections.append(coll_name)
             continue
 
         source_config = source_config_class(
@@ -362,8 +387,8 @@ def update(
             except Exception as e:
                 if not simple:
                     print_error(f"Failed to update collection '{coll_name}': {str(e)}")
-                update_error = e
-                break
+                failed_collections.append(coll_name)
+                continue
         else:
             reader_cfg = _read_manifest_reader_config(coll_name, collections_path)
             _display_collection_update_header(coll_name, source_type, reader_cfg)
@@ -409,19 +434,9 @@ def update(
                 print_success(f"Collection '{coll_name}' updated")
                 console.print()
             else:
-                print_error(f"Collection '{coll_name}' update failed")
-                update_error = _coll_error
-                break
-
-    # If update failed, show error and exit
-    if update_error:
-        if simple:
-            print_json(
-                {"status": "error", "error": f"Failed to update: {str(update_error)}"}
-            )
-        else:
-            print_error(f"Failed to update collection: {str(update_error)}")
-        raise typer.Exit(1)
+                print_error(f"Collection '{coll_name}' update failed: {_coll_error}")
+                failed_collections.append(coll_name)
+                continue
 
     # Check if config was created during updates
     if not config_existed:
@@ -453,14 +468,17 @@ def update(
                         - before_info.number_of_chunks,
                     }
                 )
-        print_json(
-            {
-                "status": "updated",
-                "collections": updated_collections,
-                "total_documents": total_docs,
-                "total_chunks": total_chunks,
-            }
-        )
+        payload: dict[str, Any] = {
+            "status": "error" if failed_collections else "updated",
+            "collections": updated_collections,
+            "total_documents": total_docs,
+            "total_chunks": total_chunks,
+        }
+        if failed_collections:
+            payload["failed_collections"] = failed_collections
+        print_json(payload)
+        if failed_collections:
+            raise typer.Exit(1)
         return
 
     # Result summary for multiple collections (not shown in verbose mode — logs cover it)
@@ -484,6 +502,13 @@ def update(
         summary = create_summary("Result", result_text)
         console.print(summary)
         console.print()
+
+    # A per-collection failure must still exit non-zero even though every
+    # collection was attempted (foundation/6 E8).
+    if failed_collections:
+        names = ", ".join(f"'{n}'" for n in failed_collections)
+        print_error(f"Failed to update: {names}")
+        raise typer.Exit(1)
 
 
 def __getattr__(name: str):

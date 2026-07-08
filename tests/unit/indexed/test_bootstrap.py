@@ -60,10 +60,12 @@ def test_build_connector_jira_cloud_returns_cloud_connector():
         result = build_connector(cfg, config_service, build_connector_registry())
 
     assert result is expected
-    config_service.set.assert_any_call(
+    # E4: overrides go to the in-memory overlay only — never persisted.
+    config_service.set_overlay.assert_any_call(
         "sources.jira.url", "https://company.atlassian.net"
     )
-    config_service.set.assert_any_call("sources.jira.query", "project = TEST")
+    config_service.set_overlay.assert_any_call("sources.jira.query", "project = TEST")
+    config_service.set.assert_not_called()
 
 
 def test_build_connector_unknown_type_raises():
@@ -90,10 +92,12 @@ def test_build_connector_local_files_sets_path():
         result = build_connector(cfg, config_service, build_connector_registry())
 
     assert result is expected
-    config_service.set.assert_any_call("sources.files.path", "/tmp/docs")
+    # E4: overrides go to the in-memory overlay only — never persisted.
+    config_service.set_overlay.assert_any_call("sources.files.path", "/tmp/docs")
+    config_service.set.assert_not_called()
     url_calls = [
         call
-        for call in config_service.set.call_args_list
+        for call in config_service.set_overlay.call_args_list
         if call[0][0].endswith(".url")
     ]
     assert not url_calls
@@ -111,4 +115,5 @@ def test_build_connector_sets_query_for_remote_types() -> None:
     )
     with patch.object(JiraCloudConnector, "from_config", return_value=MagicMock()):
         build_connector(cfg, config_service, build_connector_registry())
-    config_service.set.assert_any_call("sources.jira.query", "project = ABC")
+    config_service.set_overlay.assert_any_call("sources.jira.query", "project = ABC")
+    config_service.set.assert_not_called()

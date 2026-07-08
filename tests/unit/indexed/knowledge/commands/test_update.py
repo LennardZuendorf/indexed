@@ -427,7 +427,10 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
     ):
-        """If a collection disappears between outer status and loop status, it continues."""
+        """If a collection disappears between outer status and loop status, the
+        loop continues past it but the run still exits non-zero
+        (foundation/6 E8: a per-collection failure must not be reported as a
+        silent exit-0 success)."""
         mock_verbose.return_value = False
         mock_config = Mock()
         mock_config.resolve_storage_mode.return_value = "global"
@@ -456,8 +459,9 @@ class TestUpdateCommand:
 
         result = runner.invoke(app, ["index", "update"])
 
-        # Should complete (the loop continues past the missing collection)
-        assert result.exit_code == 0
+        # The loop completes (continues past the missing collection) but a
+        # per-collection failure must still exit non-zero.
+        assert result.exit_code != 0
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")

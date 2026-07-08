@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from .env_writer import EnvFileWriter
 from .errors import ConfigValidationError
-from .path_utils import get_by_path, set_by_path, delete_by_path
+from .path_utils import get_by_path, set_by_path, delete_by_path, deep_merge
 from .registry import ConfigRegistry
 from .store import TomlStore
 from .provider import Provider
@@ -57,6 +57,11 @@ class ConfigService:
             self._store, self._resolver, self._workspace_path, mode_override
         )
         self._env_writer = EnvFileWriter(self._resolved_env_path)
+        # In-memory-only overrides (R3): merged on top of load_raw() but never
+        # written to disk. Lets create/update pass CLI overrides & prompted
+        # values through to from_config() reads without persisting them
+        # (foundation/6b, bug E4). Cleared per runtime flow via clear_overlay().
+        self._overlay: Dict[str, Any] = {}
 
     # ── Singleton ────────────────────────────────────────────────────────
 
@@ -135,7 +140,10 @@ class ConfigService:
             if self._mode_override
             else self._workspace.resolve_storage_mode()
         )
-        return self._store.read_for_mode(mode)
+        raw = self._store.read_for_mode(mode)
+        if self._overlay:
+            raw = deep_merge(raw, self._overlay)
+        return raw
 
     def get_raw(self) -> Dict[str, Any]:
         """Retrieve the merged raw configuration (alias for load_raw)."""
@@ -180,15 +188,30 @@ class ConfigService:
         """Retrieve a value from merged config using a dot-separated path."""
         return get_by_path(self.load_raw(), dot_path)
 
+    def _disk_baseline(self) -> Dict[str, Any]:
+        """Return the on-disk config for the resolved mode, no env overlay.
+
+        set()/delete() persist THIS baseline plus their single change — never
+        the env-merged view from load_raw() — so an INDEXED__*-supplied value
+        (e.g. a secret provided only via env) is never baked into config.toml
+        by an unrelated write (C2).
+        """
+        mode = (
+            self._mode_override
+            if self._mode_override
+            else self._workspace.resolve_storage_mode()
+        )
+        return self._store.read_disk_only_for_mode(mode)
+
     def set(self, dot_path: str, value: Any) -> None:
         """Set a value at the given dot-path and persist."""
-        raw = self.load_raw()
+        raw = self._disk_baseline()
         set_by_path(raw, dot_path, value)
         self.save_raw(raw)
 
     def delete(self, dot_path: str) -> bool:
         """Delete a value at a dot-path and persist if changed."""
-        raw = self.load_raw()
+        raw = self._disk_baseline()
         changed = delete_by_path(raw, dot_path)
         if changed:
             self.save_raw(raw)
@@ -281,6 +304,46 @@ class ConfigService:
             self._env_writer.write(env_var, value)
         else:
             self.set(dot_path, value)
+
+    def set_overlay(self, dot_path: str, value: Any) -> None:
+        """Apply an in-memory-only override — never persisted to config.toml.
+
+        ``load_raw()`` (and therefore ``get()``/``bind()``/``validate()``)
+        merges this overlay on top of the on-disk + env config, so
+        ``from_config()`` reads see it, but ``set()``/``save_raw()`` never
+        do — a failed ``create`` (or a value only meant for this run) leaves
+        no trace on disk (R3; foundation/6b bug E4).
+        """
+        set_by_path(self._overlay, dot_path, value)
+
+    def clear_overlay(self) -> None:
+        """Clear all in-memory overrides — call at the start of a new runtime flow."""
+        self._overlay = {}
+
+    def resolve_sensitive_env_var(self, dot_path: str) -> Optional[str]:
+        """Resolve the connector-declared `.env` key for a sensitive dot-path.
+
+        Mirrors the per-field registry lookup ``validate_requirements()`` does
+        for a known ``(config_class, namespace)`` pair, but for an arbitrary
+        dot-path: splits it into ``(namespace, field_name)``, finds the spec
+        registered at that namespace, and reads the field's ``"env: NAME"``
+        hint via ``EnvFileWriter.get_env_var_name()``.
+
+        Returns ``None`` when no registered spec/field matches (e.g. an
+        unregistered namespace, or a field the active spec doesn't declare) —
+        callers should warn and fall back rather than silently writing the
+        secret to a key no connector reads (C1 follow-up).
+        """
+        if "." not in dot_path:
+            return None
+        namespace, field_name = dot_path.rsplit(".", 1)
+        spec = self._registry.specs.get(namespace)
+        if spec is None:
+            return None
+        field = spec.model_fields.get(field_name)
+        if field is None:
+            return None
+        return EnvFileWriter.get_env_var_name(field_name, field)
 
     # ── Workspace delegation ─────────────────────────────────────────────
 
