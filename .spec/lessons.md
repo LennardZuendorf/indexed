@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-07
+updated: 2026-07-08
 ---
 
 # Lessons Learned
@@ -325,3 +325,41 @@ port is a different origin for credential purposes; fail closed.
   `create.py::_is_cloud`. Editing a line CodeQL already (heuristically) flags
   re-fingerprints it as a *new* PR alert even when the edit makes it safer —
   expect the "1 new alert" to be the line you just touched.
+
+---
+
+## Typed data contracts live in the `protocols` leaf, not `core` (foundation/7, 2026-07-08)
+
+- **The typed models (`Manifest`/`ConvertedDocument`/`Chunk`/`CollectionSearchResult`/…)
+  belong in `packages/indexed-protocols/src/protocols/models.py`, NOT
+  `core/v1/models.py`.** The feature spec's overview (tech.md §1) originally
+  placed them under `core.v1`, but that contradicts its own edge list (§5):
+  `connectors`/`config`/`protocols` may not import `core`, yet
+  `protocols/connectors.py` must reference `ConvertedDocument`/`Manifest` (the
+  converter returns `ConvertedDocument`) and readers/converters live in
+  `connectors`. `scripts/check_import_graph.py` encodes exactly this
+  (`"protocols": {"core", "connectors", "indexed"}` forbidden). The leaf is the
+  ONLY import-legal home. `SourceConfig` already lived there — fold the rest in.
+  Spec corrected in the same cycle (tech.md §1, tech-core.md).
+- **Byte-stability = declare fields in on-disk key order + `by_alias=True`.**
+  Pydantic `model_dump(by_alias=True)` emits declared fields in definition order,
+  then `extra="allow"` extras in insertion order. Match the writer's key order
+  field-for-field and the re-serialized JSON is byte-identical. Assert it with
+  `json.dumps(model.to_disk()) == json.dumps(raw)` (order-sensitive), not just
+  dict `==`.
+- **Optional-key round-trip: pop, don't `exclude_none`.** The manifest's
+  `createdTime` is CREATE-only (absent on older collections). A global
+  `exclude_none=True` would also drop a legitimately-null *reader* field and
+  break byte-stability. Instead dump normally and `pop("createdTime")` only when
+  it's `None`. (For `Chunk.metadata`, where no null-valued sibling exists,
+  `exclude_none=True` is safe and keeps chunk 0 metadata-free.)
+- **Corrected protocols make a mismatch a mypy error.** `DocumentReader` now
+  declares `get_number_of_documents`/`read_all_documents`/`get_reader_details`
+  (what the creator actually calls) instead of the fictional `read_documents`
+  (zero callers). Verify the property with `MYPYPATH=packages/indexed-protocols/src`
+  — a standalone `mypy` run on a file outside the configured path silently treats
+  `protocols` as `Any` and reports a false "Success".
+- **Break the engine→services cycle at the import, not with a lazy import.**
+  `documents_collection_creator.py` imported progress types upward from
+  `core.v1.engine.services.models`; point it straight at `protocols` (the leaf)
+  instead. That removes the cycle the old lazy imports worked around.

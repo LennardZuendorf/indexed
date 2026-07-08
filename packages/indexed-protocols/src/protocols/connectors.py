@@ -5,15 +5,40 @@ Connectors encapsulate the logic for discovering, reading, and converting
 documents from various sources (Jira, Confluence, local files, etc.).
 """
 
-from typing import Any, ClassVar, Dict, Iterator, Protocol, runtime_checkable
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    Iterator,
+    List,
+    Protocol,
+    Union,
+    runtime_checkable,
+)
+
+from protocols.models import ConvertedDocument
 
 
 @runtime_checkable
 class DocumentReader(Protocol):
-    """Protocol for fetching raw documents from a source."""
+    """Protocol for fetching raw documents from a source.
 
-    def read_documents(self) -> Iterator[Any]:
-        """Fetch documents from source."""
+    Declares exactly what the engine calls on a reader
+    (``documents_collection_creator``): the document count, the document
+    iterator, and the reader-details block persisted to the manifest. A reader
+    missing one of these is a mypy error, not a runtime ``AttributeError``.
+    """
+
+    def get_number_of_documents(self) -> int:
+        """Return the number of documents the reader will yield."""
+        ...
+
+    def read_all_documents(self) -> Iterator[Any]:
+        """Yield the raw documents from the source."""
+        ...
+
+    def get_reader_details(self) -> Dict[str, Any]:
+        """Return the per-source ``reader`` block for the manifest (has ``type``)."""
         ...
 
 
@@ -21,8 +46,10 @@ class DocumentReader(Protocol):
 class DocumentConverter(Protocol):
     """Protocol for converting raw documents into searchable chunks."""
 
-    def convert(self, doc: Any) -> Iterator[Any]:
-        """Convert raw document to searchable chunks."""
+    def convert(
+        self, doc: Any
+    ) -> Union[Iterator[ConvertedDocument], List[Dict[str, Any]]]:
+        """Convert a raw document into the v1 converted-document form."""
         ...
 
 

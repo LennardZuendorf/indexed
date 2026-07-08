@@ -3,7 +3,7 @@ type: feature-tech
 feature: foundation
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-07-06
+updated: 2026-07-08
 ---
 
 # Feature: Foundation — Engine (core) architecture detail
@@ -60,11 +60,13 @@ packages/indexed-parsing/src/parsing/
   router.py               extension → ParsingStrategy                            ~108 LOC
 ```
 
-Target new engine modules (introduced by foundation/7 + foundation/8, both in the
-v1 tree): a typed `models.py` and a corrected `protocols.py` that
-creator/searcher/services import instead of `dict["stringKey"]`, and a `core`
-facade over the three services. Exact package location per the collapse is
-Feature `simplify`; here they live under `core/v1/`.
+Target new modules (introduced by foundation/7 + foundation/8): the typed models
+and corrected `protocols.py` live in the **`protocols` leaf package**
+(`packages/indexed-protocols/src/protocols/`), which creator/searcher/services
+import instead of `dict["stringKey"]` — the leaf is the only import-legal home
+since connectors/config/protocols may not import `core` (see tech.md §1 and §5).
+The `core` facade over the three services stays under `core/v1/`. Exact package
+locations collapse into the single package in Feature `simplify`.
 
 ---
 

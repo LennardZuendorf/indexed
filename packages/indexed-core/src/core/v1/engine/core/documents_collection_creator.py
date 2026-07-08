@@ -27,10 +27,16 @@ except ImportError:
 
 # Core accepts optional progress callbacks for CLI/UI visibility into long-running operations.
 from utils.performance import log_execution_duration
-from core.v1.engine.services.models import (
-    ProgressUpdate,
-    ProgressCallback,
+
+# Import the typed contracts from the protocols leaf directly — NOT from
+# core.v1.engine.services.models — so engine/core no longer imports upward from
+# engine/services (foundation/7; breaks the cycle behind the old lazy imports).
+from protocols import (
+    DocumentConverter,
+    DocumentReader,
     PhasedProgressCallback,
+    ProgressCallback,
+    ProgressUpdate,
 )
 
 
@@ -43,8 +49,8 @@ class DocumentCollectionCreator:
     def __init__(
         self,
         collection_name: str,
-        document_reader,
-        document_converter,
+        document_reader: DocumentReader,
+        document_converter: DocumentConverter,
         document_indexers,
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,

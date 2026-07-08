@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from loguru import logger
 
+from protocols import Manifest
 from .models import SourceConfig, ProgressUpdate, ProgressCallback
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
@@ -125,8 +126,8 @@ class SearchService:
             manifest_content = self._persister.read_text_file(
                 f"{collection_name}/manifest.json"
             )
-            manifest = json.loads(manifest_content)
-            return manifest["indexers"][0]["name"]
+            manifest = Manifest.from_disk(json.loads(manifest_content))
+            return manifest.indexers[0].name
         except Exception:
             # Fallback to default indexer
             return "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
