@@ -123,7 +123,7 @@ Source API → Reader → Converter → Chunker → Embedder → Indexer → Per
 
 1. **Reader** fetches documents from source (Jira API, file system, etc.)
 2. **Converter** transforms to standardized `Document` objects
-3. **Chunker** splits into searchable chunks (512 tokens, 50 overlap)
+3. **Chunker** splits into token-window chunks (≤ embedder `max_seq_length`, 256 for the default model — never silently truncated; see [tech-parsing.md](tech-parsing.md))
 4. **Embedder** generates vectors (384-dim via `all-MiniLM-L6-v2`)
 5. **Indexer** builds FAISS index (`IndexFlatL2` default)
 6. **Persister** saves to disk atomically
@@ -135,7 +135,7 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 ```
 
 1. **Embedder** converts query text to vector (same model as indexing)
-2. **FAISS Search** finds K nearest neighbors (L2 distance)
+2. **FAISS Search** finds K nearest neighbors (squared L2 distance in [0, 4]; lower = closer)
 3. **Result Mapper** looks up chunks, documents, metadata
 4. **Formatter** outputs as card/table/compact/JSON
 
@@ -266,6 +266,13 @@ IndexedError
 - CLI layer catches `IndexedError` subtypes → user-friendly message + exit code
 - MCP layer catches `IndexedError` subtypes → structured error dict
 - Unexpected exceptions propagate with full traceback
+- Missing/corrupt collections **fail loud**: they raise `IndexedError` and are
+  **omitted from status** (never zero-filled into a fake-healthy placeholder); the
+  CLI exits **non-zero** (via `exit_code_for`) with a clean message — never a raw
+  traceback, never a success exit on failure
+- The MCP boundary **envelopes every exception** (not only `IndexedError`) and
+  surfaces per-collection failures in the result envelope — never a silent
+  "0 matches" — and must not serve **stale** cached results after a re-index
 
 ### No Dual Code Paths
 

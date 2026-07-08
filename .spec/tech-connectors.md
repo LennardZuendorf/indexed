@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-07-03
+updated: 2026-07-07
 ---
 
 # Tech Branch: Connectors (`indexed-connectors`)
@@ -83,6 +83,12 @@ if not warn_if_off_origin(url, self.base_url):
 `is_same_origin(url, base_url)` is the primitive (bool only, no side effects).
 `warn_if_off_origin` wraps it with logging and is the one to use in readers.
 
+`is_cloud_host(url)` (same module) is the Cloud-vs-Server discriminator: it parses
+the host **before** the `*.atlassian.net` suffix check, so a raw-URL substring like
+`https://evil.com/x.atlassian.net` is not misread as Cloud (incomplete URL-substring
+sanitization). The Jira/Confluence Cloud readers use it instead of a bare
+`base_url.endswith(".atlassian.net")`.
+
 **Exclusions:** `AsyncJiraCloudDocumentReader` — Jira Cloud serves attachment content
 from `api.media.atlassian.com` (off-origin by design, URLs from Jira's own API, not
 attacker-controlled). `AsyncConfluenceCloudDocumentReader` — constructs URLs as
@@ -102,3 +108,9 @@ attacker-controlled). `AsyncConfluenceCloudDocumentReader` — constructs URLs a
 | **auto** | git if `.git` exists, else content-hash |
 
 State persisted as `state.json`, updated after each successful run.
+
+**Correctness:** the git strategy is **content-hash-authoritative** — it reconciles
+the diff against stored content hashes, so a file edited and then **reverted back to
+its committed state** is still re-indexed (a name-status diff alone would miss it).
+Git **C-quoted non-ASCII paths** (`"\303\244…"`) are unquoted to real filenames
+before tracking.
