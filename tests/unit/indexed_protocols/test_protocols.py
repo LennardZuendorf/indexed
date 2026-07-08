@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from protocols import BaseConnector, SourceConfig
+from protocols import BaseConnector, ConnectorRun, SourceConfig
 
 
 class _MinimalConnector:
@@ -27,6 +27,10 @@ class _MinimalConnector:
     @classmethod
     def from_config(cls, config_service):
         return cls()
+
+    @classmethod
+    def from_manifest(cls, manifest, config_service, *, storage_path):
+        return ConnectorRun(None, None, [], None)
 
 
 def test_base_connector_protocol_conformance():

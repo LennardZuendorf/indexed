@@ -7,7 +7,7 @@ base URL differs.
 
 from typing import ClassVar
 
-from protocols import ConnectorMetadata
+from protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .outline_document_converter import OutlineDocumentConverter
 from .outline_document_reader import OutlineDocumentReader
@@ -129,6 +129,42 @@ class OutlineConnector:
         provider = config_service.bind()  # type: ignore[attr-defined]
         cfg = provider.get(OutlineConfig)
         return cls(cfg)
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: object, *, storage_path: str
+    ) -> ConnectorRun:
+        """Rebuild the Outline connector for an incremental update.
+
+        Carries the stored reader settings forward as in-memory overlays (R3)
+        and sets the incremental cutoff via ``modified_since`` — replacing the
+        previous ``os.environ`` side-channel — from the manifest's
+        ``lastModifiedDocumentTime`` (the raw value, matching prior behavior).
+        """
+        rd = manifest.reader.model_dump(by_alias=True)
+        ns = "sources.outline"
+        overlay = config_service.set_overlay  # type: ignore[attr-defined]
+
+        overlay(f"{ns}.url", rd["baseUrl"])
+        if rd.get("collectionIds") is not None:
+            overlay(f"{ns}.collection_ids", rd["collectionIds"])
+        overlay(f"{ns}.include_attachments", rd.get("includeAttachments", True))
+        if rd.get("batchSize") is not None:
+            overlay(f"{ns}.batch_size", rd["batchSize"])
+        if rd.get("ocrEnabled") is not None:
+            overlay(f"{ns}.ocr_enabled", rd["ocrEnabled"])
+        if rd.get("downloadInlineImages") is not None:
+            overlay(f"{ns}.download_inline_images", rd["downloadInlineImages"])
+        if rd.get("maxConcurrentRequests") is not None:
+            overlay(f"{ns}.max_concurrent_requests", rd["maxConcurrentRequests"])
+        if rd.get("maxAttachmentSizeMb") is not None:
+            overlay(f"{ns}.max_attachment_size_mb", rd["maxAttachmentSizeMb"])
+        if rd.get("verifySsl") is not None:
+            overlay(f"{ns}.verify_ssl", rd["verifySsl"])
+        overlay(f"{ns}.modified_since", manifest.last_modified_document_time)
+
+        connector = cls.from_config(config_service)
+        return ConnectorRun(connector.reader, connector.converter, [], None)
 
 
 __all__ = ["OutlineConnector"]

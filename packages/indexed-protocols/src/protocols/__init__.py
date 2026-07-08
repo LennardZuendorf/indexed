@@ -1,4 +1,9 @@
-from protocols.connectors import BaseConnector, DocumentConverter, DocumentReader
+from protocols.connectors import (
+    BaseConnector,
+    ConnectorRun,
+    DocumentConverter,
+    DocumentReader,
+)
 from protocols.metadata import ConnectorMetadata
 from protocols.models import (
     Chunk,
@@ -20,6 +25,7 @@ __all__ = [
     "Chunk",
     "CollectionSearchResult",
     "ConnectorMetadata",
+    "ConnectorRun",
     "ConvertedDocument",
     "DocumentConverter",
     "DocumentMatch",

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, List
 
-from protocols import ConnectorMetadata
+from protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .change_tracker import ChangeTracker, FileChange, IndexState
 from .files_document_converter import FilesDocumentConverter
@@ -217,6 +217,57 @@ class FileSystemConnector:
             excluded_dirs=cfg.excluded_dirs,
             respect_gitignore=cfg.respect_gitignore,
         )
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: object, *, storage_path: str
+    ) -> ConnectorRun:
+        """Rebuild the files reader/converter for an incremental update.
+
+        Loads the change-tracker state from ``storage_path`` and scopes the
+        reader to changed files, returning the deletions to prune and a
+        ``post_run`` hook that persists the new state. Runtime settings
+        (ocr/table/max_tokens) come from the connector's own config defaults,
+        matching the previous ``local_files_update_factory`` behavior;
+        ``config_service`` is unused for this source.
+        """
+        rd = manifest.reader.model_dump(by_alias=True)
+        connector = cls(
+            path=rd["basePath"],
+            include_patterns=rd.get("includePatterns") or ["*"],
+            fail_fast=rd.get("failFast", False),
+            change_tracking=rd.get("changeTracking", "auto"),
+            excluded_dirs=rd.get("excludedDirs") or None,
+            respect_gitignore=rd.get("respectGitignore", True),
+        )
+
+        state = connector.load_state(storage_path)
+        if state is not None:
+            specific_files: List[str] | None = [
+                str(p) for p in connector.get_files_to_process(state)
+            ]
+            deletions = connector.get_deletions(state)
+        else:
+            specific_files = None
+            deletions = []
+
+        cfg = connector._config
+        reader = FilesDocumentReader(
+            base_path=connector._path,
+            include_patterns=connector._include_patterns,
+            fail_fast=connector._fail_fast,
+            ocr=cfg.ocr_enabled,
+            table_structure=cfg.table_structure,
+            max_tokens=cfg.max_chunk_tokens,
+            excluded_dirs=cfg.excluded_dirs or None,
+            specific_files=specific_files,
+            respect_gitignore=cfg.respect_gitignore,
+        )
+
+        def _save_state() -> None:
+            connector.save_state(storage_path)
+
+        return ConnectorRun(reader, connector.converter, deletions, _save_state)
 
 
 __all__ = ["FileSystemConnector"]

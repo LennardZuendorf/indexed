@@ -5,12 +5,43 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
+from datetime import datetime, timedelta
 from typing import ClassVar, Optional
-from protocols import ConnectorMetadata
+from protocols import ConnectorMetadata, ConnectorRun, Manifest
 from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
 from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from .schema import JiraConfig, JiraCloudConfig
+
+
+def _jira_from_manifest(
+    connector_cls: type, manifest: Manifest, config_service: object
+) -> ConnectorRun:
+    """Shared manifest→connector rebuild for Jira Server and Cloud.
+
+    Applies the collection's stored baseUrl and an incremental date filter as
+    in-memory overlays (never persisted — R3), then builds the connector via
+    ``from_config`` so credentials and other settings resolve normally. The
+    date filter is joined with ``AND`` only when a base query exists, so an
+    empty stored query no longer yields malformed leading-``AND`` JQL (R6.5).
+    """
+    rd = manifest.reader.model_dump(by_alias=True)
+    cutoff = (
+        (
+            datetime.fromisoformat(manifest.last_modified_document_time)
+            - timedelta(days=1)
+        )
+        .date()
+        .isoformat()
+    )
+    date_filter = f'(created >= "{cutoff}" OR updated >= "{cutoff}")'
+    base = (rd.get("query") or "").strip()
+    query = f"{base} AND {date_filter}" if base else date_filter
+
+    config_service.set_overlay("sources.jira.url", rd["baseUrl"])  # type: ignore[attr-defined]
+    config_service.set_overlay("sources.jira.query", query)  # type: ignore[attr-defined]
+    connector = connector_cls.from_config(config_service)  # type: ignore[attr-defined]
+    return ConnectorRun(connector.reader, connector.converter, [], None)
 
 
 class JiraConnector:
@@ -208,6 +239,12 @@ class JiraConnector:
             max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: object, *, storage_path: str
+    ) -> ConnectorRun:
+        return _jira_from_manifest(cls, manifest, config_service)
+
 
 class JiraCloudConnector:
     # Metadata for CLI generation and compatibility
@@ -376,6 +413,12 @@ class JiraCloudConnector:
             ocr_enabled=cfg.ocr_enabled,
             max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: object, *, storage_path: str
+    ) -> ConnectorRun:
+        return _jira_from_manifest(cls, manifest, config_service)
 
 
 __all__ = ["JiraConnector", "JiraCloudConnector"]

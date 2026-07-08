@@ -7,16 +7,20 @@ documents from various sources (Jira, Confluence, local files, etc.).
 
 from typing import (
     Any,
+    Callable,
     ClassVar,
     Dict,
+    Iterable,
     Iterator,
     List,
+    NamedTuple,
+    Optional,
     Protocol,
     Union,
     runtime_checkable,
 )
 
-from protocols.models import ConvertedDocument
+from protocols.models import ConvertedDocument, Manifest
 
 
 @runtime_checkable
@@ -48,9 +52,34 @@ class DocumentConverter(Protocol):
 
     def convert(
         self, doc: Any
-    ) -> Union[Iterator[ConvertedDocument], List[Dict[str, Any]]]:
-        """Convert a raw document into the v1 converted-document form."""
+    ) -> Union[Iterator[ConvertedDocument], Iterable[Dict[str, Any]]]:
+        """Convert a raw document into the v1 converted-document form.
+
+        Today's converters yield/return v1 dicts (``Iterator[dict]`` or
+        ``list[dict]``); the ``ConvertedDocument`` arm types the future typed
+        path. ``Iterable`` covers both an iterator and a list.
+        """
         ...
+
+
+class ConnectorRun(NamedTuple):
+    """What a connector produces for an incremental update from its manifest.
+
+    Returned by ``BaseConnector.from_manifest`` so core's update path is
+    source-agnostic — one call for every connector, no per-type branches.
+
+    Attributes:
+        reader: the (possibly change-tracking-scoped) document reader
+        converter: the document converter
+        deletions: document IDs to remove from the index (files only today)
+        post_run: optional hook to run after a successful persist
+                  (e.g. save the change-tracker state)
+    """
+
+    reader: DocumentReader
+    converter: DocumentConverter
+    deletions: List[str]
+    post_run: Optional[Callable[[], None]]
 
 
 @runtime_checkable
@@ -151,5 +180,25 @@ class BaseConnector(Protocol):
         """
         ...
 
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
+    ) -> ConnectorRun:
+        """Rebuild (reader, converter, deletions, post_run) for an incremental
+        update from this collection's own manifest.
 
-__all__ = ["BaseConnector", "DocumentConverter", "DocumentReader"]
+        Each connector owns its manifest keys and its incremental cutoff logic,
+        so core's update path calls one method for every source. ``config_service``
+        supplies runtime settings and credentials the manifest does not persist;
+        ``storage_path`` is the collection's on-disk directory (for change-tracker
+        state).
+        """
+        ...
+
+
+__all__ = [
+    "BaseConnector",
+    "ConnectorRun",
+    "DocumentConverter",
+    "DocumentReader",
+]
