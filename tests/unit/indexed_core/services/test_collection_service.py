@@ -175,12 +175,10 @@ class TestUpdateFunction:
             mock_updater = Mock()
             mock_factory.return_value = mock_updater
 
-            update([cfg], manifest_connector_factory=factory)
+            update([cfg], manifest_factory=factory)
 
             mock_factory.assert_called_once()
-            assert (
-                mock_factory.call_args.kwargs["manifest_connector_factory"] is factory
-            )
+            assert mock_factory.call_args.kwargs["manifest_factory"] is factory
             mock_updater.run.assert_called_once()
 
 
