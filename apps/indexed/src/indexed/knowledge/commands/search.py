@@ -438,7 +438,7 @@ def search(
 
     simple = is_simple_output()
 
-    from indexed.runtime import resolve_collections_context
+    from indexed.composition import resolve_collections_context
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
@@ -596,15 +596,15 @@ def search(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "svc_search":
-        from core.v1.engine.services import search
+        from core.v1.engine import search
 
         return search
     elif name == "SourceConfig":
-        from core.v1.engine.services import SourceConfig
+        from core.v1.engine import SourceConfig
 
         return SourceConfig
     elif name == "status":
-        from core.v1.engine.services import status
+        from core.v1.engine import status
 
         return status
     elif name == "setup_root_logger":

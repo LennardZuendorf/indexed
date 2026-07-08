@@ -6,7 +6,7 @@ from indexed_config import ConfigService
 from indexed_config.errors import ConfigurationError
 from protocols import SourceConfig
 
-from indexed.bootstrap import (
+from indexed.composition import (
     build_connector,
     build_connector_registry,
     register_app_config,

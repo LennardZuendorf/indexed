@@ -1,7 +1,7 @@
 """Tests for unified CLI/MCP runtime context resolution."""
 
 from indexed_config import ConfigService, get_global_root, get_local_root
-from indexed.runtime import CliContext, resolve_collections_context
+from indexed.composition import CliContext, resolve_collections_context
 
 
 def test_resolve_collections_context_global_mode(tmp_path, monkeypatch):
@@ -55,7 +55,7 @@ def test_resolve_collections_context_restores_registered_specs(tmp_path, monkeyp
     from core.v1.engine.indexes.indexers.faiss_indexer import (
         _resolve_embedding_batch_size,
     )
-    from indexed.bootstrap import register_app_config
+    from indexed.composition import register_app_config
 
     monkeypatch.chdir(tmp_path)
     local_root = get_local_root(tmp_path)

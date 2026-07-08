@@ -15,5 +15,5 @@ def test_missing_wiring_error_names_component_and_bootstrap() -> None:
     message = str(err)
     assert message == (
         "manifest_connector_factory must be injected by the app layer; "
-        "see indexed.bootstrap"
+        "see indexed.composition"
     )

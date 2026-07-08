@@ -266,8 +266,8 @@ def update(
     inspect_svc = this_module.inspect
     setup_root_logger_svc = this_module.setup_root_logger
 
-    from ...connector_wiring import wiring_kwargs_for_update
-    from indexed.runtime import resolve_collections_context
+    from ...composition import wiring_kwargs_for_update
+    from indexed.composition import resolve_collections_context
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
@@ -514,19 +514,19 @@ def update(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "update_service":
-        from core.v1.engine.services import update
+        from core.v1.engine import update
 
         return update
     elif name == "SourceConfig":
-        from core.v1.engine.services import SourceConfig
+        from core.v1.engine import SourceConfig
 
         return SourceConfig
     elif name == "svc_status":
-        from core.v1.engine.services import status
+        from core.v1.engine import status
 
         return status
     elif name == "inspect":
-        from core.v1.engine.services import inspect
+        from core.v1.engine import inspect
 
         return inspect
     elif name == "setup_root_logger":

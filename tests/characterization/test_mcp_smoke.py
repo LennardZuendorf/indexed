@@ -11,7 +11,7 @@ import pytest
 
 from core.v1.config_models import MCPConfig
 from indexed.mcp.server import mcp
-from indexed.runtime import resolve_collections_context
+from indexed.composition import resolve_collections_context
 
 COLLECTION_NAME = "mcp-smoke-collection"
 

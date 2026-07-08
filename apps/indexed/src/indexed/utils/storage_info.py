@@ -129,7 +129,7 @@ def display_storage_mode_for_command(console: Console) -> None:
     """
     from indexed_config import has_local_config, get_local_root, get_global_root
 
-    from indexed.runtime import resolve_collections_context
+    from indexed.composition import resolve_collections_context
 
     mode_override = None
     try:

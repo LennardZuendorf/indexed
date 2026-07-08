@@ -40,7 +40,7 @@ def _mock_runtime_context():
 def _patch_runtime_context():
     with (
         patch(
-            "indexed.runtime.resolve_collections_context",
+            "indexed.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: _mock_runtime_context(),
         ),
         patch(

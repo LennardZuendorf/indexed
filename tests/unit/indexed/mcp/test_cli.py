@@ -96,7 +96,7 @@ class TestRunImpl:
         assert "host" in kwargs
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.bootstrap.register_app_config")
+    @patch("indexed.composition.register_app_config")
     def test_default_args_load_mcp_config_from_toml(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:
@@ -120,7 +120,7 @@ class TestRunImpl:
         )
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.bootstrap.register_app_config")
+    @patch("indexed.composition.register_app_config")
     def test_explicit_host_overrides_config_even_at_old_default(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:
@@ -152,7 +152,7 @@ class TestRunImpl:
         assert kwargs["log_level"] == "DEBUG"  # not explicit → from config
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.bootstrap.register_app_config")
+    @patch("indexed.composition.register_app_config")
     def test_independent_field_fallback_to_config(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:

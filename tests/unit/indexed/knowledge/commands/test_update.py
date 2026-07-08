@@ -297,7 +297,7 @@ class TestUpdateCommand:
         assert result.exit_code == 1
 
     @patch("indexed.utils.storage_info.display_storage_mode_for_command")
-    @patch("indexed.runtime.resolve_collections_context")
+    @patch("indexed.composition.resolve_collections_context")
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
     @patch("indexed.knowledge.commands.update.is_verbose_mode")
@@ -662,7 +662,7 @@ class TestUpdateCommand:
         assert result.exit_code == 1
 
     @patch("indexed.utils.storage_info.display_storage_mode_for_command")
-    @patch("indexed.runtime.resolve_collections_context")
+    @patch("indexed.composition.resolve_collections_context")
     @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
     @patch("indexed.knowledge.commands.update.is_verbose_mode")

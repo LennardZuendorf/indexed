@@ -3,7 +3,7 @@
 from typing import Any, Callable, Optional
 
 
-from indexed.runtime import CliContext, resolve_collections_context
+from indexed.composition import CliContext, resolve_collections_context
 
 _MISSING = object()
 

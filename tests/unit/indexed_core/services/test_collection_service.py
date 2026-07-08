@@ -2,10 +2,6 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
-
-from indexed_config.errors import ConfigurationError
-
 from core.v1.engine.services.collection_service import (
     _resolve_connector,
     _create_one,
@@ -27,13 +23,7 @@ def _source_config(name: str = "test-collection") -> SourceConfig:
 
 
 class TestResolveConnector:
-    """Test connector resolution via injected factory."""
-
-    def test_raises_when_factory_not_injected(self):
-        with pytest.raises(
-            ConfigurationError, match="connector_factory must be injected"
-        ):
-            _resolve_connector(_source_config())
+    """Test connector resolution via the required injected factory."""
 
     def test_delegates_to_injected_factory(self):
         source_config = _source_config()

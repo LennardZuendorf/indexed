@@ -146,7 +146,7 @@ def _init_app(
 
     from indexed_config import ConfigService
 
-    from .bootstrap import register_app_config
+    from .composition import register_app_config
 
     register_app_config(
         ConfigService.instance(mode_override=ctx.obj.get("mode_override"))
@@ -323,27 +323,27 @@ def __getattr__(name: str):
 
         return DEFAULT_INDEXER
     elif name == "svc_create":
-        from core.v1.engine.services import create
+        from core.v1.engine import create
 
         return create
     elif name == "svc_update":
-        from core.v1.engine.services import update
+        from core.v1.engine import update
 
         return update
     elif name == "svc_clear":
-        from core.v1.engine.services import clear
+        from core.v1.engine import clear
 
         return clear
     elif name == "svc_search":
-        from core.v1.engine.services import search
+        from core.v1.engine import search
 
         return search
     elif name == "svc_status":
-        from core.v1.engine.services import status
+        from core.v1.engine import status
 
         return status
     elif name == "SourceConfig":
-        from core.v1.engine.services import SourceConfig
+        from core.v1.engine import SourceConfig
 
         return SourceConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

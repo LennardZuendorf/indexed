@@ -9,14 +9,14 @@ from unittest.mock import MagicMock, patch
 
 from protocols import ConnectorRun, Manifest
 
-from indexed.connector_wiring import (
+from indexed.composition import (
     make_cache_decorator_factory,
     make_connector_factory,
     make_manifest_factory,
     wiring_kwargs_for_create,
     wiring_kwargs_for_update,
 )
-from indexed.runtime import CliContext
+from indexed.composition import CliContext
 
 
 def _manifest(connector_type: str = "jira") -> Manifest:
@@ -43,7 +43,7 @@ def test_make_connector_factory_delegates_to_build_connector() -> None:
     ctx.connector_registry = {"jira": MagicMock()}
     cfg = MagicMock()
 
-    with patch("indexed.connector_wiring.build_connector", return_value="conn") as mock:
+    with patch("indexed.composition.build_connector", return_value="conn") as mock:
         factory = make_connector_factory(ctx)
         assert factory(cfg) == "conn"
         mock.assert_called_once_with(cfg, ctx.config_service, ctx.connector_registry)

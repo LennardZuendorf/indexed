@@ -712,13 +712,12 @@ class TestCreateModuleGetattr:
         assert result == "flat"
 
     def test_source_config_lazy_load_returns_class(self):
-        import sys
+        import core.v1.engine as engine_facade
         import indexed.knowledge.commands.create as create_mod
 
         MockSourceConfig = Mock()
-        mock_services = Mock()
-        mock_services.SourceConfig = MockSourceConfig
-        with patch.dict(sys.modules, {"core.v1.engine.services": mock_services}):
+        # create.py resolves SourceConfig through the core facade (core.v1.engine).
+        with patch.object(engine_facade, "SourceConfig", MockSourceConfig, create=True):
             result = create_mod.__getattr__("SourceConfig")
         assert result is MockSourceConfig
 
@@ -1072,13 +1071,14 @@ class TestBuildOutlineSourceConfig:
 
         MockSourceConfig = Mock(return_value=Mock())
         MockIndexer = "flat"
+        import core.v1.engine as engine_facade
 
-        with patch.dict(
-            sys.modules,
-            {
-                "core.v1.engine.services": Mock(SourceConfig=MockSourceConfig),
-                "core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer),
-            },
+        with (
+            patch.object(engine_facade, "SourceConfig", MockSourceConfig, create=True),
+            patch.dict(
+                sys.modules,
+                {"core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer)},
+            ),
         ):
             create_outline(**self._default_kwargs)
 
@@ -1086,12 +1086,12 @@ class TestBuildOutlineSourceConfig:
         assert build_fn is not None
 
         present = {"url": "https://app.getoutline.com", "collection_ids": ["col-1"]}
-        with patch.dict(
-            sys.modules,
-            {
-                "core.v1.engine.services": Mock(SourceConfig=MockSourceConfig),
-                "core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer),
-            },
+        with (
+            patch.object(engine_facade, "SourceConfig", MockSourceConfig, create=True),
+            patch.dict(
+                sys.modules,
+                {"core.v1.constants": Mock(DEFAULT_INDEXER=MockIndexer)},
+            ),
         ):
             build_fn(present, "my-outline")
 

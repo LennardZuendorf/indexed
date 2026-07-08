@@ -363,3 +363,36 @@ port is a different origin for credential purposes; fail closed.
   `documents_collection_creator.py` imported progress types upward from
   `core.v1.engine.services.models`; point it straight at `protocols` (the leaf)
   instead. That removes the cycle the old lazy imports worked around.
+
+---
+
+## Facade + composition switchover (foundation/8, 2026-07-08)
+
+- **One `from_manifest` per connector kills core's per-type branches.** The
+  update path was two injected factories + an `if connector_type == "localFiles"`
+  branch in core + a 180-line app-layer `_populate_*`/`os.environ` apparatus. It
+  collapses to a single `ManifestFactory = Callable[[Manifest, str], ConnectorRun]`
+  that dispatches to `registry[m.reader.type].from_manifest(...)`. Core calls it
+  once for every source. The empty-query R6.5 fix and the Outline cutoff (an
+  in-memory overlay now, not an `os.environ` side-channel) live inside each
+  connector's `from_manifest`.
+- **The core facade at `core/v1/engine/__init__.py` uses lazy `__getattr__`, not
+  eager re-exports.** Eager `from .services import ...` in the package `__init__`
+  would fire the full services import on ANY `core.v1.engine.*` submodule import
+  and can reintroduce cold-import cycles. A `__getattr__` that imports `services`
+  on first attribute access keeps submodule imports cheap and warms in the right
+  order. The app imports core ONLY through `core.v1.engine` (never
+  `services`/`factories`/`core`), so a v2 engine is a drop-in behind the same
+  names over the same disk format (R2).
+- **`composition.py` is the single wiring site** — it folds in the old
+  `bootstrap.py` + `runtime.py` + `connector_wiring.py` and hands the facade two
+  REQUIRED callables (`connector_factory` create-time, `manifest_factory`
+  update-time). No `Callable | None` + `missing_wiring_error` on the happy path;
+  omission is a `TypeError` at the call site. Keep connector/core imports lazy in
+  it for <1s startup.
+- **Mocking `sys.modules["core.v1.engine.services"]` no longer intercepts app
+  imports that go through the facade.** `from core.v1.engine import X` resolves
+  via the engine package's `services` attribute (set once the real module is
+  imported), so a sys.modules patch is order-dependent and false-passes in
+  isolation. Patch the facade attribute instead:
+  `patch.object(core.v1.engine, "X", mock, create=True)`.

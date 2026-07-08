@@ -112,7 +112,7 @@ def remove(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import remove as this_module
-    from indexed.runtime import resolve_collections_context
+    from indexed.composition import resolve_collections_context
 
     clear_svc = this_module.clear
     inspect_svc = this_module.inspect
@@ -250,15 +250,15 @@ def remove(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "clear":
-        from core.v1.engine.services import clear
+        from core.v1.engine import clear
 
         return clear
     elif name == "inspect":
-        from core.v1.engine.services import inspect
+        from core.v1.engine import inspect
 
         return inspect
     elif name == "collection_exists":
-        from core.v1.engine.services import collection_exists
+        from core.v1.engine import collection_exists
 
         return collection_exists
     elif name == "setup_root_logger":

@@ -301,6 +301,17 @@ Earned defaults — apply without being asked.
   "mismatch = mypy error" property with `MYPYPATH=packages/indexed-protocols/src`
   — a standalone mypy run treats unresolved `protocols` as `Any` and false-passes.
   Full detail in `.spec/lessons.md`.
+- **Core is consumed only through the `core.v1.engine` facade; `composition.py`
+  is the only wiring site.** The facade (`engine/__init__.py`, lazy `__getattr__`)
+  re-exports create/update/search/inspect/status/clear/collection_exists + models;
+  the app never imports `services`/`factories`/`core` directly (a v2 engine is a
+  drop-in). `apps/indexed/.../composition.py` folds in the old bootstrap+runtime+
+  connector_wiring and hands the facade two REQUIRED callables (`connector_factory`,
+  `manifest_factory`); no `| None` + `missing_wiring_error` on the happy path. Each
+  connector's `from_manifest` owns its manifest keys, so core has no per-type
+  branches. To mock a facade-resolved symbol in tests, patch the facade attribute
+  (`patch.object(core.v1.engine, "X", ...)`), not `sys.modules[...services]`.
+  Full detail in `.spec/lessons.md`.
 
 ---
 

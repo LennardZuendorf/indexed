@@ -527,5 +527,5 @@ foundation/9 is independent after foundation/1.
 | foundation/5 | DONE |
 | foundation/6 | DONE |
 | foundation/7 | DONE |
-| foundation/8 | NOT STARTED |
+| foundation/8 | DONE |
 | foundation/9 | NOT STARTED |
