@@ -371,19 +371,6 @@ class InspectService:
         return infos
 
 
-# Global singleton for functional interface (lazily initialized)
-_default_service: Optional[InspectService] = None
-
-
-def _get_service(collections_path: Optional[str] = None) -> InspectService:
-    """Get or create the default InspectService instance."""
-    global _default_service
-    if _default_service is None or collections_path is not None:
-        # Create new service with specified path, or use default
-        _default_service = InspectService(collections_path=collections_path)
-    return _default_service
-
-
 def status(
     collection_names: Optional[List[str]] = None,
     *,
@@ -421,7 +408,7 @@ def status(
         This function uses a global singleton InspectService instance, so manifest
         data will be cached across multiple calls within the same process.
     """
-    service = _get_service(collections_path)
+    service = InspectService(collections_path=collections_path)
     return service.status(
         collection_names=collection_names,
         include_index_size=include_index_size,
@@ -464,7 +451,7 @@ def inspect(
     Note:
         This function uses a global singleton InspectService instance.
     """
-    service = _get_service(collections_path)
+    service = InspectService(collections_path=collections_path)
     return service.inspect(
         collection_names=collection_names,
         include_index_size=include_index_size,

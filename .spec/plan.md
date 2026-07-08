@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-06
+updated: 2026-07-08
 ---
 
 # Development Plan: indexed
@@ -39,7 +39,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
 | 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `packages/indexed-protocols/`, `apps/indexed/.../bootstrap.py`, `runtime.py`, `scripts/check_import_graph.py` |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
-| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | 📋 PLANNED | [features/foundation/](features/foundation/) |
+| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `apps/indexed/.../composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code + mechanism tests deleted; CLI/config chrome + process apparatus shrunk — R1–R5 green | 📋 PLANNED | [features/simplify/](features/simplify/) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
@@ -49,31 +49,50 @@ Only the thin-command pattern (extract `knowledge/services/`, shrink oversized
 command files) remains open — tracked as [issue #119](https://github.com/LennardZuendorf/indexed/issues/119), not a spec backlog item.
 
 **Feature 11 detail:** Shipped 2026-07-03 — `indexed-protocols` leaf package;
-core no longer depends on connectors; `bootstrap.py` + `runtime.py` composition
-root; `resolve_collections_context()` storage parity for CLI/MCP; explicit config
+core no longer depends on connectors; app composition root (then `bootstrap.py` +
+`runtime.py`, folded into `composition.py` by Feature 13);
+`resolve_collections_context()` storage parity for CLI/MCP; explicit config
 registration; unified `read_for_mode`; shared HTTP retry policy; dead-code removal;
 import-graph CI gate. Unblocks v2 core/connectors rewrite.
+
+**Feature 13 detail:** Shipped 2026-07-08 — every audited bug fixed behind the
+foundation/1 characterization harness (foundation/2–6); typed data contracts in
+the `protocols` leaf (`Manifest`/`ConvertedDocument`/`Chunk`/`CollectionSearchResult`,
+byte-stable round-trip) + corrected connector protocols (foundation/7); the
+`core.v1.engine` facade (single core surface, v2 swap seam) + one `composition.py`
+wiring site with two required callables, connector `from_manifest` replacing the
+per-source/`localFiles` branches (foundation/8); read-mostly config verified
+byte-stable across updates + both functional-wrapper singletons removed
+(foundation/9). Two config tech-refinements are deferred follow-ups (see
+[features/foundation/plan.md](features/foundation/plan.md) foundation/9 note):
+the `ConfigService.instance()` → `get_config()/reload()` rename and the path/mode
+resolver consolidation — structure-only, R3 does not depend on them. Unblocks
+Feature 14 (Simplify).
 
 ---
 
 ## Current Focus
 
-**Feature 13: Foundation** then **Feature 14: Simplify** — the 2026-07-06 full
-audit (main + app/packages/overengineering passes + a 5-agent correctness hunt)
-found ~3k LOC of sound engine carrying ~18k LOC of packaging/wiring/chrome, plus
-~33 confirmed behavioral bugs — several corruption/data-loss/secret-leak class
-(search silently truncates most content; deletions-only update orphans FAISS
-vectors; `config set null` zeroes `config.toml`; secrets written to TOML).
+**Feature 14: Simplify** — **Feature 13 Foundation is DONE** (2026-07-08): every
+audited bug is fixed behind the characterization harness, typed contracts + the
+`core.v1.engine` facade + one `composition.py` wiring site are in place, and
+config is read-mostly (verified byte-stable). R1–R7 green; full suite green; mypy
+at baseline. Two config tech-refinements are deferred follow-ups (foundation/9
+note) — structure-only, not gating.
 
-Sequenced deliberately: **Foundation** ([features/foundation/](features/foundation/))
-fixes every bug behind a characterization harness (unit foundation/1 — tests
-before refactor) and lays the typed-contract + core-swap facade, all in the
-current 7-package layout. **Simplify** ([features/simplify/](features/simplify/))
-is gated on Foundation DONE and collapses to a single package, deletes dead code
-+ mechanism tests, and shrinks CLI/config/process — so deletion happens against
-correct, tested, stable contracts. The **v2 core/connectors rewrite** is gated
-on both, then swaps a module behind the facade. Issue #119 (thin commands) is
+**Simplify** ([features/simplify/](features/simplify/)) is now unblocked: collapse
+the seven-package workspace to a single package, delete dead code + mechanism
+tests, and shrink CLI/config/process chrome — deletion now happens against
+correct, tested, stable contracts. The **v2 core/connectors rewrite** is gated on
+both, then swaps a module behind the facade. Issue #119 (thin commands) is
 absorbed by simplify/4.
+
+**Deferred config cleanups (from Foundation, non-gating):** the
+`ConfigService.instance()` → cached `get_config()/reload()` API rename (~86 call
+sites) and the path/mode resolver consolidation (`WorkspaceManager`/
+`has_local_config` triplication → one home). Their functional harm was fixed in
+Feature 11 / foundation/6d; these are cosmetic/structural and can fold into
+Simplify's config work.
 
 ---
 
@@ -92,6 +111,22 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-08: Foundation (Feature 13) complete; two config cleanups deferred
+**Decision:** Shipped foundation/7 (typed contracts in the `protocols` leaf),
+foundation/8 (the `core.v1.engine` facade + one `composition.py` wiring site +
+connector `from_manifest`, deleting `bootstrap.py`/`runtime.py`/
+`connector_wiring.py`), and foundation/9 (read-mostly config verified byte-stable
+via `tests/system/test_read_mostly_config.py`; both functional-wrapper singletons
+removed). R1–R7 green, full suite green, mypy at baseline, import-graph clean.
+**Deferred** the `ConfigService.instance()` → `get_config()/reload()` API rename
+(~86 call sites) and the path/mode resolver consolidation to a follow-up (they
+can fold into Simplify's config work). **Rationale:** the self-replacing
+singleton's only functional harm (dropping registered specs on `reset`) was
+already fixed in foundation/6d, so what remains is a cosmetic/structural change
+with no behavioral payoff; forcing an 86-site refactor as the last unit of an
+unattended run risked destabilizing a green tree for no requirement gain. R3
+(config is user-owned) is satisfied and regression-locked without it.
 
 ### 2026-07-06: Split right-sizing into Foundation + Simplify
 **Decision:** After the full audit (main + app/packages/overengineering passes)

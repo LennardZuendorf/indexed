@@ -528,4 +528,18 @@ foundation/9 is independent after foundation/1.
 | foundation/6 | DONE |
 | foundation/7 | DONE |
 | foundation/8 | DONE |
-| foundation/9 | NOT STARTED |
+| foundation/9 | DONE (R3 met; 2 tech refinements deferred) |
+
+**foundation/9 note (2026-07-08):** the R3 requirement is met and locked in —
+runtime flows never write `config.toml` (verified end-to-end by
+`tests/system/test_read_mostly_config.py`: `sha256(config.toml)` is byte-stable
+across the update seam; overrides + the dated incremental query live in the
+in-memory overlay), and both competing module-level singletons
+(`search_service._default_service`, `inspect_service._default_service`) are
+removed — the functional `search()`/`status()`/`inspect()` wrappers build a
+per-call service. **Deferred as follow-ups** (functional harm already fixed in
+foundation/6d; out of scope for an unattended run): the cosmetic
+`ConfigService.instance()` → cached `get_config()`/`reload()` API rename
+(~86 call sites) and the path/mode resolver consolidation
+(`WorkspaceManager`/`has_local_config` triplication → one home). These are
+structure-only cleanups; R3 does not depend on them.

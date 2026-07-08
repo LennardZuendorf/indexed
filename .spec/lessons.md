@@ -396,3 +396,29 @@ port is a different origin for credential purposes; fail closed.
   imported), so a sys.modules patch is order-dependent and false-passes in
   isolation. Patch the facade attribute instead:
   `patch.object(core.v1.engine, "X", mock, create=True)`.
+
+---
+
+## Read-mostly config was already achieved; verify before refactoring (foundation/9, 2026-07-08)
+
+- **R3 (config.toml is user-owned) was already true before foundation/9 started.**
+  The overlay work in foundation/4/6/8 (`set_overlay` for create-time CLI args,
+  `from_manifest` for update-time queries) means create/update/search issue ZERO
+  runtime `config_service.set()`/`save_raw()` calls — grep confirms it. ASSESS
+  before refactoring: the win here was locking the behavior in with a regression
+  test (`tests/system/test_read_mostly_config.py`: `sha256(config.toml)` byte-
+  stable across the update seam), not new code.
+- **The two functional-wrapper singletons (`search_service`/`inspect_service`
+  `_default_service`) re-created on every `collections_path`-bearing call**, so
+  the CLI/MCP never reused them anyway. Removing them and building a per-call
+  `SearchService`/`InspectService` is behavior-preserving (the real cache is
+  per-instance searcher reuse; a long-lived server holds its own instance). Tests
+  that `@patch(..._default_service)` become `@patch(...SearchService)` +
+  `mock_cls.return_value`.
+- **Scoped, not skipped: the `ConfigService.instance()` → `get_config()/reload()`
+  rename + path/mode resolver consolidation were deferred.** The self-replacing
+  singleton's actual harm (dropping registered specs on `reset`) was already
+  fixed at the root in foundation/6d; what remains is a cosmetic API rename across
+  ~86 call sites (63 in tests) and structural resolver de-duplication. An 86-site
+  refactor with no behavioral payoff is the wrong thing to attempt unattended as
+  the last unit — R3's requirement is met without it. Documented as a follow-up.
