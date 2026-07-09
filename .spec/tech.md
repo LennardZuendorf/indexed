@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-07
+updated: 2026-07-09
 ---
 
 # Tech Spec: indexed
@@ -295,28 +295,56 @@ A command file branching on business rules is a sign logic needs extraction.
 
 ### Protocols Package (`indexed-protocols`)
 
-Shared connector contracts and cross-layer DTOs live in the **leaf** workspace package
-`packages/indexed-protocols/` (import `protocols`). Engine-only DTOs stay in core.
+Shared connector contracts, **typed data models**, and cross-layer DTOs live in the
+**leaf** workspace package `packages/indexed-protocols/` (import `protocols`) — the only
+import-legal home, since `core`/`connectors`/`config` may not import one another but all
+may import `protocols`. Engine-only DTOs stay in core.
 
-- `BaseConnector`, `DocumentReader`, `DocumentConverter`, `ConnectorMetadata`
-- `SourceConfig`, `ProgressUpdate`, `ProgressCallback`, `PhasedProgressCallback`
+- **Typed data contracts** (`protocols/models.py`): `Manifest`, `ConvertedDocument`,
+  `Chunk`, `CollectionSearchResult` (+ `DocumentMatch`/`MatchedChunk`) and `SourceConfig`.
+  They round-trip today's on-disk **camelCase JSON byte-stable** (fields declared in
+  on-disk key order, dumped `by_alias=True`, `exclude_none=True`) — the on-disk v1 format
+  is the **compatibility boundary**, so a v2 engine reads the same collections. The engine
+  reads/writes these models, never `dict["stringKey"]`; a field mismatch is a mypy error,
+  not a runtime `KeyError`.
+- **Corrected connector protocols** (`protocols/connectors.py`): `DocumentReader` declares
+  exactly what the engine calls — `get_number_of_documents` / `read_all_documents` /
+  `get_reader_details`; `DocumentConverter` declares `convert`. A connector missing one is
+  a mypy error, not a runtime `AttributeError`. `BaseConnector` also declares
+  `from_manifest(manifest, config, *, storage_path) -> ConnectorRun` — each connector owns
+  its manifest keys and incremental cutoff, so **core's update path has no per-source /
+  `localFiles` branches**.
+- `SourceConfig`, `ProgressUpdate`, `ProgressCallback`, `PhasedProgressCallback` (the
+  progress callbacks are today's dual system; Feature 14 collapses them to one `Progress`
+  protocol).
 
 `indexed-core` and `indexed-connectors` both depend on `indexed-protocols`; neither
 imports the other's concrete types for wiring.
 
-### App Composition Root
+### Core Facade & App Composition Root
 
-`apps/indexed/src/indexed/bootstrap.py` is the **only** module that registers config
-specs and builds connectors from the registry:
+**Core is consumed only through the `core.v1.engine` facade** — `create` / `update` /
+`search` / `inspect` / `status` / `clear` / `collection_exists` (+ the shared models).
+The facade (`engine/__init__.py`, lazy `__getattr__`) is the **v2 core-swap seam**: a v2
+engine ships behind the same names over the same on-disk format and nothing above the
+facade changes. The app never imports `core.v1.engine.services` / `factories` / `core`
+directly (to mock a facade-resolved symbol in tests, patch the facade attribute).
 
-- `register_app_config(config_service)` — idempotent; called from the CLI callback,
-  MCP lifespan, and `resolve_collections_context` itself (so specs survive the
-  singleton reset a non-None `mode_override` forces — foundation/6d)
-- `build_connector_registry()` / `build_connector(cfg, config_service, registry)`
+**`apps/indexed/src/indexed/composition.py` is the single wiring site** — it folds in the
+removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
 
-`apps/indexed/src/indexed/runtime.py` exposes `CliContext` and
-`resolve_collections_context(mode_override)` — the **single** storage-path resolver for
-CLI and MCP. Do not revive heuristics like “prefer local if non-empty collections dir”.
+- builds the connector registry and hands the facade **two REQUIRED callables** —
+  `connector_factory` (create-time) and `manifest_factory` (update-time). No
+  `Callable | None` + `missing_wiring_error` on the happy path; a missing wiring is a
+  `TypeError`/mypy error at the call site, not a runtime guard.
+- owns `resolve_collections_context(mode_override)` — the **single** storage-path resolver
+  for CLI and MCP — and calls `register_app_config` itself, so registered config specs
+  survive the singleton reset a non-None `mode_override` forces. Do not revive heuristics
+  like "prefer local if non-empty collections dir", and do not add a per-caller defensive
+  re-register for callers that go through it.
+
+Each connector's `from_manifest` owns its manifest keys, so core carries no per-type
+branches; `composition.manifest_factory` is a one-line registry dispatch.
 
 ### Import-Graph CI
 

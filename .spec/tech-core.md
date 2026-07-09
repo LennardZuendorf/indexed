@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-07-07
+updated: 2026-07-09
 ---
 
 # Tech Branch: Core Engine (`indexed-core`)
@@ -24,6 +24,19 @@ imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectura
 | **FaissIndexer** | Vector storage + similarity search |
 | **SentenceEmbedder** | Embedding generation (lazy-loaded) |
 | **DiskPersister** | Atomic disk persistence |
+
+---
+
+## Typed Data Contracts
+
+The three on-disk shapes the engine moves — the collection **manifest**, each
+**converted document + chunk**, and each per-collection **search result** — are typed
+Pydantic models in the `protocols` leaf (`protocols/models.py`: `Manifest`,
+`ConvertedDocument`, `Chunk`, `CollectionSearchResult`). The engine reads and writes them
+by model, never by `dict["stringKey"]`, so a field rename is a mypy error rather than a
+runtime `KeyError`. `model_dump(by_alias=True, exclude_none=True)` reproduces today's
+camelCase JSON **byte-stable** — the on-disk v1 format is the compatibility boundary for
+the v2 core swap. Full contract: [tech.md](tech.md) § Protocols Package.
 
 ---
 

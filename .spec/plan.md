@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-08
+updated: 2026-07-09
 ---
 
 # Development Plan: indexed
@@ -63,11 +63,11 @@ byte-stable round-trip) + corrected connector protocols (foundation/7); the
 wiring site with two required callables, connector `from_manifest` replacing the
 per-source/`localFiles` branches (foundation/8); read-mostly config verified
 byte-stable across updates + both functional-wrapper singletons removed
-(foundation/9). Two config tech-refinements are deferred follow-ups (see
-[features/foundation/plan.md](features/foundation/plan.md) foundation/9 note):
-the `ConfigService.instance()` → `get_config()/reload()` rename and the path/mode
-resolver consolidation — structure-only, R3 does not depend on them. Unblocks
-Feature 14 (Simplify).
+(foundation/9). Two config tech-refinements are deferred follow-ups (foundation/9
+note, shipped in PR #153): the `ConfigService.instance()` → `get_config()/reload()`
+rename and the path/mode resolver consolidation — structure-only, R3 does not depend
+on them; both are folded into Feature 14 Simplify (simplify/4). Unblocks Feature 14
+(Simplify).
 
 ---
 
@@ -112,6 +112,24 @@ over schedule.
 
 ## Decision Log
 
+### 2026-07-09: Retire the Foundation feature spec
+**Decision:** Feature 13 Foundation is DONE/merged (PR #153), so its
+`.spec/features/foundation/` folder is retired. The still-owed architectural rules
+were promoted into root tech specs — typed data contracts and the corrected connector
+protocol/`from_manifest` into [tech.md](tech.md) § Protocols Package +
+[tech-core.md](tech-core.md) § Typed Data Contracts; the `core.v1.engine` facade +
+single `composition.py` wiring site into [tech.md](tech.md) § Core Facade & App
+Composition Root (replacing the stale `bootstrap.py`/`runtime.py` description); the
+corrected protocol into [tech-connectors.md](tech-connectors.md) § Connector Protocol.
+The full 2026-07-06 bug catalogue was **not** re-promoted (all ~40 defects are fixed
+and it is resolved backlog — root stays high-level with no backlog); it lives in PR #153
+and git history, with behavior regression-guarded by `tests/characterization/`. The
+single-`Progress`-protocol rule was deliberately **not** promoted: the dual
+callback system still exists and its collapse is a Feature 14 (simplify/2) target, so
+promoting it now would be spec-drift ahead of code. **Rationale:** a completed feature
+folder must not linger; content that outlives the branch belongs in root specs, and
+resolved backlog belongs in history, not the spec.
+
 ### 2026-07-08: Foundation (Feature 13) complete; two config cleanups deferred
 **Decision:** Shipped foundation/7 (typed contracts in the `protocols` leaf),
 foundation/8 (the `core.v1.engine` facade + one `composition.py` wiring site +
@@ -140,8 +158,10 @@ Foundation is gated first; Simplify is gated on Foundation DONE; the v2 rewrite
 on both. Per user decision, architecture lands in the current 7-package layout
 and the workspace collapse is deferred to Simplify. Tests-before-refactor is
 enforced structurally: foundation/1 is the harness that gates every refactor
-unit. Evidence + full bug catalogue: [features/foundation/tech-bugfixes.md](features/foundation/tech-bugfixes.md);
-size inventory: [features/simplify/research.md](features/simplify/research.md).
+unit. Evidence: the full 2026-07-06 bug catalogue (~40 defects, all fixed) shipped in
+the Foundation merge (PR #153) and remains in git history; the behavior it locked in is
+regression-guarded by `tests/characterization/`. Size inventory:
+[features/simplify/research.md](features/simplify/research.md).
 **Rationale:** A 3-star personal project doesn't need a 7-package workspace,
 1.17× tests-to-source, or 15k LOC of process apparatus; a v2 built on stringly
 dict contracts would re-rot. Typed contracts + one facade make the core swap

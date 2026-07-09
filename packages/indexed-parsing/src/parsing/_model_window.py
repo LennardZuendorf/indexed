@@ -1,8 +1,8 @@
 """Real token-window helpers shared by the chunkers in this package.
 
 Chunkers must never emit a chunk that tokenizes to more than the embedding
-model's real window — see bugs A1/A3/A4 in
-``.spec/features/foundation/tech-bugfixes.md``. The embedder that owns the
+model's real window — see the chunk-size invariant in
+``.spec/tech-core.md``. The embedder that owns the
 authoritative value (``core.v1...SentenceEmbedder.max_seq_length``) lives in
 the core engine package, which this package must not import (see this
 package's ``CLAUDE.md``: "MUST NOT import core engine"). So this module loads

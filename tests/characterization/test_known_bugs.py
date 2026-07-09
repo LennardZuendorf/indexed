@@ -1,7 +1,8 @@
 """Characterization: red bug-specs for every CONFIRMED audit bug (foundation/1).
 
 One ``xfail(strict=True)`` spec per CONFIRMED defect in the foundation bug
-catalogue (``.spec/features/foundation/tech-bugfixes.md``). Each spec asserts the
+catalogue (the 2026-07-06 audit; shipped in PR #153, retained in git history).
+Each spec asserts the
 DESIRED (correct) behavior, so it FAILS today and will flip to a hard failure
 (``xpassed`` under ``strict=True``) the moment the bug is fixed in a later unit —
 turning the whole file into a live checklist for the foundation fix work.
