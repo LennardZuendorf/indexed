@@ -2,7 +2,7 @@
 # CodeRabbit configuration — https://docs.coderabbit.ai/reference/configuration
 reviews:
   path_filters:
-    # Vendored agent tooling — installed from upstream via `npx skills` and the
-    # Claude Code plugin system, pinned in skills-lock.json. Not authored here.
+    # Agent tooling — unvendored (gitignored); installed from upstream via
+    # `npx skills`, pinned in skills-lock.json. Not authored here.
     - "!.agents/**"
     - "!.claude/**"
