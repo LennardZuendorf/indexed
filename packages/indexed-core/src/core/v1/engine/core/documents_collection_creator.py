@@ -1,5 +1,6 @@
 import os
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -52,9 +53,9 @@ class DocumentCollectionCreator:
         document_indexers,
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
-        indexing_batch_size=500_000,
         phased_progress: PhasedProgressCallback = None,
         explicit_deletions: list[str] | None = None,
+        post_run: Callable[[], None] | None = None,
     ):
         self.operation_type = operation_type
         self.collection_name = collection_name
@@ -66,20 +67,22 @@ class DocumentCollectionCreator:
         self.document_converter = document_converter
         self.document_indexers = document_indexers
         self.persister = persister
-        self.indexing_batch_size = indexing_batch_size
         self.phased_progress = phased_progress
         self.explicit_deletions = explicit_deletions or []
+        self.post_run = post_run
 
     def run(self):
         if self.operation_type == OPERATION_TYPE.CREATE:
             self.__create_collection()
-            return
-
-        if self.operation_type == OPERATION_TYPE.UPDATE:
+        elif self.operation_type == OPERATION_TYPE.UPDATE:
             self.__update_collection()
-            return
+        else:
+            raise ValueError(f"Unknown operation type: {self.operation_type}")
 
-        raise ValueError(f"Unknown operation type: {self.operation_type}")
+        # Post-run hook (e.g. persist ChangeTracker state) runs only after a
+        # successful create/update — an exception above propagates before this.
+        if self.post_run is not None:
+            self.post_run()
 
     def __create_collection(self):
         # B4: build the new collection into an aside (staging) directory and
@@ -294,75 +297,74 @@ class DocumentCollectionCreator:
     ):
         last_modified_document_time = None
 
-        for batch_document_ids in self.__batch_items(
-            document_ids, self.indexing_batch_size
-        ):
-            items_to_index = []
-            index_item_ids = []
+        # Single pass over the full document list: the whole list is the one
+        # and only batch (embedding is batched separately inside index_texts).
+        items_to_index = []
+        index_item_ids = []
 
-            for document_id in batch_document_ids:
-                # B4: physical reads target the storage location currently in
-                # use (the staging dir mid-CREATE, or the real folder for an
-                # UPDATE); the path recorded in the mapping must be the FINAL
-                # collection name so search still resolves it after the
-                # build-aside rename-swap.
-                physical_document_path = (
-                    f"{self._storage_name}/documents/{document_id}.json"
+        for document_id in document_ids:
+            # B4: physical reads target the storage location currently in
+            # use (the staging dir mid-CREATE, or the real folder for an
+            # UPDATE); the path recorded in the mapping must be the FINAL
+            # collection name so search still resolves it after the
+            # build-aside rename-swap.
+            physical_document_path = (
+                f"{self._storage_name}/documents/{document_id}.json"
+            )
+            stored_document_path = (
+                f"{self.collection_name}/documents/{document_id}.json"
+            )
+
+            converted_document = _json_loads(
+                self.persister.read_text_file(physical_document_path)
+            )
+
+            modified_document_time = datetime.fromisoformat(
+                converted_document["modifiedTime"]
+            )
+            if (
+                last_modified_document_time is None
+                or last_modified_document_time < modified_document_time
+            ):
+                last_modified_document_time = modified_document_time
+
+            for chunk_number in range(0, len(converted_document["chunks"])):
+                last_index_item_id += 1
+
+                items_to_index.append(
+                    converted_document["chunks"][chunk_number]["indexedData"]
                 )
-                stored_document_path = (
-                    f"{self.collection_name}/documents/{document_id}.json"
-                )
+                index_item_ids.append(last_index_item_id)
 
-                converted_document = _json_loads(
-                    self.persister.read_text_file(physical_document_path)
-                )
+                index_mapping[last_index_item_id] = {
+                    "documentId": converted_document["id"],
+                    "documentUrl": converted_document["url"],
+                    "documentPath": stored_document_path,
+                    "chunkNumber": chunk_number,
+                }
 
-                modified_document_time = datetime.fromisoformat(
-                    converted_document["modifiedTime"]
-                )
-                if (
-                    last_modified_document_time is None
-                    or last_modified_document_time < modified_document_time
-                ):
-                    last_modified_document_time = modified_document_time
-
-                for chunk_number in range(0, len(converted_document["chunks"])):
-                    last_index_item_id += 1
-
-                    items_to_index.append(
-                        converted_document["chunks"][chunk_number]["indexedData"]
-                    )
-                    index_item_ids.append(last_index_item_id)
-
-                    index_mapping[last_index_item_id] = {
-                        "documentId": converted_document["id"],
-                        "documentUrl": converted_document["url"],
-                        "documentPath": stored_document_path,
-                        "chunkNumber": chunk_number,
-                    }
-
-                    if converted_document["id"] not in reverse_index_mapping:
-                        reverse_index_mapping[converted_document["id"]] = []
-                    reverse_index_mapping[converted_document["id"]].append(
-                        last_index_item_id
-                    )
-
-            # Start embedding phase with chunk-level tracking
-            if self.phased_progress:
-                self.phased_progress.start_phase(
-                    "Generating Embeddings", total=len(items_to_index)
+                if converted_document["id"] not in reverse_index_mapping:
+                    reverse_index_mapping[converted_document["id"]] = []
+                reverse_index_mapping[converted_document["id"]].append(
+                    last_index_item_id
                 )
 
-            embedding_progress = None
-            if self.phased_progress:
+        # Start embedding phase with chunk-level tracking
+        if self.phased_progress:
+            self.phased_progress.start_phase(
+                "Generating Embeddings", total=len(items_to_index)
+            )
 
-                def embedding_progress(n: int) -> None:
-                    self.phased_progress.advance("Generating Embeddings", amount=n)
+        embedding_progress = None
+        if self.phased_progress:
 
-            for indexer in self.document_indexers:
-                indexer.index_texts(
-                    index_item_ids, items_to_index, progress_callback=embedding_progress
-                )
+            def embedding_progress(n: int) -> None:
+                self.phased_progress.advance("Generating Embeddings", amount=n)
+
+        for indexer in self.document_indexers:
+            indexer.index_texts(
+                index_item_ids, items_to_index, progress_callback=embedding_progress
+            )
 
         # Save in native FAISS format for memory-mapped loading
         self.__persist_faiss_indexes()
@@ -381,23 +383,22 @@ class DocumentCollectionCreator:
     def __remove_documents_from_index(
         self, document_ids, index_mapping, reverse_index_mapping
     ):
-        for batch_document_ids in self.__batch_items(
-            document_ids, self.indexing_batch_size
-        ):
-            index_ids_to_remove = []
+        # Single pass over the full document list (the whole list is the one
+        # and only batch).
+        index_ids_to_remove = []
 
-            for document_id in batch_document_ids:
-                if document_id in reverse_index_mapping:
-                    document_index_ids_to_remove = reverse_index_mapping[document_id]
+        for document_id in document_ids:
+            if document_id in reverse_index_mapping:
+                document_index_ids_to_remove = reverse_index_mapping[document_id]
 
-                    index_ids_to_remove.extend(document_index_ids_to_remove)
+                index_ids_to_remove.extend(document_index_ids_to_remove)
 
-                    for index_id in document_index_ids_to_remove:
-                        index_mapping.pop(str(index_id), None)
-                    del reverse_index_mapping[document_id]
+                for index_id in document_index_ids_to_remove:
+                    index_mapping.pop(str(index_id), None)
+                del reverse_index_mapping[document_id]
 
-            for indexer in self.document_indexers:
-                indexer.remove_ids(np.array(index_ids_to_remove))
+        for indexer in self.document_indexers:
+            indexer.remove_ids(np.array(index_ids_to_remove))
 
     def __remove_explicit_deletions(self, doc_ids: list[str]) -> None:
         """Remove explicitly deleted documents (by document ID) from the index.
@@ -458,9 +459,6 @@ class DocumentCollectionCreator:
 
     def __build_index_base_path(self, indexer):
         return f"{self._storage_name}/indexes/{indexer.get_name()}"
-
-    def __batch_items(self, items, batch_size):
-        return [items[i : i + batch_size] for i in range(0, len(items), batch_size)]
 
     def __create_manifest_file(
         self,

@@ -7,7 +7,6 @@ path for every source, no per-connector-type branches (the connector owns its
 manifest logic in ``from_manifest``).
 """
 
-from collections.abc import Callable
 import json
 
 from pydantic import ValidationError
@@ -92,7 +91,10 @@ def _create_collection_updater(
         for indexer in manifest.indexers
     ]
 
-    creator = DocumentCollectionCreator(
+    # The connector's optional post_run hook (persists ChangeTracker state) is
+    # threaded straight into the creator, whose run() invokes it after a
+    # successful update — no wrapper needed.
+    return DocumentCollectionCreator(
         collection_name=collection_name,
         document_reader=run.reader,
         document_converter=run.converter,
@@ -101,26 +103,5 @@ def _create_collection_updater(
         operation_type=OPERATION_TYPE.UPDATE,
         phased_progress=phased_progress,
         explicit_deletions=run.deletions,
+        post_run=run.post_run,
     )
-
-    if run.post_run is not None:
-        return _UpdatingCollectionCreator(creator, run.post_run)
-    return creator
-
-
-class _UpdatingCollectionCreator:
-    """Thin wrapper: runs a DocumentCollectionCreator then calls a post-run hook.
-
-    Used to persist ChangeTracker state after a successful update without
-    modifying the DocumentCollectionCreator interface.
-    """
-
-    def __init__(
-        self, creator: DocumentCollectionCreator, post_run: Callable[[], None]
-    ) -> None:
-        self._creator = creator
-        self._post_run = post_run
-
-    def run(self) -> None:
-        self._creator.run()
-        self._post_run()
