@@ -5,9 +5,6 @@ from unittest.mock import Mock, patch
 import pytest
 from requests.exceptions import HTTPError
 
-from connectors.confluence.confluence_cloud_document_reader import (
-    ConfluenceCloudDocumentReader,
-)
 from connectors.confluence.confluence_document_reader import (
     ConfluenceAPIError,
     ConfluenceDocumentReader,
@@ -244,31 +241,3 @@ class TestConfluenceReaderRetry:
         assert exc_info.value.status_code == 404
         assert mock_get.call_count == 1
         mock_sleep.assert_not_called()
-
-    @patch("connectors.confluence.confluence_cloud_document_reader.requests.get")
-    @patch("time.sleep")
-    def test_cloud_429_retries(self, mock_sleep: Mock, mock_get: Mock) -> None:
-        reader = ConfluenceCloudDocumentReader(
-            base_url="https://example.atlassian.net",
-            query="type=page",
-            email="user@example.com",
-            api_token="token",
-            number_of_retries=3,
-            retry_delay=1,
-        )
-        url = "https://example.atlassian.net/wiki/rest/api/search"
-        rate_limited = _http_error_response(429, url, "Rate limited")
-
-        success = Mock()
-        success.ok = True
-        success.status_code = 200
-        success.raise_for_status.return_value = None
-        success.json.return_value = {"results": [], "size": 0, "_links": {}}
-
-        mock_get.side_effect = [rate_limited, success]
-
-        result = reader._ConfluenceCloudDocumentReader__request(url, {"limit": 1})
-
-        assert result == {"results": [], "size": 0, "_links": {}}
-        assert mock_get.call_count == 2
-        mock_sleep.assert_called_once_with(1)

@@ -283,7 +283,7 @@ class ConfluenceCloudConnector:
     Requires email and API token for authentication.
 
     Attributes:
-        reader: ConfluenceCloudDocumentReader instance for API calls
+        reader: AsyncConfluenceCloudDocumentReader instance for API calls
         converter: ConfluenceCloudDocumentConverter instance for format conversion
 
     Examples:

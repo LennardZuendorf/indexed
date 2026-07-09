@@ -5,15 +5,46 @@ instances with many pages containing comments.
 """
 
 import asyncio
+import re
+import urllib.parse
 from typing import Optional
 
 import httpx
 from loguru import logger
 
-from .confluence_cloud_document_reader import (
-    ConfluenceCloudAPIError,
-    ConfluenceCloudDocumentReader,
-)
+
+class ConfluenceCloudAPIError(Exception):
+    """Custom exception for Confluence Cloud API errors with detailed information."""
+
+    def __init__(self, status_code: int, reason: str, message: str, url: str):
+        """
+        Initialize ConfluenceCloudAPIError with HTTP details for a failed Confluence Cloud API request.
+
+        Parameters:
+            status_code (int): HTTP status code returned by the API.
+            reason (str): HTTP reason phrase or short description of the error.
+            message (str): Detailed error message extracted from the response body or fallback text.
+            url (str): The request URL that produced the error.
+        """
+        self.status_code = status_code
+        self.reason = reason
+        self.message = message
+        self.url = url
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        """
+        Format a multi-line string that describes this Confluence Cloud API error.
+
+        Returns:
+            str: A human-readable message containing the HTTP status code and reason, the request URL, and the API error message.
+        """
+        return (
+            f"Confluence Cloud API Error ({self.status_code} {self.reason})\n"
+            f"  URL: {self.url}\n"
+            f"  Message: {self.message}"
+        )
+
 
 # Window size for concurrent comment fetching to limit memory usage
 _COMMENT_FETCH_WINDOW = 100
@@ -55,7 +86,7 @@ class AsyncConfluenceCloudDocumentReader:
             )
 
         self.base_url = base_url
-        self.query = ConfluenceCloudDocumentReader.build_page_query(query)
+        self.query = self.build_page_query(query)
         self.email = email
         self.api_token = api_token
         self.batch_size = batch_size
@@ -117,6 +148,36 @@ class AsyncConfluenceCloudDocumentReader:
             "readAllComments": self.read_all_comments,
         }
 
+    @staticmethod
+    def build_page_query(user_query):
+        """
+        Ensure a Confluence CQL query targets pages by adding a `type=page` clause when necessary.
+
+        Parameters:
+            user_query (str): The user-supplied CQL fragment. May be empty or already include a `type=page` clause.
+
+        Returns:
+            str: The original `user_query` if it already contains a `type=page` clause, otherwise a query prefixed with `type=page AND (...)`. If `user_query` is empty, returns `"type=page"`.
+        """
+        if not user_query:
+            return "type=page"
+
+        # Check if user query already contains type=page (with various spacing)
+        if re.search(r"\btype\s*=\s*page\b", user_query, re.IGNORECASE):
+            return user_query
+
+        return f"type=page AND ({user_query})"
+
+    @staticmethod
+    def parse_url_params(url):
+        parsed = urllib.parse.urlparse(url)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        return (
+            {key: values for key, values in query_params.items()}
+            if query_params
+            else {}
+        )
+
     def _read_pages_sync(self):
         """Read pages using sync requests (pagination is sequential by nature)."""
         import requests
@@ -172,7 +233,7 @@ class AsyncConfluenceCloudDocumentReader:
             if start_at >= total:
                 break
 
-            cursor = ConfluenceCloudDocumentReader.parse_url_params(
+            cursor = self.parse_url_params(
                 result.get("_links", {}).get("next", "")
             ).get("cursor", [None])[0]
 

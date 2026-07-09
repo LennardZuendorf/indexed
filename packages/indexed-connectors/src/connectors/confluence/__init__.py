@@ -2,7 +2,7 @@
 
 from .connector import ConfluenceConnector, ConfluenceCloudConnector
 from .confluence_document_reader import ConfluenceAPIError
-from .confluence_cloud_document_reader import ConfluenceCloudAPIError
+from .async_confluence_cloud_reader import ConfluenceCloudAPIError
 from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 
 __all__ = [

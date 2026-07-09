@@ -286,7 +286,6 @@ indexed-connectors/
 │       ├── connector.py         # ConfluenceConnector, ConfluenceCloudConnector
 │       ├── confluence_document_reader.py
 │       ├── confluence_document_converter.py
-│       ├── confluence_cloud_document_reader.py
 │       ├── confluence_cloud_document_converter.py
 │       └── schema.py
 │
