@@ -280,9 +280,10 @@ class TestSearchService:
 class TestSearchFunctionalInterface:
     """Test functional search interface."""
 
-    @patch("core.v1.engine.services.search_service._default_service")
-    def test_search_function_delegates_to_service(self, mock_service):
-        """Test that search function delegates to default service."""
+    @patch("core.v1.engine.services.search_service.SearchService")
+    def test_search_function_delegates_to_service(self, mock_service_cls):
+        """Test that search function delegates to a per-call service."""
+        mock_service = mock_service_cls.return_value
         mock_service.search.return_value = {"test": "result"}
 
         # Create test config
@@ -318,9 +319,10 @@ class TestSearchFunctionalInterface:
             progress_callback=None,
         )
 
-    @patch("core.v1.engine.services.search_service._default_service")
-    def test_search_function_with_defaults(self, mock_service):
+    @patch("core.v1.engine.services.search_service.SearchService")
+    def test_search_function_with_defaults(self, mock_service_cls):
         """Test search function with default parameters."""
+        mock_service = mock_service_cls.return_value
         mock_service.search.return_value = {}
 
         # Call with minimal parameters

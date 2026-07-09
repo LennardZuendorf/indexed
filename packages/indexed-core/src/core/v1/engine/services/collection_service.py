@@ -8,26 +8,24 @@ orchestration of readers, converters, and persisters to build searchable collect
 from collections.abc import Callable
 from typing import Any, List, Optional
 
-from indexed_config.errors import missing_wiring_error
 from protocols import BaseConnector
 
 from .models import SourceConfig, ProgressCallback
 from core.v1.engine.persisters.disk_persister import DiskPersister
-from core.v1.engine.factories._types import (
-    LocalFilesUpdateFactory,
-    ManifestConnectorFactory,
-)
+from core.v1.engine.factories._types import ManifestFactory
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
 from core.v1.config_models import get_default_collections_path, get_default_caches_path
 
 
 def _resolve_connector(
     cfg: SourceConfig,
-    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
+    connector_factory: Callable[[SourceConfig], BaseConnector],
 ) -> BaseConnector:
-    """Resolve connector from injection (app composition root owns wiring)."""
-    if connector_factory is None:
-        raise missing_wiring_error("connector_factory")
+    """Resolve connector from the required injected factory.
+
+    ``composition`` is the single wiring site; the factory is always supplied,
+    so there is no ``| None`` / runtime ``missing_wiring_error`` on this path.
+    """
     return connector_factory(cfg)
 
 
@@ -85,7 +83,8 @@ def _create_one(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
-    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
+    *,
+    connector_factory: Callable[[SourceConfig], BaseConnector],
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
     """Create a single collection."""
@@ -116,8 +115,8 @@ def _update_one(
     progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
-    manifest_connector_factory: ManifestConnectorFactory | None = None,
-    local_files_update_factory: LocalFilesUpdateFactory | None = None,
+    *,
+    manifest_factory: ManifestFactory,
 ) -> None:
     """Update a single collection."""
     # Lazy import: keeps collection_service off the factories -> core import cycle
@@ -131,8 +130,7 @@ def _update_one(
         progress_callback,
         phased_progress=phased_progress,
         collections_path=collections_path,
-        manifest_connector_factory=manifest_connector_factory,
-        local_files_update_factory=local_files_update_factory,
+        manifest_factory=manifest_factory,
     )
     updater.run()
 
@@ -146,7 +144,7 @@ def create(
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
-    connector_factory: Callable[[SourceConfig], BaseConnector] | None = None,
+    connector_factory: Callable[[SourceConfig], BaseConnector],
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
     """Create collections from source configurations."""
@@ -176,8 +174,8 @@ def update(
     progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
-    manifest_connector_factory: ManifestConnectorFactory | None = None,
-    local_files_update_factory: LocalFilesUpdateFactory | None = None,
+    *,
+    manifest_factory: ManifestFactory,
 ) -> None:
     """Update collections from source configurations."""
     resolved_path = collections_path or str(get_default_collections_path())
@@ -187,8 +185,7 @@ def update(
             progress_callback,
             phased_progress=phased_progress,
             collections_path=resolved_path,
-            manifest_connector_factory=manifest_connector_factory,
-            local_files_update_factory=local_files_update_factory,
+            manifest_factory=manifest_factory,
         )
 
 

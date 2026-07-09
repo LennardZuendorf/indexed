@@ -5,13 +5,26 @@ and self-hosted Outline instances — the API is identical across both; only the
 base URL differs.
 """
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from protocols import ConnectorMetadata
+from protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .outline_document_converter import OutlineDocumentConverter
 from .outline_document_reader import OutlineDocumentReader
 from .schema import OUTLINE_CLOUD_URL, OutlineConfig
+
+# Optional Outline reader settings carried forward on an incremental update:
+# (manifest camelCase key, config snake_key). Only applied when present in the
+# stored manifest, so an unset key keeps the connector's own default.
+_OPTIONAL_OVERLAYS = (
+    ("collectionIds", "collection_ids"),
+    ("batchSize", "batch_size"),
+    ("ocrEnabled", "ocr_enabled"),
+    ("downloadInlineImages", "download_inline_images"),
+    ("maxConcurrentRequests", "max_concurrent_requests"),
+    ("maxAttachmentSizeMb", "max_attachment_size_mb"),
+    ("verifySsl", "verify_ssl"),
+)
 
 
 class OutlineConnector:
@@ -129,6 +142,31 @@ class OutlineConnector:
         provider = config_service.bind()  # type: ignore[attr-defined]
         cfg = provider.get(OutlineConfig)
         return cls(cfg)
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
+    ) -> ConnectorRun:
+        """Rebuild the Outline connector for an incremental update.
+
+        Carries the stored reader settings forward as in-memory overlays (R3)
+        and sets the incremental cutoff via ``modified_since`` — replacing the
+        previous ``os.environ`` side-channel — from the manifest's
+        ``lastModifiedDocumentTime`` (the raw value, matching prior behavior).
+        """
+        rd = manifest.reader.model_dump(by_alias=True)
+        ns = "sources.outline"
+        overlay = config_service.set_overlay
+
+        overlay(f"{ns}.url", rd["baseUrl"])
+        overlay(f"{ns}.include_attachments", rd.get("includeAttachments", True))
+        for manifest_key, config_key in _OPTIONAL_OVERLAYS:
+            if rd.get(manifest_key) is not None:
+                overlay(f"{ns}.{config_key}", rd[manifest_key])
+        overlay(f"{ns}.modified_since", manifest.last_modified_document_time)
+
+        connector = cls.from_config(config_service)
+        return ConnectorRun(connector.reader, connector.converter, [], None)
 
 
 __all__ = ["OutlineConnector"]

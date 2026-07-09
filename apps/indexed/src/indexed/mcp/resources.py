@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, Optional
 
 from fastmcp import Context
 
-from core.v1.engine.services import status as svc_status
+from core.v1.engine import status as svc_status
 from indexed_config.errors import IndexedError
 
 from ..errors import mcp_error_envelope

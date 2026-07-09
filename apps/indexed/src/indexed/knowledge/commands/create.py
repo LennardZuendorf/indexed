@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
-    from core.v1.engine.services import SourceConfig
+    from core.v1.engine import SourceConfig
 
 import typer
 from loguru import logger
@@ -981,7 +981,7 @@ def __getattr__(name: str):
 
         return DEFAULT_INDEXER
     elif name == "SourceConfig":
-        from core.v1.engine.services import SourceConfig
+        from core.v1.engine import SourceConfig
 
         return SourceConfig
     elif name == "LocalFilesConfig":

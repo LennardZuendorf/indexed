@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, get_args
 
 from fastmcp import Context
 
-from core.v1.engine.services import (
+from core.v1.engine import (
     SourceConfig,
     search as svc_search,
     status as svc_status,

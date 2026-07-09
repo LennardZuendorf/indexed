@@ -3,7 +3,7 @@ type: feature-tech
 feature: foundation
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-07-06
+updated: 2026-07-08
 ---
 
 # Feature: Foundation — Architecture Overview
@@ -49,11 +49,18 @@ purity is enforced on *imports* while the actual data is stringly typed:
 `Dict[str, Any]` with `"results"`/`"matchedChunks"` keys. A contract mismatch is
 invisible to mypy because every consumption point is `Any`.
 
-Foundation adds **one module** of Pydantic models. It lives at
-`packages/indexed-core/src/core/v1/models.py` (current coordinates; moves to
-`indexed/models.py` in `simplify`). The models are the compatibility boundary:
-they must serialize to **byte-identical** JSON so existing collections on disk
-keep loading.
+Foundation adds these Pydantic models to the **`protocols` leaf package**
+(`packages/indexed-protocols/src/protocols/models.py`, where `SourceConfig`
+already lives). They MUST live in the leaf, not in `core.v1`, because the
+corrected `protocols/connectors.py` references `ConvertedDocument`/`Manifest`
+and connectors return `ConvertedDocument` — and per §5's edge list
+`connectors`/`config`/`protocols` may not import `core`. Placing the models in
+`core.v1` would make those edges illegal and the import-graph check would fail.
+(The earlier draft placed them at `core/v1/models.py`; that was inconsistent
+with §5 and is corrected here — foundation/7, 2026-07-08.) In `simplify` they
+move with the rest of the leaf into the single package. The models are the
+compatibility boundary: they must serialize to **byte-identical** JSON so
+existing collections on disk keep loading.
 
 ### Manifest round-trip (the load-bearing contract)
 
@@ -77,7 +84,7 @@ The model reproduces those keys via aliases + `populate_by_name`, so it accepts
 snake_case in Python and emits camelCase to disk:
 
 ```python
-# packages/indexed-core/src/core/v1/models.py
+# packages/indexed-protocols/src/protocols/models.py
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 

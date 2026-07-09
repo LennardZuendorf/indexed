@@ -14,12 +14,36 @@ Comment depth handling:
 - Legacy readOnlyFirstLevelComments setting is automatically mapped to read_all_comments
 """
 
-from typing import ClassVar, Optional
-from protocols import ConnectorMetadata
+from typing import Any, ClassVar, Optional
+from protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
+from connectors._incremental import cutoff_date, incremental_query
 from .confluence_document_reader import ConfluenceDocumentReader
 from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 from .async_confluence_cloud_reader import AsyncConfluenceCloudDocumentReader
 from .schema import ConfluenceConfig, ConfluenceCloudConfig
+
+
+def _confluence_from_manifest(
+    connector_cls: type[BaseConnector], manifest: Manifest, config_service: Any
+) -> ConnectorRun:
+    """Shared manifest→connector rebuild for Confluence Server and Cloud.
+
+    Mirrors Jira's rebuild but uses the ``lastModified`` CQL field and also
+    carries ``readAllComments`` forward. Overlays are in-memory only (R3).
+    """
+    rd = manifest.reader.model_dump(by_alias=True)
+    query = incremental_query(
+        rd.get("query"),
+        cutoff_date(manifest.last_modified_document_time),
+        updated_field="lastModified",
+    )
+    config_service.set_overlay("sources.confluence.url", rd["baseUrl"])
+    config_service.set_overlay("sources.confluence.query", query)
+    config_service.set_overlay(
+        "sources.confluence.read_all_comments", rd.get("readAllComments", True)
+    )
+    connector = connector_cls.from_config(config_service)
+    return ConnectorRun(connector.reader, connector.converter, [], None)
 
 
 class ConfluenceConnector:
@@ -235,6 +259,12 @@ class ConfluenceConnector:
             max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
 
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
+    ) -> ConnectorRun:
+        return _confluence_from_manifest(cls, manifest, config_service)
+
 
 class ConfluenceCloudConnector:
     # Metadata for CLI generation and compatibility
@@ -417,6 +447,12 @@ class ConfluenceCloudConnector:
             ocr_enabled=cfg.ocr_enabled,
             max_attachment_size_mb=cfg.max_attachment_size_mb,
         )
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
+    ) -> ConnectorRun:
+        return _confluence_from_manifest(cls, manifest, config_service)
 
 
 __all__ = ["ConfluenceConnector", "ConfluenceCloudConnector"]

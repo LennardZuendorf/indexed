@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from loguru import logger
 
+from protocols import Manifest
 from .models import SourceConfig, ProgressUpdate, ProgressCallback
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
@@ -125,8 +126,8 @@ class SearchService:
             manifest_content = self._persister.read_text_file(
                 f"{collection_name}/manifest.json"
             )
-            manifest = json.loads(manifest_content)
-            return manifest["indexers"][0]["name"]
+            manifest = Manifest.from_disk(json.loads(manifest_content))
+            return manifest.indexers[0].name
         except Exception:
             # Fallback to default indexer
             return "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
@@ -318,18 +319,6 @@ class SearchService:
         return results
 
 
-# Global singleton for functional interface (lazily initialized)
-_default_service: Optional[SearchService] = None
-
-
-def _get_service(collections_path: Optional[str] = None) -> SearchService:
-    """Get or create the default SearchService instance."""
-    global _default_service
-    if _default_service is None or collections_path is not None:
-        _default_service = SearchService(collections_path=collections_path)
-    return _default_service
-
-
 def search(
     query: str,
     configs: Optional[List[SourceConfig]] = None,
@@ -371,7 +360,10 @@ def search(
         >>> results = search("python programming", max_docs=3, score_threshold=1.5)
         >>> print(f"Searched {len(results)} collections")
     """
-    service = _get_service(collections_path)
+    # Stateless per-call service — no module-level singleton (foundation/9).
+    # SearchService still caches loaded FAISS searchers for the life of the
+    # instance; a long-lived server should hold its own SearchService.
+    service = SearchService(collections_path=collections_path)
     return service.search(
         query=query,
         configs=configs,

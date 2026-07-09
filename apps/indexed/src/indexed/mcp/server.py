@@ -17,8 +17,8 @@ from fastmcp import FastMCP
 from core.v1.config_models import CoreV1SearchConfig, MCPConfig
 from indexed_config import ConfigService
 
-from indexed.bootstrap import register_app_config
-from indexed.runtime import CliContext, resolve_collections_context
+from indexed.composition import register_app_config
+from indexed.composition import CliContext, resolve_collections_context
 
 from .resources import register_resources
 from .tools import register_tools

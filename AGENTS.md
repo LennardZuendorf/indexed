@@ -290,6 +290,28 @@ Earned defaults — apply without being asked.
   `resolve_collections_context` — only call sites that build their own
   `ConfigService.instance()` outside it (e.g. `mcp/cli.py::run_impl`) still
   need one. Full detail in `.spec/lessons.md`.
+- **Typed data contracts live in the `protocols` leaf, not `core`.** `Manifest`,
+  `ConvertedDocument`, `Chunk`, `CollectionSearchResult` etc. are Pydantic models
+  in `protocols/models.py` (with `SourceConfig`), because `protocols/connectors.py`
+  references them and `connectors`/`config`/`protocols` may not import `core`
+  (`scripts/check_import_graph.py`). They round-trip today's camelCase JSON
+  byte-stable: declare fields in on-disk key order + dump `by_alias=True`; for a
+  CREATE-only optional key (`createdTime`) `pop` it when `None` rather than a
+  global `exclude_none` (which would drop legit null reader fields). Verify the
+  "mismatch = mypy error" property with `MYPYPATH=packages/indexed-protocols/src`
+  — a standalone mypy run treats unresolved `protocols` as `Any` and false-passes.
+  Full detail in `.spec/lessons.md`.
+- **Core is consumed only through the `core.v1.engine` facade; `composition.py`
+  is the only wiring site.** The facade (`engine/__init__.py`, lazy `__getattr__`)
+  re-exports create/update/search/inspect/status/clear/collection_exists + models;
+  the app never imports `services`/`factories`/`core` directly (a v2 engine is a
+  drop-in). `apps/indexed/.../composition.py` folds in the old bootstrap+runtime+
+  connector_wiring and hands the facade two REQUIRED callables (`connector_factory`,
+  `manifest_factory`); no `| None` + `missing_wiring_error` on the happy path. Each
+  connector's `from_manifest` owns its manifest keys, so core has no per-type
+  branches. To mock a facade-resolved symbol in tests, patch the facade attribute
+  (`patch.object(core.v1.engine, "X", ...)`), not `sys.modules[...services]`.
+  Full detail in `.spec/lessons.md`.
 
 ---
 

@@ -27,7 +27,7 @@ runner = CliRunner()
 def _patch_runtime_context():
     with (
         patch(
-            "indexed.runtime.resolve_collections_context",
+            "indexed.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: make_cli_context(),
         ),
         patch(
@@ -265,7 +265,7 @@ class TestRemoveCommand:
 
         ctx = _make_corrupt_test_ctx(collections_dir)
         monkeypatch.setattr(
-            "indexed.runtime.resolve_collections_context", lambda *a, **kw: ctx
+            "indexed.composition.resolve_collections_context", lambda *a, **kw: ctx
         )
 
         result = runner.invoke(remove_cmd.app, ["corrupt-coll", "--force"])
@@ -288,7 +288,7 @@ class TestRemoveCommand:
 
         ctx = _make_corrupt_test_ctx(collections_dir)
         monkeypatch.setattr(
-            "indexed.runtime.resolve_collections_context", lambda *a, **kw: ctx
+            "indexed.composition.resolve_collections_context", lambda *a, **kw: ctx
         )
 
         set_simple_output(True)

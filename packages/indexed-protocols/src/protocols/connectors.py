@@ -5,15 +5,44 @@ Connectors encapsulate the logic for discovering, reading, and converting
 documents from various sources (Jira, Confluence, local files, etc.).
 """
 
-from typing import Any, ClassVar, Dict, Iterator, Protocol, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Protocol,
+    Union,
+    runtime_checkable,
+)
+
+from protocols.models import ConvertedDocument, Manifest
 
 
 @runtime_checkable
 class DocumentReader(Protocol):
-    """Protocol for fetching raw documents from a source."""
+    """Protocol for fetching raw documents from a source.
 
-    def read_documents(self) -> Iterator[Any]:
-        """Fetch documents from source."""
+    Declares exactly what the engine calls on a reader
+    (``documents_collection_creator``): the document count, the document
+    iterator, and the reader-details block persisted to the manifest. A reader
+    missing one of these is a mypy error, not a runtime ``AttributeError``.
+    """
+
+    def get_number_of_documents(self) -> int:
+        """Return the number of documents the reader will yield."""
+        ...
+
+    def read_all_documents(self) -> Iterator[Any]:
+        """Yield the raw documents from the source."""
+        ...
+
+    def get_reader_details(self) -> Dict[str, Any]:
+        """Return the per-source ``reader`` block for the manifest (has ``type``)."""
         ...
 
 
@@ -21,9 +50,36 @@ class DocumentReader(Protocol):
 class DocumentConverter(Protocol):
     """Protocol for converting raw documents into searchable chunks."""
 
-    def convert(self, doc: Any) -> Iterator[Any]:
-        """Convert raw document to searchable chunks."""
+    def convert(
+        self, doc: Any
+    ) -> Union[Iterator[ConvertedDocument], Iterable[Dict[str, Any]]]:
+        """Convert a raw document into the v1 converted-document form.
+
+        Today's converters yield/return v1 dicts (``Iterator[dict]`` or
+        ``list[dict]``); the ``ConvertedDocument`` arm types the future typed
+        path. ``Iterable`` covers both an iterator and a list.
+        """
         ...
+
+
+class ConnectorRun(NamedTuple):
+    """What a connector produces for an incremental update from its manifest.
+
+    Returned by ``BaseConnector.from_manifest`` so core's update path is
+    source-agnostic — one call for every connector, no per-type branches.
+
+    Attributes:
+        reader: the (possibly change-tracking-scoped) document reader
+        converter: the document converter
+        deletions: document IDs to remove from the index (files only today)
+        post_run: optional hook to run after a successful persist
+                  (e.g. save the change-tracker state)
+    """
+
+    reader: DocumentReader
+    converter: DocumentConverter
+    deletions: List[str]
+    post_run: Optional[Callable[[], None]]
 
 
 @runtime_checkable
@@ -124,5 +180,25 @@ class BaseConnector(Protocol):
         """
         ...
 
+    @classmethod
+    def from_manifest(
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
+    ) -> ConnectorRun:
+        """Rebuild (reader, converter, deletions, post_run) for an incremental
+        update from this collection's own manifest.
 
-__all__ = ["BaseConnector", "DocumentConverter", "DocumentReader"]
+        Each connector owns its manifest keys and its incremental cutoff logic,
+        so core's update path calls one method for every source. ``config_service``
+        supplies runtime settings and credentials the manifest does not persist;
+        ``storage_path`` is the collection's on-disk directory (for change-tracker
+        state).
+        """
+        ...
+
+
+__all__ = [
+    "BaseConnector",
+    "ConnectorRun",
+    "DocumentConverter",
+    "DocumentReader",
+]

@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from core.v1.engine.services import SourceConfig
+    from core.v1.engine import SourceConfig
 
 from indexed_config import ConfigService, ValidationResult
 
@@ -155,7 +155,7 @@ def execute_create_command(
     if local:
         mode_override = "local"
 
-    from indexed.runtime import resolve_collections_context
+    from indexed.composition import resolve_collections_context
 
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     config = cli_ctx.config_service
@@ -247,11 +247,9 @@ def execute_create_command(
 
         # Check if collection already exists (prompt unless --force)
         if not force:
-            from core.v1.engine.services.collection_service import (
-                _collection_exists,
-            )
+            from core.v1.engine import collection_exists
 
-            if _collection_exists(collection, collections_path=collections_path):
+            if collection_exists(collection, collections_path=collections_path):
                 console.print()
                 print_warning(f"Collection '{collection}' already exists.")
                 if not typer.confirm("Overwrite?", default=False):
@@ -264,7 +262,7 @@ def execute_create_command(
         if pre_creation_display and not is_verbose_mode():
             pre_creation_display(validation.present)
 
-        from ...connector_wiring import wiring_kwargs_for_create
+        from ...composition import wiring_kwargs_for_create
 
         create_wiring = wiring_kwargs_for_create(cli_ctx)
 
@@ -375,11 +373,11 @@ def execute_create_command(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "svc_create":
-        from core.v1.engine.services import create
+        from core.v1.engine import create
 
         return create
     elif name == "svc_status":
-        from core.v1.engine.services import status
+        from core.v1.engine import status
 
         return status
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

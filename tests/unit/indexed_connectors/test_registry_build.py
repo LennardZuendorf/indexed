@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from protocols import SourceConfig
 
-from indexed.bootstrap import build_connector, build_connector_registry
+from indexed.composition import build_connector, build_connector_registry
 
 
 CONNECTOR_TYPES = [

@@ -19,7 +19,7 @@ def _patch_runtime_context():
 
     with (
         patch(
-            "indexed.runtime.resolve_collections_context",
+            "indexed.composition.resolve_collections_context",
             side_effect=resolve_context,
         ),
         patch(

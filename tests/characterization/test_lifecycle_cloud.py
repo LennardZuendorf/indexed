@@ -67,10 +67,14 @@ def test_cloud_lifecycle(source_name: str, request, local_workspace, build_colle
 
     # --- incremental update: a new document becomes searchable -----------
     new_id, new_query = src.add_update()
+    from protocols import ConnectorRun
+
     updater = create_collection_updater(
         collection_name=collection,
         collections_path=str(collections_dir),
-        manifest_connector_factory=lambda manifest: (src.make_reader(), src.converter),
+        manifest_factory=lambda manifest, storage_path: ConnectorRun(
+            src.make_reader(), src.converter, [], None
+        ),
     )
     updater.run()
 

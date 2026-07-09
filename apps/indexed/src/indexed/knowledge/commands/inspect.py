@@ -21,7 +21,7 @@ from ...utils.components import (
 )
 
 if TYPE_CHECKING:
-    from core.v1.engine.services import CollectionInfo
+    from core.v1.engine import CollectionInfo
 
 # ---- Use format_size and format_time from @format.py ----
 from ...utils.format import format_size, format_time
@@ -198,7 +198,7 @@ def inspect_collections(
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import inspect as this_module
-    from indexed.runtime import resolve_collections_context
+    from indexed.composition import resolve_collections_context
 
     inspect_svc = this_module.inspect
     collection_exists_svc = this_module.collection_exists
@@ -266,11 +266,11 @@ def inspect_collections(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "inspect":
-        from core.v1.engine.services import inspect
+        from core.v1.engine import inspect
 
         return inspect
     elif name == "collection_exists":
-        from core.v1.engine.services import collection_exists
+        from core.v1.engine import collection_exists
 
         return collection_exists
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

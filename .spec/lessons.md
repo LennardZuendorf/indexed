@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-07
+updated: 2026-07-08
 ---
 
 # Lessons Learned
@@ -325,3 +325,100 @@ port is a different origin for credential purposes; fail closed.
   `create.py::_is_cloud`. Editing a line CodeQL already (heuristically) flags
   re-fingerprints it as a *new* PR alert even when the edit makes it safer —
   expect the "1 new alert" to be the line you just touched.
+
+---
+
+## Typed data contracts live in the `protocols` leaf, not `core` (foundation/7, 2026-07-08)
+
+- **The typed models (`Manifest`/`ConvertedDocument`/`Chunk`/`CollectionSearchResult`/…)
+  belong in `packages/indexed-protocols/src/protocols/models.py`, NOT
+  `core/v1/models.py`.** The feature spec's overview (tech.md §1) originally
+  placed them under `core.v1`, but that contradicts its own edge list (§5):
+  `connectors`/`config`/`protocols` may not import `core`, yet
+  `protocols/connectors.py` must reference `ConvertedDocument`/`Manifest` (the
+  converter returns `ConvertedDocument`) and readers/converters live in
+  `connectors`. `scripts/check_import_graph.py` encodes exactly this
+  (`"protocols": {"core", "connectors", "indexed"}` forbidden). The leaf is the
+  ONLY import-legal home. `SourceConfig` already lived there — fold the rest in.
+  Spec corrected in the same cycle (tech.md §1, tech-core.md).
+- **Byte-stability = declare fields in on-disk key order + `by_alias=True`.**
+  Pydantic `model_dump(by_alias=True)` emits declared fields in definition order,
+  then `extra="allow"` extras in insertion order. Match the writer's key order
+  field-for-field and the re-serialized JSON is byte-identical. Assert it with
+  `json.dumps(model.to_disk()) == json.dumps(raw)` (order-sensitive), not just
+  dict `==`.
+- **Optional-key round-trip: pop, don't `exclude_none`.** The manifest's
+  `createdTime` is CREATE-only (absent on older collections). A global
+  `exclude_none=True` would also drop a legitimately-null *reader* field and
+  break byte-stability. Instead dump normally and `pop("createdTime")` only when
+  it's `None`. (For `Chunk.metadata`, where no null-valued sibling exists,
+  `exclude_none=True` is safe and keeps chunk 0 metadata-free.)
+- **Corrected protocols make a mismatch a mypy error.** `DocumentReader` now
+  declares `get_number_of_documents`/`read_all_documents`/`get_reader_details`
+  (what the creator actually calls) instead of the fictional `read_documents`
+  (zero callers). Verify the property with `MYPYPATH=packages/indexed-protocols/src`
+  — a standalone `mypy` run on a file outside the configured path silently treats
+  `protocols` as `Any` and reports a false "Success".
+- **Break the engine→services cycle at the import, not with a lazy import.**
+  `documents_collection_creator.py` imported progress types upward from
+  `core.v1.engine.services.models`; point it straight at `protocols` (the leaf)
+  instead. That removes the cycle the old lazy imports worked around.
+
+---
+
+## Facade + composition switchover (foundation/8, 2026-07-08)
+
+- **One `from_manifest` per connector kills core's per-type branches.** The
+  update path was two injected factories + an `if connector_type == "localFiles"`
+  branch in core + a 180-line app-layer `_populate_*`/`os.environ` apparatus. It
+  collapses to a single `ManifestFactory = Callable[[Manifest, str], ConnectorRun]`
+  that dispatches to `registry[m.reader.type].from_manifest(...)`. Core calls it
+  once for every source. The empty-query R6.5 fix and the Outline cutoff (an
+  in-memory overlay now, not an `os.environ` side-channel) live inside each
+  connector's `from_manifest`.
+- **The core facade at `core/v1/engine/__init__.py` uses lazy `__getattr__`, not
+  eager re-exports.** Eager `from .services import ...` in the package `__init__`
+  would fire the full services import on ANY `core.v1.engine.*` submodule import
+  and can reintroduce cold-import cycles. A `__getattr__` that imports `services`
+  on first attribute access keeps submodule imports cheap and warms in the right
+  order. The app imports core ONLY through `core.v1.engine` (never
+  `services`/`factories`/`core`), so a v2 engine is a drop-in behind the same
+  names over the same disk format (R2).
+- **`composition.py` is the single wiring site** — it folds in the old
+  `bootstrap.py` + `runtime.py` + `connector_wiring.py` and hands the facade two
+  REQUIRED callables (`connector_factory` create-time, `manifest_factory`
+  update-time). No `Callable | None` + `missing_wiring_error` on the happy path;
+  omission is a `TypeError` at the call site. Keep connector/core imports lazy in
+  it for <1s startup.
+- **Mocking `sys.modules["core.v1.engine.services"]` no longer intercepts app
+  imports that go through the facade.** `from core.v1.engine import X` resolves
+  via the engine package's `services` attribute (set once the real module is
+  imported), so a sys.modules patch is order-dependent and false-passes in
+  isolation. Patch the facade attribute instead:
+  `patch.object(core.v1.engine, "X", mock, create=True)`.
+
+---
+
+## Read-mostly config was already achieved; verify before refactoring (foundation/9, 2026-07-08)
+
+- **R3 (config.toml is user-owned) was already true before foundation/9 started.**
+  The overlay work in foundation/4/6/8 (`set_overlay` for create-time CLI args,
+  `from_manifest` for update-time queries) means create/update/search issue ZERO
+  runtime `config_service.set()`/`save_raw()` calls — grep confirms it. ASSESS
+  before refactoring: the win here was locking the behavior in with a regression
+  test (`tests/system/test_read_mostly_config.py`: `sha256(config.toml)` byte-
+  stable across the update seam), not new code.
+- **The two functional-wrapper singletons (`search_service`/`inspect_service`
+  `_default_service`) re-created on every `collections_path`-bearing call**, so
+  the CLI/MCP never reused them anyway. Removing them and building a per-call
+  `SearchService`/`InspectService` is behavior-preserving (the real cache is
+  per-instance searcher reuse; a long-lived server holds its own instance). Tests
+  that `@patch(..._default_service)` become `@patch(...SearchService)` +
+  `mock_cls.return_value`.
+- **Scoped, not skipped: the `ConfigService.instance()` → `get_config()/reload()`
+  rename + path/mode resolver consolidation were deferred.** The self-replacing
+  singleton's actual harm (dropping registered specs on `reset`) was already
+  fixed at the root in foundation/6d; what remains is a cosmetic API rename across
+  ~86 call sites (63 in tests) and structural resolver de-duplication. An 86-site
+  refactor with no behavioral payoff is the wrong thing to attempt unattended as
+  the last unit — R3's requirement is met without it. Documented as a follow-up.
