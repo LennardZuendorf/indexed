@@ -59,7 +59,12 @@ def test_update_seam_leaves_config_toml_byte_stable(tmp_path, monkeypatch):
         str(local_root / "data" / "collections" / "jira-coll"),
     )
 
-    # The reader was rebuilt (the dated incremental query is applied) ...
+    # The reader was rebuilt AND the dated incremental query was actually applied
+    # via the in-memory overlay (not a no-op): load_raw() merges the overlay, so
+    # the effective jira query must now carry the cutoff date filter.
     assert run.reader is not None
-    # ... but the incremental query went to the in-memory overlay, NOT to disk.
+    effective_query = ctx.config_service.load_raw()["sources"]["jira"]["query"]
+    assert 'created >= "2026-07-04"' in effective_query, effective_query
+    assert effective_query.startswith("project = ENG AND"), effective_query
+    # ... but that incremental query went to the overlay, NOT to disk.
     assert _sha(config_toml) == before, "update must not write config.toml (R3)"

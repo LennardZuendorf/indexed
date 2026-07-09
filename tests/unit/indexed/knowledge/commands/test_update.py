@@ -270,6 +270,61 @@ class TestUpdateCommand:
         assert result.exit_code == 0
 
     @patch("indexed.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.composition.resolve_collections_context")
+    @patch("indexed.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.knowledge.commands.update.inspect")
+    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.knowledge.commands.update.update_service")
+    @patch("indexed.knowledge.commands.update.console")
+    def test_update_clears_overlay_per_collection(
+        self,
+        mock_console,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_resolve_ctx,
+        mock_setup_logger,
+    ):
+        """R3 regression: the shared in-memory overlay is cleared once per
+        collection so an earlier collection's conditionally-set settings
+        (e.g. Outline collection_ids) cannot leak into a later one."""
+        from pathlib import Path
+
+        mock_verbose.return_value = True  # simple path — no phased progress display
+
+        cfg = Mock()
+        cli_ctx = Mock()
+        cli_ctx.config_service = cfg
+        cli_ctx.collections_path = Path("/workspace/.indexed/data/collections")
+        cli_ctx.caches_path = Path("/workspace/.indexed/data/caches")
+        cli_ctx.connector_registry = {}
+        mock_resolve_ctx.return_value = cli_ctx
+
+        s1 = Mock(name="outline-a")
+        s1.name = "outline-a"
+        s1.source_type = "outline"
+        s1.indexers = ["default"]
+        s2 = Mock(name="outline-b")
+        s2.name = "outline-b"
+        s2.source_type = "outline"
+        s2.indexers = ["default"]
+        mock_svc_status.return_value = [s1, s2]
+        mock_inspect.return_value = [Mock()]
+        mock_update_service.return_value = None
+
+        from indexed.app import app
+
+        result = runner.invoke(app, ["index", "update"])
+
+        assert result.exit_code == 0
+        # One clear_overlay per collection — the guard that stops cross-collection
+        # overlay bleed. Without it this count would be 0 (the bug).
+        assert cfg.clear_overlay.call_count == 2
+
+    @patch("indexed.knowledge.commands.update.setup_root_logger")
     @patch("indexed.knowledge.commands.update.ConfigService")
     @patch("indexed.knowledge.commands.update.svc_status")
     @patch("indexed.knowledge.commands.update.print_error")

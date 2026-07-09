@@ -405,8 +405,8 @@ def status(
         >>> specific_statuses = status(['my_collection'])
 
     Note:
-        This function uses a global singleton InspectService instance, so manifest
-        data will be cached across multiple calls within the same process.
+        Builds a fresh InspectService per call (stateless). A long-lived process
+        that wants cross-call manifest caching should hold its own InspectService.
     """
     service = InspectService(collections_path=collections_path)
     return service.status(
@@ -449,7 +449,7 @@ def inspect(
         >>> print(f"Avg chunks/doc: {info[0].avg_chunks_per_doc:.1f}")
 
     Note:
-        This function uses a global singleton InspectService instance.
+        Builds a fresh InspectService per call (stateless).
     """
     service = InspectService(collections_path=collections_path)
     return service.inspect(

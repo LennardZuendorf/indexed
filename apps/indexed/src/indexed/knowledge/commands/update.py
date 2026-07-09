@@ -353,6 +353,13 @@ def update(
     chunks_delta = 0
 
     for coll_name in collections_to_update:
+        # Start each collection with a clean in-memory overlay (R3): the shared
+        # manifest_factory applies this collection's stored settings via
+        # from_manifest, and connectors that set some keys conditionally (Outline)
+        # would otherwise inherit a previous collection's overlay value. Mirrors
+        # the create path's clear_overlay bracketing (_create_helpers.py).
+        config_service.clear_overlay()
+
         # Get collection status to build proper SourceConfig
         coll_statuses = svc_status([coll_name], collections_path=collections_path)
         if not coll_statuses:
