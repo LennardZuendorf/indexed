@@ -5,9 +5,9 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
-from datetime import datetime, timedelta
-from typing import ClassVar, Optional
-from protocols import ConnectorMetadata, ConnectorRun, Manifest
+from typing import Any, ClassVar, Optional
+from protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
+from connectors._incremental import cutoff_date, incremental_query
 from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
 from .unified_jira_document_converter import UnifiedJiraDocumentConverter
 from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
@@ -15,32 +15,23 @@ from .schema import JiraConfig, JiraCloudConfig
 
 
 def _jira_from_manifest(
-    connector_cls: type, manifest: Manifest, config_service: object
+    connector_cls: type[BaseConnector], manifest: Manifest, config_service: Any
 ) -> ConnectorRun:
     """Shared manifest→connector rebuild for Jira Server and Cloud.
 
     Applies the collection's stored baseUrl and an incremental date filter as
     in-memory overlays (never persisted — R3), then builds the connector via
-    ``from_config`` so credentials and other settings resolve normally. The
-    date filter is joined with ``AND`` only when a base query exists, so an
-    empty stored query no longer yields malformed leading-``AND`` JQL (R6.5).
+    ``from_config`` so credentials and other settings resolve normally.
     """
     rd = manifest.reader.model_dump(by_alias=True)
-    cutoff = (
-        (
-            datetime.fromisoformat(manifest.last_modified_document_time)
-            - timedelta(days=1)
-        )
-        .date()
-        .isoformat()
+    query = incremental_query(
+        rd.get("query"),
+        cutoff_date(manifest.last_modified_document_time),
+        updated_field="updated",
     )
-    date_filter = f'(created >= "{cutoff}" OR updated >= "{cutoff}")'
-    base = (rd.get("query") or "").strip()
-    query = f"{base} AND {date_filter}" if base else date_filter
-
-    config_service.set_overlay("sources.jira.url", rd["baseUrl"])  # type: ignore[attr-defined]
-    config_service.set_overlay("sources.jira.query", query)  # type: ignore[attr-defined]
-    connector = connector_cls.from_config(config_service)  # type: ignore[attr-defined]
+    config_service.set_overlay("sources.jira.url", rd["baseUrl"])
+    config_service.set_overlay("sources.jira.query", query)
+    connector = connector_cls.from_config(config_service)
     return ConnectorRun(connector.reader, connector.converter, [], None)
 
 
@@ -241,7 +232,7 @@ class JiraConnector:
 
     @classmethod
     def from_manifest(
-        cls, manifest: Manifest, config_service: object, *, storage_path: str
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
     ) -> ConnectorRun:
         return _jira_from_manifest(cls, manifest, config_service)
 
@@ -416,7 +407,7 @@ class JiraCloudConnector:
 
     @classmethod
     def from_manifest(
-        cls, manifest: Manifest, config_service: object, *, storage_path: str
+        cls, manifest: Manifest, config_service: Any, *, storage_path: str
     ) -> ConnectorRun:
         return _jira_from_manifest(cls, manifest, config_service)
 
