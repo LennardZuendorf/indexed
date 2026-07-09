@@ -14,8 +14,6 @@ from protocols.models import (
     Manifest,
     MatchedChunk,
     PhasedProgressCallback,
-    ProgressCallback,
-    ProgressUpdate,
     ReaderDetails,
     SourceConfig,
 )
@@ -34,8 +32,6 @@ __all__ = [
     "Manifest",
     "MatchedChunk",
     "PhasedProgressCallback",
-    "ProgressCallback",
-    "ProgressUpdate",
     "ReaderDetails",
     "SourceConfig",
 ]

@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 
 from protocols import BaseConnector
 
-from .models import SourceConfig, ProgressCallback
+from .models import SourceConfig
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories._types import ManifestFactory
 from core.v1.engine.factories.create_collection_factory import create_collection_creator
@@ -79,7 +79,6 @@ def collection_exists(name: str, collections_path: Optional[str] = None) -> bool
 def _create_one(
     cfg: SourceConfig,
     use_cache: bool,
-    progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
@@ -96,7 +95,6 @@ def _create_one(
         document_reader=connector.reader,
         document_converter=connector.converter,
         use_cache=use_cache,
-        progress_callback=progress_callback,
         phased_progress=phased_progress,
         collections_path=collections_path,
         caches_path=caches_path,
@@ -112,7 +110,6 @@ def _create_one(
 
 def _update_one(
     cfg: SourceConfig,
-    progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
     *,
@@ -127,7 +124,6 @@ def _update_one(
 
     updater = create_collection_updater(
         cfg.name,
-        progress_callback,
         phased_progress=phased_progress,
         collections_path=collections_path,
         manifest_factory=manifest_factory,
@@ -140,7 +136,6 @@ def create(
     *,
     use_cache: bool = True,
     force: bool = False,
-    progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
@@ -160,7 +155,6 @@ def create(
         _create_one(
             cfg,
             use_cache,
-            progress_callback,
             phased_progress=phased_progress,
             collections_path=resolved_collections,
             caches_path=resolved_caches,
@@ -171,7 +165,6 @@ def create(
 
 def update(
     configs: List[SourceConfig],
-    progress_callback: ProgressCallback = None,
     phased_progress=None,
     collections_path: Optional[str] = None,
     *,
@@ -182,7 +175,6 @@ def update(
     for cfg in configs:
         _update_one(
             cfg,
-            progress_callback,
             phased_progress=phased_progress,
             collections_path=resolved_path,
             manifest_factory=manifest_factory,

@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any, Callable, List, Literal, Optional, Protocol
+from typing import Any, List, Literal, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -141,25 +140,6 @@ class CollectionSearchResult(BaseModel):
     error: Optional[str] = None
 
 
-@dataclass
-class ProgressUpdate:
-    """Progress update information for long-running operations.
-
-    This dataclass provides structured progress information that can be used
-    by CLI progress bars, logging systems, or other UI components to show
-    real-time progress of operations like document reading, indexing, and searching.
-    """
-
-    stage: str  # e.g., "reading", "indexing", "searching", "inspecting"
-    current: int  # Current item count
-    total: Optional[int]  # Total items (None if unknown)
-    message: str  # Human-readable message
-
-
-# Type alias for progress callback functions (simple, legacy)
-ProgressCallback = Optional[Callable[[ProgressUpdate], None]]
-
-
 class PhasedProgressCallback(Protocol):
     """Protocol for phased progress reporting.
 
@@ -199,8 +179,6 @@ __all__ = [
     "Manifest",
     "MatchedChunk",
     "PhasedProgressCallback",
-    "ProgressCallback",
-    "ProgressUpdate",
     "ReaderDetails",
     "SourceConfig",
 ]

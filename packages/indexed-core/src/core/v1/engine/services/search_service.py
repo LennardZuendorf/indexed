@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 
 from protocols import Manifest
-from .models import SourceConfig, ProgressUpdate, ProgressCallback
+from .models import SourceConfig
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.factories.search_collection_factory import (
     create_collection_searcher,
@@ -186,7 +186,6 @@ class SearchService:
         include_full_text: bool = False,
         include_all_chunks: bool = False,
         include_matched_chunks: bool = False,
-        progress_callback: ProgressCallback = None,
     ) -> Dict[str, Any]:
         """Search across one or many collections.
 
@@ -264,19 +263,8 @@ class SearchService:
         )
 
         results = {}
-        total_collections = len(search_configs)
 
-        for idx, cfg in enumerate(search_configs, 1):
-            if progress_callback:
-                progress_callback(
-                    ProgressUpdate(
-                        stage="searching",
-                        current=idx,
-                        total=total_collections,
-                        message=f"Searching collection: {cfg.name} ({idx}/{total_collections})",
-                    )
-                )
-
+        for cfg in search_configs:
             try:
                 searcher = self._get_searcher(cfg.name, cfg.indexer)
 
@@ -327,7 +315,6 @@ def search(
     include_full_text: bool = False,
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
-    progress_callback: ProgressCallback = None,
     collections_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Functional wrapper around SearchService for one-shot CLI usage.
@@ -372,5 +359,4 @@ def search(
         include_full_text=include_full_text,
         include_all_chunks=include_all_chunks,
         include_matched_chunks=include_matched_chunks,
-        progress_callback=progress_callback,
     )

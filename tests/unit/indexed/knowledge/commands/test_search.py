@@ -420,7 +420,6 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return search_results
@@ -460,7 +459,6 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"myCol": {"results": [{"id": "d1", "score": 0.5}]}}
@@ -500,7 +498,6 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"col1": {"results": []}}
@@ -539,7 +536,6 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"col1": {"results": [{"id": "d1"}]}}
@@ -581,7 +577,6 @@ class TestSearchCommandExecution:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {
@@ -695,7 +690,6 @@ class TestSearchStatusMessages:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"outline": {"results": []}}
@@ -750,7 +744,6 @@ class TestSearchStatusMessages:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"col1": {"results": []}, "col2": {"results": []}}
@@ -802,7 +795,6 @@ class TestSearchStatusMessages:
             max_chunks,
             include_matched_chunks,
             score_threshold=None,
-            progress_callback=None,
             collections_path=None,
         ):
             return {"col1": {"results": []}}

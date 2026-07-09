@@ -19,8 +19,6 @@ _EXPORTS = frozenset(
         "SourceConfig",
         "CollectionStatus",
         "CollectionInfo",
-        "ProgressUpdate",
-        "ProgressCallback",
         "PhasedProgressCallback",
         # collection operations
         "create",
@@ -56,8 +54,6 @@ if TYPE_CHECKING:  # help type-checkers/IDEs see the re-exported names
         CollectionStatus,
         InspectService,
         PhasedProgressCallback,
-        ProgressCallback,
-        ProgressUpdate,
         SearchService,
         SourceConfig,
         clear,

@@ -316,7 +316,6 @@ class TestSearchFunctionalInterface:
             include_full_text=True,
             include_all_chunks=True,
             include_matched_chunks=True,
-            progress_callback=None,
         )
 
     @patch("core.v1.engine.services.search_service.SearchService")
@@ -338,5 +337,4 @@ class TestSearchFunctionalInterface:
             include_full_text=False,
             include_all_chunks=False,
             include_matched_chunks=False,
-            progress_callback=None,
         )

@@ -27,7 +27,6 @@ from utils.performance import log_execution_duration
 
 def create_collection_updater(
     collection_name: str,
-    progress_callback=None,
     phased_progress=None,
     collections_path: str | None = None,
     *,
@@ -37,7 +36,6 @@ def create_collection_updater(
 
     Args:
         collection_name: Name of the collection to update
-        progress_callback: Optional callback for progress updates
         phased_progress: Optional PhasedProgressCallback for multi-stage display.
         collections_path: Optional path for collections storage.
                          Defaults to resolved path from storage config.
@@ -50,7 +48,6 @@ def create_collection_updater(
     return log_execution_duration(
         lambda: _create_collection_updater(
             collection_name,
-            progress_callback,
             phased_progress,
             collections_path,
             manifest_factory,
@@ -61,7 +58,6 @@ def create_collection_updater(
 
 def _create_collection_updater(
     collection_name: str,
-    progress_callback,
     phased_progress,
     collections_path: str | None,
     manifest_factory: ManifestFactory,
@@ -103,7 +99,6 @@ def _create_collection_updater(
         document_indexers=document_indexers,
         persister=disk_persister,
         operation_type=OPERATION_TYPE.UPDATE,
-        progress_callback=progress_callback,
         phased_progress=phased_progress,
         explicit_deletions=run.deletions,
     )

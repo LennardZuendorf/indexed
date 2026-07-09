@@ -13,7 +13,7 @@ import os
 
 from loguru import logger
 
-from .models import CollectionStatus, CollectionInfo, ProgressUpdate, ProgressCallback
+from .models import CollectionStatus, CollectionInfo
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
 from core.v1.config_models import get_default_collections_path
@@ -170,7 +170,6 @@ class InspectService:
         collection_names: Optional[List[str]] = None,
         *,
         include_index_size: bool = False,
-        progress_callback: ProgressCallback = None,
     ) -> List[CollectionStatus]:
         """Get status information for collections.
 
@@ -181,7 +180,6 @@ class InspectService:
             include_index_size (bool): Whether to include index size information.
                                      This requires loading the indexer and may be
                                      slower. Defaults to False.
-            progress_callback (ProgressCallback, optional): Callback for progress updates.
 
         Returns:
             List[CollectionStatus]: List of status objects containing metadata
@@ -204,18 +202,8 @@ class InspectService:
             collection_names = self._discover_collections()
 
         statuses = []
-        total = len(collection_names)
 
-        for idx, name in enumerate(collection_names, 1):
-            if progress_callback:
-                progress_callback(
-                    ProgressUpdate(
-                        stage="inspecting",
-                        current=idx,
-                        total=total,
-                        message=f"Inspecting: {name} ({idx}/{total})",
-                    )
-                )
+        for name in collection_names:
             try:
                 manifest = self._read_manifest(name)
 
@@ -264,7 +252,6 @@ class InspectService:
         collection_names: Optional[List[str]] = None,
         *,
         include_index_size: bool = False,
-        progress_callback: ProgressCallback = None,
     ) -> List[CollectionInfo]:
         """Get detailed inspection information for collections.
 
@@ -278,7 +265,6 @@ class InspectService:
             include_index_size (bool): Whether to include index size information.
                                      This requires loading the indexer and may be
                                      slower. Defaults to False.
-            progress_callback (ProgressCallback, optional): Callback for progress updates.
 
         Returns:
             List[CollectionInfo]: List of detailed info objects containing comprehensive
@@ -297,18 +283,8 @@ class InspectService:
             collection_names = self._discover_collections()
 
         infos = []
-        total = len(collection_names)
 
-        for idx, name in enumerate(collection_names, 1):
-            if progress_callback:
-                progress_callback(
-                    ProgressUpdate(
-                        stage="inspecting",
-                        current=idx,
-                        total=total,
-                        message=f"Inspecting: {name} ({idx}/{total})",
-                    )
-                )
+        for name in collection_names:
             try:
                 manifest = self._read_manifest(name)
 
@@ -375,7 +351,6 @@ def status(
     collection_names: Optional[List[str]] = None,
     *,
     include_index_size: bool = False,
-    progress_callback: ProgressCallback = None,
     collections_path: Optional[str] = None,
 ) -> List[CollectionStatus]:
     """Functional wrapper around InspectService for one-shot CLI usage.
@@ -412,7 +387,6 @@ def status(
     return service.status(
         collection_names=collection_names,
         include_index_size=include_index_size,
-        progress_callback=progress_callback,
     )
 
 
@@ -420,7 +394,6 @@ def inspect(
     collection_names: Optional[List[str]] = None,
     *,
     include_index_size: bool = False,
-    progress_callback: ProgressCallback = None,
     collections_path: Optional[str] = None,
 ) -> List[CollectionInfo]:
     """Functional wrapper for detailed collection inspection.
@@ -455,5 +428,4 @@ def inspect(
     return service.inspect(
         collection_names=collection_names,
         include_index_size=include_index_size,
-        progress_callback=progress_callback,
     )

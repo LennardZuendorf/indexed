@@ -35,8 +35,6 @@ from protocols import (
     DocumentConverter,
     DocumentReader,
     PhasedProgressCallback,
-    ProgressCallback,
-    ProgressUpdate,
 )
 
 
@@ -55,7 +53,6 @@ class DocumentCollectionCreator:
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
         indexing_batch_size=500_000,
-        progress_callback: ProgressCallback = None,
         phased_progress: PhasedProgressCallback = None,
         explicit_deletions: list[str] | None = None,
     ):
@@ -70,7 +67,6 @@ class DocumentCollectionCreator:
         self.document_indexers = document_indexers
         self.persister = persister
         self.indexing_batch_size = indexing_batch_size
-        self.progress_callback = progress_callback
         self.phased_progress = phased_progress
         self.explicit_deletions = explicit_deletions or []
 
@@ -239,16 +235,6 @@ class DocumentCollectionCreator:
         if self.phased_progress:
             self.phased_progress.finish_phase("Scanning Files")
 
-        if self.progress_callback:
-            self.progress_callback(
-                ProgressUpdate(
-                    stage="reading",
-                    current=0,
-                    total=number_of_expected_documents,
-                    message="Reading documents...",
-                )
-            )
-
         if self.phased_progress:
             self.phased_progress.start_phase(
                 "Fetching Documents",
@@ -257,7 +243,7 @@ class DocumentCollectionCreator:
                 else None,
             )
 
-        for idx, document in enumerate(self.document_reader.read_all_documents(), 1):
+        for document in self.document_reader.read_all_documents():
             for converted_document in self.document_converter.convert(document):
                 document_path = (
                     f"{self._storage_name}/documents/{converted_document['id']}.json"
@@ -265,16 +251,6 @@ class DocumentCollectionCreator:
                 self.__save_json_file(converted_document, document_path)
 
                 document_ids.append(converted_document["id"])
-
-            if self.progress_callback:
-                self.progress_callback(
-                    ProgressUpdate(
-                        stage="reading",
-                        current=idx,
-                        total=number_of_expected_documents,
-                        message=f"Reading documents: {idx}/{number_of_expected_documents}",
-                    )
-                )
 
             if self.phased_progress:
                 self.phased_progress.advance("Fetching Documents")
@@ -317,18 +293,6 @@ class DocumentCollectionCreator:
         self, document_ids, index_mapping, reverse_index_mapping, last_index_item_id
     ):
         last_modified_document_time = None
-        total_docs = len(document_ids)
-        processed = 0
-
-        if self.progress_callback:
-            self.progress_callback(
-                ProgressUpdate(
-                    stage="indexing",
-                    current=0,
-                    total=total_docs,
-                    message="Indexing documents...",
-                )
-            )
 
         for batch_document_ids in self.__batch_items(
             document_ids, self.indexing_batch_size
@@ -398,17 +362,6 @@ class DocumentCollectionCreator:
             for indexer in self.document_indexers:
                 indexer.index_texts(
                     index_item_ids, items_to_index, progress_callback=embedding_progress
-                )
-
-            processed += len(batch_document_ids)
-            if self.progress_callback:
-                self.progress_callback(
-                    ProgressUpdate(
-                        stage="indexing",
-                        current=processed,
-                        total=total_docs,
-                        message=f"Indexing: {processed}/{total_docs} documents",
-                    )
                 )
 
         # Save in native FAISS format for memory-mapped loading

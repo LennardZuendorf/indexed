@@ -3,8 +3,6 @@ from typing import List, Optional
 
 from protocols.models import (
     PhasedProgressCallback,
-    ProgressCallback,
-    ProgressUpdate,
     SourceConfig,
 )
 
@@ -87,7 +85,5 @@ __all__ = [
     "CollectionInfo",
     "CollectionStatus",
     "PhasedProgressCallback",
-    "ProgressCallback",
-    "ProgressUpdate",
     "SourceConfig",
 ]

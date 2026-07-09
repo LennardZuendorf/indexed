@@ -4,8 +4,6 @@ from .models import (
     SourceConfig,
     CollectionStatus,
     CollectionInfo,
-    ProgressUpdate,
-    ProgressCallback,
     PhasedProgressCallback,
 )
 from .collection_service import create, update, clear, collection_exists
@@ -17,8 +15,6 @@ __all__ = [
     "SourceConfig",
     "CollectionStatus",
     "CollectionInfo",
-    "ProgressUpdate",
-    "ProgressCallback",
     "PhasedProgressCallback",
     # Collection operations
     "create",
