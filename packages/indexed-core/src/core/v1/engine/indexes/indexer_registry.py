@@ -76,11 +76,6 @@ def get_indexer_config(indexer_name: str) -> IndexerConfig:
     return INDEXER_CONFIGS[short_name]
 
 
-def is_auto_indexer(indexer_name: str) -> bool:
-    """Check if an indexer name uses the Auto index selection strategy."""
-    return indexer_name.startswith(INDEXER_AUTO_PREFIX)
-
-
 def extract_model_name(indexer_name: str) -> str:
     """Extract the model short name from a full indexer name.
 
@@ -136,28 +131,3 @@ def list_available_indexers() -> List[str]:
         names.append(build_indexer_name(model_name))
         names.append(build_indexer_name(model_name, auto=True))
     return names
-
-
-def list_available_models() -> List[str]:
-    """List all available model short names.
-
-    Returns:
-        List of model short names
-    """
-    return list(INDEXER_CONFIGS.keys())
-
-
-def is_valid_indexer(indexer_name: str) -> bool:
-    """Check if an indexer name is valid.
-
-    Args:
-        indexer_name: Full indexer name to check
-
-    Returns:
-        True if the indexer is registered, False otherwise
-    """
-    try:
-        get_indexer_config(indexer_name)
-        return True
-    except ValueError:
-        return False

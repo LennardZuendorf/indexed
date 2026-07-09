@@ -22,14 +22,6 @@ class OptionalConfig(BaseModel):
     name: str = Field(default="default", description="Name")
 
 
-def test_config_service_get_raw():
-    """Test get_raw() alias for load_raw()."""
-    service = ConfigService()
-    result1 = service.load_raw()
-    result2 = service.get_raw()
-    assert result1 == result2
-
-
 def test_config_service_bind_skips_missing():
     """Test bind() skips specs that are not present in config."""
     service = ConfigService()

@@ -15,12 +15,6 @@ from .jira.connector import JiraConnector, JiraCloudConnector
 from .confluence.connector import ConfluenceConnector, ConfluenceCloudConnector
 from .outline.connector import OutlineConnector
 
-# Import config DTOs for type hints
-from .files.schema import LocalFilesConfig
-from .jira.schema import JiraConfig, JiraCloudConfig
-from .confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
-from .outline.schema import OutlineConfig
-
 
 # Registry mapping connector_type strings to connector classes
 # The keys match the connector_type property of each connector
@@ -31,16 +25,6 @@ CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
     "confluence": ConfluenceConnector,
     "confluenceCloud": ConfluenceCloudConnector,
     "outline": OutlineConnector,
-}
-
-# Registry mapping connector_type strings to their config DTO classes
-CONFIG_REGISTRY: Dict[str, Type[Any]] = {
-    "localFiles": LocalFilesConfig,
-    "jira": JiraConfig,
-    "jiraCloud": JiraCloudConfig,
-    "confluence": ConfluenceConfig,
-    "confluenceCloud": ConfluenceCloudConfig,
-    "outline": OutlineConfig,
 }
 
 # Registry mapping connector_type strings to their config namespace paths
@@ -81,26 +65,6 @@ def get_connector_class(connector_type: str) -> Type[Any]:
     return CONNECTOR_REGISTRY[connector_type]
 
 
-def get_config_class(connector_type: str) -> Type[Any]:
-    """Get config DTO class by connector type.
-
-    Args:
-        connector_type: Connector type string
-
-    Returns:
-        Pydantic config class for the connector
-
-    Raises:
-        ValueError: If connector_type is not registered
-    """
-    if connector_type not in CONFIG_REGISTRY:
-        available = ", ".join(CONFIG_REGISTRY.keys())
-        raise ValueError(
-            f"Unknown connector type: '{connector_type}'. Available types: {available}"
-        )
-    return CONFIG_REGISTRY[connector_type]
-
-
 def get_config_namespace(connector_type: str) -> str:
     """Get config namespace path by connector type.
 
@@ -119,12 +83,3 @@ def get_config_namespace(connector_type: str) -> str:
             f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return NAMESPACE_REGISTRY[connector_type]
-
-
-def list_connector_types() -> list[str]:
-    """List all registered connector types.
-
-    Returns:
-        List of connector type identifiers
-    """
-    return list(CONNECTOR_REGISTRY.keys())

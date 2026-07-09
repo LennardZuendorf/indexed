@@ -145,10 +145,6 @@ class ConfigService:
             raw = deep_merge(raw, self._overlay)
         return raw
 
-    def get_raw(self) -> Dict[str, Any]:
-        """Retrieve the merged raw configuration (alias for load_raw)."""
-        return self.load_raw()
-
     def save_raw(self, data: Dict[str, Any]) -> None:
         """Persist raw configuration to the workspace TOML store."""
         self._store.write(data)

@@ -12,12 +12,9 @@ from .outline.connector import OutlineConnector
 # Registry for dynamic connector lookup
 from .registry import (
     CONNECTOR_REGISTRY,
-    CONFIG_REGISTRY,
     NAMESPACE_REGISTRY,
     get_connector_class,
-    get_config_class,
     get_config_namespace,
-    list_connector_types,
 )
 
 __all__ = [
@@ -30,10 +27,7 @@ __all__ = [
     "OutlineConnector",
     # Registry
     "CONNECTOR_REGISTRY",
-    "CONFIG_REGISTRY",
     "NAMESPACE_REGISTRY",
     "get_connector_class",
-    "get_config_class",
     "get_config_namespace",
-    "list_connector_types",
 ]

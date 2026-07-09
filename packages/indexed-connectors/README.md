@@ -159,21 +159,13 @@ creator.run()
 ### Dynamic Connector Registry
 
 ```python
-from connectors import (
-    get_connector_class,
-    get_config_class,
-    list_connector_types,
-)
-
-# List available types
-types = list_connector_types()
-# ['files', 'jira', 'jiraCloud', 'confluence', 'confluenceCloud']
+from connectors import get_connector_class, get_config_namespace
 
 # Get connector class by type
 ConnectorClass = get_connector_class("jiraCloud")
 
-# Get config schema class
-ConfigClass = get_config_class("jiraCloud")
+# Get the config namespace for a type
+namespace = get_config_namespace("jiraCloud")  # "sources.jira"
 ```
 
 ## Connector Protocol

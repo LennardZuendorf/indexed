@@ -8,7 +8,6 @@ and caching of search indexes for optimal performance.
 
 import json
 from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
 from loguru import logger
 
 from protocols import Manifest
@@ -375,15 +374,3 @@ def search(
         include_matched_chunks=include_matched_chunks,
         progress_callback=progress_callback,
     )
-
-
-# DTO for injected config
-@dataclass
-class SearchArgs:
-    configs: Optional[List[SourceConfig]]
-    max_chunks: Optional[int]
-    max_docs: Optional[int]
-    score_threshold: Optional[float]
-    include_full_text: bool
-    include_all_chunks: bool
-    include_matched_chunks: bool
