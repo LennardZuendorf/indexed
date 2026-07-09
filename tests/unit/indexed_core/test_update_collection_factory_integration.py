@@ -70,6 +70,43 @@ def test_create_collection_updater_missing_collection_raises(tmp_path) -> None:
 
 
 @pytest.mark.unit
+def test_create_collection_updater_corrupt_manifest_raises_clean_error(
+    tmp_path,
+) -> None:
+    """A manifest missing a required field surfaces a clean, mapped error.
+
+    A raw pydantic ``ValidationError`` (or JSON error) would otherwise reach the
+    CLI as a traceback; the factory wraps it in a clear message naming the
+    collection. The message match distinguishes it from a bare ValidationError
+    (which is itself a ``ValueError`` subclass).
+    """
+    from pydantic import ValidationError
+
+    coll = "broken-docs"
+    coll_dir = tmp_path / coll
+    coll_dir.mkdir()
+    # numberOfChunks (a required Manifest field) is intentionally omitted.
+    manifest = {
+        "collectionName": coll,
+        "updatedTime": "2026-07-07T00:00:00+00:00",
+        "lastModifiedDocumentTime": "2026-07-05T00:00:00+00:00",
+        "numberOfDocuments": 1,
+        "reader": {"type": "localFiles", "basePath": str(tmp_path)},
+        "indexers": [{"name": "faiss-flat-l2"}],
+    }
+    (coll_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid or corrupt manifest") as excinfo:
+        create_collection_updater(
+            coll, collections_path=str(tmp_path), manifest_factory=MagicMock()
+        )
+
+    assert coll in str(excinfo.value)
+    # It must be the wrapped error, not the raw pydantic ValidationError.
+    assert not isinstance(excinfo.value, ValidationError)
+
+
+@pytest.mark.unit
 def test_updating_collection_creator_runs_post_hook() -> None:
     from core.v1.engine.factories.update_collection_factory import (
         _UpdatingCollectionCreator,

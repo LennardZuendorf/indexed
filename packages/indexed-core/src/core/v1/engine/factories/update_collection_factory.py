@@ -10,6 +10,8 @@ manifest logic in ``from_manifest``).
 from collections.abc import Callable
 import json
 
+from pydantic import ValidationError
+
 from core.v1.engine.factories._types import ManifestFactory
 from core.v1.engine.persisters.disk_persister import DiskPersister
 from core.v1.engine.indexes.indexer_factory import load_indexer
@@ -71,9 +73,20 @@ def _create_collection_updater(
     if not disk_persister.is_path_exists(collection_name):
         raise ValueError(f"Collection {collection_name} does not exist")
 
-    manifest = Manifest.from_disk(
-        json.loads(disk_persister.read_text_file(f"{collection_name}/manifest.json"))
-    )
+    # A partial/legacy/corrupt manifest raises a raw pydantic ValidationError or
+    # JSON error — neither an IndexedError — so surface a clean, mapped message
+    # (matching the "does not exist" ValueError precedent above) instead of
+    # letting an internal traceback reach the CLI.
+    try:
+        manifest = Manifest.from_disk(
+            json.loads(
+                disk_persister.read_text_file(f"{collection_name}/manifest.json")
+            )
+        )
+    except (ValidationError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"Collection '{collection_name}' has an invalid or corrupt manifest: {exc}"
+        ) from exc
 
     # Source-agnostic: the connector rebuilds itself from its own manifest.
     run = manifest_factory(manifest, disk_persister.get_full_path(collection_name))
