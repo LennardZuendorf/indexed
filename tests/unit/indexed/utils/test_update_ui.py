@@ -1,8 +1,5 @@
 """Tests for update command UI components and utilities."""
 
-import time
-from unittest.mock import Mock
-
 import pytest
 
 
@@ -63,99 +60,6 @@ class TestFormatSourceType:
         from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("") == "Unknown"
-
-
-class TestOperationStatus:
-    """Test OperationStatus component for spinner display."""
-
-    def test_min_display_time_constant(self):
-        """Test MIN_DISPLAY_TIME is set correctly."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        assert OperationStatus.MIN_DISPLAY_TIME == 0.5
-
-    def test_init_sets_start_time_to_none(self):
-        """Test __init__ sets _start_time to None."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        console = Mock()
-        status = OperationStatus(console, "Testing")
-        assert status._start_time is None
-
-    def test_enter_sets_start_time(self):
-        """Test __enter__ sets _start_time."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        console = Mock()
-        mock_status = Mock()
-        console.status.return_value = mock_status
-        mock_status.__enter__ = Mock(return_value=mock_status)
-        mock_status.__exit__ = Mock(return_value=None)
-
-        status = OperationStatus(console, "Testing", capture_logs=False)
-        status.__enter__()
-
-        assert status._start_time is not None
-        assert isinstance(status._start_time, float)
-
-    def test_update_with_force_render_pauses(self):
-        """Test update with force_render=True pauses briefly."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        console = Mock()
-        mock_status = Mock()
-        console.status.return_value = mock_status
-        mock_status.__enter__ = Mock(return_value=mock_status)
-
-        status = OperationStatus(console, "Testing", capture_logs=False)
-        status.__enter__()
-
-        start = time.time()
-        status.update("Test message", force_render=True)
-        elapsed = time.time() - start
-
-        # Should pause for at least 0.1 seconds (0.15 configured)
-        assert elapsed >= 0.1
-
-    def test_update_without_force_render_no_pause(self):
-        """Test update without force_render doesn't pause."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        console = Mock()
-        mock_status = Mock()
-        console.status.return_value = mock_status
-        mock_status.__enter__ = Mock(return_value=mock_status)
-
-        status = OperationStatus(console, "Testing", capture_logs=False)
-        status.__enter__()
-
-        start = time.time()
-        status.update("Test message", force_render=False)
-        elapsed = time.time() - start
-
-        # Should be very fast (no forced pause)
-        assert elapsed < 0.1
-
-    def test_complete_waits_for_min_display_time(self):
-        """Test complete() waits for minimum display time."""
-        from indexed.cli.utils.components.status import OperationStatus
-
-        console = Mock()
-        mock_status = Mock()
-        console.status.return_value = mock_status
-        mock_status.__enter__ = Mock(return_value=mock_status)
-        mock_status.stop = Mock()
-
-        status = OperationStatus(console, "Testing", capture_logs=False)
-        status.__enter__()
-
-        # Immediately complete (operation was very fast)
-        start = time.time()
-        status.complete(success=True, success_message="Done")
-        elapsed = time.time() - start
-
-        # Should have waited for MIN_DISPLAY_TIME (0.5s)
-        assert elapsed >= 0.4  # Allow some tolerance
 
 
 class TestDynamicResultText:

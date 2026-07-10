@@ -1,52 +1,32 @@
 """Search command for querying collections.
 
-This command uses the core search service and the search_formatter to display
-results beautifully with the card-based design system.
+Thin command: parses args, resolves collections, runs the core search service,
+and delegates all result rendering to ``search_render`` (thin command, fat
+services — issue #119).
 """
 
 import typer
-from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
+from typing import Optional
 
-# Raw Panel needed — free-text excerpt content doesn't fit card components
-from rich.panel import Panel
 from rich.markup import escape
-
-if TYPE_CHECKING:
-    pass
 
 from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext
 from ...utils.progress_bar import create_phased_progress, build_search_phase_label
-from ...utils.components.theme import get_heading_style, get_accent_style
-from ...utils.components import (
-    create_summary,
-    create_detail_card,
-    get_card_border_style,
-    get_card_padding,
-    get_secondary_style,
+from ...utils.components.theme import (
+    get_heading_style,
+    get_accent_style,
     get_dim_style,
-    print_error,
-    print_warning,
 )
-from ...utils.components.theme import get_detail_card_width
+from ...utils.components import print_error
+from .search_render import format_search_results, format_search_results_compact
 
 app = typer.Typer(help="Search collections")
 
 
-class ChunkInfo(TypedDict):
-    collection: str
-    doc_id: str
-    path: str
-    chunk: Dict[str, Any]
-    chunk_index: int
-
-
-# --- SEARCH FORMATTER FUNCTIONS (moved from search_formatter.py) ---
-
-
-def _load_search_config() -> Any:
+def _load_search_config():
     """Load ``[core.v1.search]`` so the CLI honors the same
     max_docs/max_chunks/score_threshold as MCP (foundation/6 E12 — the CLI
     used to hardcode from ``--limit`` only, so CLI and MCP disagreed on the
@@ -67,311 +47,6 @@ def _load_search_config() -> Any:
         return provider.get(CoreV1SearchConfig)
     except Exception:
         return CoreV1SearchConfig()
-
-
-def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
-    """Surface a per-collection search failure instead of silently skipping it.
-
-    Mirrors the MCP-side fix (``mcp/formatting.py``): a failed collection must
-    reach the user as "index failed", not vanish via a bare ``continue``
-    (foundation/6 E10, CLI twin of the same bug).
-    """
-    for collection_name, error in failed:
-        # collection_name/error are content-derived — escape before entering
-        # markup (foundation/6c bug E2).
-        print_error(
-            f"Collection '{escape(str(collection_name))}' failed: {escape(str(error))}"
-        )
-
-
-def format_search_results(
-    query: str,
-    results: Dict[str, Any],
-    limit: int = 5,
-    show_content: bool = True,
-) -> None:
-    """Display search results with single top result and compact list of others.
-
-    Shows the single most relevant chunk with full content excerpt in a card,
-    then lists the next 4 matches in a compact format showing collection/doc/chunk.
-
-    Args:
-        query: The search query
-        results: Dictionary with collection names as keys and result data as values
-        limit: Maximum number of total results to show (unused, kept for compatibility)
-        show_content: Whether to show content previews
-    """
-    console.print()
-
-    if not show_content:
-        # If content hidden, use compact format
-        _show_all_results_compact(results, limit)
-        return
-
-    # Collect all chunks across all collections with their metadata
-    all_chunks: List[ChunkInfo] = []
-    total_docs = 0
-    failed_collections: List[tuple[str, Any]] = []
-
-    for collection_name, collection_results in results.items():
-        if "error" in collection_results:
-            failed_collections.append((collection_name, collection_results["error"]))
-            continue
-
-        documents = collection_results.get("results", [])
-        total_docs += len(documents)
-
-        for doc in documents:
-            doc_id = doc.get("id", "Unknown")
-            path = doc.get("path") or doc.get("url", "")
-            matched_chunks = doc.get("matchedChunks", []) or doc.get(
-                "matched_chunks", []
-            )
-
-            for i, chunk in enumerate(matched_chunks):
-                all_chunks.append(
-                    ChunkInfo(
-                        collection=collection_name,
-                        doc_id=doc_id,
-                        path=path,
-                        chunk=chunk,
-                        chunk_index=i + 1,  # 1-indexed for display
-                    )
-                )
-
-    if failed_collections:
-        _print_collection_errors(failed_collections)
-        console.print()
-
-    if not all_chunks:
-        if not failed_collections:
-            print_warning(
-                f'No results found for "{query}". '
-                f"Try broadening your search terms or checking collection contents."
-            )
-        console.print()
-        return
-
-    # Sort chunks by score (ascending - lower is better for distance)
-    all_chunks.sort(key=lambda x: x["chunk"].get("score", 999), reverse=False)
-
-    # Show top result with split meta/excerpt cards
-    console.print(
-        f"[{get_heading_style()}]Best Matched Search Result:[/{get_heading_style()}]"
-    )
-    console.print()
-    _show_top_result_split_cards(all_chunks[0])
-
-    # Show next 4 results in compact format
-    if len(all_chunks) > 1:
-        console.print()
-        console.print(
-            f"[{get_heading_style()}]Other Search Query Matches[/{get_heading_style()}]"
-        )
-        console.print()
-
-        for chunk_info in all_chunks[1:5]:  # Show up to 4 more
-            _show_compact_match(chunk_info)
-
-    # Summary
-    console.print()
-    summary = create_summary(
-        "Search Result",
-        f"Found {len(all_chunks)} matching chunks across {total_docs} documents",
-    )
-    console.print(summary)
-    console.print()
-
-
-def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
-    """Show the top result chunk in two cards: Meta and Excerpt."""
-
-    collection = chunk_info["collection"]
-    doc_id = chunk_info["doc_id"]
-    chunk = chunk_info["chunk"]
-    chunk_index = chunk_info["chunk_index"]
-
-    # --- METADATA CARD ---
-    meta_rows = []
-    meta_rows.append(("Collection", collection))
-    meta_rows.append(("Document", doc_id))
-
-    score = chunk.get("score")
-    score_str = (
-        f"{score:.4f}"
-        if isinstance(score, float)
-        else (str(score) if score is not None else "N/A")
-    )
-    meta_rows.append(("Score", score_str))
-    meta_rows.append(("Chunk", str(chunk_index)))
-
-    # Only include match id if available
-    chunk_id = chunk.get("id")
-    if chunk_id:
-        meta_rows.append(("Match ID", chunk_id))
-
-    meta_card = create_detail_card(title="Top Result Meta", rows=meta_rows)
-    console.print(meta_card)
-
-    # --- EXCERPT CARD ---
-    # Get chunk excerpt
-    chunk_content_obj = chunk.get("content", {})
-    if isinstance(chunk_content_obj, dict):
-        chunk_content = chunk_content_obj.get("indexedData", "")
-    else:
-        chunk_content = str(chunk_content_obj)
-    excerpt = chunk_content.strip() if chunk_content else ""
-    max_length = 1500
-    display_excerpt = (
-        excerpt if len(excerpt) <= max_length else excerpt[:max_length] + "..."
-    )
-
-    # Use a subtle dim/muted style for the excerpt card with same width as meta card.
-    # `display_excerpt` is indexed document content — untrusted — so it must be
-    # escaped before entering this markup string; the surrounding dim-style
-    # tags are ours and stay as-is (foundation/6c bug E2).
-    excerpt_panel = Panel(
-        f"[{get_dim_style()}]{escape(display_excerpt)}[/{get_dim_style()}]"
-        if excerpt
-        else f"[{get_dim_style()}][No excerpt available][/{get_dim_style()}]",
-        title="Top Result Excerpt",
-        border_style=get_card_border_style(),
-        padding=get_card_padding(),
-        style=get_secondary_style(),
-        width=get_detail_card_width(),  # Match the meta card width
-    )
-    console.print(excerpt_panel)
-
-
-def _show_compact_match(chunk_info: ChunkInfo) -> None:
-    """Show a compact single-line match."""
-    collection = chunk_info["collection"]
-    doc_id = chunk_info["doc_id"]
-    chunk = chunk_info["chunk"]
-    chunk_index = chunk_info["chunk_index"]
-    score = chunk.get("score", "N/A")
-    if isinstance(score, float):
-        chunk_score = f"{score:.4f}"
-    else:
-        chunk_score = str(score)
-
-    # Format: collection / document / part / match_id
-    # collection/doc_id/chunk_score are user/content-derived (collection name,
-    # document path or URL, indexed data) — escape before entering this markup
-    # string; the surrounding style tags are ours (foundation/6c bug E2).
-    console.print(
-        f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
-        f"{escape(str(doc_id))} / "
-        f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
-        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]"
-    )
-
-
-def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
-    """Show all results in compact format when content is hidden."""
-    total_results = 0
-    failed_collections: List[tuple[str, Any]] = []
-
-    for collection_name, collection_results in results.items():
-        if "error" in collection_results:
-            failed_collections.append((collection_name, collection_results["error"]))
-            continue
-
-        documents = collection_results.get("results", [])
-        if not documents:
-            continue
-
-        total_results += len(documents)
-
-        # Collection header — collection_name/doc_id are content-derived, so
-        # escape them before entering markup (foundation/6c bug E2).
-        console.print(
-            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
-        )
-
-        # List results
-        for i, doc in enumerate(documents[:limit], 1):
-            doc_id = doc.get("id", "Unknown")
-            console.print(f"  {i}. {escape(str(doc_id))}")
-
-        console.print()
-
-    if failed_collections:
-        _print_collection_errors(failed_collections)
-        console.print()
-
-    # Summary
-    console.print()
-    if total_results > 0:
-        console.print(create_summary("Search Result", f"{total_results} results"))
-    elif not failed_collections:
-        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
-
-    console.print()
-
-
-def format_search_results_compact(
-    query: str,
-    results: Dict[str, Any],
-    limit: int = 10,
-) -> None:
-    """Display search results in compact list format.
-
-    Args:
-        query: The search query
-        results: Dictionary with collection names as keys and result data as values
-        limit: Maximum number of results to show per collection
-    """
-
-    total_results = 0
-    failed_collections: List[tuple[str, Any]] = []
-
-    for collection_name, collection_results in results.items():
-        if "error" in collection_results:
-            failed_collections.append((collection_name, collection_results["error"]))
-            continue
-
-        documents = collection_results.get("results", [])
-        if not documents:
-            continue
-
-        total_results += len(documents)
-
-        # Collection header — collection_name/doc_id are content-derived, so
-        # escape them before entering markup (foundation/6c bug E2).
-        console.print(
-            f"[{get_accent_style()}]{escape(collection_name)}[/{get_accent_style()}] [{get_dim_style()}]({len(documents)} results)[/{get_dim_style()}]"
-        )
-
-        # List results
-        for i, doc in enumerate(documents[:limit], 1):
-            doc_id = doc.get("id", "Unknown")
-            score = doc.get("score")
-
-            if score is not None:
-                score_str = (
-                    f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
-                )
-                console.print(
-                    f"  {i}. {escape(str(doc_id))}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
-                )
-            else:
-                console.print(f"  {i}. {escape(str(doc_id))}")
-
-        console.print()
-
-    if failed_collections:
-        _print_collection_errors(failed_collections)
-        console.print()
-
-    # Summary
-    console.print()
-    if total_results > 0:
-        console.print(create_summary("Search Result", f"{total_results} results"))
-    elif not failed_collections:
-        console.print(f"[{get_dim_style()}]No results found[/{get_dim_style()}]")
-
-    console.print()
 
 
 @app.command()

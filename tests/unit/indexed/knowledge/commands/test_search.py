@@ -15,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands import search as search_cmd
+from indexed.cli.knowledge.commands import search_render
 
 
 runner = CliRunner()
@@ -89,11 +90,11 @@ class TestFormatSearchResults:
         from unittest.mock import patch
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": lambda *a, **kw: None})()
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
         )
 
-        with patch.object(search_cmd, "print_warning") as mock_warn:
-            search_cmd.format_search_results("query", results={})
+        with patch.object(search_render, "print_warning") as mock_warn:
+            search_render.format_search_results("query", results={})
             mock_warn.assert_called_once()
             assert "No results found" in mock_warn.call_args[0][0]
 
@@ -111,7 +112,7 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
         # Two collections: one with an error, one with results
@@ -139,8 +140,8 @@ class TestFormatSearchResults:
             },
         }
 
-        with patch.object(search_cmd, "print_error") as mock_error:
-            search_cmd.format_search_results("query", results=results, limit=5)
+        with patch.object(search_render, "print_error") as mock_error:
+            search_render.format_search_results("query", results=results, limit=5)
 
         # We at least expect the header for the best match section and no crash
         joined = "\n".join(outputs)
@@ -163,10 +164,10 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        search_cmd.format_search_results_compact("query", results={})
+        search_render.format_search_results_compact("query", results={})
 
         assert any("No results found" in line for line in outputs)
 
@@ -179,7 +180,7 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
         results: Dict[str, Any] = {
@@ -188,7 +189,7 @@ class TestFormatSearchResults:
         }
 
         # Call the internal helper to keep behavior focused
-        search_cmd._show_all_results_compact(results, limit=10)
+        search_render._show_all_results_compact(results, limit=10)
 
         joined = "\n".join(outputs)
         # Should mention collections and correct counts
@@ -208,14 +209,14 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
         results: Dict[str, Any] = {
             "coll1": {"results": [{"id": "doc1"}]},
         }
 
-        search_cmd.format_search_results("query", results=results, show_content=False)
+        search_render.format_search_results("query", results=results, show_content=False)
 
         joined = "\n".join(outputs)
         # The compact path should list the collection
@@ -229,10 +230,10 @@ class TestFormatSearchResults:
             outputs.append(str(args))
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        chunk_info = search_cmd.ChunkInfo(
+        chunk_info = search_render.ChunkInfo(
             collection="col",
             doc_id="doc1",
             path="/p",
@@ -240,7 +241,7 @@ class TestFormatSearchResults:
             chunk_index=1,
         )
         # Should not raise even with string content
-        search_cmd._show_top_result_split_cards(chunk_info)
+        search_render._show_top_result_split_cards(chunk_info)
 
     def test_show_compact_match_non_float_score(self, monkeypatch):
         """_show_compact_match with a non-float score should not raise."""
@@ -251,17 +252,17 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        chunk_info = search_cmd.ChunkInfo(
+        chunk_info = search_render.ChunkInfo(
             collection="col",
             doc_id="doc1",
             path="/p",
             chunk={"score": "high", "content": {"indexedData": "text"}},
             chunk_index=1,
         )
-        search_cmd._show_compact_match(chunk_info)
+        search_render._show_compact_match(chunk_info)
 
         joined = "\n".join(outputs)
         assert "col" in joined
@@ -280,15 +281,15 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        with patch.object(search_cmd, "print_error") as mock_error:
+        with patch.object(search_render, "print_error") as mock_error:
             results: Dict[str, Any] = {
                 "error-coll": {"error": "unavailable"},
                 "empty-coll": {"results": []},
             }
-            search_cmd._show_all_results_compact(results, limit=10)
+            search_render._show_all_results_compact(results, limit=10)
 
         # The failed collection is reported via print_error, naming both the
         # collection and the underlying error.
@@ -312,7 +313,7 @@ class TestFormatSearchResults:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
         results: Dict[str, Any] = {
@@ -323,7 +324,7 @@ class TestFormatSearchResults:
                 ]
             },
         }
-        search_cmd.format_search_results_compact("query", results=results, limit=10)
+        search_render.format_search_results_compact("query", results=results, limit=10)
 
         joined = "\n".join(outputs)
         assert "coll1" in joined
@@ -842,15 +843,15 @@ class TestFormatSearchResultsCompactEdgeCases:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        with patch.object(search_cmd, "print_error") as mock_error:
+        with patch.object(search_render, "print_error") as mock_error:
             results: Dict[str, Any] = {
                 "error-coll": {"error": "unavailable"},
                 "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
             }
-            search_cmd.format_search_results_compact("query", results=results)
+            search_render.format_search_results_compact("query", results=results)
 
         joined = "\n".join(outputs)
         assert "error-coll" not in joined
@@ -870,13 +871,13 @@ class TestFormatSearchResultsCompactEdgeCases:
             outputs.append(text)
 
         monkeypatch.setattr(
-            search_cmd, "console", type("C", (), {"print": fake_print})()
+            search_render, "console", type("C", (), {"print": fake_print})()
         )
 
         results: Dict[str, Any] = {
             "empty-coll": {"results": []},
         }
-        search_cmd.format_search_results_compact("query", results=results)
+        search_render.format_search_results_compact("query", results=results)
 
         joined = "\n".join(outputs)
         assert "empty-coll" not in joined

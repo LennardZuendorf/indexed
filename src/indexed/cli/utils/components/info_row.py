@@ -32,21 +32,3 @@ def create_info_row(label: str, value: str) -> Text:
     return Text(padded_label, style=get_label_style()) + Text(
         value, style=get_value_style()
     )
-
-
-def create_info_rows(data: list[tuple[str, str]]) -> list[Text]:
-    """Create multiple info rows from a list of (label, value) tuples.
-
-    Args:
-        data: List of (label, value) tuples
-
-    Returns:
-        List of formatted Text objects
-
-    Example:
-        >>> rows = create_info_rows([
-        ...     ("Docs", "13"),
-        ...     ("Chunks", "174"),
-        ... ])
-    """
-    return [create_info_row(label, value) for label, value in data]
