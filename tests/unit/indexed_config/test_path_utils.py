@@ -1,7 +1,7 @@
 """Tests for path_utils module."""
 
 import pytest
-from indexed_config.path_utils import (
+from indexed.config.path_utils import (
     get_by_path,
     set_by_path,
     delete_by_path,

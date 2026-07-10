@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 import pytest
-from indexed_config.store import TomlStore
+from indexed.config.store import TomlStore
 
 
 def test_toml_store_init():
@@ -39,16 +39,16 @@ def test_toml_store_read_toml_file_no_tomllib():
 
     try:
         # Mock the module-level tomllib to be None
-        import indexed_config.store
+        import indexed.config.store
 
-        original_tomllib = indexed_config.store.tomllib
-        indexed_config.store.tomllib = None
+        original_tomllib = indexed.config.store.tomllib
+        indexed.config.store.tomllib = None
 
         try:
             with pytest.raises(RuntimeError, match="tomllib/tomli not available"):
                 store._read_toml_file(fake_path)
         finally:
-            indexed_config.store.tomllib = original_tomllib
+            indexed.config.store.tomllib = original_tomllib
     finally:
         # Clean up
         if fake_path.exists():
@@ -99,16 +99,34 @@ def test_toml_store_write():
 
 
 def test_toml_store_read_integrates_env():
-    """Test read() merges global, workspace, and env."""
+    """Test read_for_mode() applies INDEXED__* env overrides."""
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
         store = TomlStore(workspace=workspace)
 
-        # Set env var
         env_vars = {"INDEXED__test__value": "from_env"}
 
         with patch.dict(os.environ, env_vars, clear=False):
-            result = store.read()
+            result = store.read_for_mode("global")
 
-        # Should include env var (even if files don't exist)
-        assert "test" in result or result == {}  # Either merged or empty
+        assert result.get("test", {}).get("value") == "from_env"
+
+
+def test_toml_store_read_disk_only_ignores_env(tmp_path: Path):
+    """C2: read_disk_only_for_mode() must NOT merge INDEXED__* env vars —
+    it's the baseline set()/delete() persist so env-supplied secrets never
+    get baked into config.toml."""
+    store = TomlStore(workspace=tmp_path, mode_override="local")
+    store.write({"test": {"value": "on_disk"}})
+
+    env_vars = {"INDEXED__test__value": "from_env", "INDEXED__test__other": "secret"}
+    with patch.dict(os.environ, env_vars, clear=False):
+        disk_only = store.read_disk_only_for_mode("local")
+        merged = store.read_for_mode("local")
+
+    assert disk_only["test"]["value"] == "on_disk"
+    assert "other" not in disk_only["test"]
+    # Sanity: the merged (env-overlaid) view DOES pick up the env value —
+    # confirms disk_only is genuinely bypassing the overlay, not just broken.
+    assert merged["test"]["value"] == "from_env"
+    assert merged["test"]["other"] == "secret"

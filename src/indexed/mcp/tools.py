@@ -1,0 +1,127 @@
+"""MCP tool implementations for search operations."""
+
+from typing import Any, Callable, Dict, List, Optional, get_args
+
+from fastmcp import Context
+
+from indexed.core.v1.engine import (
+    SourceConfig,
+    search as svc_search,
+    status as svc_status,
+)
+
+from indexed.config.errors import IndexedError
+
+from indexed.cli.errors import mcp_error_envelope
+from .config import resolve_cli_context, resolve_config as _resolve_config
+from .formatting import format_search_results_for_llm
+
+# Derived once from the SourceConfig Literal so the set stays in sync with the model.
+_ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset(
+    get_args(SourceConfig.model_fields["type"].annotation)
+)
+
+
+def _run_search(
+    query: str,
+    configs: Optional[List[Any]],
+    search_cfg: Any,
+    collections_path: str,
+) -> Dict[str, Any]:
+    """Execute a search and return formatted results or a graceful error envelope."""
+    try:
+        raw_results = svc_search(
+            query,
+            configs=configs,
+            max_docs=search_cfg.max_docs,
+            max_chunks=search_cfg.max_chunks,
+            score_threshold=search_cfg.score_threshold,
+            include_full_text=search_cfg.include_full_text,
+            include_all_chunks=search_cfg.include_all_chunks,
+            include_matched_chunks=search_cfg.include_matched_chunks,
+            collections_path=collections_path,
+        )
+        return format_search_results_for_llm(raw_results, query)
+    except IndexedError as e:
+        return mcp_error_envelope(e)
+
+
+def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
+    """Register search tools on the FastMCP instance."""
+
+    @mcp.tool
+    def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+        """Search all available document collections for semantically similar content.
+
+        Returns results in an LLM-optimized format with flat structure and direct text access.
+        Results are ranked by relevance with the most relevant chunks first.
+
+        Parameters:
+            query (str): The search query text.
+            ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
+
+        Returns:
+            dict: LLM-friendly search results with ranked results containing
+                rank, relevance_score, collection, document_id, document_url,
+                chunk_number, and text fields.
+        """
+        search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        cli_ctx = resolve_cli_context(ctx)
+        collections_path = str(cli_ctx.collections_path)
+
+        return _run_search(query, None, search_cfg, collections_path)
+
+    @mcp.tool
+    def search_collection(
+        collection: str,
+        query: str,
+        ctx: Optional[Context] = None,
+    ) -> Dict[str, Any]:
+        """Search within a specific document collection using semantic similarity.
+
+        Returns results in the same LLM-optimized format as the general search tool.
+
+        Args:
+            collection: Name of the collection to search
+            query: The search query text
+            ctx: FastMCP Context (optional, for accessing lifespan state)
+
+        Returns:
+            dict: LLM-friendly search results with the same structure as search() tool
+        """
+        search_cfg = _resolve_config(ctx, "search_config", get_search_config)
+        cli_ctx = resolve_cli_context(ctx)
+        collections_path = str(cli_ctx.collections_path)
+
+        try:
+            statuses = svc_status([collection], collections_path=collections_path)
+            if not statuses or not statuses[0].indexers:
+                return {
+                    "error": f"Collection '{collection}' not found or has no indexers"
+                }
+            coll_status = statuses[0]
+            default_indexer = coll_status.indexers[0]
+        except Exception:
+            from indexed.core.v1.constants import DEFAULT_INDEXER
+
+            default_indexer = DEFAULT_INDEXER
+            coll_status = None
+
+        raw_source_type = (
+            coll_status.source_type if coll_status and coll_status.source_type else None
+        )
+        # Whitelist against the SourceConfig Literal; unknown on-disk types fall back
+        # to "localFiles" so a corrupt manifest never raises ValidationError.
+        source_type = (
+            raw_source_type
+            if raw_source_type in _ALLOWED_SOURCE_TYPES
+            else "localFiles"
+        )
+        source_config = SourceConfig(
+            name=collection,
+            type=source_type,
+            base_url_or_path="",
+            indexer=default_indexer,
+        )
+
+        return _run_search(query, [source_config], search_cfg, collections_path)

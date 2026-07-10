@@ -4,20 +4,41 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import typer
 
-from indexed.knowledge.commands._create_helpers import execute_create_command
-from indexed_config import ValidationResult
-from core.v1.engine.services import SourceConfig
+from indexed.cli.knowledge.commands._create_helpers import execute_create_command
+from indexed.config import ValidationResult
+from indexed.core.v1.engine.services import SourceConfig
+from tests.unit.indexed.conftest import TEST_COLLECTIONS_PATH, make_cli_context
+
+
+@pytest.fixture(autouse=True)
+def _patch_runtime_context():
+    def resolve_context(*args, **kwargs):
+        from indexed.config import get_config
+
+        return make_cli_context(get_config())
+
+    with (
+        patch(
+            "indexed.cli.composition.resolve_collections_context",
+            side_effect=resolve_context,
+        ),
+        patch(
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
+            lambda *args, **kwargs: None,
+        ),
+    ):
+        yield
 
 
 class TestExecuteCreateCommand:
     """Test execute_create_command function."""
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_with_all_fields_present(
         self,
         mock_print_success,
@@ -34,7 +55,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -67,15 +88,23 @@ class TestExecuteCreateCommand:
         )
 
         mock_create.assert_called_once()
-        mock_status.assert_called_once_with(["test-collection"], collections_path=None)
+        mock_status.assert_called_once_with(
+            ["test-collection"], collections_path=str(TEST_COLLECTIONS_PATH)
+        )
         mock_print_success.assert_called_once()
+        # E4: each run starts with a clean in-memory overlay so a stale
+        # override from a prior (possibly failed) create can't leak in.
+        # Review Finding 2: the overlay is also cleared in a `finally` at the
+        # end of every run (start-clear + finally-clear = 2 calls here) so it
+        # never dangles process-global state after a run finishes.
+        assert mock_config.clear_overlay.call_count == 2
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_prompts_for_missing_fields(
         self,
         mock_print_error,
@@ -92,7 +121,7 @@ class TestExecuteCreateCommand:
             missing=["path"],
             field_info={"path": {"sensitive": False}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         prompt_called = []
@@ -134,11 +163,11 @@ class TestExecuteCreateCommand:
         assert len(prompt_called) == 1
         mock_create.assert_called_once()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_creation_error(
         self,
         mock_print_error,
@@ -154,7 +183,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_create.side_effect = Exception("Creation failed")
 
@@ -184,13 +213,16 @@ class TestExecuteCreateCommand:
             )
 
         mock_print_error.assert_called()
+        # Review Finding 2: the overlay must still be cleared on a failed run
+        # (finally-clear runs regardless of the raised typer.Exit).
+        mock_config.clear_overlay.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_invalid_collection_verification(
         self,
         mock_print_error,
@@ -207,7 +239,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         # Return empty list (collection not found)
@@ -240,12 +272,12 @@ class TestExecuteCreateCommand:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_collection_without_updated_time(
         self,
         mock_print_error,
@@ -262,7 +294,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -297,13 +329,13 @@ class TestExecuteCreateCommand:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.logger")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_verbose_mode_logging(
         self,
         mock_print_success,
@@ -321,7 +353,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={"path": {"sensitive": False}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = True
 
         mock_status_item = MagicMock()
@@ -356,14 +388,18 @@ class TestExecuteCreateCommand:
         # Should have logged verbose information
         assert mock_logger.info.called
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_calls_verbose_pre_creation_log(
         self,
         mock_print_success,
@@ -382,7 +418,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = True
 
         mock_status_item = MagicMock()
@@ -424,12 +460,12 @@ class TestExecuteCreateCommand:
         assert len(pre_creation_log_called) == 1
         assert pre_creation_log_called[0]["url"] == "https://test.com"
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_status_exception(
         self,
         mock_print_error,
@@ -446,7 +482,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_status.side_effect = Exception("Status lookup failed")
 
@@ -478,14 +514,18 @@ class TestExecuteCreateCommand:
         mock_print_error.assert_called()
         assert "Failed to verify" in str(mock_print_error.call_args)
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_calls_ensure_credentials_for_source(
         self,
         mock_print_success,
@@ -504,7 +544,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -543,14 +583,18 @@ class TestExecuteCreateCommand:
             "outline", mock_config, namespace="sources.outline"
         )
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_skips_credential_fields_in_cli_override_loop(
         self,
         mock_print_success,
@@ -562,14 +606,14 @@ class TestExecuteCreateCommand:
         mock_apply_cli_creds,
         mock_ensure_creds,
     ):
-        """Should not write credential fields via generic config.set_value loop."""
+        """Should not write credential fields via generic config.set_overlay loop."""
         mock_config = Mock()
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
             missing=[],
             field_info={"api_token": {"sensitive": True}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -604,8 +648,16 @@ class TestExecuteCreateCommand:
             force=False,
         )
 
+        # Non-credential CLI overrides go to the in-memory overlay only
+        # (never persisted to config.toml — R3; foundation/6b bug E4).
+        set_overlay_calls = [
+            call.args[0] for call in mock_config.set_overlay.call_args_list if call.args
+        ]
+        assert "sources.outline.url" in set_overlay_calls
+        assert "sources.outline.api_token" not in set_overlay_calls
+
+        # Credential fields must never reach either write path via this loop.
         set_value_calls = [
             call.args[0] for call in mock_config.set_value.call_args_list if call.args
         ]
-        assert "sources.outline.url" in set_value_calls
         assert "sources.outline.api_token" not in set_value_calls

@@ -8,25 +8,47 @@ We focus on realistic behaviors:
 
 from pathlib import Path
 from typing import List
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
-from indexed.knowledge.commands import inspect as inspect_cmd
-from indexed.utils import storage_info as storage_info_mod
-from core.v1.engine.services import CollectionInfo
+from indexed.cli.knowledge.commands import inspect as inspect_cmd
+from indexed.core.v1.engine.services import CollectionInfo
 
 
 runner = CliRunner()
 
-# Patch resolve_preferred_collections_path globally for all inspect tests
-# so tests don't need ConfigService
-_MOCK_PATH = patch.object(
-    storage_info_mod,
-    "resolve_preferred_collections_path",
-    return_value=Path("/tmp/test-collections"),
-)
-_MOCK_PATH.start()
+
+def _mock_runtime_context():
+    mock_config = MagicMock()
+    mock_config.resolve_storage_mode.return_value = "global"
+    mock_config.get_workspace_preference.return_value = None
+    mock_config.store.read.return_value = {}
+    return type(
+        "MockCtx",
+        (),
+        {
+            "collections_path": Path("/tmp/test-collections"),
+            "mode": "global",
+            "config_service": mock_config,
+        },
+    )()
+
+
+@pytest.fixture(autouse=True)
+def _patch_runtime_context():
+    with (
+        patch(
+            "indexed.cli.composition.resolve_collections_context",
+            side_effect=lambda *args, **kwargs: _mock_runtime_context(),
+        ),
+        patch(
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
+            lambda *args, **kwargs: None,
+        ),
+    ):
+        yield
 
 
 def _make_collection(
@@ -102,9 +124,36 @@ class TestInspectCollectionsCommand:
         assert "docs" in result.stdout
         assert "jira" in result.stdout
 
+    def test_inspect_corrupt_collection_reports_unreadable(self, monkeypatch, tmp_path):
+        """A collection present on disk with a corrupt/unreadable manifest must
+        be reported honestly (and exit non-zero) — ``inspect()`` OMITS it
+        (foundation/6 E1), so it must not be misreported as "not found"
+        (foundation/6 regression fix)."""
+        collections_dir = tmp_path / "collections"
+        collections_dir.mkdir()
+        corrupt_dir = collections_dir / "corrupt-coll"
+        corrupt_dir.mkdir()
+        (corrupt_dir / "manifest.json").write_text("{ not valid json")
+
+        ctx = type("Ctx", (), {"collections_path": collections_dir})()
+        monkeypatch.setattr(
+            "indexed.cli.composition.resolve_collections_context", lambda *a, **kw: ctx
+        )
+
+        result = runner.invoke(inspect_cmd.app, ["corrupt-coll"])
+
+        assert result.exit_code != 0
+        assert "not found" not in result.stdout.lower()
+        assert (
+            "corrupt" in result.stdout.lower() or "unreadable" in result.stdout.lower()
+        )
+
     def test_inspect_specific_collection_simple_output(self, monkeypatch):
         """Simple output for a specific collection should contain core fields."""
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         coll = _make_collection("docs")
 
@@ -128,7 +177,10 @@ class TestInspectCollectionsCommand:
 
     def test_inspect_all_collections_simple_output(self, monkeypatch):
         """Simple output for all collections should be a list of objects."""
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         colls = [_make_collection("docs"), _make_collection("jira")]
 
@@ -197,7 +249,7 @@ class TestInspectCollectionsCommand:
 
     def test_verbose_list_with_size_info(self, monkeypatch):
         """Verbose listing should include size information when disk_size_bytes is set."""
-        from core.v1.engine.services import CollectionInfo
+        from indexed.core.v1.engine.services import CollectionInfo
 
         coll = CollectionInfo(
             name="sized-collection",

@@ -1,8 +1,8 @@
 """Tests for indexed error hierarchy."""
 
 import pytest
-from indexed_config.errors import IndexedError
-from indexed.errors import CLIError, MCPError
+from indexed.config.errors import IndexedError
+from indexed.cli.errors import CLIError, MCPError
 
 
 class TestErrorHierarchy:

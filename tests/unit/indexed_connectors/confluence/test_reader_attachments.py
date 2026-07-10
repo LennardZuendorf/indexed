@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
-from connectors.confluence.async_confluence_cloud_reader import (
+from indexed.connectors.confluence.confluence_document_reader import (
+    ConfluenceDocumentReader,
+)
+from indexed.connectors.confluence.async_confluence_cloud_reader import (
     AsyncConfluenceCloudDocumentReader,
 )
 
@@ -221,7 +223,7 @@ class TestConfluenceDocumentReaderAttachments:
         mock_resp.raise_for_status = MagicMock()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             return_value=mock_resp,
         ):
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -235,7 +237,7 @@ class TestConfluenceDocumentReaderAttachments:
         reader = self._make_reader()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             side_effect=ConnectionError("fail"),
         ):
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -249,7 +251,7 @@ class TestConfluenceDocumentReaderAttachments:
         reader = self._make_reader(include_attachments=True)
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get"
+            "indexed.connectors.confluence.confluence_document_reader.requests.get"
         ) as mock_get:
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
                 "https://evil.attacker.test/steal"
@@ -267,7 +269,7 @@ class TestConfluenceDocumentReaderAttachments:
         mock_resp.raise_for_status = MagicMock()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             return_value=mock_resp,
         ) as mock_get:
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -430,6 +432,7 @@ class TestAsyncConfluenceCloudReaderAttachments:
 
         download_resp = MagicMock()
         download_resp.content = b"pdf data"
+        download_resp.is_success = True
         download_resp.raise_for_status = MagicMock()
 
         async def run():
@@ -445,6 +448,58 @@ class TestAsyncConfluenceCloudReaderAttachments:
         assert len(result) == 1
         assert result[0]["filename"] == "good.pdf"
         assert result[0]["bytes"] == b"pdf data"
+
+    def test_fetch_attachments_for_page_http_error_skipped(self):
+        """D1: a 4xx/5xx download response is skipped, not raised."""
+        reader = self._make_reader()
+
+        list_resp = MagicMock()
+        list_resp.json.return_value = {
+            "results": [
+                {
+                    "title": "gone.pdf",
+                    "extensions": {"fileSize": 100},
+                    "_links": {"download": "/download/gone.pdf"},
+                    "metadata": {},
+                },
+            ]
+        }
+        list_resp.raise_for_status = MagicMock()
+
+        download_resp = MagicMock()
+        download_resp.is_success = False
+        download_resp.status_code = 404
+
+        async def run():
+            sem = asyncio.Semaphore(5)
+            client = AsyncMock()
+            client.get = AsyncMock(side_effect=[list_resp, download_resp])
+            page = {"content": {"id": "99"}}
+            return await reader._fetch_attachments_for_page(client, sem, page)
+
+        result = asyncio.run(run())
+        assert result == []
+
+    def test_fetch_all_attachments_client_follows_redirects(self):
+        """D1: the attachment client must be constructed with
+        follow_redirects=True so the Cloud media/CDN 302 is followed."""
+        reader = self._make_reader()
+
+        with patch(
+            "indexed.connectors.confluence.async_confluence_cloud_reader.httpx.AsyncClient"
+        ) as MockClient:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(
+                return_value=MagicMock(json=MagicMock(return_value={"results": []}))
+            )
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client
+
+            asyncio.run(reader._fetch_all_attachments_async([{"content": {"id": "1"}}]))
+
+        _, kwargs = MockClient.call_args
+        assert kwargs.get("follow_redirects") is True
 
     def test_fetch_attachments_for_page_download_error(self):
         """Download failure for individual attachment is handled."""

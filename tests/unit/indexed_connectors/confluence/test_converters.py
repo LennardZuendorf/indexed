@@ -1,17 +1,9 @@
 """Tests for unified Confluence document converter."""
 
-import warnings
-
 import pytest
 from unittest.mock import MagicMock
-from connectors.confluence.unified_confluence_document_converter import (
+from indexed.connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
-)
-from connectors.confluence.confluence_document_converter import (
-    ConfluenceDocumentConverter,
-)
-from connectors.confluence.confluence_cloud_document_converter import (
-    ConfluenceCloudDocumentConverter,
 )
 
 pytestmark = pytest.mark.connectors
@@ -261,6 +253,36 @@ class TestUnifiedConfluenceDocumentConverter:
         assert len(body_chunks) == 1
         assert body_chunks[0]["metadata"] == {"headings": ["H1"]}
 
+    def test_ac_image_filename_extracted(self):
+        """D4: ac:image/ri:attachment filenames must appear in cleaned text."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        body_html = (
+            '<p>See <ac:image><ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+        )
+        doc = _make_server_doc(body_html=body_html)
+        result = converter.convert(doc)
+        assert "diagram.png" in result[0]["text"]
+
+    def test_ac_link_content_title_extracted(self):
+        """D4: ac:link/ri:page content-title must appear in cleaned text."""
+        converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
+        body_html = (
+            '<p>See <ac:link><ri:page ri:content-title="Design Doc"/></ac:link></p>'
+        )
+        doc = _make_server_doc(body_html=body_html)
+        result = converter.convert(doc)
+        assert "Design Doc" in result[0]["text"]
+
+    def test_get_cleaned_body_static_call(self):
+        """D4 spec calls _get_cleaned_body directly with a raw storage dict."""
+        xml = (
+            '<p>See <ac:image><ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+        )
+        text = UnifiedConfluenceDocumentConverter._get_cleaned_body(
+            {"body": {"storage": {"value": xml}}}
+        )
+        assert "diagram.png" in text
+
     def test_no_comments_key(self):
         """Document without comments key should not crash."""
         converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
@@ -268,42 +290,3 @@ class TestUnifiedConfluenceDocumentConverter:
         del doc["comments"]
         result = converter.convert(doc)
         assert result[0]["id"] == "12345"
-
-
-class TestDeprecatedConfluenceConverters:
-    """Test backward-compatible deprecated converter wrappers."""
-
-    def test_server_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ConfluenceDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "deprecated" in str(w[0].message).lower()
-
-    def test_server_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = ConfluenceDocumentConverter()
-
-        doc = _make_server_doc()
-        result = converter.convert(doc)
-        assert result[0]["id"] == "12345"
-        assert "Test Page" in result[0]["text"]
-
-    def test_cloud_converter_emits_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ConfluenceCloudDocumentConverter()
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-
-    def test_cloud_converter_converts(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            converter = ConfluenceCloudDocumentConverter()
-
-        doc = _make_cloud_doc()
-        result = converter.convert(doc)
-        assert result[0]["id"] == "12345"
-        assert "Test Page" in result[0]["text"]

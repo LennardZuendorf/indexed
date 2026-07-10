@@ -4,7 +4,7 @@ name: Release — Build + Publish to PyPI
 # Flow: build wheel from main → validate → publish to PyPI → attach to release
 #
 # Wheels are NEVER committed to git. They are built fresh in CI on every
-# release, validated against PyPI's exact archive validator (tools/validate_wheel.py),
+# release, validated against PyPI's exact archive validator (scripts/validate_wheel.py),
 # uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub Release
 # as the durable archive.
 on:
@@ -41,15 +41,15 @@ jobs:
     - name: Sync version with release tag
       env:
         REF_NAME: ${{ github.ref_name }}
-      run: uv run python tools/sync_version.py "$REF_NAME"
+      run: uv run python scripts/sync_version.py "$REF_NAME"
 
     - name: Build distributable wheel
-      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+      run: uv build --wheel --out-dir dist
 
     - name: Validate wheel with PyPI's archive validator
       # Same checks PyPI's warehouse runs on upload. Failing here means PyPI
       # would reject — fail fast with the exact error message instead.
-      run: uv run python tools/validate_wheel.py dist/*.whl
+      run: uv run python scripts/validate_wheel.py dist/*.whl
 
     - name: Upload wheel artifact
       uses: actions/upload-artifact@v4

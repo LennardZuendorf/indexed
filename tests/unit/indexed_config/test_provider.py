@@ -2,7 +2,7 @@
 
 import pytest
 from pydantic import BaseModel
-from indexed_config.provider import Provider
+from indexed.config.provider import Provider
 
 
 class SampleConfig(BaseModel):

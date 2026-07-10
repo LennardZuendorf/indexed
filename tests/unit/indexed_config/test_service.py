@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel, Field
-from indexed_config.errors import ConfigValidationError
-from indexed_config.service import ConfigService
+from indexed.config.errors import ConfigValidationError
+from indexed.config.service import ConfigService, get_config, reload
 
 
 class SampleConfig(BaseModel):
@@ -20,14 +20,6 @@ class OptionalConfig(BaseModel):
     """Optional config model."""
 
     name: str = Field(default="default", description="Name")
-
-
-def test_config_service_get_raw():
-    """Test get_raw() alias for load_raw()."""
-    service = ConfigService()
-    result1 = service.load_raw()
-    result2 = service.get_raw()
-    assert result1 == result2
 
 
 def test_config_service_bind_skips_missing():
@@ -114,20 +106,31 @@ def test_config_service_validate_skips_empty_dict():
 
 
 def test_config_service_instance_singleton():
-    """Test instance() class method returns singleton."""
-    ConfigService._instance = None  # Reset singleton
-    instance1 = ConfigService.instance()
-    instance2 = ConfigService.instance()
+    """Test get_config() returns the cached singleton."""
+    reload()  # Reset singleton
+    instance1 = get_config()
+    instance2 = get_config()
 
     assert instance1 is instance2
     assert isinstance(instance1, ConfigService)
 
 
+def test_config_service_instance_rebuilds_on_mode_override_change():
+    """get_config() rebuilds the cached instance when mode_override changes."""
+    reload()
+    global_svc = get_config(mode_override="global")
+    local_svc = get_config(mode_override="local")
+
+    assert global_svc is not local_svc
+    assert global_svc._mode_override == "global"
+    assert local_svc._mode_override == "local"
+
+
 class TestLoadRawModeResolution:
     """Test that load_raw() resolves the storage mode correctly."""
 
-    def test_load_raw_with_mode_override_uses_store_read(self):
-        """load_raw() delegates to store.read() when mode_override is set."""
+    def test_load_raw_with_mode_override_uses_read_for_mode(self):
+        """load_raw() uses read_for_mode when mode_override is set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             local_dir = workspace / ".indexed"
@@ -210,3 +213,56 @@ class TestResolvedEnvPath:
                 env_path = service._resolved_env_path()
                 expected = str(workspace / ".indexed" / ".env")
                 assert env_path == expected
+
+
+class TestInMemoryOverlay:
+    """R3 / foundation/6b bug E4: set_overlay() must never touch disk."""
+
+    def test_set_overlay_visible_via_get(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = ConfigService(workspace=Path(tmpdir), mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+            assert service.get("sources.files.path") == "/bad/path"
+
+    def test_set_overlay_does_not_write_to_disk(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            config_path = workspace / ".indexed" / "config.toml"
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+
+            assert (
+                not config_path.exists() or "/bad/path" not in config_path.read_text()
+            )
+
+    def test_set_overlay_wins_over_disk_value(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            local_dir = workspace / ".indexed"
+            local_dir.mkdir(parents=True)
+            (local_dir / "config.toml").write_text(
+                '[sources.files]\npath = "/old/path"'
+            )
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set_overlay("sources.files.path", "/new/path")
+            assert service.get("sources.files.path") == "/new/path"
+
+    def test_clear_overlay_removes_all_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = ConfigService(workspace=Path(tmpdir), mode_override="local")
+            service.set_overlay("sources.files.path", "/bad/path")
+            service.clear_overlay()
+            assert service.get("sources.files.path") is None
+
+    def test_set_still_persists_to_disk(self):
+        """Only set()/set_value() (the real writer) touches config.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            config_path = workspace / ".indexed" / "config.toml"
+
+            service = ConfigService(workspace=workspace, mode_override="local")
+            service.set("sources.files.path", "/real/path")
+
+            assert "/real/path" in config_path.read_text()

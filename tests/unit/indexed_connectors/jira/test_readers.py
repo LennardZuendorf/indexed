@@ -6,8 +6,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
-from connectors.jira.unified_jira_document_reader import (
+from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+from indexed.connectors.jira.unified_jira_document_reader import (
     UnifiedJiraDocumentReader,
     JiraAuthType,
 )
@@ -122,7 +122,7 @@ def async_reader() -> AsyncJiraCloudDocumentReader:
 
 def test_cloud_reader_count_and_pagination(monkeypatch):
     """Test cloud reader document counting and pagination."""
-    import connectors.jira.unified_jira_document_reader as unified_mod
+    import indexed.connectors.jira.unified_jira_document_reader as unified_mod
 
     monkeypatch.setattr(unified_mod, "Jira", FakeJiraCloud, raising=True)
 
@@ -145,7 +145,7 @@ def test_cloud_reader_count_and_pagination(monkeypatch):
 
 def test_server_reader_count_and_pagination(monkeypatch):
     """Test server reader document counting and pagination."""
-    import connectors.jira.unified_jira_document_reader as unified_mod
+    import indexed.connectors.jira.unified_jira_document_reader as unified_mod
 
     monkeypatch.setattr(unified_mod, "Jira", FakeJiraServer, raising=True)
 
@@ -273,7 +273,7 @@ def test_reader_url_validation_server():
 
 def test_reader_details(monkeypatch):
     """Test get_reader_details returns correct information."""
-    import connectors.jira.unified_jira_document_reader as unified_mod
+    import indexed.connectors.jira.unified_jira_document_reader as unified_mod
 
     monkeypatch.setattr(unified_mod, "Jira", FakeJiraCloud, raising=True)
 

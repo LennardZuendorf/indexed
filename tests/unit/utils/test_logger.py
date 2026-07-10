@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from loguru import logger as loguru_logger
 
-from utils.logger import (
+from indexed.utils.logger import (
     THIRD_PARTY_LOGGERS,
     bootstrap_logging,
     emit_status,

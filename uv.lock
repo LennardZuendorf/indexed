@@ -16,31 +16,6 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 
-[manifest]
-members = [
-    "indexed-config",
-    "indexed-connectors",
-    "indexed-core",
-    "indexed-parsing",
-    "indexed-sh",
-    "indexed-utils",
-]
-
-[manifest.dependency-groups]
-dev = [
-    { name = "mypy", specifier = ">=1.17.1" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
-    { name = "pytest", specifier = ">=8.4.1" },
-    { name = "pytest-benchmark", specifier = ">=4.0.0" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "pytest-httpserver", specifier = ">=1.0.0" },
-    { name = "pytest-mock", specifier = ">=3.14.1" },
-    { name = "pytest-rerunfailures", specifier = ">=12.0" },
-    { name = "pytest-xdist", specifier = ">=3.5.0" },
-    { name = "ruff", specifier = ">=0.12.10" },
-    { name = "una", specifier = ">=0.7.0" },
-]
-
 [[package]]
 name = "accelerate"
 version = "1.12.0"
@@ -663,19 +638,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dataclasses-json"
-version = "0.6.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "marshmallow" },
-    { name = "typing-inspect" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/64/a4/f71d9cf3a5ac257c993b5ca3f93df5f7fb395c725e7f1e6479d2514173c3/dataclasses_json-0.6.7.tar.gz", hash = "sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0", size = 32227, upload-time = "2024-06-09T16:20:19.103Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/be/d0d44e092656fe7a06b55e6103cbce807cdbdee17884a5367c68c9860853/dataclasses_json-0.6.7-py3-none-any.whl", hash = "sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a", size = 28686, upload-time = "2024-06-09T16:20:16.715Z" },
-]
-
-[[package]]
 name = "defusedxml"
 version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1189,101 +1151,30 @@ wheels = [
 ]
 
 [[package]]
-name = "indexed-config"
-version = "1.0.0"
-source = { editable = "packages/indexed-config" }
+name = "indexed-sh"
+version = "0.0.5"
+source = { editable = "." }
 dependencies = [
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "tomlkit" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.17.1" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.10" },
-    { name = "tomlkit", specifier = ">=0.12.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
-name = "indexed-connectors"
-version = "0.1.3"
-source = { editable = "packages/indexed-connectors" }
-dependencies = [
+    { name = "art" },
     { name = "atlassian-python-api" },
     { name = "bs4" },
+    { name = "docling" },
+    { name = "docling-core", extra = ["chunking"] },
+    { name = "faiss-cpu" },
+    { name = "fastmcp" },
     { name = "httpx" },
-    { name = "indexed-parsing" },
-    { name = "indexed-utils" },
     { name = "langchain-text-splitters" },
     { name = "loguru" },
-    { name = "orjson" },
-    { name = "pathspec" },
-    { name = "requests" },
-    { name = "xxhash" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atlassian-python-api", specifier = ">=3.41.16" },
-    { name = "bs4", specifier = ">=0.0.2" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "indexed-parsing", editable = "packages/indexed-parsing" },
-    { name = "indexed-utils", editable = "packages/utils" },
-    { name = "langchain-text-splitters", specifier = ">=0.3.0" },
-    { name = "loguru", specifier = ">=0.7.0" },
-    { name = "orjson", specifier = ">=3.10.0" },
-    { name = "pathspec", specifier = ">=0.12" },
-    { name = "requests", specifier = ">=2.32.0" },
-    { name = "xxhash", specifier = ">=3.0" },
-]
-
-[[package]]
-name = "indexed-core"
-version = "0.1.0"
-source = { editable = "packages/indexed-core" }
-dependencies = [
-    { name = "faiss-cpu" },
-    { name = "indexed-connectors" },
-    { name = "indexed-utils" },
+    { name = "mcp" },
     { name = "onnxruntime" },
     { name = "orjson" },
+    { name = "pathspec" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
     { name = "sentence-transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "faiss-cpu", specifier = ">=1.11.0" },
-    { name = "indexed-connectors", editable = "packages/indexed-connectors" },
-    { name = "indexed-utils", editable = "packages/utils" },
-    { name = "onnxruntime", specifier = ">=1.17.0" },
-    { name = "orjson", specifier = ">=3.10.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "sentence-transformers", specifier = ">=5.2.0" },
-]
-
-[[package]]
-name = "indexed-parsing"
-version = "0.1.0"
-source = { editable = "packages/indexed-parsing" }
-dependencies = [
-    { name = "docling" },
-    { name = "docling-core" },
-    { name = "loguru" },
+    { name = "tomlkit" },
     { name = "tree-sitter" },
     { name = "tree-sitter-c" },
     { name = "tree-sitter-cpp" },
@@ -1293,14 +1184,46 @@ dependencies = [
     { name = "tree-sitter-python" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-typescript" },
+    { name = "typer" },
     { name = "xxhash" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-cov" },
+    { name = "pytest-httpserver" },
+    { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "art", specifier = ">=6.0" },
+    { name = "atlassian-python-api", specifier = ">=3.41.16" },
+    { name = "bs4", specifier = ">=0.0.2" },
     { name = "docling", specifier = ">=2.70.0" },
-    { name = "docling-core", specifier = ">=2.8.0" },
+    { name = "docling-core", extras = ["chunking"], specifier = ">=2.8.0" },
+    { name = "faiss-cpu", specifier = ">=1.11.0" },
+    { name = "fastmcp", specifier = ">=3.2.4,<4" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "loguru", specifier = ">=0.7.0" },
+    { name = "mcp", specifier = ">=1.13.0" },
+    { name = "onnxruntime", specifier = ">=1.17.0" },
+    { name = "orjson", specifier = ">=3.10.0" },
+    { name = "pathspec", specifier = ">=0.12" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.32.0" },
+    { name = "rich", specifier = ">=13.7.0" },
+    { name = "sentence-transformers", specifier = ">=5.2.0" },
+    { name = "tomlkit", specifier = ">=0.12.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-c", specifier = ">=0.23" },
     { name = "tree-sitter-cpp", specifier = ">=0.23" },
@@ -1310,50 +1233,23 @@ requires-dist = [
     { name = "tree-sitter-python", specifier = ">=0.23" },
     { name = "tree-sitter-rust", specifier = ">=0.23" },
     { name = "tree-sitter-typescript", specifier = ">=0.23" },
+    { name = "typer", specifier = ">=0.12.3" },
     { name = "xxhash", specifier = ">=3.0" },
 ]
 
-[[package]]
-name = "indexed-sh"
-version = "0.0.5"
-source = { editable = "apps/indexed" }
-dependencies = [
-    { name = "art" },
-    { name = "fastmcp" },
-    { name = "indexed-config" },
-    { name = "indexed-connectors" },
-    { name = "indexed-core" },
-    { name = "indexed-parsing" },
-    { name = "indexed-utils" },
-    { name = "mcp" },
-    { name = "rich" },
-    { name = "typer" },
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.17.1" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-benchmark", specifier = ">=4.0.0" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-httpserver", specifier = ">=1.0.0" },
+    { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "pytest-rerunfailures", specifier = ">=12.0" },
+    { name = "pytest-xdist", specifier = ">=3.5.0" },
+    { name = "ruff", specifier = ">=0.12.10" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "art", specifier = ">=6.0" },
-    { name = "fastmcp", specifier = ">=3.2.4,<4" },
-    { name = "indexed-config", editable = "packages/indexed-config" },
-    { name = "indexed-connectors", editable = "packages/indexed-connectors" },
-    { name = "indexed-core", editable = "packages/indexed-core" },
-    { name = "indexed-parsing", editable = "packages/indexed-parsing" },
-    { name = "indexed-utils", editable = "packages/utils" },
-    { name = "mcp", specifier = ">=1.13.0" },
-    { name = "rich", specifier = ">=13.7.0" },
-    { name = "typer", specifier = ">=0.12.3" },
-]
-
-[[package]]
-name = "indexed-utils"
-version = "0.1.0"
-source = { editable = "packages/utils" }
-dependencies = [
-    { name = "loguru" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "loguru", specifier = ">=0.7.0" }]
 
 [[package]]
 name = "iniconfig"
@@ -1898,18 +1794,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/df/5bd7a48c256faecd1d36edc13133e51397e41b73bb77e1a69deab746ebac/markupsafe-3.0.3-cp314-cp314t-win32.whl", hash = "sha256:915c04ba3851909ce68ccc2b8e2cd691618c4dc4c4232fb7982bca3f41fd8c3d", size = 14819, upload-time = "2025-09-27T18:37:26.285Z" },
     { url = "https://files.pythonhosted.org/packages/1a/8a/0402ba61a2f16038b48b39bccca271134be00c5c9f0f623208399333c448/markupsafe-3.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4faffd047e07c38848ce017e8725090413cd80cbc23d86e55c587bf979e579c9", size = 15426, upload-time = "2025-09-27T18:37:27.316Z" },
     { url = "https://files.pythonhosted.org/packages/70/bc/6f1c2f612465f5fa89b95bead1f44dcb607670fd42891d8fdcd5d039f4f4/markupsafe-3.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:32001d6a8fc98c8cb5c947787c5d08b0a50663d139f1305bac5885d98d9b40fa", size = 14146, upload-time = "2025-09-27T18:37:28.327Z" },
-]
-
-[[package]]
-name = "marshmallow"
-version = "3.26.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/55/79/de6c16cc902f4fc372236926b0ce2ab7845268dcc30fb2fbb7f71b418631/marshmallow-3.26.2.tar.gz", hash = "sha256:bbe2adb5a03e6e3571b573f42527c6fe926e17467833660bebd11593ab8dfd57", size = 222095, upload-time = "2025-12-22T06:53:53.309Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/2f/5108cb3ee4ba6501748c4908b908e55f42a5b66245b4cfe0c99326e1ef6e/marshmallow-3.26.2-py3-none-any.whl", hash = "sha256:013fa8a3c4c276c24d26d84ce934dc964e2aa794345a0f8c7e5a7191482c8a73", size = 50964, upload-time = "2025-12-22T06:53:51.801Z" },
 ]
 
 [[package]]
@@ -4365,19 +4249,6 @@ wheels = [
 ]
 
 [[package]]
-name = "typing-inspect"
-version = "0.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "mypy-extensions" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/dc/74/1789779d91f1961fa9438e9a8710cdae6bd138c80d7303996933d117264a/typing_inspect-0.9.0.tar.gz", hash = "sha256:b23fc42ff6f6ef6954e4852c1fb512cdd18dbea03134f91f856a95ccc9461f78", size = 13825, upload-time = "2023-05-24T20:25:47.612Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/f3/107a22063bf27bdccf2024833d3445f4eea42b2e598abfbd46f6a63b6cb0/typing_inspect-0.9.0-py3-none-any.whl", hash = "sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f", size = 8827, upload-time = "2023-05-24T20:25:45.287Z" },
-]
-
-[[package]]
 name = "typing-inspection"
 version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4396,21 +4267,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5e/a7/c202b344c5ca7daf398f3b8a477eeb205cf3b6f32e7ec3a6bac0629ca975/tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7", size = 196772, upload-time = "2025-12-13T17:45:35.667Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/b0/003792df09decd6849a5e39c28b513c06e84436a54440380862b5aeff25d/tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1", size = 348521, upload-time = "2025-12-13T17:45:33.889Z" },
-]
-
-[[package]]
-name = "una"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "dataclasses-json" },
-    { name = "rich" },
-    { name = "tomlkit" },
-    { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/71/67/15be22839dba21a561fadc88250d9b8f6928b97e0b1c8acc498f9818dacb/una-0.7.0.tar.gz", hash = "sha256:796023ab67b1d4c873478bfdf3f631ad43f73cb5f341df0a47bdbd42a34ab283", size = 13443, upload-time = "2025-12-02T09:03:32.313Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/f4/ec5bdc2da3124cf0330daec9f1b36ca9d71cbd51429d3dfd8b04f554efaa/una-0.7.0-py3-none-any.whl", hash = "sha256:9c3208146efff14d61a03e42bb82f9a6c08168c1ebba32a1c26b5b4c60a4c870", size = 17119, upload-time = "2025-12-02T09:03:29.778Z" },
 ]
 
 [[package]]

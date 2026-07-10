@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-from indexed_config.storage import (
+from indexed.config.storage import (
     StorageResolver,
     _ensure_gitignore,
     get_global_root,
@@ -239,7 +239,7 @@ class TestStorageResolver:
 
             resolver = StorageResolver(workspace=workspace)
             # Mock has_global_config to isolate the test from real global config
-            with patch("indexed_config.storage.has_global_config", return_value=False):
+            with patch("indexed.config.storage.has_global_config", return_value=False):
                 assert resolver.has_conflict() is False
 
     def test_ensure_dirs_creates_gitignore_for_local(self):

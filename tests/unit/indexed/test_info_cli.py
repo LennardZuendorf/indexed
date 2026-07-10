@@ -9,7 +9,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from indexed.info import cli as info_cli
+from indexed.cli.info import cli as info_cli
 
 
 runner = CliRunner()

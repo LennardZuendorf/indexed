@@ -3,10 +3,12 @@
 import os
 from unittest.mock import patch
 import pytest
-from connectors.jira.connector import JiraConnector, JiraCloudConnector
-from connectors.jira.schema import JiraConfig, JiraCloudConfig
-from connectors.jira.jira_document_reader import JiraDocumentReader
-from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+from indexed.connectors.jira.connector import JiraConnector, JiraCloudConnector
+from indexed.connectors.jira.schema import JiraConfig, JiraCloudConfig
+from indexed.connectors.jira.unified_jira_document_reader import (
+    UnifiedJiraDocumentReader,
+)
+from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
@@ -19,7 +21,7 @@ def test_jira_connector_init():
     )
 
     assert connector.connector_type == "jira"
-    assert isinstance(connector.reader, JiraDocumentReader)
+    assert isinstance(connector.reader, UnifiedJiraDocumentReader)
     assert (
         str(connector)
         == "JiraConnector(url='https://jira.example.com', query='project = TEST')"
@@ -35,7 +37,7 @@ def test_jira_connector_basic_auth():
         password="pass",
     )
 
-    assert isinstance(connector.reader, JiraDocumentReader)
+    assert isinstance(connector.reader, UnifiedJiraDocumentReader)
     assert connector.connector_type == "jira"
 
 
@@ -64,7 +66,7 @@ def test_jira_connector_from_config_dto():
         token=config_dto.get_token(),
     )
     assert isinstance(connector, JiraConnector)
-    assert isinstance(connector.reader, JiraDocumentReader)
+    assert isinstance(connector.reader, UnifiedJiraDocumentReader)
     assert connector.connector_type == "jira"
 
 

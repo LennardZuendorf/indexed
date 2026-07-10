@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from parsing import ParsingModule
+from indexed.parsing import ParsingModule
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
