@@ -3,10 +3,10 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
-# Tech Branch: Connectors (`indexed-connectors`)
+# Tech Branch: Connectors (`src/indexed/connectors/`)
 
 Protocol-based data-source adapters. May import protocols/config/utils/parsing;
 MUST NOT import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
@@ -17,7 +17,7 @@ MUST NOT import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectura
 
 ## Connector Protocol
 
-**File:** `packages/indexed-protocols/src/protocols/connectors.py`
+**File:** `src/indexed/protocols/connectors.py`
 
 ```python
 from typing import Any, Iterator, Protocol, runtime_checkable
@@ -64,13 +64,13 @@ source-agnostic** — one call for every connector, no per-type / `localFiles` b
 | **ConfluenceServerConnector** | `.../connectors/confluence/` | REST API | Email + Token |
 | **OutlineConnector** | `.../connectors/outline/` | REST API | Bearer token |
 
-(All paths under `packages/indexed-connectors/src/`.)
+(All paths under `src/indexed/connectors/`.)
 
 ---
 
 ## Credential Security — Origin Guard
 
-**File:** `packages/indexed-connectors/src/connectors/_url_guard.py`
+**File:** `src/indexed/connectors/_url_guard.py`
 
 All credentialed attachment fetchers (Jira Server/DC, Confluence Server, Outline) call
 `warn_if_off_origin(url, base_url)` before issuing any HTTP request. This function

@@ -37,6 +37,9 @@ jobs:
     - name: Check import graph
       run: uv run python scripts/check_imports.py
 
+    - name: Check size gates
+      run: uv run python scripts/check_sizes.py
+
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Tech Spec: indexed
@@ -16,18 +16,20 @@ Component internals live in the branch docs below.
 
 ## Component Specs
 
-One tech branch doc per monorepo component:
+One tech branch doc per `src/indexed/` subpackage:
 
-| Component | Branch doc | Covers |
+| Subpackage | Branch doc | Covers |
 |-----------|-----------|--------|
-| `apps/indexed` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
-| `packages/indexed-core` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
-| `packages/indexed-config` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
-| `packages/indexed-connectors` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
-| `packages/indexed-parsing` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
+| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+| `src/indexed/core/` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
+| `src/indexed/config/` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
+| `src/indexed/connectors/` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
+| `src/indexed/parsing/` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
 
-`packages/utils` (logging, retry, batching) is a thin shared foundation — no separate
-doc; helpers are imported by every layer.
+`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
+separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
+contracts + connector protocols, the leaf) has no separate doc either — covered
+inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
 
 ---
 
@@ -80,7 +82,7 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | Library | Version | Purpose |
 |---------|---------|---------|
 | **Python** | 3.11+ | Language runtime |
-| **uv** | 0.5+ | Package manager (workspace support) |
+| **uv** | 0.5+ | Package manager |
 | **FAISS** | latest | Vector similarity search |
 | **sentence-transformers** | latest | Embedding generation |
 | **Typer** | 0.15.1 | CLI framework |
@@ -92,21 +94,25 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **mypy** | 1.14+ | Type checker |
 | **pytest** | 8.3.4 | Testing |
 
-### Monorepo Structure
+### Package Structure
+
+Single package, one wheel (`indexed-sh`); no workspace, no `una`:
 
 ```text
 indexed/
-├── apps/indexed/              # Main CLI & MCP server
-├── packages/
-│   ├── indexed-core/         # Indexing & search engine
-│   ├── indexed-config/       # Config management
-│   ├── indexed-connectors/   # Source connectors
-│   ├── indexed-parsing/      # Shared parsing module (Docling, tree-sitter)
-│   └── utils/                # Shared utilities (logging, retry, batching)
-└── tests/                    # Test suite
+├── src/indexed/
+│   ├── cli/                  # Typer app; composition.py is the single wiring site
+│   ├── mcp/                  # FastMCP server
+│   ├── core/                 # Indexing & search engine; facade in core/__init__.py
+│   ├── connectors/           # Source connectors (files/jira/confluence/outline)
+│   ├── config/                # Config management (ConfigService singleton)
+│   ├── parsing/               # Shared parsing module (Docling, tree-sitter)
+│   ├── protocols/             # Typed contracts + connector protocols — the leaf
+│   └── utils/                 # Shared utilities (logging, retry, batching)
+└── tests/                     # Test suite
 ```
 
-**Build system:** `una` bundles the workspace into a single wheel.
+**Build system:** a single `hatchling` build produces one wheel.
 
 ---
 
@@ -143,34 +149,37 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 
 ## Testing Strategy
 
-**Target:** >85% coverage, measured on installed packages (`indexed`, `core`,
-`connectors`, `indexed_config`, `utils`).
+**Target:** >85% coverage on `core`/`connectors`/`config`/`parsing`/`protocols`/
+`utils`. `cli`/`mcp` (UI chrome) are exempt from the gate — see § Post-Simplify
+Structural Rules and `[tool.coverage.run]` in `pyproject.toml`.
 
 ```text
 tests/
-├── unit/          # package-specific (indexed, indexed_core, indexed_connectors, indexed_config)
-├── system/        # integration tests
-└── benchmarks/    # performance tests
+├── unit/              # tests/unit/{indexed,indexed_core,indexed_connectors,indexed_config,indexed_parsing,indexed_protocols,utils,scripts}/
+├── system/            # integration tests
+├── characterization/  # behavior-net harness (regression-guards fixed bugs)
+└── benchmarks/        # performance tests
 ```
 
 ```bash
-uv run pytest -q                          # all
-uv run pytest tests/unit/indexed_core/ -q # one package
-uv run pytest -q --cov=src --cov-report=html
+uv run pytest -q                              # all
+uv run pytest tests/unit/indexed_core/ -q     # one subpackage
+uv run pytest -q --cov=src/indexed --cov-report=html
 ```
 
 ---
 
 ## Build & Distribution
 
-### Monorepo bundling
+### Wheel
 
-`una` bundles all workspace packages into a single wheel.
+A single `hatchling` build packages `src/indexed/` into one wheel — no bundling
+step, no per-package builds.
 
 ```bash
-# Build wheel (HATCH_BUILD_HOOKS_ENABLE=1 required to bundle workspace packages)
-HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-# → dist/indexed-0.1.0-py3-none-any.whl  (indexed + core + connectors + parsing + config + utils)
+uv build --wheel --out-dir dist
+# → dist/indexed_sh-<version>-py3-none-any.whl
+uv run python scripts/validate_wheel.py dist/*.whl   # PyPI archive validator, also run in CI
 ```
 
 ### Docker
@@ -194,22 +203,48 @@ docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport htt
 
 Hard constraints across all code — v2 core, new connectors, surviving infrastructure.
 
+### Post-Simplify Structural Rules
+
+Promoted from `.spec/features/simplify/tech.md` § Architectural rules
+(post-simplify), as of simplify/6 — normative root rules from here on,
+independent of Feature 14's own DONE/PLANNED status ([plan.md](plan.md) §
+Feature Sequence). The single-package collapse, `check_imports.py` gate,
+scoped coverage config, and one `AGENTS.md` are already live in the tree; the
+remaining Simplify units (residual dead-code/test cleanup) converge the rest
+of the codebase toward these same rules rather than establishing new ones.
+
+- **One package, four module edges** (`cli`/`mcp` → `core`|`connectors`|`config`;
+  `core ↛ connectors`; `connectors ↛ core`; `config`/`utils`/`parsing`/`protocols`
+  never import up), enforced by `scripts/check_imports.py`. One `pyproject.toml`,
+  one wheel (`indexed-sh`), no `una`, no per-package builds, no `sync_version.py`.
+- **No phantom generality.** No abstraction (registry/factory/multi-impl loop)
+  over a single implementation. One indexer, one progress protocol, no dead DTOs
+  or re-export shims.
+- **Behavior-only tests.** Keep behavior/system/benchmark tests + the
+  characterization harness; no mechanism tests (registry membership, shims,
+  protocol stubs, Rich markup, migration). **Coverage gate is scoped to
+  `core`/`connectors`/`config`/`parsing`/`protocols`/`utils`; UI chrome
+  (`cli`/`mcp`) is exempt** (see `[tool.coverage.run]` in `pyproject.toml`).
+- **One root `AGENTS.md`** (≤100 lines); agent skills install from
+  `skills-lock.json`, never vendored.
+
 ### Dependency Direction
 
 ```text
 ┌──────────────────────────────────────────────────────┐
-│  CLI / MCP (apps/indexed/)                           │  ← UI only, thin commands
-│  May import: services, core, config, utils           │
+│  CLI / MCP (src/indexed/cli/, src/indexed/mcp/)      │  ← UI only, thin commands
+│  May import: core (facade), connectors.registry,     │
+│  config, protocols, utils                            │
 └──────────────────────┬───────────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────────┐
-│  Core Engine (packages/indexed-core/)                │  ← Business logic
+│  Core Engine (src/indexed/core/)                     │  ← Business logic
 │  May import: protocols, config, utils                │
 │  MUST NOT import: CLI, MCP, concrete connectors      │
 └──────────────────────┬───────────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────────┐
-│  Connectors / Plugins                                │  ← Data source adapters
+│  Connectors (src/indexed/connectors/)                │  ← Data source adapters
 │  May import: protocols, config, utils, parsing       │
 │  MUST NOT import: core engine, CLI, MCP              │
 └──────────────────────┬───────────────────────────────┘
@@ -293,10 +328,10 @@ Command (parse args + format output) → Service (orchestrate) → Engine (execu
 
 A command file branching on business rules is a sign logic needs extraction.
 
-### Protocols Package (`indexed-protocols`)
+### Protocols Subpackage (`indexed.protocols`)
 
 Shared connector contracts, **typed data models**, and cross-layer DTOs live in the
-**leaf** workspace package `packages/indexed-protocols/` (import `protocols`) — the only
+**leaf** subpackage `src/indexed/protocols/` (import `indexed.protocols`) — the only
 import-legal home, since `core`/`connectors`/`config` may not import one another but all
 may import `protocols`. Engine-only DTOs stay in core.
 
@@ -318,8 +353,8 @@ may import `protocols`. Engine-only DTOs stay in core.
   progress callbacks are today's dual system; Feature 14 collapses them to one `Progress`
   protocol).
 
-`indexed-core` and `indexed-connectors` both depend on `indexed-protocols`; neither
-imports the other's concrete types for wiring.
+`core` and `connectors` both depend on `protocols`; neither imports the other's
+concrete types for wiring.
 
 ### Core Facade & App Composition Root
 
@@ -330,7 +365,7 @@ engine ships behind the same names over the same on-disk format and nothing abov
 facade changes. The app never imports `core.v1.engine.services` / `factories` / `core`
 directly (to mock a facade-resolved symbol in tests, patch the facade attribute).
 
-**`apps/indexed/src/indexed/composition.py` is the single wiring site** — it folds in the
+**`src/indexed/cli/composition.py` is the single wiring site** — it folds in the
 removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
 
 - builds the connector registry and hands the facade **two REQUIRED callables** —
@@ -348,14 +383,19 @@ branches; `composition.manifest_factory` is a one-line registry dispatch.
 
 ### Import-Graph CI
 
-`scripts/check_import_graph.py` (also run in CI) AST-walks `packages/*/src` and
-`apps/*/src` and fails on forbidden edges:
+`scripts/check_imports.py` (also run in CI, alongside `scripts/check_sizes.py`)
+AST-walks `src/indexed` and fails on forbidden edges — the four rules above,
+expanded:
 
 | From | Must NOT import |
 |------|-----------------|
-| `core` | `connectors` |
-| `connectors` | `core` |
-| `indexed_config`, `utils`, `parsing`, `protocols` | `core`, `connectors`, `indexed` |
+| `core` | `connectors`, `cli`, `mcp` |
+| `connectors` | `core`, `cli`, `mcp` |
+| `config`, `parsing`, `utils`, `protocols` | `core`, `connectors`, `cli`, `mcp` |
+
+`cli`/`mcp` sit at the top of the stack and may import any subpackage — they have
+no forbidden edge of their own. Run `python scripts/check_imports.py --self-test`
+to verify a synthetic forbidden edge is still caught.
 
 ### HTTP Retry Policy
 

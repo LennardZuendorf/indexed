@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Development Plan: indexed
@@ -27,19 +27,19 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 
 | # | Feature | Gate | Status | Live surface |
 |---|---------|------|--------|--------------|
-| 1 | Core indexing pipeline | read→convert→chunk→embed→index→persist works E2E | ✅ DONE | `packages/indexed-core/src/core/v1/` |
-| 2 | FAISS semantic search | L2 search + score mapping | ✅ DONE | `core/v1/engine/indexes/faiss_indexer.py` |
-| 3 | Jira connectors (Cloud + Server/DC) | JQL-filtered indexing | ✅ DONE | `packages/indexed-connectors/src/connectors/jira/` |
+| 1 | Core indexing pipeline | read→convert→chunk→embed→index→persist works E2E | ✅ DONE | `src/indexed/core/v1/` |
+| 2 | FAISS semantic search | L2 search + score mapping | ✅ DONE | `src/indexed/core/v1/engine/indexes/indexers/faiss_indexer.py` |
+| 3 | Jira connectors (Cloud + Server/DC) | JQL-filtered indexing | ✅ DONE | `src/indexed/connectors/jira/` |
 | 4 | Confluence connectors (Cloud + Server/DC) | CQL-filtered indexing | ✅ DONE | `.../connectors/confluence/` |
-| 5 | File system connector | local files + parsing module | ✅ DONE | `.../connectors/files/`, `packages/indexed-parsing/` |
+| 5 | File system connector | local files + parsing module | ✅ DONE | `.../connectors/files/`, `src/indexed/parsing/` |
 | 6 | Outline Wiki connector | Cloud + self-hosted parity, attachments/OCR | ✅ DONE | `.../connectors/outline/`, tests `tests/unit/indexed_connectors/outline/` |
-| 7 | MCP server (stdio/HTTP/SSE) | tools + resources exposed | ✅ DONE | `apps/indexed/src/indexed/mcp/` |
-| 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `apps/indexed/src/indexed/knowledge/commands/` |
-| 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `packages/indexed-config/`, tech.md § Configuration System |
+| 7 | MCP server (stdio/HTTP/SSE) | tools + resources exposed | ✅ DONE | `src/indexed/mcp/` |
+| 8 | CLI commands | create/search/update/inspect/remove | ✅ DONE | `src/indexed/cli/knowledge/commands/` |
+| 9 | Config & .env loading | single-source resolution, .env hierarchy, .gitignore guard | ✅ DONE | `src/indexed/config/`, [tech-config.md](tech-config.md) |
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
-| 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `packages/indexed-protocols/`, `apps/indexed/.../bootstrap.py`, `runtime.py`, `scripts/check_import_graph.py` |
+| 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `src/indexed/protocols/`; wiring since folded into `src/indexed/cli/composition.py` (Feature 13) and the graph checker into `scripts/check_imports.py` (Feature 14) |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
-| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `apps/indexed/.../composition.py`, connector `from_manifest` |
+| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code + mechanism tests deleted; CLI/config chrome + process apparatus shrunk — R1–R5 green | 📋 PLANNED | [features/simplify/](features/simplify/) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4

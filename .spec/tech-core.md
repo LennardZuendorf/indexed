@@ -3,10 +3,10 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
-# Tech Branch: Core Engine (`indexed-core`)
+# Tech Branch: Core Engine (`src/indexed/core/`)
 
 Indexing & search engine. Receives connectors via dependency injection; never
 imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
@@ -47,7 +47,7 @@ the v2 core swap. Full contract: [tech.md](tech.md) § Protocols Package.
 
 ### Lazy loading
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/embeddings/sentence_embeder.py`
+**File:** `src/indexed/core/v1/engine/indexes/embeddings/sentence_embeder.py`
 
 `SentenceEmbedder` exposes the model via a lazy `@property` — the heavy model is
 loaded (and cached) on first access, not at import:
@@ -86,7 +86,7 @@ so no content is silently truncated at embed time.
 
 ### Creation
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/faiss_indexer.py`
+**File:** `src/indexed/core/v1/engine/indexes/indexers/faiss_indexer.py`
 
 ```python
 import faiss, numpy as np
@@ -118,7 +118,7 @@ Prevents corruption from process/system crashes and disk-full errors.
   mid-run never destroys the prior collection of the same name.
 - A zero-chunk batch (e.g. an empty-body document) is a **no-op**, not a crash.
 
-On-disk layout (dirs owned by `indexed-config`): [tech-config.md](tech-config.md) § Storage Directory Structure.
+On-disk layout (dirs owned by `src/indexed/config/`): [tech-config.md](tech-config.md) § Storage Directory Structure.
 
 ---
 

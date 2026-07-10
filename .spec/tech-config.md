@@ -3,10 +3,10 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-07-07
+updated: 2026-07-10
 ---
 
-# Tech Branch: Config (`indexed-config`)
+# Tech Branch: Config (`src/indexed/config/`)
 
 Unified config: explicit registration, Pydantic validation, automatic secret routing.
 Lowest layer — imports nothing above it (see [tech.md](tech.md) § Architectural Rules).
@@ -66,7 +66,7 @@ intact, and are **masked** on `config inspect` / `set` output.
 
 ## Storage Directory Structure
 
-Storage dirs owned by `indexed-config` (`storage.py`). Persistence semantics:
+Storage dirs owned by `src/indexed/config/` (`storage.py`). Persistence semantics:
 [tech-core.md](tech-core.md) § Persistence Strategy.
 
 ```text
@@ -97,14 +97,21 @@ Not applied to `~/.indexed/` (outside git repos).
 
 ## Implementation
 
-**Key files:**
+**Key files** (`src/indexed/config/`):
 - `service.py` — `ConfigService` slim orchestrator (singleton)
 - `store.py` — `TomlStore` with `read_for_mode()`, schema versioning
 - `workspace.py` — `WorkspaceManager.resolve_storage_mode()`
 - `env_writer.py` — `EnvFileWriter` (secrets → resolved `.env`)
 - `registry.py` — `ConfigRegistry` (typed spec registration)
-- `models.py` — Pydantic validation models
+- `provider.py` — `Provider`, the immutable typed view over merged config
+- `path_utils.py` — dot-path helpers (`get_by_path`) over nested config dicts
+- `storage.py` — `StorageResolver` + storage-dir layout (see § Storage Directory Structure)
 - `errors.py` — `IndexedError` hierarchy
+
+Pydantic validation models are not centralized in a `config/models.py` — each
+caller registers its own `BaseModel` spec with `ConfigService.register()` (e.g.
+`mcp/config.py`, core/CLI specs); `registry.py`/`service.py`/`provider.py` are
+generic over any registered model type.
 
 ```python
 class ConfigService:
