@@ -285,6 +285,32 @@ class TestGetConfig:
         assert "*****" in result.stdout
 
     @patch("indexed.config.commands.get._resolve_config")
+    def test_get_masks_nested_secret_in_simple_output(self, mock_config_service):
+        """C1: --simple-output on an ancestor/section path must recursively mask
+        nested secret leaves, never dumping them in cleartext."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {
+            "sources": {
+                "jira": {
+                    "url": "https://x.atlassian.net",
+                    "api_token": "supersecret123",
+                }
+            }
+        }
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(
+            app, ["--simple-output", "config", "get", "sources.jira"]
+        )
+        assert result.exit_code == 0
+        assert "supersecret123" not in result.stdout
+        assert "*****" in result.stdout
+        # non-secret sibling value is preserved for scripting
+        assert "atlassian.net" in result.stdout
+
+    @patch("indexed.config.commands.get._resolve_config")
     def test_get_missing_key(self, mock_config_service):
         """Should inform the user when the key is not set."""
         mock_config = Mock()

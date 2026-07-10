@@ -52,9 +52,18 @@ def _read_manifest_reader_config(collection_name: str, collections_path: str) ->
 
 
 def _display_collection_update_header(
-    coll_name: str, source_type: str | None, reader_config: dict
+    coll_name: str,
+    source_type: str | None,
+    reader_config: dict,
+    *,
+    console: Any = console,
 ) -> None:
-    """Print the per-collection heading block before progress bars."""
+    """Print the per-collection heading block before progress bars.
+
+    ``console`` is injected by ``run_update_loop`` (as ``cmd.console``) so tests
+    patching ``update.console`` capture the header prints too; it defaults to the
+    shared console for direct use.
+    """
     from ...utils.components.info_row import create_info_row
     from ...utils.format import format_path_tilde
     from ...utils.files_source_display import build_excluded_row_text
@@ -362,7 +371,9 @@ def run_update_loop(
                 continue
         else:
             reader_cfg = _read_manifest_reader_config(coll_name, collections_path)
-            _display_collection_update_header(coll_name, source_type, reader_cfg)
+            _display_collection_update_header(
+                coll_name, source_type, reader_cfg, console=cmd.console
+            )
 
             coll_error: Exception | None = None
             with create_phased_progress(title=None) as phased:

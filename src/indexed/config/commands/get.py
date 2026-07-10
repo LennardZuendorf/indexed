@@ -1,6 +1,6 @@
 """``indexed config get`` — read a single configuration value."""
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -17,6 +17,7 @@ from indexed.cli.utils.components import (
 from ._helpers import (
     setup_command_logging,
     _is_sensitive_key,
+    _mask_sensitive_raw,
     _masked_config_value,
 )
 
@@ -59,9 +60,18 @@ def get_config(
     from indexed.cli.utils.simple_output import is_simple_output, print_json
 
     if is_simple_output():
-        # Preserve the real typed value for non-secrets so scripts get it;
-        # mask secrets so they are never dumped in cleartext (C1).
-        out = "*****" if (value is not None and _is_sensitive_key(key)) else value
+        # Never dump secrets in cleartext (C1). A dict value (the key is a
+        # section/ancestor path like ``sources.jira``) is masked RECURSIVELY so
+        # nested secret leaves (e.g. ``api_token``) are hidden; a sensitive leaf
+        # value is masked directly. Non-secrets keep their real typed value so
+        # scripts still get it.
+        out: Any
+        if isinstance(value, dict):
+            out = _mask_sensitive_raw(value)
+        elif value is not None and _is_sensitive_key(key):
+            out = "*****"
+        else:
+            out = value
         print_json({key: out})
         return
 
