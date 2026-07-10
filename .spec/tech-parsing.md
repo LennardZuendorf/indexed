@@ -3,10 +3,10 @@ type: branch
 scope: parsing
 parent: tech.md
 covers: ParsingModule, FileRouter, Docling, tree-sitter CodeChunker, ParsedDocument output
-updated: 2026-06-09
+updated: 2026-07-10
 ---
 
-# Tech Branch: Parsing (`indexed-parsing`)
+# Tech Branch: Parsing (`src/indexed/parsing/`)
 
 Reusable parsing module shared across connectors (Files, Confluence, Outline).
 Lazy-loaded to keep CLI startup fast.

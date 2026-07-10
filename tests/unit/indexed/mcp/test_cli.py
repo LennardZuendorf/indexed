@@ -96,11 +96,11 @@ class TestRunImpl:
         assert "host" in kwargs
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.composition.register_app_config")
+    @patch("indexed.cli.composition.register_app_config")
     def test_default_args_load_mcp_config_from_toml(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_cfg = MagicMock(spec=MCPConfig)
         mock_cfg.host = "0.0.0.0"
@@ -111,7 +111,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed_config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl()
 
         mock_register.assert_called_once_with(mock_service)
@@ -120,7 +120,7 @@ class TestRunImpl:
         )
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.composition.register_app_config")
+    @patch("indexed.cli.composition.register_app_config")
     def test_explicit_host_overrides_config_even_at_old_default(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:
@@ -130,7 +130,7 @@ class TestRunImpl:
         was indistinguishable from not passing it at all.  After the fix, None means
         "not set" and any non-None value is treated as an explicit override.
         """
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_cfg = MagicMock(spec=MCPConfig)
         mock_cfg.host = "0.0.0.0"
@@ -141,7 +141,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed_config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl(transport="http", host="127.0.0.1")
 
         kwargs = mock_mcp.run.call_args.kwargs
@@ -152,12 +152,12 @@ class TestRunImpl:
         assert kwargs["log_level"] == "DEBUG"  # not explicit → from config
 
     @patch("indexed.mcp.server.mcp")
-    @patch("indexed.composition.register_app_config")
+    @patch("indexed.cli.composition.register_app_config")
     def test_independent_field_fallback_to_config(
         self, mock_register: MagicMock, mock_mcp: MagicMock
     ) -> None:
         """Setting one field explicitly must not suppress config for the other fields."""
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_cfg = MagicMock(spec=MCPConfig)
         mock_cfg.host = "10.0.0.1"
@@ -168,7 +168,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed_config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl(transport="http", port=7777)  # only port is explicit
 
         kwargs = mock_mcp.run.call_args.kwargs
@@ -221,7 +221,7 @@ class TestInspectImpl:
         # is_simple_output is imported lazily inside inspect_impl from
         # indexed.utils.simple_output; patch the originating module so the
         # lazy import sees the mock.
-        from indexed.utils import simple_output
+        from indexed.cli.utils import simple_output
 
         with patch.object(simple_output, "is_simple_output", return_value=False):
             tool = MagicMock()

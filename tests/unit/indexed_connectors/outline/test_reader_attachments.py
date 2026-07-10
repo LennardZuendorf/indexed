@@ -11,7 +11,7 @@ import pytest
 
 @pytest.fixture
 def reader():
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     return OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -40,7 +40,7 @@ def _make_httpx_response(
 
 @pytest.mark.unit
 def test_inline_image_regex_extracts_url() -> None:
-    from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
+    from indexed.connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
     md = "![screenshot](https://app.getoutline.com/api/attachments.redirect?id=abc-123) some text"
     matches = _INLINE_IMAGE_RE.findall(md)
@@ -50,7 +50,7 @@ def test_inline_image_regex_extracts_url() -> None:
 
 @pytest.mark.unit
 def test_inline_image_regex_no_match_for_external() -> None:
-    from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
+    from indexed.connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
     md = "![logo](https://example.com/logo.png)"
     assert _INLINE_IMAGE_RE.findall(md) == []
@@ -58,7 +58,7 @@ def test_inline_image_regex_no_match_for_external() -> None:
 
 @pytest.mark.unit
 def test_inline_image_regex_multiple_matches() -> None:
-    from connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
+    from indexed.connectors.outline.outline_document_reader import _INLINE_IMAGE_RE
 
     md = (
         "![a](https://app.getoutline.com/api/attachments.redirect?id=id1)\n"

@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +181,11 @@ def test_searcher_cached_mapping(benchmark, mock_collection):
     Measures search latency when mapping is already cached (MCP warm path).
     Uses a real FAISS index for actual vector similarity search.
     """
-    from core.v1.engine.core.documents_collection_searcher import (
+    from indexed.core.v1.engine.core.documents_collection_searcher import (
         DocumentCollectionSearcher,
     )
-    from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
-    from core.v1.engine.persisters.disk_persister import DiskPersister
+    from indexed.core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
+    from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 
     persister = DiskPersister(base_path=mock_collection["base_path"])
 
@@ -234,11 +234,11 @@ def test_searcher_first_search(benchmark, mock_collection):
     Measures search latency when mapping needs to be loaded from disk.
     Uses a real FAISS index — this is the CLI path (one search per process).
     """
-    from core.v1.engine.core.documents_collection_searcher import (
+    from indexed.core.v1.engine.core.documents_collection_searcher import (
         DocumentCollectionSearcher,
     )
-    from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
-    from core.v1.engine.persisters.disk_persister import DiskPersister
+    from indexed.core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
+    from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 
     persister = DiskPersister(base_path=mock_collection["base_path"])
     faiss_path = os.path.join(

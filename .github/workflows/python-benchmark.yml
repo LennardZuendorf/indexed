@@ -1,28 +1,12 @@
 name: Python Performance Benchmarks
 
+# On-demand only — benchmarks are heavy; run them manually from the Actions tab.
+# The PR gate set is lint + mypy + test + import-check + wheel-smoke (other workflows).
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '**.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/python-benchmark.yml'
-      - 'tests/system/**'
-      - 'tests/benchmarks/**'
-  push:
-    branches: [ "main", "building" ]
-    paths:
-      - '**.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/python-benchmark.yml'
-      - 'tests/system/**'
-      - 'tests/benchmarks/**'
 
 jobs:
   benchmark:
-    if: github.event_name == 'push' || github.event.pull_request.draft != true
     name: Performance Benchmarks
     runs-on: ubuntu-latest
     permissions:

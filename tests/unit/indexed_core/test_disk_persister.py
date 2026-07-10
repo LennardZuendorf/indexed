@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.v1.engine.persisters.disk_persister import DiskPersister
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ class TestDiskPersisterPathSafety:
 
     def test_no_pickle_import(self) -> None:
         """pickle must not be imported in disk_persister."""
-        import core.v1.engine.persisters.disk_persister as mod
+        import indexed.core.v1.engine.persisters.disk_persister as mod
 
         assert not hasattr(mod, "pickle")
 
@@ -252,7 +252,7 @@ class TestDiskPersisterLegacyIndexError:
         """ValueError is raised when only the legacy 'indexer' file exists."""
         from types import SimpleNamespace
 
-        import core.v1.engine.indexes.indexer_factory as factory
+        import indexed.core.v1.engine.indexes.indexer_factory as factory
 
         persister = MagicMock()
         persister.is_path_exists.side_effect = lambda path: path.endswith("/indexer")
@@ -262,7 +262,7 @@ class TestDiskPersisterLegacyIndexError:
         with (
             patch.object(factory, "get_indexer_config", return_value=dummy_config),
             patch(
-                "core.v1.engine.indexes.embeddings.sentence_embeder.SentenceEmbedder",
+                "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.SentenceEmbedder",
                 return_value=MagicMock(),
             ),
         ):

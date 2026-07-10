@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.v1.config_models import MCPConfig
+from indexed.core.v1.config_models import MCPConfig
 from indexed.mcp.server import mcp
-from indexed.composition import resolve_collections_context
+from indexed.cli.composition import resolve_collections_context
 
 COLLECTION_NAME = "mcp-smoke-collection"
 
@@ -21,7 +21,7 @@ def mcp_resource_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write_manifest
 ):
     monkeypatch.chdir(tmp_path)
-    from indexed_config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_local_root
 
     local_root = get_local_root(tmp_path)
     ensure_storage_dirs(local_root, is_local=True)

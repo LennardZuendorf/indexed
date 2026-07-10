@@ -15,7 +15,7 @@ import pytest
 import requests.exceptions
 
 if TYPE_CHECKING:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ def _attachment_bytes(data: bytes, mime: str = "image/png") -> _FakeResp:
 
 
 def _make_reader(**overrides: object) -> "OutlineDocumentReader":
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     kwargs: dict[str, object] = dict(
         base_url="https://app.getoutline.com",
@@ -146,7 +146,7 @@ def _patch_async_client(
 ) -> AbstractContextManager[None]:
     """Patch httpx.AsyncClient inside the reader module to use our fake."""
     return patch(
-        "connectors.outline.outline_document_reader.httpx.AsyncClient",
+        "indexed.connectors.outline.outline_document_reader.httpx.AsyncClient",
         new=lambda **kw: _FakeAsyncClient(router),
     )
 
@@ -319,7 +319,7 @@ def test_attachments_fetch_exception_yields_empty_list() -> None:
 @pytest.mark.unit
 def test_outline_api_error_raised_on_4xx_listing() -> None:
     """documents.list returning 401 → OutlineAPIError propagates."""
-    from connectors.outline.outline_document_reader import OutlineAPIError
+    from indexed.connectors.outline.outline_document_reader import OutlineAPIError
 
     reader = _make_reader()
 
@@ -340,7 +340,7 @@ def test_outline_api_error_raised_on_4xx_listing() -> None:
 @pytest.mark.unit
 def test_outline_api_error_falls_back_to_text_when_json_invalid() -> None:
     """_raise_for_status uses resp.text when json() raises."""
-    from connectors.outline.outline_document_reader import (
+    from indexed.connectors.outline.outline_document_reader import (
         OutlineAPIError,
         OutlineDocumentReader,
     )
@@ -369,7 +369,7 @@ def test_documents_list_retries_on_transient_then_succeeds() -> None:
     with (
         patch("requests.post", side_effect=[err, err, success]),
         patch(
-            "connectors.outline.outline_document_reader.httpx.AsyncClient",
+            "indexed.connectors.outline.outline_document_reader.httpx.AsyncClient",
             new=lambda **kw: _FakeAsyncClient(
                 lambda m, u: (
                     _doc_info("d1") if "documents.info" in u else _attachments_list([])

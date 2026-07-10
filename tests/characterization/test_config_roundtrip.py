@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 
 runner = CliRunner()
 
@@ -18,7 +18,7 @@ KEY = "core.v1.search.max_docs"
 
 
 def test_config_set_get_roundtrip(local_workspace) -> None:
-    from indexed_config import ConfigService
+    from indexed.config import get_config, reload
 
     # --- set via the real CLI write path ---------------------------------
     result = runner.invoke(
@@ -27,10 +27,8 @@ def test_config_set_get_roundtrip(local_workspace) -> None:
     assert result.exit_code == 0, result.stdout + result.stderr
 
     # --- read back through a FRESH store loaded from disk ----------------
-    ConfigService.reset()
-    service = ConfigService.instance(
-        workspace=local_workspace.root, mode_override="local"
-    )
+    reload()
+    service = get_config(workspace=local_workspace.root, mode_override="local")
     assert service.get(KEY) == 7
 
     # --- overwrite and confirm the new value round-trips too -------------
@@ -39,8 +37,6 @@ def test_config_set_get_roundtrip(local_workspace) -> None:
     )
     assert result.exit_code == 0, result.stdout + result.stderr
 
-    ConfigService.reset()
-    service = ConfigService.instance(
-        workspace=local_workspace.root, mode_override="local"
-    )
+    reload()
+    service = get_config(workspace=local_workspace.root, mode_override="local")
     assert service.get(KEY) == 3

@@ -3,10 +3,10 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-07-07
+updated: 2026-07-10
 ---
 
-# Tech Branch: Connectors (`indexed-connectors`)
+# Tech Branch: Connectors (`src/indexed/connectors/`)
 
 Protocol-based data-source adapters. May import protocols/config/utils/parsing;
 MUST NOT import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
@@ -17,20 +17,19 @@ MUST NOT import core engine, CLI, or MCP (see [tech.md](tech.md) § Architectura
 
 ## Connector Protocol
 
-**File:** `packages/indexed-core/src/core/v1/connectors/base.py`
+**File:** `src/indexed/protocols/connectors.py`
 
 ```python
-from typing import Protocol, Iterator
+from typing import Any, Iterator, Protocol, runtime_checkable
 
+@runtime_checkable
 class DocumentReader(Protocol):
-    def read_documents(self) -> Iterator[RawDocument]:
-        """Fetch documents from source."""
-        ...
+    def get_number_of_documents(self) -> int: ...
+    def read_all_documents(self) -> Iterator[Any]: ...
+    def get_reader_details(self) -> dict: ...          # per-source "reader" block for the manifest
 
 class DocumentConverter(Protocol):
-    def convert(self, doc: RawDocument) -> Iterator[Document]:
-        """Convert raw document to searchable chunks."""
-        ...
+    def convert(self, doc: Any) -> Iterator[ConvertedDocument]: ...
 
 class BaseConnector(Protocol):
     @property
@@ -39,10 +38,18 @@ class BaseConnector(Protocol):
     def converter(self) -> DocumentConverter: ...
     @property
     def connector_type(self) -> str: ...
+    @classmethod
+    def from_config(cls, config_service) -> "BaseConnector": ...
+    @classmethod
+    def from_manifest(cls, manifest, config_service, *, storage_path) -> ConnectorRun: ...
 ```
 
-Reader fetches raw documents; Converter transforms them into searchable chunks
-(text + metadata) via the parsing module.
+The protocols declare exactly what the engine calls — a connector missing a method is a
+**mypy error**, not a runtime `AttributeError`. Reader fetches raw documents; Converter
+transforms them into searchable chunks (text + metadata) via the parsing module.
+`from_manifest` rebuilds `(reader, converter, deletions, post_run)` (a `ConnectorRun`) for
+an incremental update from the collection's own manifest, so **core's update path is
+source-agnostic** — one call for every connector, no per-type / `localFiles` branch.
 
 ---
 
@@ -57,13 +64,13 @@ Reader fetches raw documents; Converter transforms them into searchable chunks
 | **ConfluenceServerConnector** | `.../connectors/confluence/` | REST API | Email + Token |
 | **OutlineConnector** | `.../connectors/outline/` | REST API | Bearer token |
 
-(All paths under `packages/indexed-connectors/src/`.)
+(All paths under `src/indexed/connectors/`.)
 
 ---
 
 ## Credential Security — Origin Guard
 
-**File:** `packages/indexed-connectors/src/connectors/_url_guard.py`
+**File:** `src/indexed/connectors/_url_guard.py`
 
 All credentialed attachment fetchers (Jira Server/DC, Confluence Server, Outline) call
 `warn_if_off_origin(url, base_url)` before issuing any HTTP request. This function

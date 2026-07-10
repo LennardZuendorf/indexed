@@ -13,7 +13,7 @@ import json
 import types
 
 
-from protocols import ConnectorRun, Manifest
+from indexed.protocols import ConnectorRun, Manifest
 
 
 class _FakeConfigService:
@@ -49,8 +49,8 @@ _CUTOFF = "2026-07-04"
 
 
 def test_files_from_manifest_builds_reader_and_hooks(tmp_path):
-    from connectors.files.connector import FileSystemConnector
-    from connectors.files.files_document_reader import FilesDocumentReader
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
 
     (tmp_path / "doc.md").write_text("hello world")
     manifest = _manifest(
@@ -84,8 +84,8 @@ def test_files_from_manifest_propagates_non_default_reader_settings(tmp_path):
     valid regex, so it becomes ``fnmatch.translate("*.md")``) — assert against
     that same normalization so we test propagation, not the normalizer.
     """
-    from connectors.files.connector import FileSystemConnector
-    from connectors.files.files_document_reader import FilesDocumentReader
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
 
     (tmp_path / "doc.md").write_text("hello world")
     manifest = _manifest(
@@ -117,8 +117,8 @@ def test_files_from_manifest_with_change_state_scopes_and_persists(tmp_path):
     the reader to the changed file via ``specific_files``, and expose a
     ``post_run`` hook that rewrites ``state.json`` to the new reality.
     """
-    from connectors.files.connector import FileSystemConnector
-    from connectors.files.files_document_reader import FilesDocumentReader
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
 
     source = tmp_path / "src"
     source.mkdir()
@@ -168,7 +168,7 @@ def test_files_from_manifest_with_change_state_scopes_and_persists(tmp_path):
 
 
 def test_jira_cloud_from_manifest_query_and_overlays(monkeypatch):
-    from connectors.jira.connector import JiraCloudConnector
+    from indexed.connectors.jira.connector import JiraCloudConnector
 
     sentinel = types.SimpleNamespace(reader="R", converter="C")
     monkeypatch.setattr(
@@ -198,7 +198,7 @@ def test_jira_cloud_from_manifest_query_and_overlays(monkeypatch):
 
 def test_jira_from_manifest_empty_query_has_no_leading_and(monkeypatch):
     """R6.5: an empty stored query must not yield leading-AND (invalid) JQL."""
-    from connectors.jira.connector import JiraConnector
+    from indexed.connectors.jira.connector import JiraConnector
 
     monkeypatch.setattr(
         JiraConnector,
@@ -221,7 +221,7 @@ def test_jira_from_manifest_empty_query_has_no_leading_and(monkeypatch):
 
 
 def test_confluence_cloud_from_manifest_query_and_overlays(monkeypatch):
-    from connectors.confluence.connector import ConfluenceCloudConnector
+    from indexed.connectors.confluence.connector import ConfluenceCloudConnector
 
     monkeypatch.setattr(
         ConfluenceCloudConnector,
@@ -252,7 +252,7 @@ def test_confluence_cloud_from_manifest_query_and_overlays(monkeypatch):
 
 
 def test_outline_from_manifest_overlays_and_cutoff(monkeypatch):
-    from connectors.outline.connector import OutlineConnector
+    from indexed.connectors.outline.connector import OutlineConnector
 
     monkeypatch.setattr(
         OutlineConnector,
@@ -294,7 +294,7 @@ def test_outline_from_manifest_overlays_and_cutoff(monkeypatch):
 
 def test_all_connectors_expose_from_manifest():
     """Every shipped connector gained the from_manifest classmethod."""
-    from connectors.registry import CONNECTOR_REGISTRY
+    from indexed.connectors.registry import CONNECTOR_REGISTRY
 
     for connector_cls in CONNECTOR_REGISTRY.values():
         assert hasattr(connector_cls, "from_manifest")

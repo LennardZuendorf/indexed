@@ -49,9 +49,9 @@ def test_mcp_search_tool_returns_seeded_hit(
 ) -> None:
     from unittest.mock import MagicMock
 
-    from connectors.files.connector import FileSystemConnector
-    from core.v1.config_models import CoreV1SearchConfig
-    from indexed.composition import resolve_collections_context
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.core.v1.config_models import CoreV1SearchConfig
+    from indexed.cli.composition import resolve_collections_context
 
     # Seed a real, searchable collection at the local workspace's path.
     connector = FileSystemConnector(path=str(files_corpus), include_patterns=["*.txt"])

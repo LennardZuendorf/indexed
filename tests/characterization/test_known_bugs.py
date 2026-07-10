@@ -1,7 +1,8 @@
 """Characterization: red bug-specs for every CONFIRMED audit bug (foundation/1).
 
 One ``xfail(strict=True)`` spec per CONFIRMED defect in the foundation bug
-catalogue (``.spec/features/foundation/tech-bugfixes.md``). Each spec asserts the
+catalogue (the 2026-07-06 audit; shipped in PR #153, retained in git history).
+Each spec asserts the
 DESIRED (correct) behavior, so it FAILS today and will flip to a hard failure
 (``xpassed`` under ``strict=True``) the moment the bug is fixed in a later unit —
 turning the whole file into a live checklist for the foundation fix work.
@@ -24,7 +25,7 @@ from __future__ import annotations
 # Warm the engine through the services package first: this is the import entry
 # that resolves the cold-import cycle (importing the factories / creator / a
 # searcher directly fails cold — see .spec/lessons.md and test_lifecycle_cloud).
-import core.v1.engine.services  # noqa: F401
+import indexed.core.v1.engine.services  # noqa: F401
 
 import json
 import os
@@ -33,7 +34,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 from tests.conftest import model_available
 
 runner = CliRunner()
@@ -77,7 +78,7 @@ def _create_files_collection(name: str, corpus: Path) -> None:
 
 
 def _search_service(collections_dir: Path):
-    from core.v1.engine.services.search_service import SearchService
+    from indexed.core.v1.engine.services.search_service import SearchService
 
     return SearchService(collections_path=str(collections_dir))
 
@@ -92,8 +93,10 @@ def test_bug_a1_chunker_respects_model_token_window(tmp_path: Path) -> None:
     """A1: a large headingless doc must be split into chunks that each fit the
     embedder's ``max_seq_length`` (max_tokens is ignored today → oversize chunks
     whose tail is silently truncated at embed and thus unsearchable)."""
-    from core.v1.engine.indexes.embeddings.sentence_embeder import SentenceEmbedder
-    from parsing import PlaintextParser
+    from indexed.core.v1.engine.indexes.embeddings.sentence_embeder import (
+        SentenceEmbedder,
+    )
+    from indexed.parsing import PlaintextParser
 
     sentence = (
         "The nightly ingestion pipeline embeds every document chunk into the "
@@ -125,7 +128,7 @@ def test_bug_a2_code_chunker_slices_bytes_not_decoded_str(tmp_path: Path) -> Non
     """A2: a code file whose first function contains a non-ASCII comment must
     still yield byte-exact chunks for later functions (tree-sitter byte offsets
     are wrongly applied to the decoded ``str`` today → every later slice shifts)."""
-    from parsing import CodeChunker
+    from indexed.parsing import CodeChunker
 
     source = (
         "def first():\n"
@@ -152,7 +155,7 @@ def test_bug_a3_plaintext_splitter_handles_no_blank_lines(tmp_path: Path) -> Non
     """A3: a large file with no blank lines (e.g. a log) must split into multiple
     chunks (the generic splitter breaks only on ``\\n\\n`` today → one chunk that
     is truncated at the model window)."""
-    from parsing import PlaintextParser
+    from indexed.parsing import PlaintextParser
 
     log = tmp_path / "big.log"
     log.write_text(
@@ -178,7 +181,9 @@ def test_bug_a4_embedder_distinguishes_beyond_model_window() -> None:
     no chunk-time guard, so both embed identically → distance 0)."""
     import numpy as np
 
-    from core.v1.engine.indexes.embeddings.sentence_embeder import SentenceEmbedder
+    from indexed.core.v1.engine.indexes.embeddings.sentence_embeder import (
+        SentenceEmbedder,
+    )
 
     embedder = SentenceEmbedder()
     tokenizer = embedder.model.tokenizer
@@ -242,7 +247,7 @@ def test_bug_a6_score_threshold_accepts_real_l2_range() -> None:
     """A6: ``score_threshold`` must accept the engine's real squared-L2 range
     (``[0, 4]``); today it is capped at ``le=1.0``, so a sane 1.5 threshold (the
     service docstring's own example) fails validation."""
-    from core.v1.config_models import CoreV1SearchConfig
+    from indexed.core.v1.config_models import CoreV1SearchConfig
 
     cfg = CoreV1SearchConfig(score_threshold=1.5)
     assert cfg.score_threshold == 1.5
@@ -300,7 +305,7 @@ def test_bug_b2_zero_chunk_batch_does_not_crash_indexer() -> None:
     ``add_with_ids`` fails to unpack today)."""
     import numpy as np
 
-    from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
+    from indexed.core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
 
     class StubEmbedder:
         def get_number_of_dimensions(self) -> int:
@@ -337,11 +342,11 @@ def test_bug_b4_failed_create_preserves_existing_collection(tmp_path: Path) -> N
     """B4: a create that fails mid-build must leave the pre-existing collection
     intact (today ``__create_collection`` deletes the collection folder up front,
     before reading anything → a failed re-create destroys prior data)."""
-    from core.v1.engine.core.documents_collection_creator import (
+    from indexed.core.v1.engine.core.documents_collection_creator import (
         OPERATION_TYPE,
         DocumentCollectionCreator,
     )
-    from core.v1.engine.persisters.disk_persister import DiskPersister
+    from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 
     base = tmp_path / "collections"
     keep = base / "keep"
@@ -421,7 +426,7 @@ def test_bug_c3_url_guard_rejects_backslash_authority() -> None:
     """C3: ``is_same_origin`` must reject a parser-differential authority like
     ``https://evil.com\\@good.com`` (urlsplit sees host ``good.com`` and approves,
     but the HTTP client sends credentials to ``evil.com``)."""
-    from connectors._url_guard import is_same_origin
+    from indexed.connectors._url_guard import is_same_origin
 
     assert is_same_origin("https://evil.com\\@good.com/x", "https://good.com") is False
 
@@ -438,8 +443,8 @@ def test_bug_c4_env_writer_quotes_secrets(tmp_path: Path, monkeypatch) -> None:
     both ``load_dotenv()`` call sites in ``TomlStore``) — this spec reloads
     through ``TomlStore._load_dotenv`` (the app's actual dotenv path), not a
     bare ``dotenv_values()`` call, so it exercises that fix directly."""
-    from indexed_config.env_writer import EnvFileWriter
-    from indexed_config.store import TomlStore
+    from indexed.config.env_writer import EnvFileWriter
+    from indexed.config.store import TomlStore
 
     env_path = tmp_path / ".env"
     secrets = {
@@ -474,8 +479,10 @@ def test_bug_d1_jira_attachment_follows_redirect(monkeypatch) -> None:
 
     import httpx
 
-    from connectors.jira import async_jira_cloud_reader as mod
-    from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+    from indexed.connectors.jira import async_jira_cloud_reader as mod
+    from indexed.connectors.jira.async_jira_cloud_reader import (
+        AsyncJiraCloudDocumentReader,
+    )
 
     class FakeResp:
         def __init__(self, status, content=b"", location=None):
@@ -548,7 +555,7 @@ def test_bug_d2_change_tracker_unquotes_non_ascii_paths(tmp_path: Path) -> None:
     """D2: the git change-tracker must C-unquote git's octal-escaped path output
     so non-ASCII filenames are matched (``"caf\\303\\251.txt"`` is compared raw
     today → ``café.py`` is never re-indexed)."""
-    from connectors.files.change_tracker import ChangeTracker
+    from indexed.connectors.files.change_tracker import ChangeTracker
 
     tracker = ChangeTracker(str(tmp_path), strategy="git")
     git_output = 'M\t"caf\\303\\251.txt"\n'  # git's C-quoted form of café.txt
@@ -564,7 +571,7 @@ def test_bug_d3_jira_adf_leaf_nodes_extracted() -> None:
     """D3: ADF leaf nodes carry their data in ``attrs`` (mention display name,
     inlineCard url); ``_parse_adf_nodes`` walks only ``content`` today → these are
     dropped from indexed Jira text."""
-    from connectors.jira.unified_jira_document_converter import (
+    from indexed.connectors.jira.unified_jira_document_converter import (
         UnifiedJiraDocumentConverter,
     )
 
@@ -600,7 +607,7 @@ def test_bug_d4_confluence_image_filename_extracted() -> None:
     """D4: Confluence storage-format ``ac:image``/``ri:attachment`` filenames live
     in attributes; ``get_text()`` extracts only text nodes today → the filename is
     dropped from indexed content."""
-    from connectors.confluence.unified_confluence_document_converter import (
+    from indexed.connectors.confluence.unified_confluence_document_converter import (
         UnifiedConfluenceDocumentConverter,
     )
 
@@ -650,7 +657,7 @@ def test_bug_e2_rich_markup_injection_does_not_crash() -> None:
 
     from rich.console import Console
 
-    from indexed.utils.components.cards import create_info_rows_with_spacing
+    from indexed.cli.utils.components.cards import create_info_rows_with_spacing
 
     content = "match: arr[i] returned [/bold] unexpectedly"
     renderables = create_info_rows_with_spacing([("Excerpt", content)])
@@ -669,7 +676,7 @@ def test_bug_e3_verbose_flag_is_honored(local_workspace) -> None:
     """E3: ``--verbose`` must actually raise the effective log level (each command
     calls ``setup_root_logger(None)`` → ``bootstrap_logging("WARNING")`` today,
     clobbering the callback's resolved level back to WARNING)."""
-    from indexed.utils.logging import get_current_log_level
+    from indexed.cli.utils.logging import get_current_log_level
 
     runner.invoke(app, ["--verbose", "--local", "search", "hello"])
 
@@ -719,7 +726,7 @@ def test_bug_e6_cloud_detection_normalizes_url() -> None:
     """E6: Cloud/Server detection must normalize whitespace and a trailing slash
     (``endswith(".atlassian.net")`` misroutes ``https://x.atlassian.net/`` to
     Server → wrong config class + credential scheme)."""
-    from indexed.knowledge.commands.create import _is_cloud
+    from indexed.cli.knowledge.commands.create import _is_cloud
 
     assert _is_cloud("https://x.atlassian.net/ ") is True
 
@@ -730,7 +737,7 @@ def test_bug_e7_files_path_stored_normalized() -> None:
     CWD resolves a relative / ``~`` path against the wrong directory)."""
     import os
 
-    from connectors.files.files_document_reader import FilesDocumentReader
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
 
     base_path = FilesDocumentReader(
         base_path="./some/relative/docs"
@@ -756,7 +763,7 @@ def test_bug_e8_update_all_continues_past_failure(local_workspace, monkeypatch) 
         )
         _create_files_collection(name, corpus)
 
-    import indexed.knowledge.commands.update as update_mod
+    import indexed.cli.knowledge.commands.update as update_mod
 
     attempted: list[str] = []
 
@@ -808,7 +815,7 @@ def test_bug_e11_missing_collection_not_reported_healthy(local_workspace) -> Non
     """E11: a nonexistent collection must not be reported as a zero-filled healthy
     status (the placeholder returned by ``InspectService.status`` makes MCP show a
     missing collection as an empty-but-healthy record today)."""
-    from core.v1.engine.services.inspect_service import InspectService
+    from indexed.core.v1.engine.services.inspect_service import InspectService
 
     statuses = InspectService(
         collections_path=str(local_workspace.collections_dir)
@@ -874,7 +881,7 @@ def test_bug_f1_index_size_is_bytes_not_vector_count(local_workspace) -> None:
     )
     _create_files_collection("f1", corpus)
 
-    from core.v1.engine.services.inspect_service import InspectService
+    from indexed.core.v1.engine.services.inspect_service import InspectService
 
     info = InspectService(collections_path=str(ws.collections_dir)).inspect(
         ["f1"], include_index_size=True
@@ -896,7 +903,7 @@ def test_bug_f2_created_time_is_populated(local_workspace) -> None:
     (corpus / "a.txt").write_text("Notes about deployment pipelines and manifests.\n")
     _create_files_collection("f2", corpus)
 
-    from core.v1.engine.services.inspect_service import InspectService
+    from indexed.core.v1.engine.services.inspect_service import InspectService
 
     info = InspectService(collections_path=str(ws.collections_dir)).inspect(["f2"])[0]
 
@@ -921,7 +928,7 @@ def test_bug_f3_avg_doc_size_excludes_index(local_workspace) -> None:
     )
     _create_files_collection("f3", corpus)
 
-    from core.v1.engine.services.inspect_service import InspectService
+    from indexed.core.v1.engine.services.inspect_service import InspectService
 
     info = InspectService(collections_path=str(ws.collections_dir)).inspect(
         ["f3"], include_index_size=True

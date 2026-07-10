@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 import pytest
 
-from indexed_config import ConfigService, Provider
+from indexed.config import Provider, get_config, reload
 
 
 class SampleConfigSpec(BaseModel):
@@ -50,8 +50,8 @@ def config_service(temp_workspace):
         ConfigService: the singleton instance with the test specs registered.
     """
     # Clear singleton
-    ConfigService._instance = None
-    svc = ConfigService.instance()
+    reload()
+    svc = get_config()
     # Register test specs
     svc.register(SampleConfigSpec, path="test.config")
     svc.register(RequiredSpec, path="test.required")
@@ -60,9 +60,9 @@ def config_service(temp_workspace):
 
 def test_singleton_pattern():
     """Test ConfigService singleton behavior."""
-    ConfigService._instance = None  # Reset
-    svc1 = ConfigService.instance()
-    svc2 = ConfigService.instance()
+    reload()  # Reset
+    svc1 = get_config()
+    svc2 = get_config()
     assert svc1 is svc2
 
 
@@ -90,8 +90,8 @@ def test_delete_operation(config_service):
 
 def test_config_file_creation(temp_workspace):
     """Test that config file is created in correct location."""
-    ConfigService.reset()
-    svc = ConfigService.instance(workspace=temp_workspace, mode_override="local")
+    reload()
+    svc = get_config(workspace=temp_workspace, mode_override="local")
     svc.set("test.setting", "value")
 
     config_file = temp_workspace / ".indexed" / "config.toml"
@@ -176,8 +176,8 @@ def test_unknown_keys_preserved(config_service):
 def test_set_does_not_bake_env_override_into_disk(temp_workspace):
     """C2: an unrelated set() must not persist an INDEXED__*-supplied value —
     env overrides stay an in-memory overlay, never written to config.toml."""
-    ConfigService.reset()
-    svc = ConfigService.instance(workspace=temp_workspace, mode_override="local")
+    reload()
+    svc = get_config(workspace=temp_workspace, mode_override="local")
 
     os.environ["INDEXED__sources__jira__api_token"] = "envsecretXYZ"
     try:
@@ -189,4 +189,4 @@ def test_set_does_not_bake_env_override_into_disk(temp_workspace):
         assert "unrelated" in toml_text
     finally:
         del os.environ["INDEXED__sources__jira__api_token"]
-        ConfigService.reset()
+        reload()

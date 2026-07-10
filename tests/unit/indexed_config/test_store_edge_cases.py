@@ -1,7 +1,7 @@
 """Additional tests for store to reach 100% coverage."""
 
 import sys
-from indexed_config.store import TomlStore
+from indexed.config.store import TomlStore
 
 
 def test_toml_store_python_3_11_plus():
@@ -29,9 +29,9 @@ def test_toml_store_python_below_3_11():
 
         # Re-import to trigger the fallback logic
         import importlib
-        import indexed_config.store
+        import indexed.config.store
 
-        importlib.reload(indexed_config.store)
+        importlib.reload(indexed.config.store)
 
         store = TomlStore()
         assert store is not None
@@ -39,9 +39,9 @@ def test_toml_store_python_below_3_11():
         sys.version_info = original_version
         # Reload the module to restore original behavior
         import importlib
-        import indexed_config.store
+        import indexed.config.store
 
-        importlib.reload(indexed_config.store)
+        importlib.reload(indexed.config.store)
 
 
 def test_toml_store_tomli_import_failure():

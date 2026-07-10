@@ -13,18 +13,27 @@ import pytest
 
 # Expected type -> (connector class import, config class import, namespace).
 EXPECTED = {
-    "localFiles": ("connectors.files.connector:FileSystemConnector", "sources.files"),
-    "jira": ("connectors.jira.connector:JiraConnector", "sources.jira"),
-    "jiraCloud": ("connectors.jira.connector:JiraCloudConnector", "sources.jira"),
+    "localFiles": (
+        "indexed.connectors.files.connector:FileSystemConnector",
+        "sources.files",
+    ),
+    "jira": ("indexed.connectors.jira.connector:JiraConnector", "sources.jira"),
+    "jiraCloud": (
+        "indexed.connectors.jira.connector:JiraCloudConnector",
+        "sources.jira",
+    ),
     "confluence": (
-        "connectors.confluence.connector:ConfluenceConnector",
+        "indexed.connectors.confluence.connector:ConfluenceConnector",
         "sources.confluence",
     ),
     "confluenceCloud": (
-        "connectors.confluence.connector:ConfluenceCloudConnector",
+        "indexed.connectors.confluence.connector:ConfluenceCloudConnector",
         "sources.confluence",
     ),
-    "outline": ("connectors.outline.connector:OutlineConnector", "sources.outline"),
+    "outline": (
+        "indexed.connectors.outline.connector:OutlineConnector",
+        "sources.outline",
+    ),
 }
 
 
@@ -36,15 +45,14 @@ def _resolve(dotted: str):
 
 
 def test_all_expected_types_are_registered() -> None:
-    from connectors.registry import list_connector_types
+    from indexed.connectors.registry import CONNECTOR_REGISTRY
 
-    assert set(EXPECTED) <= set(list_connector_types())
+    assert set(EXPECTED) <= set(CONNECTOR_REGISTRY)
 
 
 @pytest.mark.parametrize("source_type", sorted(EXPECTED))
 def test_type_resolves_to_connector_contract(source_type: str) -> None:
-    from connectors.registry import (
-        get_config_class,
+    from indexed.connectors.registry import (
         get_config_namespace,
         get_connector_class,
     )
@@ -59,6 +67,5 @@ def test_type_resolves_to_connector_contract(source_type: str) -> None:
     assert hasattr(connector_cls, "reader")
     assert hasattr(connector_cls, "converter")
 
-    # Config class + namespace resolve consistently.
-    assert get_config_class(source_type) is not None
+    # Namespace resolves consistently.
     assert get_config_namespace(source_type) == namespace

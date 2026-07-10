@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed_config.errors import (
+from indexed.config.errors import (
     ConfigValidationError,
     ConfigurationError,
     IndexedError,
@@ -11,14 +11,14 @@ from indexed_config.errors import (
     StorageError,
 )
 
-from indexed.errors import (
+from indexed.cli.errors import (
     CLIError,
     EXIT_CODES,
     exit_code_for,
     format_cli_error,
     mcp_error_envelope,
 )
-from indexed.utils.components import get_error_style
+from indexed.cli.utils.components import get_error_style
 
 
 class TestErrorHelpers:
@@ -53,9 +53,9 @@ class TestErrorHelpers:
 class TestMainErrorHandler:
     """Tests for IndexedError handling in main()."""
 
-    @patch("indexed.app.app")
-    @patch("indexed.app.bootstrap_logging")
-    @patch("indexed.app._shared_console")
+    @patch("indexed.cli.app.app")
+    @patch("indexed.cli.app.bootstrap_logging")
+    @patch("indexed.cli.app._shared_console")
     def test_main_maps_configuration_error_to_exit_code_2(
         self,
         mock_console: MagicMock,
@@ -65,7 +65,7 @@ class TestMainErrorHandler:
         mock_app.side_effect = ConfigurationError("invalid connector")
 
         with pytest.raises(SystemExit) as exc_info:
-            from indexed.app import main
+            from indexed.cli.app import main
 
             main()
 
@@ -75,9 +75,9 @@ class TestMainErrorHandler:
             style=get_error_style(),
         )
 
-    @patch("indexed.app.app")
-    @patch("indexed.app.bootstrap_logging")
-    @patch("indexed.app._shared_console")
+    @patch("indexed.cli.app.app")
+    @patch("indexed.cli.app.bootstrap_logging")
+    @patch("indexed.cli.app._shared_console")
     def test_main_maps_storage_error_to_exit_code_3(
         self,
         mock_console: MagicMock,
@@ -87,7 +87,7 @@ class TestMainErrorHandler:
         mock_app.side_effect = StorageError("storage unavailable")
 
         with pytest.raises(SystemExit) as exc_info:
-            from indexed.app import main
+            from indexed.cli.app import main
 
             main()
 
@@ -97,8 +97,8 @@ class TestMainErrorHandler:
             style=get_error_style(),
         )
 
-    @patch("indexed.app.app")
-    @patch("indexed.app.bootstrap_logging")
+    @patch("indexed.cli.app.app")
+    @patch("indexed.cli.app.bootstrap_logging")
     def test_main_propagates_unexpected_errors(
         self,
         mock_bootstrap: MagicMock,
@@ -107,6 +107,6 @@ class TestMainErrorHandler:
         mock_app.side_effect = RuntimeError("unexpected")
 
         with pytest.raises(RuntimeError, match="unexpected"):
-            from indexed.app import main
+            from indexed.cli.app import main
 
             main()

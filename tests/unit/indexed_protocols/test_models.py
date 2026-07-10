@@ -9,8 +9,8 @@ converted-document/chunk shape.
 
 import json
 
-from protocols import ProgressUpdate, SourceConfig
-from protocols.models import (
+from indexed.protocols import SourceConfig
+from indexed.protocols.models import (
     Chunk,
     CollectionSearchResult,
     ConvertedDocument,
@@ -18,12 +18,6 @@ from protocols.models import (
     Manifest,
     MatchedChunk,
 )
-
-
-def test_progress_update_dataclass() -> None:
-    update = ProgressUpdate(stage="indexing", current=2, total=10, message="ok")
-    assert update.stage == "indexing"
-    assert update.total == 10
 
 
 def test_source_config_reader_opts_default() -> None:

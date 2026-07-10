@@ -8,9 +8,9 @@ byte-identical before and after.
 
 import hashlib
 
-from indexed_config import ConfigService, ensure_storage_dirs, get_local_root
-from indexed import composition
-from protocols import Manifest
+from indexed.config import reload, ensure_storage_dirs, get_local_root
+from indexed.cli import composition
+from indexed.protocols import Manifest
 
 
 def _sha(path) -> str:
@@ -48,7 +48,7 @@ def test_update_seam_leaves_config_toml_byte_stable(tmp_path, monkeypatch):
     )
     before = _sha(config_toml)
 
-    ConfigService.reset()
+    reload()
     ctx = composition.resolve_collections_context(
         mode_override="local", workspace=tmp_path
     )

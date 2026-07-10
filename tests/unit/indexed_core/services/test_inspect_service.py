@@ -9,7 +9,7 @@ which exercise the same bugs end-to-end through the real engine.
 import json
 from pathlib import Path
 
-from core.v1.engine.services.inspect_service import InspectService
+from indexed.core.v1.engine.services.inspect_service import InspectService
 
 INDEXER_NAME = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 

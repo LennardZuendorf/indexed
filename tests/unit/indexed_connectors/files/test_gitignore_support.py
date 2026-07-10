@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from connectors.files.files_document_reader import FilesDocumentReader
+from indexed.connectors.files.files_document_reader import FilesDocumentReader
 
 
 def _rel(paths: list[str], base: Path) -> list[str]:

@@ -12,9 +12,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from indexed_config.errors import ConfigurationError
+from indexed.config.errors import ConfigurationError
 
-from core.v1.engine.factories.create_collection_factory import create_collection_creator
+from indexed.core.v1.engine.factories.create_collection_factory import (
+    create_collection_creator,
+)
 
 
 def test_create_creator_raises_when_cache_factory_missing() -> None:
@@ -35,7 +37,7 @@ def test_update_updater_requires_manifest_factory(tmp_path) -> None:
     The binding error fires before the body runs, so no collection needs to
     exist on disk.
     """
-    from core.v1.engine.factories.update_collection_factory import (
+    from indexed.core.v1.engine.factories.update_collection_factory import (
         create_collection_updater,
     )
 
@@ -45,7 +47,7 @@ def test_update_updater_requires_manifest_factory(tmp_path) -> None:
 
 def test_create_requires_connector_factory() -> None:
     """`connector_factory` is keyword-only and required on the create path."""
-    from core.v1.engine.services import collection_service
+    from indexed.core.v1.engine.services import collection_service
 
     with pytest.raises(TypeError, match="connector_factory"):
         collection_service.create([])  # type: ignore[call-arg]

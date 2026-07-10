@@ -2,8 +2,8 @@
 
 import asyncio
 
-from indexed_config import ensure_storage_dirs, get_local_root
-from indexed.composition import resolve_collections_context
+from indexed.config import ensure_storage_dirs, get_local_root
+from indexed.cli.composition import resolve_collections_context
 
 
 def test_cli_local_and_mcp_lifespan_share_collections_path(tmp_path, monkeypatch):

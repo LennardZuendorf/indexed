@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-from indexed_config.env_writer import EnvFileWriter, _dotenv_quote
+from indexed.config.env_writer import EnvFileWriter, _dotenv_quote
 
 
 class TestDotenvQuote:

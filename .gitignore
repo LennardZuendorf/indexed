@@ -53,6 +53,9 @@ dmypy.json
 .memory/
 *.bak
 
+# Agent tooling (unvendored — installed from skills-lock.json via `npx skills`)
+.agents/
+
 # Project data
 data/
 tmp/

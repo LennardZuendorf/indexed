@@ -1,6 +1,6 @@
 """Tests for parsing.schema — ParsedChunk and ParsedDocument."""
 
-from parsing.schema import ParsedChunk, ParsedDocument
+from indexed.parsing.schema import ParsedChunk, ParsedDocument
 
 
 def test_parsed_chunk_content_hash_deterministic():

@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel, Field
-from indexed_config.errors import ConfigValidationError
-from indexed_config.service import ConfigService
+from indexed.config.errors import ConfigValidationError
+from indexed.config.service import ConfigService, get_config, reload
 
 
 class SampleConfig(BaseModel):
@@ -20,14 +20,6 @@ class OptionalConfig(BaseModel):
     """Optional config model."""
 
     name: str = Field(default="default", description="Name")
-
-
-def test_config_service_get_raw():
-    """Test get_raw() alias for load_raw()."""
-    service = ConfigService()
-    result1 = service.load_raw()
-    result2 = service.get_raw()
-    assert result1 == result2
 
 
 def test_config_service_bind_skips_missing():
@@ -114,20 +106,20 @@ def test_config_service_validate_skips_empty_dict():
 
 
 def test_config_service_instance_singleton():
-    """Test instance() class method returns singleton."""
-    ConfigService._instance = None  # Reset singleton
-    instance1 = ConfigService.instance()
-    instance2 = ConfigService.instance()
+    """Test get_config() returns the cached singleton."""
+    reload()  # Reset singleton
+    instance1 = get_config()
+    instance2 = get_config()
 
     assert instance1 is instance2
     assert isinstance(instance1, ConfigService)
 
 
 def test_config_service_instance_rebuilds_on_mode_override_change():
-    """instance() recreates singleton when mode_override changes."""
-    ConfigService.reset()
-    global_svc = ConfigService.instance(mode_override="global")
-    local_svc = ConfigService.instance(mode_override="local")
+    """get_config() rebuilds the cached instance when mode_override changes."""
+    reload()
+    global_svc = get_config(mode_override="global")
+    local_svc = get_config(mode_override="local")
 
     assert global_svc is not local_svc
     assert global_svc._mode_override == "global"

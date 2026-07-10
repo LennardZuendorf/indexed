@@ -29,7 +29,7 @@ SOURCES = ["jira_source", "confluence_source", "outline_source"]
 
 def _search_ids(collections_dir: Path, collection: str, query: str) -> list[str]:
     """Return the ranked document ids for ``query`` in one collection."""
-    from core.v1.engine.services.search_service import SearchService
+    from indexed.core.v1.engine.services.search_service import SearchService
 
     svc = SearchService(collections_path=str(collections_dir))
     results = svc.search(query, max_docs=5, include_matched_chunks=True)
@@ -43,12 +43,12 @@ def test_cloud_lifecycle(source_name: str, request, local_workspace, build_colle
     # Warm the engine through the services package first: this is the import
     # entry that resolves the current cold-import cycle (importing the factories
     # or the creator directly fails cold — see .spec/lessons.md).
-    import core.v1.engine.services  # noqa: F401
-    from core.v1.engine.factories.update_collection_factory import (
+    import indexed.core.v1.engine.services  # noqa: F401
+    from indexed.core.v1.engine.factories.update_collection_factory import (
         create_collection_updater,
     )
-    from core.v1.engine.services.collection_service import clear
-    from core.v1.engine.services.inspect_service import InspectService
+    from indexed.core.v1.engine.services.collection_service import clear
+    from indexed.core.v1.engine.services.inspect_service import InspectService
 
     src = request.getfixturevalue(source_name)
     collections_dir = local_workspace.collections_dir
@@ -67,7 +67,7 @@ def test_cloud_lifecycle(source_name: str, request, local_workspace, build_colle
 
     # --- incremental update: a new document becomes searchable -----------
     new_id, new_query = src.add_update()
-    from protocols import ConnectorRun
+    from indexed.protocols import ConnectorRun
 
     updater = create_collection_updater(
         collection_name=collection,

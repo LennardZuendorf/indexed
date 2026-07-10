@@ -20,23 +20,23 @@ class TestModelManagerImportChain:
         """Verify that importing model_manager doesn't load 'parsing'."""
         # Remove parsing from sys.modules if previously loaded so we can
         # detect a fresh import triggered by model_manager.
-        previously_loaded = "parsing" in sys.modules
-        saved = sys.modules.pop("parsing", None)
+        previously_loaded = "indexed.parsing" in sys.modules
+        saved = sys.modules.pop("indexed.parsing", None)
         try:
             # Re-import to trigger the full import chain
             mod = importlib.import_module(
-                "core.v1.engine.indexes.embeddings.model_manager"
+                "indexed.core.v1.engine.indexes.embeddings.model_manager"
             )
             assert mod is not None
             # parsing should NOT have been pulled in as a side-effect
-            assert "parsing" not in sys.modules, (
+            assert "indexed.parsing" not in sys.modules, (
                 "Importing model_manager eagerly loaded the 'parsing' package. "
                 "This causes 'indexed init' to fail when parsing deps are missing."
             )
         finally:
             # Restore previous state
             if previously_loaded and saved is not None:
-                sys.modules["parsing"] = saved
+                sys.modules["indexed.parsing"] = saved
 
 
 class TestConnectorImportChain:
@@ -44,31 +44,31 @@ class TestConnectorImportChain:
 
     def test_connectors_package_importable(self):
         """The connectors package should import without errors."""
-        mod = importlib.import_module("connectors")
+        mod = importlib.import_module("indexed.connectors")
         assert mod is not None
 
     def test_files_connector_importable(self):
         """The files connector should import without errors."""
-        mod = importlib.import_module("connectors.files.connector")
+        mod = importlib.import_module("indexed.connectors.files.connector")
         assert mod is not None
 
     def test_files_document_reader_importable(self):
         """FilesDocumentReader should import without eagerly loading parsing."""
-        previously_loaded = "parsing" in sys.modules
-        saved = sys.modules.pop("parsing", None)
+        previously_loaded = "indexed.parsing" in sys.modules
+        saved = sys.modules.pop("indexed.parsing", None)
         try:
             # Force reimport of the reader module
-            key = "connectors.files.files_document_reader"
+            key = "indexed.connectors.files.files_document_reader"
             sys.modules.pop(key, None)
             mod = importlib.import_module(key)
             assert mod is not None
-            assert "parsing" not in sys.modules, (
+            assert "indexed.parsing" not in sys.modules, (
                 "Importing files_document_reader eagerly loaded 'parsing'. "
                 "The parsing import should be lazy (inside a property or method)."
             )
         finally:
             if previously_loaded and saved is not None:
-                sys.modules["parsing"] = saved
+                sys.modules["indexed.parsing"] = saved
 
 
 class TestInitCommandImportChain:
@@ -78,12 +78,12 @@ class TestInitCommandImportChain:
         """indexed init --skip-model should not require parsing at all."""
         from typer.testing import CliRunner
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         runner = CliRunner()
 
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
             return_value={
                 "cache_dir": "/tmp/hf",
                 "models": [],

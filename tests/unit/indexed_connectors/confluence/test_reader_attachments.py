@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
-from connectors.confluence.async_confluence_cloud_reader import (
+from indexed.connectors.confluence.confluence_document_reader import (
+    ConfluenceDocumentReader,
+)
+from indexed.connectors.confluence.async_confluence_cloud_reader import (
     AsyncConfluenceCloudDocumentReader,
 )
 
@@ -221,7 +223,7 @@ class TestConfluenceDocumentReaderAttachments:
         mock_resp.raise_for_status = MagicMock()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             return_value=mock_resp,
         ):
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -235,7 +237,7 @@ class TestConfluenceDocumentReaderAttachments:
         reader = self._make_reader()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             side_effect=ConnectionError("fail"),
         ):
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -249,7 +251,7 @@ class TestConfluenceDocumentReaderAttachments:
         reader = self._make_reader(include_attachments=True)
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get"
+            "indexed.connectors.confluence.confluence_document_reader.requests.get"
         ) as mock_get:
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
                 "https://evil.attacker.test/steal"
@@ -267,7 +269,7 @@ class TestConfluenceDocumentReaderAttachments:
         mock_resp.raise_for_status = MagicMock()
 
         with patch(
-            "connectors.confluence.confluence_document_reader.requests.get",
+            "indexed.connectors.confluence.confluence_document_reader.requests.get",
             return_value=mock_resp,
         ) as mock_get:
             result = reader._ConfluenceDocumentReader__fetch_attachment_bytes(
@@ -484,7 +486,7 @@ class TestAsyncConfluenceCloudReaderAttachments:
         reader = self._make_reader()
 
         with patch(
-            "connectors.confluence.async_confluence_cloud_reader.httpx.AsyncClient"
+            "indexed.connectors.confluence.async_confluence_cloud_reader.httpx.AsyncClient"
         ) as MockClient:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(

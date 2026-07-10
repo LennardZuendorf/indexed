@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 from tests.conftest import model_available
 
 runner = CliRunner()

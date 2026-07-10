@@ -40,7 +40,7 @@ def _make_doc_info_response(doc_id: str) -> dict:
 
 @pytest.fixture
 def reader():
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     return OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -98,7 +98,7 @@ def test_empty_collection(reader) -> None:
 @pytest.mark.unit
 @pytest.mark.api
 def test_collection_ids_none_fetches_collections() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     r = OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -141,7 +141,7 @@ def test_reader_details(reader) -> None:
 
 @pytest.mark.unit
 def test_extract_attachment_id() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     url = "https://app.getoutline.com/api/attachments.redirect?id=abc-123&sig=xyz"
     assert OutlineDocumentReader._extract_attachment_id(url) == "abc-123"
@@ -149,7 +149,7 @@ def test_extract_attachment_id() -> None:
 
 @pytest.mark.unit
 def test_extract_attachment_id_missing() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     assert (
         OutlineDocumentReader._extract_attachment_id("https://example.com/no-id") == ""
@@ -158,7 +158,7 @@ def test_extract_attachment_id_missing() -> None:
 
 @pytest.mark.unit
 def test_ext_from_url_png() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     assert (
         OutlineDocumentReader._ext_from_url(
@@ -170,7 +170,7 @@ def test_ext_from_url_png() -> None:
 
 @pytest.mark.unit
 def test_ext_from_url_pdf() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     assert OutlineDocumentReader._ext_from_url("https://host/files/doc.pdf") == ".pdf"
 
@@ -186,7 +186,7 @@ def test_documents_list_payload_includes_sort(reader) -> None:
 
 @pytest.mark.unit
 def test_incremental_update_yields_only_newer_docs(reader) -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     incremental = OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -217,7 +217,7 @@ def test_incremental_update_yields_only_newer_docs(reader) -> None:
 
 @pytest.mark.unit
 def test_incremental_update_stops_paging_at_first_older_doc(reader) -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     incremental = OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -262,7 +262,7 @@ def test_no_modified_since_yields_all_docs(reader) -> None:
 
 @pytest.mark.unit
 def test_incremental_update_includes_stubs_missing_updated_at() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     incremental = OutlineDocumentReader(
         base_url="https://app.getoutline.com",
@@ -289,10 +289,12 @@ def test_incremental_update_includes_stubs_missing_updated_at() -> None:
 
 @pytest.mark.unit
 def test_insecure_tls_logs_warning() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
     from unittest.mock import patch
 
-    with patch("connectors.outline.outline_document_reader.logger") as mock_logger:
+    with patch(
+        "indexed.connectors.outline.outline_document_reader.logger"
+    ) as mock_logger:
         OutlineDocumentReader(
             base_url="https://app.getoutline.com",
             api_token="tok",
@@ -306,10 +308,12 @@ def test_insecure_tls_logs_warning() -> None:
 
 @pytest.mark.unit
 def test_secure_tls_no_warning() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
     from unittest.mock import patch
 
-    with patch("connectors.outline.outline_document_reader.logger") as mock_logger:
+    with patch(
+        "indexed.connectors.outline.outline_document_reader.logger"
+    ) as mock_logger:
         OutlineDocumentReader(
             base_url="https://app.getoutline.com",
             api_token="tok",
@@ -321,7 +325,7 @@ def test_secure_tls_no_warning() -> None:
 
 @pytest.mark.unit
 def test_get_number_of_documents_uses_stub_count_when_incremental() -> None:
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     incremental = OutlineDocumentReader(
         base_url="https://app.getoutline.com",

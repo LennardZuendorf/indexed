@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 
-from indexed.utils.format import format_time, format_size, _try_parse_to_datetime
+from indexed.cli.utils.format import format_time, format_size, _try_parse_to_datetime
 
 
 def _iso(dt: datetime) -> str:

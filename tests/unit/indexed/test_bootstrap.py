@@ -2,11 +2,11 @@ import importlib
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed_config import ConfigService
-from indexed_config.errors import ConfigurationError
-from protocols import SourceConfig
+from indexed.config import get_config, reload
+from indexed.config.errors import ConfigurationError
+from indexed.protocols import SourceConfig
 
-from indexed.composition import (
+from indexed.cli.composition import (
     build_connector,
     build_connector_registry,
     register_app_config,
@@ -14,24 +14,24 @@ from indexed.composition import (
 
 
 def test_import_core_v1_does_not_register_config(monkeypatch):
-    ConfigService.instance(reset=True)
-    before = len(ConfigService.instance()._registry._specs)  # noqa: SLF001
-    importlib.import_module("core.v1")
-    after = len(ConfigService.instance()._registry._specs)
+    reload()
+    before = len(get_config()._registry._specs)  # noqa: SLF001
+    importlib.import_module("indexed.core.v1")
+    after = len(get_config()._registry._specs)
     assert before == after
 
 
 def test_import_connectors_jira_does_not_register_config():
-    ConfigService.instance(reset=True)
-    before = len(ConfigService.instance()._registry._specs)  # noqa: SLF001
-    importlib.import_module("connectors.jira")
-    after = len(ConfigService.instance()._registry._specs)
+    reload()
+    before = len(get_config()._registry._specs)  # noqa: SLF001
+    importlib.import_module("indexed.connectors.jira")
+    after = len(get_config()._registry._specs)
     assert before == after
 
 
 def test_register_app_config_is_idempotent():
-    ConfigService.instance(reset=True)
-    svc = ConfigService.instance()
+    reload()
+    svc = get_config()
     register_app_config(svc)
     n = len(svc._registry._specs)
     register_app_config(svc)
@@ -45,7 +45,7 @@ def test_build_connector_registry_has_jira():
 
 
 def test_build_connector_jira_cloud_returns_cloud_connector():
-    from connectors.jira import JiraCloudConnector
+    from indexed.connectors.jira import JiraCloudConnector
 
     config_service = MagicMock()
     cfg = SourceConfig(
@@ -78,7 +78,7 @@ def test_build_connector_unknown_type_raises():
 
 
 def test_build_connector_local_files_sets_path():
-    from connectors.files import FileSystemConnector
+    from indexed.connectors.files import FileSystemConnector
 
     config_service = MagicMock()
     cfg = SourceConfig(
@@ -104,7 +104,7 @@ def test_build_connector_local_files_sets_path():
 
 
 def test_build_connector_sets_query_for_remote_types() -> None:
-    from connectors.jira import JiraCloudConnector
+    from indexed.connectors.jira import JiraCloudConnector
 
     config_service = MagicMock()
     cfg = SourceConfig(

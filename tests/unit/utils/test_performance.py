@@ -5,7 +5,10 @@ Tests the execution timing and measurement functions.
 
 import pytest
 from unittest.mock import Mock
-from utils.performance import execute_and_measure_duration, log_execution_duration
+from indexed.utils.performance import (
+    execute_and_measure_duration,
+    log_execution_duration,
+)
 
 
 class TestExecuteAndMeasureDuration:

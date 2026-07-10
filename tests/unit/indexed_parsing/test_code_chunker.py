@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from parsing.code_chunker import CodeChunker
+from indexed.parsing.code_chunker import CodeChunker
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 

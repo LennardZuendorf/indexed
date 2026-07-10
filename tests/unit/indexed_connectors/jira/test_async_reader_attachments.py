@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 
 pytestmark = pytest.mark.connectors
 
@@ -79,7 +79,7 @@ def test_enrich_with_attachments_downloads():
         return resp
 
     with patch(
-        "connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
+        "indexed.connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
     ) as MockClient:
         mock_client = AsyncMock()
         mock_client.get = fake_get
@@ -115,7 +115,7 @@ def test_enrich_skips_oversized_attachments():
     ]
 
     with patch(
-        "connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
+        "indexed.connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
     ) as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -186,7 +186,7 @@ def test_enrich_with_attachments_client_follows_redirects():
         return resp
 
     with patch(
-        "connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
+        "indexed.connectors.jira.async_jira_cloud_reader.httpx.AsyncClient"
     ) as MockClient:
         mock_client = AsyncMock()
         mock_client.get = fake_get

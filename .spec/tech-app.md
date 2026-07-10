@@ -3,10 +3,10 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-07-07
+updated: 2026-07-10
 ---
 
-# Tech Branch: App (`apps/indexed`)
+# Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
 
 The user-facing application — Typer CLI + embedded FastMCP server. UI layer only;
 business logic lives in services/core (see [tech.md](tech.md) § Architectural Rules).
@@ -87,7 +87,7 @@ literally, never raise `MarkupError` and never silently drop the text.
 
 ## MCP Server
 
-Embedded `FastMCP` server (`apps/indexed/src/indexed/mcp/`), decomposed into
+Embedded `FastMCP` server (`src/indexed/mcp/`), decomposed into
 `server.py`, `tools.py`, `resources.py`, `formatting.py`, `config.py`. Reuses the
 same `SearchService` + `ConfigService` as the CLI — agent sees what the user sees.
 
@@ -143,7 +143,7 @@ def collection_status(name: str) -> dict:
 | **http** | network access | HTTP server on port 8000 |
 | **sse** | Server-Sent Events | SSE streaming |
 
-`apps/indexed/src/indexed/mcp/cli.py` handles transport selection.
+`src/indexed/mcp/cli.py` handles transport selection.
 
 ---
 
@@ -177,12 +177,12 @@ module-level imports (`TYPE_CHECKING`), `__getattr__` module-level lazy loading.
 
 ```python
 def __getattr__(name: str):
-    """Lazy load heavy dependencies for tests."""
-    if name == "DEFAULT_INDEXER":
-        from core.v1.constants import DEFAULT_INDEXER
-        return DEFAULT_INDEXER
-    if name == "svc_create":
-        from core.v1.engine.services import create
-        return create
-    raise AttributeError(f"module has no attribute '{name}'")
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "svc_search":
+        from indexed.core.v1.engine import search
+        return search
+    if name == "SourceConfig":
+        from indexed.core.v1.engine import SourceConfig
+        return SourceConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 ```

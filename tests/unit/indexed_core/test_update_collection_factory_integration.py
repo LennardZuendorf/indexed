@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from protocols import ConnectorRun
-from core.v1.engine.factories.update_collection_factory import create_collection_updater
+from indexed.protocols import ConnectorRun
+from indexed.core.v1.engine.factories.update_collection_factory import (
+    create_collection_updater,
+)
 
 
 @pytest.mark.unit
@@ -43,7 +45,7 @@ def test_create_collection_updater_uses_manifest_factory(tmp_path) -> None:
     )
 
     with patch(
-        "core.v1.engine.factories.update_collection_factory.load_indexer"
+        "indexed.core.v1.engine.factories.update_collection_factory.load_indexer"
     ) as mock_load:
         mock_load.return_value = MagicMock()
         updater = create_collection_updater(
@@ -107,14 +109,33 @@ def test_create_collection_updater_corrupt_manifest_raises_clean_error(
 
 
 @pytest.mark.unit
-def test_updating_collection_creator_runs_post_hook() -> None:
-    from core.v1.engine.factories.update_collection_factory import (
-        _UpdatingCollectionCreator,
+def test_creator_runs_post_hook_after_successful_run() -> None:
+    """The connector's post_run hook fires after a successful run().
+
+    Replaces the old ``_UpdatingCollectionCreator`` wrapper: the post-run hook
+    now lives on ``DocumentCollectionCreator`` itself and is invoked at the end
+    of ``run()`` once the create/update operation succeeds.
+    """
+    from indexed.core.v1.engine.core.documents_collection_creator import (
+        DocumentCollectionCreator,
+        OPERATION_TYPE,
     )
 
-    inner = MagicMock()
     post = MagicMock()
-    wrapper = _UpdatingCollectionCreator(inner, post)
-    wrapper.run()
-    inner.run.assert_called_once()
+    creator = DocumentCollectionCreator(
+        collection_name="c",
+        document_reader=MagicMock(),
+        document_converter=MagicMock(),
+        document_indexers=[MagicMock()],
+        persister=MagicMock(),
+        operation_type=OPERATION_TYPE.CREATE,
+        post_run=post,
+    )
+
+    with patch.object(
+        creator, "_DocumentCollectionCreator__create_collection"
+    ) as mock_create:
+        creator.run()
+
+    mock_create.assert_called_once()
     post.assert_called_once()

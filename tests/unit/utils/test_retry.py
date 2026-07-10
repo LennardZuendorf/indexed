@@ -6,7 +6,7 @@ exponential backoff and rate limit awareness.
 
 import pytest
 from unittest.mock import Mock, patch
-from utils.retry import execute_with_retry
+from indexed.utils.retry import execute_with_retry
 
 
 def _transient_exc(message: str = "transient", status_code: int = 503) -> Exception:

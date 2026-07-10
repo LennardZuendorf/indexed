@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock
 
-from connectors.document_cache_reader_decorator import CacheReaderDecorator
+from indexed.connectors.document_cache_reader_decorator import CacheReaderDecorator
 
 
 class TestCacheReaderDecoratorHit:

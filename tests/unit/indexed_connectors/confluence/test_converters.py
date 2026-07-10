@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock
-from connectors.confluence.unified_confluence_document_converter import (
+from indexed.connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
 )
 

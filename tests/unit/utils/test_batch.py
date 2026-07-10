@@ -5,7 +5,7 @@ with retry logic for individual items.
 """
 
 import pytest
-from utils.batch import read_items_in_batches
+from indexed.utils.batch import read_items_in_batches
 
 
 class TestReadItemsInBatches:

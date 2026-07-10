@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-PYPROJECT: Path = Path("apps/indexed/pyproject.toml")
+PYPROJECT: Path = Path("pyproject.toml")
 VERSION_RE: re.Pattern[str] = re.compile(r'^(version\s*=\s*")[^"]*(")', re.MULTILINE)
 SEMVER_RE: re.Pattern[str] = re.compile(r"^\d+\.\d+\.\d+$")
 
