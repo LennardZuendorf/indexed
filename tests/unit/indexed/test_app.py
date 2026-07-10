@@ -1,6 +1,5 @@
 """Tests for main app entry point and initialization."""
 
-from pathlib import Path
 from unittest.mock import Mock, patch
 import sys
 from typer.testing import CliRunner
@@ -143,54 +142,6 @@ class TestAppCommands:
         """Should have mcp command."""
         result = runner.invoke(app, ["mcp", "--help"])
         assert result.exit_code == 0
-
-
-class TestMigrateCommand:
-    """Test migrate command."""
-
-    @patch("indexed.cli.utils.migration.migrate_legacy_data")
-    @patch("indexed.cli.utils.migration.has_legacy_data")
-    @patch("indexed.config.get_global_root")
-    def test_migrate_no_legacy_data(
-        self, mock_get_global, mock_has_legacy, mock_migrate
-    ):
-        """Should inform user when no legacy data exists."""
-        mock_has_legacy.return_value = False
-
-        result = runner.invoke(app, ["migrate"])
-
-        assert result.exit_code == 0
-        assert "legacy" in result.stdout.lower() or "no" in result.stdout.lower()
-        mock_migrate.assert_not_called()
-
-    @patch("indexed.cli.utils.migration.migrate_legacy_data")
-    @patch("indexed.cli.utils.migration.has_legacy_data")
-    @patch("indexed.config.get_global_root")
-    def test_migrate_with_legacy_data(
-        self, mock_get_global, mock_has_legacy, mock_migrate
-    ):
-        """Should call migrate function when legacy data exists."""
-        mock_has_legacy.return_value = True
-        mock_get_global.return_value = Path("~/.indexed")
-
-        result = runner.invoke(app, ["migrate"])
-
-        assert result.exit_code == 0
-        mock_migrate.assert_called_once()
-
-    @patch("indexed.cli.utils.migration.migrate_legacy_data")
-    @patch("indexed.cli.utils.migration.has_legacy_data")
-    @patch("indexed.config.get_global_root")
-    def test_migrate_dry_run(self, mock_get_global, mock_has_legacy, mock_migrate):
-        """Should pass --dry-run flag to migrate function."""
-        mock_has_legacy.return_value = True
-        mock_get_global.return_value = Path("~/.indexed")
-
-        result = runner.invoke(app, ["migrate", "--dry-run"])
-
-        assert result.exit_code == 0
-        call_kwargs = mock_migrate.call_args.kwargs
-        assert call_kwargs.get("dry_run") is True
 
 
 class TestMainFunction:

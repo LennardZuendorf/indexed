@@ -26,7 +26,6 @@ from rich.theme import Theme  # noqa: E402
 from indexed.utils import bootstrap_logging  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components import print_info  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_dim_style,
@@ -280,29 +279,6 @@ app.command(
 )(info.license_terms)
 
 app.command("debug", hidden=True)(debug_command)
-
-
-@app.command(
-    "migrate",
-    rich_help_panel="Setup",
-    help="Migrate legacy ./data/ to global ~/.indexed/data/",
-)
-def migrate_data(
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be migrated without copying"
-    ),
-) -> None:
-    """Migrate legacy local data from ./data/ to global storage."""
-    from indexed.config import get_global_root
-
-    from .utils.console import console
-    from .utils.migration import has_legacy_data, migrate_legacy_data
-
-    if not has_legacy_data():
-        print_info("No legacy data found at ./data/ — nothing to migrate.")
-        return
-
-    migrate_legacy_data(get_global_root(), console, dry_run=dry_run)
 
 
 __all__ = [
