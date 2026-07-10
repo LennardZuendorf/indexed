@@ -1,6 +1,6 @@
 """Tests for the indexed-config exception hierarchy."""
 
-from indexed_config.errors import ConfigurationError, missing_wiring_error
+from indexed.config.errors import ConfigurationError, missing_wiring_error
 
 
 def test_missing_wiring_error_is_configuration_error() -> None:

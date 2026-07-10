@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from protocols import ConnectorRun
-from core.v1.engine.factories.update_collection_factory import create_collection_updater
+from indexed.protocols import ConnectorRun
+from indexed.core.v1.engine.factories.update_collection_factory import (
+    create_collection_updater,
+)
 
 
 @pytest.mark.unit
@@ -43,7 +45,7 @@ def test_create_collection_updater_uses_manifest_factory(tmp_path) -> None:
     )
 
     with patch(
-        "core.v1.engine.factories.update_collection_factory.load_indexer"
+        "indexed.core.v1.engine.factories.update_collection_factory.load_indexer"
     ) as mock_load:
         mock_load.return_value = MagicMock()
         updater = create_collection_updater(
@@ -114,7 +116,7 @@ def test_creator_runs_post_hook_after_successful_run() -> None:
     now lives on ``DocumentCollectionCreator`` itself and is invoked at the end
     of ``run()`` once the create/update operation succeeds.
     """
-    from core.v1.engine.core.documents_collection_creator import (
+    from indexed.core.v1.engine.core.documents_collection_creator import (
         DocumentCollectionCreator,
         OPERATION_TYPE,
     )

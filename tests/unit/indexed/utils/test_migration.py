@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from rich.console import Console
 
-from indexed.utils.migration import (
+from indexed.cli.utils.migration import (
     _get_legacy_data_path,
     _get_legacy_collections_path,
     _get_legacy_caches_path,
@@ -43,7 +43,7 @@ class TestHasLegacyData:
     def test_returns_false_when_no_data_dir(self, tmp_path):
         """Should return False when data/ directory doesn't exist."""
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=tmp_path / "nonexistent",
         ):
             assert has_legacy_data() is False
@@ -54,7 +54,7 @@ class TestHasLegacyData:
         collections_path.mkdir()
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             assert has_legacy_data() is False
@@ -67,7 +67,7 @@ class TestHasLegacyData:
         (collections_path / "collection2").mkdir()
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             assert has_legacy_data() is False
@@ -81,7 +81,7 @@ class TestHasLegacyData:
         (collection_dir / "manifest.json").write_text('{"name": "my-collection"}')
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             assert has_legacy_data() is True
@@ -93,7 +93,7 @@ class TestHasLegacyData:
         (collections_path / "random_file.txt").write_text("not a collection")
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             assert has_legacy_data() is False
@@ -105,7 +105,7 @@ class TestGetLegacyCollections:
     def test_returns_empty_list_when_no_collections_dir(self, tmp_path):
         """Should return empty list when collections directory doesn't exist."""
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=tmp_path / "nonexistent",
         ):
             result = get_legacy_collections()
@@ -119,7 +119,7 @@ class TestGetLegacyCollections:
         (collections_path / "dir2").mkdir()
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             result = get_legacy_collections()
@@ -141,7 +141,7 @@ class TestGetLegacyCollections:
         invalid.mkdir()
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             result = get_legacy_collections()
@@ -158,7 +158,7 @@ class TestGetLegacyCollections:
             (coll_dir / "manifest.json").write_text("{}")
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             result = get_legacy_collections()
@@ -178,7 +178,7 @@ class TestGetLegacyCollections:
         (collections_path / "file-coll").write_text("not a dir")
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=collections_path,
         ):
             result = get_legacy_collections()
@@ -188,10 +188,10 @@ class TestGetLegacyCollections:
 class TestPromptMigration:
     """Test prompt_migration interactive prompt."""
 
-    @patch("indexed.utils.migration.Confirm.ask")
-    @patch("indexed.utils.migration.has_legacy_data", return_value=True)
+    @patch("indexed.cli.utils.migration.Confirm.ask")
+    @patch("indexed.cli.utils.migration.has_legacy_data", return_value=True)
     @patch(
-        "indexed.utils.migration.get_legacy_collections",
+        "indexed.cli.utils.migration.get_legacy_collections",
         return_value=["coll-a", "coll-b"],
     )
     def test_shows_collections_to_user(
@@ -207,10 +207,12 @@ class TestPromptMigration:
         # Should have printed to console
         assert mock_console.print.called
 
-    @patch("indexed.utils.migration.Confirm.ask")
-    @patch("indexed.utils.migration.migrate_legacy_data", return_value=True)
-    @patch("indexed.utils.migration.has_legacy_data", return_value=True)
-    @patch("indexed.utils.migration.get_legacy_collections", return_value=["coll-a"])
+    @patch("indexed.cli.utils.migration.Confirm.ask")
+    @patch("indexed.cli.utils.migration.migrate_legacy_data", return_value=True)
+    @patch("indexed.cli.utils.migration.has_legacy_data", return_value=True)
+    @patch(
+        "indexed.cli.utils.migration.get_legacy_collections", return_value=["coll-a"]
+    )
     def test_returns_true_when_user_confirms(
         self, mock_get_collections, mock_has_legacy, mock_migrate, mock_confirm
     ):
@@ -223,9 +225,11 @@ class TestPromptMigration:
 
         assert result is True
 
-    @patch("indexed.utils.migration.Confirm.ask")
-    @patch("indexed.utils.migration.has_legacy_data", return_value=True)
-    @patch("indexed.utils.migration.get_legacy_collections", return_value=["coll-a"])
+    @patch("indexed.cli.utils.migration.Confirm.ask")
+    @patch("indexed.cli.utils.migration.has_legacy_data", return_value=True)
+    @patch(
+        "indexed.cli.utils.migration.get_legacy_collections", return_value=["coll-a"]
+    )
     def test_returns_false_when_user_declines(
         self, mock_get_collections, mock_has_legacy, mock_confirm
     ):
@@ -238,7 +242,7 @@ class TestPromptMigration:
 
         assert result is False
 
-    @patch("indexed.utils.migration.has_legacy_data", return_value=False)
+    @patch("indexed.cli.utils.migration.has_legacy_data", return_value=False)
     def test_handles_empty_collection_list(self, mock_has_legacy):
         """Should handle empty collection list gracefully."""
         mock_console = Mock(spec=Console)
@@ -248,7 +252,7 @@ class TestPromptMigration:
 
         assert result is True  # Returns True when no legacy data
 
-    @patch("indexed.utils.migration.has_legacy_data", return_value=True)
+    @patch("indexed.cli.utils.migration.has_legacy_data", return_value=True)
     def test_target_already_has_data_skips_prompt(self, mock_has_legacy, tmp_path):
         """Should inform user and return True when target already has collections."""
         mock_console = Mock(spec=Console)
@@ -287,11 +291,11 @@ class TestMigrateLegacyData:
 
         mock_console = Mock(spec=Console)
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections",
+                "indexed.cli.utils.migration.get_legacy_collections",
                 return_value=["my-coll"],
             ):
                 migrate_legacy_data(new_root, mock_console)
@@ -314,11 +318,12 @@ class TestMigrateLegacyData:
 
         mock_console = Mock(spec=Console)
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections", return_value=["coll1"]
+                "indexed.cli.utils.migration.get_legacy_collections",
+                return_value=["coll1"],
             ):
                 migrate_legacy_data(new_root, mock_console)
 
@@ -343,11 +348,11 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections",
+                "indexed.cli.utils.migration.get_legacy_collections",
                 return_value=["nested-coll"],
             ):
                 migrate_legacy_data(new_root, mock_console)
@@ -376,11 +381,12 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections", return_value=["valid"]
+                "indexed.cli.utils.migration.get_legacy_collections",
+                return_value=["valid"],
             ):
                 migrate_legacy_data(new_root, mock_console)
 
@@ -397,11 +403,11 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections", return_value=[]
+                "indexed.cli.utils.migration.get_legacy_collections", return_value=[]
             ):
                 # Should not raise
                 migrate_legacy_data(new_root, mock_console)
@@ -420,11 +426,11 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections",
+                "indexed.cli.utils.migration.get_legacy_collections",
                 return_value=["coll1", "coll2"],
             ):
                 migrate_legacy_data(new_root, mock_console)
@@ -444,11 +450,11 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections",
+                "indexed.cli.utils.migration.get_legacy_collections",
                 return_value=["coll1"],
             ):
                 result = migrate_legacy_data(new_root, mock_console, dry_run=True)
@@ -460,7 +466,7 @@ class TestMigrateLegacyData:
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
         assert "ry run" in printed
 
-    @patch("indexed.utils.migration.print_warning")
+    @patch("indexed.cli.utils.migration.print_warning")
     def test_skips_collection_already_at_target(self, mock_warn, tmp_path):
         """Should skip and warn when collection already exists at target."""
         legacy_collections = tmp_path / "legacy" / "collections"
@@ -478,11 +484,11 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration.get_legacy_collections",
+                "indexed.cli.utils.migration.get_legacy_collections",
                 return_value=["existing"],
             ):
                 result = migrate_legacy_data(new_root, mock_console)
@@ -512,15 +518,15 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration._get_legacy_caches_path",
+                "indexed.cli.utils.migration._get_legacy_caches_path",
                 return_value=legacy_caches,
             ):
                 with patch(
-                    "indexed.utils.migration.get_legacy_collections",
+                    "indexed.cli.utils.migration.get_legacy_collections",
                     return_value=["coll"],
                 ):
                     result = migrate_legacy_data(new_root, mock_console)
@@ -546,15 +552,15 @@ class TestMigrateLegacyData:
         mock_console = Mock(spec=Console)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             with patch(
-                "indexed.utils.migration._get_legacy_caches_path",
+                "indexed.cli.utils.migration._get_legacy_caches_path",
                 return_value=legacy_caches,
             ):
                 with patch(
-                    "indexed.utils.migration.get_legacy_collections",
+                    "indexed.cli.utils.migration.get_legacy_collections",
                     return_value=["coll"],
                 ):
                     result = migrate_legacy_data(new_root, mock_console)
@@ -580,11 +586,11 @@ class TestEdgeCases:
 
         with patch("shutil.copytree", side_effect=PermissionError("Access denied")):
             with patch(
-                "indexed.utils.migration._get_legacy_collections_path",
+                "indexed.cli.utils.migration._get_legacy_collections_path",
                 return_value=legacy_collections,
             ):
                 with patch(
-                    "indexed.utils.migration.get_legacy_collections",
+                    "indexed.cli.utils.migration.get_legacy_collections",
                     return_value=["protected"],
                 ):
                     # Function catches exceptions and returns False, doesn't re-raise
@@ -603,7 +609,7 @@ class TestEdgeCases:
 
         # Should still detect as collection (we only check file exists, not parse it)
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             collections = get_legacy_collections()
@@ -624,7 +630,7 @@ class TestEdgeCases:
         link.symlink_to(actual)
 
         with patch(
-            "indexed.utils.migration._get_legacy_collections_path",
+            "indexed.cli.utils.migration._get_legacy_collections_path",
             return_value=legacy_collections,
         ):
             collections = get_legacy_collections()

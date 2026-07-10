@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from connectors.files.files_document_reader import (
+from indexed.connectors.files.files_document_reader import (
     FilesDocumentReader,
     normalize_base_path,
 )

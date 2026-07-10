@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from parsing.router import (
+from indexed.parsing.router import (
     CODE_EXTENSIONS,
     DOCLING_EXTENSIONS,
     PLAINTEXT_EXTENSIONS,

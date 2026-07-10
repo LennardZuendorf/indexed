@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from indexed.knowledge.commands import inspect as inspect_cmd
-from core.v1.engine.services import CollectionInfo
+from indexed.cli.knowledge.commands import inspect as inspect_cmd
+from indexed.core.v1.engine.services import CollectionInfo
 
 
 runner = CliRunner()
@@ -40,11 +40,11 @@ def _mock_runtime_context():
 def _patch_runtime_context():
     with (
         patch(
-            "indexed.composition.resolve_collections_context",
+            "indexed.cli.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: _mock_runtime_context(),
         ),
         patch(
-            "indexed.utils.storage_info.display_storage_mode_for_command",
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
             lambda *args, **kwargs: None,
         ),
     ):
@@ -137,7 +137,7 @@ class TestInspectCollectionsCommand:
 
         ctx = type("Ctx", (), {"collections_path": collections_dir})()
         monkeypatch.setattr(
-            "indexed.composition.resolve_collections_context", lambda *a, **kw: ctx
+            "indexed.cli.composition.resolve_collections_context", lambda *a, **kw: ctx
         )
 
         result = runner.invoke(inspect_cmd.app, ["corrupt-coll"])
@@ -150,7 +150,10 @@ class TestInspectCollectionsCommand:
 
     def test_inspect_specific_collection_simple_output(self, monkeypatch):
         """Simple output for a specific collection should contain core fields."""
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         coll = _make_collection("docs")
 
@@ -174,7 +177,10 @@ class TestInspectCollectionsCommand:
 
     def test_inspect_all_collections_simple_output(self, monkeypatch):
         """Simple output for all collections should be a list of objects."""
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         colls = [_make_collection("docs"), _make_collection("jira")]
 
@@ -243,7 +249,7 @@ class TestInspectCollectionsCommand:
 
     def test_verbose_list_with_size_info(self, monkeypatch):
         """Verbose listing should include size information when disk_size_bytes is set."""
-        from core.v1.engine.services import CollectionInfo
+        from indexed.core.v1.engine.services import CollectionInfo
 
         coll = CollectionInfo(
             name="sized-collection",

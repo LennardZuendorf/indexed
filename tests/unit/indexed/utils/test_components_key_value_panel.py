@@ -1,6 +1,6 @@
 """Comprehensive tests for key_value_panel component module."""
 
-from indexed.utils.components.key_value_panel import (
+from indexed.cli.utils.components.key_value_panel import (
     _truncate,
     create_key_value_panel,
 )

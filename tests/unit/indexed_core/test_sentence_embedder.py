@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import numpy as np
 
-from core.v1.engine.indexes.embeddings.sentence_embeder import (
+from indexed.core.v1.engine.indexes.embeddings.sentence_embeder import (
     SentenceEmbedder,
     DEFAULT_EMBEDDING_BATCH_SIZE,
 )
@@ -24,7 +24,9 @@ class TestSentenceEmbedderInit:
 
 
 class TestSentenceEmbedderEmbed:
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_calls_model_encode(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
@@ -36,7 +38,9 @@ class TestSentenceEmbedderEmbed:
         mock_model.encode.assert_called_once_with("hello world")
         np.testing.assert_array_equal(result, np.array([0.1, 0.2, 0.3]))
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_model_is_lazy_loaded(self, mock_get_model):
         mock_model = MagicMock()
         mock_get_model.return_value = mock_model
@@ -49,7 +53,9 @@ class TestSentenceEmbedderEmbed:
         _ = embedder.model
         mock_get_model.assert_called_once_with("sentence-transformers/all-MiniLM-L6-v2")
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_max_seq_length_exposes_model_window(self, mock_get_model):
         """A4: the embedder must expose the model's real token window so
         chunkers have a single source of truth to derive max_tokens from."""
@@ -63,7 +69,9 @@ class TestSentenceEmbedderEmbed:
 
 
 class TestSentenceEmbedderBatch:
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_without_callback(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.max_seq_length = 256
@@ -82,7 +90,9 @@ class TestSentenceEmbedderBatch:
             convert_to_numpy=True,
         )
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_with_progress_callback(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.max_seq_length = 256
@@ -107,7 +117,9 @@ class TestSentenceEmbedderBatch:
         # Result should be vstacked
         assert result.shape == (3, 2)
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_single_batch(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.max_seq_length = 256
@@ -121,7 +133,9 @@ class TestSentenceEmbedderBatch:
 
         callback.assert_called_once_with(2)
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_empty_list(self, mock_get_model):
         """B2: empty input must not consult the tokenizer/model.encode at all
         and must return a properly-shaped ``(0, dim)`` array — not
@@ -138,7 +152,9 @@ class TestSentenceEmbedderBatch:
         mock_model.encode.assert_not_called()
         assert result.shape == (0, 384)
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_empty_list_with_progress_callback(self, mock_get_model):
         """B2: the empty-input guard applies regardless of progress_callback
         (previously only the callback-less branch avoided the malformed
@@ -152,7 +168,9 @@ class TestSentenceEmbedderBatch:
 
         assert result.shape == (0, 384)
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_splits_over_window_text(self, mock_get_model):
         """A4: a text exceeding max_seq_length is split into windows and the
         window embeddings are mean-pooled + renormalized, not truncated."""
@@ -170,7 +188,9 @@ class TestSentenceEmbedderBatch:
         # mean-pooled [0.5, 0.5] renormalized to unit length
         assert abs(float(np.linalg.norm(result[0])) - 1.0) < 1e-6
 
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_embed_batch_mixed_lengths_reports_progress(self, mock_get_model):
         """A mixed batch (one short text, one over-window text) embeds each
         item individually via the per-item path and reports progress once
@@ -201,7 +221,9 @@ class TestSentenceEmbedderBatch:
 
 
 class TestSentenceEmbedderDimensions:
-    @patch("core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model")
+    @patch(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.get_embedding_model"
+    )
     def test_get_number_of_dimensions(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.get_sentence_embedding_dimension.return_value = 384

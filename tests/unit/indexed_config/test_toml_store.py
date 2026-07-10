@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from indexed_config.store import TomlStore
+from indexed.config.store import TomlStore
 
 
 class TestTomlStorePaths:
@@ -223,7 +223,7 @@ class TestTomlStoreAtomicWrite:
             before = config_path.read_bytes()
 
             with patch(
-                "indexed_config.store.os.replace", side_effect=OSError("disk full")
+                "indexed.config.store.os.replace", side_effect=OSError("disk full")
             ):
                 with pytest.raises(OSError, match="disk full"):
                     store.write({"core": {"chunk_size": 999}})

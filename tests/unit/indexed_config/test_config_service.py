@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 import pytest
 
-from indexed_config import ConfigService, Provider
+from indexed.config import ConfigService, Provider
 
 
 class SampleConfigSpec(BaseModel):

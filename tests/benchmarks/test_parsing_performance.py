@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from connectors.files.change_tracker import ChangeTracker
-from connectors.files.connector import FileSystemConnector
-from connectors.files.v1_adapter import V1FormatAdapter
-from parsing import ParsingModule
-from parsing.code_chunker import CodeChunker
-from parsing.plaintext_parser import PlaintextParser
-from parsing.router import FileRouter
+from indexed.connectors.files.change_tracker import ChangeTracker
+from indexed.connectors.files.connector import FileSystemConnector
+from indexed.connectors.files.v1_adapter import V1FormatAdapter
+from indexed.parsing import ParsingModule
+from indexed.parsing.code_chunker import CodeChunker
+from indexed.parsing.plaintext_parser import PlaintextParser
+from indexed.parsing.router import FileRouter
 
 # Root of the indexed project
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -148,14 +148,7 @@ def test_parse_large_markdown(benchmark, parsing_module: ParsingModule):
 @pytest.mark.benchmark(min_rounds=3, max_time=2.0)
 def test_parse_python_source(benchmark, code_chunker: CodeChunker):
     """Benchmark: AST-chunking a real Python source file."""
-    target = (
-        PROJECT_ROOT
-        / "packages"
-        / "indexed-parsing"
-        / "src"
-        / "parsing"
-        / "code_chunker.py"
-    )
+    target = PROJECT_ROOT / "src" / "indexed" / "parsing" / "code_chunker.py"
     assert target.exists()
 
     def chunk_python():

@@ -9,8 +9,8 @@ converted-document/chunk shape.
 
 import json
 
-from protocols import SourceConfig
-from protocols.models import (
+from indexed.protocols import SourceConfig
+from indexed.protocols.models import (
     Chunk,
     CollectionSearchResult,
     ConvertedDocument,

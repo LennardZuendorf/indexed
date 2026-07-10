@@ -11,56 +11,56 @@ class TestFormatSourceType:
 
     def test_format_jira(self):
         """Test formatting 'jira' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("jira") == "Jira"
 
     def test_format_jira_cloud_type(self):
         """Test formatting 'jiraCloud' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("jiraCloud") == "Jira Cloud"
 
     def test_format_confluence(self):
         """Test formatting 'confluence' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("confluence") == "Confluence"
 
     def test_format_confluence_cloud_type(self):
         """Test formatting 'confluenceCloud' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("confluenceCloud") == "Confluence Cloud"
 
     def test_format_files_type(self):
         """Test formatting 'localFiles' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("localFiles") == "Local Files"
 
     @pytest.mark.unit
     def test_format_outline(self):
         """Test formatting 'outline' source type."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("outline") == "Outline"
 
     def test_format_unknown_type(self):
         """Test formatting unknown source type falls back to capitalize."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("customType") == "Customtype"
 
     def test_format_none(self):
         """Test formatting None source type returns 'Unknown'."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type(None) == "Unknown"
 
     def test_format_empty_string(self):
         """Test formatting empty string returns 'Unknown'."""
-        from indexed.knowledge.commands.update import _format_source_type
+        from indexed.cli.knowledge.commands.update import _format_source_type
 
         assert _format_source_type("") == "Unknown"
 
@@ -70,13 +70,13 @@ class TestOperationStatus:
 
     def test_min_display_time_constant(self):
         """Test MIN_DISPLAY_TIME is set correctly."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         assert OperationStatus.MIN_DISPLAY_TIME == 0.5
 
     def test_init_sets_start_time_to_none(self):
         """Test __init__ sets _start_time to None."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         console = Mock()
         status = OperationStatus(console, "Testing")
@@ -84,7 +84,7 @@ class TestOperationStatus:
 
     def test_enter_sets_start_time(self):
         """Test __enter__ sets _start_time."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         console = Mock()
         mock_status = Mock()
@@ -100,7 +100,7 @@ class TestOperationStatus:
 
     def test_update_with_force_render_pauses(self):
         """Test update with force_render=True pauses briefly."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         console = Mock()
         mock_status = Mock()
@@ -119,7 +119,7 @@ class TestOperationStatus:
 
     def test_update_without_force_render_no_pause(self):
         """Test update without force_render doesn't pause."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         console = Mock()
         mock_status = Mock()
@@ -138,7 +138,7 @@ class TestOperationStatus:
 
     def test_complete_waits_for_min_display_time(self):
         """Test complete() waits for minimum display time."""
-        from indexed.utils.components.status import OperationStatus
+        from indexed.cli.utils.components.status import OperationStatus
 
         console = Mock()
         mock_status = Mock()

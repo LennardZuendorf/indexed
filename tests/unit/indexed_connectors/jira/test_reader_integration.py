@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 
 pytestmark = pytest.mark.integration
 
@@ -102,7 +102,7 @@ def test_read_all_documents_empty_result() -> None:
 
 def test_search_api_error_surfaces_jira_cloud_api_error() -> None:
     """Removed-endpoint style errors raise JiraCloudAPIError."""
-    from connectors.jira.async_jira_cloud_reader import JiraCloudAPIError
+    from indexed.connectors.jira.async_jira_cloud_reader import JiraCloudAPIError
 
     reader = _make_reader()
     resp = MagicMock()

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from indexed.knowledge.commands import search as search_cmd
+from indexed.cli.knowledge.commands import search as search_cmd
 
 
 runner = CliRunner()
@@ -40,11 +40,11 @@ def _mock_runtime_context():
 def _patch_runtime_context():
     with (
         patch(
-            "indexed.composition.resolve_collections_context",
+            "indexed.cli.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: _mock_runtime_context(),
         ),
         patch(
-            "indexed.utils.storage_info.display_storage_mode_for_command",
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
             lambda *args, **kwargs: None,
         ),
     ):
@@ -371,7 +371,10 @@ class TestSearchCommandExecution:
         """Same as above, but through the --simple-output JSON envelope path."""
         from unittest.mock import Mock
 
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         broken_status = Mock()
         broken_status.name = "broken"
@@ -559,7 +562,10 @@ class TestSearchCommandExecution:
 
         from unittest.mock import Mock
 
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         statuses = [self._make_status("col1")]
 
@@ -619,7 +625,10 @@ class TestSearchCommandExecution:
         """In simple output mode with no collections, should return JSON error."""
         import json
 
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
@@ -640,7 +649,10 @@ class TestSearchCommandExecution:
         like success to a caller checking the exit code (foundation/6 E1)."""
         import json
 
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
         monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
@@ -780,7 +792,10 @@ class TestSearchStatusMessages:
         """Simple (--simple) output mode must produce no status/headline lines."""
         import json
         from unittest.mock import Mock
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         statuses = [self._make_status("col1")]
         monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)

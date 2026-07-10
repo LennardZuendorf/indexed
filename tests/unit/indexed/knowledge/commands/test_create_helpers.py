@@ -4,26 +4,26 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import typer
 
-from indexed.knowledge.commands._create_helpers import execute_create_command
-from indexed_config import ValidationResult
-from core.v1.engine.services import SourceConfig
+from indexed.cli.knowledge.commands._create_helpers import execute_create_command
+from indexed.config import ValidationResult
+from indexed.core.v1.engine.services import SourceConfig
 from tests.unit.indexed.conftest import TEST_COLLECTIONS_PATH, make_cli_context
 
 
 @pytest.fixture(autouse=True)
 def _patch_runtime_context():
     def resolve_context(*args, **kwargs):
-        from indexed.knowledge.commands import _create_helpers as helpers
+        from indexed.cli.knowledge.commands import _create_helpers as helpers
 
         return make_cli_context(helpers.ConfigService.instance())
 
     with (
         patch(
-            "indexed.composition.resolve_collections_context",
+            "indexed.cli.composition.resolve_collections_context",
             side_effect=resolve_context,
         ),
         patch(
-            "indexed.utils.storage_info.display_storage_mode_for_command",
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
             lambda *args, **kwargs: None,
         ),
     ):
@@ -33,12 +33,12 @@ def _patch_runtime_context():
 class TestExecuteCreateCommand:
     """Test execute_create_command function."""
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_with_all_fields_present(
         self,
         mock_print_success,
@@ -99,12 +99,12 @@ class TestExecuteCreateCommand:
         # never dangles process-global state after a run finishes.
         assert mock_config.clear_overlay.call_count == 2
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_prompts_for_missing_fields(
         self,
         mock_print_error,
@@ -163,11 +163,11 @@ class TestExecuteCreateCommand:
         assert len(prompt_called) == 1
         mock_create.assert_called_once()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_creation_error(
         self,
         mock_print_error,
@@ -217,12 +217,12 @@ class TestExecuteCreateCommand:
         # (finally-clear runs regardless of the raised typer.Exit).
         mock_config.clear_overlay.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_invalid_collection_verification(
         self,
         mock_print_error,
@@ -272,12 +272,12 @@ class TestExecuteCreateCommand:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_collection_without_updated_time(
         self,
         mock_print_error,
@@ -329,13 +329,13 @@ class TestExecuteCreateCommand:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.logger")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_verbose_mode_logging(
         self,
         mock_print_success,
@@ -388,14 +388,18 @@ class TestExecuteCreateCommand:
         # Should have logged verbose information
         assert mock_logger.info.called
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_calls_verbose_pre_creation_log(
         self,
         mock_print_success,
@@ -456,12 +460,12 @@ class TestExecuteCreateCommand:
         assert len(pre_creation_log_called) == 1
         assert pre_creation_log_called[0]["url"] == "https://test.com"
 
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_error")
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
     def test_execute_handles_status_exception(
         self,
         mock_print_error,
@@ -510,14 +514,18 @@ class TestExecuteCreateCommand:
         mock_print_error.assert_called()
         assert "Failed to verify" in str(mock_print_error.call_args)
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_calls_ensure_credentials_for_source(
         self,
         mock_print_success,
@@ -575,14 +583,18 @@ class TestExecuteCreateCommand:
             "outline", mock_config, namespace="sources.outline"
         )
 
-    @patch("indexed.knowledge.commands._create_helpers.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands._create_helpers.apply_cli_credential_overrides")
-    @patch("indexed.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.knowledge.commands._create_helpers.ConfigService")
-    @patch("indexed.knowledge.commands._create_helpers.is_verbose_mode")
-    @patch("indexed.knowledge.commands._create_helpers.svc_create")
-    @patch("indexed.knowledge.commands._create_helpers.svc_status")
-    @patch("indexed.knowledge.commands._create_helpers.print_success")
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.ensure_credentials_for_source"
+    )
+    @patch(
+        "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
+    )
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
     def test_execute_skips_credential_fields_in_cli_override_loop(
         self,
         mock_print_success,

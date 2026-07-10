@@ -5,14 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indexed.utils.simple_output import (
+from indexed.cli.utils.simple_output import (
     is_simple_output,
     print_json,
     reset_simple_output,
     set_simple_output,
 )
 
-CONFIG_SERVICE_PATH = "indexed_config.ConfigService"
+CONFIG_SERVICE_PATH = "indexed.config.ConfigService"
 
 
 @pytest.fixture(autouse=True)

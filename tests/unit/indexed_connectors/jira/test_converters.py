@@ -2,7 +2,9 @@
 
 import pytest
 from unittest.mock import MagicMock
-from connectors.jira.unified_jira_document_converter import UnifiedJiraDocumentConverter
+from indexed.connectors.jira.unified_jira_document_converter import (
+    UnifiedJiraDocumentConverter,
+)
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 

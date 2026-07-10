@@ -9,7 +9,7 @@ Covers both ``updated_field`` values — ``updated`` (Jira) and ``lastModified``
 
 import pytest
 
-from connectors._incremental import cutoff_date, incremental_query
+from indexed.connectors._incremental import cutoff_date, incremental_query
 
 _CUTOFF = "2026-07-04"
 _JIRA_FILTER = f'(created >= "{_CUTOFF}" OR updated >= "{_CUTOFF}")'

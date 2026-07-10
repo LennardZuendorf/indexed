@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-from indexed_config import ConfigService
+from indexed.config import ConfigService
 
 
 class TestConfigServiceInit:

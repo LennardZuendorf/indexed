@@ -14,9 +14,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from indexed.knowledge.commands import remove as remove_cmd
-from core.v1.engine.services import CollectionInfo
-from indexed.utils.simple_output import set_simple_output, reset_simple_output
+from indexed.cli.knowledge.commands import remove as remove_cmd
+from indexed.core.v1.engine.services import CollectionInfo
+from indexed.cli.utils.simple_output import set_simple_output, reset_simple_output
 from tests.unit.indexed.conftest import make_cli_context
 
 
@@ -27,11 +27,11 @@ runner = CliRunner()
 def _patch_runtime_context():
     with (
         patch(
-            "indexed.composition.resolve_collections_context",
+            "indexed.cli.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: make_cli_context(),
         ),
         patch(
-            "indexed.utils.storage_info.display_storage_mode_for_command",
+            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
             lambda *args, **kwargs: None,
         ),
     ):
@@ -265,7 +265,7 @@ class TestRemoveCommand:
 
         ctx = _make_corrupt_test_ctx(collections_dir)
         monkeypatch.setattr(
-            "indexed.composition.resolve_collections_context", lambda *a, **kw: ctx
+            "indexed.cli.composition.resolve_collections_context", lambda *a, **kw: ctx
         )
 
         result = runner.invoke(remove_cmd.app, ["corrupt-coll", "--force"])
@@ -288,7 +288,7 @@ class TestRemoveCommand:
 
         ctx = _make_corrupt_test_ctx(collections_dir)
         monkeypatch.setattr(
-            "indexed.composition.resolve_collections_context", lambda *a, **kw: ctx
+            "indexed.cli.composition.resolve_collections_context", lambda *a, **kw: ctx
         )
 
         set_simple_output(True)

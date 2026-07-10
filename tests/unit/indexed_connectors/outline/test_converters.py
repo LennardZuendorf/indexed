@@ -29,7 +29,9 @@ def _make_document(
 
 @pytest.fixture
 def converter():
-    from connectors.outline.outline_document_converter import OutlineDocumentConverter
+    from indexed.connectors.outline.outline_document_converter import (
+        OutlineDocumentConverter,
+    )
 
     return OutlineDocumentConverter(
         max_chunk_tokens=512, ocr=False, include_attachments=True
@@ -144,7 +146,9 @@ def test_empty_body_no_crash(converter) -> None:
 
 @pytest.mark.unit
 def test_no_attachments_when_disabled() -> None:
-    from connectors.outline.outline_document_converter import OutlineDocumentConverter
+    from indexed.connectors.outline.outline_document_converter import (
+        OutlineDocumentConverter,
+    )
 
     c = OutlineDocumentConverter(include_attachments=False)
     mock_parser = MagicMock()

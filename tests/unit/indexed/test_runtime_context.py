@@ -1,7 +1,7 @@
 """Tests for unified CLI/MCP runtime context resolution."""
 
-from indexed_config import ConfigService, get_global_root, get_local_root
-from indexed.composition import CliContext, resolve_collections_context
+from indexed.config import ConfigService, get_global_root, get_local_root
+from indexed.cli.composition import CliContext, resolve_collections_context
 
 
 def test_resolve_collections_context_global_mode(tmp_path, monkeypatch):
@@ -51,11 +51,11 @@ def test_resolve_collections_context_restores_registered_specs(tmp_path, monkeyp
     written to disk (not ``set_overlay``) so it survives the singleton swap
     the way a real ``config set`` does; only the registry wipe is under test.
     """
-    from core.v1.config_models import CoreV1EmbeddingConfig
-    from core.v1.engine.indexes.indexers.faiss_indexer import (
+    from indexed.core.v1.config_models import CoreV1EmbeddingConfig
+    from indexed.core.v1.engine.indexes.indexers.faiss_indexer import (
         _resolve_embedding_batch_size,
     )
-    from indexed.composition import register_app_config
+    from indexed.cli.composition import register_app_config
 
     monkeypatch.chdir(tmp_path)
     local_root = get_local_root(tmp_path)

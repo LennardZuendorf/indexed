@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from rich.console import Console
 
-from indexed.utils.storage_info import (
+from indexed.cli.utils.storage_info import (
     get_storage_indicator,
     print_storage_info,
     get_storage_mode_and_reason,
@@ -236,24 +236,24 @@ class TestDisplayStorageModeForCommand:
     """Test display_storage_mode_for_command function."""
 
     def test_display_calls_print_storage_info(self):
-        from indexed.utils.storage_info import display_storage_mode_for_command
+        from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
         mock_console = Mock(spec=Console)
 
-        with patch("indexed_config.ConfigService") as mock_cs:
+        with patch("indexed.config.ConfigService") as mock_cs:
             mock_instance = Mock()
             mock_instance.resolve_storage_mode.return_value = "global"
             mock_instance.load_raw.return_value = {}
             mock_instance.get_workspace_preference.return_value = None
             mock_cs.instance.return_value = mock_instance
 
-            with patch("indexed_config.has_local_config", return_value=False):
+            with patch("indexed.config.has_local_config", return_value=False):
                 with patch(
-                    "indexed_config.get_global_root",
+                    "indexed.config.get_global_root",
                     return_value=Path.home() / ".indexed",
                 ):
                     with patch(
-                        "indexed_config.get_local_root",
+                        "indexed.config.get_local_root",
                         return_value=Path.cwd() / ".indexed",
                     ):
                         # typer.get_current_context is imported locally; patch the module attr
@@ -270,24 +270,24 @@ class TestDisplayStorageModeForCommand:
                             assert mock_console.print.called
 
     def test_display_local_mode(self):
-        from indexed.utils.storage_info import display_storage_mode_for_command
+        from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
         mock_console = Mock(spec=Console)
 
-        with patch("indexed_config.ConfigService") as mock_cs:
+        with patch("indexed.config.ConfigService") as mock_cs:
             mock_instance = Mock()
             mock_instance.resolve_storage_mode.return_value = "local"
             mock_instance.load_raw.return_value = {"storage": {"mode": "local"}}
             mock_instance.get_workspace_preference.return_value = None
             mock_cs.instance.return_value = mock_instance
 
-            with patch("indexed_config.has_local_config", return_value=True):
+            with patch("indexed.config.has_local_config", return_value=True):
                 with patch(
-                    "indexed_config.get_local_root",
+                    "indexed.config.get_local_root",
                     return_value=Path.cwd() / ".indexed",
                 ):
                     with patch(
-                        "indexed_config.get_global_root",
+                        "indexed.config.get_global_root",
                         return_value=Path.home() / ".indexed",
                     ):
                         import typer as _typer

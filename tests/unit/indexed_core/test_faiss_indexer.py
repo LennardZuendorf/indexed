@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
+from indexed.core.v1.engine.indexes.indexers.faiss_indexer import FaissIndexer
 
 
 def _make_indexer(embedder=None):
@@ -51,8 +51,8 @@ class TestFaissIndexerIndexTexts:
     def test_index_texts_honors_registered_embedding_batch_size(self):
         """foundation/6 E12: a registered [core.v1.embedding] batch_size must
         actually be read instead of a hardcoded value."""
-        from indexed_config import ConfigService
-        from core.v1.config_models import CoreV1EmbeddingConfig
+        from indexed.config import ConfigService
+        from indexed.core.v1.config_models import CoreV1EmbeddingConfig
 
         ConfigService.reset()
         svc = ConfigService.instance()

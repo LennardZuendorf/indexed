@@ -35,14 +35,14 @@ jobs:
         python -m uv sync
 
     - name: Check import graph
-      run: uv run python scripts/check_import_graph.py
+      run: uv run python scripts/check_imports.py
 
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short
 
-    - name: Build Distributable Wheel (apps/indexed with bundled packages)
-      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+    - name: Build Distributable Wheel
+      run: uv build --wheel --out-dir dist
 
     - name: Validate wheel with PyPI's archive validator
       run: uv run python scripts/validate_wheel.py dist/*.whl

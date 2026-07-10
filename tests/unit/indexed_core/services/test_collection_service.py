@@ -2,13 +2,13 @@
 
 from unittest.mock import Mock, patch
 
-from core.v1.engine.services.collection_service import (
+from indexed.core.v1.engine.services.collection_service import (
     _resolve_connector,
     _create_one,
     _collection_exists,
     collection_exists,
 )
-from core.v1.engine.services.models import SourceConfig
+from indexed.core.v1.engine.services.models import SourceConfig
 
 
 def _source_config(name: str = "test-collection") -> SourceConfig:
@@ -46,7 +46,7 @@ class TestCreateOneWithInjectedFactory:
         mock_connector.converter = Mock()
 
         with patch(
-            "core.v1.engine.services.collection_service.create_collection_creator"
+            "indexed.core.v1.engine.services.collection_service.create_collection_creator"
         ) as mock_creator_factory:
             mock_creator = Mock()
             mock_creator_factory.return_value = mock_creator
@@ -68,7 +68,7 @@ class TestClearCaches:
     """Test _clear_caches function."""
 
     def test_clear_caches_removes_entries(self, tmp_path):
-        from core.v1.engine.services.collection_service import _clear_caches
+        from indexed.core.v1.engine.services.collection_service import _clear_caches
 
         (tmp_path / "cache1").mkdir()
         (tmp_path / "cache1" / "data.json").write_text("{}")
@@ -80,7 +80,7 @@ class TestClearCaches:
         assert not (tmp_path / "cache2_completed").exists()
 
     def test_clear_caches_nonexistent_dir(self):
-        from core.v1.engine.services.collection_service import _clear_caches
+        from indexed.core.v1.engine.services.collection_service import _clear_caches
 
         _clear_caches("/nonexistent/path/12345")
 
@@ -89,10 +89,10 @@ class TestClearCollections:
     """Test clear function."""
 
     def test_clear_removes_collection(self):
-        from core.v1.engine.services.collection_service import clear
+        from indexed.core.v1.engine.services.collection_service import clear
 
         with patch(
-            "core.v1.engine.services.collection_service.DiskPersister"
+            "indexed.core.v1.engine.services.collection_service.DiskPersister"
         ) as mock_cls:
             mock_persister = Mock()
             mock_cls.return_value = mock_persister
@@ -108,20 +108,20 @@ class TestCreateFunction:
     """Test create function."""
 
     def test_create_with_force_clears_caches(self):
-        from core.v1.engine.services.collection_service import create
+        from indexed.core.v1.engine.services.collection_service import create
 
         cfg = _source_config("test-col")
         factory = Mock()
 
         with patch(
-            "core.v1.engine.services.collection_service._clear_caches"
+            "indexed.core.v1.engine.services.collection_service._clear_caches"
         ) as mock_clear:
             with patch(
-                "core.v1.engine.services.collection_service._collection_exists",
+                "indexed.core.v1.engine.services.collection_service._collection_exists",
                 return_value=False,
             ):
                 with patch(
-                    "core.v1.engine.services.collection_service._create_one"
+                    "indexed.core.v1.engine.services.collection_service._create_one"
                 ) as mock_create:
                     create([cfg], force=True, connector_factory=factory)
 
@@ -130,20 +130,20 @@ class TestCreateFunction:
                     assert mock_create.call_args.kwargs["connector_factory"] is factory
 
     def test_create_with_force_and_existing_collection(self):
-        from core.v1.engine.services.collection_service import create
+        from indexed.core.v1.engine.services.collection_service import create
 
         cfg = _source_config("test-col")
 
-        with patch("core.v1.engine.services.collection_service._clear_caches"):
+        with patch("indexed.core.v1.engine.services.collection_service._clear_caches"):
             with patch(
-                "core.v1.engine.services.collection_service._collection_exists",
+                "indexed.core.v1.engine.services.collection_service._collection_exists",
                 return_value=True,
             ):
                 with patch(
-                    "core.v1.engine.services.collection_service.clear"
+                    "indexed.core.v1.engine.services.collection_service.clear"
                 ) as mock_clear_col:
                     with patch(
-                        "core.v1.engine.services.collection_service._create_one"
+                        "indexed.core.v1.engine.services.collection_service._create_one"
                     ):
                         create([cfg], force=True, connector_factory=Mock())
 
@@ -154,13 +154,13 @@ class TestUpdateFunction:
     """Test update function delegates to the collection updater."""
 
     def test_update_delegates_to_updater(self):
-        from core.v1.engine.services.collection_service import update
+        from indexed.core.v1.engine.services.collection_service import update
 
         cfg = _source_config("test-col")
         factory = Mock()
 
         with patch(
-            "core.v1.engine.factories.update_collection_factory.create_collection_updater"
+            "indexed.core.v1.engine.factories.update_collection_factory.create_collection_updater"
         ) as mock_factory:
             mock_updater = Mock()
             mock_factory.return_value = mock_updater
@@ -178,7 +178,7 @@ class TestCollectionExists:
     def test_collection_exists_true(self):
         """Test collection exists returns True when collection folder exists."""
         with patch(
-            "core.v1.engine.services.collection_service.DiskPersister"
+            "indexed.core.v1.engine.services.collection_service.DiskPersister"
         ) as mock_persister_class:
             mock_persister = Mock()
             mock_persister.is_path_exists.return_value = True
@@ -192,7 +192,7 @@ class TestCollectionExists:
     def test_collection_exists_false(self):
         """Test collection exists returns False when collection folder does not exist."""
         with patch(
-            "core.v1.engine.services.collection_service.DiskPersister"
+            "indexed.core.v1.engine.services.collection_service.DiskPersister"
         ) as mock_persister_class:
             mock_persister = Mock()
             mock_persister.is_path_exists.return_value = False
@@ -208,7 +208,7 @@ class TestCollectionExists:
         detect a present-but-corrupt collection) must delegate to the same
         on-disk check as ``_collection_exists``."""
         with patch(
-            "core.v1.engine.services.collection_service.DiskPersister"
+            "indexed.core.v1.engine.services.collection_service.DiskPersister"
         ) as mock_persister_class:
             mock_persister = Mock()
             mock_persister.is_path_exists.return_value = True

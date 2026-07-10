@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 
 runner = CliRunner()
 
@@ -25,7 +25,9 @@ INDEXER_NAME = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
 def _model_available() -> bool:
     try:
-        from core.v1.engine.indexes.embeddings.model_manager import is_model_cached
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
 
         return is_model_cached("all-MiniLM-L6-v2")
     except Exception:
@@ -47,8 +49,8 @@ def _build_searchable_collection(
     returns a ``DocumentCollectionCreator`` and persists a real FAISS index,
     document mapping, documents, and manifest via ``DiskPersister``.
     """
-    from connectors.files.connector import FileSystemConnector
-    from core.v1.engine.factories.create_collection_factory import (
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.core.v1.engine.factories.create_collection_factory import (
         create_collection_creator,
     )
 
@@ -70,7 +72,7 @@ def _build_searchable_collection(
 @pytest.fixture
 def smoke_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.chdir(tmp_path)
-    from indexed_config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_local_root
 
     local_root = get_local_root(tmp_path)
     ensure_storage_dirs(local_root, is_local=True)

@@ -17,7 +17,7 @@ def clean_loguru_handlers():
 
 
 def test_import_collection_service_does_not_add_handlers(clean_loguru_handlers):
-    import core.v1.engine.services.collection_service as collection_service
+    import indexed.core.v1.engine.services.collection_service as collection_service
 
     before = len(logger._core.handlers)
     importlib.reload(collection_service)
@@ -25,7 +25,7 @@ def test_import_collection_service_does_not_add_handlers(clean_loguru_handlers):
 
 
 def test_import_inspect_service_does_not_add_handlers(clean_loguru_handlers):
-    import core.v1.engine.services.inspect_service as inspect_service
+    import indexed.core.v1.engine.services.inspect_service as inspect_service
 
     before = len(logger._core.handlers)
     importlib.reload(inspect_service)

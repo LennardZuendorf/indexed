@@ -5,19 +5,19 @@ from unittest.mock import Mock, patch
 import pytest
 from requests.exceptions import HTTPError
 
-from connectors.confluence.confluence_document_reader import (
+from indexed.connectors.confluence.confluence_document_reader import (
     ConfluenceAPIError,
     ConfluenceDocumentReader,
 )
-from connectors.jira.async_jira_cloud_reader import (
+from indexed.connectors.jira.async_jira_cloud_reader import (
     AsyncJiraCloudDocumentReader,
     JiraCloudAPIError,
 )
-from connectors.outline.outline_document_reader import (
+from indexed.connectors.outline.outline_document_reader import (
     OutlineAPIError,
     OutlineDocumentReader,
 )
-from utils.retry import (
+from indexed.utils.retry import (
     TRANSIENT_HTTP_STATUS,
     execute_with_retry,
     is_transient_http_error,
@@ -107,7 +107,7 @@ class TestAsyncJiraCloudReaderRetry:
             retry_delay=1,
         )
 
-    @patch("connectors.jira.async_jira_cloud_reader.requests.post")
+    @patch("indexed.connectors.jira.async_jira_cloud_reader.requests.post")
     @patch("time.sleep")
     def test_404_fails_fast(
         self, mock_sleep: Mock, mock_post: Mock, reader: AsyncJiraCloudDocumentReader
@@ -130,7 +130,7 @@ class TestAsyncJiraCloudReaderRetry:
         assert mock_post.call_count == 1
         mock_sleep.assert_not_called()
 
-    @patch("connectors.jira.async_jira_cloud_reader.requests.post")
+    @patch("indexed.connectors.jira.async_jira_cloud_reader.requests.post")
     @patch("time.sleep")
     def test_429_retries(
         self, mock_sleep: Mock, mock_post: Mock, reader: AsyncJiraCloudDocumentReader
@@ -222,7 +222,7 @@ class TestOutlineReaderRetry:
 class TestConfluenceReaderRetry:
     """Sync Confluence readers delegate to execute_with_retry."""
 
-    @patch("connectors.confluence.confluence_document_reader.requests.get")
+    @patch("indexed.connectors.confluence.confluence_document_reader.requests.get")
     @patch("time.sleep")
     def test_server_404_fails_fast(self, mock_sleep: Mock, mock_get: Mock) -> None:
         reader = ConfluenceDocumentReader(

@@ -3,7 +3,7 @@
 import webbrowser
 import pytest
 from typer.testing import CliRunner
-from indexed.app import app
+from indexed.cli.app import app
 
 
 @pytest.mark.benchmark(min_rounds=3, max_time=1.0)

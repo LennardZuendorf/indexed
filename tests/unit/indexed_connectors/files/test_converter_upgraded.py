@@ -1,6 +1,6 @@
 """Tests for the upgraded FilesDocumentConverter."""
 
-from connectors.files.files_document_converter import FilesDocumentConverter
+from indexed.connectors.files.files_document_converter import FilesDocumentConverter
 
 
 def _make_v1_reader_doc():

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from connectors.jira.unified_jira_document_reader import (
+from indexed.connectors.jira.unified_jira_document_reader import (
     UnifiedJiraDocumentReader,
     JiraAuthType,
 )
@@ -148,7 +148,7 @@ class FakeJiraNoAttachments:
 
 def test_reader_with_attachments_downloads_bytes(monkeypatch):
     """Test that reader downloads attachment bytes when include_attachments=True."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
 
@@ -180,7 +180,7 @@ def test_reader_with_attachments_downloads_bytes(monkeypatch):
 
 def test_reader_without_attachments_skips_download(monkeypatch):
     """Test that reader does NOT download when include_attachments=False."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraNoAttachments, raising=True)
 
@@ -199,7 +199,7 @@ def test_reader_without_attachments_skips_download(monkeypatch):
 
 def test_reader_fields_include_attachment_when_enabled(monkeypatch):
     """Fields string includes 'attachment' when include_attachments=True."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraNoAttachments, raising=True)
 
@@ -224,7 +224,7 @@ def test_reader_fields_include_attachment_when_enabled(monkeypatch):
 
 def test_fetch_attachment_bytes_failure_returns_none(monkeypatch):
     """Failed download returns None instead of crashing."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
 
@@ -246,7 +246,7 @@ def test_fetch_attachment_bytes_failure_returns_none(monkeypatch):
 
 def test_fetch_attachment_bytes_with_cloud_auth(monkeypatch):
     """Cloud reader uses email+api_token auth for downloads."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithCloudAttachments, raising=True)
 
@@ -274,7 +274,7 @@ def test_fetch_attachment_bytes_with_cloud_auth(monkeypatch):
 
 def test_fetch_attachment_bytes_with_basic_auth(monkeypatch):
     """Server reader with login/password uses basic auth for downloads."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
 
@@ -336,7 +336,7 @@ class FakeJiraWithOffOriginAttachment:
 
 def test_off_origin_attachment_skipped_no_http_request(monkeypatch):
     """Off-origin attachment URL: no HTTP request made, result is empty."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithOffOriginAttachment, raising=True)
 
@@ -357,7 +357,7 @@ def test_off_origin_attachment_skipped_no_http_request(monkeypatch):
 
 def test_same_origin_attachment_still_downloads(monkeypatch):
     """Same-origin attachment URL: credentialed download proceeds (regression)."""
-    import connectors.jira.unified_jira_document_reader as mod
+    import indexed.connectors.jira.unified_jira_document_reader as mod
 
     monkeypatch.setattr(mod, "Jira", FakeJiraWithAttachments, raising=True)
 

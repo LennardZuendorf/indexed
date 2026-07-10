@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indexed_config.storage import StorageResolver
-from indexed_config.store import TomlStore
-from indexed_config.workspace import WorkspaceManager
+from indexed.config.storage import StorageResolver
+from indexed.config.store import TomlStore
+from indexed.config.workspace import WorkspaceManager
 
 
 @pytest.fixture

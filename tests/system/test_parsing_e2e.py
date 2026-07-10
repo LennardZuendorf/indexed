@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from connectors.files.connector import FileSystemConnector
-from connectors.files.v1_adapter import V1FormatAdapter
-from parsing import ParsingModule
-from parsing.schema import ParsedDocument
+from indexed.connectors.files.connector import FileSystemConnector
+from indexed.connectors.files.v1_adapter import V1FormatAdapter
+from indexed.parsing import ParsingModule
+from indexed.parsing.schema import ParsedDocument
 
 # Root of the indexed project (two levels up from tests/system/)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -90,14 +90,7 @@ class TestParsingModuleE2E:
 
     def test_parse_python_source(self, parsing_module: ParsingModule):
         """Parse a real Python source file from the project."""
-        target = (
-            PROJECT_ROOT
-            / "packages"
-            / "indexed-parsing"
-            / "src"
-            / "parsing"
-            / "code_chunker.py"
-        )
+        target = PROJECT_ROOT / "src" / "indexed" / "parsing" / "code_chunker.py"
         assert target.exists()
 
         doc = parsing_module.parse(target)

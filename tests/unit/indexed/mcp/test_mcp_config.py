@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from indexed.mcp.config import resolve_cli_context, resolve_config
-from indexed.composition import CliContext
+from indexed.cli.composition import CliContext
 
 
 def test_resolve_config_reads_from_lifespan_state() -> None:

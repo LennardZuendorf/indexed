@@ -2,7 +2,7 @@
 
 import pytest
 
-from connectors._url_guard import _client_host, is_cloud_host, is_same_origin
+from indexed.connectors._url_guard import _client_host, is_cloud_host, is_same_origin
 
 pytestmark = [pytest.mark.unit, pytest.mark.connectors]
 

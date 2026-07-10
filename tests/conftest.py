@@ -22,7 +22,7 @@ from types import SimpleNamespace
 import pytest
 from pytest import MonkeyPatch
 
-from indexed_config import ConfigService
+from indexed.config import ConfigService
 
 # Canonical default indexer name (FAISS flat + all-MiniLM-L6-v2), matching the
 # on-disk manifest the CLI produces.
@@ -85,7 +85,7 @@ def reset_simple_output_state():
     Imported lazily so non-app tests don't couple to the ``indexed`` package.
     """
     try:
-        from indexed.utils.simple_output import reset_simple_output
+        from indexed.cli.utils.simple_output import reset_simple_output
     except Exception:
         yield
         return
@@ -112,7 +112,7 @@ def _reset_app_logging_state():
     try:
         from loguru import logger as _loguru_logger
 
-        import utils.logger as _ulog
+        import indexed.utils.logger as _ulog
 
         _loguru_logger.remove()
         _ulog._LOGGING_CONFIGURED = False
@@ -133,7 +133,9 @@ def model_available() -> bool:
     lifecycle tests skip rather than attempt a network download mid-suite.
     """
     try:
-        from core.v1.engine.indexes.embeddings.model_manager import is_model_cached
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
 
         return is_model_cached("all-MiniLM-L6-v2")
     except Exception:
@@ -151,7 +153,7 @@ def local_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TQDM_DISABLE", "1")
-    from indexed_config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_local_root
 
     ConfigService.reset()
     local_root = get_local_root(tmp_path)
@@ -207,7 +209,7 @@ def build_collection():
         indexer: str = DEFAULT_INDEXER_NAME,
         use_cache: bool = False,
     ) -> Path:
-        from core.v1.engine.factories.create_collection_factory import (
+        from indexed.core.v1.engine.factories.create_collection_factory import (
             create_collection_creator,
         )
 
@@ -295,11 +297,11 @@ def _fake_jira_class(issues: list[dict]):
 @pytest.fixture
 def jira_source(monkeypatch: pytest.MonkeyPatch):
     """Real Jira reader+converter with the ``atlassian.Jira`` client stubbed."""
-    import connectors.jira.unified_jira_document_reader as reader_mod
-    from connectors.jira.unified_jira_document_converter import (
+    import indexed.connectors.jira.unified_jira_document_reader as reader_mod
+    from indexed.connectors.jira.unified_jira_document_converter import (
         UnifiedJiraDocumentConverter,
     )
-    from connectors.jira.unified_jira_document_reader import (
+    from indexed.connectors.jira.unified_jira_document_reader import (
         JiraAuthType,
         UnifiedJiraDocumentReader,
     )
@@ -405,11 +407,11 @@ def _fake_confluence_get(pages: list[dict]):
 @pytest.fixture
 def confluence_source(monkeypatch: pytest.MonkeyPatch):
     """Real Confluence reader+converter with ``requests.get`` stubbed."""
-    import connectors.confluence.confluence_document_reader as reader_mod
-    from connectors.confluence.confluence_document_reader import (
+    import indexed.connectors.confluence.confluence_document_reader as reader_mod
+    from indexed.connectors.confluence.confluence_document_reader import (
         ConfluenceDocumentReader,
     )
-    from connectors.confluence.unified_confluence_document_converter import (
+    from indexed.connectors.confluence.unified_confluence_document_converter import (
         UnifiedConfluenceDocumentConverter,
     )
 
@@ -529,8 +531,10 @@ def outline_source(monkeypatch: pytest.MonkeyPatch):
     Attachments are disabled so only the ``documents.list`` (sync) and
     ``documents.info`` (async) endpoints are exercised.
     """
-    from connectors.outline.outline_document_converter import OutlineDocumentConverter
-    from connectors.outline.outline_document_reader import OutlineDocumentReader
+    from indexed.connectors.outline.outline_document_converter import (
+        OutlineDocumentConverter,
+    )
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     docs = [
         _outline_document(
@@ -572,7 +576,7 @@ def outline_source(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr("requests.post", fake_post)
     monkeypatch.setattr(
-        "connectors.outline.outline_document_reader.httpx.AsyncClient",
+        "indexed.connectors.outline.outline_document_reader.httpx.AsyncClient",
         lambda **kwargs: _OutlineAsyncClient(docs_by_id),
     )
 

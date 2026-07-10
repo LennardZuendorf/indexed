@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import MagicMock
 
-from connectors.outline.connector import OutlineConnector
-from connectors.outline.schema import OutlineConfig, OUTLINE_CLOUD_URL
+from indexed.connectors.outline.connector import OutlineConnector
+from indexed.connectors.outline.schema import OutlineConfig, OUTLINE_CLOUD_URL
 
 
 @pytest.fixture

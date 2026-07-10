@@ -3,7 +3,7 @@
 from unittest.mock import Mock, MagicMock, patch
 from typer.testing import CliRunner
 
-from indexed.knowledge.commands.update import (
+from indexed.cli.knowledge.commands.update import (
     _format_source_type,
     _config_existed_before,
     _get_config_path,
@@ -90,7 +90,7 @@ class TestGetConfigPath:
 class TestFormatUpdateComparison:
     """Test _format_update_comparison function."""
 
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_format_update_with_changes(self, mock_console):
         """Should display before/after comparison with deltas."""
         before = Mock()
@@ -114,7 +114,7 @@ class TestFormatUpdateComparison:
         # Should have printed a card with the collection info
         mock_console.print.assert_called()
 
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_format_update_no_changes(self, mock_console):
         """Should display when collection unchanged."""
         before = Mock()
@@ -142,15 +142,15 @@ class TestFormatUpdateComparison:
 class TestUpdateCommand:
     """Test update command."""
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.NoOpContext")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_single_collection(
         self,
         mock_console,
@@ -192,21 +192,21 @@ class TestUpdateCommand:
         # Mock update_service to succeed
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "test-jira"])
 
         # Should complete successfully
         assert result.exit_code == 0
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_all_collections(
         self,
         mock_console,
@@ -262,21 +262,21 @@ class TestUpdateCommand:
         # Mock update_service to succeed
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update"])
 
         # Should complete successfully
         assert result.exit_code == 0
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.composition.resolve_collections_context")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.composition.resolve_collections_context")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_clears_overlay_per_collection(
         self,
         mock_console,
@@ -315,7 +315,7 @@ class TestUpdateCommand:
         mock_inspect.return_value = [Mock()]
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update"])
 
@@ -324,11 +324,11 @@ class TestUpdateCommand:
         # overlay bleed. Without it this count would be 0 (the bug).
         assert cfg.clear_overlay.call_count == 2
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.print_error")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.print_error")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_missing_collection(
         self,
         mock_console,
@@ -344,23 +344,23 @@ class TestUpdateCommand:
         # Mock status returns empty
         mock_svc_status.return_value = []
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "nonexistent"])
 
         # Should exit with error
         assert result.exit_code == 1
 
-    @patch("indexed.utils.storage_info.display_storage_mode_for_command")
-    @patch("indexed.composition.resolve_collections_context")
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.utils.storage_info.display_storage_mode_for_command")
+    @patch("indexed.cli.composition.resolve_collections_context")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_ensures_credentials(
         self,
         mock_console,
@@ -394,17 +394,17 @@ class TestUpdateCommand:
         mock_info.number_of_chunks = 50
         mock_inspect.return_value = [mock_info]
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         runner.invoke(app, ["index", "update", "jira-collection"])
 
         # Should have called ensure_credentials
         mock_ensure_creds.assert_called_once_with("jira", mock_config)
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
     def test_update_all_no_collections(
         self,
         mock_svc_status,
@@ -421,19 +421,19 @@ class TestUpdateCommand:
 
         mock_svc_status.return_value = []
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update"])
 
         assert result.exit_code == 0
         assert "No collections found to update" in result.stdout
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_inspect_fails_before_update(
         self,
         mock_console,
@@ -457,20 +457,20 @@ class TestUpdateCommand:
         # inspect returns empty (failure)
         mock_inspect.return_value = []
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 1
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_collection_disappears_during_loop(
         self,
         mock_console,
@@ -510,7 +510,7 @@ class TestUpdateCommand:
         mock_info.updated_time = None
         mock_inspect.return_value = [mock_info]
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update"])
 
@@ -518,13 +518,13 @@ class TestUpdateCommand:
         # per-collection failure must still exit non-zero.
         assert result.exit_code != 0
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_collection_has_no_indexers(
         self,
         mock_console,
@@ -552,7 +552,7 @@ class TestUpdateCommand:
         mock_info.number_of_chunks = 10
         mock_inspect.return_value = [mock_info]
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
@@ -560,15 +560,15 @@ class TestUpdateCommand:
         # We just verify it doesn't crash
         assert result.exit_code == 0 or result.exit_code == 1
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.NoOpContext")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_verbose_mode(
         self,
         mock_console,
@@ -606,21 +606,21 @@ class TestUpdateCommand:
         mock_update_service.return_value = None
 
         # MagicMock supports context manager protocol by default
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 0
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.NoOpContext")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_verbose_mode_exception_exits(
         self,
         mock_console,
@@ -656,21 +656,21 @@ class TestUpdateCommand:
 
         mock_update_service.side_effect = RuntimeError("update blew up")
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 1
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.create_phased_progress")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.create_phased_progress")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_non_verbose_exception_exits(
         self,
         mock_console,
@@ -710,23 +710,23 @@ class TestUpdateCommand:
         phased_mock.__exit__ = Mock(return_value=False)
         mock_phased_progress.return_value = phased_mock
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
         assert result.exit_code == 1
 
-    @patch("indexed.utils.storage_info.display_storage_mode_for_command")
-    @patch("indexed.composition.resolve_collections_context")
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.print_info")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.utils.storage_info.display_storage_mode_for_command")
+    @patch("indexed.cli.composition.resolve_collections_context")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.print_info")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_config_newly_created_prints_info(
         self,
         mock_console,
@@ -768,7 +768,7 @@ class TestUpdateCommand:
 
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
@@ -777,14 +777,14 @@ class TestUpdateCommand:
         all_calls = " ".join(str(c) for c in mock_print_info.call_args_list)
         assert "Created new config file" in all_calls
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_inspect_fails_after_update(
         self,
         mock_console,
@@ -819,22 +819,22 @@ class TestUpdateCommand:
 
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
         # Update succeeded; missing post-update inspect is graceful degradation
         assert result.exit_code == 0
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.create_summary")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.create_summary")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_summary_with_positive_delta(
         self,
         mock_console,
@@ -879,7 +879,7 @@ class TestUpdateCommand:
         mock_inspect.side_effect = [[before_info], [after_info]]
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 
@@ -887,15 +887,15 @@ class TestUpdateCommand:
         # For a single collection, result summary is not shown (create_summary not called)
         mock_create_summary.assert_not_called()
 
-    @patch("indexed.knowledge.commands.update.setup_root_logger")
-    @patch("indexed.knowledge.commands.update.ConfigService")
-    @patch("indexed.knowledge.commands.update.is_verbose_mode")
-    @patch("indexed.knowledge.commands.update.svc_status")
-    @patch("indexed.knowledge.commands.update.inspect")
-    @patch("indexed.knowledge.commands.update.ensure_credentials_for_source")
-    @patch("indexed.knowledge.commands.update.update_service")
-    @patch("indexed.knowledge.commands.update.create_summary")
-    @patch("indexed.knowledge.commands.update.console")
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.create_summary")
+    @patch("indexed.cli.knowledge.commands.update.console")
     def test_update_summary_with_negative_delta(
         self,
         mock_console,
@@ -940,7 +940,7 @@ class TestUpdateCommand:
         mock_inspect.side_effect = [[before_info], [after_info]]
         mock_update_service.return_value = None
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["index", "update", "col1"])
 

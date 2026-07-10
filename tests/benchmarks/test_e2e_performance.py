@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 
 
 runner = CliRunner()
@@ -46,7 +46,9 @@ def _strip_ansi(text: str) -> str:
 def _check_model_available() -> bool:
     """Check if the embedding model is cached and usable."""
     try:
-        from core.v1.engine.indexes.embeddings.model_manager import is_model_cached
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
 
         return is_model_cached("all-MiniLM-L6-v2")
     except Exception:

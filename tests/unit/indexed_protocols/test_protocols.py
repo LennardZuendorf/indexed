@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from protocols import BaseConnector, ConnectorRun, SourceConfig
+from indexed.protocols import BaseConnector, ConnectorRun, SourceConfig
 
 
 class _MinimalConnector:

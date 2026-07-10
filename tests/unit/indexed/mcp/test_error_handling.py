@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed_config.errors import ConfigurationError, StorageError
+from indexed.config.errors import ConfigurationError, StorageError
 
 import indexed.mcp.resources as resources_module
 import indexed.mcp.tools as tools_module

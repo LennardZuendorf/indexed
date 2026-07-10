@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from connectors.files.change_tracker import (
+from indexed.connectors.files.change_tracker import (
     ChangeTracker,
     IndexState,
 )

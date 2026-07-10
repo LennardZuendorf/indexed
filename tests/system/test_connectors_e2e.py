@@ -10,14 +10,16 @@ from typing import Any
 
 import pytest
 
-from connectors.confluence.unified_confluence_document_converter import (
+from indexed.connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
 )
-from connectors.confluence.confluence_document_reader import ConfluenceDocumentReader
-from connectors.jira.unified_jira_document_converter import (
+from indexed.connectors.confluence.confluence_document_reader import (
+    ConfluenceDocumentReader,
+)
+from indexed.connectors.jira.unified_jira_document_converter import (
     UnifiedJiraDocumentConverter,
 )
-from connectors.jira.unified_jira_document_reader import (
+from indexed.connectors.jira.unified_jira_document_reader import (
     JiraAuthType,
     UnifiedJiraDocumentReader,
 )
@@ -212,7 +214,7 @@ class TestJiraConnectorE2E:
 
     def test_full_pipeline_cloud_adf(self, monkeypatch):
         """Cloud issue with ADF description and comments produces valid v1 output."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         adf_description = {
             "type": "doc",
@@ -262,7 +264,7 @@ class TestJiraConnectorE2E:
 
     def test_full_pipeline_server_plain_text(self, monkeypatch):
         """Server issue with plain text description produces valid v1 output."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         issue = _make_jira_issue(
             "SRV-42",
@@ -293,7 +295,7 @@ class TestJiraConnectorE2E:
 
     def test_pagination_multiple_issues(self, monkeypatch):
         """Multiple issues with batch_size=1 all come through via pagination."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         issues = [_make_jira_issue(f"PAG-{i}", f"Issue {i}") for i in range(1, 4)]
         monkeypatch.setattr(mod, "Jira", _make_fake_jira_class(issues))
@@ -316,7 +318,7 @@ class TestJiraConnectorE2E:
 
     def test_empty_description_no_crash(self, monkeypatch):
         """Issue with None description does not crash; chunks have ticket info."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         issue = _make_jira_issue("EMPTY-1", "No description issue", description=None)
         monkeypatch.setattr(mod, "Jira", _make_fake_jira_class([issue]))
@@ -340,7 +342,7 @@ class TestJiraConnectorE2E:
 
     def test_multiple_comments(self, monkeypatch):
         """Issue with multiple comments includes all comment text."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         comments = [
             {"body": _make_adf_text("First comment.")},
@@ -372,7 +374,7 @@ class TestJiraConnectorE2E:
 
     def test_output_structure(self, monkeypatch):
         """Converted output has correct keys and value types."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         issue = _make_jira_issue("STR-1", "Structure test", description="Some text")
         monkeypatch.setattr(mod, "Jira", _make_fake_jira_class([issue]))
@@ -404,7 +406,7 @@ class TestJiraConnectorE2E:
 
     def test_first_chunk_is_ticket_info(self, monkeypatch):
         """First chunk is always 'KEY : Summary'."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         issue = _make_jira_issue(
             "TIK-42",
@@ -428,7 +430,7 @@ class TestJiraConnectorE2E:
 
     def test_adf_text_extraction(self, monkeypatch):
         """ADF with headings, bold, italic, lists, and code extracts correctly."""
-        import connectors.jira.unified_jira_document_reader as mod
+        import indexed.connectors.jira.unified_jira_document_reader as mod
 
         adf_description = {
             "type": "doc",
@@ -520,7 +522,7 @@ class TestConfluenceConnectorE2E:
 
     def test_full_pipeline(self, monkeypatch):
         """Page with HTML body and comments produces valid v1 output."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page(
             page_id="101",
@@ -554,7 +556,7 @@ class TestConfluenceConnectorE2E:
 
     def test_html_body_extraction(self, monkeypatch):
         """HTML with headings and paragraphs extracts clean text."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page(
             body_html="<h1>Title</h1><p>Paragraph one.</p><p>Paragraph two.</p>",
@@ -581,7 +583,7 @@ class TestConfluenceConnectorE2E:
 
     def test_ancestors_title_path(self, monkeypatch):
         """Page with ancestors builds correct title path in first chunk."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page(
             title="Leaf Page",
@@ -603,7 +605,7 @@ class TestConfluenceConnectorE2E:
 
     def test_page_with_comments(self, monkeypatch):
         """Page with comments includes comment text in output."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page(
             body_html="<p>Main content.</p>",
@@ -630,7 +632,7 @@ class TestConfluenceConnectorE2E:
 
     def test_empty_body_no_crash(self, monkeypatch):
         """Page with empty body does not crash."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page(body_html="", title="Empty Page")
         monkeypatch.setattr(mod.requests, "get", _make_fake_confluence_get([page]))
@@ -651,7 +653,7 @@ class TestConfluenceConnectorE2E:
 
     def test_multiple_pages(self, monkeypatch):
         """Multiple pages with batch_size=2 all get processed."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         pages = [
             _make_confluence_page(
@@ -680,7 +682,7 @@ class TestConfluenceConnectorE2E:
 
     def test_output_structure(self, monkeypatch):
         """Converted output has correct keys and value types."""
-        import connectors.confluence.confluence_document_reader as mod
+        import indexed.connectors.confluence.confluence_document_reader as mod
 
         page = _make_confluence_page()
         monkeypatch.setattr(mod.requests, "get", _make_fake_confluence_get([page]))

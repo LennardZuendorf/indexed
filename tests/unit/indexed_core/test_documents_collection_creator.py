@@ -15,7 +15,7 @@ class TestUpdateCollectionTimestamp:
         documents, the manifest wasn't updated at all, leaving stale timestamps.
         Now, we update the timestamp to indicate we checked for updates.
         """
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
             OPERATION_TYPE,
         )
@@ -88,7 +88,7 @@ class TestUpdateCollectionTimestamp:
 
     def test_update_preserves_other_manifest_fields_when_no_documents(self):
         """Test that other manifest fields are preserved when updating timestamp only."""
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
             OPERATION_TYPE,
         )
@@ -142,7 +142,7 @@ class TestCreateCollection:
     """Test create collection operation."""
 
     def _make_creator(self, **overrides):
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
             OPERATION_TYPE,
         )
@@ -266,7 +266,7 @@ class TestUpdateCollectionWithDeletions:
     """Test update with explicit deletions."""
 
     def test_update_with_explicit_deletions_only(self):
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
             OPERATION_TYPE,
         )
@@ -336,7 +336,7 @@ class TestUpdateCollectionNonExistent:
 
     def test_update_raises_when_collection_missing(self):
         import pytest
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
             OPERATION_TYPE,
         )
@@ -362,7 +362,7 @@ class TestOperationType:
 
     def test_unknown_operation_type_raises(self):
         import pytest
-        from core.v1.engine.core.documents_collection_creator import (
+        from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
         )
 

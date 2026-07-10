@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indexed.debug import _module_version, _pkg_version, get_build_info
+from indexed.cli.debug import _module_version, _pkg_version, get_build_info
 
 _real_import = builtins.__import__
 
@@ -64,7 +64,7 @@ class TestPkgVersion:
 
 class TestModuleVersion:
     def test_returns_dist_version_when_available(self):
-        with patch("indexed.debug._pkg_version", return_value="1.2.3"):
+        with patch("indexed.cli.debug._pkg_version", return_value="1.2.3"):
             result = _module_version("some_module")
             assert result == "1.2.3"
 
@@ -72,7 +72,7 @@ class TestModuleVersion:
         mock_mod = MagicMock()
         mock_mod.__version__ = "0.5.0"
 
-        with patch("indexed.debug._pkg_version", return_value="not installed"):
+        with patch("indexed.cli.debug._pkg_version", return_value="not installed"):
             with patch("importlib.import_module", return_value=mock_mod):
                 result = _module_version("some_module")
                 assert result == "0.5.0"
@@ -80,13 +80,13 @@ class TestModuleVersion:
     def test_returns_bundled_when_no_version_attr(self):
         mock_mod = MagicMock(spec=[])  # no __version__
 
-        with patch("indexed.debug._pkg_version", return_value="not installed"):
+        with patch("indexed.cli.debug._pkg_version", return_value="not installed"):
             with patch("importlib.import_module", return_value=mock_mod):
                 result = _module_version("some_module")
                 assert result == "bundled"
 
     def test_returns_not_installed_when_import_fails(self):
-        with patch("indexed.debug._pkg_version", return_value="not installed"):
+        with patch("indexed.cli.debug._pkg_version", return_value="not installed"):
             with patch("importlib.import_module", side_effect=ImportError):
                 result = _module_version("nonexistent_module")
                 assert result == "not installed"
@@ -95,7 +95,7 @@ class TestModuleVersion:
         mock_mod = MagicMock()
         mock_mod.VERSION = "2.0.0"
 
-        with patch("indexed.debug._pkg_version", return_value="not installed"):
+        with patch("indexed.cli.debug._pkg_version", return_value="not installed"):
             with patch("importlib.import_module", return_value=mock_mod):
                 result = _module_version("some_module", version_attr="VERSION")
                 assert result == "2.0.0"
@@ -103,11 +103,13 @@ class TestModuleVersion:
 
 class TestDebugCommand:
     def test_json_output(self):
-        with patch("indexed.debug.console") as mock_console:
-            with patch("indexed.debug.get_build_info", return_value=("dev", "n/a")):
-                with patch("indexed.debug._pkg_version", return_value="0.1.0"):
-                    with patch("indexed.debug._module_version", return_value="bundled"):
-                        from indexed.debug import debug
+        with patch("indexed.cli.debug.console") as mock_console:
+            with patch("indexed.cli.debug.get_build_info", return_value=("dev", "n/a")):
+                with patch("indexed.cli.debug._pkg_version", return_value="0.1.0"):
+                    with patch(
+                        "indexed.cli.debug._module_version", return_value="bundled"
+                    ):
+                        from indexed.cli.debug import debug
 
                         debug(json_output=True)
 
@@ -121,15 +123,17 @@ class TestDebugCommand:
                         assert "dependencies" in data
 
     def test_rich_output(self):
-        with patch("indexed.debug.console") as mock_console:
-            with patch("indexed.debug.get_build_info", return_value=("dev", "n/a")):
-                with patch("indexed.debug._pkg_version", return_value="0.1.0"):
-                    with patch("indexed.debug._module_version", return_value="bundled"):
+        with patch("indexed.cli.debug.console") as mock_console:
+            with patch("indexed.cli.debug.get_build_info", return_value=("dev", "n/a")):
+                with patch("indexed.cli.debug._pkg_version", return_value="0.1.0"):
+                    with patch(
+                        "indexed.cli.debug._module_version", return_value="bundled"
+                    ):
                         with patch(
-                            "indexed.debug.create_key_value_panel"
+                            "indexed.cli.debug.create_key_value_panel"
                         ) as mock_panel:
                             mock_panel.return_value = "panel"
-                            from indexed.debug import debug
+                            from indexed.cli.debug import debug
 
                             debug(json_output=False)
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from connectors.registry import (
+from indexed.connectors.registry import (
     get_config_namespace,
     get_connector_class,
 )

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 import pytest
-from indexed_config.store import TomlStore
+from indexed.config.store import TomlStore
 
 
 def test_toml_store_init():
@@ -39,16 +39,16 @@ def test_toml_store_read_toml_file_no_tomllib():
 
     try:
         # Mock the module-level tomllib to be None
-        import indexed_config.store
+        import indexed.config.store
 
-        original_tomllib = indexed_config.store.tomllib
-        indexed_config.store.tomllib = None
+        original_tomllib = indexed.config.store.tomllib
+        indexed.config.store.tomllib = None
 
         try:
             with pytest.raises(RuntimeError, match="tomllib/tomli not available"):
                 store._read_toml_file(fake_path)
         finally:
-            indexed_config.store.tomllib = original_tomllib
+            indexed.config.store.tomllib = original_tomllib
     finally:
         # Clean up
         if fake_path.exists():

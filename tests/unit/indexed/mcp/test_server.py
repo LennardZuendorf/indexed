@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import patch, MagicMock
 
 import pytest
-from indexed_config.errors import ConfigurationError
+from indexed.config.errors import ConfigurationError
 
 # Import the server module to access the underlying functions
 import indexed.mcp.server as server_module
@@ -109,19 +109,19 @@ class TestConfigLoading:
     """Tests for configuration loading functions."""
 
     def test_get_mcp_config_returns_config(self) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         config = _get_config(MCPConfig)
         assert isinstance(config, MCPConfig)
 
     def test_get_search_config_returns_config(self) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         config = _get_config(CoreV1SearchConfig)
         assert isinstance(config, CoreV1SearchConfig)
 
     def test_get_mcp_config_fallback_on_error(self) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         with patch.object(server_module, "ConfigService") as mock_config:
             mock_config.instance.side_effect = Exception("Config error")
@@ -129,7 +129,7 @@ class TestConfigLoading:
             assert isinstance(config, MCPConfig)
 
     def test_get_search_config_fallback_on_error(self) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         with patch.object(server_module, "ConfigService") as mock_config:
             mock_config.instance.side_effect = Exception("Config error")
@@ -541,7 +541,7 @@ class TestResourceDispatch:
     def test_read_collections_status_static(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_get_config.return_value = MCPConfig()
         item = MagicMock()
@@ -567,7 +567,7 @@ class TestResourceDispatch:
     def test_read_single_collection_template(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_get_config.return_value = MCPConfig()
         item = MagicMock()
@@ -595,7 +595,7 @@ class TestLifespan:
 
     @patch.object(server_module, "_get_config")
     def test_lifespan_yields_config(self, mock_get_config: MagicMock) -> None:
-        from core.v1.config_models import MCPConfig, CoreV1SearchConfig
+        from indexed.core.v1.config_models import MCPConfig, CoreV1SearchConfig
 
         mock_mcp_config = MCPConfig()
         mock_search_config = CoreV1SearchConfig()
@@ -627,7 +627,7 @@ class TestContextHandling:
     def test_search_uses_lifespan_context_when_available(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         mock_config = CoreV1SearchConfig()
         mock_config.max_docs = 5
@@ -654,7 +654,7 @@ class TestContextHandling:
     def test_search_falls_back_to_getter_when_context_unavailable(
         self, mock_resolve_config: MagicMock, mock_search: MagicMock
     ) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         mock_config = CoreV1SearchConfig()
         mock_resolve_config.return_value = mock_config
@@ -670,7 +670,7 @@ class TestContextHandling:
     def test_resolve_config_returns_lifespan_value(self) -> None:
         """Direct test: resolve_config returns the lifespan-stored config when present."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -685,7 +685,7 @@ class TestContextHandling:
     def test_resolve_config_falls_back_to_loader_when_key_missing(self) -> None:
         """Direct test: resolve_config calls loader when ctx has no matching key."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -700,7 +700,7 @@ class TestContextHandling:
     def test_resolve_config_falls_back_to_loader_when_ctx_none(self) -> None:
         """Direct test: resolve_config calls loader when ctx is None."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         loader = MagicMock(return_value=cfg)

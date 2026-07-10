@@ -1,7 +1,8 @@
 # AGENTS.md — indexed Engineering Guide
 
-**indexed** · Python 3.11+ monorepo (`uv` workspace + `una`) · local-first semantic
-search over files/Jira/Confluence/Outline, served by a Typer **CLI** and a FastMCP
+**indexed** · Python 3.11+ single-package project (`uv`, one wheel `indexed-sh`) ·
+local-first semantic search over files/Jira/Confluence/Outline, served by a Typer **CLI**
+and a FastMCP
 **server**. This is the operating contract for any agent in this repo. The design
 source of truth is `.spec/`; earned lessons are in `.spec/lessons.md` — read both at
 session start.
@@ -27,29 +28,30 @@ Delegate research and multi-file exploration to subagents to keep context clean.
 
 ```bash
 uv run ruff check . --fix && uv run ruff format
-uv run mypy apps/indexed/src packages/*/src   # 0-NEW on touched files (baseline ~220)
-uv run pytest -q --cov=src                     # full suite, >85% coverage
-python scripts/check_import_graph.py           # module-edge gate
+uv run mypy src/indexed                        # 0-NEW on touched files (baseline ~206)
+uv run pytest -q --cov=src/indexed             # full suite, >85% coverage
+python scripts/check_imports.py                # module-edge gate (4 edges, one package)
 bash .agents/skills/spec/scripts/validate.sh   # only if .spec/ was touched → 0 errors
 ```
 
 ## Context
 
-Four layers, top calls down only: **CLI/MCP** (`apps/indexed`) → **Services + core
-facade** (`core.v1.engine`) → **Engine** (FAISS, embeddings, persistence) → **Infra**
-(config, connectors, parsing, utils, protocols).
+Four layers, top calls down only: **CLI/MCP** (`indexed.cli` / `indexed.mcp`) →
+**Services + core facade** (`indexed.core`) → **Engine** (FAISS, embeddings,
+persistence) → **Infra** (config, connectors, parsing, utils, protocols).
 
 ```
-apps/indexed/src/indexed/     cli · mcp · composition.py (the single wiring site)
-packages/
-  indexed-core/               engine facade (core.v1.engine) + services + indexes
-  indexed-connectors/         files/jira/confluence/outline readers + converters
-  indexed-config/             ConfigService (singleton) + TOML/.env resolution
-  indexed-parsing/            Docling / tree-sitter chunking
-  indexed-protocols/          typed contracts (models.py) + protocols — the leaf
-  utils/                      logging · retry · batching
-tests/                        unit/ · system/ · characterization/ · benchmarks/
-.spec/                        design source of truth (root specs + features/<name>/)
+src/indexed/           the single package (one wheel: indexed-sh)
+  core/                engine facade + services + indexes
+  connectors/          files/jira/confluence/outline readers + converters
+  config/              ConfigService (singleton) + TOML/.env resolution + config CLI
+  parsing/             Docling / tree-sitter chunking
+  protocols/           typed contracts (models.py) + protocols — the leaf
+  utils/               logging · retry · batching
+  cli/                 Typer app · composition.py (the single wiring site)
+  mcp/                 FastMCP server
+tests/                 unit/ · system/ · characterization/ · benchmarks/
+.spec/                 design source of truth (root specs + features/<name>/)
 ```
 
 Config priority (low→high): defaults → `~/.indexed/config.toml` →

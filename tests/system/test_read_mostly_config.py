@@ -8,9 +8,9 @@ byte-identical before and after.
 
 import hashlib
 
-from indexed_config import ConfigService, ensure_storage_dirs, get_local_root
-from indexed import composition
-from protocols import Manifest
+from indexed.config import ConfigService, ensure_storage_dirs, get_local_root
+from indexed.cli import composition
+from indexed.protocols import Manifest
 
 
 def _sha(path) -> str:

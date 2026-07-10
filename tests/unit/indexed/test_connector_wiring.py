@@ -7,16 +7,16 @@ replaced is tested in tests/unit/indexed_connectors/test_from_manifest.py).
 
 from unittest.mock import MagicMock, patch
 
-from protocols import ConnectorRun, Manifest
+from indexed.protocols import ConnectorRun, Manifest
 
-from indexed.composition import (
+from indexed.cli.composition import (
     make_cache_decorator_factory,
     make_connector_factory,
     make_manifest_factory,
     wiring_kwargs_for_create,
     wiring_kwargs_for_update,
 )
-from indexed.composition import CliContext
+from indexed.cli.composition import CliContext
 
 
 def _manifest(connector_type: str = "jira") -> Manifest:
@@ -43,14 +43,14 @@ def test_make_connector_factory_delegates_to_build_connector() -> None:
     ctx.connector_registry = {"jira": MagicMock()}
     cfg = MagicMock()
 
-    with patch("indexed.composition.build_connector", return_value="conn") as mock:
+    with patch("indexed.cli.composition.build_connector", return_value="conn") as mock:
         factory = make_connector_factory(ctx)
         assert factory(cfg) == "conn"
         mock.assert_called_once_with(cfg, ctx.config_service, ctx.connector_registry)
 
 
 def test_make_cache_decorator_factory_wraps_reader() -> None:
-    from connectors.document_cache_reader_decorator import CacheReaderDecorator
+    from indexed.connectors.document_cache_reader_decorator import CacheReaderDecorator
 
     reader = MagicMock()
     persister = MagicMock()
@@ -74,7 +74,7 @@ def test_make_manifest_factory_dispatches_to_from_manifest() -> None:
     run = ConnectorRun(reader="R", converter="C", deletions=[], post_run=None)
     connector_cls = MagicMock(from_manifest=MagicMock(return_value=run))
 
-    with patch("connectors.get_connector_class", return_value=connector_cls):
+    with patch("indexed.connectors.get_connector_class", return_value=connector_cls):
         factory = make_manifest_factory(ctx)
         result = factory(manifest, "/storage/coll")
 

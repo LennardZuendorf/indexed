@@ -2,8 +2,8 @@
 
 from unittest.mock import Mock, patch
 
-from core.v1.engine.services.search_service import SearchService, search
-from core.v1.engine.services.models import SourceConfig
+from indexed.core.v1.engine.services.search_service import SearchService, search
+from indexed.core.v1.engine.services.models import SourceConfig
 
 
 class TestSearchService:
@@ -16,7 +16,7 @@ class TestSearchService:
         assert service._persister is not None
         assert service._searcher_cache == {}
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_get_searcher_creates_new(self, mock_factory):
         """Test _get_searcher creates new searcher when not cached."""
         mock_searcher = Mock()
@@ -35,7 +35,7 @@ class TestSearchService:
         assert call_kwargs["collection_name"] == "test-collection"
         assert call_kwargs["index_name"] == "test-indexer"
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_get_searcher_uses_cache(self, mock_factory):
         """Test _get_searcher uses cached searcher."""
         mock_searcher = Mock()
@@ -110,7 +110,7 @@ class TestSearchService:
 
         assert result == "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_with_configs(self, mock_factory):
         """Test search with explicit configs."""
         mock_searcher = Mock()
@@ -156,7 +156,7 @@ class TestSearchService:
             include_matched_chunks_content=True,
         )
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_with_score_threshold_overfetches_and_backfills(self, mock_factory):
         """A5: when score_threshold is set, the searcher must be asked for more
         than max_docs documents so that documents dropped by the filter can be
@@ -202,7 +202,7 @@ class TestSearchService:
         doc_ids = [doc["id"] for doc in result["test-collection"]["results"]]
         assert doc_ids == ["doc-2", "doc-3"]
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_auto_discovery(self, mock_factory):
         """Test search with auto-discovery (configs=None)."""
         mock_searcher = Mock()
@@ -253,7 +253,7 @@ class TestSearchService:
             include_matched_chunks_content=True,
         )
 
-    @patch("core.v1.engine.services.search_service.create_collection_searcher")
+    @patch("indexed.core.v1.engine.services.search_service.create_collection_searcher")
     def test_search_error_handling(self, mock_factory):
         """Test search handles errors gracefully."""
         mock_searcher = Mock()
@@ -280,7 +280,7 @@ class TestSearchService:
 class TestSearchFunctionalInterface:
     """Test functional search interface."""
 
-    @patch("core.v1.engine.services.search_service.SearchService")
+    @patch("indexed.core.v1.engine.services.search_service.SearchService")
     def test_search_function_delegates_to_service(self, mock_service_cls):
         """Test that search function delegates to a per-call service."""
         mock_service = mock_service_cls.return_value
@@ -318,7 +318,7 @@ class TestSearchFunctionalInterface:
             include_matched_chunks=True,
         )
 
-    @patch("core.v1.engine.services.search_service.SearchService")
+    @patch("indexed.core.v1.engine.services.search_service.SearchService")
     def test_search_function_with_defaults(self, mock_service_cls):
         """Test search function with default parameters."""
         mock_service = mock_service_cls.return_value

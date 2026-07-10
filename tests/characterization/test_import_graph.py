@@ -1,4 +1,4 @@
-"""Characterization: import-graph CI gate."""
+"""Characterization: import-graph CI gate (single-package layer checker)."""
 
 from __future__ import annotations
 
@@ -8,18 +8,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/check_import_graph.py"
+SCRIPT = ROOT / "scripts/check_imports.py"
 
 
 def _load_checker():
-    spec = importlib.util.spec_from_file_location("check_import_graph", SCRIPT)
+    spec = importlib.util.spec_from_file_location("check_imports", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_check_import_graph_script_exits_zero() -> None:
+def test_check_imports_script_exits_zero() -> None:
     result = subprocess.run(
         [sys.executable, str(SCRIPT)],
         cwd=ROOT,
@@ -30,37 +30,37 @@ def test_check_import_graph_script_exits_zero() -> None:
     assert result.returncode == 0, (result.stderr or result.stdout).strip()
 
 
-def test_check_import_graph_function_reports_no_violations() -> None:
+def test_check_imports_function_reports_no_violations() -> None:
     checker = _load_checker()
-    violations = checker.check_import_graph(ROOT)
+    violations = checker.check(ROOT / "src" / "indexed")
     assert violations == []
 
 
 def test_core_importing_connectors_is_a_violation(tmp_path: Path) -> None:
     """core -> connectors is a forbidden cross-layer import and must be reported."""
     checker = _load_checker()
-    core_dir = tmp_path / "packages/indexed-core/src/core"
+    src = tmp_path / "src" / "indexed"
+    core_dir = src / "core"
     core_dir.mkdir(parents=True)
-    (core_dir / "__init__.py").write_text("from connectors import something\n")
-    connectors_dir = tmp_path / "packages/indexed-connectors/src/connectors"
-    connectors_dir.mkdir(parents=True)
-    (connectors_dir / "__init__.py").write_text("")
+    (core_dir / "__init__.py").write_text("from indexed.connectors import something\n")
+    (src / "connectors").mkdir(parents=True)
+    (src / "connectors" / "__init__.py").write_text("")
 
-    violations = checker.check_import_graph(tmp_path)
+    violations = checker.check(src)
     assert violations, "expected a violation for core -> connectors, got none"
     assert any("core must not import connectors" in v for v in violations)
 
 
-def test_core_importing_indexed_is_a_violation(tmp_path: Path) -> None:
-    """core -> indexed is a forbidden upward import that the old FORBIDDEN map missed silently."""
+def test_core_importing_cli_is_a_violation(tmp_path: Path) -> None:
+    """core -> cli is a forbidden upward import (nothing may import the app layer)."""
     checker = _load_checker()
-    core_dir = tmp_path / "packages/indexed-core/src/core"
+    src = tmp_path / "src" / "indexed"
+    core_dir = src / "core"
     core_dir.mkdir(parents=True)
-    (core_dir / "__init__.py").write_text("from indexed import something\n")
-    indexed_dir = tmp_path / "apps/indexed/src/indexed"
-    indexed_dir.mkdir(parents=True)
-    (indexed_dir / "__init__.py").write_text("")
+    (core_dir / "__init__.py").write_text("from indexed.cli.app import something\n")
+    (src / "cli").mkdir(parents=True)
+    (src / "cli" / "__init__.py").write_text("")
 
-    violations = checker.check_import_graph(tmp_path)
-    assert violations, "expected a violation for core -> indexed, got none"
-    assert any("core must not import indexed" in v for v in violations)
+    violations = checker.check(src)
+    assert violations, "expected a violation for core -> cli, got none"
+    assert any("core must not import cli" in v for v in violations)

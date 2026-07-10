@@ -39,4 +39,4 @@ def mock_getenv_defaults(mocker):
             return default if default else "false"
         return default
 
-    return mocker.patch("indexed.app.os.getenv", side_effect=getenv_side_effect)
+    return mocker.patch("indexed.cli.app.os.getenv", side_effect=getenv_side_effect)

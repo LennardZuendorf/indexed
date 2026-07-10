@@ -1,0 +1,1013 @@
+"""Create command for adding collections (hardcoded subcommands)."""
+
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from indexed.core.v1.engine import SourceConfig
+
+import typer
+from loguru import logger
+
+# Import ConfigService at module level so tests can patch
+from indexed.config import ConfigService, ValidationResult
+
+# Import utilities for progress and logging
+from ...utils.logging import is_verbose_mode
+from ...utils.console import console
+from ...utils.components.theme import (
+    get_heading_style,
+    get_accent_style,
+)
+from ...utils.components import print_error
+from ...utils.credentials import (
+    prompt_credential_field,
+    is_credential_field,
+    check_server_auth_present,
+)
+from ._create_helpers import execute_create_command
+
+
+def _display_files_source_summary(present: Dict[str, Any]) -> None:
+    """Print a concise source summary before the creation spinner starts."""
+    from ...utils.components.info_row import create_info_row
+    from ...utils.format import format_path_tilde
+    from ...utils.files_source_display import build_excluded_row_text
+    from indexed.connectors.files.schema import DEFAULT_EXCLUDED_DIRS
+
+    path = str(present.get("path", ""))
+    respect_gitignore: bool = present.get("respect_gitignore", True)
+    _dirs = present.get("excluded_dirs")
+    excluded_dirs: list[str] = (
+        _dirs if isinstance(_dirs, list) else list(DEFAULT_EXCLUDED_DIRS)
+    )
+    _patterns = present.get("include_patterns")
+    include_patterns: list[str] = _patterns if isinstance(_patterns, list) else ["*"]
+
+    console.print(create_info_row("Path", format_path_tilde(path)))
+    console.print(
+        create_info_row(
+            "Excluded",
+            build_excluded_row_text(
+                path, include_patterns, excluded_dirs, respect_gitignore
+            ),
+        )
+    )
+    console.print()
+
+
+def _is_cloud(url: str) -> bool:
+    """
+    Determine whether a given Atlassian base URL refers to the cloud-hosted service.
+
+    Strips whitespace and a trailing slash, then detects on the *parsed
+    host* rather than a raw ``endswith`` on the whole URL string, so
+    ``"https://x.atlassian.net/ "`` (trailing slash + whitespace) still
+    routes to Cloud (foundation/6b bug E6).
+
+    Returns:
+        True if the URL's host is a ``*.atlassian.net`` domain, False otherwise.
+    """
+    normalized = url.strip().rstrip("/")
+    host = urlsplit(normalized).hostname or ""
+    return host.lower().endswith(".atlassian.net")
+
+
+def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
+    """Return True when verbose/INFO/DEBUG output is requested.
+
+    Use this at command-function top, before ``execute_create_command`` runs
+    ``setup_root_logger``. ``is_verbose_mode()`` is unreliable there — it reads
+    the global log level, which is not set yet (see .spec/lessons.md).
+    """
+    return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
+
+
+def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
+    """Print storage-mode indicator unless verbose/debug output is already active."""
+    if not _is_pre_setup_verbose(verbose, log_level):
+        from ...utils.storage_info import display_storage_mode_for_command
+
+        display_storage_mode_for_command(console)
+
+
+app = typer.Typer(help="Create new collections")
+
+
+@app.command("files", help="Create a new collection from local files or folders.")
+def create_files(
+    collection: str = typer.Option(
+        "files",
+        "--collection",
+        "-c",
+        help="Name of the collection (default: files).",
+    ),
+    path: str = typer.Option(
+        None,
+        "--path",
+        "-p",
+        help="Path to the root directory or file(s) (from config or prompt if not provided).",
+    ),
+    include: List[str] = typer.Option(
+        None,
+        "--include",
+        help="List of regex patterns for files/directories to include (can be specified multiple times).",
+        show_default=False,
+    ),
+    exclude: List[str] = typer.Option(
+        None,
+        "--exclude",
+        help="List of regex patterns for files/directories to exclude (can be specified multiple times).",
+        show_default=False,
+    ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast/--no-fail-fast",
+        help="Stop and abort if the first file read error occurs.",
+    ),
+    use_cache: bool = typer.Option(
+        True,
+        "--use-cache/--no-cache",
+        help="Enable on-disk cache for faster reindexing of unchanged content.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete any existing collection with the same name before creating a new one.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+    respect_gitignore: bool = typer.Option(
+        True,
+        "--respect-gitignore/--no-respect-gitignore",
+        help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
+):
+    """Create a Files collection with comprehensive parameter resolution and progress tracking."""
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    local_files_config_class = this_module.LocalFilesConfig
+
+    # Files connector (no cloud/server split)
+    source_type = "localFiles"
+    config_class = local_files_config_class
+    namespace = "sources.files"
+
+    # Build CLI overrides (map CLI params to schema fields)
+    cli_overrides: Dict[str, Any] = {}
+    if path:
+        cli_overrides["path"] = path
+    if include:
+        cli_overrides["include_patterns"] = include
+    if exclude:
+        cli_overrides["exclude_patterns"] = exclude
+    if fail_fast:
+        cli_overrides["fail_fast"] = fail_fast
+    cli_overrides["respect_gitignore"] = respect_gitignore
+
+    def prompt_missing_files_fields(
+        validation: ValidationResult, config: ConfigService, ns: str
+    ) -> None:
+        """Prompt for missing Files-specific fields."""
+        if not validation.missing:
+            return
+
+        if not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Files Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        for field_name in validation.missing:
+            if is_verbose_mode():
+                logger.info("Prompting for missing field: %s", field_name)
+
+            # Prompt based on field name
+            if field_name == "path":
+                from indexed.connectors.files.files_document_reader import (
+                    normalize_base_path,
+                )
+
+                raw_path = console.input(
+                    f"[{get_accent_style()}]Path to files or directory[/{get_accent_style()}]: "
+                )
+                # Reject empty input instead of silently indexing the CWD —
+                # Path("") == Path(".") passes existence validation
+                # (foundation/6b bug E5); shares E7's normalization helper.
+                try:
+                    value = normalize_base_path(raw_path)
+                except ValueError:
+                    print_error("Path is required")
+                    raise typer.Exit(1)
+            elif field_name == "include_patterns":
+                patterns_input = console.input(
+                    f"[{get_accent_style()}]Include patterns (comma-separated)[/{get_accent_style()}] [*]: "
+                )
+                value = (
+                    [p.strip() for p in patterns_input.split(",")]
+                    if patterns_input
+                    else ["*"]
+                )
+            elif field_name == "exclude_patterns":
+                patterns_input = console.input(
+                    f"[{get_accent_style()}]Exclude patterns (comma-separated)[/{get_accent_style()}] []: "
+                )
+                value = (
+                    [p.strip() for p in patterns_input.split(",")]
+                    if patterns_input
+                    else []
+                )
+            elif field_name == "fail_fast":
+                fail_fast_input = console.input(
+                    f"[{get_accent_style()}]Stop on first error? (yes/no)[/{get_accent_style()}] [no]: "
+                )
+                value = fail_fast_input.lower() in ["yes", "y", "true"]
+            else:
+                # Generic fallback
+                value = console.input(
+                    f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
+                )
+
+            # In-memory overlay only — never persisted to config.toml (R3;
+            # foundation/6b bug E4). Files has no sensitive fields.
+            config.set_overlay(f"{ns}.{field_name}", value)
+            validation.present[field_name] = value
+
+            if is_verbose_mode():
+                logger.info("Saved %s to in-memory overlay", field_name)
+
+    def build_files_source_config(
+        present: Dict[str, Any], coll_name: str
+    ) -> "SourceConfig":
+        """Build SourceConfig for Files connector."""
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["path"],
+            indexer=this_module.DEFAULT_INDEXER,
+            reader_opts={
+                "includePatterns": present.get("include_patterns", ["*"]),
+                "excludePatterns": present.get("exclude_patterns", []),
+                "failFast": present.get("fail_fast", False),
+                "respectGitignore": present.get("respect_gitignore", True),
+            },
+        )
+
+    # Display indicator before any prompts (files has no pre-execute URL prompt)
+    ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
+
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_files_fields,
+        build_source_config=build_files_source_config,
+        success_message_suffix="from files",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        pre_creation_display=_display_files_source_summary,
+        local=local,
+        source_path_key="path",
+    )
+
+
+@app.command(
+    "jira", help="Create a new collection from Jira issues using a base JQL query."
+)
+def create_jira(
+    collection: str = typer.Option(
+        "jira",
+        "--collection",
+        "-c",
+        help="Name of the collection (default: jira).",
+    ),
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Base URL of the Jira instance (from config or prompt if not provided).",
+    ),
+    jql: str = typer.Option(
+        None,
+        "--jql",
+        "--query",
+        "-q",
+        help="JQL query (from config or prompt if not provided).",
+    ),
+    email: str = typer.Option(
+        None,
+        "--email",
+        help="Atlassian account email (overrides config/env).",
+    ),
+    token: str = typer.Option(
+        None,
+        "--token",
+        help="Atlassian API token (overrides env ATLASSIAN_TOKEN).",
+    ),
+    use_cache: bool = typer.Option(
+        True,
+        "--use-cache/--no-cache",
+        help="Enable on-disk cache for faster reindexing of unchanged issues.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete any existing collection with the same name before creating a new one.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
+):
+    """Create a Jira collection with comprehensive parameter resolution and progress tracking."""
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    jira_cloud_config_class = this_module.JiraCloudConfig
+    jira_config_class = this_module.JiraConfig
+
+    # Use a single namespace for Jira config - detect Cloud vs Server from URL at runtime
+    namespace = "sources.jira"
+
+    # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
+    resolved_url = url or config.get(f"{namespace}.url")
+
+    # If URL is still unknown, prompt for it first before determining source type
+    url_was_prompted = False
+    if not resolved_url:
+        if not _is_pre_setup_verbose(verbose, log_level):
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Jira Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+
+        resolved_url = console.input(
+            f"[{get_accent_style()}]Jira URL[/{get_accent_style()}]: "
+        )
+        url_was_prompted = True
+
+        if not resolved_url:
+            print_error("Jira URL is required")
+            raise typer.Exit(1)
+
+    # Determine connector type based on the URL (Cloud = *.atlassian.net)
+    if _is_cloud(resolved_url):
+        source_type = "jiraCloud"
+        config_class = jira_cloud_config_class
+    else:
+        source_type = "jira"
+        config_class = jira_config_class
+
+    # Build CLI overrides (url is now always known)
+    cli_overrides = {"url": resolved_url}
+    if jql:
+        cli_overrides["query"] = jql
+    if email:
+        cli_overrides["email"] = email
+    if token:
+        cli_overrides["api_token"] = token
+
+    def prompt_missing_jira_fields(
+        validation: ValidationResult, config: ConfigService, ns: str
+    ) -> None:
+        """Prompt for missing Jira-specific fields."""
+        # URL already handled above, exclude it from missing fields
+        missing_fields = [f for f in validation.missing if f != "url"]
+        if not missing_fields:
+            return
+
+        # Show header if not already shown (URL was from CLI/config)
+        if not url_was_prompted and not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Jira Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        for field_name in missing_fields:
+            field_info = validation.field_info[field_name]
+
+            if is_verbose_mode():
+                logger.info("Prompting for missing field: %s", field_name)
+
+            # Use shared credential prompting for credential fields
+            if is_credential_field(field_name):
+                value = prompt_credential_field(
+                    field_name, field_info, config, ns, source_type
+                )
+            # Handle non-credential fields — in-memory overlay only, never
+            # persisted to config.toml (R3; foundation/6b bug E4).
+            elif field_name in ["query", "jql"]:
+                value = (
+                    console.input(
+                        f"[{get_accent_style()}]JQL query[/{get_accent_style()}] [project = PROJ]: "
+                    )
+                    or "project = PROJ"
+                )
+                config.set_overlay(f"{ns}.{field_name}", value)
+            else:
+                # Generic fallback
+                value = console.input(
+                    f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
+                )
+                config.set_overlay(f"{ns}.{field_name}", value)
+
+            validation.present[field_name] = value
+
+            if is_verbose_mode():
+                logger.info(
+                    "Saved %s to %s",
+                    field_name,
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
+                )
+
+    def build_jira_source_config(
+        present: Dict[str, Any], coll_name: str
+    ) -> "SourceConfig":
+        """Build SourceConfig for Jira connector."""
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            query=present["query"],
+            indexer=this_module.DEFAULT_INDEXER,
+            reader_opts={},  # Credentials are read from ConfigService by connector
+        )
+
+    def verbose_jira_log(present: Dict[str, Any]) -> None:
+        """Log Jira-specific info before creation in verbose mode."""
+        logger.info("Connecting to Jira at %s...", present["url"])
+        logger.info("Using JQL query: %s", present["query"])
+
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_jira_fields,
+        build_source_config=build_jira_source_config,
+        success_message_suffix="from Jira",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_jira_log,
+        local=local,
+        source_path_key="url",
+    )
+
+
+@app.command(
+    "confluence",
+    help="Create a new collection from Confluence pages using a base CQL query.",
+)
+def create_confluence(
+    collection: str = typer.Option(
+        "confluence",
+        "--collection",
+        "-c",
+        help="Name of the collection (default: confluence).",
+    ),
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Base URL of the Confluence instance (from config or prompt if not provided).",
+    ),
+    cql: str = typer.Option(
+        None,
+        "--cql",
+        "--query",
+        "-q",
+        help="CQL query (from config or prompt if not provided).",
+    ),
+    email: str = typer.Option(
+        None,
+        "--email",
+        help="Atlassian account email (overrides config/env).",
+    ),
+    token: str = typer.Option(
+        None,
+        "--token",
+        help="Atlassian API token (overrides env ATLASSIAN_TOKEN).",
+    ),
+    read_all_comments: bool = typer.Option(
+        True,
+        "--read-all-comments/--first-level-comments",
+        help="Read all nested comments if enabled, otherwise include only first-level comments.",
+    ),
+    use_cache: bool = typer.Option(
+        True,
+        "--use-cache/--no-cache",
+        help="Enable on-disk cache for faster reindexing of unchanged pages.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete any existing collection with the same name before creating a new one.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
+):
+    """
+    Create a Confluence collection by resolving configuration, executing the ingestion, and verifying the result.
+
+    Resolves required settings (Confluence URL, CQL/query, credentials, and read-options) from CLI options, config, or interactive prompts; detects cloud vs server deployment from the URL; applies CLI overrides; then creates the collection (uses a verbose log path or a spinner/progress UI) with support for on-disk caching and an optional force-delete of existing collections. After creation, verifies the collection exists and reports the resulting document count; on failure prints an error and exits with a non-zero status.
+    """
+    # Use module-level lazy-loaded services (supports mocking in tests)
+    from . import create as this_module
+
+    confluence_cloud_config_class = this_module.ConfluenceCloudConfig
+    confluence_config_class = this_module.ConfluenceConfig
+
+    # Use a single namespace for Confluence config - detect Cloud vs Server from URL at runtime
+    namespace = "sources.confluence"
+
+    # Phase 0: Determine the URL first (needed to detect cloud vs server)
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
+    resolved_url = url or config.get(f"{namespace}.url")
+
+    # If URL is still unknown, prompt for it first before determining source type
+    url_was_prompted = False
+    if not resolved_url:
+        if not _is_pre_setup_verbose(verbose, log_level):
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+
+        resolved_url = console.input(
+            f"[{get_accent_style()}]Confluence URL[/{get_accent_style()}]: "
+        )
+        url_was_prompted = True
+
+        if not resolved_url:
+            print_error("Confluence URL is required")
+            raise typer.Exit(1)
+
+    # Determine connector type based on the URL (Cloud = *.atlassian.net)
+    if _is_cloud(resolved_url):
+        source_type = "confluenceCloud"
+        config_class = confluence_cloud_config_class
+    else:
+        source_type = "confluence"
+        config_class = confluence_config_class
+
+    # Build CLI overrides (url is now always known)
+    cli_overrides = {"url": resolved_url}
+    if cql:
+        cli_overrides["query"] = cql
+    if email:
+        cli_overrides["email"] = email
+    if token:
+        cli_overrides["api_token"] = token
+    # Always include read_all_comments (has a default of True)
+    cli_overrides["read_all_comments"] = read_all_comments
+
+    def prompt_missing_confluence_fields(
+        validation: ValidationResult, config: ConfigService, ns: str
+    ) -> None:
+        """Prompt for missing Confluence-specific fields."""
+        # URL already handled above, exclude it from missing fields
+        missing_fields = [f for f in validation.missing if f != "url"]
+
+        # For Confluence Server/DC: auth fields (token, login, password) are optional in schema
+        # but at least one auth method is required by the connector.
+        # Check if we need to prompt for auth credentials using shared function.
+        if source_type == "confluence":
+            if not check_server_auth_present(
+                validation.present,
+                token_env_var="CONF_TOKEN",
+                login_env_var="CONF_LOGIN",
+                password_env_var="CONF_PASSWORD",
+            ):
+                # No auth found, prompt for token
+                if "token" not in missing_fields:
+                    missing_fields.append("token")
+                if is_verbose_mode():
+                    logger.info("No auth credentials found, will prompt for token")
+
+        if not missing_fields:
+            return
+
+        # Show header if not already shown (URL was from CLI/config)
+        if not url_was_prompted and not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Confluence Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        for field_name in missing_fields:
+            field_info = validation.field_info[field_name]
+
+            if is_verbose_mode():
+                logger.info("Prompting for missing field: %s", field_name)
+
+            # Use shared credential prompting for credential fields
+            if is_credential_field(field_name):
+                value = prompt_credential_field(
+                    field_name, field_info, config, ns, source_type
+                )
+            # Handle non-credential fields — in-memory overlay only, never
+            # persisted to config.toml (R3; foundation/6b bug E4).
+            elif field_name in ["query", "cql"]:
+                value = (
+                    console.input(
+                        f"[{get_accent_style()}]CQL query[/{get_accent_style()}] [type=page]: "
+                    )
+                    or "type=page"
+                )
+                config.set_overlay(f"{ns}.{field_name}", value)
+            else:
+                # Generic fallback
+                value = console.input(
+                    f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
+                )
+                config.set_overlay(f"{ns}.{field_name}", value)
+
+            validation.present[field_name] = value
+
+            if is_verbose_mode():
+                logger.info(
+                    "Saved %s to %s",
+                    field_name,
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
+                )
+
+    def build_confluence_source_config(
+        present: Dict[str, Any], coll_name: str
+    ) -> "SourceConfig":
+        """Build SourceConfig for Confluence connector."""
+        # Use module-level lazy-loaded services (supports mocking in tests)
+        from . import create as this_module
+
+        return this_module.SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            query=present["query"],
+            indexer=this_module.DEFAULT_INDEXER,
+            reader_opts={"readAllComments": present.get("read_all_comments", True)},
+        )
+
+    def verbose_confluence_log(present: Dict[str, Any]) -> None:
+        """Log Confluence-specific info before creation in verbose mode."""
+        logger.info("Connecting to Confluence at %s...", present["url"])
+        logger.info("Using CQL query: %s", present["query"])
+
+    # Use shared helper
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_confluence_fields,
+        build_source_config=build_confluence_source_config,
+        success_message_suffix="from Confluence",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_confluence_log,
+        local=local,
+        source_path_key="url",
+    )
+
+
+@app.command(
+    "outline",
+    help="Create a new collection from an Outline Wiki workspace (Cloud or self-hosted).",
+)
+def create_outline(
+    collection: str = typer.Option(
+        "outline",
+        "--collection",
+        "-c",
+        help="Name of the collection (default: outline).",
+    ),
+    url: str = typer.Option(
+        None,
+        "--url",
+        "-u",
+        help="Outline base URL. Defaults to https://app.getoutline.com (Cloud). Provide your own domain for self-hosted Outline.",
+    ),
+    token: str = typer.Option(
+        None,
+        "--token",
+        help="Outline API token (overrides env OUTLINE_API_TOKEN).",
+    ),
+    collection_id: Optional[List[str]] = typer.Option(
+        None,
+        "--collection-id",
+        help="Restrict to specific Outline collection IDs (can be specified multiple times). Defaults to all collections.",
+        show_default=False,
+    ),
+    include_attachments: bool = typer.Option(
+        True,
+        "--include-attachments/--no-include-attachments",
+        help="Download and OCR inline images and file attachments.",
+    ),
+    ocr: bool = typer.Option(
+        True,
+        "--ocr/--no-ocr",
+        help="Enable OCR for image attachments.",
+    ),
+    use_cache: bool = typer.Option(
+        True,
+        "--use-cache/--no-cache",
+        help="Enable on-disk cache for faster reindexing of unchanged documents.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete any existing collection with the same name before creating a new one.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose (INFO) logging",
+        rich_help_panel="Logging",
+    ),
+    json_logs: bool = typer.Option(
+        False,
+        "--json-logs",
+        help="Output logs as JSON (structured)",
+        rich_help_panel="Logging",
+    ),
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
+        rich_help_panel="Logging",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
+        rich_help_panel="Storage",
+    ),
+) -> None:
+    """Create an Outline Wiki collection. Works against Outline Cloud and any self-hosted Outline deployment."""
+    from . import create as this_module
+    from indexed.connectors.outline.schema import (
+        OUTLINE_CLOUD_URL as _OUTLINE_CLOUD_URL,
+    )
+
+    outline_config_class = this_module.OutlineConfig
+
+    source_type = "outline"
+    namespace = "sources.outline"
+
+    # Phase 0: Resolve URL — prompt if not provided, default to Cloud on Enter
+    config = ConfigService.instance(mode_override="local" if local else None)
+    _display_storage_indicator(verbose, log_level)
+    resolved_url = url or config.get(f"{namespace}.url")
+
+    url_was_prompted = False
+    if not resolved_url:
+        if not _is_pre_setup_verbose(verbose, log_level):
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Outline Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        if is_verbose_mode():
+            logger.info("URL not known, prompting user...")
+
+        raw_input = console.input(
+            f"[{get_accent_style()}]Outline URL[/{get_accent_style()}] [{_OUTLINE_CLOUD_URL}]: "
+        )
+        resolved_url = raw_input.strip() or _OUTLINE_CLOUD_URL
+        url_was_prompted = True
+
+    # Build CLI overrides
+    cli_overrides: Dict[str, Any] = {"url": resolved_url}
+    if token:
+        cli_overrides["api_token"] = token
+    if collection_id:
+        cli_overrides["collection_ids"] = list(collection_id)
+    cli_overrides["include_attachments"] = include_attachments
+    cli_overrides["ocr_enabled"] = ocr
+
+    def prompt_missing_outline_fields(
+        validation: ValidationResult, cfg: ConfigService, ns: str
+    ) -> None:
+        missing_fields = [f for f in validation.missing if f not in ("url",)]
+        if not missing_fields:
+            return
+
+        if not url_was_prompted and not is_verbose_mode():
+            console.print()
+            console.print(
+                f"[{get_heading_style()}]Outline Configuration[/{get_heading_style()}]"
+            )
+            console.print()
+
+        for field_name in missing_fields:
+            field_info = validation.field_info[field_name]
+
+            if is_verbose_mode():
+                logger.info("Prompting for missing field: %s", field_name)
+
+            if is_credential_field(field_name):
+                value = prompt_credential_field(
+                    field_name, field_info, cfg, ns, source_type
+                )
+            else:
+                # In-memory overlay only — never persisted to config.toml
+                # (R3; foundation/6b bug E4).
+                value = console.input(
+                    f"[{get_accent_style()}]{field_name}[/{get_accent_style()}]: "
+                )
+                cfg.set_overlay(f"{ns}.{field_name}", value)
+
+            validation.present[field_name] = value
+
+            if is_verbose_mode():
+                logger.info(
+                    "Saved %s to %s",
+                    field_name,
+                    "env" if is_credential_field(field_name) else "in-memory overlay",
+                )
+
+    def build_outline_source_config(
+        present: Dict[str, Any], coll_name: str
+    ) -> "SourceConfig":
+        from . import create as this_module
+
+        return this_module.SourceConfig(
+            name=coll_name,
+            type=source_type,
+            base_url_or_path=present["url"],
+            indexer=this_module.DEFAULT_INDEXER,
+            reader_opts={
+                "collectionIds": present.get("collection_ids"),
+                "includeAttachments": present.get("include_attachments", True),
+                "ocrEnabled": present.get("ocr_enabled", True),
+            },
+        )
+
+    def verbose_outline_log(present: Dict[str, Any]) -> None:
+        _url = present["url"]
+        deployment = "Cloud" if _url == _OUTLINE_CLOUD_URL else "self-hosted"
+        logger.info("Connecting to Outline at %s (%s)...", _url, deployment)
+
+    execute_create_command(
+        collection=collection,
+        source_type=source_type,
+        config_class=outline_config_class,
+        namespace=namespace,
+        cli_overrides=cli_overrides,
+        prompt_missing_fields=prompt_missing_outline_fields,
+        build_source_config=build_outline_source_config,
+        success_message_suffix="from Outline",
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        use_cache=use_cache,
+        force=force,
+        progress_message=f"Connecting to {resolved_url}",
+        verbose_pre_creation_log=verbose_outline_log,
+        local=local,
+        source_path_key="url",
+    )
+
+
+def __getattr__(name: str):
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "DEFAULT_INDEXER":
+        from indexed.core.v1.constants import DEFAULT_INDEXER
+
+        return DEFAULT_INDEXER
+    elif name == "SourceConfig":
+        from indexed.core.v1.engine import SourceConfig
+
+        return SourceConfig
+    elif name == "LocalFilesConfig":
+        from indexed.connectors.files.schema import LocalFilesConfig
+
+        return LocalFilesConfig
+    elif name == "JiraCloudConfig":
+        from indexed.connectors.jira.schema import JiraCloudConfig
+
+        return JiraCloudConfig
+    elif name == "JiraConfig":
+        from indexed.connectors.jira.schema import JiraConfig
+
+        return JiraConfig
+    elif name == "ConfluenceCloudConfig":
+        from indexed.connectors.confluence.schema import ConfluenceCloudConfig
+
+        return ConfluenceCloudConfig
+    elif name == "ConfluenceConfig":
+        from indexed.connectors.confluence.schema import ConfluenceConfig
+
+        return ConfluenceConfig
+    elif name == "OutlineConfig":
+        from indexed.connectors.outline.schema import OutlineConfig
+
+        return OutlineConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

@@ -201,7 +201,7 @@ class TestInspect:
         mock_config.get_workspace_config.return_value = {"mode": "local"}
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "inspect"])
         assert result.exit_code == 0
@@ -212,14 +212,17 @@ class TestInspect:
     @patch("indexed.config.cli.ConfigService")
     def test_inspect_simple_output(self, mock_config_service):
         """Should output JSON when --simple-output flag is provided."""
-        from indexed.utils.simple_output import reset_simple_output, set_simple_output
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
 
         mock_config = Mock()
         mock_config.load_raw.return_value = {"sources": {"files": {"path": "/data"}}}
         mock_config.get_workspace_config.return_value = None
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         set_simple_output(True)
         try:
@@ -241,7 +244,7 @@ class TestSetConfig:
         mock_config.validate.return_value = []
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(
             app, ["config", "set", "core.v1.indexing.chunk_size", "1024"]
@@ -268,7 +271,7 @@ class TestSetConfig:
         mock_config.resolve_sensitive_env_var.return_value = "ATLASSIAN_TOKEN"
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(
             app, ["config", "set", "sources.jira.api_token", "supersecret123"]
@@ -299,7 +302,7 @@ class TestSetConfig:
         mock_config.resolve_sensitive_env_var.return_value = None
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(
             app, ["config", "set", "sources.unknown.api_token", "supersecret123"]
@@ -323,9 +326,9 @@ class TestSetConfig:
         ``API_TOKEN``, which no connector reads. Drives the real CLI + a real
         (unmocked) ConfigService so the connector registry is populated the
         way production populates it."""
-        from connectors.jira.schema import JiraCloudConfig
-        from indexed.app import app
-        from indexed_config.env_writer import EnvFileWriter
+        from indexed.connectors.jira.schema import JiraCloudConfig
+        from indexed.cli.app import app
+        from indexed.config.env_writer import EnvFileWriter
 
         expected_var = EnvFileWriter.get_env_var_name(
             "api_token", JiraCloudConfig.model_fields["api_token"]
@@ -370,7 +373,7 @@ class TestSetConfig:
         mock_config.load_raw.return_value = {}
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(
             app,
@@ -394,7 +397,7 @@ class TestDeleteConfig:
         mock_config.load_raw.return_value = {}
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(
             app,
@@ -414,7 +417,7 @@ class TestDeleteConfig:
         mock_config.delete.return_value = True
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "delete", "sources.jira.url", "--force"])
         assert result.exit_code == 0
@@ -431,7 +434,7 @@ class TestValidate:
         mock_config.validate.return_value = []
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "validate"])
         assert result.exit_code == 0
@@ -446,7 +449,7 @@ class TestValidate:
         ]
         mock_config_service.instance.return_value = mock_config
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "validate"])
         assert result.exit_code == 1
@@ -502,7 +505,7 @@ class TestInitConfig:
         type(mock_cwd).__truediv__ = truediv_side_effect
         type(mock_workspace_dir).__truediv__ = truediv_side_effect
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "init"])
 
@@ -548,7 +551,7 @@ class TestInitConfig:
         mock_path.cwd.return_value = mock_path_obj
         mock_path.return_value = mock_path_obj
 
-        from indexed.app import app
+        from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "init"])
         # Should exit with warning about already initialized

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from indexed.app import app
+from indexed.cli.app import app
 
 runner = CliRunner()
 
@@ -18,7 +18,7 @@ KEY = "core.v1.search.max_docs"
 
 
 def test_config_set_get_roundtrip(local_workspace) -> None:
-    from indexed_config import ConfigService
+    from indexed.config import ConfigService
 
     # --- set via the real CLI write path ---------------------------------
     result = runner.invoke(
