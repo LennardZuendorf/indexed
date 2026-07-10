@@ -125,8 +125,6 @@ markers = [
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=indexed",
-    "--cov-report=term",
 ]
 filterwarnings = [
     "ignore:.*numpy.core._multiarray_umath.*:DeprecationWarning",
@@ -136,6 +134,10 @@ filterwarnings = [
 ]
 
 # ── Coverage ────────────────────────────────────────────────────────────────
+# Coverage is scoped to the engine/connector/config layers. The CLI and MCP
+# presentation layers (indexed.cli, indexed.mcp) are UI chrome and are exempt
+# from the coverage gate; measure and enforce ≥85% on the remaining packages
+# (core, connectors, config, parsing, protocols, utils).
 [tool.coverage.run]
 source_pkgs = ["indexed"]
 source = ["src/indexed"]
@@ -145,9 +147,12 @@ omit = [
     "*/__pycache__/*",
     "*/conftest.py",
     "*/setup.py",
+    "*/indexed/cli/*",
+    "*/indexed/mcp/*",
 ]
 
 [tool.coverage.report]
+fail_under = 85
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
