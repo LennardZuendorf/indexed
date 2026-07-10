@@ -205,8 +205,8 @@ Hard constraints across all code — v2 core, new connectors, surviving infrastr
 
 ### Post-Simplify Structural Rules
 
-Promoted from `.spec/features/simplify/tech.md` § Architectural rules
-(post-simplify), as of simplify/6 — normative root rules from here on,
+Promoted from the retired Feature 14 (Simplify) tech spec as of simplify/6 —
+normative root rules from here on,
 independent of Feature 14's own DONE/PLANNED status ([plan.md](plan.md) §
 Feature Sequence). The single-package collapse, `check_imports.py` gate,
 scoped coverage config, and one `AGENTS.md` are already live in the tree; the

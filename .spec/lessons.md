@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-08
+updated: 2026-07-10
 ---
 
 # Lessons Learned
@@ -422,3 +422,32 @@ port is a different origin for credential purposes; fail closed.
   ~86 call sites (63 in tests) and structural resolver de-duplication. An 86-site
   refactor with no behavioral payoff is the wrong thing to attempt unattended as
   the last unit — R3's requirement is met without it. Documented as a follow-up.
+
+## Simplify (Feature 14, 2026-07-10)
+
+- **Mask secrets on the returned VALUE, not just the queried key.** `config get
+  --simple-output <section>` leaked nested `api_token` in cleartext because masking
+  checked `_is_sensitive_key(key)` on the queried dot-path (a section like
+  `sources.jira` isn't itself "sensitive") and then dumped the whole dict. A
+  machine-readable dump must recurse into nested dicts and mask each sensitive leaf
+  (`_mask_sensitive_raw`), exactly as `config list` does — reuse the recursive masker,
+  never a flat leaf-key check, for any command that can emit a subtree.
+- **Verify a symbol is actually dead before deleting; "phantom generality" premises
+  go stale.** The audit's simplify/2 DELETE-LIST called the indexer registry/factory
+  phantom generality, but post-Foundation `get_indexer_config`/`indexer_factory` are
+  the live path that resolves the embedding model (3 supported models) from the
+  persisted indexer name, and `manifest.indexers[]` is a byte-stable on-disk contract.
+  Deleting the factory would inline duplicated construction at four call sites (an
+  anti-simplification) and risk collection-load compat. Recon each delete-list item
+  against the CURRENT tree; defer with a documented rationale when the premise is wrong.
+- **Aspirational LOC targets can be unreachable under a feature's own non-goals;
+  extraction ≠ deletion.** Simplify's "~6k src / ~8k tests" clashed with its
+  "no v2 rewrite, no functionality removal" non-goals — the app/connector/config
+  layers are real functionality, and most of the CLI shrink was extraction into
+  services (better structure, same total LOC). Gate on the real measured baseline
+  (`check_sizes.py`: src ≤23k, tests ≤29k) to prevent regrowth, and report the gap
+  honestly rather than assert a number only a rewrite could hit.
+- **Collapsing to one package surfaces namespace collisions.** The app's CLI
+  `config/` command and the `indexed_config` package both wanted `indexed.config`;
+  resolved by merging them (config package modules + `config/cli.py` coexist under
+  `indexed.config`, with the CLI file exempted from the config-package purity edge).

@@ -40,7 +40,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `src/indexed/protocols/`; wiring since folded into `src/indexed/cli/composition.py` (Feature 13) and the graph checker into `scripts/check_imports.py` (Feature 14) |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
 | 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
-| 14 | Simplify (codebase reduction) | single package; dead code + mechanism tests deleted; CLI/config chrome + process apparatus shrunk — R1–R5 green | 📋 PLANNED | [features/simplify/](features/simplify/) |
+| 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -73,26 +73,27 @@ on them; both are folded into Feature 14 Simplify (simplify/4). Unblocks Feature
 
 ## Current Focus
 
-**Feature 14: Simplify** — **Feature 13 Foundation is DONE** (2026-07-08): every
-audited bug is fixed behind the characterization harness, typed contracts + the
-`core.v1.engine` facade + one `composition.py` wiring site are in place, and
-config is read-mostly (verified byte-stable). R1–R7 green; full suite green; mypy
-at baseline. Two config tech-refinements are deferred follow-ups (foundation/9
-note) — structure-only, not gating.
+**Feature 14 Simplify is DONE** (2026-07-10): the seven-package workspace is
+collapsed to a single `indexed` package (one wheel `indexed-sh`); dead code + chrome
+tests are removed; the CLI/config chrome is shrunk (config CLI 2061→47 over
+get/set/list/validate, `create` de-cloned to one schema-driven handler, every command
+file ≤300); the process apparatus is unvendored (one root `AGENTS.md` ≤100 lines,
+skills install from `skills-lock.json`); and the two deferred Foundation config
+cleanups (cached `get_config()/reload()`, single path/mode resolver) landed. Full
+suite + system tests green; coverage ≥85% on core/connectors/config; size + import
+gates enforced by `scripts/check_sizes.py` + `scripts/check_imports.py`.
 
-**Simplify** ([features/simplify/](features/simplify/)) is now unblocked: collapse
-the seven-package workspace to a single package, delete dead code + mechanism
-tests, and shrink CLI/config/process chrome — deletion now happens against
-correct, tested, stable contracts. The **v2 core/connectors rewrite** is gated on
-both, then swaps a module behind the facade. Issue #119 (thin commands) is
-absorbed by simplify/4.
+**No active feature.** The **v2 core/connectors rewrite** is the next horizon — it
+swaps a module behind the `core.v1.engine` facade over the same on-disk format, now
+unblocked (typed contracts + facade + one package + behavior-only suite make it a
+drop-in).
 
-**Deferred config cleanups (from Foundation, non-gating):** the
-`ConfigService.instance()` → cached `get_config()/reload()` API rename (~86 call
-sites) and the path/mode resolver consolidation (`WorkspaceManager`/
-`has_local_config` triplication → one home). Their functional harm was fixed in
-Feature 11 / foundation/6d; these are cosmetic/structural and can fold into
-Simplify's config work.
+**Non-gating deferral (Feature 14):** the indexer factory/registry + multi-indexer
+plumbing were NOT deleted — the audit's "phantom generality" premise was wrong
+post-Foundation: they are the live embedding-model resolver (3 models) bound to the
+on-disk `manifest.indexers[]` byte-stable contract; deleting them would inline
+duplicated construction at four call sites and risk collection-load compatibility.
+Left as a documented follow-up for the v2 rewrite (see Decision Log 2026-07-10).
 
 ---
 
@@ -111,6 +112,50 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-10: Feature 14 (Simplify) complete
+**Decision:** Shipped Feature 14 across six units, each a green commit: simplify/1
+(unvendor `.agents/` skills, one root `AGENTS.md` ≤100 lines, benchmark CI
+on-demand); simplify/2 (delete zero-consumer symbols — `SearchArgs`,
+`CONFIG_REGISTRY`/`get_config_class`/`list_connector_types`, dead indexer orphans,
+the never-instantiated sync Confluence reader, the dead `ProgressUpdate`/
+`ProgressCallback` system, the never-batching `indexing_batch_size` loop, the
+`_UpdatingCollectionCreator` wrapper); simplify/3 (collapse the 7-package workspace
+to one `indexed` package under `src/indexed/` in one history-preserving `git mv` +
+mechanical import rewrite, drop `una` + 8 per-package `pyproject.toml` +
+`sync_version` role, replace the graph checker with `scripts/check_imports.py`);
+simplify/4 (config CLI 2061→47 over get/set/list/validate, `create` de-cloned to one
+schema-driven handler, delete `migration.py`, thin commands so every command file
+≤300, prune unrendered Rich components, lazy connector-registry, + the two deferred
+Foundation config cleanups: `ConfigService.instance()`→cached `get_config()/reload()`
+and the single path/mode resolver); simplify/5 (prune pure Rich-chrome tests, rescope
+coverage to core/connectors/config/parsing/utils/protocols with cli/mcp exempt,
+≥85%); simplify/6 (`scripts/check_sizes.py` size gate + promote the architectural
+merge-block to root `tech.md` + reconcile all root specs to the single-package
+layout). A 5-finder adversarial bug-hunt over the refactors caught **one real
+regression** — `config get --simple-output` on a section/ancestor path leaked nested
+secrets in cleartext (masking checked only the queried key, not the returned value) —
+fixed with recursive `_mask_sensitive_raw` + a regression test. R1/R3/R4/R5 green;
+full suite + system + characterization green; mypy 0-new; validate.sh clean.
+**Deferred (R2 partial):** the indexer factory/registry + multi-indexer plumbing were
+NOT deleted. The audit's "phantom generality" premise was factually wrong
+post-Foundation — `get_indexer_config`/`indexer_factory` are the live path that
+resolves the embedding **model** (3 supported models) from the persisted indexer
+name, and the `manifest.indexers[]` array is a Foundation byte-stable on-disk
+compatibility contract. Deleting the factory would inline duplicated FaissIndexer+
+embedder construction at four call sites (an anti-simplification) and risk breaking
+existing collections; the multi-indexer flatten only touches an in-memory 1-element
+list for near-zero value. Left as a v2-rewrite follow-up.
+**Rationale / honesty on size:** the spec's aspirational "~66k→15k / ~6k src / ~8k
+tests" targets were **not** met (measured: ~21k src, ~28k tests) and are not
+reachable under this feature's own non-goals ("no v2 rewrite, no behavior/feature
+removal") — the app/connector/config layers are real functionality, and much of the
+CLI shrink was extraction/reorganization (better structure, not raw deletion). The
+genuine, durable wins are structural: one package instead of seven, ~12.6k LOC of
+vendored skills unvendored, dead code gone, a 97%-smaller config CLI, a de-cloned
+`create`, a cleaner config API, and a behavior-only suite with a scoped coverage
+gate. `check_sizes.py` guards the real measured baseline (src ≤23k, tests ≤29k) to
+prevent regrowth rather than assert a number a rewrite would be needed to hit.
 
 ### 2026-07-09: Retire the Foundation feature spec
 **Decision:** Feature 13 Foundation is DONE/merged (PR #153), so its
@@ -160,8 +205,8 @@ and the workspace collapse is deferred to Simplify. Tests-before-refactor is
 enforced structurally: foundation/1 is the harness that gates every refactor
 unit. Evidence: the full 2026-07-06 bug catalogue (~40 defects, all fixed) shipped in
 the Foundation merge (PR #153) and remains in git history; the behavior it locked in is
-regression-guarded by `tests/characterization/`. Size inventory:
-[features/simplify/research.md](features/simplify/research.md).
+regression-guarded by `tests/characterization/`. Size inventory: the 2026-07-06
+audit (shipped with Feature 14, retained in git history).
 **Rationale:** A 3-star personal project doesn't need a 7-package workspace,
 1.17× tests-to-source, or 15k LOC of process apparatus; a v2 built on stringly
 dict contracts would re-rot. Typed contracts + one facade make the core swap
