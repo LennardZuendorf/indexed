@@ -13,7 +13,7 @@ trio. Connector/core imports stay lazy so CLI startup remains <1s.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Type
 
@@ -100,7 +100,22 @@ class CliContext:
     collections_path: Path
     caches_path: Path
     config_service: ConfigService
-    connector_registry: dict[str, Any]
+    # Built lazily on first access (see ``connector_registry``): constructing it
+    # imports every connector module, so commands that never touch the registry
+    # (search/update/inspect/remove — update dispatches through the
+    # ``manifest_factory``/``get_connector_class`` seam instead) don't pay that
+    # import cost, keeping CLI startup <1s. ``compare=False`` keeps the cached
+    # value out of eq/hash.
+    _connector_registry: dict[str, Any] | None = field(default=None, compare=False)
+
+    @property
+    def connector_registry(self) -> dict[str, Any]:
+        """The connector registry, constructed on first use and then cached."""
+        registry = self._connector_registry
+        if registry is None:
+            registry = build_connector_registry()
+            object.__setattr__(self, "_connector_registry", registry)
+        return registry
 
 
 def resolve_collections_context(
@@ -119,12 +134,15 @@ def resolve_collections_context(
     register_app_config(config_service)
     mode = config_service.resolve_storage_mode()
     resolver = config_service.resolver
+    # ``connector_registry`` is intentionally omitted: CliContext builds it
+    # lazily on first access so commands that never need connectors skip the
+    # import cost (startup <1s). Create-time wiring still gets it via the
+    # ``connector_factory`` closure.
     return CliContext(
         mode=mode,
         collections_path=resolver.get_collections_path(mode),
         caches_path=resolver.get_caches_path(mode),
         config_service=config_service,
-        connector_registry=build_connector_registry(),
     )
 
 
