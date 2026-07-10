@@ -1,6 +1,6 @@
 # Indexed Config package (unversioned)
 
-from .service import ConfigService, ValidationResult
+from .service import ConfigService, ValidationResult, get_config, reload
 from .provider import Provider
 from .errors import (
     IndexedError,
@@ -25,6 +25,8 @@ __all__ = [
     # Core service
     "ConfigService",
     "ValidationResult",
+    "get_config",
+    "reload",
     "Provider",
     # Error hierarchy
     "IndexedError",

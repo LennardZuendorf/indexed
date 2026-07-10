@@ -111,7 +111,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed.config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl()
 
         mock_register.assert_called_once_with(mock_service)
@@ -141,7 +141,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed.config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl(transport="http", host="127.0.0.1")
 
         kwargs = mock_mcp.run.call_args.kwargs
@@ -168,7 +168,7 @@ class TestRunImpl:
         mock_service = MagicMock()
         mock_service.bind.return_value = mock_bind
 
-        with patch("indexed.config.ConfigService.instance", return_value=mock_service):
+        with patch("indexed.config.get_config", return_value=mock_service):
             run_impl(transport="http", port=7777)  # only port is explicit
 
         kwargs = mock_mcp.run.call_args.kwargs

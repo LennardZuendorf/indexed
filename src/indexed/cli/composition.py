@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Type
 
-from indexed.config import ConfigService
+from indexed.config import ConfigService, get_config, reload
 from indexed.config.errors import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
@@ -123,12 +123,16 @@ def resolve_collections_context(
     *,
     workspace: Path | None = None,
 ) -> CliContext:
-    config_service = ConfigService.instance(
+    # A non-None mode_override forces a fresh ConfigService (via reload()) so a
+    # runtime global→local switch is honored; get_config() otherwise reuses the
+    # cached instance.
+    if mode_override is not None:
+        reload()
+    config_service = get_config(
         workspace=workspace,
         mode_override=mode_override,  # type: ignore[arg-type]
-        reset=mode_override is not None,
     )
-    # `reset=True` above replaces the singleton with a fresh ConfigRegistry
+    # The reload() above replaces the singleton with a fresh ConfigRegistry
     # whenever a non-None mode_override is passed; re-register here (idempotent)
     # so every caller gets the specs back for free (foundation/6d E12).
     register_app_config(config_service)

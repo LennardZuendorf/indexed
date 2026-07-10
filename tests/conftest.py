@@ -22,7 +22,7 @@ from types import SimpleNamespace
 import pytest
 from pytest import MonkeyPatch
 
-from indexed.config import ConfigService
+from indexed.config import reload as reload_config
 
 # Canonical default indexer name (FAISS flat + all-MiniLM-L6-v2), matching the
 # on-disk manifest the CLI produces.
@@ -57,21 +57,21 @@ def isolate_config_paths(tmp_path_factory: pytest.TempPathFactory):
     mp.setattr(Path, "home", lambda: sandbox_home)
 
     # Reset ConfigService singleton for clean test state
-    ConfigService.reset()
+    reload_config()
 
     yield  # run the test session
 
     # Teardown: undo monkeypatches and reset ConfigService singleton
     mp.undo()
-    ConfigService.reset()
+    reload_config()
 
 
 @pytest.fixture(autouse=True)
 def reset_config_service():
     """Ensure ConfigService cache is cleared before and after each test."""
-    ConfigService.reset()
+    reload_config()
     yield
-    ConfigService.reset()
+    reload_config()
 
 
 @pytest.fixture(autouse=True)
@@ -155,7 +155,7 @@ def local_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TQDM_DISABLE", "1")
     from indexed.config import ensure_storage_dirs, get_local_root
 
-    ConfigService.reset()
+    reload_config()
     local_root = get_local_root(tmp_path)
     ensure_storage_dirs(local_root, is_local=True)
     collections_dir = local_root / "data" / "collections"

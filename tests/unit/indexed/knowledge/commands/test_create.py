@@ -51,13 +51,13 @@ class TestCreateFiles:
     """Test create_files command."""
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     def test_create_files_calls_execute_with_correct_params(
         self, mock_config_service, mock_execute
     ):
         """Should call execute_create_command with Files-specific parameters."""
         mock_config = Mock()
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         # Call the command function directly (bypassing typer)
         create_files(
@@ -90,11 +90,11 @@ class TestCreateFiles:
         assert cli_overrides["fail_fast"] is True
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     def test_create_files_with_defaults(self, mock_config_service, mock_execute):
         """Should work with default parameters."""
         mock_config = Mock()
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         create_files(
             collection="files",
@@ -128,7 +128,7 @@ class TestCreateJira:
         ids=["cloud_detection", "server_detection"],
     )
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_jira_detects_cloud_vs_server(
@@ -143,7 +143,7 @@ class TestCreateJira:
         """Should detect cloud vs server based on URL."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_jira(
@@ -164,7 +164,7 @@ class TestCreateJira:
         assert call_kwargs["source_type"] == expected_source_type
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_jira_prompts_for_url_when_missing(
@@ -173,7 +173,7 @@ class TestCreateJira:
         """Should prompt for URL when not provided."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = "https://company.atlassian.net"
 
@@ -195,7 +195,7 @@ class TestCreateJira:
         mock_execute.assert_called_once()
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.print_error")
@@ -210,7 +210,7 @@ class TestCreateJira:
         """Should exit with error when URL is empty after prompt."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = ""  # Empty URL
 
@@ -244,7 +244,7 @@ class TestCreateConfluence:
         ids=["cloud_detection", "server_detection"],
     )
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_confluence_detects_cloud_vs_server(
@@ -259,7 +259,7 @@ class TestCreateConfluence:
         """Should detect cloud vs server based on URL."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_confluence(
@@ -281,7 +281,7 @@ class TestCreateConfluence:
         assert call_kwargs["source_type"] == expected_source_type
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.print_error")
@@ -296,7 +296,7 @@ class TestCreateConfluence:
         """Should exit with error when URL is empty after prompt."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = ""
 
@@ -328,7 +328,7 @@ def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execu
 
     mock_execute.side_effect = capture_kwargs
     mock_config = Mock()
-    mock_config_service.instance.return_value = mock_config
+    mock_config_service.return_value = mock_config
     create_fn(**create_kwargs)
     return captured.get("prompt_missing_fields"), mock_config
 
@@ -356,7 +356,7 @@ class TestPromptMissingFilesFields:
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_no_missing_fields_leaves_present_unchanged(
         self, mock_console, mock_config_service, mock_execute
@@ -372,7 +372,7 @@ class TestPromptMissingFilesFields:
         assert validation.present == {}
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_user_input_for_path_stored_in_present(
         self, mock_console, mock_config_service, mock_execute
@@ -397,7 +397,7 @@ class TestPromptMissingFilesFields:
         mock_config.set_value.assert_not_called()
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.print_error")
     def test_empty_path_input_is_rejected(
@@ -422,7 +422,7 @@ class TestPromptMissingFilesFields:
         assert "path" not in validation.present
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_relative_path_input_normalized_to_absolute(
         self, mock_console, mock_config_service, mock_execute
@@ -443,7 +443,7 @@ class TestPromptMissingFilesFields:
         assert os.path.isabs(validation.present["path"])
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_include_patterns_split_by_comma(
         self, mock_console, mock_config_service, mock_execute
@@ -463,7 +463,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["include_patterns"] == ["*.md", "*.py"]
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_empty_include_patterns_defaults_to_match_all(
         self, mock_console, mock_config_service, mock_execute
@@ -483,7 +483,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["include_patterns"] == ["*"]
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_exclude_patterns_split_by_comma(
         self, mock_console, mock_config_service, mock_execute
@@ -503,7 +503,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["exclude_patterns"] == ["*.log", "*.tmp"]
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_empty_exclude_patterns_defaults_to_empty_list(
         self, mock_console, mock_config_service, mock_execute
@@ -523,7 +523,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["exclude_patterns"] == []
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_yes_input_for_fail_fast_sets_true(
         self, mock_console, mock_config_service, mock_execute
@@ -541,7 +541,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["fail_fast"] is True
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_no_input_for_fail_fast_sets_false(
         self, mock_console, mock_config_service, mock_execute
@@ -559,7 +559,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["fail_fast"] is False
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_unknown_field_uses_generic_prompt(
         self, mock_console, mock_config_service, mock_execute
@@ -577,7 +577,7 @@ class TestPromptMissingFilesFields:
         assert validation.present["some_field"] == "custom_value"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     def test_verbose_mode_still_populates_present(
@@ -614,7 +614,7 @@ class TestPromptMissingJiraFields:
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_only_url_missing_leaves_present_empty(
         self, mock_console, mock_config_service, mock_execute
@@ -630,7 +630,7 @@ class TestPromptMissingJiraFields:
         assert validation.present == {}
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.is_credential_field")
     def test_jql_query_input_stored_in_present(
@@ -650,7 +650,7 @@ class TestPromptMissingJiraFields:
         assert validation.present["query"] == "project = PROJ"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.is_credential_field")
     def test_unknown_field_uses_generic_prompt(
@@ -670,7 +670,7 @@ class TestPromptMissingJiraFields:
         assert validation.present["custom_field"] == "some_value"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.is_credential_field")
     @patch("indexed.cli.knowledge.commands.create.prompt_credential_field")
@@ -742,7 +742,7 @@ class TestCreateOutline:
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_with_explicit_url(
@@ -753,7 +753,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_outline(**{**self._default_kwargs, "url": "https://app.getoutline.com"})
@@ -763,7 +763,7 @@ class TestCreateOutline:
         assert call_kwargs["source_type"] == "outline"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_prompts_for_url_when_missing(
@@ -774,7 +774,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = (
             ""  # User presses Enter → use default Cloud URL
@@ -791,7 +791,7 @@ class TestCreateOutline:
         )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_uses_provided_url(
@@ -802,7 +802,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_outline(
@@ -818,7 +818,7 @@ class TestCreateOutline:
         )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_token_added_to_cli_overrides(
@@ -829,7 +829,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_outline(
@@ -845,7 +845,7 @@ class TestCreateOutline:
         assert call_kwargs["cli_overrides"]["api_token"] == "my-token"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_collection_ids_passed(
@@ -856,7 +856,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_outline(
@@ -872,7 +872,7 @@ class TestCreateOutline:
         assert call_kwargs["cli_overrides"]["collection_ids"] == ["col-1", "col-2"]
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_url_from_config(
@@ -883,7 +883,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = "https://outline.configured.com"
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         create_outline(**self._default_kwargs)
@@ -892,7 +892,7 @@ class TestCreateOutline:
         mock_execute.assert_called_once()
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_outline_custom_url_prompts(
@@ -903,7 +903,7 @@ class TestCreateOutline:
 
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = "https://wiki.myorg.com"
 
@@ -934,7 +934,7 @@ class TestPromptMissingOutlineFields:
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_no_missing_fields_is_noop(
@@ -953,7 +953,7 @@ class TestPromptMissingOutlineFields:
         mock_console.input.assert_not_called()
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_url_excluded_from_missing_fields(
@@ -972,7 +972,7 @@ class TestPromptMissingOutlineFields:
         mock_console.input.assert_not_called()
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     @patch("indexed.cli.knowledge.commands.create.prompt_credential_field")
@@ -1003,7 +1003,7 @@ class TestPromptMissingOutlineFields:
         assert validation.present["api_token"] == "secret-token"
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_non_credential_field_uses_console_input(
@@ -1048,7 +1048,7 @@ class TestBuildOutlineSourceConfig:
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_build_source_config_creates_outline_config(
@@ -1066,7 +1066,7 @@ class TestBuildOutlineSourceConfig:
         mock_execute.side_effect = capture_kwargs
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         MockSourceConfig = Mock(return_value=Mock())
@@ -1105,7 +1105,7 @@ class TestStorageIndicatorOrdering:
     """Verify indicator prints before connector header/prompts (critical-bugs/4)."""
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_jira_indicator_before_configuration_heading(
@@ -1114,7 +1114,7 @@ class TestStorageIndicatorOrdering:
         """Indicator must appear before 'Jira Configuration' heading."""
         mock_config = Mock()
         mock_config.get.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_console.input.return_value = "https://jira.example.com"
 
@@ -1151,7 +1151,7 @@ class TestStorageIndicatorOrdering:
         assert call_order.index("indicator") < call_order.index("heading")
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.ConfigService")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_indicator_printed_exactly_once(
@@ -1160,7 +1160,7 @@ class TestStorageIndicatorOrdering:
         """Indicator not duplicated — execute_create_command no longer calls it."""
         mock_config = Mock()
         mock_config.get.return_value = "https://jira.example.com"
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         with patch(

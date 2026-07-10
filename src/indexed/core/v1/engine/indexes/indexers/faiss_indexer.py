@@ -14,9 +14,9 @@ def _resolve_embedding_batch_size() -> int:
 
     try:
         from indexed.core.v1.config_models import CoreV1EmbeddingConfig
-        from indexed.config import ConfigService
+        from indexed.config import get_config
 
-        provider = ConfigService.instance().bind()
+        provider = get_config().bind()
         return provider.get(CoreV1EmbeddingConfig).batch_size
     except Exception:
         return DEFAULT_EMBEDDING_BATCH_SIZE

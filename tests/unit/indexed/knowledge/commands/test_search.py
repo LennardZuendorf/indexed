@@ -216,7 +216,9 @@ class TestFormatSearchResults:
             "coll1": {"results": [{"id": "doc1"}]},
         }
 
-        search_render.format_search_results("query", results=results, show_content=False)
+        search_render.format_search_results(
+            "query", results=results, show_content=False
+        )
 
         joined = "\n".join(outputs)
         # The compact path should list the collection

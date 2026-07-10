@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator, Type, TypedDict
 from fastmcp import FastMCP
 
 from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
-from indexed.config import ConfigService
+from indexed.config import get_config
 
 from indexed.cli.composition import register_app_config
 from indexed.cli.composition import CliContext, resolve_collections_context
@@ -35,7 +35,7 @@ class LifespanState(TypedDict):
 def _get_config(model_cls: Type[Any]) -> Any:
     """Load configuration for the given model class, falling back to defaults."""
     try:
-        provider = ConfigService.instance().bind()
+        provider = get_config().bind()
         return provider.get(model_cls)
     except Exception:
         return model_cls()
@@ -44,7 +44,7 @@ def _get_config(model_cls: Type[Any]) -> Any:
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     """Server lifespan context manager for configuration initialization."""
-    config_service = ConfigService.instance()
+    config_service = get_config()
     register_app_config(config_service)
     cli_context = resolve_collections_context()
     mcp_config = _get_config(MCPConfig)

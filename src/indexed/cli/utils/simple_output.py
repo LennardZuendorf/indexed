@@ -57,9 +57,9 @@ def _resolve_from_env_and_config() -> bool:
         return False
 
     try:
-        from indexed.config import ConfigService
+        from indexed.config import get_config
 
-        cfg = ConfigService.instance().load_raw()
+        cfg = get_config().load_raw()
         val = (cfg.get("output", {}) or {}).get("simple_output")
         if isinstance(val, bool):
             return val

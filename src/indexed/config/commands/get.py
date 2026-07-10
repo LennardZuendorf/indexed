@@ -4,8 +4,9 @@ from typing import Optional
 
 import typer
 
-# Import ConfigService at module level so tests can patch it.
-from indexed.config import ConfigService
+# Aliased at module level (the command below is itself named ``get_config``) so
+# tests can patch this seam without shadowing the Typer command.
+from indexed.config import get_config as _resolve_config
 from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_detail_card,
@@ -49,7 +50,7 @@ def get_config(
     """
     setup_command_logging(verbose, json_logs, log_level)
 
-    config = ConfigService.instance()
+    config = _resolve_config()
     from indexed.config.path_utils import get_by_path
 
     raw = config.load_raw() or {}

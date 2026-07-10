@@ -24,7 +24,7 @@ from .storage import (
     get_local_root,
     get_config_path,
     get_env_path as storage_get_env_path,
-    has_local_config,
+    resolve_storage_mode,
 )
 
 
@@ -86,15 +86,18 @@ class TomlStore:
 
     @property
     def _env_path(self) -> Path:
-        """Resolved .env file path (global or workspace)."""
-        if self._mode_override == "global":
-            return storage_get_env_path(get_global_root())
-        if self._mode_override == "local":
-            return storage_get_env_path(get_local_root(self.workspace))
-        # Auto-detect: local only if local config already exists
-        if has_local_config(self.workspace):
-            return storage_get_env_path(get_local_root(self.workspace))
-        return storage_get_env_path(get_global_root())
+        """Resolved .env file path (global or workspace).
+
+        No workspace preference here (TomlStore only sees the CLI override and the
+        local-config auto-detect), so ``workspace_preference`` is left None.
+        """
+        mode = resolve_storage_mode(
+            mode_override=self._mode_override,
+            workspace_preference=None,
+            workspace=self.workspace,
+        )
+        root = get_local_root(self.workspace) if mode == "local" else get_global_root()
+        return storage_get_env_path(root)
 
     @property
     def _global_env_path(self) -> Path:
@@ -370,15 +373,14 @@ class TomlStore:
         """
         if to_global:
             return self.global_path
-        if self._mode_override == "global":
-            return self.global_path
-        if self._mode_override == "local":
-            return self.workspace_path
-        # Default: follow auto-detection (same as StorageResolver.resolve_root)
-        # Write to local only if a local config already exists; otherwise global
-        if has_local_config(self.workspace):
-            return self.workspace_path
-        return self.global_path
+        # Follow the shared cascade (same as StorageResolver.resolve_root); with
+        # no workspace preference this is: override → local-config-present → global.
+        mode = resolve_storage_mode(
+            mode_override=self._mode_override,
+            workspace_preference=None,
+            workspace=self.workspace,
+        )
+        return self.workspace_path if mode == "local" else self.global_path
 
     def resolved_config_path(self) -> Path:
         """Return the config.toml path a plain ``write()`` would target right now.

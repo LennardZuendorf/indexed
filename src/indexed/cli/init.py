@@ -58,12 +58,12 @@ def init(
         get_cache_info,
         is_model_cached,
     )
-    from indexed.config import ConfigService, ensure_storage_dirs, get_global_root
+    from indexed.config import get_config, ensure_storage_dirs, get_global_root
 
     model_name = model or DEFAULT_MODEL
 
     # Initialize ConfigService and display storage mode
-    ConfigService.instance()
+    get_config()
     display_storage_mode_for_command(console)
 
     heading = get_heading_style()
@@ -81,7 +81,7 @@ def init(
         # Phase 2: Validate configuration
         progress.start_phase("Validating configuration")
         try:
-            ConfigService.instance()
+            get_config()
         except Exception as e:
             print_warning(str(e))
         progress.finish_phase("Validating configuration")

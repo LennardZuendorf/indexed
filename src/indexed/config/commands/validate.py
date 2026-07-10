@@ -8,8 +8,8 @@ from rich.panel import Panel
 from rich.console import Group
 from rich.text import Text
 
-# Import ConfigService at module level so tests can patch it.
-from indexed.config import ConfigService
+# Import get_config at module level so tests can patch it.
+from indexed.config import get_config
 from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     get_heading_style,
@@ -53,7 +53,7 @@ def validate(
     """
     setup_command_logging(verbose, json_logs, log_level)
 
-    config = ConfigService.instance()
+    config = get_config()
     errs = config.validate()
 
     console.print()

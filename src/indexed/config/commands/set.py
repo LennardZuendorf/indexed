@@ -5,8 +5,8 @@ from typing import Any, Optional
 import typer
 from loguru import logger
 
-# Import ConfigService at module level so tests can patch it.
-from indexed.config import ConfigService
+# Import get_config at module level so tests can patch it.
+from indexed.config import get_config
 from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_detail_card,
@@ -55,7 +55,7 @@ def set_config(
     """Set a configuration value at dot-path in workspace config."""
     setup_command_logging(verbose, json_logs, log_level)
 
-    config = ConfigService.instance()
+    config = get_config()
     coerced = _coerce_value(value)
 
     # Get old value if exists

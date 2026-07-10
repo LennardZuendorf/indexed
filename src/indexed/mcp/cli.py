@@ -156,7 +156,7 @@ def run_impl(
     """Run the MCP server using FastMCP Python API directly."""
     from indexed.core.v1.config_models import MCPConfig
     from indexed.cli.composition import register_app_config
-    from indexed.config import ConfigService
+    from indexed.config import get_config
 
     from .server import mcp
 
@@ -165,7 +165,7 @@ def run_impl(
     cfg_log_level: str = "INFO"
 
     try:
-        config_service = ConfigService.instance()
+        config_service = get_config()
         register_app_config(config_service)
         mcp_cfg = config_service.bind().get(MCPConfig)
         cfg_host = mcp_cfg.host

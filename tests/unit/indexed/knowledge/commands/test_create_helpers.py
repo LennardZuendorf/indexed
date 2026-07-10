@@ -13,9 +13,9 @@ from tests.unit.indexed.conftest import TEST_COLLECTIONS_PATH, make_cli_context
 @pytest.fixture(autouse=True)
 def _patch_runtime_context():
     def resolve_context(*args, **kwargs):
-        from indexed.cli.knowledge.commands import _create_helpers as helpers
+        from indexed.config import get_config
 
-        return make_cli_context(helpers.ConfigService.instance())
+        return make_cli_context(get_config())
 
     with (
         patch(
@@ -34,7 +34,7 @@ class TestExecuteCreateCommand:
     """Test execute_create_command function."""
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -55,7 +55,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -100,7 +100,7 @@ class TestExecuteCreateCommand:
         assert mock_config.clear_overlay.call_count == 2
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -121,7 +121,7 @@ class TestExecuteCreateCommand:
             missing=["path"],
             field_info={"path": {"sensitive": False}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         prompt_called = []
@@ -164,7 +164,7 @@ class TestExecuteCreateCommand:
         mock_create.assert_called_once()
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.print_error")
@@ -183,7 +183,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_create.side_effect = Exception("Creation failed")
 
@@ -218,7 +218,7 @@ class TestExecuteCreateCommand:
         mock_config.clear_overlay.assert_called()
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -239,7 +239,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         # Return empty list (collection not found)
@@ -273,7 +273,7 @@ class TestExecuteCreateCommand:
         mock_print_error.assert_called()
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -294,7 +294,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -330,7 +330,7 @@ class TestExecuteCreateCommand:
         mock_print_error.assert_called()
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.logger")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
@@ -353,7 +353,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={"path": {"sensitive": False}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = True
 
         mock_status_item = MagicMock()
@@ -395,7 +395,7 @@ class TestExecuteCreateCommand:
         "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
     )
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -418,7 +418,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = True
 
         mock_status_item = MagicMock()
@@ -461,7 +461,7 @@ class TestExecuteCreateCommand:
         assert pre_creation_log_called[0]["url"] == "https://test.com"
 
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -482,7 +482,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
         mock_status.side_effect = Exception("Status lookup failed")
 
@@ -521,7 +521,7 @@ class TestExecuteCreateCommand:
         "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
     )
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -544,7 +544,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()
@@ -590,7 +590,7 @@ class TestExecuteCreateCommand:
         "indexed.cli.knowledge.commands._create_helpers.apply_cli_credential_overrides"
     )
     @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
-    @patch("indexed.cli.knowledge.commands._create_helpers.ConfigService")
+    @patch("indexed.config.get_config")
     @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
@@ -613,7 +613,7 @@ class TestExecuteCreateCommand:
             missing=[],
             field_info={"api_token": {"sensitive": True}},
         )
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
         mock_verbose.return_value = False
 
         mock_status_item = MagicMock()

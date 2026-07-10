@@ -22,7 +22,7 @@ import typer
 from loguru import logger
 
 # Imported at module level so the create tests can patch these seams.
-from indexed.config import ConfigService, ValidationResult
+from indexed.config import ConfigService, ValidationResult, get_config
 
 from ...utils.logging import is_verbose_mode
 from ...utils.console import console
@@ -197,7 +197,7 @@ def _create(
 
     # Storage indicator prints once here, before any connector header/prompt
     # (critical-bugs/4); execute_create_command no longer prints it.
-    config = ConfigService.instance(mode_override="local" if local else None)
+    config = get_config(mode_override="local" if local else None)
     _display_storage_indicator(verbose, log_level)
 
     resolved_url: Optional[str] = None

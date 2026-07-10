@@ -123,16 +123,16 @@ class TestConfigLoading:
     def test_get_mcp_config_fallback_on_error(self) -> None:
         from indexed.core.v1.config_models import MCPConfig
 
-        with patch.object(server_module, "ConfigService") as mock_config:
-            mock_config.instance.side_effect = Exception("Config error")
+        with patch.object(server_module, "get_config") as mock_config:
+            mock_config.side_effect = Exception("Config error")
             config = _get_config(MCPConfig)
             assert isinstance(config, MCPConfig)
 
     def test_get_search_config_fallback_on_error(self) -> None:
         from indexed.core.v1.config_models import CoreV1SearchConfig
 
-        with patch.object(server_module, "ConfigService") as mock_config:
-            mock_config.instance.side_effect = Exception("Config error")
+        with patch.object(server_module, "get_config") as mock_config:
+            mock_config.side_effect = Exception("Config error")
             config = _get_config(CoreV1SearchConfig)
             assert isinstance(config, CoreV1SearchConfig)
 

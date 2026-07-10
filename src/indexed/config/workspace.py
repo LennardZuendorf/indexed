@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .path_utils import get_by_path
-from .storage import StorageMode, StorageResolver, has_local_config
+from .storage import (
+    StorageMode,
+    StorageResolver,
+    resolve_storage_mode as _resolve_mode,
+)
 from .store import TomlStore
 
 # Workspace config section in config
@@ -106,23 +110,18 @@ class WorkspaceManager:
     def resolve_storage_mode(self) -> StorageMode:
         """Determine the effective storage mode for the current workspace.
 
-        Resolution order:
-        1. CLI mode_override
-        2. Workspace preference
-        3. Auto-detect (local config exists → local)
-        4. Default "global"
+        Delegates the flag → workspace-pref → local-config → global cascade to
+        the shared ``storage.resolve_storage_mode``. ``get_preference()`` is only
+        consulted when no CLI override is set (it reads the global config, so the
+        short-circuit avoids a needless read).
         """
-        if self._mode_override:
-            return self._mode_override
-
-        pref = self.get_preference()
-        if pref:
-            return pref
-
-        if has_local_config(self._workspace):
-            return "local"
-
-        return "global"
+        return _resolve_mode(
+            mode_override=self._mode_override,
+            workspace_preference=(
+                None if self._mode_override else self.get_preference()
+            ),
+            workspace=self._workspace,
+        )
 
     def get_collections_path(self) -> Path:
         """Return the collections directory path for the resolved storage mode."""

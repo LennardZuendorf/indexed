@@ -160,6 +160,42 @@ def has_global_config() -> bool:
     return get_config_path(get_global_root()).exists()
 
 
+def resolve_storage_mode(
+    *,
+    mode_override: Optional[StorageMode],
+    workspace_preference: Optional[StorageMode] = None,
+    workspace: Optional[Path] = None,
+) -> StorageMode:
+    """Resolve the effective storage mode from the standard cascade.
+
+    Single source of truth for the resolution matrix shared by every config-layer
+    consumer (``StorageResolver``, ``WorkspaceManager``, ``TomlStore``). Do not
+    re-implement this cascade elsewhere.
+
+    Resolution order:
+        1. CLI mode override (``mode_override``)
+        2. Workspace preference (``workspace_preference``)
+        3. Auto-detect: a local ``.indexed/config.toml`` present → ``"local"``
+        4. Default ``"global"``
+
+    Parameters:
+        mode_override: Explicit CLI mode ("global"/"local"); wins when set.
+        workspace_preference: Workspace-configured preference, if any.
+        workspace: Workspace directory for the local-config auto-detect; defaults
+            to the current working directory.
+
+    Returns:
+        The resolved storage mode ("global" or "local").
+    """
+    if mode_override:
+        return mode_override
+    if workspace_preference:
+        return workspace_preference
+    if has_local_config(workspace):
+        return "local"
+    return "global"
+
+
 def _ensure_gitignore(root: Path) -> None:
     """Ensure a .gitignore exists in root with a .env entry.
 
@@ -280,24 +316,12 @@ class StorageResolver:
         Returns:
             Path: The resolved storage root path.
         """
-        # CLI flag takes precedence
-        if self._mode_override == "local":
-            return self.local_root
-        if self._mode_override == "global":
-            return self.global_root
-
-        # Then workspace preference
-        if workspace_preference == "local":
-            return self.local_root
-        if workspace_preference == "global":
-            return self.global_root
-
-        # Auto-detect: if local config exists, use local root
-        if has_local_config(self._workspace):
-            return self.local_root
-
-        # Default to global
-        return self.global_root
+        mode = resolve_storage_mode(
+            mode_override=self._mode_override,
+            workspace_preference=workspace_preference,
+            workspace=self._workspace,
+        )
+        return self.local_root if mode == "local" else self.global_root
 
     def get_collections_path(
         self,

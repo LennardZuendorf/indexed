@@ -40,10 +40,10 @@ def _load_search_config():
     fix — see ``runtime.py``).
     """
     from indexed.core.v1.config_models import CoreV1SearchConfig
-    from indexed.config import ConfigService
+    from indexed.config import get_config
 
     try:
-        provider = ConfigService.instance().bind()
+        provider = get_config().bind()
         return provider.get(CoreV1SearchConfig)
     except Exception:
         return CoreV1SearchConfig()

@@ -4,8 +4,8 @@ from typing import Optional
 
 import typer
 
-# Import ConfigService at module level so tests can patch it.
-from indexed.config import ConfigService
+# Import get_config at module level so tests can patch it.
+from indexed.config import get_config
 
 from ._helpers import setup_command_logging, _mask_sensitive_raw
 from ._render import render_config_overview
@@ -52,7 +52,7 @@ def list_config(
     """
     setup_command_logging(verbose, json_logs, log_level)
 
-    config = ConfigService.instance()
+    config = get_config()
     raw = config.load_raw()
 
     from indexed.cli.utils.simple_output import is_simple_output, print_json

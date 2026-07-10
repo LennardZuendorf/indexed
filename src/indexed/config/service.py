@@ -27,16 +27,17 @@ class ValidationResult(BaseModel):
 
 
 class ConfigService:
-    """Singleton registry + I/O for application configuration.
+    """Registry + I/O for application configuration.
 
     Thin orchestrator that delegates to:
     - ConfigRegistry: spec registration
     - WorkspaceManager: workspace preferences, storage paths, conflict detection
     - EnvFileWriter: sensitive field routing to .env files
     - TomlStore: raw TOML I/O
-    """
 
-    _instance: "ConfigService" | None = None
+    Access the process-wide cached instance via the module-level
+    ``get_config()``; clear it with ``reload()``.
+    """
 
     def __init__(
         self,
@@ -62,33 +63,6 @@ class ConfigService:
         # values through to from_config() reads without persisting them
         # (foundation/6b, bug E4). Cleared per runtime flow via clear_overlay().
         self._overlay: Dict[str, Any] = {}
-
-    # ── Singleton ────────────────────────────────────────────────────────
-
-    @classmethod
-    def instance(
-        cls,
-        *,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
-        reset: bool = False,
-    ) -> "ConfigService":
-        """Get or create the singleton ConfigService."""
-        if (
-            cls._instance is None
-            or reset
-            or (
-                mode_override is not None
-                and cls._instance._mode_override != mode_override
-            )
-        ):
-            cls._instance = cls(workspace=workspace, mode_override=mode_override)
-        return cls._instance
-
-    @classmethod
-    def reset(cls) -> None:
-        """Clear the singleton."""
-        cls._instance = None
 
     # ── Properties ───────────────────────────────────────────────────────
 
@@ -356,3 +330,35 @@ class ConfigService:
     def resolve_storage_mode(self) -> StorageMode:
         """Determine the effective storage mode for the current workspace."""
         return self._workspace.resolve_storage_mode()
+
+
+# ── Cached accessor ──────────────────────────────────────────────────────
+
+_config_singleton: Optional[ConfigService] = None
+
+
+def get_config(
+    *,
+    workspace: Optional[Path] = None,
+    mode_override: Optional[StorageMode] = None,
+) -> ConfigService:
+    """Return the process-wide cached ConfigService, creating it on first use.
+
+    Rebuilds the cached instance when ``mode_override`` is supplied and differs
+    from the cached one (so switching between global/local at runtime yields a
+    correctly-scoped service). Call ``reload()`` to force a fresh instance.
+    """
+    global _config_singleton
+    if _config_singleton is None or (
+        mode_override is not None and _config_singleton._mode_override != mode_override
+    ):
+        _config_singleton = ConfigService(
+            workspace=workspace, mode_override=mode_override
+        )
+    return _config_singleton
+
+
+def reload() -> None:
+    """Clear the cached ConfigService so the next ``get_config()`` rebuilds it."""
+    global _config_singleton
+    _config_singleton = None

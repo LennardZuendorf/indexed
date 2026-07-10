@@ -1,6 +1,6 @@
 """Tests for unified CLI/MCP runtime context resolution."""
 
-from indexed.config import ConfigService, get_global_root, get_local_root
+from indexed.config import get_config, reload, get_global_root, get_local_root
 from indexed.cli.composition import CliContext, resolve_collections_context
 
 
@@ -15,7 +15,7 @@ def test_resolve_collections_context_global_mode(tmp_path, monkeypatch):
     assert ctx.collections_path == expected
     assert ctx.caches_path == get_global_root() / "data" / "caches"
     assert ctx.connector_registry
-    assert ctx.config_service is ConfigService.instance()
+    assert ctx.config_service is get_config()
 
 
 def test_resolve_collections_context_local_mode(tmp_path, monkeypatch):
@@ -42,7 +42,7 @@ def test_local_override_resets_singleton(tmp_path, monkeypatch):
 
 def test_resolve_collections_context_restores_registered_specs(tmp_path, monkeypatch):
     """Regression (foundation/6d root-cause fix): resolve_collections_context
-    forces ``ConfigService.instance(reset=True)`` whenever a non-None
+    forces a fresh ConfigService (via ``reload()``) whenever a non-None
     ``mode_override`` is passed — this used to silently drop every spec a
     prior ``register_app_config`` call had registered, so a configured
     ``core.v1.embedding.batch_size`` was invisible to
@@ -64,7 +64,7 @@ def test_resolve_collections_context_restores_registered_specs(tmp_path, monkeyp
     try:
         # Mirrors app.py's callback: register specs once, then persist a
         # distinctive value the way `config set` does (disk, not overlay).
-        svc = ConfigService.instance(workspace=tmp_path, mode_override="local")
+        svc = get_config(workspace=tmp_path, mode_override="local")
         register_app_config(svc)
         svc.set("core.v1.embedding.batch_size", 77)
         assert svc.bind().get(CoreV1EmbeddingConfig).batch_size == 77
@@ -77,4 +77,4 @@ def test_resolve_collections_context_restores_registered_specs(tmp_path, monkeyp
             "mode_override singleton reset in resolve_collections_context"
         )
     finally:
-        ConfigService.reset()
+        reload()

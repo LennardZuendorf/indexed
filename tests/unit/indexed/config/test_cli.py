@@ -182,7 +182,7 @@ class TestMaskSensitiveRaw:
 class TestList:
     """Test list command (folds the former inspect resolved-config view)."""
 
-    @patch("indexed.config.commands.list.ConfigService")
+    @patch("indexed.config.commands.list.get_config")
     def test_list_no_arguments(self, mock_config_service):
         """Should display full config overview without arguments."""
         mock_config = Mock()
@@ -190,7 +190,7 @@ class TestList:
             "sources": {"jira": {"url": "https://company.atlassian.net"}}
         }
         mock_config.get_workspace_config.return_value = {"mode": "local"}
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -200,7 +200,7 @@ class TestList:
             "Configuration Overview" in result.stdout or "jira" in result.stdout.lower()
         )
 
-    @patch("indexed.config.commands.list.ConfigService")
+    @patch("indexed.config.commands.list.get_config")
     def test_list_simple_output(self, mock_config_service):
         """Should output JSON when --simple-output flag is provided."""
         from indexed.cli.utils.simple_output import (
@@ -211,7 +211,7 @@ class TestList:
         mock_config = Mock()
         mock_config.load_raw.return_value = {"sources": {"files": {"path": "/data"}}}
         mock_config.get_workspace_config.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -223,7 +223,7 @@ class TestList:
         finally:
             reset_simple_output()
 
-    @patch("indexed.config.commands.list.ConfigService")
+    @patch("indexed.config.commands.list.get_config")
     def test_list_simple_output_masks_secret(self, mock_config_service):
         """C1: a secret reaching merged config must be masked in JSON output."""
         from indexed.cli.utils.simple_output import (
@@ -236,7 +236,7 @@ class TestList:
             "sources": {"jira": {"api_token": "supersecret123"}}
         }
         mock_config.get_workspace_config.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -253,14 +253,14 @@ class TestList:
 class TestGetConfig:
     """Test get command."""
 
-    @patch("indexed.config.commands.get.ConfigService")
+    @patch("indexed.config.commands.get._resolve_config")
     def test_get_existing_key(self, mock_config_service):
         """Should render the value at a dot-path from merged config."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {
             "core": {"v1": {"indexing": {"chunk_size": 1024}}}
         }
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -268,14 +268,14 @@ class TestGetConfig:
         assert result.exit_code == 0
         assert "1024" in result.stdout
 
-    @patch("indexed.config.commands.get.ConfigService")
+    @patch("indexed.config.commands.get._resolve_config")
     def test_get_masks_secret(self, mock_config_service):
         """C1: a sensitive value must be masked, never echoed in cleartext."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {
             "sources": {"jira": {"api_token": "supersecret123"}}
         }
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -284,12 +284,12 @@ class TestGetConfig:
         assert "supersecret123" not in result.stdout
         assert "*****" in result.stdout
 
-    @patch("indexed.config.commands.get.ConfigService")
+    @patch("indexed.config.commands.get._resolve_config")
     def test_get_missing_key(self, mock_config_service):
         """Should inform the user when the key is not set."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {}
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -301,13 +301,13 @@ class TestGetConfig:
 class TestSetConfig:
     """Test set command."""
 
-    @patch("indexed.config.commands.set.ConfigService")
+    @patch("indexed.config.commands.set.get_config")
     def test_set_config_value(self, mock_config_service):
         """Should set a config value."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {}
         mock_config.validate.return_value = []
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -321,7 +321,7 @@ class TestSetConfig:
             "core.v1.indexing.chunk_size", 1024, field_info={"sensitive": False}
         )
 
-    @patch("indexed.config.commands.set.ConfigService")
+    @patch("indexed.config.commands.set.get_config")
     def test_set_config_secret_routes_to_env_and_masks_output(
         self, mock_config_service
     ):
@@ -334,7 +334,7 @@ class TestSetConfig:
         mock_config.load_raw.return_value = {}
         mock_config.validate.return_value = []
         mock_config.resolve_sensitive_env_var.return_value = "ATLASSIAN_TOKEN"
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -354,7 +354,7 @@ class TestSetConfig:
         # set() (the plaintext-TOML path) must never be called directly.
         mock_config.set.assert_not_called()
 
-    @patch("indexed.config.commands.set.ConfigService")
+    @patch("indexed.config.commands.set.get_config")
     def test_set_config_secret_unmapped_key_warns_and_falls_back(
         self, mock_config_service
     ):
@@ -365,7 +365,7 @@ class TestSetConfig:
         mock_config.load_raw.return_value = {}
         mock_config.validate.return_value = []
         mock_config.resolve_sensitive_env_var.return_value = None
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -431,12 +431,12 @@ class TestSetConfig:
 
         assert dotenv_values(str(env_path)).get(expected_var) == "supersecret123"
 
-    @patch("indexed.config.commands.set.ConfigService")
+    @patch("indexed.config.commands.set.get_config")
     def test_set_config_dry_run(self, mock_config_service):
         """Should preview change without saving in dry-run mode."""
         mock_config = Mock()
         mock_config.load_raw.return_value = {}
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -455,12 +455,12 @@ class TestSetConfig:
 class TestValidate:
     """Test validate command."""
 
-    @patch("indexed.config.commands.validate.ConfigService")
+    @patch("indexed.config.commands.validate.get_config")
     def test_validate_success(self, mock_config_service):
         """Should report success when config is valid."""
         mock_config = Mock()
         mock_config.validate.return_value = []
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
@@ -468,14 +468,14 @@ class TestValidate:
         assert result.exit_code == 0
         assert "valid" in result.stdout.lower()
 
-    @patch("indexed.config.commands.validate.ConfigService")
+    @patch("indexed.config.commands.validate.get_config")
     def test_validate_failure(self, mock_config_service):
         """Should report errors when config is invalid."""
         mock_config = Mock()
         mock_config.validate.return_value = [
             ("sources.jira.url", "URL format is invalid"),
         ]
-        mock_config_service.instance.return_value = mock_config
+        mock_config_service.return_value = mock_config
 
         from indexed.cli.app import app
 
