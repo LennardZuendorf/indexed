@@ -228,24 +228,17 @@ app.add_typer(
     hidden=True,
 )
 app.command(
-    "config inspect",
-    rich_help_panel=CONFIG_PANEL,
-    help="Inspect Configuration Settings",
-)(config.inspect)
-app.command(
-    "config update",
-    rich_help_panel=CONFIG_PANEL,
-    help="Update Configuration Settings Interactively",
-)(config.update)
+    "config get", rich_help_panel=CONFIG_PANEL, help="Get A Configuration Value"
+)(config.get_config)
 app.command(
     "config set", rich_help_panel=CONFIG_PANEL, help="Set Configuration Values"
 )(config.set_config)
 app.command(
+    "config list", rich_help_panel=CONFIG_PANEL, help="List Resolved Configuration"
+)(config.list_config)
+app.command(
     "config validate", rich_help_panel=CONFIG_PANEL, help="Validate Configuration"
 )(config.validate)
-app.command(
-    "config delete", rich_help_panel=CONFIG_PANEL, help="Delete Configuration Keys"
-)(config.delete_config)
 
 app.add_typer(
     mcp.app,

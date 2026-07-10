@@ -27,11 +27,20 @@ SRC = ROOT / "src" / "indexed"
 
 _UP = frozenset({"cli", "mcp"})
 
-# The `indexed config` CLI command lives at config/cli.py (merged there so it
-# shares the `indexed.config` command namespace, see simplify/3). It is a
-# CLI-layer file — it may import core models and cli utils — so it is exempt
-# from the config *package* purity rule. The config package modules stay pure.
+# The `indexed config` CLI command lives at config/cli.py and its per-command
+# modules under config/commands/ (merged there so they share the
+# `indexed.config` command namespace, see simplify/3 & simplify/4). These are
+# CLI-layer files — they may import core models and cli utils — so they are
+# exempt from the config *package* purity rule. The config package modules
+# themselves stay pure.
 EXEMPT = frozenset({Path("config") / "cli.py"})
+_EXEMPT_DIRS = frozenset({Path("config") / "commands"})
+
+
+def _is_exempt(rel: Path) -> bool:
+    """True for CLI-layer files that live inside the config package."""
+    return rel in EXEMPT or any(parent in _EXEMPT_DIRS for parent in rel.parents)
+
 
 FORBIDDEN: dict[str, frozenset[str]] = {
     "core": frozenset({"connectors"}) | _UP,
@@ -67,7 +76,7 @@ def check(src: Path = SRC) -> list[str]:
         rel = path.relative_to(src)
         if len(rel.parts) < 2:  # top-level module (e.g. __init__.py)
             continue
-        if rel in EXEMPT:  # merged CLI command living inside a package dir
+        if _is_exempt(rel):  # merged CLI command living inside a package dir
             continue
         source_sub = rel.parts[0]
         forbidden = FORBIDDEN.get(source_sub)
