@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-07-11
 ---
 
 # Tech Spec: indexed
@@ -159,6 +159,36 @@ uv run pytest tests/unit/indexed_core/ -q # one package
 uv run pytest -q --cov=src --cov-report=html
 ```
 
+### CI Benchmarking
+
+Performance regressions are caught in CI, not via local scripts. The former
+`.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
+diff logic) were deleted and replaced by the third-party composite action
+[`lennardzuendorf/pytest-bench-action@v0.0.1`](https://github.com/LennardZuendorf/pytest-bench-action),
+wired in `.github/workflows/python-benchmark.yml`.
+
+The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
+compares against a per-branch JSON baseline committed under
+`.benchmarks/baselines/` (the general `.benchmarks/*.json` ignore carries a
+`!baselines/` exception), posts one PR comment per run (deletes any prior bot
+comment matching the report header before posting, so re-runs don't spam the
+thread), and fails the job on a tolerance-exceeding regression. Baselines
+auto-commit on `push` to tracked branches (`[skip ci]`); PRs only compare, they
+never commit.
+
+Configured in this repo via `cross-branch-tolerance: 20`, `update-tolerance: 5`,
+and a per-test `threshold-map` (max seconds per benchmark name substring). The
+action has no override/skip-check input — a regressing benchmark cannot be
+waived from the workflow yaml alone; the tolerance or baseline must change.
+
+**Known risk:** baselines are keyed to the runner hostname
+(`machine_info.node`); a mismatch hard-fails the comparison
+(`benchmark_compare.py` exits 1) rather than skipping it. This workflow runs
+on `ubuntu-latest` (GitHub-hosted, fresh hostname per job), so cross-run
+comparisons can false-positive as regressions. Open question, not yet
+resolved: pin a self-hosted/fixed-hostname runner, or accept comparison is
+effectively disabled on this workflow.
+
 ---
 
 ## Build & Distribution
@@ -296,3 +326,7 @@ A command file branching on business rules is a sign logic needs extraction.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
+7. **CI benchmark runner stability** — `python-benchmark.yml` runs on
+   `ubuntu-latest`; `pytest-bench-action` hard-fails comparisons on runner
+   hostname mismatch. Self-hosted/fixed-hostname runner, or accept baseline
+   comparison is effectively disabled?
