@@ -2,6 +2,9 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
+
+from indexed.config.errors import StorageError
 from indexed.core.v1.engine.services.search_service import SearchService, search
 from indexed.core.v1.engine.services.models import SourceConfig
 
@@ -275,6 +278,22 @@ class TestSearchService:
         assert "test-collection" in result
         assert "error" in result["test-collection"]
         assert "Search failed" in result["test-collection"]["error"]
+
+
+class TestDiscoverCollectionsFailsLoud:
+    """A directory-scan I/O error must fail loud, not silently return zero
+    collections (tech.md "fail loud, never zero-filled"). Per-collection
+    search errors (search() try/except) stay tolerated — only the top-level
+    scan swallow is the bug."""
+
+    def test_discover_collections_raises_on_scan_error(self):
+        service = SearchService()
+        service._persister.read_folder_files = Mock(
+            side_effect=OSError("permission denied")
+        )
+
+        with pytest.raises(StorageError, match="permission denied"):
+            service._discover_collections()
 
 
 class TestSearchFunctionalInterface:

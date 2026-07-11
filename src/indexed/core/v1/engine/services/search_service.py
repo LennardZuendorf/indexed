@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 
 from indexed.protocols import Manifest
+from indexed.config.errors import StorageError
 from .models import SourceConfig
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 from indexed.core.v1.engine.factories.search_collection_factory import (
@@ -81,6 +82,12 @@ class SearchService:
 
         Returns:
             List[str]: List of collection names that contain a valid manifest.json.
+
+        Raises:
+            StorageError: If the collections directory cannot be scanned (e.g.
+                a permission or transient filesystem error). This is a
+                non-recoverable scan failure and must fail loud rather than
+                silently report zero collections.
         """
         try:
             entries = self._persister.read_folder_files(".")
@@ -105,7 +112,7 @@ class SearchService:
             return discovered
         except Exception as exc:
             logger.error(f"Failed to discover collections: {exc}")
-            return []
+            raise StorageError(f"Could not scan collections directory: {exc}") from exc
 
     def _get_default_indexer(self, collection_name: str) -> str:
         """Get the first indexer from a collection's manifest.
