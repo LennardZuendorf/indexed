@@ -182,12 +182,13 @@ action has no override/skip-check input — a regressing benchmark cannot be
 waived from the workflow yaml alone; the tolerance or baseline must change.
 
 **Known risk:** baselines are keyed to the runner hostname
-(`machine_info.node`); a mismatch hard-fails the comparison
-(`benchmark_compare.py` exits 1) rather than skipping it. This workflow runs
-on `ubuntu-latest` (GitHub-hosted, fresh hostname per job), so cross-run
-comparisons can false-positive as regressions. Open question, not yet
-resolved: pin a self-hosted/fixed-hostname runner, or accept comparison is
-effectively disabled on this workflow.
+(`machine_info.node`); a mismatch hard-fails the comparison — the external
+action's own `scripts/benchmark_compare.py` (bundled in
+`pytest-bench-action`, not this repo) exits 1 on node mismatch — rather than
+skipping it. This workflow runs on `ubuntu-latest` (GitHub-hosted, fresh
+hostname per job), so cross-run comparisons can false-positive as
+regressions. Open question, not yet resolved: pin a self-hosted/fixed-hostname
+runner, or accept comparison is effectively disabled on this workflow.
 
 ---
 
