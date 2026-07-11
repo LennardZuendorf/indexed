@@ -2,7 +2,7 @@
 
 The update path is now a single ``manifest_factory`` that dispatches to each
 connector's ``from_manifest`` (the per-connector query/overlay behavior it
-replaced is tested in tests/unit/indexed_connectors/test_from_manifest.py).
+replaced is tested in tests/unit/indexed/connectors/test_from_manifest.py).
 """
 
 from unittest.mock import MagicMock, patch

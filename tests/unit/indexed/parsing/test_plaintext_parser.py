@@ -9,7 +9,7 @@ import pytest
 from indexed.parsing._model_window import count_tokens
 from indexed.parsing.plaintext_parser import PlaintextParser
 
-FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
 
 
 @pytest.fixture

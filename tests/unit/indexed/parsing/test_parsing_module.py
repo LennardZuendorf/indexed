@@ -6,7 +6,7 @@ import pytest
 
 from indexed.parsing import ParsingModule
 
-FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
 
 
 @pytest.fixture
