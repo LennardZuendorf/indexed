@@ -157,7 +157,11 @@ class DiskPersister:
     def read_folder_files(self, relative_path):
         path = self._safe_join(self.base_path, relative_path)
         files = []
-        for root, dirs, filenames in os.walk(path):
+
+        def _raise_on_error(error: OSError) -> None:
+            raise error
+
+        for root, dirs, filenames in os.walk(path, onerror=_raise_on_error):
             for filename in filenames:
                 files.append(os.path.relpath(os.path.join(root, filename), path))
         return files

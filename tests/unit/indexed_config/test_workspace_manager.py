@@ -20,14 +20,16 @@ def workspace_manager(tmp_path: Path) -> WorkspaceManager:
 def test_clear_preference_returns_false_when_missing(
     workspace_manager: WorkspaceManager,
 ) -> None:
-    with patch.object(TomlStore, "read_for_mode", return_value={}):
+    with patch.object(TomlStore, "read_disk_only_for_mode", return_value={}):
         assert workspace_manager.clear_preference() is False
 
 
 def test_clear_preference_deletes_section(workspace_manager: WorkspaceManager) -> None:
     with (
         patch.object(
-            TomlStore, "read_for_mode", return_value={"workspace": {"mode": "local"}}
+            TomlStore,
+            "read_disk_only_for_mode",
+            return_value={"workspace": {"mode": "local"}},
         ),
         patch.object(TomlStore, "write") as mock_write,
     ):
@@ -70,13 +72,57 @@ def test_set_preference_persists_custom_global_path(
     workspace_manager: WorkspaceManager,
 ) -> None:
     with (
-        patch.object(TomlStore, "read_for_mode", return_value={}),
+        patch.object(TomlStore, "read_disk_only_for_mode", return_value={}),
         patch.object(TomlStore, "write") as mock_write,
     ):
         workspace_manager.set_preference("local", global_path="/custom/global")
 
     written = mock_write.call_args[0][0]
     assert written["workspace"]["global_path"] == "/custom/global"
+
+
+def test_set_preference_does_not_bake_env_secret_into_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bug 1: set_preference() must persist the disk-only baseline, never the
+    env-merged view — an active INDEXED__* secret must not be round-tripped
+    into config.toml (same class of bug ConfigService.set()/delete() guard
+    against; see tech-config.md "never baked back into TOML")."""
+    global_root = tmp_path / "global"
+    monkeypatch.setattr("indexed.config.store.get_global_root", lambda: global_root)
+    monkeypatch.setenv("INDEXED__SOURCES__JIRA__API_TOKEN", "envsecretXYZ")
+
+    store = TomlStore(workspace=tmp_path)
+    resolver = StorageResolver(workspace=tmp_path)
+    mgr = WorkspaceManager(store, resolver, tmp_path)
+
+    mgr.set_preference("local")
+
+    config_toml = global_root / "config.toml"
+    toml_text = config_toml.read_text()
+    assert "envsecretxyz" not in toml_text.lower()
+    assert "workspace" in toml_text
+
+
+def test_clear_preference_does_not_bake_env_secret_into_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bug 1: clear_preference() must also read the disk-only baseline."""
+    global_root = tmp_path / "global"
+    monkeypatch.setattr("indexed.config.store.get_global_root", lambda: global_root)
+
+    store = TomlStore(workspace=tmp_path)
+    resolver = StorageResolver(workspace=tmp_path)
+    mgr = WorkspaceManager(store, resolver, tmp_path)
+    mgr.set_preference("local")
+
+    monkeypatch.setenv("INDEXED__SOURCES__JIRA__API_TOKEN", "envsecretXYZ")
+    assert mgr.clear_preference() is True
+
+    config_toml = global_root / "config.toml"
+    toml_text = config_toml.read_text()
+    assert "envsecretxyz" not in toml_text.lower()
+    assert "workspace" not in toml_text
 
 
 def test_get_collections_and_caches_paths(workspace_manager: WorkspaceManager) -> None:

@@ -14,6 +14,7 @@ import os
 from loguru import logger
 
 from .models import CollectionStatus, CollectionInfo
+from indexed.config.errors import StorageError
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
 from indexed.core.v1.config_models import get_default_collections_path
@@ -89,9 +90,12 @@ class InspectService:
                       Only directories containing a manifest.json file are considered
                       valid collections.
 
-        Note:
-            This method silently handles errors and returns an empty list if the
-            data directory cannot be accessed.
+        Raises:
+            StorageError: If the collections directory cannot be scanned (e.g.
+                a permission or transient filesystem error). This is a
+                non-recoverable scan failure and must fail loud rather than
+                silently report zero collections — distinct from the
+                per-collection manifest errors tolerated in status()/inspect().
         """
         try:
             # Find any files named manifest.json and derive collection name from their parent folder
@@ -114,8 +118,9 @@ class InspectService:
                     ):
                         collections.add(collection_name)
             return sorted(collections)
-        except Exception:
-            return []
+        except Exception as e:
+            logger.error(f"Error scanning collections directory: {e}")
+            raise StorageError(f"Could not scan collections directory: {e}") from e
 
     def _calculate_disk_size(self, collection_name: str) -> int:
         base_dir = os.path.join(self._persister.base_path, collection_name)

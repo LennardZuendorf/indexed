@@ -57,7 +57,7 @@ class WorkspaceManager:
         local_path = str(workspace_path or self._workspace)
 
         global_store = TomlStore(mode_override="global")
-        raw = global_store.read_for_mode("global")
+        raw = global_store.read_disk_only_for_mode("global")
 
         workspace_config: Dict[str, str] = {
             "mode": mode,
@@ -73,7 +73,7 @@ class WorkspaceManager:
     def clear_preference(self) -> bool:
         """Clear any stored workspace preference from global config."""
         global_store = TomlStore(mode_override="global")
-        raw = global_store.read_for_mode("global")
+        raw = global_store.read_disk_only_for_mode("global")
 
         if WORKSPACE_PATH in raw:
             del raw[WORKSPACE_PATH]

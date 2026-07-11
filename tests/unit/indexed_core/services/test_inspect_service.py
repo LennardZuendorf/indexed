@@ -7,8 +7,12 @@ which exercise the same bugs end-to-end through the real engine.
 """
 
 import json
+import sys
 from pathlib import Path
 
+import pytest
+
+from indexed.config.errors import StorageError
 from indexed.core.v1.engine.services.inspect_service import InspectService
 
 INDEXER_NAME = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
@@ -206,3 +210,44 @@ class TestDiscoveryFiltersInternalDirs:
             s.name for s in InspectService(collections_path=str(tmp_path)).status()
         }
         assert names == {"docs"}
+
+
+class TestDiscoverCollectionsFailsLoud:
+    """Bug 2: a directory-scan I/O error must fail loud, not silently return
+    zero collections (tech.md "fail loud, never zero-filled"). Per-collection
+    manifest errors (status()/inspect() lines ~242-248) stay tolerated —
+    only the top-level scan swallow is the bug."""
+
+    def test_discover_collections_raises_and_logs_on_scan_error(self, capsys):
+        from loguru import logger as loguru_logger
+
+        # inspect_service logs via loguru (not stdlib logging), so assert on
+        # its default stderr sink rather than caplog (which only hooks stdlib
+        # logging and would otherwise silently observe nothing).
+        loguru_logger.remove()
+        loguru_logger.add(sys.stderr, level="ERROR")
+        try:
+            service = InspectService(collections_path="/nonexistent-for-test")
+            service._persister.read_folder_files = lambda *_a, **_kw: (
+                _ for _ in ()
+            ).throw(OSError("permission denied"))
+
+            with pytest.raises(StorageError, match="permission denied"):
+                service._discover_collections()
+        finally:
+            loguru_logger.remove()
+
+        stderr = capsys.readouterr().err
+        assert "Error scanning collections directory" in stderr
+        assert "permission denied" in stderr
+
+    def test_status_propagates_scan_error_instead_of_empty_list(self, tmp_path):
+        """The default status()/inspect() path (collection_names=None) must
+        not swallow a scan error into an empty (fake-healthy) result."""
+        service = InspectService(collections_path=str(tmp_path))
+        service._persister.read_folder_files = lambda *_a, **_kw: (_ for _ in ()).throw(
+            OSError("permission denied")
+        )
+
+        with pytest.raises(StorageError):
+            service.status()

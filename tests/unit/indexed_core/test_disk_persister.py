@@ -112,6 +112,16 @@ class TestDiskPersisterFileOperations:
         disk_persister.save_text_file("y", "sub/b.txt")
         assert sorted(disk_persister.read_folder_files("sub")) == ["a.txt", "b.txt"]
 
+    def test_read_folder_files_raises_on_scan_error(
+        self, disk_persister: DiskPersister
+    ) -> None:
+        """A scandir error (e.g. PermissionError) propagates via onerror
+        instead of os.walk's default of silently yielding no entries."""
+        disk_persister.save_text_file("x", "sub/a.txt")
+        with patch("os.scandir", side_effect=PermissionError("denied")):
+            with pytest.raises(PermissionError, match="denied"):
+                disk_persister.read_folder_files("sub")
+
 
 class TestDiskPersisterReplaceFolder:
     """B4: replace_folder swaps a staged build into place without ever
