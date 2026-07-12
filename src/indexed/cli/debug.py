@@ -14,18 +14,6 @@ from .utils.components import (
 )
 
 
-def get_build_info() -> tuple[str, str]:
-    """Return (build_timestamp, build_commit) with dev fallbacks."""
-    try:
-        # Generated at build time (hatch_build.py); absent in editable/dev
-        # installs, hence unresolvable by static analysis.
-        from indexed._build_meta import BUILD_COMMIT, BUILD_TIMESTAMP  # ty: ignore[unresolved-import]
-
-        return BUILD_TIMESTAMP, BUILD_COMMIT
-    except ImportError:
-        return "dev (editable install)", "n/a"
-
-
 def _pkg_version(name: str) -> str:
     """Return installed version of *name*, or 'not installed'."""
     from importlib.metadata import PackageNotFoundError, version
@@ -54,14 +42,11 @@ _EXTERNAL_DEPS: list[tuple[str, str]] = [
 def debug(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Show build metadata, Python environment, and dependency versions."""
-    build_ts, build_commit = get_build_info()
+    """Show release version, Python environment, and dependency versions."""
     app_version = _pkg_version("indexed-sh")
 
     rows_build: list[tuple[str, str]] = [
         ("Version", app_version),
-        ("Build Timestamp", build_ts),
-        ("Build Commit", build_commit),
     ]
 
     rows_env: list[tuple[str, str]] = [
