@@ -88,13 +88,12 @@ commit subject or add a body/footer; leave a spec drifting from the code.
 
 Earned defaults live in **`.spec/lessons.md`** — read at session start, apply without
 being asked, and add a lesson after every correction. Load-bearing highlights: lazy ML
-imports keep startup <1s; ty must be fully clean (0 diagnostics) — it has no
-baseline/diff mode like mypy's, so this applies tree-wide, not just touched files; coverage
-is measured on installed packages (`--cov=src`); `ConfigService` is a singleton (respect
-the priority chain); connectors are Protocol-based with `from_manifest`; core is consumed
-only through the `core.v1.engine` facade, with `composition.py` the single wiring site;
-FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the spec
-in the same cycle. KISS wins.
+imports keep startup <1s; ty must be fully clean tree-wide (0 diagnostics, no baseline);
+coverage is measured on installed packages (`--cov=src`); `ConfigService` is a singleton
+(respect the priority chain); connectors are Protocol-based with `from_manifest`; core is
+consumed only through the `core.v1.engine` facade, with `composition.py` the single wiring
+site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
+spec in the same cycle. KISS wins.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
