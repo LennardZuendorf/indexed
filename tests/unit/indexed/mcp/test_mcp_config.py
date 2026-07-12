@@ -2,8 +2,20 @@
 
 from unittest.mock import MagicMock, patch
 
-from indexed.mcp.config import resolve_cli_context, resolve_config
+from indexed.mcp.config import (
+    default_global_context,
+    resolve_cli_context,
+    resolve_config,
+)
 from indexed.cli.composition import CliContext
+
+
+def test_default_global_context_is_global_mode() -> None:
+    """R2 fallback builder: always resolves to global mode, regardless of
+    any local .indexed config — used when the real resolution path fails."""
+    ctx = default_global_context()
+    assert ctx.mode == "global"
+    assert ctx.collections_path.parts[-3:] == (".indexed", "data", "collections")
 
 
 def test_resolve_config_reads_from_lifespan_state() -> None:
@@ -49,3 +61,18 @@ def test_resolve_cli_context_ignores_bad_context() -> None:
     built = MagicMock(spec=CliContext)
     with patch("indexed.mcp.config.resolve_collections_context", return_value=built):
         assert resolve_cli_context(BadCtx()) is built
+
+
+def test_resolve_cli_context_falls_back_on_malformed_config() -> None:
+    """R2: when resolving the real context raises (e.g. TOMLDecodeError from
+    a malformed global config.toml), resolve_cli_context must degrade to the
+    default global-mode context instead of letting the error escape."""
+    fallback = MagicMock(spec=CliContext)
+    with (
+        patch(
+            "indexed.mcp.config.resolve_collections_context",
+            side_effect=RuntimeError("boom"),
+        ),
+        patch("indexed.mcp.config.default_global_context", return_value=fallback),
+    ):
+        assert resolve_cli_context(None) is fallback

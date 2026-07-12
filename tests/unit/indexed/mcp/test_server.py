@@ -1,6 +1,7 @@
 """Tests for the MCP server implementation."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -617,6 +618,31 @@ class TestLifespan:
         assert "search_config" in result
         assert result["mcp_config"] == mock_mcp_config
         assert result["search_config"] == mock_search_config
+
+    def test_lifespan_yields_despite_malformed_global_config(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """R2: a malformed global config.toml must not crash the lifespan —
+        ``resolve_collections_context()`` should degrade to a default
+        global-mode context instead of letting TOMLDecodeError escape."""
+        from indexed.config import reload as reload_config
+
+        fake_home = tmp_path / "home"
+        global_root = fake_home / ".indexed"
+        global_root.mkdir(parents=True)
+        (global_root / "config.toml").write_text("not [ valid toml")
+
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        reload_config()
+
+        async def run_lifespan():
+            async with lifespan(mcp) as state:
+                return state
+
+        result = run_async(run_lifespan())
+
+        assert "cli_context" in result
+        assert result["cli_context"].mode == "global"
 
 
 class TestContextHandling:
