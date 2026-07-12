@@ -336,9 +336,29 @@ scripts/connector_stub.py, tests/fixtures/connectors/stub_routes.py, tests/syste
 
 ---
 
-## Open Questions
+## Execution Plan
 
-1. **R13 wire-or-delete** (see tech.md Open Question 1) — re-wire `max_skipped_items_in_row`
-   skip/retry, or delete the dead param and accept fail-fast? Blocks unit 8's reader half.
-2. **R7 scope** — central render seam vs per-site escaping. Recommendation: seam for the logger
-   + one user-data helper, then convert call sites in unit 5.
+A granular, subagent-executable implementation plan (writing-plans format) — one task per
+unit, current HEAD locations, red→green test steps, parallel-execution waves — lives at
+[`plans/review-remediation.md`](../../../plans/review-remediation.md). It was produced after
+all 15 requirements were re-confirmed against code at HEAD by six parallel validation
+subagents on 2026-07-12.
+
+## Open Questions — RESOLVED (2026-07-12)
+
+1. **R13 wire-or-delete** — **RESOLVED: WIRE.** Re-wire `max_skipped_items_in_row` skip/retry
+   via `utils/batch.read_items_in_batches` + `utils/retry.execute_with_retry`, sequenced after
+   unit 7's batch-loop fix. Validation confirmed the utilities are alive and are the pattern in
+   3 of 4 reader variants; the Confluence async page loop currently has **zero** retry (worse
+   than its sync sibling), and deleting the param is a product-visible regression for large
+   spaces. Unit 8b also depends on unit 3 (shared Confluence reader file).
+2. **R7 scope** — **RESOLVED: escape-helper + `Text()` seam, not blanket `markup=False`.** A
+   global `Console(markup=False)` would break the app's intentional style tags
+   (`[dim]…`, `[{style}]…`). Add one user-data helper, convert the ~6 sinks, and switch the
+   logger sink to `Text(line, style=…)`. `rich.markup.escape` is already used in
+   `conflict_prompt.py`; `cards.py` already wraps values in `Text()`.
+
+Additional decisions recorded during validation: **R2** is fixed at both MCP sites
+(`lifespan` + `resolve_cli_context`) to preserve CLI fail-loud; **R14** adds only
+`InputFormat.IMAGE` (Simple-pipeline formats have no `do_ocr`/`do_table_structure` field);
+**R3**'s `search_service` fix is required (it is the MCP `search` path), not optional.
