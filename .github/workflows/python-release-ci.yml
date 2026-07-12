@@ -1,19 +1,24 @@
 name: Release — Build + Publish to PyPI
 
-# Trigger: publish a GitHub Release in the GitHub UI (manual)
-# Flow: build wheel from main → validate → publish to PyPI → attach to release
+# Trigger: publish a GitHub Release in the GitHub UI (manual).
+# Flow: build wheel + sdist from the TAGGED commit → validate → publish to
+# PyPI → attach to the release.
 #
-# Wheels are NEVER committed to git. They are built fresh in CI on every
-# release, validated against PyPI's exact archive validator (scripts/validate_wheel.py),
-# uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub Release
-# as the durable archive.
+# Versioning: pyproject.toml is the single source of truth (bump it in the
+# release PR before tagging). The release tag must equal that version — the
+# build job fails loud on mismatch. There is no version-rewrite step.
+#
+# Distributions are NEVER committed to git. They are built fresh in CI on every
+# release, validated (scripts/validate_wheel.py archive check + twine metadata),
+# uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub
+# Release as the durable archive.
 on:
   release:
     types: [published]
   workflow_dispatch:
 
 jobs:
-  # ── 1. Build the wheel from main and validate it ────────────────────────────
+  # ── 1. Build wheel + sdist from the tagged commit and validate ──────────────
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
@@ -21,11 +26,10 @@ jobs:
       contents: read
 
     steps:
-    - name: Checkout main
+    - name: Checkout tagged commit
+      # On `release: published`, checkout defaults to the tag ref — build the
+      # TAGGED commit, not main's tip (version lives in pyproject.toml now).
       uses: actions/checkout@v4
-      with:
-        ref: main
-        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -38,26 +42,43 @@ jobs:
     - name: Install dependencies
       run: uv sync
 
-    - name: Sync version with release tag
+    - name: Verify release tag matches pyproject version
+      # pyproject.toml is the single source of truth. Guard against tagging a
+      # release without bumping the version. Skipped on workflow_dispatch
+      # (ref is a branch, not a semver tag).
+      if: github.event_name == 'release'
       env:
         REF_NAME: ${{ github.ref_name }}
-      run: uv run python scripts/sync_version.py "$REF_NAME"
+      run: |
+        tag="${REF_NAME#v}"
+        ver="$(uv version --short)"
+        if [ "$tag" != "$ver" ]; then
+          echo "::error::release tag '$REF_NAME' (=$tag) != pyproject version '$ver' — bump pyproject.toml before tagging"
+          exit 1
+        fi
+        echo "tag $REF_NAME matches pyproject version $ver"
 
-    - name: Build distributable wheel
-      run: uv build --wheel --out-dir dist
+    - name: Build wheel + sdist
+      run: uv build --out-dir dist
 
     - name: Validate wheel with PyPI's archive validator
-      # Same checks PyPI's warehouse runs on upload. Failing here means PyPI
-      # would reject — fail fast with the exact error message instead.
+      # Same checks PyPI's warehouse runs on upload. Wheel-only: this is a ZIP
+      # validator and cannot read the .tar.gz sdist (twine check covers both).
       run: uv run python scripts/validate_wheel.py dist/*.whl
 
-    - name: Upload wheel artifact
+    - name: Check distribution metadata (twine)
+      # Archive validator (above) checks the zip bytes; twine check --strict
+      # validates that the long_description renders on PyPI (render warnings
+      # fail). Full metadata acceptance is enforced by the OIDC publish itself.
+      run: uv run --with twine twine check --strict dist/*
+
+    - name: Upload distribution artifacts
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
         if-no-files-found: error
-        # Wheels are already compressed; don't waste CI time recompressing.
+        # Distributions are already compressed; don't recompress.
         compression-level: 0
 
   # ── 2. Publish to PyPI via OIDC trusted publisher ───────────────────────────
@@ -70,10 +91,10 @@ jobs:
       url: https://pypi.org/p/indexed-sh
     permissions:
       id-token: write   # OIDC trusted publishing
-      contents: write   # attach wheel to GitHub Release
+      contents: write   # attach distributions to GitHub Release
 
     steps:
-    - name: Download wheel artifact
+    - name: Download distribution artifacts
       uses: actions/download-artifact@v4
       with:
         name: python-package-distributions
@@ -83,7 +104,7 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       # Default packages-dir: dist/ — no override needed.
 
-    - name: Attach wheel to GitHub Release
+    - name: Attach distributions to GitHub Release
       if: always() && github.event_name == 'release'
       uses: softprops/action-gh-release@v2
       with:

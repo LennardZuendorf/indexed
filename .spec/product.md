@@ -110,12 +110,6 @@ What indexed is **not**:
 **Why:** Privacy, offline access, zero ops overhead
 **Storage:** `~/.indexed/` (global) or `./.indexed/` (local)
 
-### Docker
-
-**What:** Containerized deployment
-**Why:** Isolated environment, reproducible builds
-**Status:** ✅ Shipped (Dockerfile + compose)
-
 ### Server (Future)
 
 **What:** Dedicated server for team access

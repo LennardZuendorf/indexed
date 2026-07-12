@@ -177,25 +177,20 @@ A single `hatchling` build packages `src/indexed/` into one wheel — no bundlin
 step, no per-package builds.
 
 ```bash
-uv build --wheel --out-dir dist
-# → dist/indexed_sh-<version>-py3-none-any.whl
-uv run python scripts/validate_wheel.py dist/*.whl   # PyPI archive validator, also run in CI
+uv build --out-dir dist
+# → dist/indexed_sh-<version>-py3-none-any.whl   (wheel)
+# → dist/indexed_sh-<version>.tar.gz             (sdist)
+uv run python scripts/validate_wheel.py dist/*.whl   # PyPI archive validator (wheel only), also in CI
+uv run --with twine twine check --strict dist/*      # metadata render check (wheel + sdist), also in CI
 ```
 
-### Docker
+### Release
 
-```dockerfile
-FROM python:3.11-slim
-COPY dist/*.whl /tmp/
-RUN pip install /tmp/*.whl
-ENTRYPOINT ["indexed"]
-```
-
-```bash
-docker build -t indexed .
-docker run -i -v ~/.indexed:/root/.indexed indexed                                  # stdio
-docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport http --host 0.0.0.0
-```
+`pyproject.toml` is the single source of truth for the version — bump it in the
+release PR, then publish a GitHub Release whose tag matches. The release
+workflow builds the tagged commit, verifies `tag == pyproject version`, and
+publishes wheel + sdist to PyPI via OIDC trusted publishing (no token, no
+version-rewrite step, no `sync_version.py`).
 
 ---
 

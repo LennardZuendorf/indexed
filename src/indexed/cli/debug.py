@@ -36,35 +36,9 @@ def _pkg_version(name: str) -> str:
         return "not installed"
 
 
-def _module_version(module_name: str, version_attr: str = "__version__") -> str:
-    """Return version from a module's attribute, handling bundled packages.
-
-    When una bundles workspace packages into the wheel, they lose their
-    distribution metadata.  Fall back to importing the module and reading
-    its version attribute directly.
-    """
-    dist_version = _pkg_version(module_name)
-    if dist_version != "not installed":
-        return dist_version
-
-    # Try importing the module and reading its version attribute
-    try:
-        import importlib
-
-        mod = importlib.import_module(module_name)
-        return str(getattr(mod, version_attr, "bundled"))
-    except ImportError:
-        return "not installed"
-
-
-# (label, package-name for importlib.metadata, module for fallback import, version attr)
-_WORKSPACE_DEPS: list[tuple[str, str, str]] = [
-    ("indexed-core", "indexed.core.v1", "__version__"),
-    ("indexed-connectors", "indexed.connectors", "__version__"),
-    ("indexed-parsing", "indexed.parsing", "__version__"),
-    ("indexed-config", "indexed.config", "__version__"),
-]
-
+# External runtime dependencies surfaced in `indexed debug`. All internal code
+# ships in the single `indexed-sh` distribution (shown as Version above), so
+# there are no per-package internal versions to report.
 _EXTERNAL_DEPS: list[tuple[str, str]] = [
     ("sentence-transformers", "sentence-transformers"),
     ("faiss-cpu", "faiss-cpu"),
@@ -82,7 +56,7 @@ def debug(
 ) -> None:
     """Show build metadata, Python environment, and dependency versions."""
     build_ts, build_commit = get_build_info()
-    app_version = _pkg_version("indexed")
+    app_version = _pkg_version("indexed-sh")
 
     rows_build: list[tuple[str, str]] = [
         ("Version", app_version),
@@ -100,9 +74,8 @@ def debug(
     ]
 
     rows_deps: list[tuple[str, str]] = [
-        (label, _module_version(mod, attr)) for label, mod, attr in _WORKSPACE_DEPS
+        (label, _pkg_version(pkg)) for label, pkg in _EXTERNAL_DEPS
     ]
-    rows_deps.extend((label, _pkg_version(pkg)) for label, pkg in _EXTERNAL_DEPS)
 
     if json_output:
         import json as json_mod
