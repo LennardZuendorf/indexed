@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-11
+updated: 2026-07-12
 ---
 
 # Tech Spec: indexed
@@ -164,7 +164,7 @@ uv run pytest -q --cov=src --cov-report=html
 Performance regressions are caught in CI, not via local scripts. The former
 `.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
 diff logic) were deleted and replaced by the third-party composite action
-[`lennardzuendorf/pytest-bench-action@v0.0.1`](https://github.com/LennardZuendorf/pytest-bench-action),
+[`lennardzuendorf/pytest-bench-action@v1`](https://github.com/LennardZuendorf/pytest-bench-action),
 wired in `.github/workflows/python-benchmark.yml`.
 
 The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
@@ -181,14 +181,14 @@ and a per-test `threshold-map` (max seconds per benchmark name substring). The
 action has no override/skip-check input — a regressing benchmark cannot be
 waived from the workflow yaml alone; the tolerance or baseline must change.
 
-**Known risk:** baselines are keyed to the runner hostname
-(`machine_info.node`); a mismatch hard-fails the comparison — the external
-action's own `scripts/benchmark_compare.py` (bundled in
-`pytest-bench-action`, not this repo) exits 1 on node mismatch — rather than
-skipping it. This workflow runs on `ubuntu-latest` (GitHub-hosted, fresh
-hostname per job), so cross-run comparisons can false-positive as
-regressions. Open question, not yet resolved: pin a self-hosted/fixed-hostname
-runner, or accept comparison is effectively disabled on this workflow.
+**Resolved (v1.0.0):** comparability used to key on the runner hostname
+(`machine_info.node`), which GitHub-hosted runners randomize per job, so
+cross-run comparisons false-positived as regressions. `v1.0.0` gates on a
+CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
+so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
+hardware mismatch now skips with `comparison-skipped` (or hard-fails if
+`enforce-same-node: "true"`, unset here) instead of hard-failing by default.
+Not configured in this repo: `enforce-same-node`, `override-label`.
 
 ---
 
@@ -327,7 +327,6 @@ A command file branching on business rules is a sign logic needs extraction.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
-7. **CI benchmark runner stability** — `python-benchmark.yml` runs on
-   `ubuntu-latest`; `pytest-bench-action` hard-fails comparisons on runner
-   hostname mismatch. Self-hosted/fixed-hostname runner, or accept baseline
-   comparison is effectively disabled?
+7. **CI benchmark runner stability** — resolved by `pytest-bench-action@v1.0.0`'s
+   CPU-fingerprint gate (see tech.md § CI Benchmarking). Still open: adopt
+   `enforce-same-node`/`override-label` inputs, or stay on defaults?

@@ -41,7 +41,7 @@ jobs:
         key: hf-model-all-MiniLM-L6-v2
 
     - name: Run benchmarks
-      uses: lennardzuendorf/pytest-bench-action@v0.0.1
+      uses: lennardzuendorf/pytest-bench-action@v1
       with:
         python-version: ${{ matrix.python-version }}
         github-token: ${{ secrets.GITHUB_TOKEN }}
