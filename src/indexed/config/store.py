@@ -17,7 +17,7 @@ else:
 import tomlkit
 from dotenv import load_dotenv
 
-from .path_utils import deep_merge
+from .path_utils import deep_merge, get_by_path
 from .storage import (
     StorageMode,
     get_global_root,
@@ -354,44 +354,82 @@ class TomlStore:
         # `${...}` expansion from corrupting secrets (C4).
         load_dotenv(str(path), override=False, interpolate=False)
 
-    def _resolve_write_target(self, *, to_global: bool = False) -> Path:
+    def _get_workspace_preference(self) -> Optional[StorageMode]:
+        """Read the stored ``[workspace] mode`` preference from the global config.
+
+        Duplicates ``WorkspaceManager.get_preference()`` rather than importing
+        it: ``workspace.py`` imports ``TomlStore``, so the reverse import
+        would be circular. Kept in lockstep with that method so the write-side
+        resolution below can never diverge from the read-side resolution
+        (``WorkspaceManager.resolve_storage_mode()``) that ``ConfigService``
+        uses for its baseline read (R1).
+        """
+        global_store = TomlStore(mode_override="global")
+        raw = global_store.read_for_mode("global")
+        workspace_config = get_by_path(raw, "workspace", default={}) or {}
+        mode = workspace_config.get("mode")
+        if mode in ("global", "local"):
+            return mode  # type: ignore[return-value]
+        return None
+
+    def _resolve_write_target(
+        self, *, to_global: bool = False, mode: Optional[StorageMode] = None
+    ) -> Path:
         """
         Determine which config.toml ``write()`` would target right now, without writing.
 
         The destination is chosen as follows:
         - If `to_global` is True, the global config.
+        - Else if `mode` is given, that exact resolved mode is used as-is
+          (lets a caller that already resolved its own mode — e.g.
+          ``ConfigService.set()``/``delete()`` — guarantee this matches the
+          mode it used for the corresponding baseline read).
         - Else if the instance `mode_override` is "global", the global config.
         - Else if `mode_override` is "local", the workspace config.
+        - Else if a workspace storage-mode preference is stored, that mode.
         - Otherwise, the workspace config if it already exists, else the
           global config (same auto-detection as StorageResolver.resolve_root).
 
         Parameters:
             to_global (bool): If True, force the global config; otherwise follow the mode override or auto-detect.
+            mode (Optional[StorageMode]): An already-resolved mode to use verbatim, bypassing the cascade below.
 
         Returns:
             Path: The config.toml path ``write()`` would target for this input.
         """
         if to_global:
             return self.global_path
-        # Follow the shared cascade (same as StorageResolver.resolve_root); with
-        # no workspace preference this is: override → local-config-present → global.
-        mode = resolve_storage_mode(
-            mode_override=self._mode_override,
-            workspace_preference=None,
-            workspace=self.workspace,
-        )
+        if mode is None:
+            # Follow the shared cascade (same as WorkspaceManager.resolve_storage_mode):
+            # override → workspace preference → local-config-present → global.
+            mode = resolve_storage_mode(
+                mode_override=self._mode_override,
+                workspace_preference=(
+                    None if self._mode_override else self._get_workspace_preference()
+                ),
+                workspace=self.workspace,
+            )
         return self.workspace_path if mode == "local" else self.global_path
 
-    def resolved_config_path(self) -> Path:
+    def resolved_config_path(self, *, mode: Optional[StorageMode] = None) -> Path:
         """Return the config.toml path a plain ``write()`` would target right now.
 
         Lets a caller snapshot/restore the exact file a subsequent ``set()``/
         ``save_raw()`` will touch (foundation/6b review Finding 1) without
         duplicating ``write()``'s target-selection logic.
-        """
-        return self._resolve_write_target()
 
-    def write(self, data: Mapping[str, Any], *, to_global: bool = False) -> None:
+        Parameters:
+            mode (Optional[StorageMode]): An already-resolved mode to use verbatim (see ``_resolve_write_target``).
+        """
+        return self._resolve_write_target(mode=mode)
+
+    def write(
+        self,
+        data: Mapping[str, Any],
+        *,
+        to_global: bool = False,
+        mode: Optional[StorageMode] = None,
+    ) -> None:
         """
         Write the given configuration mapping to the appropriate TOML config file (workspace or global).
 
@@ -400,8 +438,9 @@ class TomlStore:
         Parameters:
             data (Mapping[str, Any]): Configuration data to persist.
             to_global (bool): If True, force writing to the global config; otherwise follow the mode override or default to the workspace.
+            mode (Optional[StorageMode]): An already-resolved mode to use verbatim (see ``_resolve_write_target``).
         """
-        target = self._resolve_write_target(to_global=to_global)
+        target = self._resolve_write_target(to_global=to_global, mode=mode)
 
         # Build output dict, stripping internal marker and ensuring _meta
         out = dict(data)
@@ -446,6 +485,14 @@ class TomlStore:
 
         Only variables whose names start with `INDEXED__` are considered. The portion after the prefix is split on `__` to form a nested path; empty segments are ignored and all key segments are lowercased. Values are kept as strings.
 
+        Raises:
+            ValueError: If a variable's final path segment collides with an
+                existing nested dict built by another (order-earlier)
+                variable — e.g. ``INDEXED__A__B`` followed by ``INDEXED__A``
+                — which would otherwise silently drop the nested subtree
+                (R15). Mirrors the same guard already applied to intermediate
+                path segments below.
+
         Returns:
             mapping (Dict[str, Any]): Nested dictionary representing the matched environment variables, with lowercase keys and string values.
         """
@@ -467,5 +514,15 @@ class TomlStore:
                         f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix) :]}"
                     )
                 cur = cur.setdefault(seg, {})  # type: ignore[assignment]
-            cur[parts[-1].lower()] = v
+            last = parts[-1].lower()
+            # Guard the final assignment the same way: a scalar must not
+            # silently clobber a nested dict built by an earlier variable.
+            if last in cur and isinstance(cur[last], dict):
+                raise ValueError(
+                    f"Environment variable conflict: '{k}' would overwrite the "
+                    f"nested value at '{last}' with a scalar. Cannot have both "
+                    f"INDEXED__{k[len(prefix) :]} and a nested "
+                    f"INDEXED__{k[len(prefix) :]}__* variable."
+                )
+            cur[last] = v
         return out

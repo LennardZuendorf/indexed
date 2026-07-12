@@ -85,6 +85,24 @@ def test_toml_store_env_to_mapping_empty():
     assert result == {}
 
 
+def test_toml_store_env_to_mapping_final_key_conflict_raises():
+    """R15: a scalar env var must not silently clobber a nested dict.
+
+    INDEXED__A__B builds a nested dict at "a" ({"b": ...}); a later
+    INDEXED__A (scalar) assigns straight into ``out["a"]`` at the final-key
+    step, which had no type-conflict guard — unlike the intermediate-segment
+    step just above it — so it silently dropped "a.b". The final-key
+    assignment must be guarded the same way the intermediate segments are.
+    """
+    store = TomlStore()
+
+    env_vars = {"INDEXED__A__B": "x", "INDEXED__A": "y"}
+
+    with patch.dict(os.environ, env_vars, clear=False):
+        with pytest.raises(ValueError, match="Environment variable conflict"):
+            store._env_to_mapping()
+
+
 def test_toml_store_write():
     """Test write() creates directory and file in local mode."""
     with tempfile.TemporaryDirectory() as tmpdir:

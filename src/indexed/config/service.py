@@ -119,9 +119,19 @@ class ConfigService:
             raw = deep_merge(raw, self._overlay)
         return raw
 
-    def save_raw(self, data: Dict[str, Any]) -> None:
-        """Persist raw configuration to the workspace TOML store."""
-        self._store.write(data)
+    def save_raw(
+        self, data: Dict[str, Any], mode: Optional[StorageMode] = None
+    ) -> None:
+        """Persist raw configuration to the workspace TOML store.
+
+        Args:
+            mode: An already-resolved storage mode to write to verbatim. Pass
+                the same mode used for the corresponding baseline read (see
+                ``set()``/``delete()``) so the read and write targets can
+                never diverge (R1). Omit to fall back to ``TomlStore``'s own
+                resolution (used by callers with no baseline read to match).
+        """
+        self._store.write(data, mode=mode)
 
     # ── Typed binding ────────────────────────────────────────────────────
 
@@ -158,33 +168,52 @@ class ConfigService:
         """Retrieve a value from merged config using a dot-separated path."""
         return get_by_path(self.load_raw(), dot_path)
 
-    def _disk_baseline(self) -> Dict[str, Any]:
+    def _resolve_persist_mode(self) -> StorageMode:
+        """Resolve the storage mode once for a set()/delete() cycle.
+
+        Both the baseline read and the write must target the exact same
+        file. Resolving the mode a single time here and threading it through
+        to ``_disk_baseline()`` and ``save_raw()`` guarantees that — even
+        after a correct write-side resolver fix, calling the cascade twice
+        independently would still leave a seam if the stored preference
+        changed on disk between the two calls (R1).
+        """
+        return (
+            self._mode_override
+            if self._mode_override
+            else self._workspace.resolve_storage_mode()
+        )
+
+    def _disk_baseline(self, mode: Optional[StorageMode] = None) -> Dict[str, Any]:
         """Return the on-disk config for the resolved mode, no env overlay.
 
         set()/delete() persist THIS baseline plus their single change — never
         the env-merged view from load_raw() — so an INDEXED__*-supplied value
         (e.g. a secret provided only via env) is never baked into config.toml
         by an unrelated write (C2).
+
+        Args:
+            mode: An already-resolved storage mode. Omit to resolve it here
+                (used by callers that don't need to thread it elsewhere).
         """
-        mode = (
-            self._mode_override
-            if self._mode_override
-            else self._workspace.resolve_storage_mode()
-        )
+        if mode is None:
+            mode = self._resolve_persist_mode()
         return self._store.read_disk_only_for_mode(mode)
 
     def set(self, dot_path: str, value: Any) -> None:
         """Set a value at the given dot-path and persist."""
-        raw = self._disk_baseline()
+        mode = self._resolve_persist_mode()
+        raw = self._disk_baseline(mode)
         set_by_path(raw, dot_path, value)
-        self.save_raw(raw)
+        self.save_raw(raw, mode)
 
     def delete(self, dot_path: str) -> bool:
         """Delete a value at a dot-path and persist if changed."""
-        raw = self._disk_baseline()
+        mode = self._resolve_persist_mode()
+        raw = self._disk_baseline(mode)
         changed = delete_by_path(raw, dot_path)
         if changed:
-            self.save_raw(raw)
+            self.save_raw(raw, mode)
         return changed
 
     # ── Validation ───────────────────────────────────────────────────────
