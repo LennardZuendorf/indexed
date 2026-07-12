@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-07-12
 ---
 
 # Tech Spec: indexed
@@ -159,6 +159,50 @@ uv run pytest tests/unit/indexed_core/ -q # one package
 uv run pytest -q --cov=src --cov-report=html
 ```
 
+### CI Benchmarking
+
+Performance regressions are caught in CI, not via local scripts. The former
+`.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
+diff logic) were deleted and replaced by the GitHub Marketplace action
+[`pytest Benchmark Baseline Check`](https://github.com/marketplace/actions/pytest-benchmark-baseline-check)
+(`lennardzuendorf/pytest-bench-action`), wired in
+`.github/workflows/python-benchmark.yml`.
+
+The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
+compares against a per-branch JSON baseline committed under
+`.benchmarks/baselines/` (the general `.benchmarks/*.json` ignore carries a
+`!baselines/**` exception — negating just the dir, not `**`, leaves files
+inside still matched by `*.json` and silently un-stageable), posts one PR
+comment per run (deletes any prior bot
+comment matching the report header before posting, so re-runs don't spam the
+thread), and fails the job on a tolerance-exceeding regression. Trigger is
+`pull_request` only (no `push` trigger) — the action checks out the PR's own
+head branch, and when drift exceeds `update-tolerance` it stages a baseline
+commit directly on the PR branch (`[skip ci]`, same-repo PRs only), which
+lands on the target branch automatically when the PR merges. A `concurrency`
+group (keyed on PR number, `cancel-in-progress: true`) prevents overlapping
+runs from racing to push that staged commit.
+
+Configured in this repo via `cross-branch-tolerance: 20`, `update-tolerance: 5`,
+and a per-test `threshold-map` (max seconds per benchmark name substring). A
+regression can be waived per-PR via the `benchmark-override` label
+(`override-label`, explicitly set here) — the regression still shows in the
+PR comment but doesn't fail the job; the repo-wide tolerance is untouched.
+
+Pinned to an exact release tag (`@v1.0.2`), not the floating `@v1` major tag —
+the floating tag raced with upstream's own release-automation retagging and
+briefly 404'd mid-release (`unable to find version v1`). Bump the pin by hand
+on new releases instead.
+
+**Resolved (v1.0.0):** comparability used to key on the runner hostname
+(`machine_info.node`), which GitHub-hosted runners randomize per job, so
+cross-run comparisons false-positived as regressions. `v1.0.0` gates on a
+CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
+so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
+hardware mismatch now skips with `comparison-skipped` (or hard-fails if
+`enforce-same-node: "true"`, unset here) instead of hard-failing by default.
+Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
+
 ---
 
 ## Build & Distribution
@@ -296,3 +340,7 @@ A command file branching on business rules is a sign logic needs extraction.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
+7. **CI benchmark runner stability** — resolved by `pytest-bench-action`'s
+   CPU-fingerprint gate (see tech.md § CI Benchmarking). `override-label` now
+   configured. Still open: adopt `enforce-same-node: "true"`, or stay on the
+   skip-not-fail default (hosted runners only)?

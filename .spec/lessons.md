@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-03
+updated: 2026-07-11
 ---
 
 # Lessons Learned
@@ -86,3 +86,34 @@ sent to a different service on the same host. The permissive behavior was justif
 default (443/80) — instead of dropping it. That keeps `https://host` ≡ `https://host:443`
 (the reason ports were skipped) while correctly rejecting non-default ports. A different
 port is a different origin for credential purposes; fail closed.
+
+---
+
+## `test_e2e_search_collection` is order-dependent, not deterministic
+
+**Context:** Full-suite run (`pytest -q --cov=src`) failed this test with
+`IndexError('list index out of range')` inside a CLI search call; the same test passed
+standalone. Deleting unrelated `.benchmarks/*.py` scripts was ruled out as the cause
+(no import references, files never on the `--cov=src` path).
+
+**Lesson:** `tests/benchmarks/test_e2e_performance.py::test_e2e_search_collection` leaks
+shared state from an earlier test in the full run (likely collection/FAISS index state).
+Treat a full-suite-only failure here as this known flake before assuming a real
+regression — but still confirm by running the test standalone before shrugging it off.
+
+---
+
+## `!dir/` doesn't un-ignore files inside it — need `!dir/**`
+
+**Context:** `.benchmarks/.gitignore` had `*.json` / `!baselines/`, meant to keep
+`.benchmarks/baselines/*.json` trackable. Once the benchmark action started staging
+a baseline commit on the PR branch itself (see tech.md § CI Benchmarking), every run
+failed to stage it: `git add` errored "paths are ignored by one of your .gitignore
+files" — the job still passed (push failures are non-fatal) but baselines silently
+never updated.
+
+**Lesson:** Negating a directory (`!baselines/`) only un-ignores the directory entry;
+files inside are still matched by an earlier broad pattern (`*.json`) unless the
+negation also covers them (`!baselines/**`). `git check-ignore -v <path>` shows the
+matching rule for untracked paths and catches this directly; still confirm end-to-end
+with `git add`/`git status`, since that's what CI actually runs.

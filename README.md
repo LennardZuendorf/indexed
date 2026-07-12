@@ -8,7 +8,7 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-5A45FF)](#mcp-integration)
 
-[![Python Full Test Suite with Coverage](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml) [![Python Build and System Tests](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
+[![Python Full Test Suite with Coverage](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml) [![Python Build and System Tests](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml) [![Python Performance Benchmarks](https://github.com/LennardZuendorf/indexed/actions/workflows/python-benchmark.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-benchmark.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
 
 [Quickstart](#quick-start) · [Documentation](https://indexed.sh/docs) · [Blog & Guides](https://indexed.sh/blog)
 
@@ -190,6 +190,14 @@ git clone https://github.com/LennardZuendorf/indexed.git
 cd indexed
 uv sync --all-groups
 uv run pytest -q
+```
+
+Performance benchmarks (`tests/benchmarks/`, `tests/system/`) run in CI via
+[`pytest-bench-action`](https://github.com/LennardZuendorf/pytest-bench-action)
+— see `.github/workflows/python-benchmark.yml`. Run them locally with:
+
+```bash
+uv run pytest tests/system tests/benchmarks --benchmark-only
 ```
 
 See the internal package docs and `CLAUDE.md` for architecture details.
