@@ -16,7 +16,8 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
+from pydantic import BaseModel
 from urllib.parse import urlsplit
 
 from loguru import logger
@@ -88,33 +89,33 @@ def _load(module: str, name: str) -> Any:
     return getattr(importlib.import_module(module), name)
 
 
-def _load_config(module: str, name: str) -> type:
+def _load_config(module: str, name: str) -> Type[BaseModel]:
     cls = _load(module, name)
     assert isinstance(cls, type)
     return cls
 
 
-def _files_config() -> type:
+def _files_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.files.schema", "LocalFilesConfig")
 
 
-def _jira_cloud_config() -> type:
+def _jira_cloud_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.jira.schema", "JiraCloudConfig")
 
 
-def _jira_config() -> type:
+def _jira_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.jira.schema", "JiraConfig")
 
 
-def _confluence_cloud_config() -> type:
+def _confluence_cloud_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.confluence.schema", "ConfluenceCloudConfig")
 
 
-def _confluence_config() -> type:
+def _confluence_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.confluence.schema", "ConfluenceConfig")
 
 
-def _outline_config() -> type:
+def _outline_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.outline.schema", "OutlineConfig")
 
 
@@ -240,12 +241,12 @@ class SourceSpec:
     reader_opts: Callable[[Dict[str, Any]], Dict[str, Any]]
     # source-type resolution -------------------------------------------------
     default_source_type: str = ""
-    default_config: Optional[Callable[[], type]] = None
+    default_config: Optional[Callable[[], Type[BaseModel]]] = None
     cloud_detection: bool = False
     cloud_source_type: str = ""
     server_source_type: str = ""
-    cloud_config: Optional[Callable[[], type]] = None
-    server_config: Optional[Callable[[], type]] = None
+    cloud_config: Optional[Callable[[], Type[BaseModel]]] = None
+    server_config: Optional[Callable[[], Type[BaseModel]]] = None
     # url phase --------------------------------------------------------------
     has_url: bool = False
     url_label: str = ""
@@ -337,7 +338,7 @@ SOURCE_SPECS: Dict[str, SourceSpec] = {
 }
 
 
-def resolve_source(spec: SourceSpec, url: Optional[str]) -> tuple[str, type]:
+def resolve_source(spec: SourceSpec, url: Optional[str]) -> tuple[str, Type[BaseModel]]:
     """Resolve ``(source_type, config_class)`` from the spec and the resolved URL.
 
     Sources with ``cloud_detection`` pick Cloud vs Server from the URL host

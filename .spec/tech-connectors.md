@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Tech Branch: Connectors (`src/indexed/connectors/`)
@@ -45,7 +45,7 @@ class BaseConnector(Protocol):
 ```
 
 The protocols declare exactly what the engine calls — a connector missing a method is a
-**mypy error**, not a runtime `AttributeError`. Reader fetches raw documents; Converter
+**ty error**, not a runtime `AttributeError`. Reader fetches raw documents; Converter
 transforms them into searchable chunks (text + metadata) via the parsing module.
 `from_manifest` rebuilds `(reader, converter, deletions, post_run)` (a `ConnectorRun`) for
 an incremental update from the collection's own manifest, so **core's update path is

@@ -6,7 +6,7 @@ orchestration of readers, converters, and persisters to build searchable collect
 """
 
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Protocol, runtime_checkable
 
 from indexed.protocols import BaseConnector
 
@@ -20,6 +20,13 @@ from indexed.core.v1.config_models import (
     get_default_collections_path,
     get_default_caches_path,
 )
+
+
+@runtime_checkable
+class _SupportsSaveState(Protocol):
+    """Optional connector capability: not every source can persist change-tracking state."""
+
+    def save_state(self, storage_path: str) -> None: ...
 
 
 def _resolve_connector(
@@ -107,7 +114,7 @@ def _create_one(
     )
     creator.run()
 
-    if hasattr(connector, "save_state"):
+    if isinstance(connector, _SupportsSaveState):
         resolved_path = collections_path or str(get_default_collections_path())
         persister = DiskPersister(base_path=resolved_path)
         connector.save_state(persister.get_full_path(cfg.name))

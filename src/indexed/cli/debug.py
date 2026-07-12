@@ -17,7 +17,9 @@ from .utils.components import (
 def get_build_info() -> tuple[str, str]:
     """Return (build_timestamp, build_commit) with dev fallbacks."""
     try:
-        from indexed._build_meta import BUILD_COMMIT, BUILD_TIMESTAMP
+        # Generated at build time (hatch_build.py); absent in editable/dev
+        # installs, hence unresolvable by static analysis.
+        from indexed._build_meta import BUILD_COMMIT, BUILD_TIMESTAMP  # ty: ignore[unresolved-import]
 
         return BUILD_TIMESTAMP, BUILD_COMMIT
     except ImportError:

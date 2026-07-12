@@ -28,7 +28,7 @@ Delegate research and multi-file exploration to subagents to keep context clean.
 
 ```bash
 uv run ruff check . --fix && uv run ruff format
-uv run mypy src/indexed                        # 0-NEW on touched files (baseline ~206)
+uv run ty check src/indexed                    # 0 diagnostics, full-tree clean
 uv run pytest -q --cov=src/indexed             # full suite, >85% coverage
 python scripts/check_imports.py                # module-edge gate (4 edges, one package)
 bash .agents/skills/spec/scripts/validate.sh   # only if .spec/ was touched → 0 errors
@@ -69,7 +69,7 @@ uv run indexed-mcp run
 ## Rules
 
 **MUST** — run the full Workflow cycle; read `.spec/` before coding and cite it; run
-everything via `uv run` from the PROJECT ROOT; keep mypy 0-new on touched files and
+everything via `uv run` from the PROJECT ROOT; keep ty clean (0 diagnostics) and
 ruff clean; hold coverage >85% and run the full suite before any push; commit
 `uv.lock` with dependency changes; keep the four module edges (`core ↛ connectors`,
 `connectors ↛ core`, and `config`/`utils`/`parsing`/`protocols` never import up); route
@@ -88,7 +88,8 @@ commit subject or add a body/footer; leave a spec drifting from the code.
 
 Earned defaults live in **`.spec/lessons.md`** — read at session start, apply without
 being asked, and add a lesson after every correction. Load-bearing highlights: lazy ML
-imports keep startup <1s; mypy is 0-new not tree-wide (baseline carries ~220); coverage
+imports keep startup <1s; ty must be fully clean (0 diagnostics) — it has no
+baseline/diff mode like mypy's, so this applies tree-wide, not just touched files; coverage
 is measured on installed packages (`--cov=src`); `ConfigService` is a singleton (respect
 the priority chain); connectors are Protocol-based with `from_manifest`; core is consumed
 only through the `core.v1.engine` facade, with `composition.py` the single wiring site;

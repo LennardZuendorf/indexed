@@ -7,12 +7,12 @@ from typing import Any, Dict, Mapping, Optional
 
 # TOML read (tomllib on 3.11+, fallback to tomli)
 if sys.version_info >= (3, 11):
-    import tomllib  # type: ignore
+    import tomllib
 else:
     try:
-        import tomli as tomllib  # type: ignore
+        import tomli as tomllib
     except Exception:
-        tomllib = None  # type: ignore
+        tomllib = None
 
 import tomlkit
 from dotenv import load_dotenv
@@ -134,7 +134,7 @@ class TomlStore:
         if tomllib is None:
             raise RuntimeError("tomllib/tomli not available for reading TOML")
         with open(path, "rb") as f:
-            return tomllib.load(f)  # type: ignore
+            return tomllib.load(f)
 
     def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
         """Read config for a specific resolved storage mode (no merging).

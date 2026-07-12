@@ -117,9 +117,13 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             if raw_source_type in _ALLOWED_SOURCE_TYPES
             else "localFiles"
         )
+        # source_type is runtime-validated against _ALLOWED_SOURCE_TYPES above
+        # (deliberately derived from SourceConfig's own Literal via get_args()
+        # rather than a hardcoded duplicate list, so this can't drift from the
+        # model) — a static checker can't see through that indirection.
         source_config = SourceConfig(
             name=collection,
-            type=source_type,
+            type=source_type,  # ty: ignore[invalid-argument-type]
             base_url_or_path="",
             indexer=default_indexer,
         )

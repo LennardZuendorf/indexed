@@ -7,11 +7,13 @@ dict and maps each content part as-is (no more RecursiveCharacterTextSplitter).
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class FilesDocumentConverter:
     """Convert v1 reader dicts to v1 indexed-document dicts."""
 
-    def convert(self, document: dict) -> list[dict]:
+    def convert(self, document: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             {
                 "id": document["fileRelativePath"],

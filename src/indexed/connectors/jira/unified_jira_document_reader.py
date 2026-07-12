@@ -276,7 +276,9 @@ class UnifiedJiraDocumentReader:
             if self.auth_type == JiraAuthType.CLOUD:
                 result = self._client.approximate_issue_count(self.query)
                 return int(result.get("count", 0))
-            result = self._client.jql(self.query, fields=self.fields, start=0, limit=1)
+            result = (
+                self._client.jql(self.query, fields=self.fields, start=0, limit=1) or {}
+            )
             return result.get("total", 0)
 
         return execute_with_retry(
@@ -376,11 +378,14 @@ class UnifiedJiraDocumentReader:
         """
 
         def do_request():
-            result = self._client.jql(
-                self.query,
-                fields=self.fields,
-                start=start_at,
-                limit=max_results,
+            result = (
+                self._client.jql(
+                    self.query,
+                    fields=self.fields,
+                    start=start_at,
+                    limit=max_results,
+                )
+                or {}
             )
             return {
                 "issues": result.get("issues", []),

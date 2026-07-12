@@ -297,14 +297,17 @@ class OutlineDocumentReader:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            # BaseException, not Exception: return_exceptions=True can also
+            # surface asyncio.CancelledError, which is a BaseException and
+            # must not fall through to the success branch below.
+            if isinstance(result, BaseException):
                 doc_id = (docs[i] or {}).get("id", "?")
                 logger.warning(
                     "Failed to fetch attachments for doc {}: {}", doc_id, result
                 )
                 attachments_map[i] = []
             else:
-                attachments_map[i] = result  # type: ignore[assignment]
+                attachments_map[i] = result
 
         return attachments_map
 

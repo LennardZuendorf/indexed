@@ -1,7 +1,7 @@
 name: Python Performance Benchmarks
 
 # On-demand only — benchmarks are heavy; run them manually from the Actions tab.
-# The PR gate set is lint + mypy + test + import-check + wheel-smoke (other workflows).
+# The PR gate set is lint + ty + test + import-check + wheel-smoke (other workflows).
 on:
   workflow_dispatch:
 

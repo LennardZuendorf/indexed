@@ -131,11 +131,11 @@ def display_storage_mode_for_command(console: Console) -> None:
 
     from indexed.cli.composition import resolve_collections_context
 
-    mode_override = None
+    mode_override: Optional[StorageMode] = None
     try:
-        import typer
+        import click
 
-        ctx = typer.get_current_context(silent=True)
+        ctx = click.get_current_context(silent=True)
         if ctx and ctx.obj:
             mode_override = ctx.obj.get("mode_override")
     except Exception:

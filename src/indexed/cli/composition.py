@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Type
 
-from indexed.config import ConfigService, get_config, reload
+from indexed.config import ConfigService, StorageMode, get_config, reload
 from indexed.config.errors import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
@@ -119,7 +119,7 @@ class CliContext:
 
 
 def resolve_collections_context(
-    mode_override: str | None = None,
+    mode_override: StorageMode | None = None,
     *,
     workspace: Path | None = None,
 ) -> CliContext:
@@ -130,7 +130,7 @@ def resolve_collections_context(
         reload()
     config_service = get_config(
         workspace=workspace,
-        mode_override=mode_override,  # type: ignore[arg-type]
+        mode_override=mode_override,
     )
     # The reload() above replaces the singleton with a fresh ConfigRegistry
     # whenever a non-None mode_override is passed; re-register here (idempotent)

@@ -8,8 +8,9 @@ It also exposes change-tracking methods for incremental indexing.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar, List
+from typing import ClassVar, List, Literal
 
+from indexed.config import ConfigService
 from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .change_tracker import ChangeTracker, FileChange, IndexState
@@ -45,7 +46,9 @@ class FileSystemConnector:
         include_patterns: List[str] | None = None,
         fail_fast: bool = False,
         *,
-        change_tracking: str = "auto",
+        change_tracking: Literal[
+            "auto", "git", "content_hash", "mtime", "none"
+        ] = "auto",
         ocr_enabled: bool = True,
         table_structure: bool = True,
         code_chunking: bool = True,
@@ -201,9 +204,9 @@ class FileSystemConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service: object) -> "FileSystemConnector":
-        config_service.register(FileSystemConfig, path="sources.files")  # type: ignore[union-attr]
-        provider = config_service.bind()  # type: ignore[union-attr]
+    def from_config(cls, config_service: ConfigService) -> "FileSystemConnector":
+        config_service.register(FileSystemConfig, path="sources.files")
+        provider = config_service.bind()
         cfg = provider.get(FileSystemConfig)
 
         return cls(

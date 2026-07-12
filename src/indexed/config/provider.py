@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Type, TypeVar
+from typing import Any, Dict, Type, TypeVar, cast
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
@@ -45,7 +45,10 @@ class Provider:
                 f"Config spec {spec.__name__} not found. "
                 "Did you register it with config.register()?"
             )
-        return self._slices[spec]  # type: ignore[return-value]
+        # _slices is keyed by type but stored as the common BaseModel value
+        # type, so retrieval can't statically prove it's exactly T — the
+        # invariant is enforced by register()/bind() pairing spec to instance.
+        return cast(T, self._slices[spec])
 
     def get_by_path(self, path: str) -> BaseModel:
         """Get config instance by dot path.

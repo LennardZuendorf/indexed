@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 import webbrowser
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 import typer
 
@@ -21,6 +21,7 @@ from indexed.cli.utils.components import (
 )
 from indexed.cli.utils.console import console
 
+_HTTP_LIKE_TRANSPORTS: tuple = ("http", "sse", "streamable-http")
 app = typer.Typer(help="Start MCP server for AI agent integration")
 
 
@@ -183,8 +184,13 @@ def run_impl(
             transport="stdio", show_banner=show_banner, log_level=effective_log_level
         )
     else:
+        if transport not in _HTTP_LIKE_TRANSPORTS:
+            raise typer.BadParameter(
+                f"Invalid transport {transport!r}; expected one of "
+                f"'stdio', {', '.join(repr(t) for t in _HTTP_LIKE_TRANSPORTS)}"
+            )
         mcp.run(
-            transport=transport,  # type: ignore[arg-type]
+            transport=cast(Literal["http", "sse", "streamable-http"], transport),
             show_banner=show_banner,
             host=effective_host,
             port=effective_port,

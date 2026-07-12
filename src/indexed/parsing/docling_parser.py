@@ -6,11 +6,16 @@ Handles PDF, DOCX, PPTX, HTML, images, and other rich document formats.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ._model_window import effective_max_tokens, get_markdown_chunker
 from .schema import ParsedChunk, ParsedDocument
+
+if TYPE_CHECKING:
+    from docling.chunking import HybridChunker
+    from docling.document_converter import DocumentConverter
 
 
 class DoclingParser:
@@ -30,8 +35,8 @@ class DoclingParser:
         self._max_tokens = effective_max_tokens(max_tokens)
 
         # Lazily initialised on first call to ``parse``.
-        self._converter: object | None = None
-        self._chunker: object | None = None
+        self._converter: DocumentConverter | None = None
+        self._chunker: HybridChunker | None = None
         self._supported_extensions: frozenset[str] | None = None
 
     # -- lazy init --------------------------------------------------------
@@ -41,6 +46,7 @@ class DoclingParser:
         if self._converter is not None:
             return
 
+        from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         from docling.document_converter import DocumentConverter, PdfFormatOption
 
@@ -50,7 +56,7 @@ class DoclingParser:
 
         self._converter = DocumentConverter(
             format_options={
-                "pdf": PdfFormatOption(pipeline_options=pipeline_opts),
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_opts),
             }
         )
 
@@ -83,10 +89,10 @@ class DoclingParser:
             )
 
         try:
-            result = self._converter.convert(str(file_path))  # type: ignore[union-attr]
+            result = self._converter.convert(str(file_path))
             doc = result.document
 
-            raw_chunks = list(self._chunker.chunk(doc))  # type: ignore[union-attr]
+            raw_chunks = list(self._chunker.chunk(doc))
 
             chunks: list[ParsedChunk] = []
             for ch in raw_chunks:
@@ -99,8 +105,9 @@ class DoclingParser:
                             meta[key] = val
 
                 contextualized = text
-                if meta.get("headings"):
-                    prefix = " > ".join(str(h) for h in meta["headings"])  # type: ignore[union-attr]
+                headings = meta.get("headings")
+                if isinstance(headings, (list, tuple)):
+                    prefix = " > ".join(str(h) for h in headings)
                     contextualized = f"{prefix}\n{text}"
 
                 chunks.append(

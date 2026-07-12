@@ -273,7 +273,9 @@ class SearchService:
 
         for cfg in search_configs:
             try:
-                searcher = self._get_searcher(cfg.name, cfg.indexer)
+                searcher = self._get_searcher(
+                    cfg.name, cfg.indexer or self._get_default_indexer(cfg.name)
+                )
 
                 # Filter-before-truncate + backfill (bug A5): when a score
                 # threshold is active, ask the searcher for more documents

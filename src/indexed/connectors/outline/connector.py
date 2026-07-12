@@ -7,6 +7,7 @@ base URL differs.
 
 from typing import Any, ClassVar
 
+from indexed.config import ConfigService
 from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .outline_document_converter import OutlineDocumentConverter
@@ -136,10 +137,10 @@ class OutlineConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service: object) -> "OutlineConnector":
+    def from_config(cls, config_service: ConfigService) -> "OutlineConnector":
         """Create an OutlineConnector from a ConfigService instance."""
-        config_service.register(OutlineConfig, path="sources.outline")  # type: ignore[attr-defined]
-        provider = config_service.bind()  # type: ignore[attr-defined]
+        config_service.register(OutlineConfig, path="sources.outline")
+        provider = config_service.bind()
         cfg = provider.get(OutlineConfig)
         return cls(cfg)
 

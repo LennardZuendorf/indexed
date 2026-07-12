@@ -35,6 +35,11 @@ from typing import TYPE_CHECKING, Callable, Optional
 from loguru import logger
 
 if TYPE_CHECKING:
+    # Message is a stub-only construct (loguru's runtime __init__ only
+    # exports `logger`, per its __all__) — safe to import here since this
+    # file has `from __future__ import annotations`, so the annotation is
+    # never evaluated at runtime.
+    from loguru import Message
     from rich.console import Console
 
 
@@ -130,15 +135,15 @@ def _make_console_sink(
     rich_console: Optional["Console"],
     theme_styles: dict[str, str],
     show_details: bool,
-) -> Callable[[object], None]:
+) -> Callable[[Message], None]:
     """Build a Loguru sink callable.
 
     When ``rich_console`` is provided, output goes through it and theme styles
     wrap the level + message. Otherwise output goes to stderr as plain text.
     """
 
-    def sink(message: object) -> None:
-        record = message.record  # type: ignore[attr-defined]
+    def sink(message: Message) -> None:
+        record = message.record
         # Skip status records — they belong to the status sink.
         if record["extra"].get("status"):
             return
@@ -180,11 +185,11 @@ def _make_console_sink(
     return sink
 
 
-def _make_status_sink() -> Callable[[object], None]:
+def _make_status_sink() -> Callable[[Message], None]:
     """Status sink: filtered records fan out to all subscribers."""
 
-    def sink(message: object) -> None:
-        record = message.record  # type: ignore[attr-defined]
+    def sink(message: Message) -> None:
+        record = message.record
         if not record["extra"].get("status"):
             return
         msg = record["message"]

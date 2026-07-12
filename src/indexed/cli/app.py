@@ -49,10 +49,12 @@ THEME_STYLES: dict[str, str] = {
     "CRITICAL": get_error_style(),
 }
 
-typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"
-typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"
-typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {get_accent_style()}"
-typer.rich_utils.STYLE_COMMANDS_TABLE_COLUMN_WIDTH_RATIO = (None, None)
+# typer's stubs declare these as narrow Literal defaults (e.g. "bold cyan"),
+# but they're plain module-level str attributes at runtime — overriding them
+# for accent theming is a supported, if untyped, customization point.
+typer.rich_utils.STYLE_OPTION = f"bold {get_accent_style()}"  # ty: ignore[invalid-assignment]
+typer.rich_utils.STYLE_SWITCH = f"bold {get_accent_style()}"  # ty: ignore[invalid-assignment]
+typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {get_accent_style()}"  # ty: ignore[invalid-assignment]
 
 _help_console = Console(theme=Theme(get_help_theme_styles()))
 
@@ -62,7 +64,6 @@ app = typer.Typer(
     rich_markup_mode="rich",
     pretty_exceptions_enable=True,
     context_settings={"help_option_names": ["--help"]},
-    rich_help_panel=True,
 )
 
 
@@ -118,11 +119,8 @@ def _init_app(
     from .utils.simple_output import is_simple_output
 
     env_level = os.getenv("INDEXED_LOG_LEVEL")
-    level = (
-        (log_level or ("INFO" if verbose else None) or env_level).upper()
-        if (log_level or verbose or env_level)
-        else None
-    )
+    resolved_level = log_level or ("INFO" if verbose else None) or env_level
+    level = resolved_level.upper() if resolved_level else None
     json_mode = (
         json_logs
         or is_simple_output()

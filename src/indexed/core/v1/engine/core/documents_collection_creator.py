@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Optional
 
 import numpy as np
 from loguru import logger
@@ -53,7 +54,7 @@ class DocumentCollectionCreator:
         document_indexers,
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
-        phased_progress: PhasedProgressCallback = None,
+        phased_progress: Optional[PhasedProgressCallback] = None,
         explicit_deletions: list[str] | None = None,
         post_run: Callable[[], None] | None = None,
     ):
@@ -248,6 +249,10 @@ class DocumentCollectionCreator:
 
         for document in self.document_reader.read_all_documents():
             for converted_document in self.document_converter.convert(document):
+                # Today's converters return the dict arm of the protocol's
+                # union (the ConvertedDocument arm types a future typed
+                # path not yet exercised by any converter).
+                assert isinstance(converted_document, dict)
                 document_path = (
                     f"{self._storage_name}/documents/{converted_document['id']}.json"
                 )
@@ -357,9 +362,10 @@ class DocumentCollectionCreator:
 
         embedding_progress = None
         if self.phased_progress:
+            _progress = self.phased_progress
 
             def embedding_progress(n: int) -> None:
-                self.phased_progress.advance("Generating Embeddings", amount=n)
+                _progress.advance("Generating Embeddings", amount=n)
 
         for indexer in self.document_indexers:
             indexer.index_texts(

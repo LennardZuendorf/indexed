@@ -62,8 +62,9 @@ class PlaintextParser:
                             meta[key] = val
 
                 ctx = text
-                if meta.get("headings"):
-                    prefix = " > ".join(str(h) for h in meta["headings"])  # type: ignore[union-attr]
+                headings = meta.get("headings")
+                if isinstance(headings, (list, tuple)):
+                    prefix = " > ".join(str(h) for h in headings)
                     ctx = f"{prefix}\n{text}"
 
                 chunks.append(

@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Lessons Learned
@@ -451,3 +451,33 @@ port is a different origin for credential purposes; fail closed.
   `config/` command and the `indexed_config` package both wanted `indexed.config`;
   resolved by merging them (config package modules + `config/cli.py` coexist under
   `indexed.config`, with the CLI file exempted from the config-package purity edge).
+
+## mypy → ty migration (2026-07-12)
+
+- **A stricter type checker earns its keep by finding real bugs, not just noise.**
+  Full replacement (mypy → `ty`, pinned exact version, no baseline-carry) surfaced
+  47 diagnostics; most were genuine — `List[str] = None` on a dataclass field,
+  `.get()` on an `atlassian.Jira.jql()` call whose own stub declares `Optional[dict]`,
+  `isinstance(result, Exception)` after `asyncio.gather(return_exceptions=True)`
+  missing `BaseException` subclasses like `CancelledError`, and `typer.get_current_context`
+  — a function that doesn't exist on the installed typer version, silently swallowed
+  by a bare `except Exception: pass` at both call sites (should have been `click.get_current_context`).
+- **Protocol structural conformance needs positional-only params when implementations
+  rename them.** `DocumentConverter.convert(self, doc: Any)` failed to match every real
+  converter (which use `document`) until `doc` was marked positional-only (`/`) —
+  without it, structural matching requires the parameter name to match too.
+- **Don't fight an intentionally dynamic pattern with a static duplicate.** `mcp/tools.py`
+  derives its source-type whitelist from `SourceConfig`'s own Literal via `get_args()`
+  specifically so it can't drift from the model; a static checker can't see through
+  that indirection. Suppressed with `# ty: ignore[...]` and a comment, not a second
+  hardcoded literal list that could itself drift.
+- **A stub declaring a name doesn't mean the runtime module exports it.** `loguru`'s
+  `.pyi` declares `Message`, but `loguru/__init__.py`'s `__all__` is just `["logger"]`
+  — importing `Message` at runtime raises `ImportError`. Stub-only names must be
+  imported under `TYPE_CHECKING` (safe here because the file already has
+  `from __future__ import annotations`), never at module top level.
+- **ty has no baseline/diff mode** — every touched *and* untouched file must pass,
+  unlike mypy's 0-new-on-touched-files/~206-baseline policy this project used before.
+  Third-party SWIG/no-stub gaps (faiss, docling's `format_options` dict key, requests
+  needing a `types-requests` dev dependency it never had under mypy) still need
+  per-line judgment: fix the real ones, suppress the library-stub ones with a reason.

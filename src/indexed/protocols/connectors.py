@@ -30,7 +30,7 @@ class DocumentReader(Protocol):
     Declares exactly what the engine calls on a reader
     (``documents_collection_creator``): the document count, the document
     iterator, and the reader-details block persisted to the manifest. A reader
-    missing one of these is a mypy error, not a runtime ``AttributeError``.
+    missing one of these is a ty error, not a runtime ``AttributeError``.
     """
 
     def get_number_of_documents(self) -> int:
@@ -51,13 +51,17 @@ class DocumentConverter(Protocol):
     """Protocol for converting raw documents into searchable chunks."""
 
     def convert(
-        self, doc: Any
+        self, doc: Any, /
     ) -> Union[Iterator[ConvertedDocument], Iterable[Dict[str, Any]]]:
         """Convert a raw document into the v1 converted-document form.
 
         Today's converters yield/return v1 dicts (``Iterator[dict]`` or
         ``list[dict]``); the ``ConvertedDocument`` arm types the future typed
         path. ``Iterable`` covers both an iterator and a list.
+
+        ``doc`` is positional-only: real implementations use their own
+        parameter name (e.g. ``document``), and without ``/`` structural
+        Protocol matching would require the name to match exactly.
         """
         ...
 

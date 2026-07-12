@@ -43,6 +43,10 @@ jobs:
         run: |
           uv run ruff check
 
+      - name: Run ty Type Checker
+        run: |
+          uv run ty check src/indexed
+
       - name: Run Unit Tests with Coverage
         # Coverage is scoped to engine/connector/config code; indexed.cli and
         # indexed.mcp (UI chrome) are omitted via [tool.coverage.run] in

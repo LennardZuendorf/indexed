@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import Any, Optional
 
 from indexed.config.errors import missing_wiring_error
+from indexed.protocols import PhasedProgressCallback
 
 from indexed.core.v1.engine.core.documents_collection_creator import (
     DocumentCollectionCreator,
@@ -23,7 +24,7 @@ def create_collection_creator(
     document_reader,
     document_converter,
     use_cache=True,
-    phased_progress=None,
+    phased_progress: Optional[PhasedProgressCallback] = None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
@@ -51,7 +52,7 @@ def __create_collection_creator(
     document_reader,
     document_converter,
     use_cache,
-    phased_progress=None,
+    phased_progress: Optional[PhasedProgressCallback] = None,
     collections_path: Optional[str] = None,
     caches_path: Optional[str] = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,

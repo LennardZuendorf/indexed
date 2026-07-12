@@ -51,7 +51,7 @@ class OutlineDocumentConverter:
     # Public API
     # ------------------------------------------------------------------
 
-    def convert(self, document: dict) -> Iterator[dict]:
+    def convert(self, document: dict[str, Any]) -> Iterator[dict[str, Any]]:
         """Convert an Outline document dict to indexed format.
 
         Args:

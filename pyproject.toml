@@ -87,7 +87,6 @@ only-include = ["src/indexed"]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.17.1",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
@@ -97,6 +96,8 @@ dev = [
     "pytest-xdist>=3.5.0",
     "pytest-rerunfailures>=12.0",
     "ruff>=0.12.10",
+    "ty==0.0.58",
+    "types-requests>=2.33.0.20260712",
 ]
 
 # ── Ruff ────────────────────────────────────────────────────────────────────
@@ -163,10 +164,17 @@ exclude_lines = [
     "@abstractmethod",
 ]
 
-# ── MyPy ────────────────────────────────────────────────────────────────────
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-ignore_missing_imports = true
+# ── ty (Astral type checker) ────────────────────────────────────────────────
+# ty replaces mypy as the sole type checker. ty is beta (0.0.x, no stable
+# API), so the version is pinned exactly in [dependency-groups].dev and in the
+# .pre-commit ty hook rev; it has no baseline/diff mode, so the tree must stay
+# fully clean (0 diagnostics), not baseline-carried like mypy's 0-new policy.
+[tool.ty.environment]
+python-version = "3.11"
+root = ["./src"]
+
+[tool.ty.src]
+# Scope checks to the package. Kept identical to the manual gate
+# (`ty check src/indexed`) and the config-driven pre-commit hook so all three
+# check the same file set.
+include = ["src/indexed"]

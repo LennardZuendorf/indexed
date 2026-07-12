@@ -8,11 +8,12 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
 from loguru import logger
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from indexed.core.v1.engine import SourceConfig
 
-from indexed.config import ConfigService, ValidationResult
+from indexed.config import ConfigService, StorageMode, ValidationResult
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -79,10 +80,12 @@ def _restore_config_toml(path: Path, snapshot: object) -> None:
             if path.exists():
                 path.unlink()
             return
+        if not isinstance(snapshot, (bytes, bytearray)):
+            return
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".restore.tmp")
         with open(tmp, "wb") as f:
-            f.write(snapshot)  # type: ignore[arg-type]
+            f.write(snapshot)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
@@ -93,7 +96,7 @@ def _restore_config_toml(path: Path, snapshot: object) -> None:
 def execute_create_command(
     collection: str,
     source_type: str,
-    config_class: Type,
+    config_class: Type[BaseModel],
     namespace: str,
     cli_overrides: Dict[str, Any],
     prompt_missing_fields: Callable[[ValidationResult, ConfigService, str], None],
@@ -143,11 +146,13 @@ def execute_create_command(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger(level_str=effective_level, json_mode=json_logs)
 
-    mode_override: str | None = None
-    try:
-        import typer
+    import typer
 
-        ctx = typer.get_current_context(silent=True)
+    mode_override: Optional[StorageMode] = None
+    try:
+        import click
+
+        ctx = click.get_current_context(silent=True)
         if ctx and ctx.obj:
             mode_override = ctx.obj.get("mode_override")
     except Exception:

@@ -55,7 +55,9 @@ class FaissIndexer:
             batch_size=_resolve_embedding_batch_size(),
             progress_callback=progress_callback,
         )
-        self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
+        # faiss's SWIG-generated stub declares the raw C signature
+        # (n, x, xids); the real Python API (used here) takes just (x, xids).
+        self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))  # ty: ignore[missing-argument]
 
     def remove_ids(self, ids):
         self.faiss_index.remove_ids(ids)
@@ -70,7 +72,9 @@ class FaissIndexer:
         return self.faiss_index
 
     def search(self, text, number_of_results=10):
-        return self.faiss_index.search(
+        # Same SWIG-stub mismatch as add_with_ids above: the real Python API
+        # takes (x, k) and returns (distances, labels).
+        return self.faiss_index.search(  # ty: ignore[missing-argument]
             np.expand_dims(self.embedder.embed(text), axis=0), number_of_results
         )
 

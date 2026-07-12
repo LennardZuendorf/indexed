@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Tech Spec: indexed
@@ -91,7 +91,7 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **Pydantic** | 2.10+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
 | **ruff** | 0.9.1 | Linter + formatter |
-| **mypy** | 1.14+ | Type checker |
+| **ty** | 0.0.58 | Type checker |
 | **pytest** | 8.3.4 | Testing |
 
 ### Package Structure
@@ -155,7 +155,7 @@ Structural Rules and `[tool.coverage.run]` in `pyproject.toml`.
 
 ```text
 tests/
-├── unit/              # tests/unit/{indexed,indexed_core,indexed_connectors,indexed_config,indexed_parsing,indexed_protocols,utils,scripts}/
+├── unit/              # tests/unit/{indexed,utils,scripts}/ — indexed/ mirrors src/indexed/'s subpackages
 ├── system/            # integration tests
 ├── characterization/  # behavior-net harness (regression-guards fixed bugs)
 └── benchmarks/        # performance tests
@@ -163,7 +163,7 @@ tests/
 
 ```bash
 uv run pytest -q                              # all
-uv run pytest tests/unit/indexed_core/ -q     # one subpackage
+uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
 
@@ -340,12 +340,12 @@ may import `protocols`. Engine-only DTOs stay in core.
   They round-trip today's on-disk **camelCase JSON byte-stable** (fields declared in
   on-disk key order, dumped `by_alias=True`, `exclude_none=True`) — the on-disk v1 format
   is the **compatibility boundary**, so a v2 engine reads the same collections. The engine
-  reads/writes these models, never `dict["stringKey"]`; a field mismatch is a mypy error,
+  reads/writes these models, never `dict["stringKey"]`; a field mismatch is a ty error,
   not a runtime `KeyError`.
 - **Corrected connector protocols** (`protocols/connectors.py`): `DocumentReader` declares
   exactly what the engine calls — `get_number_of_documents` / `read_all_documents` /
   `get_reader_details`; `DocumentConverter` declares `convert`. A connector missing one is
-  a mypy error, not a runtime `AttributeError`. `BaseConnector` also declares
+  a ty error, not a runtime `AttributeError`. `BaseConnector` also declares
   `from_manifest(manifest, config, *, storage_path) -> ConnectorRun` — each connector owns
   its manifest keys and incremental cutoff, so **core's update path has no per-source /
   `localFiles` branches**.
@@ -371,7 +371,7 @@ removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
 - builds the connector registry and hands the facade **two REQUIRED callables** —
   `connector_factory` (create-time) and `manifest_factory` (update-time). No
   `Callable | None` + `missing_wiring_error` on the happy path; a missing wiring is a
-  `TypeError`/mypy error at the call site, not a runtime guard.
+  `TypeError`/ty error at the call site, not a runtime guard.
 - owns `resolve_collections_context(mode_override)` — the **single** storage-path resolver
   for CLI and MCP — and calls `register_app_config` itself, so registered config specs
   survive the singleton reset a non-None `mode_override` forces. Do not revive heuristics

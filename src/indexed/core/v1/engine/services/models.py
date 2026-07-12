@@ -53,7 +53,7 @@ class CollectionInfo:
     last_modified_document_time: Optional[str] = None
 
     # Index info
-    indexers: List[str] = None
+    indexers: Optional[List[str]] = None
 
     # Computed statistics (calculated from other fields)
     avg_chunks_per_doc: Optional[float] = None

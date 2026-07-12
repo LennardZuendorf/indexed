@@ -12,6 +12,7 @@ from typing import Optional, Dict
 from rich.progress import (
     Progress,
     BarColumn,
+    ProgressColumn,
     TextColumn,
     SpinnerColumn,
     TaskID,
@@ -48,7 +49,7 @@ class RichPhasedProgress:
         self._accent = get_accent_style()
         self._dim = get_dim_style()
         self._default = get_default_style()
-        columns = [
+        columns: list[ProgressColumn] = [
             SpinnerColumn(style=self._accent),
             TextColumn("[progress.description]{task.description}"),
         ]
