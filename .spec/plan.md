@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Development Plan: indexed
@@ -41,6 +41,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
 | 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
+| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ◻ ACTIVE | [features/review-remediation/](features/review-remediation/plan.md) |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -83,7 +84,20 @@ cleanups (cached `get_config()/reload()`, single path/mode resolver) landed. Ful
 suite + system tests green; coverage ≥85% on core/connectors/config; size + import
 gates enforced by `scripts/check_sizes.py` + `scripts/check_imports.py`.
 
-**No active feature.** The **v2 core/connectors rewrite** is the next horizon — it
+**Active: Feature 15 Review Remediation.** The extra-high-effort code review of
+PR #155 (14 finders + 8 adversarial verifiers + gap sweep) confirmed a set of
+defects the architecture cleanup introduced or left latent — three P1
+crashes/data-loss on common paths (config `set` truncating the untargeted
+`config.toml`; `indexed-mcp run` crashing on a malformed config; fresh-install
+`inspect`/`search` erroring instead of reporting empty), three P1
+silent-wrong/crash connector+cache defects (Confluence `CancelledError`, Jira
+`enhanced_jql` None, document-cache key omitting parse settings), a systemic
+Rich-markup crash on ordinary input (`search "list[int]"`), plus a P2/P3 tail.
+Captured as [features/review-remediation/](features/review-remediation/plan.md),
+nine mostly-independent units ordered by blast radius, each a green commit with a
+regression test. To be worked in the cloud.
+
+The **v2 core/connectors rewrite** remains the next horizon after remediation — it
 swaps a module behind the `core.v1.engine` facade over the same on-disk format, now
 unblocked (typed contracts + facade + one package + behavior-only suite make it a
 drop-in).
@@ -112,6 +126,22 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-12: Feature 15 (Review Remediation) opened
+**Decision:** Capture the confirmed defects from the extra-high-effort review of
+PR #155 as Feature 15 rather than fixing ad-hoc. The review ran 14 finder passes
+(Opus/Sonnet/Haiku subagents) + 8 adversarial verifiers + a gap sweep over the
+changed `src/indexed/` surface; every requirement traces to a defect confirmed or
+plausible against real code at HEAD (several with live repros). Fifteen
+requirements grouped into nine mostly-independent units, ordered P1 (data-loss /
+common-path crash / silent-wrong) → P2 → P3 (diagnosability + test coverage).
+**Rationale:** the defects are point fixes on stable surface, but each needs a
+regression test so the next refactor can't reintroduce it — that is feature-layer
+work, not a root backlog. Two altitude questions are deferred to design-in-unit:
+whether R7 (Rich-markup safety) lands as a shared render seam vs per-site escaping,
+and whether R13 re-wires `max_skipped_items_in_row` skip/retry or deletes the dead
+param. Folder deletes before the branch merges per spec rules; any cross-cutting
+outcome (R7 seam) promotes to root tech.md at wrap-up.
 
 ### 2026-07-10: Feature 14 (Simplify) complete
 **Decision:** Shipped Feature 14 across six units, each a green commit: simplify/1
