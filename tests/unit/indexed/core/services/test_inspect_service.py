@@ -251,3 +251,11 @@ class TestDiscoverCollectionsFailsLoud:
 
         with pytest.raises(StorageError):
             service.status()
+
+    def test_discover_collections_returns_empty_on_missing_dir(self, tmp_path):
+        """R3: a fresh install with no collections directory yet must not
+        crash ``indexed inspect``/``indexed index search`` — a missing top
+        dir (ENOENT) is a normal, empty state, not a scan failure."""
+        service = InspectService(collections_path=str(tmp_path / "does-not-exist"))
+
+        assert service._discover_collections() == []

@@ -295,6 +295,31 @@ class TestDiscoverCollectionsFailsLoud:
         with pytest.raises(StorageError, match="permission denied"):
             service._discover_collections()
 
+    def test_discover_collections_returns_empty_on_missing_dir(self, tmp_path):
+        """R3: a fresh install with no collections directory yet must not
+        crash the MCP ``search`` tool (auto-discover path) — a missing top
+        dir (ENOENT) is a normal, empty state, not a scan failure."""
+        service = SearchService(collections_path=str(tmp_path / "does-not-exist"))
+
+        assert service._discover_collections() == []
+
+    def test_discover_collections_filters_staging_dirs(self):
+        """R3: internal build-aside staging dirs (``<name>.tmp-<pid>-<hex>``)
+        must never surface as discovered collections — this filter already
+        exists in InspectService._discover_collections but was missing here."""
+        service = SearchService()
+        service._persister.read_folder_files = Mock(
+            return_value=[
+                "mycol.tmp-12345-abcd1234/manifest.json",
+                "real/manifest.json",
+            ]
+        )
+        service._persister.is_path_exists = Mock(return_value=True)
+
+        result = service._discover_collections()
+
+        assert result == ["real"]
+
 
 class TestSearchFunctionalInterface:
     """Test functional search interface."""

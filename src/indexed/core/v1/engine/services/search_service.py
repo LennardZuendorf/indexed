@@ -6,7 +6,9 @@ various indexing strategies. It supports both stateful (class-based) and statele
 and caching of search indexes for optimal performance.
 """
 
+import errno
 import json
+import re
 from typing import List, Optional, Dict, Any
 from loguru import logger
 
@@ -23,6 +25,11 @@ from indexed.core.v1.config_models import get_default_collections_path
 # the searcher so filtered-out slots can be backfilled from the next-best
 # surviving documents (bug A5) instead of being lost by an earlier truncation.
 _BACKFILL_OVERFETCH_FACTOR = 3
+
+# Transient directories the durable-create path leaves aside:
+# `<name>.tmp-<pid>-<hex>` staging dirs and `<name>.trash-<pid>` rollback dirs.
+# These must never be reported as real collections (mirrors InspectService).
+_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+")
 
 
 class SearchService:
@@ -87,32 +94,45 @@ class SearchService:
             StorageError: If the collections directory cannot be scanned (e.g.
                 a permission or transient filesystem error). This is a
                 non-recoverable scan failure and must fail loud rather than
-                silently report zero collections.
+                silently report zero collections. A missing top-level
+                directory (ENOENT) is NOT a scan failure — a fresh install
+                has no collections directory yet — and returns an empty
+                list instead (R3).
         """
         try:
             entries = self._persister.read_folder_files(".")
-            # Derive top-level directory candidates from any file path or directory name
-            top_level_dirs = set()
-            for rel_path in entries:
-                if "/" in rel_path:
-                    parts = rel_path.split("/", 1)
-                    top_level_dirs.add(parts[0])
-                else:
-                    # Treat bare names as top-level directories too
-                    top_level_dirs.add(rel_path)
-            logger.debug(f"Candidate top-level dirs: {sorted(top_level_dirs)}")
-
-            discovered: List[str] = []
-            for dirname in sorted(top_level_dirs):
-                manifest_path = f"{dirname}/manifest.json"
-                if self._persister.is_path_exists(manifest_path):
-                    discovered.append(dirname)
-
-            logger.info(f"Found {len(discovered)} collections: {', '.join(discovered)}")
-            return discovered
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                return []
+            logger.error(f"Failed to discover collections: {exc}")
+            raise StorageError(f"Could not scan collections directory: {exc}") from exc
         except Exception as exc:
             logger.error(f"Failed to discover collections: {exc}")
             raise StorageError(f"Could not scan collections directory: {exc}") from exc
+
+        # Derive top-level directory candidates from any file path or directory name
+        top_level_dirs = set()
+        for rel_path in entries:
+            if "/" in rel_path:
+                parts = rel_path.split("/", 1)
+                top_level_dirs.add(parts[0])
+            else:
+                # Treat bare names as top-level directories too
+                top_level_dirs.add(rel_path)
+        logger.debug(f"Candidate top-level dirs: {sorted(top_level_dirs)}")
+
+        discovered: List[str] = []
+        for dirname in sorted(top_level_dirs):
+            # Skip the transient build-aside/rollback directories the
+            # durable-create path leaves on disk — see _INTERNAL_COLLECTION_DIR_RE.
+            if dirname and _INTERNAL_COLLECTION_DIR_RE.search(dirname):
+                continue
+            manifest_path = f"{dirname}/manifest.json"
+            if self._persister.is_path_exists(manifest_path):
+                discovered.append(dirname)
+
+        logger.info(f"Found {len(discovered)} collections: {', '.join(discovered)}")
+        return discovered
 
     def _get_default_indexer(self, collection_name: str) -> str:
         """Get the first indexer from a collection's manifest.
