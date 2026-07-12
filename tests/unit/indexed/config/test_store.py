@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 import pytest
 from indexed.config.store import TomlStore
+from indexed.config.storage import StorageResolver
+from indexed.config.workspace import WorkspaceManager
 
 
 def test_toml_store_init():
@@ -148,3 +150,40 @@ def test_toml_store_read_disk_only_ignores_env(tmp_path: Path):
     # confirms disk_only is genuinely bypassing the overlay, not just broken.
     assert merged["test"]["value"] == "from_env"
     assert merged["test"]["other"] == "secret"
+
+
+def test_get_workspace_preference_matches_workspace_manager(tmp_path: Path):
+    """R1 review-remediation: TomlStore._get_workspace_preference() must stay
+    in lockstep with WorkspaceManager.get_preference().
+
+    ``_get_workspace_preference()`` (store.py) is a forced duplicate of
+    ``WorkspaceManager.get_preference()`` (workspace.py) — the reverse import
+    would be circular since ``workspace.py`` already imports ``TomlStore``.
+    Nothing else pins the two copies together: a future change to the
+    ``[workspace]`` key name or the valid-mode set in one file, not mirrored
+    into the other, would silently reintroduce the R1 write-target divergence
+    with no test catching it. This test reads the SAME real on-disk global
+    config.toml through both code paths and asserts they agree.
+    """
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    global_home = tmp_path / "home"
+    global_dir = global_home / ".indexed"
+    global_dir.mkdir(parents=True)
+    (global_dir / "config.toml").write_text("")
+
+    with patch.object(Path, "home", return_value=global_home):
+        # Persist a real "[workspace] mode" preference via the same writer
+        # set_preference() uses, onto an actual on-disk global config.toml.
+        TomlStore(mode_override="global").write(
+            {"workspace": {"mode": "local", "local_path": str(workspace)}},
+            to_global=True,
+        )
+
+        store = TomlStore(workspace=workspace)
+        manager = WorkspaceManager(
+            store, StorageResolver(workspace=workspace), workspace
+        )
+
+        assert store._get_workspace_preference() == manager.get_preference() == "local"

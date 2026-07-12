@@ -109,11 +109,7 @@ class ConfigService:
         Resolves the storage mode (CLI override or WorkspaceManager) and reads
         exactly one config.toml via read_for_mode().
         """
-        mode = (
-            self._mode_override
-            if self._mode_override
-            else self._workspace.resolve_storage_mode()
-        )
+        mode = self._resolve_persist_mode()
         raw = self._store.read_for_mode(mode)
         if self._overlay:
             raw = deep_merge(raw, self._overlay)
@@ -176,7 +172,9 @@ class ConfigService:
         to ``_disk_baseline()`` and ``save_raw()`` guarantees that — even
         after a correct write-side resolver fix, calling the cascade twice
         independently would still leave a seam if the stored preference
-        changed on disk between the two calls (R1).
+        changed on disk between the two calls (R1). Also used by
+        ``load_raw()`` (read-only, but the same override → preference
+        cascade applies) to avoid duplicating the ternary.
         """
         return (
             self._mode_override
