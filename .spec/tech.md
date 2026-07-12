@@ -186,11 +186,15 @@ uv run --with twine twine check --strict dist/*      # metadata render check (wh
 
 ### Release
 
-`pyproject.toml` is the single source of truth for the version — bump it in the
-release PR, then publish a GitHub Release whose tag matches. The release
-workflow builds the tagged commit, verifies `tag == pyproject version`, and
-publishes wheel + sdist to PyPI via OIDC trusted publishing (no token, no
-version-rewrite step, no `sync_version.py`).
+The GitHub Release **tag** is the version, decided at release time — no manual
+pre-bump in a PR. On `release: published`, the build job checks out the tag and
+runs `uv version --frozen <tag>` so the wheel carries the tag version, then
+validates (validate_wheel + `twine check --strict`) and publishes wheel + sdist
+to PyPI via OIDC trusted publishing (no token). A backmerge job then writes the
+bump back to `main` (`uv version --no-sync <tag>` → both `pyproject.toml` and
+`uv.lock`) and commits it with `chore: release <tag> [skip ci]`, so `main` stays
+truthful between releases. Still no `sync_version.py` — native `uv version`
+replaces it.
 
 ---
 

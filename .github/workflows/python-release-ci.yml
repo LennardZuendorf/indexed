@@ -1,34 +1,36 @@
 name: Release — Build + Publish to PyPI
 
-# Trigger: publish a GitHub Release in the GitHub UI (manual).
-# Flow: build wheel + sdist from the TAGGED commit → validate → publish to
-# PyPI → attach to the release.
+# Trigger: publish a GitHub Release (UI) with a semver tag (vX.Y.Z or X.Y.Z).
+# The tag IS the release version — chosen at release time, not pre-bumped.
 #
-# Versioning: pyproject.toml is the single source of truth (bump it in the
-# release PR before tagging). The release tag must equal that version — the
-# build job fails loud on mismatch. There is no version-rewrite step.
+# Flow:
+#   build      — checkout the tag, set pyproject version FROM the tag, build
+#                wheel + sdist, validate (archive + twine metadata)
+#   publish    — OIDC trusted-publish to PyPI, attach dists to the Release
+#   backmerge  — after a successful publish, write the version bump
+#                (pyproject.toml + uv.lock) back to main so source stays
+#                truthful between releases  [skip ci]
 #
-# Distributions are NEVER committed to git. They are built fresh in CI on every
-# release, validated (scripts/validate_wheel.py archive check + twine metadata),
-# uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub
-# Release as the durable archive.
+# Versioning: no manual pre-bump, no sync_version.py. `uv version` sets it
+# natively from the tag; the backmerge job keeps main in sync.
 on:
   release:
     types: [published]
-  workflow_dispatch:
+  workflow_dispatch:   # build-only smoke test (no publish, no backmerge)
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  # ── 1. Build wheel + sdist from the tagged commit and validate ──────────────
+  # ── 1. Build wheel + sdist from the tag and validate ────────────────────────
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
     - name: Checkout tagged commit
-      # On `release: published`, checkout defaults to the tag ref — build the
-      # TAGGED commit, not main's tip (version lives in pyproject.toml now).
       uses: actions/checkout@v4
 
     - name: Set up Python
@@ -42,21 +44,22 @@ jobs:
     - name: Install dependencies
       run: uv sync
 
-    - name: Verify release tag matches pyproject version
-      # pyproject.toml is the single source of truth. Guard against tagging a
-      # release without bumping the version. Skipped on workflow_dispatch
-      # (ref is a branch, not a semver tag).
+    - name: Set version from release tag
+      # The tag is the release version. Validate semver, then write it into the
+      # ephemeral checkout's pyproject so the built wheel carries it. --frozen:
+      # don't re-lock here (the build doesn't need uv.lock; the backmerge job
+      # updates the lock on main). Skipped on workflow_dispatch (no tag).
       if: github.event_name == 'release'
       env:
         REF_NAME: ${{ github.ref_name }}
       run: |
-        tag="${REF_NAME#v}"
-        ver="$(uv version --short)"
-        if [ "$tag" != "$ver" ]; then
-          echo "::error::release tag '$REF_NAME' (=$tag) != pyproject version '$ver' — bump pyproject.toml before tagging"
+        ver="${REF_NAME#v}"
+        if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::release tag '$REF_NAME' is not a X.Y.Z semver version"
           exit 1
         fi
-        echo "tag $REF_NAME matches pyproject version $ver"
+        uv version --frozen "$ver"
+        echo "set version to $ver"
 
     - name: Build wheel + sdist
       run: uv build --out-dir dist
@@ -85,14 +88,14 @@ jobs:
   publish-to-pypi:
     name: Publish to PyPI
     needs: build
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/indexed-sh
     permissions:
       id-token: write   # OIDC trusted publishing
-      contents: write   # attach distributions to GitHub Release
-
+      contents: write   # attach distributions to the Release
     steps:
     - name: Download distribution artifacts
       uses: actions/download-artifact@v4
@@ -105,7 +108,46 @@ jobs:
       # Default packages-dir: dist/ — no override needed.
 
     - name: Attach distributions to GitHub Release
-      if: always() && github.event_name == 'release'
+      if: always()
       uses: softprops/action-gh-release@v2
       with:
         files: dist/*
+
+  # ── 3. Backmerge the version bump into main ─────────────────────────────────
+  backmerge-version:
+    name: Backmerge version to main
+    needs: publish-to-pypi
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the bump commit to main
+    steps:
+    - name: Checkout main
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      run: python -m pip install uv
+
+    - name: Bump pyproject + uv.lock to the released version
+      # --no-sync: re-lock uv.lock (so it records the new version) but skip the
+      # virtualenv sync — nothing runs afterwards in this job.
+      env:
+        REF_NAME: ${{ github.ref_name }}
+      run: uv version --no-sync "${REF_NAME#v}"
+
+    - name: Commit and push bump to main
+      uses: EndBug/add-and-commit@v9
+      with:
+        add: 'pyproject.toml uv.lock'
+        default_author: github_actions
+        message: 'chore: release ${{ github.ref_name }} [skip ci]'
+        pull: '--rebase --autostash'
+        push: true

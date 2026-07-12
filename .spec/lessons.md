@@ -481,3 +481,18 @@ port is a different origin for credential purposes; fail closed.
   Third-party SWIG/no-stub gaps (faiss, docling's `format_options` dict key, requests
   needing a `types-requests` dev dependency it never had under mypy) still need
   per-line judgment: fix the real ones, suppress the library-stub ones with a reason.
+
+## Release versioning is tag-driven (2026-07-12)
+
+**Lesson:** The GitHub Release **tag** is the version. Nothing is pre-bumped in a
+PR. On `release: published`, the build job runs `uv version --frozen <tag>` so the
+wheel carries the tag version; publish OIDC-uploads wheel + sdist. A backmerge job
+then runs `uv version --no-sync <tag>` on a fresh `main` checkout and commits the
+bump (`pyproject.toml` + `uv.lock`) back with `chore: release <tag> [skip ci]`.
+There is no `sync_version.py` (native `uv version` replaces it) and no
+"tag == pyproject version" guard (the tag is the source of truth now).
+
+**Why:** The maintainer doesn't know at PR-merge time whether a merge will be
+released, so pre-bumping the version in the PR (Model A) is impractical. Tagging at
+release time and backmerging the bump keeps `main` truthful between releases
+without any manual bump.
