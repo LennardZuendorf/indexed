@@ -114,6 +114,6 @@ never updated.
 
 **Lesson:** Negating a directory (`!baselines/`) only un-ignores the directory entry;
 files inside are still matched by an earlier broad pattern (`*.json`) unless the
-negation also covers them (`!baselines/**`). `git check-ignore -v` doesn't reliably
-surface this — verify with `git add`/`git status` instead, since that's what CI
-actually runs.
+negation also covers them (`!baselines/**`). `git check-ignore -v <path>` shows the
+matching rule for untracked paths and catches this directly; still confirm end-to-end
+with `git add`/`git status`, since that's what CI actually runs.
