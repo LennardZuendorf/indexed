@@ -100,3 +100,20 @@ standalone. Deleting unrelated `.benchmarks/*.py` scripts was ruled out as the c
 shared state from an earlier test in the full run (likely collection/FAISS index state).
 Treat a full-suite-only failure here as this known flake before assuming a real
 regression — but still confirm by running the test standalone before shrugging it off.
+
+---
+
+## `!dir/` doesn't un-ignore files inside it — need `!dir/**`
+
+**Context:** `.benchmarks/.gitignore` had `*.json` / `!baselines/`, meant to keep
+`.benchmarks/baselines/*.json` trackable. Once the benchmark action started staging
+a baseline commit on the PR branch itself (see tech.md § CI Benchmarking), every run
+failed to stage it: `git add` errored "paths are ignored by one of your .gitignore
+files" — the job still passed (push failures are non-fatal) but baselines silently
+never updated.
+
+**Lesson:** Negating a directory (`!baselines/`) only un-ignores the directory entry;
+files inside are still matched by an earlier broad pattern (`*.json`) unless the
+negation also covers them (`!baselines/**`). `git check-ignore -v` doesn't reliably
+surface this — verify with `git add`/`git status` instead, since that's what CI
+actually runs.

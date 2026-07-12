@@ -171,7 +171,9 @@ diff logic) were deleted and replaced by the GitHub Marketplace action
 The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
 compares against a per-branch JSON baseline committed under
 `.benchmarks/baselines/` (the general `.benchmarks/*.json` ignore carries a
-`!baselines/` exception), posts one PR comment per run (deletes any prior bot
+`!baselines/**` exception — negating just the dir, not `**`, leaves files
+inside still matched by `*.json` and silently un-stageable), posts one PR
+comment per run (deletes any prior bot
 comment matching the report header before posting, so re-runs don't spam the
 thread), and fails the job on a tolerance-exceeding regression. Trigger is
 `pull_request` only (no `push` trigger) — the action checks out the PR's own
