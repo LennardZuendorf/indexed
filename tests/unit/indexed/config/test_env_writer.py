@@ -1,5 +1,7 @@
 """Tests for EnvFileWriter (C4: dotenv-safe quoting)."""
 
+import os
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -93,6 +95,65 @@ class TestEnvFileWriterWrite:
         assert text == original_content
         assert "OTHER_KEY" in text
         assert "JIRA_TOKEN" not in text
+
+    def test_write_is_atomic_on_mid_write_failure(self, tmp_path: Path):
+        """A crash while writing the temp file must not touch the original
+        .env or leave a leftover temp file behind."""
+        env_path = tmp_path / ".env"
+        original_content = "OTHER_KEY=keep_me\n"
+        env_path.write_text(original_content)
+
+        writer = EnvFileWriter(lambda: str(env_path))
+
+        # Inject the failure inside the temp-write block itself (not just at
+        # os.replace) to exercise the actually-vulnerable window.
+        with mock.patch("os.fsync", side_effect=RuntimeError("Simulated crash")):
+            try:
+                writer.write("JIRA_TOKEN", "new_value")
+            except RuntimeError:
+                pass  # Expected
+
+        # Original file survives byte-for-byte.
+        text = env_path.read_text()
+        assert text == original_content
+        assert "OTHER_KEY" in text
+        assert "JIRA_TOKEN" not in text
+
+        # No leftover temp file.
+        leftovers = list(tmp_path.glob(".env*.tmp")) + list(tmp_path.glob(".env.tmp"))
+        assert leftovers == []
+
+    def test_write_preserves_0600_permissions(self, tmp_path: Path):
+        """A pre-existing .env at 0600 stays 0600 after write()."""
+        env_path = tmp_path / ".env"
+        env_path.write_text("OTHER_KEY=keep_me\n")
+        os.chmod(env_path, 0o600)
+
+        EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+
+        mode = stat.S_IMODE(os.stat(env_path).st_mode)
+        assert mode == 0o600
+
+    def test_write_hardens_0644_permissions_to_0600(self, tmp_path: Path):
+        """A pre-existing .env at 0644 is HARDENED to 0600 after write()."""
+        env_path = tmp_path / ".env"
+        env_path.write_text("OTHER_KEY=keep_me\n")
+        os.chmod(env_path, 0o644)
+
+        EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+
+        mode = stat.S_IMODE(os.stat(env_path).st_mode)
+        assert mode == 0o600
+
+    def test_write_creates_new_env_at_0600(self, tmp_path: Path):
+        """A first-ever-created .env (no prior file) is 0600."""
+        env_path = tmp_path / ".env"
+        assert not env_path.exists()
+
+        EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+
+        mode = stat.S_IMODE(os.stat(env_path).st_mode)
+        assert mode == 0o600
 
 
 class TestIsSensitiveField:
