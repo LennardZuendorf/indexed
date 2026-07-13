@@ -6,6 +6,7 @@ both stateful (class-based) and stateless (functional) interfaces for different
 use cases.
 """
 
+import errno
 import json
 import re
 from typing import List, Optional, Dict
@@ -96,31 +97,37 @@ class InspectService:
                 non-recoverable scan failure and must fail loud rather than
                 silently report zero collections — distinct from the
                 per-collection manifest errors tolerated in status()/inspect().
+                A missing top-level directory (ENOENT) is NOT a scan failure —
+                a fresh install has no collections directory yet — and
+                returns an empty list instead (R3).
         """
         try:
             # Find any files named manifest.json and derive collection name from their parent folder
             all_items = self._persister.read_folder_files(".")
-            collections = set()
-            for item in all_items:
-                if os.path.basename(item) == "manifest.json":
-                    # Parent directory name is the collection name
-                    collection_name = os.path.dirname(item).split(os.sep)[
-                        0
-                    ] or os.path.dirname(item)
-                    # Skip the transient build-aside/rollback directories the
-                    # durable-create path leaves on disk (`<name>.tmp-<pid>-<hex>`
-                    # staging dirs; `<name>.trash-<pid>` swap-rollback dirs). A
-                    # hard kill mid-create, or a failed cleanup, can otherwise
-                    # leave a valid manifest in one of these and surface it as a
-                    # phantom collection in status/search/inspect.
-                    if collection_name and not _INTERNAL_COLLECTION_DIR_RE.search(
-                        collection_name
-                    ):
-                        collections.add(collection_name)
-            return sorted(collections)
         except Exception as e:
+            if isinstance(e, OSError) and e.errno == errno.ENOENT:
+                return []
             logger.error(f"Error scanning collections directory: {e}")
             raise StorageError(f"Could not scan collections directory: {e}") from e
+
+        collections = set()
+        for item in all_items:
+            if os.path.basename(item) == "manifest.json":
+                # Parent directory name is the collection name
+                collection_name = os.path.dirname(item).split(os.sep)[
+                    0
+                ] or os.path.dirname(item)
+                # Skip the transient build-aside/rollback directories the
+                # durable-create path leaves on disk (`<name>.tmp-<pid>-<hex>`
+                # staging dirs; `<name>.trash-<pid>` swap-rollback dirs). A
+                # hard kill mid-create, or a failed cleanup, can otherwise
+                # leave a valid manifest in one of these and surface it as a
+                # phantom collection in status/search/inspect.
+                if collection_name and not _INTERNAL_COLLECTION_DIR_RE.search(
+                    collection_name
+                ):
+                    collections.add(collection_name)
+        return sorted(collections)
 
     def _calculate_disk_size(self, collection_name: str) -> int:
         base_dir = os.path.join(self._persister.base_path, collection_name)

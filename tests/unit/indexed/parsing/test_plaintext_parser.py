@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import indexed.parsing.plaintext_parser as pp_module
 from indexed.parsing._model_window import count_tokens
 from indexed.parsing.plaintext_parser import PlaintextParser
 
@@ -140,3 +141,55 @@ class TestPlaintextParser:
 
         parser.parse(f)
         assert called["count"] == 1
+
+
+class TestPlaintextParserSeparatorTokens:
+    """R12.4: `sep.join(buf)`/`" ".join(buf)` packing sums per-piece
+    `count_tokens` but never counts the separator's own token cost, so a
+    packed group can tokenize over ``self._max_tokens`` once actually
+    joined.
+
+    These tests substitute ``count_tokens`` with a plain character-count
+    function — still a real, deterministic function of the text, just not
+    the ML tokenizer — so the separator's contribution is nonzero and the
+    bug is reproducible without depending on a specific tokenizer's
+    whitespace handling (the default MiniLM tokenizer collapses "\n\n"/" "
+    to zero tokens for plain prose, which would mask the bug entirely).
+    """
+
+    def test_paragraph_packing_counts_separator_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(pp_module, "count_tokens", len)
+        parser = pp_module.PlaintextParser(max_tokens=30)
+        paragraphs = ["A" * 9 for _ in range(8)]
+        f = tmp_path / "dense.txt"
+        f.write_text("\n\n".join(paragraphs))
+
+        doc = parser.parse(f)
+
+        assert len(doc.chunks) > 1
+        for ch in doc.chunks:
+            assert len(ch.text) <= parser._max_tokens, (
+                f"chunk of {len(ch.text)} chars exceeds the "
+                f"{parser._max_tokens}-token budget once separator tokens "
+                "are counted"
+            )
+
+    def test_bound_to_window_counts_separator_tokens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(pp_module, "count_tokens", len)
+        parser = pp_module.PlaintextParser(max_tokens=20)
+        words = [f"w{str(i) * 4}" for i in range(10)]
+        unit = " ".join(words)
+
+        pieces = parser._bound_to_window(unit)
+
+        assert len(pieces) > 1
+        for piece in pieces:
+            assert len(piece) <= parser._max_tokens, (
+                f"piece of {len(piece)} chars exceeds the "
+                f"{parser._max_tokens}-token budget once separator tokens "
+                "are counted"
+            )

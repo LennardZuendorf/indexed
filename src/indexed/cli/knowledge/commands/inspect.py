@@ -8,6 +8,7 @@ with Rich or JSON. Presentation and command logic are now unified in this file.
 import typer
 from typing import List, TYPE_CHECKING
 from rich.columns import Columns
+from rich.markup import escape
 
 from ...utils.console import console
 from ...utils.simple_output import is_simple_output, print_json
@@ -133,7 +134,7 @@ def format_collection_detail(info: "CollectionInfo") -> None:
     """Display detailed information about a specific collection."""
     console.print()
     console.print(
-        f"[{get_heading_style()}]{info.name} Collection Details:[/{get_heading_style()}]"
+        f"[{get_heading_style()}]{escape(info.name)} Collection Details:[/{get_heading_style()}]"
     )
     console.print()
 
@@ -234,7 +235,7 @@ def inspect_collections(
                         f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
                     )
                     for coll in all_collections:
-                        console.print(f"  • {coll.name}")
+                        console.print(f"  • {escape(coll.name)}")
                 console.print()
                 raise typer.Exit(1)
 

@@ -15,6 +15,7 @@ Comment depth handling:
 """
 
 from typing import Any, ClassVar, Optional
+from indexed.config import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
 from indexed.connectors._incremental import cutoff_date, incremental_query
 from .confluence_document_reader import ConfluenceDocumentReader
@@ -32,12 +33,18 @@ def _confluence_from_manifest(
     carries ``readAllComments`` forward. Overlays are in-memory only (R3).
     """
     rd = manifest.reader.model_dump(by_alias=True)
+    base_url = rd.get("baseUrl")
+    if not base_url:
+        raise ConfigurationError(
+            f"Confluence manifest for collection '{manifest.collection_name}' is "
+            "missing 'baseUrl'; cannot rebuild connector for incremental update"
+        )
     query = incremental_query(
         rd.get("query"),
         cutoff_date(manifest.last_modified_document_time),
         updated_field="lastModified",
     )
-    config_service.set_overlay("sources.confluence.url", rd["baseUrl"])
+    config_service.set_overlay("sources.confluence.url", base_url)
     config_service.set_overlay("sources.confluence.query", query)
     config_service.set_overlay(
         "sources.confluence.read_all_comments", rd.get("readAllComments", True)

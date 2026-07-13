@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 import typer
 from loguru import logger
+from rich.markup import escape
 
 # Import get_config at module level so tests can patch it.
 from indexed.config import get_config
@@ -126,8 +127,12 @@ def set_config(
             print_warning("Validation warnings detected")
             console.print()
             for path, msg in errs:
+                # msg is a Pydantic ValidationError string, which echoes the
+                # rejected input value verbatim — escape before it enters
+                # this markup string.
                 console.print(
-                    f"  [{get_warning_style()}]•[/{get_warning_style()}] {path}: {msg}"
+                    f"  [{get_warning_style()}]•[/{get_warning_style()}] "
+                    f"{escape(path)}: {escape(msg)}"
                 )
             console.print()
 
@@ -153,8 +158,11 @@ def set_config(
             # config.toml) instead of a hardcoded literal.
             print_success("Configuration saved")
             target_path = config.store.resolved_config_path()
+            # target_path is a filesystem path (may contain the user's
+            # workspace/home directory name) — escape before it enters
+            # this markup string.
             console.print(
-                f"[{get_secondary_style()}]Location: {target_path}[/{get_secondary_style()}]",
+                f"[{get_secondary_style()}]Location: {escape(str(target_path))}[/{get_secondary_style()}]",
                 soft_wrap=True,
             )
         console.print()

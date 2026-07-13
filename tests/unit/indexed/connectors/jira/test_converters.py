@@ -693,6 +693,135 @@ class TestUnifiedJiraDocumentConverter:
             f"sibling list items must not run together with no separator: {text!r}"
         )
 
+    def test_adf_ordered_list_uses_ordinals(self):
+        """orderedList must render "1.", "2.", … — not "-" bullets."""
+        document = {
+            "key": "LIST-4",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Ordered list",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "orderedList",
+                            "content": [
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "First"}
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Second"}
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Third"}
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = self.converter.convert(document)
+        text = result[0]["text"]
+        assert "1. First" in text, f"ordered list must number items: {text!r}"
+        assert "2. Second" in text
+        assert "3. Third" in text
+        assert "- First" not in text, (
+            f"orderedList must not fall back to bullet markers: {text!r}"
+        )
+
+    def test_adf_nested_list_separated_from_parent_item_text(self):
+        """A nested list under a listItem must not run into the parent
+        item's own paragraph text with no separator."""
+        document = {
+            "key": "LIST-5",
+            "self": "https://jira.example.com/rest/api/2/issue/1",
+            "fields": {
+                "summary": "Nested list",
+                "updated": "2024-01-01T12:00:00.000+0000",
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "bulletList",
+                            "content": [
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "Parent item",
+                                                }
+                                            ],
+                                        },
+                                        {
+                                            "type": "bulletList",
+                                            "content": [
+                                                {
+                                                    "type": "listItem",
+                                                    "content": [
+                                                        {
+                                                            "type": "paragraph",
+                                                            "content": [
+                                                                {
+                                                                    "type": "text",
+                                                                    "text": "Child item",
+                                                                }
+                                                            ],
+                                                        }
+                                                    ],
+                                                }
+                                            ],
+                                        },
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "comment": {"comments": []},
+            },
+        }
+        result = self.converter.convert(document)
+        text = result[0]["text"]
+        assert "Parent item  -" not in text, (
+            f"nested list must not run into parent item text: {text!r}"
+        )
+        assert "Parent item\n" in text and "- Child item" in text, (
+            f"nested list must be newline-separated from parent text: {text!r}"
+        )
+
     def test_adf_mention_and_inline_card_extracted(self):
         """D3: mention display name and inlineCard url must not be dropped."""
         document = {

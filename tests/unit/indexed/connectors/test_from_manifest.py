@@ -12,7 +12,9 @@ import fnmatch
 import json
 import types
 
+import pytest
 
+from indexed.config import ConfigurationError
 from indexed.protocols import ConnectorRun, Manifest
 
 
@@ -107,6 +109,19 @@ def test_files_from_manifest_propagates_non_default_reader_settings(tmp_path):
     assert run.reader.include_patterns != ["*"]  # not the default
     assert run.reader.fail_fast is True
     assert run.reader._respect_gitignore is False
+
+
+def test_files_from_manifest_missing_base_path_raises_configuration_error(tmp_path):
+    """A manifest missing 'basePath' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.files.connector import FileSystemConnector
+
+    manifest = _manifest({"type": "localFiles", "includePatterns": ["*"]})
+
+    with pytest.raises(ConfigurationError):
+        FileSystemConnector.from_manifest(
+            manifest, object(), storage_path=str(tmp_path)
+        )
 
 
 def test_files_from_manifest_with_change_state_scopes_and_persists(tmp_path):
@@ -217,6 +232,23 @@ def test_jira_from_manifest_empty_query_has_no_leading_and(monkeypatch):
     assert query == f'(created >= "{_CUTOFF}" OR updated >= "{_CUTOFF}")'
 
 
+def test_jira_from_manifest_missing_base_url_raises_configuration_error(monkeypatch):
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.jira.connector import JiraConnector
+
+    monkeypatch.setattr(
+        JiraConnector,
+        "from_config",
+        classmethod(lambda cls, cs: types.SimpleNamespace(reader="R", converter="C")),
+    )
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "jira", "query": "project = FOO"})
+
+    with pytest.raises(ConfigurationError):
+        JiraConnector.from_manifest(manifest, cs, storage_path="/x")
+
+
 # --- confluence ----------------------------------------------------------------
 
 
@@ -246,6 +278,25 @@ def test_confluence_cloud_from_manifest_query_and_overlays(monkeypatch):
         == f'space = DOCS AND (created >= "{_CUTOFF}" OR lastModified >= "{_CUTOFF}")'
     )
     assert cs.overlays["sources.confluence.read_all_comments"] is False
+
+
+def test_confluence_from_manifest_missing_base_url_raises_configuration_error(
+    monkeypatch,
+):
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.confluence.connector import ConfluenceConnector
+
+    monkeypatch.setattr(
+        ConfluenceConnector,
+        "from_config",
+        classmethod(lambda cls, cs: types.SimpleNamespace(reader="R", converter="C")),
+    )
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "confluence", "query": "space = DOCS"})
+
+    with pytest.raises(ConfigurationError):
+        ConfluenceConnector.from_manifest(manifest, cs, storage_path="/x")
 
 
 # --- outline -------------------------------------------------------------------
@@ -290,6 +341,18 @@ def test_outline_from_manifest_overlays_and_cutoff(monkeypatch):
     assert cs.overlays["sources.outline.verify_ssl"] is False
     # cutoff replaces the old os.environ side-channel: raw lastModifiedDocumentTime
     assert cs.overlays["sources.outline.modified_since"] == "2026-07-05T09:15:00+00:00"
+
+
+def test_outline_from_manifest_missing_base_url_raises_configuration_error():
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.outline.connector import OutlineConnector
+
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "outline", "collectionIds": ["c1"]})
+
+    with pytest.raises(ConfigurationError):
+        OutlineConnector.from_manifest(manifest, cs, storage_path="/x")
 
 
 def test_all_connectors_expose_from_manifest():

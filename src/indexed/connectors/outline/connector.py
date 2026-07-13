@@ -7,7 +7,7 @@ base URL differs.
 
 from typing import Any, ClassVar
 
-from indexed.config import ConfigService
+from indexed.config import ConfigService, ConfigurationError
 from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .outline_document_converter import OutlineDocumentConverter
@@ -156,10 +156,16 @@ class OutlineConnector:
         ``lastModifiedDocumentTime`` (the raw value, matching prior behavior).
         """
         rd = manifest.reader.model_dump(by_alias=True)
+        base_url = rd.get("baseUrl")
+        if not base_url:
+            raise ConfigurationError(
+                f"Outline manifest for collection '{manifest.collection_name}' is "
+                "missing 'baseUrl'; cannot rebuild connector for incremental update"
+            )
         ns = "sources.outline"
         overlay = config_service.set_overlay
 
-        overlay(f"{ns}.url", rd["baseUrl"])
+        overlay(f"{ns}.url", base_url)
         overlay(f"{ns}.include_attachments", rd.get("includeAttachments", True))
         for manifest_key, config_key in _OPTIONAL_OVERLAYS:
             if rd.get(manifest_key) is not None:

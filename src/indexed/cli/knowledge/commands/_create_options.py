@@ -102,7 +102,7 @@ UseCacheFilesOpt = Annotated[
     ),
 ]
 RespectGitignoreOpt = Annotated[
-    bool,
+    Optional[bool],
     typer.Option(
         "--respect-gitignore/--no-respect-gitignore",
         help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
@@ -184,7 +184,7 @@ CqlOpt = Annotated[
     ),
 ]
 ReadAllCommentsOpt = Annotated[
-    bool,
+    Optional[bool],
     typer.Option(
         "--read-all-comments/--first-level-comments",
         help="Read all nested comments if enabled, otherwise include only first-level comments.",
@@ -231,14 +231,14 @@ CollectionIdOpt = Annotated[
     ),
 ]
 IncludeAttachmentsOpt = Annotated[
-    bool,
+    Optional[bool],
     typer.Option(
         "--include-attachments/--no-include-attachments",
         help="Download and OCR inline images and file attachments.",
     ),
 ]
 OcrOpt = Annotated[
-    bool,
+    Optional[bool],
     typer.Option(
         "--ocr/--no-ocr",
         help="Enable OCR for image attachments.",

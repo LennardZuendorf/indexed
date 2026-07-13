@@ -40,6 +40,22 @@ def _effective_port(parts: SplitResult) -> int | None:
     return None
 
 
+def _host_without_port(userinfo_stripped: str) -> str:
+    """Drop a trailing ``:port`` from a host, bracket-aware for IPv6.
+
+    An IPv6 host is wrapped in brackets (``[::1]:8080``) precisely so the
+    colons inside the address aren't mistaken for the port delimiter; a naive
+    ``split(":", 1)[0]`` instead cuts at the *first* colon and collapses every
+    bracketed IPv6 host down to the literal ``"["``, making distinct hosts
+    (``[::1]`` vs ``[::2]``) indistinguishable.
+    """
+    if userinfo_stripped.startswith("["):
+        end = userinfo_stripped.find("]")
+        if end != -1:
+            return userinfo_stripped[: end + 1]
+    return userinfo_stripped.split(":", 1)[0]
+
+
 def _client_host(url: str) -> str | None:
     """Extract the host the way the actual HTTP client (requests/urllib3) does.
 
@@ -49,8 +65,9 @@ def _client_host(url: str) -> str | None:
     real request is sent to ``evil.com`` (C3: the parser differential a
     same-origin check must not trust). Mirror urllib3's split: cut the
     authority at the first of ``/ ? # \\`` after ``scheme://``, take the host
-    after the last ``@`` (drop credentials), then drop the port and normalize
-    a legitimate trailing FQDN dot (``good.com.`` == ``good.com``).
+    after the last ``@`` (drop credentials), then drop the port — bracket-aware
+    for IPv6 — and normalize a legitimate trailing FQDN dot (``good.com.`` ==
+    ``good.com``).
     """
     if "://" not in url:
         return None
@@ -58,7 +75,7 @@ def _client_host(url: str) -> str | None:
     authority = re.split(r"[/?#\\]", rest, maxsplit=1)[0]
     if not authority:
         return None
-    host = authority.rsplit("@", 1)[-1].split(":", 1)[0].strip()
+    host = _host_without_port(authority.rsplit("@", 1)[-1]).strip()
     return host.rstrip(".").lower() or None
 
 

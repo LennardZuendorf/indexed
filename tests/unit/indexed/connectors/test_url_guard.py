@@ -86,6 +86,14 @@ class TestIsSameOrigin:
         # C3: a legitimate trailing-dot FQDN must still match its bare form.
         assert is_same_origin("https://acme.example.com.", "https://acme.example.com")
 
+    def test_distinct_ipv6_hosts_are_off_origin(self):
+        # Before the bracket-aware fix, both `[::1]` and `[::2]` collapsed to
+        # the bare "[" and were wrongly treated as the same origin.
+        assert not is_same_origin("https://[::1]:9200/x", "https://[::2]:9200/")
+
+    def test_same_ipv6_host_is_same_origin(self):
+        assert is_same_origin("https://[::1]:9200/x", "https://[::1]:9200/")
+
 
 class TestClientHost:
     def test_strips_credentials_and_port(self):
@@ -103,6 +111,19 @@ class TestClientHost:
 
     def test_no_scheme_delimiter_returns_none(self):
         assert _client_host("not-a-url") is None
+
+    def test_ipv6_host_with_port_keeps_brackets(self):
+        assert _client_host("https://[::1]:8080/x") == "[::1]"
+
+    def test_ipv6_host_without_port_keeps_brackets(self):
+        assert _client_host("https://[::1]/x") == "[::1]"
+
+    def test_distinct_ipv6_hosts_are_not_collapsed(self):
+        # Before the bracket-aware fix, both `[::1]` and `[::2]` collapsed to
+        # the bare "[" and were indistinguishable.
+        assert _client_host("https://[::1]:9200/") != _client_host(
+            "https://[::2]:9200/"
+        )
 
 
 class TestIsCloudHost:

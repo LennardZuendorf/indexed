@@ -169,6 +169,9 @@ class FilesDocumentReader:
             "failFast": self.fail_fast,
             "respectGitignore": self._respect_gitignore,
             "excludedDirs": list(self._excluded_dirs),
+            "ocr": self._ocr,
+            "tableStructure": self._table_structure,
+            "maxChunkTokens": self._max_tokens,
         }
 
     def _iter_file_paths(self) -> Iterator[str]:

@@ -3,7 +3,7 @@ type: feature-plan
 feature: review-remediation
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-07-12
+updated: 2026-07-13
 ---
 
 # Feature: Review Remediation — Implementation Plan
@@ -324,21 +324,43 @@ scripts/connector_stub.py, tests/fixtures/connectors/stub_routes.py, tests/syste
 
 | Unit | Seq | Status |
 |---|---|---|
-| review-remediation/1 | 1 | NOT STARTED |
-| review-remediation/2 | 2 | NOT STARTED |
-| review-remediation/3 | 3 | NOT STARTED |
-| review-remediation/4 | 4 | NOT STARTED |
-| review-remediation/5 | 5 | NOT STARTED |
-| review-remediation/6 | 6 | NOT STARTED |
-| review-remediation/7 | 7 | NOT STARTED |
-| review-remediation/8 | 8 | NOT STARTED |
-| review-remediation/9 | 9 | NOT STARTED |
+| review-remediation/1 | 1 | DONE (R1 + env-map; write-target parity, parity test) |
+| review-remediation/2 | 2 | DONE (R2 lifespan guard + R3 missing-dir ENOENT) |
+| review-remediation/3 | 3 | DONE (R4 BaseException + R5 `or {}` guards) |
+| review-remediation/4 | 4 | DONE (R6 cache key includes parse settings) |
+| review-remediation/5 | 5 | DONE (R7 escape-helper/Text seam; 20 sinks + logger) |
+| review-remediation/6 | 6 | DONE (R8 panel gates + R9 tri-state Optional[bool]) |
+| review-remediation/7 | 7 | DONE (R12 token bounds + oversized split + graceful batch break; R14 IMAGE; .tsx) |
+| review-remediation/8 | 8 | DONE (8a R11 atomic + 0600; 8b R13 wired both readers) |
+| review-remediation/9 | 9 | DONE (MCP robustness + connector correctness + e2e hardening) |
+
+**Wrapped up 2026-07-13.** Executed via subagent-driven development (fresh implementer + task review + fix loop per unit, then a whole-branch review — verdict: ready to merge, no blockers). Open Questions resolved: R13 WIRE (not delete); R7 escape-helper+Text seam (not global `markup=False`). Notable in-flight decisions: R2 guarded at both MCP sites (CLI fail-loud preserved); R14 adds `InputFormat.IMAGE` only; R12.5 batch loop terminates gracefully (break+warn) rather than raising, so live Jira/Confluence readers degrade instead of crashing; R9 guards on `is not None` (not truthiness); mtime change-strategy uses a cheap `mtime OR size` signal (documented to miss same-mtime+same-size edits; use `content_hash` for guaranteed detection). Full suite green at 1592 passed, ~93% coverage, ty 0 diagnostics.
 
 ---
 
-## Open Questions
+## Execution Plan
 
-1. **R13 wire-or-delete** (see tech.md Open Question 1) — re-wire `max_skipped_items_in_row`
-   skip/retry, or delete the dead param and accept fail-fast? Blocks unit 8's reader half.
-2. **R7 scope** — central render seam vs per-site escaping. Recommendation: seam for the logger
-   + one user-data helper, then convert call sites in unit 5.
+A granular, subagent-executable implementation plan (writing-plans format) — one task per
+unit, current HEAD locations, red→green test steps, parallel-execution waves — lives at
+[`plans/review-remediation.md`](../../../plans/review-remediation.md). It was produced after
+all 15 requirements were re-confirmed against code at HEAD by six parallel validation
+subagents on 2026-07-12.
+
+## Open Questions — RESOLVED (2026-07-12)
+
+1. **R13 wire-or-delete** — **RESOLVED: WIRE.** Re-wire `max_skipped_items_in_row` skip/retry
+   via `utils/batch.read_items_in_batches` + `utils/retry.execute_with_retry`, sequenced after
+   unit 7's batch-loop fix. Validation confirmed the utilities are alive and are the pattern in
+   3 of 4 reader variants; the Confluence async page loop currently has **zero** retry (worse
+   than its sync sibling), and deleting the param is a product-visible regression for large
+   spaces. Unit 8b also depends on unit 3 (shared Confluence reader file).
+2. **R7 scope** — **RESOLVED: escape-helper + `Text()` seam, not blanket `markup=False`.** A
+   global `Console(markup=False)` would break the app's intentional style tags
+   (`[dim]…`, `[{style}]…`). Add one user-data helper, convert the ~6 sinks, and switch the
+   logger sink to `Text(line, style=…)`. `rich.markup.escape` is already used in
+   `conflict_prompt.py`; `cards.py` already wraps values in `Text()`.
+
+Additional decisions recorded during validation: **R2** is fixed at both MCP sites
+(`lifespan` + `resolve_cli_context`) to preserve CLI fail-loud; **R14** adds only
+`InputFormat.IMAGE` (Simple-pipeline formats have no `do_ocr`/`do_table_structure` field);
+**R3**'s `search_service` fix is required (it is the MCP `search` path), not optional.

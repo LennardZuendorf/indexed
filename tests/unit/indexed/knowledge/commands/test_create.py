@@ -115,6 +115,65 @@ class TestCreateFiles:
         # Should only have empty dict or minimal overrides
         assert "path" not in cli_overrides or cli_overrides["path"] is None
 
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_omits_respect_gitignore_when_flag_unset(
+        self, mock_config_service, mock_execute
+    ):
+        """R9: when --respect-gitignore/--no-respect-gitignore is not passed
+        on the CLI, cli_overrides must not contain respect_gitignore at all —
+        otherwise it always beats config.toml's sources.files.respect_gitignore."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="files",
+            path=None,
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert "respect_gitignore" not in cli_overrides
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_explicit_no_respect_gitignore_is_honored(
+        self, mock_config_service, mock_execute
+    ):
+        """R9: an explicit --no-respect-gitignore (False) is a legitimate
+        choice and must still reach cli_overrides — the guard must be
+        `is not None`, not truthiness."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="files",
+            path=None,
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            respect_gitignore=False,
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert cli_overrides["respect_gitignore"] is False
+
 
 class TestCreateJira:
     """Test create_jira command."""
@@ -317,6 +376,72 @@ class TestCreateConfluence:
 
         mock_print_error.assert_called()
         mock_execute.assert_not_called()
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_confluence_omits_read_all_comments_when_flag_unset(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """R9: when --read-all-comments/--first-level-comments is not passed,
+        cli_overrides must not contain read_all_comments — otherwise it
+        always beats config.toml's sources.confluence.read_all_comments."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_confluence(
+            collection="test-confluence",
+            url="https://company.atlassian.net",
+            cql="type=page",
+            email=None,
+            token=None,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert "read_all_comments" not in cli_overrides
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_confluence_explicit_first_level_comments_is_honored(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """R9: explicit --first-level-comments (False) is a legitimate
+        choice and must still reach cli_overrides."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_confluence(
+            collection="test-confluence",
+            url="https://company.atlassian.net",
+            cql="type=page",
+            email=None,
+            token=None,
+            read_all_comments=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert cli_overrides["read_all_comments"] is False
 
 
 def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execute):
@@ -912,6 +1037,70 @@ class TestCreateOutline:
         mock_execute.assert_called_once()
         call_kwargs = mock_execute.call_args.kwargs
         assert call_kwargs["progress_message"] == "Connecting to https://wiki.myorg.com"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_outline_omits_attachments_and_ocr_when_flags_unset(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """R9: when --include-attachments/--no-include-attachments and
+        --ocr/--no-ocr are not passed, cli_overrides must not contain
+        include_attachments/ocr_enabled — otherwise they always beat
+        config.toml's sources.outline values."""
+        from indexed.cli.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        kwargs = {
+            k: v
+            for k, v in self._default_kwargs.items()
+            if k not in ("include_attachments", "ocr")
+        }
+        kwargs["url"] = "https://app.getoutline.com"
+
+        create_outline(**kwargs)
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert "include_attachments" not in cli_overrides
+        assert "ocr_enabled" not in cli_overrides
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_outline_explicit_false_flags_are_honored(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """R9: explicit --no-include-attachments/--no-ocr (False) are
+        legitimate choices and must still reach cli_overrides."""
+        from indexed.cli.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "include_attachments": False,
+                "ocr": False,
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        cli_overrides = call_kwargs.get("cli_overrides", {})
+        assert cli_overrides["include_attachments"] is False
+        assert cli_overrides["ocr_enabled"] is False
 
 
 @pytest.mark.unit

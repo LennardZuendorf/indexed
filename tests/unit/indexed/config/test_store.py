@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 import pytest
 from indexed.config.store import TomlStore
+from indexed.config.storage import StorageResolver
+from indexed.config.workspace import WorkspaceManager
 
 
 def test_toml_store_init():
@@ -85,6 +87,24 @@ def test_toml_store_env_to_mapping_empty():
     assert result == {}
 
 
+def test_toml_store_env_to_mapping_final_key_conflict_raises():
+    """R15: a scalar env var must not silently clobber a nested dict.
+
+    INDEXED__A__B builds a nested dict at "a" ({"b": ...}); a later
+    INDEXED__A (scalar) assigns straight into ``out["a"]`` at the final-key
+    step, which had no type-conflict guard — unlike the intermediate-segment
+    step just above it — so it silently dropped "a.b". The final-key
+    assignment must be guarded the same way the intermediate segments are.
+    """
+    store = TomlStore()
+
+    env_vars = {"INDEXED__A__B": "x", "INDEXED__A": "y"}
+
+    with patch.dict(os.environ, env_vars, clear=False):
+        with pytest.raises(ValueError, match="Environment variable conflict"):
+            store._env_to_mapping()
+
+
 def test_toml_store_write():
     """Test write() creates directory and file in local mode."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -130,3 +150,40 @@ def test_toml_store_read_disk_only_ignores_env(tmp_path: Path):
     # confirms disk_only is genuinely bypassing the overlay, not just broken.
     assert merged["test"]["value"] == "from_env"
     assert merged["test"]["other"] == "secret"
+
+
+def test_get_workspace_preference_matches_workspace_manager(tmp_path: Path):
+    """R1 review-remediation: TomlStore._get_workspace_preference() must stay
+    in lockstep with WorkspaceManager.get_preference().
+
+    ``_get_workspace_preference()`` (store.py) is a forced duplicate of
+    ``WorkspaceManager.get_preference()`` (workspace.py) — the reverse import
+    would be circular since ``workspace.py`` already imports ``TomlStore``.
+    Nothing else pins the two copies together: a future change to the
+    ``[workspace]`` key name or the valid-mode set in one file, not mirrored
+    into the other, would silently reintroduce the R1 write-target divergence
+    with no test catching it. This test reads the SAME real on-disk global
+    config.toml through both code paths and asserts they agree.
+    """
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    global_home = tmp_path / "home"
+    global_dir = global_home / ".indexed"
+    global_dir.mkdir(parents=True)
+    (global_dir / "config.toml").write_text("")
+
+    with patch.object(Path, "home", return_value=global_home):
+        # Persist a real "[workspace] mode" preference via the same writer
+        # set_preference() uses, onto an actual on-disk global config.toml.
+        TomlStore(mode_override="global").write(
+            {"workspace": {"mode": "local", "local_path": str(workspace)}},
+            to_global=True,
+        )
+
+        store = TomlStore(workspace=workspace)
+        manager = WorkspaceManager(
+            store, StorageResolver(workspace=workspace), workspace
+        )
+
+        assert store._get_workspace_preference() == manager.get_preference() == "local"

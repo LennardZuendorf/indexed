@@ -8,6 +8,8 @@ the command module so ``list.py`` stays a thin dispatcher.
 
 from typing import Any
 
+from rich.markup import escape
+
 from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_key_value_panel,
@@ -44,8 +46,11 @@ def render_config_overview(
 
     console.print()
     if section_filter:
+        # section_filter is the user-supplied `section` CLI argument —
+        # escape before it enters this markup string.
         console.print(
-            f"[{get_heading_style()}]Configuration: {section_filter.title()}[/{get_heading_style()}]"
+            f"[{get_heading_style()}]Configuration: "
+            f"{escape(section_filter.title())}[/{get_heading_style()}]"
         )
     else:
         console.print(
@@ -119,8 +124,8 @@ def render_config_overview(
             console.print(panel)
             console.print()
 
-    # Display Core Settings panel (if showing defaults or filter matches)
-    if core_sections and (show_defaults or section_filter == "core"):
+    # Display Core Settings panel (if no filter or filter matches)
+    if core_sections and (not section_filter or section_filter == "core"):
         rows = []
         for section_name, section_data in core_sections.items():
             for key, info in sorted(section_data.items()):
@@ -157,7 +162,7 @@ def render_config_overview(
                 value = _masked_config_value(key, info["value"])
                 rows.append((section_name, key, value))
 
-        if rows and show_defaults:
+        if rows:
             title = section_name.replace("_", " ").title()
             panel = create_key_value_panel(
                 title,
@@ -235,7 +240,10 @@ def render_config_overview(
         return
 
     if manual_keys > 0:
-        section_list = ", ".join(sorted(manual_sections))
+        # Section names are top-level config keys, which a user can set to an
+        # arbitrary string via `config set <key> <value>` — escape before
+        # they enter this markup string.
+        section_list = escape(", ".join(sorted(manual_sections)))
         heading = get_heading_style()
         console.print(
             f"[{heading}]Overall:[/{heading}] [{get_accent_style()}]{manual_keys}[/{get_accent_style()}] keys "

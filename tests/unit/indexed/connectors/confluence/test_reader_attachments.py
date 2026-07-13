@@ -567,3 +567,39 @@ class TestAsyncConfluenceCloudReaderAttachments:
 
         assert len(result[0]) == 1
         assert result[1] == []  # failed page gets empty list
+
+    def test_fetch_all_attachments_async_handles_cancelled_error(self):
+        """CancelledError (a BaseException, not an Exception) from a page
+        fetch must land in the failure branch, not be stored as the
+        attachments value (R4)."""
+        reader = self._make_reader()
+
+        pages = [{"content": {"id": "1"}}]
+
+        with patch.object(
+            reader,
+            "_fetch_attachments_for_page",
+            new_callable=AsyncMock,
+            side_effect=asyncio.CancelledError(),
+        ):
+            result = asyncio.run(reader._fetch_all_attachments_async(pages))
+
+        assert result[0] == []
+
+    def test_fetch_all_comments_async_handles_cancelled_error(self):
+        """CancelledError (a BaseException, not an Exception) from a page
+        fetch must land in the failure branch, not be stored as the
+        comments value (R4)."""
+        reader = self._make_reader()
+
+        pages = [{"content": {"id": "1"}}]
+
+        with patch.object(
+            reader,
+            "_fetch_comments_for_page",
+            new_callable=AsyncMock,
+            side_effect=asyncio.CancelledError(),
+        ):
+            result = asyncio.run(reader._fetch_all_comments_async(pages))
+
+        assert result[0] == []

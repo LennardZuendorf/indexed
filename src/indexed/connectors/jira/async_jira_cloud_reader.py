@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import requests
 from loguru import logger
+from indexed.utils.batch import read_items_in_batches
 from indexed.utils.retry import execute_with_retry
 
 
@@ -104,31 +105,54 @@ class AsyncJiraCloudDocumentReader:
         }
 
     def _read_issues_sync(self) -> list[dict[str, Any]]:
-        """Fetch all issues via sequential nextPageToken pagination."""
-        issues: list[dict[str, Any]] = []
-        next_token: str | None = None
+        """Fetch all issues via nextPageToken pagination.
 
-        while True:
+        Wired through ``read_items_in_batches`` (mirroring
+        ``UnifiedJiraDocumentReader.__read_items_cloud``) so that
+        ``max_skipped_items_in_row`` is honored: a page that keeps failing
+        after ``_post_with_retry`` exhausts its retries is skipped-and-logged
+        rather than aborting the whole read.
+        """
+
+        def read_batch_func(
+            start_at: int, batch_size: int, cursor: str | None
+        ) -> dict[str, Any]:
             body: dict[str, Any] = {
                 "jql": self.query,
                 "fields": self.fields.split(","),
-                "maxResults": self.batch_size,
+                "maxResults": batch_size,
             }
-            if next_token:
-                body["nextPageToken"] = next_token
+            if cursor:
+                body["nextPageToken"] = cursor
 
             result = self._post_with_retry(
                 f"{self.base_url}/rest/api/3/search/jql",
                 body,
             )
-            page_issues = result.get("issues", [])
-            issues.extend(page_issues)
+            issues = result.get("issues", [])
+            result["issues"] = issues
+            # The Enhanced JQL API has no true total; use a one-ahead
+            # continuation total so read_items_in_batches keeps paging
+            # while a nextPageToken is present.
+            if result.get("nextPageToken"):
+                result["_continuation_total"] = start_at + len(issues) + 1
+            else:
+                result["_continuation_total"] = start_at + len(issues)
+            return result
 
-            next_token = result.get("nextPageToken")
-            if not next_token:
-                break
-
-        return issues
+        return list(
+            read_items_in_batches(
+                read_batch_func,
+                fetch_items_from_result_func=lambda result: result["issues"],
+                fetch_total_from_result_func=lambda result: result[
+                    "_continuation_total"
+                ],
+                batch_size=self.batch_size,
+                max_skipped_items_in_row=self.max_skipped_items_in_row,
+                itemsName="issues",
+                cursor_parser=lambda result: result.get("nextPageToken"),
+            )
+        )
 
     def _get_approximate_count(self) -> int:
         """POST /rest/api/3/search/approximate-count for issue count estimate."""

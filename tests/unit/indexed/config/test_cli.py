@@ -224,6 +224,44 @@ class TestList:
             reset_simple_output()
 
     @patch("indexed.config.commands.list.get_config")
+    def test_list_shows_manually_set_core_value_without_show_defaults(
+        self, mock_config_service
+    ):
+        """R8: a manually-set core value must render in plain `config list`
+        (no --show-defaults) — the Core Settings panel must not be gated on
+        show_defaults when should_show_key already says to include the row."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {
+            "core": {"v1": {"indexing": {"chunk_size": 256}}}
+        }
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list"])
+        assert result.exit_code == 0, result.stdout
+        assert "256" in result.stdout
+
+    @patch("indexed.config.commands.list.get_config")
+    def test_list_shows_manually_set_logging_value_without_show_defaults(
+        self, mock_config_service
+    ):
+        """R8: a manually-set logging value must render in plain `config
+        list` — the logging/mcp/performance panel must not be gated on
+        show_defaults when should_show_key already says to include the row."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"logging": {"level": "DEBUG"}}
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list"])
+        assert result.exit_code == 0, result.stdout
+        assert "DEBUG" in result.stdout
+
+    @patch("indexed.config.commands.list.get_config")
     def test_list_simple_output_masks_secret(self, mock_config_service):
         """C1: a secret reaching merged config must be masked in JSON output."""
         from indexed.cli.utils.simple_output import (
@@ -248,6 +286,52 @@ class TestList:
             assert "*****" in result.stdout
         finally:
             reset_simple_output()
+
+
+class TestListMarkupSafety:
+    """R7 — user-controlled/user-settable strings reaching ``config list``'s
+    markup-parsed sinks must render literally, never crash or be dropped."""
+
+    @patch("indexed.config.commands.list.get_config")
+    def test_section_filter_renders_brackets_literally(self, mock_config_service):
+        """The ``section`` CLI argument is user-controlled and is embedded
+        raw in the "Configuration: ..." heading.
+
+        Rich's markup tag grammar matches a bracket run starting with a
+        lowercase letter/#//@; ``.title()`` (applied to the section name
+        before display) capitalizes the letter right after "[", which
+        neuters a plain "[section]" fixture — a "/"-led bracket survives
+        title-casing (``"weird[/x]".title() == "Weird[/X]"``) and reliably
+        reproduces the real failure mode: an unmatched closing tag raises
+        ``rich.errors.MarkupError`` today (uncaught → CliRunner sees it via
+        ``result.exception``), rather than merely dropping text.
+        """
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"sources": {"jira": {"url": "https://x"}}}
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list", "weird[/x]"])
+        assert result.exit_code == 0, result.stdout
+        assert "Weird[/X]" in result.stdout
+
+    @patch("indexed.config.commands.list.get_config")
+    def test_summary_section_name_renders_brackets_literally(self, mock_config_service):
+        """A top-level config section name is user-settable via
+        ``config set <arbitrary.key> <value>`` — it reaches the "Overall: N
+        keys set manually for ..." summary line raw."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"weird[section]": {"key": "v"}}
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list"])
+        assert result.exit_code == 0, result.stdout
+        assert "weird[section]" in result.stdout
 
 
 class TestGetConfig:
@@ -456,6 +540,60 @@ class TestSetConfig:
         from dotenv import dotenv_values
 
         assert dotenv_values(str(env_path)).get(expected_var) == "supersecret123"
+
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_validation_warning_renders_brackets_literally(
+        self, mock_config_service
+    ):
+        """R7: a Pydantic ValidationError message can echo the rejected
+        input value verbatim — it must render literally in the
+        validation-warnings loop, never be parsed as markup (which would
+        drop it or raise MarkupError).
+
+        Uses a bracket run starting with a letter ("[value]") rather than a
+        digit, matching Rich's markup tag grammar (``[a-z#/@]`` as the first
+        character) — a digit-led bracket like "[1]" is never parsed as a tag
+        at all, so it wouldn't actually exercise the sink.
+        """
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = [
+            ("sources.jira.url", "URL format invalid: bad[value]"),
+        ]
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(
+            app, ["config", "set", "sources.jira.url", "http://example.com"]
+        )
+        assert result.exit_code == 0, result.stdout
+        assert "URL format invalid: bad[value]" in result.stdout
+
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_location_with_brackets_renders_literally(
+        self, mock_config_service
+    ):
+        """R7: ``config.store.resolved_config_path()`` is a filesystem path
+        that may contain the user's workspace/home directory name — must
+        render literally in the "Location: ..." line. (Letter-led bracket —
+        see the validation-warning test above for why a digit-led one like
+        "[1]" would not exercise Rich's markup parser at all.)"""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = []
+        mock_config.store.resolved_config_path.return_value = (
+            "/tmp/proj[x]/.indexed/config.toml"
+        )
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(
+            app, ["config", "set", "core.v1.indexing.chunk_size", "1024"]
+        )
+        assert result.exit_code == 0, result.stdout
+        assert "proj[x]" in result.stdout
 
     @patch("indexed.config.commands.set.get_config")
     def test_set_config_dry_run(self, mock_config_service):

@@ -6,6 +6,7 @@ and Jira Cloud.
 """
 
 from typing import Any, ClassVar, Optional
+from indexed.config import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
 from indexed.connectors._incremental import cutoff_date, incremental_query
 from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
@@ -24,12 +25,18 @@ def _jira_from_manifest(
     ``from_config`` so credentials and other settings resolve normally.
     """
     rd = manifest.reader.model_dump(by_alias=True)
+    base_url = rd.get("baseUrl")
+    if not base_url:
+        raise ConfigurationError(
+            f"Jira manifest for collection '{manifest.collection_name}' is "
+            "missing 'baseUrl'; cannot rebuild connector for incremental update"
+        )
     query = incremental_query(
         rd.get("query"),
         cutoff_date(manifest.last_modified_document_time),
         updated_field="updated",
     )
-    config_service.set_overlay("sources.jira.url", rd["baseUrl"])
+    config_service.set_overlay("sources.jira.url", base_url)
     config_service.set_overlay("sources.jira.query", query)
     connector = connector_cls.from_config(config_service)
     return ConnectorRun(connector.reader, connector.converter, [], None)

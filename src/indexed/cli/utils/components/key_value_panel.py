@@ -10,6 +10,7 @@ from rich import box
 from rich.panel import Panel
 from rich.table import Table
 
+from ..console import render_user_text
 from .theme import (
     get_label_style,
     get_card_border_style,
@@ -116,7 +117,15 @@ def create_key_value_panel(
                 category = ""
                 key, value = row
             truncated = _truncate(str(value), value_max_len)
-            grid.add_row(category, key, truncated)
+            # category/key are dot-path segments a user can set to an
+            # arbitrary string via `config set <key> <value>`; value is
+            # content-derived (config value/path) — none are ever
+            # markup-parsed.
+            grid.add_row(
+                render_user_text(category),
+                render_user_text(key),
+                render_user_text(truncated),
+            )
         else:
             # 2-column mode
             if len(row) == 3:
@@ -124,7 +133,9 @@ def create_key_value_panel(
             else:
                 key, value = row
             truncated = _truncate(str(value), value_max_len)
-            grid.add_row(key, truncated)
+            # key/value are content-derived (config key/value, path) —
+            # never markup-parsed.
+            grid.add_row(render_user_text(key), render_user_text(truncated))
 
     return Panel(
         grid,

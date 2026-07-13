@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import typer
+from rich.markup import escape
 from rich.text import Text
 
 from ...utils.simple_output import print_json
@@ -70,7 +71,9 @@ def _display_collection_update_header(
     from indexed.connectors.files.schema import DEFAULT_EXCLUDED_DIRS
 
     heading = get_heading_style()
-    console.print(f'\n[{heading}]Updating Collection "{coll_name}"[/{heading}]')
+    # coll_name is user-controlled (the collection name argument) — escape
+    # before it enters this markup string; the surrounding tags are ours.
+    console.print(f'\n[{heading}]Updating Collection "{escape(coll_name)}"[/{heading}]')
 
     if source_type:
         console.print(create_info_row("Type", format_source_type(source_type)))
@@ -254,7 +257,9 @@ def resolve_collections_to_update(
 
         collections = [s.name for s in all_statuses]
         if not simple and len(collections) > 1:
-            names = ", ".join(f'"{n}"' for n in collections)
+            # Collection names are user-controlled — escape the assembled
+            # display string before it enters this markup f-string.
+            names = escape(", ".join(f'"{n}"' for n in collections))
             cmd.console.print(
                 f"\n[{get_heading_style()}]Updating {len(collections)} Collections: {names}[/{get_heading_style()}]"
             )

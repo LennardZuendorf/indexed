@@ -7,10 +7,13 @@ instances with many pages containing comments.
 import asyncio
 import re
 import urllib.parse
-from typing import Optional
+from typing import Any
 
 import httpx
 from loguru import logger
+
+from indexed.utils.batch import read_items_in_batches
+from indexed.utils.retry import execute_with_retry
 
 
 class ConfluenceCloudAPIError(Exception):
@@ -179,63 +182,79 @@ class AsyncConfluenceCloudDocumentReader:
         )
 
     def _read_pages_sync(self):
-        """Read pages using sync requests (pagination is sequential by nature)."""
+        """Read pages using sync requests (pagination is sequential by nature).
+
+        Wired through ``read_items_in_batches`` (mirroring
+        ``ConfluenceDocumentReader.__read_items``) so that
+        ``max_skipped_items_in_row`` is honored: a page that keeps failing
+        is skipped-and-logged rather than aborting the whole read. The page
+        fetch is wrapped in ``execute_with_retry`` for parity with the sync
+        sibling — previously this was a raw, unretried ``requests.get`` call.
+        """
         import requests
 
-        start_at = 0
-        cursor: Optional[str] = None
-
-        while True:
-            params = {
+        def read_batch_func(
+            start_at: int, batch_size: int, cursor: str | None
+        ) -> dict[str, Any]:
+            params: dict[str, Any] = {
                 "cql": self.query,
-                "limit": self.batch_size,
+                "limit": batch_size,
                 "start": start_at,
                 "expand": self.expand,
             }
             if cursor:
                 params["cursor"] = cursor
 
-            response = requests.get(
-                url=f"{self.base_url}/wiki/rest/api/search",
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                params=params,
-                auth=(self.email, self.api_token),
-            )
-            try:
-                response.raise_for_status()
-            except Exception:
-                error_message = "Unknown error"
-                try:
-                    error_body = response.json()
-                    error_message = error_body.get("message", error_message)
-                except Exception:
-                    error_message = (
-                        response.text[:500] if response.text else error_message
-                    )
-                raise ConfluenceCloudAPIError(
-                    status_code=response.status_code,
-                    reason=response.reason,
-                    message=error_message,
-                    url=response.url,
+            def do_request() -> dict[str, Any]:
+                response = requests.get(
+                    url=f"{self.base_url}/wiki/rest/api/search",
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    params=params,
+                    auth=(self.email, self.api_token),
                 )
+                try:
+                    response.raise_for_status()
+                except Exception:
+                    error_message = "Unknown error"
+                    try:
+                        error_body = response.json()
+                        error_message = error_body.get("message", error_message)
+                    except Exception:
+                        error_message = (
+                            response.text[:500] if response.text else error_message
+                        )
+                    raise ConfluenceCloudAPIError(
+                        status_code=response.status_code,
+                        reason=response.reason,
+                        message=error_message,
+                        url=response.url,
+                    )
+                return response.json()
 
-            result = response.json()
-            items = result.get("results", [])
-            total = result.get("totalSize", 0)
+            return execute_with_retry(
+                do_request,
+                f"GET {self.base_url}/wiki/rest/api/search (start={start_at})",
+                self.number_of_retries,
+                self.retry_delay,
+            )
 
-            for item in items:
-                yield item
+        def parse_cursor(result: dict[str, Any]) -> str | None:
+            return self.parse_url_params(result.get("_links", {}).get("next", "")).get(
+                "cursor", [None]
+            )[0]
 
-            start_at += len(items)
-            if start_at >= total:
-                break
-
-            cursor = self.parse_url_params(
-                result.get("_links", {}).get("next", "")
-            ).get("cursor", [None])[0]
+        return read_items_in_batches(
+            read_batch_func,
+            fetch_items_from_result_func=lambda result: result.get("results", []),
+            fetch_total_from_result_func=lambda result: result.get("totalSize", 0),
+            batch_size=self.batch_size,
+            max_skipped_items_in_row=self.max_skipped_items_in_row,
+            itemsName="pages",
+            cursor_parser=parse_cursor,
+        )
 
     async def _fetch_all_comments_async(self, pages: list) -> dict:
         """Fetch comments for all pages concurrently using httpx."""
@@ -257,7 +276,10 @@ class AsyncConfluenceCloudDocumentReader:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):
-                if isinstance(result, Exception):
+                # BaseException, not Exception: return_exceptions=True can also
+                # surface asyncio.CancelledError, which is a BaseException and
+                # must not fall through to the success branch below.
+                if isinstance(result, BaseException):
                     logger.warning(f"Failed to fetch comments for page {i}: {result}")
                     comments_map[i] = []
                 else:
@@ -357,7 +379,10 @@ class AsyncConfluenceCloudDocumentReader:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):
-                if isinstance(result, Exception):
+                # BaseException, not Exception: return_exceptions=True can also
+                # surface asyncio.CancelledError, which is a BaseException and
+                # must not fall through to the success branch below.
+                if isinstance(result, BaseException):
                     logger.warning(
                         f"Failed to fetch attachments for page {i}: {result}"
                     )

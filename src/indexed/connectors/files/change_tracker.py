@@ -26,6 +26,7 @@ class IndexState:
 
     last_indexed_commit: str | None = None
     file_hashes: dict[str, str] | None = None
+    file_sizes: dict[str, int] | None = None
     last_indexed_at: str | None = None
     indexed_file_count: int = 0
 
@@ -75,11 +76,13 @@ class ChangeTracker:
         import xxhash
 
         hashes: dict[str, str] = {}
+        sizes: dict[str, int] = {}
         for fp in file_paths:
             rel = os.path.relpath(fp, self._base_path)
             try:
                 data = Path(fp).read_bytes()
                 hashes[rel] = xxhash.xxh64(data).hexdigest()
+                sizes[rel] = len(data)
             except OSError:
                 pass
 
@@ -88,6 +91,7 @@ class ChangeTracker:
         return IndexState(
             last_indexed_commit=commit,
             file_hashes=hashes,
+            file_sizes=sizes,
             last_indexed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             indexed_file_count=len(file_paths),
         )
@@ -409,7 +413,32 @@ class ChangeTracker:
         file_paths: list[str],
         state: IndexState,
     ) -> list[FileChange]:
+        """Detect changes via mtime and file size — the FAST strategy.
+
+        A tracked file is "modified" if its current mtime is after the last
+        indexed cutoff, OR its current size differs from the size recorded at
+        the last indexing run. Both checks are cheap ``os.stat`` calls; this
+        strategy never reads or hashes file content, so the common case of an
+        incremental run (most files untouched: unchanged mtime, unchanged
+        size) stays cheap — no file is opened or hashed.
+
+        The size check catches the realistic timestamp-preserving edits this
+        strategy is meant to guard against (``rsync -a`` preserves mtime but a
+        content edit almost always changes size; ``git checkout`` normally
+        gives a fresh mtime anyway, which the mtime check alone catches).
+
+        Known limitation: because it never inspects file bytes, this strategy
+        will NOT detect a content edit that preserves BOTH mtime and size
+        (e.g. ``touch -r`` followed by a same-length in-place edit) — a
+        pathological but possible case. Use the ``content_hash`` strategy when
+        detection must be guaranteed regardless of cost.
+
+        Backward compatibility: a state persisted before size-tracking was
+        added has no ``file_sizes`` entry for a given file. That file falls
+        back to the prior mtime-only comparison (no crash, no forced hash).
+        """
         old_hashes = state.file_hashes or {}
+        old_sizes = state.file_sizes or {}
         changes: list[FileChange] = []
         seen: set[str] = set()
 
@@ -431,11 +460,20 @@ class ChangeTracker:
                 changes.append(FileChange(path=rel, status="added"))
             elif cutoff is not None:
                 try:
-                    mtime = os.path.getmtime(fp)
-                    if mtime > cutoff:
-                        changes.append(FileChange(path=rel, status="modified"))
+                    st = os.stat(fp)
                 except OSError:
-                    pass
+                    continue
+                if st.st_mtime > cutoff:
+                    changes.append(FileChange(path=rel, status="modified"))
+                    continue
+                old_size = old_sizes.get(rel)
+                if old_size is not None and st.st_size != old_size:
+                    # mtime doesn't show a change, but the size does — a
+                    # cheap stat-only check, no content read.
+                    changes.append(FileChange(path=rel, status="modified"))
+                # else: mtime unchanged and size unchanged (or unknown, for a
+                # pre-size-tracking state) -> treated as unmodified. No file
+                # content is read on this path.
 
         for rel in old_hashes:
             if rel not in seen:

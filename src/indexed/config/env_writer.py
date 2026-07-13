@@ -42,10 +42,16 @@ class EnvFileWriter:
 
         key_found = False
         updated_lines: List[str] = []
+        # Regex to match export-prefixed keys: optional "export " prefix followed by KEY=
+        key_pattern = re.compile(rf"^(export\s+)?{re.escape(key)}\s*=")
+
         for line in existing_lines:
             stripped = line.strip()
-            if stripped.startswith(f"{key}=") or stripped.startswith(f"{key} ="):
-                updated_lines.append(f"{key}={quoted_value}\n")
+            match = key_pattern.match(stripped)
+            if match:
+                # Preserve the export prefix if present
+                export_prefix = match.group(1) or ""
+                updated_lines.append(f"{export_prefix}{key}={quoted_value}\n")
                 key_found = True
             else:
                 updated_lines.append(line if line.endswith("\n") else line + "\n")
@@ -55,8 +61,24 @@ class EnvFileWriter:
 
         os.makedirs(os.path.dirname(env_path), exist_ok=True)
 
-        with open(env_path, "w") as f:
-            f.writelines(updated_lines)
+        # Atomic write: tmp -> fsync -> chmod 0600 -> os.replace (mirror
+        # TomlStore.write pattern). The temp file is a fresh inode with
+        # umask-derived permissions, so it must be hardened to 0600 before
+        # the replace or the resulting .env would leak to group/world read.
+        tmp = env_path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                f.writelines(updated_lines)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, env_path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def is_sensitive_field(field_name: str) -> bool:
