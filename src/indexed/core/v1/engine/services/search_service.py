@@ -101,12 +101,9 @@ class SearchService:
         """
         try:
             entries = self._persister.read_folder_files(".")
-        except OSError as exc:
-            if exc.errno == errno.ENOENT:
-                return []
-            logger.error(f"Failed to discover collections: {exc}")
-            raise StorageError(f"Could not scan collections directory: {exc}") from exc
         except Exception as exc:
+            if isinstance(exc, OSError) and exc.errno == errno.ENOENT:
+                return []
             logger.error(f"Failed to discover collections: {exc}")
             raise StorageError(f"Could not scan collections directory: {exc}") from exc
 

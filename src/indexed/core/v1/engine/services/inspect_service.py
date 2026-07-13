@@ -104,12 +104,9 @@ class InspectService:
         try:
             # Find any files named manifest.json and derive collection name from their parent folder
             all_items = self._persister.read_folder_files(".")
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                return []
-            logger.error(f"Error scanning collections directory: {e}")
-            raise StorageError(f"Could not scan collections directory: {e}") from e
         except Exception as e:
+            if isinstance(e, OSError) and e.errno == errno.ENOENT:
+                return []
             logger.error(f"Error scanning collections directory: {e}")
             raise StorageError(f"Could not scan collections directory: {e}") from e
 
