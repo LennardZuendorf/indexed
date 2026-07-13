@@ -274,7 +274,7 @@ class UnifiedJiraDocumentReader:
 
         def do_request():
             if self.auth_type == JiraAuthType.CLOUD:
-                result = self._client.approximate_issue_count(self.query)
+                result = self._client.approximate_issue_count(self.query) or {}
                 return int(result.get("count", 0))
             result = (
                 self._client.jql(self.query, fields=self.fields, start=0, limit=1) or {}
@@ -320,11 +320,14 @@ class UnifiedJiraDocumentReader:
             cursor: str | None,
         ) -> dict[str, Any]:
             def do_request() -> dict[str, Any]:
-                return self._client.enhanced_jql(
-                    jql=self.query,
-                    fields=self.fields,
-                    limit=batch_size,
-                    nextPageToken=cursor,
+                return (
+                    self._client.enhanced_jql(
+                        jql=self.query,
+                        fields=self.fields,
+                        limit=batch_size,
+                        nextPageToken=cursor,
+                    )
+                    or {}
                 )
 
             result = execute_with_retry(
@@ -334,6 +337,7 @@ class UnifiedJiraDocumentReader:
                 self.retry_delay,
             )
             issues = result.get("issues", [])
+            result["issues"] = issues
             if result.get("nextPageToken"):
                 result["_continuation_total"] = start_at + len(issues) + 1
             else:

@@ -292,3 +292,50 @@ def test_reader_details(monkeypatch):
     assert details["baseUrl"] == "https://acme.atlassian.net"
     assert details["query"] == "project = TEST"
     assert details["batchSize"] == 100
+
+
+def test_cloud_reader_enhanced_jql_none_returns_empty(monkeypatch):
+    """R5: enhanced_jql returning None must not raise AttributeError when
+    .get() is called on the result; it should yield an empty page."""
+    import indexed.connectors.jira.unified_jira_document_reader as unified_mod
+
+    class NoneEnhancedJqlJiraCloud(FakeJiraCloud):
+        def enhanced_jql(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(unified_mod, "Jira", NoneEnhancedJqlJiraCloud, raising=True)
+
+    reader = UnifiedJiraDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        auth_type=JiraAuthType.CLOUD,
+        email="x@acme.com",
+        api_token="token",
+        batch_size=2,
+    )
+
+    docs = list(reader.read_all_documents())
+    assert docs == []
+
+
+def test_cloud_reader_approximate_issue_count_none_returns_zero(monkeypatch):
+    """R5: approximate_issue_count returning None must not raise
+    AttributeError when .get() is called on the result."""
+    import indexed.connectors.jira.unified_jira_document_reader as unified_mod
+
+    class NoneCountJiraCloud(FakeJiraCloud):
+        def approximate_issue_count(self, jql: str):
+            return None
+
+    monkeypatch.setattr(unified_mod, "Jira", NoneCountJiraCloud, raising=True)
+
+    reader = UnifiedJiraDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        auth_type=JiraAuthType.CLOUD,
+        email="x@acme.com",
+        api_token="token",
+        batch_size=2,
+    )
+
+    assert reader.get_number_of_documents() == 0

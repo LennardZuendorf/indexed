@@ -257,7 +257,10 @@ class AsyncConfluenceCloudDocumentReader:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):
-                if isinstance(result, Exception):
+                # BaseException, not Exception: return_exceptions=True can also
+                # surface asyncio.CancelledError, which is a BaseException and
+                # must not fall through to the success branch below.
+                if isinstance(result, BaseException):
                     logger.warning(f"Failed to fetch comments for page {i}: {result}")
                     comments_map[i] = []
                 else:
@@ -357,7 +360,10 @@ class AsyncConfluenceCloudDocumentReader:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):
-                if isinstance(result, Exception):
+                # BaseException, not Exception: return_exceptions=True can also
+                # surface asyncio.CancelledError, which is a BaseException and
+                # must not fall through to the success branch below.
+                if isinstance(result, BaseException):
                     logger.warning(
                         f"Failed to fetch attachments for page {i}: {result}"
                     )
