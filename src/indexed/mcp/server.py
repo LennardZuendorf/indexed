@@ -13,15 +13,14 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Type, TypedDict
 
 from fastmcp import FastMCP
-from loguru import logger
 
 from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
 from indexed.config import get_config
 
 from indexed.cli.composition import register_app_config
-from indexed.cli.composition import CliContext, resolve_collections_context
+from indexed.cli.composition import CliContext
 
-from .config import default_global_context
+from .config import resolve_cli_context
 from .resources import register_resources
 from .tools import register_tools
 
@@ -43,23 +42,16 @@ def _get_config(model_cls: Type[Any]) -> Any:
         return model_cls()
 
 
-def _resolve_cli_context() -> CliContext:
-    """Resolve the collections context, degrading to a default global
-    context (R2) rather than letting a malformed/unreadable config.toml
-    crash server startup. Mirrors ``_get_config``'s fallback pattern."""
-    try:
-        return resolve_collections_context()
-    except Exception as exc:
-        logger.warning(f"Failed to resolve CLI context, using default: {exc}")
-        return default_global_context()
-
-
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     """Server lifespan context manager for configuration initialization."""
     config_service = get_config()
     register_app_config(config_service)
-    cli_context = _resolve_cli_context()
+    # No lifespan context exists yet during startup, so this call always
+    # falls through resolve_cli_context's fresh-resolution path (R2),
+    # degrading to a default global-mode context rather than letting a
+    # malformed/unreadable config.toml crash server startup.
+    cli_context = resolve_cli_context(None)
     mcp_config = _get_config(MCPConfig)
     search_config = _get_config(CoreV1SearchConfig)
     yield {
