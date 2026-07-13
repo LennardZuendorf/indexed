@@ -147,18 +147,25 @@ class PlaintextParser:
         for unit in units:
             pieces.extend(self._bound_to_window(unit))
 
+        # Joining N pieces inserts (N-1) separators — the separator's own
+        # token cost must be counted too, or a packed group can tokenize
+        # over `self._max_tokens` once actually joined (R12.4).
+        sep_tokens = count_tokens(sep)
+
         chunks: list[ParsedChunk] = []
         buf: list[str] = []
         buf_tokens = 0
 
         for piece in pieces:
             piece_tokens = count_tokens(piece)
-            if buf and buf_tokens + piece_tokens > self._max_tokens:
+            added_tokens = piece_tokens + sep_tokens if buf else piece_tokens
+            if buf and buf_tokens + added_tokens > self._max_tokens:
                 chunks.append(self._make_plaintext_chunk(sep.join(buf), file_path))
                 buf = []
                 buf_tokens = 0
+                added_tokens = piece_tokens
             buf.append(piece)
-            buf_tokens += piece_tokens
+            buf_tokens += added_tokens
 
         if buf:
             chunks.append(self._make_plaintext_chunk(sep.join(buf), file_path))
@@ -176,6 +183,12 @@ class PlaintextParser:
             # characters as a last resort.
             return self._slice_by_chars(unit)
 
+        # Joining N words with " " inserts (N-1) space separators — their
+        # token cost must be counted too, or a packed group can tokenize
+        # over `self._max_tokens` once actually joined (R12.4, same
+        # undercount as `_split_paragraphs`'s packing loop above).
+        space_tokens = count_tokens(" ")
+
         out: list[str] = []
         buf: list[str] = []
         buf_tokens = 0
@@ -192,12 +205,14 @@ class PlaintextParser:
                     buf_tokens = 0
                 out.extend(self._slice_by_chars(word))
                 continue
-            if buf and buf_tokens + word_tokens > self._max_tokens:
+            added_tokens = word_tokens + space_tokens if buf else word_tokens
+            if buf and buf_tokens + added_tokens > self._max_tokens:
                 out.append(" ".join(buf))
                 buf = []
                 buf_tokens = 0
+                added_tokens = word_tokens
             buf.append(word)
-            buf_tokens += word_tokens
+            buf_tokens += added_tokens
         if buf:
             out.append(" ".join(buf))
         return out

@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from ._model_window import effective_max_tokens
+from ._model_window import count_tokens, effective_max_tokens
 from .schema import ParsedChunk
 
 # ---------------------------------------------------------------------------
@@ -26,6 +26,17 @@ LANGUAGE_MAP: dict[str, str] = {
     ".h": "c",
     ".rs": "rust",
     ".go": "go",
+}
+
+# tree_sitter_typescript exposes two grammars from one package
+# (language_typescript / language_tsx). LANGUAGE_MAP keys both extensions to
+# the "typescript" bucket (semantic node types, metadata "language" tag) but
+# .tsx must actually be parsed with the JSX-aware grammar — otherwise JSX
+# syntax confuses the plain typescript grammar and fragments the AST. This
+# map overrides which grammar *function* `_get_language` calls, per
+# extension, independent of the "typescript" language bucket above.
+GRAMMAR_OVERRIDES: dict[str, str] = {
+    ".tsx": "tsx",
 }
 
 SEMANTIC_NODES: dict[str, frozenset[str]] = {
@@ -65,11 +76,19 @@ SEMANTIC_NODES: dict[str, frozenset[str]] = {
 }
 
 
-def _get_language(lang_name: str) -> Any:
-    """Return a tree-sitter ``Language`` object for *lang_name*."""
+def _get_language(lang_name: str, grammar_name: str | None = None) -> Any:
+    """Return a tree-sitter ``Language`` object for *lang_name*.
+
+    *grammar_name* overrides which language function is called when the
+    grammar package exposes multiple languages (e.g. ``tree_sitter_typescript``
+    exposes both ``language_typescript`` and ``language_tsx``); defaults to
+    *lang_name*.
+    """
     import importlib
 
     import tree_sitter
+
+    grammar_name = grammar_name or lang_name
 
     # tree-sitter-python → tree_sitter_python, etc.
     module_name = f"tree_sitter_{lang_name}"
@@ -80,7 +99,7 @@ def _get_language(lang_name: str) -> Any:
     if hasattr(mod, "language"):
         capsule = mod.language()
     else:
-        fn_name = f"language_{lang_name}"
+        fn_name = f"language_{grammar_name}"
         capsule = getattr(mod, fn_name)()
 
     return tree_sitter.Language(capsule)
@@ -112,7 +131,8 @@ class CodeChunker:
         try:
             import tree_sitter
 
-            language = _get_language(lang_name)
+            grammar_name = GRAMMAR_OVERRIDES.get(ext, lang_name)
+            language = _get_language(lang_name, grammar_name)
             parser = tree_sitter.Parser(language)
 
             source_bytes = path.read_bytes()
@@ -152,6 +172,26 @@ class CodeChunker:
         chunks: list[ParsedChunk] = []
         accumulator: list[str] = []
         acc_start: int | None = None
+        acc_end: int | None = None
+        acc_tokens = 0
+
+        def _flush_accumulator(end_line: int) -> None:
+            nonlocal acc_start, acc_end, acc_tokens
+            merged = "\n".join(accumulator)
+            chunks.append(
+                self._make_chunk(
+                    merged,
+                    file_path,
+                    language,
+                    "accumulated",
+                    acc_start if acc_start is not None else end_line,
+                    end_line,
+                )
+            )
+            accumulator.clear()
+            acc_start = None
+            acc_end = None
+            acc_tokens = 0
 
         for child in node.children:
             text = source[child.start_byte : child.end_byte].decode(
@@ -161,21 +201,9 @@ class CodeChunker:
             if child.type in semantic:
                 # flush accumulated non-semantic text
                 if accumulator:
-                    merged = "\n".join(accumulator)
-                    chunks.append(
-                        self._make_chunk(
-                            merged,
-                            file_path,
-                            language,
-                            "accumulated",
-                            acc_start or child.start_point[0],
-                            child.start_point[0] - 1,
-                        )
-                    )
-                    accumulator.clear()
-                    acc_start = None
+                    _flush_accumulator(child.start_point[0] - 1)
 
-                if len(text) > self._max_chars:
+                if count_tokens(text) > self._max_tokens:
                     # oversized → recurse into children
                     chunks.extend(
                         self._walk_nodes(child, source, semantic, file_path, language)
@@ -193,24 +221,23 @@ class CodeChunker:
                     )
             else:
                 if text.strip():
+                    # R12.2: guard the accumulator by the real token bound —
+                    # flush before this child would push it over budget.
+                    child_tokens = count_tokens(text)
+                    if accumulator and acc_tokens + child_tokens > self._max_tokens:
+                        _flush_accumulator(
+                            acc_end if acc_end is not None else child.start_point[0] - 1
+                        )
+
                     if acc_start is None:
                         acc_start = child.start_point[0]
                     accumulator.append(text)
+                    acc_end = child.end_point[0]
+                    acc_tokens += child_tokens
 
         # flush remaining
         if accumulator:
-            merged = "\n".join(accumulator)
-            last_line = node.end_point[0]
-            chunks.append(
-                self._make_chunk(
-                    merged,
-                    file_path,
-                    language,
-                    "accumulated",
-                    acc_start or node.start_point[0],
-                    last_line,
-                )
-            )
+            _flush_accumulator(node.end_point[0])
 
         return chunks
 
@@ -253,11 +280,12 @@ class CodeChunker:
         lines = text.splitlines(keepends=True)
         chunks: list[ParsedChunk] = []
         buf: list[str] = []
-        buf_len = 0
+        buf_tokens = 0
         start_line = 0
 
         for i, line in enumerate(lines):
-            if buf_len + len(line) > self._max_chars and buf:
+            line_tokens = count_tokens(line)
+            if buf_tokens + line_tokens > self._max_tokens and buf:
                 chunk_text = "".join(buf)
                 chunks.append(
                     self._make_chunk(
@@ -270,11 +298,11 @@ class CodeChunker:
                     )
                 )
                 buf.clear()
-                buf_len = 0
+                buf_tokens = 0
                 start_line = i
 
             buf.append(line)
-            buf_len += len(line)
+            buf_tokens += line_tokens
 
         if buf:
             chunk_text = "".join(buf)

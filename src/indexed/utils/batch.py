@@ -64,3 +64,10 @@ def read_items_in_batches(
 
         start_at = start_at + len(items)
         are_there_more_items_to_read = start_at < total
+
+        if len(items) == 0 and are_there_more_items_to_read:
+            raise RuntimeError(
+                f"Empty {itemsName} page returned at position {start_at} "
+                f"(total={total}); start_at did not advance — refusing to "
+                "loop indefinitely"
+            )

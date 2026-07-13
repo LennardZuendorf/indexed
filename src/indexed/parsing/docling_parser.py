@@ -48,15 +48,24 @@ class DoclingParser:
 
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.document_converter import (
+            DocumentConverter,
+            ImageFormatOption,
+            PdfFormatOption,
+        )
 
         pipeline_opts = PdfPipelineOptions()
         pipeline_opts.do_ocr = self._ocr
         pipeline_opts.do_table_structure = self._table_structure
 
+        # Only PDF and IMAGE use the Pdf pipeline (PdfPipelineOptions has
+        # do_ocr/do_table_structure). DOCX/PPTX/HTML/XLSX use SimplePipeline
+        # with the base PipelineOptions, which has neither field — do not
+        # attach Pdf pipeline options there (R14).
         self._converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_opts),
+                InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline_opts),
             }
         )
 
