@@ -111,6 +111,19 @@ def test_files_from_manifest_propagates_non_default_reader_settings(tmp_path):
     assert run.reader._respect_gitignore is False
 
 
+def test_files_from_manifest_missing_base_path_raises_configuration_error(tmp_path):
+    """A manifest missing 'basePath' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.files.connector import FileSystemConnector
+
+    manifest = _manifest({"type": "localFiles", "includePatterns": ["*"]})
+
+    with pytest.raises(ConfigurationError):
+        FileSystemConnector.from_manifest(
+            manifest, object(), storage_path=str(tmp_path)
+        )
+
+
 def test_files_from_manifest_with_change_state_scopes_and_persists(tmp_path):
     """WITH-prior-state branch: deletions + specific_files scoping + post_run save.
 
@@ -328,6 +341,18 @@ def test_outline_from_manifest_overlays_and_cutoff(monkeypatch):
     assert cs.overlays["sources.outline.verify_ssl"] is False
     # cutoff replaces the old os.environ side-channel: raw lastModifiedDocumentTime
     assert cs.overlays["sources.outline.modified_since"] == "2026-07-05T09:15:00+00:00"
+
+
+def test_outline_from_manifest_missing_base_url_raises_configuration_error():
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.outline.connector import OutlineConnector
+
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "outline", "collectionIds": ["c1"]})
+
+    with pytest.raises(ConfigurationError):
+        OutlineConnector.from_manifest(manifest, cs, storage_path="/x")
 
 
 def test_all_connectors_expose_from_manifest():

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, List, Literal
 
-from indexed.config import ConfigService
+from indexed.config import ConfigService, ConfigurationError
 from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .change_tracker import ChangeTracker, FileChange, IndexState
@@ -235,8 +235,14 @@ class FileSystemConnector:
         ``config_service`` is unused for this source.
         """
         rd = manifest.reader.model_dump(by_alias=True)
+        base_path = rd.get("basePath")
+        if not base_path:
+            raise ConfigurationError(
+                f"Files manifest for collection '{manifest.collection_name}' is "
+                "missing 'basePath'; cannot rebuild connector for incremental update"
+            )
         connector = cls(
-            path=rd["basePath"],
+            path=base_path,
             include_patterns=rd.get("includePatterns") or ["*"],
             fail_fast=rd.get("failFast", False),
             change_tracking=rd.get("changeTracking", "auto"),
