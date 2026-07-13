@@ -124,8 +124,8 @@ def render_config_overview(
             console.print(panel)
             console.print()
 
-    # Display Core Settings panel (if showing defaults or filter matches)
-    if core_sections and (show_defaults or section_filter == "core"):
+    # Display Core Settings panel (if no filter or filter matches)
+    if core_sections and (not section_filter or section_filter == "core"):
         rows = []
         for section_name, section_data in core_sections.items():
             for key, info in sorted(section_data.items()):
@@ -162,7 +162,7 @@ def render_config_overview(
                 value = _masked_config_value(key, info["value"])
                 rows.append((section_name, key, value))
 
-        if rows and show_defaults:
+        if rows:
             title = section_name.replace("_", " ").title()
             panel = create_key_value_panel(
                 title,

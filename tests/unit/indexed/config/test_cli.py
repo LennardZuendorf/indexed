@@ -224,6 +224,44 @@ class TestList:
             reset_simple_output()
 
     @patch("indexed.config.commands.list.get_config")
+    def test_list_shows_manually_set_core_value_without_show_defaults(
+        self, mock_config_service
+    ):
+        """R8: a manually-set core value must render in plain `config list`
+        (no --show-defaults) — the Core Settings panel must not be gated on
+        show_defaults when should_show_key already says to include the row."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {
+            "core": {"v1": {"indexing": {"chunk_size": 256}}}
+        }
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list"])
+        assert result.exit_code == 0, result.stdout
+        assert "256" in result.stdout
+
+    @patch("indexed.config.commands.list.get_config")
+    def test_list_shows_manually_set_logging_value_without_show_defaults(
+        self, mock_config_service
+    ):
+        """R8: a manually-set logging value must render in plain `config
+        list` — the logging/mcp/performance panel must not be gated on
+        show_defaults when should_show_key already says to include the row."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"logging": {"level": "DEBUG"}}
+        mock_config.get_workspace_config.return_value = None
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "list"])
+        assert result.exit_code == 0, result.stdout
+        assert "DEBUG" in result.stdout
+
+    @patch("indexed.config.commands.list.get_config")
     def test_list_simple_output_masks_secret(self, mock_config_service):
         """C1: a secret reaching merged config must be masked in JSON output."""
         from indexed.cli.utils.simple_output import (

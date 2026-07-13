@@ -29,7 +29,7 @@ def create_files(
     verbose: _opt.VerboseOpt = False,
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
-    respect_gitignore: _opt.RespectGitignoreOpt = True,
+    respect_gitignore: _opt.RespectGitignoreOpt = None,
     local: _opt.LocalOpt = False,
 ) -> None:
     """Create a Files collection with parameter resolution and progress tracking."""
@@ -42,7 +42,8 @@ def create_files(
         cli_overrides["exclude_patterns"] = exclude
     if fail_fast:
         cli_overrides["fail_fast"] = fail_fast
-    cli_overrides["respect_gitignore"] = respect_gitignore
+    if respect_gitignore is not None:
+        cli_overrides["respect_gitignore"] = respect_gitignore
 
     _create(
         "files",
@@ -107,7 +108,7 @@ def create_confluence(
     cql: _opt.CqlOpt = None,
     email: _opt.AtlassianEmailOpt = None,
     token: _opt.AtlassianTokenOpt = None,
-    read_all_comments: _opt.ReadAllCommentsOpt = True,
+    read_all_comments: _opt.ReadAllCommentsOpt = None,
     use_cache: _opt.UseCacheConfluenceOpt = True,
     force: _opt.ForceOpt = False,
     verbose: _opt.VerboseOpt = False,
@@ -123,7 +124,8 @@ def create_confluence(
         cli_overrides["email"] = email
     if token:
         cli_overrides["api_token"] = token
-    cli_overrides["read_all_comments"] = read_all_comments
+    if read_all_comments is not None:
+        cli_overrides["read_all_comments"] = read_all_comments
 
     _create(
         "confluence",
@@ -148,8 +150,8 @@ def create_outline(
     url: _opt.OutlineUrlOpt = None,
     token: _opt.OutlineTokenOpt = None,
     collection_id: _opt.CollectionIdOpt = None,
-    include_attachments: _opt.IncludeAttachmentsOpt = True,
-    ocr: _opt.OcrOpt = True,
+    include_attachments: _opt.IncludeAttachmentsOpt = None,
+    ocr: _opt.OcrOpt = None,
     use_cache: _opt.UseCacheOutlineOpt = True,
     force: _opt.ForceOpt = False,
     verbose: _opt.VerboseOpt = False,
@@ -163,8 +165,10 @@ def create_outline(
         cli_overrides["api_token"] = token
     if collection_id:
         cli_overrides["collection_ids"] = list(collection_id)
-    cli_overrides["include_attachments"] = include_attachments
-    cli_overrides["ocr_enabled"] = ocr
+    if include_attachments is not None:
+        cli_overrides["include_attachments"] = include_attachments
+    if ocr is not None:
+        cli_overrides["ocr_enabled"] = ocr
 
     _create(
         "outline",
