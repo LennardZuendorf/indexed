@@ -1,6 +1,7 @@
 """Tests for EnvFileWriter (C4: dotenv-safe quoting)."""
 
 from pathlib import Path
+from unittest import mock
 
 from dotenv import dotenv_values
 
@@ -55,6 +56,43 @@ class TestEnvFileWriterWrite:
 
         assert env_path.exists()
         assert dotenv_values(str(env_path)).get("KEY") == "value"
+
+    def test_write_updates_existing_export_key_in_place(self, tmp_path: Path):
+        """Test that export-prefixed keys are updated in place, not duplicated."""
+        env_path = tmp_path / ".env"
+        # Seed with an export-prefixed key
+        env_path.write_text("export JIRA_TOKEN=old_secret\n")
+
+        writer = EnvFileWriter(lambda: str(env_path))
+        writer.write("JIRA_TOKEN", "new_secret")
+
+        # Should have exactly one JIRA_TOKEN entry (updated in place)
+        text = env_path.read_text()
+        assert text.count("JIRA_TOKEN") == 1
+        # Verify the new value is present and correctly quoted
+        values = dotenv_values(str(env_path))
+        assert values.get("JIRA_TOKEN") == "new_secret"
+
+    def test_write_is_atomic_on_failure(self, tmp_path: Path):
+        """Test that a crash during write doesn't truncate the original file."""
+        env_path = tmp_path / ".env"
+        original_content = "OTHER_KEY=keep_me\n"
+        env_path.write_text(original_content)
+
+        writer = EnvFileWriter(lambda: str(env_path))
+
+        # Mock os.replace to simulate a crash mid-write
+        with mock.patch("os.replace", side_effect=RuntimeError("Simulated crash")):
+            try:
+                writer.write("JIRA_TOKEN", "new_value")
+            except RuntimeError:
+                pass  # Expected
+
+        # Original file should be intact, not truncated/empty
+        text = env_path.read_text()
+        assert text == original_content
+        assert "OTHER_KEY" in text
+        assert "JIRA_TOKEN" not in text
 
 
 class TestIsSensitiveField:
