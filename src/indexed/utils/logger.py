@@ -159,10 +159,16 @@ def _make_console_sink(
             line = f"{level_name:<8} | {msg}"
 
         if rich_console is not None:
-            if style:
-                rich_console.print(f"[{style}]{line}[/{style}]", highlight=False)
-            else:
-                rich_console.print(line, highlight=False)
+            # `line` is log content (message text, may embed user input like
+            # a search query or a repr) — never markup-parsed. A raw
+            # f"[{style}]{line}[/{style}]" string would have bracket
+            # characters in `line` parsed as style tags (silently dropping
+            # them, or raising MarkupError that loguru's catch=True would
+            # then swallow in place of the real message). `Text` renders the
+            # content literally while still applying `style`.
+            from rich.text import Text
+
+            rich_console.print(Text(line, style=style), highlight=False)
         else:
             print(line, file=sys.stderr)
 
@@ -175,10 +181,12 @@ def _make_console_sink(
                 tb_mod.format_exception(exc.type, exc.value, exc.traceback)
             ).rstrip()
             if rich_console is not None:
-                if style:
-                    rich_console.print(f"[{style}]{tb_text}[/{style}]", highlight=False)
-                else:
-                    rich_console.print(tb_text, highlight=False)
+                # Same literal-rendering rationale as the message above —
+                # a traceback commonly contains bracketed reprs (e.g.
+                # `list[int]`, `dict_keys([...])`).
+                from rich.text import Text
+
+                rich_console.print(Text(tb_text, style=style), highlight=False)
             else:
                 print(tb_text, file=sys.stderr)
 

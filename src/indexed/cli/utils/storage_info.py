@@ -15,6 +15,7 @@ from rich.console import Console
 from .components.theme import (
     get_dim_style,
 )
+from .console import render_user_text
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,8 @@ def print_storage_info(
         console.print()
 
     indicator = get_storage_indicator(mode, path, reason)
-    console.print(f"[{get_dim_style()}]{indicator}[/]")
+    # indicator embeds the storage path (content-derived) — never markup-parsed.
+    console.print(render_user_text(indicator, style=get_dim_style()))
 
     if newline_after:
         console.print()

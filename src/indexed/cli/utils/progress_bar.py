@@ -9,6 +9,7 @@ This module provides:
 import time
 from typing import Optional, Dict
 
+from rich.markup import escape
 from rich.progress import (
     Progress,
     BarColumn,
@@ -231,5 +232,12 @@ def build_search_phase_label(query: str, collection: str) -> str:
 
     Returns:
         Plain-text label, e.g. ``Searching "docs" Collection for: "auth"``.
+
+    ``query``/``collection`` are user-controlled and this label ends up as a
+    Progress task description, rendered by ``TextColumn`` via
+    ``Text.from_markup`` — a raw ``Text()`` wrapper would not help here since
+    the description is re-stringified before that markup parse, so the
+    values are escaped instead (bracket characters render literally rather
+    than being parsed as style tags / dropped).
     """
-    return f'Searching "{collection}" Collection for: "{query}"'
+    return f'Searching "{escape(collection)}" Collection for: "{escape(query)}"'

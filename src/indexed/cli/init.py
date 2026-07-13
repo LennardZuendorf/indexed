@@ -8,6 +8,7 @@ Idempotent — safe to run multiple times.
 from typing import Optional
 
 import typer
+from rich.text import Text
 
 from indexed.cli.utils.components import (
     get_dim_style,
@@ -16,7 +17,7 @@ from indexed.cli.utils.components import (
     print_success,
     print_warning,
 )
-from indexed.cli.utils.console import console
+from indexed.cli.utils.console import console, render_user_text
 from indexed.cli.utils.progress_bar import create_phased_progress
 from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
@@ -110,13 +111,23 @@ def init(
     print_success("Setup complete!")
     console.print()
 
+    # Model name / cache dir are content-derived (HF model id, filesystem
+    # path) — rendered as literal Text, never markup-parsed. The surrounding
+    # label/dim styling is the app's own intentional markup and stays as-is.
     if info["models"]:
         for m in info["models"]:
             console.print(
-                f"  [{label}]{'Model':<10}[/{label}]{m['name']}  [{dim}]{m['size_mb']} MB[/{dim}]"
+                Text.assemble(
+                    Text.from_markup(f"  [{label}]{'Model':<10}[/{label}]"),
+                    render_user_text(m["name"]),
+                    Text.from_markup(f"  [{dim}]{m['size_mb']} MB[/{dim}]"),
+                )
             )
     console.print(
-        f"  [{label}]{'Cache':<10}[/{label}][{dim}]{info['cache_dir']}[/{dim}]"
+        Text.assemble(
+            Text.from_markup(f"  [{label}]{'Cache':<10}[/{label}]"),
+            render_user_text(info["cache_dir"], style=dim),
+        )
     )
 
     console.print()

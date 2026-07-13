@@ -82,11 +82,15 @@ def create_info_card(
     # Create content from info rows with proper spacing
     content = Group(*create_info_rows_with_spacing(rows))
 
-    # Build title with optional subtitle, using dim style for card headings
+    # Build title with optional subtitle, using dim style for card headings.
+    # title/subtitle are often content-derived (e.g. a collection name) —
+    # rendered as a literal Text (never markup-parsed), matching the value
+    # handling in create_info_rows_with_spacing above. Panel accepts a Text
+    # title directly, so the dim style still applies.
     if subtitle:
-        title_text = f"[dim]{title} ({subtitle})[/dim]"
+        title_text: "str | Text" = Text(f"{title} ({subtitle})", style="dim")
     else:
-        title_text = f"[dim]{title}[/dim]"
+        title_text = Text(str(title), style="dim")
 
     return Panel(
         content,
