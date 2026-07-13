@@ -29,6 +29,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 from tests.fixtures.connectors import payloads, stub_routes  # noqa: E402
 
+# The stub now checks the Authorization header on every request (it used to
+# accept any/no auth) -- this is the one token that satisfies all three
+# registrars below, and the only value that will work against the running
+# stub.
+_STUB_TOKEN = "stub-token"
+
 
 def main() -> None:
     from pytest_httpserver import HTTPServer
@@ -39,26 +45,40 @@ def main() -> None:
     try:
         stub_routes.register_jira_server(
             httpserver,
-            search_payload=payloads.jira_server_search(),
+            issues=[payloads.jira_server_issue()],
+            expected_token=_STUB_TOKEN,
         )
+        # comment_count=1 + comments_by_page_id exercises the *default*
+        # read_all_comments=True reader path (a separate paginated request
+        # to /child/comment), not just the --first-level-comments mode.
+        page = payloads.confluence_server_page(comment_count=1)
         stub_routes.register_confluence_server(
             httpserver,
-            search_payload=payloads.confluence_server_search(),
+            pages=[page],
+            expected_token=_STUB_TOKEN,
+            comments_by_page_id={
+                page["id"]: [
+                    payloads.confluence_comment(
+                        "<p>Ping the on-call engineer if this breaks again.</p>"
+                    )
+                ]
+            },
         )
         stub_routes.register_outline(
             httpserver,
-            documents_list=payloads.outline_documents_list(),
-            document_info=payloads.outline_document_info(),
+            documents=[payloads.outline_document_info()],
+            expected_token=_STUB_TOKEN,
         )
 
         base_url = httpserver.url_for("").rstrip("/")
 
         print(f"Stub server running at: {base_url}")
         print()
-        print("Auth env vars (any non-empty value works against the stub):")
-        print("  export JIRA_TOKEN=stub-token")
-        print("  export CONF_TOKEN=stub-token")
-        print("  export OUTLINE_API_TOKEN=stub-token")
+        print(f"Auth env vars (must be exactly '{_STUB_TOKEN}' -- the stub now")
+        print("rejects any other value, or a missing header, with 401):")
+        print(f"  export JIRA_TOKEN={_STUB_TOKEN}")
+        print(f"  export CONF_TOKEN={_STUB_TOKEN}")
+        print(f"  export OUTLINE_API_TOKEN={_STUB_TOKEN}")
         print()
         print("Copy-paste commands:")
         print()
@@ -68,10 +88,10 @@ def main() -> None:
             f'--jql "project = SRV" --no-cache --force'
         )
         print()
-        print("# Confluence Server")
+        print("# Confluence Server (default read_all_comments=True)")
         print(
             f"  uv run indexed index create confluence --collection conf-e2e --url {base_url} "
-            f'--cql "type=page" --first-level-comments --no-cache --force'
+            f'--cql "type=page" --no-cache --force'
         )
         print()
         print("# Outline")

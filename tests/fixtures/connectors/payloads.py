@@ -1,7 +1,11 @@
 """Fixture payload builders for Jira Server, Confluence Server, and Outline E2E tests.
 
-These builders return realistic API response dicts for use with pytest-httpserver stubs.
-Each includes a seeded phrase for search validation (via index search).
+These builders return realistic API item dicts for use with the offset-aware,
+auth-checked ``pytest_httpserver`` stubs in ``stub_routes.py``. Each includes a
+seeded phrase for search validation (via index search). Callers hand a *list*
+of these items straight to the matching ``stub_routes.register_*`` function --
+pagination envelopes (``total``/``pagination``/``size`` etc.) are built by the
+stub itself from the list length and the request's offset, not baked in here.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ def jira_server_issue(
 ) -> dict[str, Any]:
     """Build a realistic Jira Server issue dict.
 
-    Includes seeded phrase: "database timeout on staging".
+    Default includes seeded phrase: "database timeout on staging".
     """
     if description is None:
         description = (
@@ -40,23 +44,6 @@ def jira_server_issue(
     }
 
 
-def jira_server_search(
-    issue: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build a Jira Server search response wrapping one issue.
-
-    Serves both count (reads 'total') and fetch (reads 'issues') calls.
-    """
-    if issue is None:
-        issue = jira_server_issue()
-    return {
-        "issues": [issue],
-        "total": 1,
-        "startAt": 0,
-        "maxResults": 1,
-    }
-
-
 def confluence_server_page(
     page_id: str = "101",
     title: str = "Setup Guide",
@@ -64,11 +51,17 @@ def confluence_server_page(
     updated: str = "2026-01-15T10:00:00.000Z",
     base_url: str = "http://localhost",
     webui: str = "/display/DOCS/Setup+Guide",
+    comment_count: int = 0,
 ) -> dict[str, Any]:
     """Build a realistic Confluence Server page dict.
 
-    Includes seeded phrase: "Install the package with pip".
-    Comment size set to 0 (no comment fetching on happy path).
+    Default includes seeded phrase: "Install the package with pip".
+    ``comment_count`` sets ``children.comment.size`` -- 0 (the default) means
+    neither comment-read mode issues a further request; a non-zero count is
+    what makes the reader's default ``read_all_comments=True`` path fetch
+    comments via the separate ``/child/comment`` endpoint that
+    ``stub_routes.register_confluence_server`` serves from its
+    ``comments_by_page_id`` argument.
     """
     if body_html is None:
         body_html = "<h2>Getting Started</h2><p>Install the package with pip.</p>"
@@ -85,52 +78,16 @@ def confluence_server_page(
         },
         "children": {
             "comment": {
-                "size": 0,
+                "size": comment_count,
                 "results": [],
             }
         },
     }
 
 
-def confluence_server_search(
-    page: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build a Confluence Server search response wrapping one page.
-
-    Serves both count (reads 'totalSize') and fetch (reads 'results') calls.
-    """
-    if page is None:
-        page = confluence_server_page()
-    return {
-        "results": [page],
-        "totalSize": 1,
-    }
-
-
-def outline_doc_stub(
-    doc_id: str = "d1",
-) -> dict[str, Any]:
-    """Build a minimal Outline document stub for documents.list response."""
-    return {"id": doc_id}
-
-
-def outline_documents_list(
-    stub: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build an Outline documents.list response wrapping one document.
-
-    Serves both count (reads 'pagination.total') and list (reads 'data') calls.
-    """
-    if stub is None:
-        stub = outline_doc_stub()
-    return {
-        "data": [stub],
-        "pagination": {
-            "offset": 0,
-            "limit": 1,
-            "total": 1,
-        },
-    }
+def confluence_comment(body_html: str) -> dict[str, Any]:
+    """Build a Confluence comment dict as returned by the ``/child/comment`` endpoint."""
+    return {"body": {"storage": {"value": body_html}}}
 
 
 def outline_document_info(
@@ -141,9 +98,9 @@ def outline_document_info(
     updated_at: str = "2026-01-01T00:00:00Z",
     collection_id: str = "col1",
 ) -> dict[str, Any]:
-    """Build an Outline documents.info response for a single document.
+    """Build an Outline document dict (the ``documents.info`` "data" shape).
 
-    Includes seeded phrase: "rotate the vault token".
+    Default includes seeded phrase: "rotate the vault token".
     """
     if text is None:
         text = "To deploy the API you must rotate the vault token first."
@@ -151,13 +108,18 @@ def outline_document_info(
         url = f"https://app.getoutline.com/doc/{doc_id}"
 
     return {
-        "data": {
-            "id": doc_id,
-            "title": title,
-            "text": text,
-            "url": url,
-            "updatedAt": updated_at,
-            "collectionId": collection_id,
-            "parentDocumentId": None,
-        }
+        "id": doc_id,
+        "title": title,
+        "text": text,
+        "url": url,
+        "updatedAt": updated_at,
+        "collectionId": collection_id,
+        "parentDocumentId": None,
     }
+
+
+def outline_attachment_stub(
+    att_id: str = "att1", name: str = "notes.txt"
+) -> dict[str, Any]:
+    """Build an Outline attachment listing entry (the ``attachments.list`` "data" shape)."""
+    return {"id": att_id, "name": name}
