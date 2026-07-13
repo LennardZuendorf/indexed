@@ -432,13 +432,31 @@ class ChangeTracker:
             elif cutoff is not None:
                 try:
                     mtime = os.path.getmtime(fp)
-                    if mtime > cutoff:
-                        changes.append(FileChange(path=rel, status="modified"))
                 except OSError:
-                    pass
+                    continue
+                if mtime > cutoff:
+                    changes.append(FileChange(path=rel, status="modified"))
+                elif self._content_changed(fp, old_hashes[rel]):
+                    # mtime doesn't show a change, but the content does —
+                    # catches timestamp-preserving edits (rsync -a, git
+                    # checkout) that a pure mtime comparison would miss.
+                    # Only hashed on this slow path, keeping the common
+                    # (mtime-signals-change) case cheap.
+                    changes.append(FileChange(path=rel, status="modified"))
 
         for rel in old_hashes:
             if rel not in seen:
                 changes.append(FileChange(path=rel, status="deleted"))
 
         return changes
+
+    @staticmethod
+    def _content_changed(fp: str, old_hash: str) -> bool:
+        """Hash fallback for the mtime strategy: stored vs current content hash."""
+        import xxhash
+
+        try:
+            data = Path(fp).read_bytes()
+        except OSError:
+            return False
+        return xxhash.xxh64(data).hexdigest() != old_hash

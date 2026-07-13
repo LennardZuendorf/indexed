@@ -15,6 +15,39 @@ from datetime import datetime, timedelta
 _ORDER_BY_RE = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 
 
+def _quoted_spans(text: str) -> list[tuple[int, int]]:
+    """Return ``(start, end)`` spans (end exclusive) of quoted string literals.
+
+    Handles both single- and double-quoted JQL/CQL literals with backslash
+    escaping, so an ``ORDER BY`` occurring inside a literal value (e.g.
+    ``text ~ "please order by date"``) is never mistaken for the trailing
+    sort-clause boundary.
+    """
+    spans: list[tuple[int, int]] = []
+    quote_char: str | None = None
+    start = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote_char is None:
+            if ch in ("'", '"'):
+                quote_char = ch
+                start = i
+        elif ch == "\\":
+            i += 2
+            continue
+        elif ch == quote_char:
+            spans.append((start, i + 1))
+            quote_char = None
+        i += 1
+    return spans
+
+
+def _is_quoted(pos: int, spans: list[tuple[int, int]]) -> bool:
+    return any(s <= pos < e for s, e in spans)
+
+
 def cutoff_date(last_modified_document_time: str) -> str:
     """Incremental cutoff = the collection's last-modified time minus one day."""
     return (
@@ -41,9 +74,14 @@ def incremental_query(
     if not base:
         return date_filter
 
-    # A valid query carries at most one (trailing) ORDER BY; take the last match
-    # so a literal "order by" inside a WHERE value can't be mistaken for it.
-    matches = list(_ORDER_BY_RE.finditer(base))
+    # A valid query carries at most one (trailing) ORDER BY; take the last
+    # top-level (unquoted) match so neither a literal "order by" inside a
+    # quoted WHERE value nor one inside a WHERE value in general is mistaken
+    # for the sort-clause boundary.
+    spans = _quoted_spans(base)
+    matches = [
+        m for m in _ORDER_BY_RE.finditer(base) if not _is_quoted(m.start(), spans)
+    ]
     if not matches:
         return f"{base} AND {date_filter}"
 

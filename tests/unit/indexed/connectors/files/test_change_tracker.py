@@ -538,6 +538,24 @@ class TestChangeTrackerMtime:
         assert len(changes) == 1
         assert changes[0].status == "deleted"
 
+    def test_content_change_with_preserved_mtime_detected(self, tmp_path):
+        """A hash fallback must catch timestamp-preserving edits (rsync -a,
+        git checkout) where content changes but mtime does not advance past
+        the cutoff — mtime alone misses this."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        original_mtime = os.path.getmtime(f1)
+
+        # Content changes, but mtime is restored to its pre-edit value.
+        f1.write_text("completely different content")
+        os.utime(f1, (original_mtime, original_mtime))
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
     def test_invalid_last_indexed_at(self, tmp_path):
         f1 = tmp_path / "a.txt"
         f1.write_text("hello")

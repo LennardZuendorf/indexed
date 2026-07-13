@@ -100,3 +100,37 @@ def test_incremental_query_order_by_case_insensitive_preserves_original() -> Non
         )
         == f"project = FOO AND {_JIRA_FILTER} order by updated DESC"
     )
+
+
+# --- incremental_query: ORDER BY inside a quoted literal -----------------------
+
+
+def test_incremental_query_order_by_inside_quoted_literal_is_not_a_split_point() -> (
+    None
+):
+    """An ``ORDER BY`` occurring inside a quoted string value is not the sort
+    clause boundary — the whole base query is WHERE, with no real trailing sort."""
+    base = 'text ~ "please order by date"'
+    assert (
+        incremental_query(base, _CUTOFF, updated_field="updated")
+        == f"{base} AND {_JIRA_FILTER}"
+    )
+
+
+def test_incremental_query_order_by_inside_quotes_then_real_order_by() -> None:
+    """A quoted ``order by`` earlier in the query must not be mistaken for the
+    trailing sort clause — only the real, unquoted, trailing ORDER BY splits."""
+    base = 'text ~ "please order by date" ORDER BY created DESC'
+    assert (
+        incremental_query(base, _CUTOFF, updated_field="updated")
+        == f'text ~ "please order by date" AND {_JIRA_FILTER} ORDER BY created DESC'
+    )
+
+
+def test_incremental_query_order_by_inside_single_quoted_literal() -> None:
+    """Single-quoted literals are also honored, not just double-quoted ones."""
+    base = "text ~ 'please order by date'"
+    assert (
+        incremental_query(base, _CUTOFF, updated_field="lastModified")
+        == f"{base} AND {_CONF_FILTER}"
+    )

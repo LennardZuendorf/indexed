@@ -12,7 +12,9 @@ import fnmatch
 import json
 import types
 
+import pytest
 
+from indexed.config import ConfigurationError
 from indexed.protocols import ConnectorRun, Manifest
 
 
@@ -217,6 +219,23 @@ def test_jira_from_manifest_empty_query_has_no_leading_and(monkeypatch):
     assert query == f'(created >= "{_CUTOFF}" OR updated >= "{_CUTOFF}")'
 
 
+def test_jira_from_manifest_missing_base_url_raises_configuration_error(monkeypatch):
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.jira.connector import JiraConnector
+
+    monkeypatch.setattr(
+        JiraConnector,
+        "from_config",
+        classmethod(lambda cls, cs: types.SimpleNamespace(reader="R", converter="C")),
+    )
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "jira", "query": "project = FOO"})
+
+    with pytest.raises(ConfigurationError):
+        JiraConnector.from_manifest(manifest, cs, storage_path="/x")
+
+
 # --- confluence ----------------------------------------------------------------
 
 
@@ -246,6 +265,25 @@ def test_confluence_cloud_from_manifest_query_and_overlays(monkeypatch):
         == f'space = DOCS AND (created >= "{_CUTOFF}" OR lastModified >= "{_CUTOFF}")'
     )
     assert cs.overlays["sources.confluence.read_all_comments"] is False
+
+
+def test_confluence_from_manifest_missing_base_url_raises_configuration_error(
+    monkeypatch,
+):
+    """A manifest missing 'baseUrl' must raise a mapped IndexedError, not an
+    unmapped KeyError."""
+    from indexed.connectors.confluence.connector import ConfluenceConnector
+
+    monkeypatch.setattr(
+        ConfluenceConnector,
+        "from_config",
+        classmethod(lambda cls, cs: types.SimpleNamespace(reader="R", converter="C")),
+    )
+    cs = _FakeConfigService()
+    manifest = _manifest({"type": "confluence", "query": "space = DOCS"})
+
+    with pytest.raises(ConfigurationError):
+        ConfluenceConnector.from_manifest(manifest, cs, storage_path="/x")
 
 
 # --- outline -------------------------------------------------------------------

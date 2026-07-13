@@ -146,9 +146,11 @@ class UnifiedJiraDocumentConverter:
                 # "\n" — the shared block_level/depth join below returns
                 # "".join(...) for depth>0, which runs sibling items together
                 # with no separator when rendered as one combined call.
+                # orderedList numbers items 1., 2., … ; bulletList uses "-".
+                ordered = node_type == "orderedList"
                 item_texts = [
-                    self._parse_adf_nodes([child], depth + 1, block_level=True)
-                    for child in node.get("content", [])
+                    self._render_list_item(child, depth + 1, ordered=ordered, index=i)
+                    for i, child in enumerate(node.get("content", []), start=1)
                 ]
                 list_items = "\n".join(t for t in item_texts if t)
                 if list_items:
@@ -215,6 +217,32 @@ class UnifiedJiraDocumentConverter:
         if not block_level or depth > 0:
             return "".join(texts)
         return "\n\n".join(filter(None, texts))
+
+    def _render_list_item(
+        self, node: dict, depth: int, *, ordered: bool, index: int
+    ) -> str:
+        """Render one ``listItem`` under a bullet ("-") or ordinal ("N.") marker.
+
+        Each direct child of the item (its own paragraph text, then any
+        nested list) is parsed independently and the results joined with
+        "\\n" — the shared block_level/depth join in ``_parse_adf_nodes``
+        collapses to "" below the top level (every list item sits at
+        depth > 0), which would otherwise run a nested sub-list into the
+        item's own paragraph text with no separator at all.
+        """
+        if node.get("type") != "listItem":
+            # Defensive: a list's child that isn't a listItem (malformed ADF).
+            return self._parse_adf_nodes([node], depth, block_level=True)
+        child_texts = [
+            self._parse_adf_nodes([child], depth, block_level=False)
+            for child in node.get("content", [])
+        ]
+        item_text = "\n".join(t for t in child_texts if t)
+        if not item_text:
+            return ""
+        indent = "  " * depth
+        marker = f"{index}." if ordered else "-"
+        return f"{indent}{marker} {item_text}"
 
     # ------------------------------------------------------------------
     # Chunking via ParsingModule
