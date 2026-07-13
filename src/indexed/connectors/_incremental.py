@@ -22,6 +22,21 @@ def _quoted_spans(text: str) -> list[tuple[int, int]]:
     escaping, so an ``ORDER BY`` occurring inside a literal value (e.g.
     ``text ~ "please order by date"``) is never mistaken for the trailing
     sort-clause boundary.
+
+    A quote character flanked by word characters on both sides (e.g. the
+    apostrophe in ``don't`` or ``reallyz's``) is never treated as an opening
+    delimiter: it is almost certainly a contraction/possessive, not a
+    literal boundary. Naively pairing ANY two same-char quotes would let an
+    unrelated pair of such apostrophes span across real query text -
+    including a genuine trailing ``ORDER BY`` - and mis-classify it as
+    "inside a literal" (worse than not being quote-aware at all). Skipping
+    word-internal quote characters when deciding whether to *open* a span
+    degrades safely: real, properly word-bounded literals (preceded/followed
+    by whitespace, operators, or start/end of string) are unaffected, while
+    ambiguous/odd apostrophe usage never swallows real query structure.
+    An opening quote with no matching close by end-of-string yields no span
+    at all for that region (its tail is treated as unquoted), which is also
+    the safe behavior.
     """
     spans: list[tuple[int, int]] = []
     quote_char: str | None = None
@@ -32,6 +47,13 @@ def _quoted_spans(text: str) -> list[tuple[int, int]]:
         ch = text[i]
         if quote_char is None:
             if ch in ("'", '"'):
+                before = text[i - 1] if i > 0 else ""
+                after = text[i + 1] if i + 1 < n else ""
+                if before.isalnum() and after.isalnum():
+                    # Word-internal apostrophe/quote (contraction or
+                    # possessive) - not a literal delimiter, skip it.
+                    i += 1
+                    continue
                 quote_char = ch
                 start = i
         elif ch == "\\":

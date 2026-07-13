@@ -134,3 +134,39 @@ def test_incremental_query_order_by_inside_single_quoted_literal() -> None:
         incremental_query(base, _CUTOFF, updated_field="lastModified")
         == f"{base} AND {_CONF_FILTER}"
     )
+
+
+# --- incremental_query: ambiguous/odd quoting must degrade safely --------------
+
+
+def test_incremental_query_unpaired_apostrophes_do_not_swallow_order_by() -> None:
+    """An unpaired apostrophe (e.g. an English contraction like "don't") must
+    never cause a real trailing ORDER BY to be mis-paired away as "inside a
+    quoted span". Naively pairing ANY two same-char quotes treats
+    `don't ... reallyz's` as one quoted span covering the real ORDER BY,
+    which would splice the filter AFTER ORDER BY (invalid JQL/CQL). The
+    filter must always land in the WHERE portion, before ORDER BY."""
+    base = "text ~ don't ORDER BY reallyz's stuff"
+    result = incremental_query(base, _CUTOFF, updated_field="updated")
+
+    order_by_pos = result.upper().index("ORDER BY")
+    filter_pos = result.index(_JIRA_FILTER)
+    assert filter_pos < order_by_pos, (
+        f"filter must be injected before ORDER BY, got: {result!r}"
+    )
+    assert result == f"text ~ don't AND {_JIRA_FILTER} ORDER BY reallyz's stuff"
+
+
+def test_incremental_query_unmatched_trailing_quote_treats_tail_as_unquoted() -> None:
+    """An opening quote with no matching close (odd/unmatched quoting) must
+    not swallow a later real trailing ORDER BY into an unterminated span —
+    the tail after the dangling quote is treated as unquoted, so the real
+    trailing ORDER BY is still found and the filter lands before it."""
+    base = 'text ~ "unterminated ORDER BY x'
+    result = incremental_query(base, _CUTOFF, updated_field="updated")
+
+    order_by_pos = result.upper().index("ORDER BY")
+    filter_pos = result.index(_JIRA_FILTER)
+    assert filter_pos < order_by_pos, (
+        f"filter must be injected before ORDER BY, got: {result!r}"
+    )

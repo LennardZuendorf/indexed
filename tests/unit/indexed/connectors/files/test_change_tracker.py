@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -538,21 +539,93 @@ class TestChangeTrackerMtime:
         assert len(changes) == 1
         assert changes[0].status == "deleted"
 
-    def test_content_change_with_preserved_mtime_detected(self, tmp_path):
-        """A hash fallback must catch timestamp-preserving edits (rsync -a,
-        git checkout) where content changes but mtime does not advance past
-        the cutoff — mtime alone misses this."""
+    def test_content_change_with_preserved_mtime_and_different_size_detected(
+        self, tmp_path
+    ):
+        """A size check must catch timestamp-preserving edits (rsync -a, git
+        checkout) where content changes but mtime does not advance past the
+        cutoff — as long as the edit also changes the file's size, which is
+        the realistic case for a content edit. mtime alone misses this."""
         f1 = tmp_path / "a.txt"
         f1.write_text("hello")
         tracker = ChangeTracker(str(tmp_path), strategy="mtime")
         state = tracker.build_state([str(f1)])
         original_mtime = os.path.getmtime(f1)
 
-        # Content changes, but mtime is restored to its pre-edit value.
+        # Content changes (and length changes), but mtime is restored to its
+        # pre-edit value.
         f1.write_text("completely different content")
         os.utime(f1, (original_mtime, original_mtime))
 
         changes = tracker.detect_changes([str(f1)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+    def test_same_size_same_mtime_content_change_not_detected(self, tmp_path):
+        """Documents the mtime strategy's known, accepted limitation: a
+        content edit that preserves BOTH mtime and size (e.g. `touch -r`
+        followed by a same-length in-place edit) is invisible to this cheap
+        strategy since it never reads file content. Use content_hash for
+        guaranteed detection regardless of cost."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        original_mtime = os.path.getmtime(f1)
+
+        f1.write_text("world")  # same length (5 bytes), different content
+        os.utime(f1, (original_mtime, original_mtime))
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_no_content_read_in_common_unchanged_case(self, tmp_path, monkeypatch):
+        """The common case (mtime unchanged AND size unchanged, i.e. most
+        files on an incremental run) must not read/hash file content at all
+        — that's the whole performance point of the mtime strategy over
+        content_hash."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+
+        def _boom(self, *args, **kwargs):
+            raise AssertionError(
+                "mtime strategy must not read file content when mtime and "
+                "size are both unchanged"
+            )
+
+        monkeypatch.setattr(Path, "read_bytes", _boom)
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_missing_size_in_old_state_falls_back_to_mtime_only(self, tmp_path):
+        """Backward compatibility: a state persisted before size-tracking was
+        added has no `file_sizes` at all. Detection for those entries must
+        fall back to the prior mtime-only comparison rather than crashing."""
+        import time
+
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        old_state = IndexState(
+            last_indexed_commit=state.last_indexed_commit,
+            file_hashes=state.file_hashes,
+            file_sizes=None,  # simulate a pre-size-tracking persisted state
+            last_indexed_at=state.last_indexed_at,
+            indexed_file_count=state.indexed_file_count,
+        )
+
+        # mtime unchanged, size unknown -> mtime-only says "unchanged".
+        changes = tracker.detect_changes([str(f1)], old_state)
+        assert changes == []
+
+        # mtime bumped -> mtime-only still catches it, no crash on missing size.
+        time.sleep(0.05)
+        f1.write_text("world")
+        changes = tracker.detect_changes([str(f1)], old_state)
         assert len(changes) == 1
         assert changes[0].status == "modified"
 
@@ -581,6 +654,14 @@ class TestChangeTrackerBuildState:
         assert "a.txt" in state.file_hashes
         assert state.indexed_file_count == 1
         assert state.last_indexed_at is not None
+
+    def test_build_state_returns_sizes(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")  # 5 bytes
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        assert state.file_sizes is not None
+        assert state.file_sizes["a.txt"] == 5
 
     def test_build_state_skips_unreadable(self, tmp_path):
         tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
