@@ -66,6 +66,48 @@ class TestProgressBarLabelSafety:
         assert "my[coll]" in text
 
 
+class TestBuildProgressTitleSafety:
+    """progress_bar.py — build_progress_title (collection name in section
+    title), reached on the normal ``index create``/``index remove``
+    interactive path via ``RichPhasedProgress.__enter__``."""
+
+    def test_collection_with_brackets_renders_literally(self, monkeypatch):
+        from indexed.cli.utils import progress_bar
+        from indexed.cli.utils.progress_bar import (
+            RichPhasedProgress,
+            build_progress_title,
+        )
+
+        rec = RichConsole(record=True, force_terminal=True, width=120)
+        monkeypatch.setattr(progress_bar, "console", rec)
+
+        title = build_progress_title("Creating", "my[coll]", "Local Files")
+        with RichPhasedProgress(title=title, show_bar=False):
+            pass
+
+        text = rec.export_text()
+        assert "my[coll]" in text
+
+
+class TestProgressBarLogSafety:
+    """progress_bar.py — RichPhasedProgress.log(), reached via
+    init.py's "already cached" status message which embeds the user's
+    ``--model`` value."""
+
+    def test_log_message_with_brackets_renders_literally(self, monkeypatch):
+        from indexed.cli.utils import progress_bar
+        from indexed.cli.utils.progress_bar import RichPhasedProgress
+
+        rec = RichConsole(record=True, force_terminal=True, width=120)
+        monkeypatch.setattr(progress_bar, "console", rec)
+
+        with RichPhasedProgress(show_bar=False) as progress:
+            progress.log("org/model[v2] already cached")
+
+        text = rec.export_text()
+        assert "org/model[v2] already cached" in text
+
+
 class TestKeyValuePanelSafety:
     """key_value_panel.py — grid cell values (config values/paths)."""
 

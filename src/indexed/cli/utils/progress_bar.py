@@ -138,9 +138,17 @@ class RichPhasedProgress:
         )
 
     def log(self, message: str) -> None:
-        """Display a log message within the progress context."""
+        """Display a log message within the progress context.
+
+        ``message`` is content-derived (e.g. init.py's model name) and is
+        embedded raw into this markup f-string, so it is escaped rather than
+        wrapped in ``Text`` — see ``build_search_phase_label`` below for why
+        a ``Text()`` wrapper isn't safe for this class of sink.
+        """
         if self._started:
-            self._progress.console.print(f"    [{self._dim}]{message}[/{self._dim}]")
+            self._progress.console.print(
+                f"    [{self._dim}]{escape(message)}[/{self._dim}]"
+            )
 
 
 class PlainPhasedProgress:
@@ -214,7 +222,8 @@ def build_progress_title(verb: str, collection: str, source_display: str = "") -
     accent = get_accent_style()
     type_part = f"{source_display} collection" if source_display else "collection"
     return (
-        f"[{heading}]{verb} {type_part}: [{accent}]{collection}[/{accent}][/{heading}]"
+        f"[{heading}]{verb} {type_part}: "
+        f"[{accent}]{escape(collection)}[/{accent}][/{heading}]"
     )
 
 
