@@ -16,11 +16,12 @@ return a dict envelope so v3 serializes them as a single JSON content block.
 from typing import Any, Callable, Dict, Optional
 
 from fastmcp import Context
+from loguru import logger
 
 from indexed.core.v1.engine import status as svc_status
 from indexed.config.errors import IndexedError
 
-from indexed.cli.errors import mcp_error_envelope
+from indexed.cli.errors import MCPError, mcp_error_envelope
 from .config import resolve_cli_context, resolve_config as _resolve_config
 
 
@@ -95,3 +96,8 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             return _format_status(statuses[0])
         except IndexedError as e:
             return mcp_error_envelope(e)
+        except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
+            logger.exception(
+                "Unexpected error resolving status for collection '{}'", name
+            )
+            return mcp_error_envelope(MCPError(f"Internal error: {e}"))

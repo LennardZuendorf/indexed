@@ -3,6 +3,7 @@
 from typing import Any, Callable, Dict, List, Optional, get_args
 
 from fastmcp import Context
+from loguru import logger
 
 from indexed.core.v1.engine import (
     SourceConfig,
@@ -12,7 +13,7 @@ from indexed.core.v1.engine import (
 
 from indexed.config.errors import IndexedError
 
-from indexed.cli.errors import mcp_error_envelope
+from indexed.cli.errors import MCPError, mcp_error_envelope
 from .config import resolve_cli_context, resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
@@ -44,6 +45,9 @@ def _run_search(
         return format_search_results_for_llm(raw_results, query)
     except IndexedError as e:
         return mcp_error_envelope(e)
+    except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
+        logger.exception("Unexpected error while executing MCP search")
+        return mcp_error_envelope(MCPError(f"Internal error: {e}"))
 
 
 def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
@@ -95,21 +99,20 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
 
         try:
             statuses = svc_status([collection], collections_path=collections_path)
-            if not statuses or not statuses[0].indexers:
-                return {
-                    "error": f"Collection '{collection}' not found or has no indexers"
-                }
-            coll_status = statuses[0]
-            default_indexer = coll_status.indexers[0]
-        except Exception:
-            from indexed.core.v1.constants import DEFAULT_INDEXER
+        except IndexedError as e:
+            return mcp_error_envelope(e)
+        except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
+            logger.exception(
+                "Unexpected error resolving status for collection '{}'", collection
+            )
+            return mcp_error_envelope(MCPError(f"Internal error: {e}"))
 
-            default_indexer = DEFAULT_INDEXER
-            coll_status = None
+        if not statuses or not statuses[0].indexers:
+            return {"error": f"Collection '{collection}' not found or has no indexers"}
+        coll_status = statuses[0]
+        default_indexer = coll_status.indexers[0]
 
-        raw_source_type = (
-            coll_status.source_type if coll_status and coll_status.source_type else None
-        )
+        raw_source_type = coll_status.source_type if coll_status.source_type else None
         # Whitelist against the SourceConfig Literal; unknown on-disk types fall back
         # to "localFiles" so a corrupt manifest never raises ValidationError.
         source_type = (
