@@ -8,6 +8,7 @@ Idempotent — safe to run multiple times.
 from typing import Optional
 
 import typer
+from rich.markup import escape
 from rich.text import Text
 
 from indexed.cli.utils.components import (
@@ -98,7 +99,12 @@ def init(
             progress.finish_phase("Download embedding model")
         else:
             action = "Re-downloading" if force else "Downloading"
-            phase_name = f"{action} model {model_name}"
+            # model_name is the user's --model value; this phase name reaches
+            # RichPhasedProgress.start_phase()/finish_phase(), which embed it
+            # in a Progress task description re-parsed as markup by
+            # TextColumn (same sink as build_search_phase_label) — escape it
+            # here, matching that precedent.
+            phase_name = f"{action} model {escape(model_name)}"
             progress.start_phase(phase_name)
             ensure_model(model_name, force=force)
             progress.finish_phase(phase_name)

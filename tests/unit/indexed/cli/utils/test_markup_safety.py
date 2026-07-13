@@ -108,6 +108,49 @@ class TestProgressBarLogSafety:
         assert "org/model[v2] already cached" in text
 
 
+class TestInitPhaseNameSafety:
+    """init.py — the download-phase name embeds the user's ``--model`` value
+    (``init.py:101-102``), reaching ``RichPhasedProgress.start_phase()`` /
+    ``finish_phase()``: a Progress task description re-parsed as markup by
+    ``TextColumn`` (same sink family as ``build_search_phase_label``)."""
+
+    def test_model_name_with_brackets_renders_literally(self, monkeypatch):
+        from unittest.mock import patch as mock_patch
+
+        from typer.testing import CliRunner
+
+        from indexed.cli.app import app
+        from indexed.cli.utils import progress_bar
+
+        rec = RichConsole(record=True, force_terminal=True, width=120)
+        monkeypatch.setattr(progress_bar, "console", rec)
+        monkeypatch.setattr(progress_bar, "is_interactive", lambda: True)
+
+        runner = CliRunner()
+        with (
+            mock_patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+                return_value=False,
+            ),
+            mock_patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model",
+                return_value="/tmp/hf/snap",
+            ),
+            mock_patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                return_value={
+                    "cache_dir": "/tmp/hf",
+                    "models": [],
+                    "total_size_mb": 0,
+                },
+            ),
+        ):
+            result = runner.invoke(app, ["init", "--model", "org/model[v2]"])
+
+        assert result.exit_code == 0, result.output
+        assert "org/model[v2]" in rec.export_text()
+
+
 class TestKeyValuePanelSafety:
     """key_value_panel.py — grid cell values (config values/paths)."""
 
@@ -141,6 +184,26 @@ class TestKeyValuePanelSafety:
         rec.print(panel)
         text = rec.export_text()
         assert "local[override]" in text
+
+    def test_category_and_key_columns_with_brackets_render_literally(self):
+        """category/key are dot-path segments a user can set to an arbitrary
+        string via ``indexed config set <key> <value>`` — only the value
+        column was wrapped previously; category/key must be too."""
+        from indexed.cli.utils.components.key_value_panel import (
+            create_key_value_panel,
+        )
+
+        panel = create_key_value_panel(
+            "Sources",
+            [("weird[cat]", "weird[key]", "v")],
+            category_width=14,
+            key_width=14,
+        )
+        rec = RichConsole(record=True, force_terminal=True, width=100)
+        rec.print(panel)
+        text = rec.export_text()
+        assert "weird[cat]" in text
+        assert "weird[key]" in text
 
 
 class TestCardsTitleSafety:

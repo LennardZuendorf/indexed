@@ -3,6 +3,7 @@
 from typing import Callable, Optional, TYPE_CHECKING
 
 import typer
+from rich.markup import escape
 from rich.prompt import Confirm
 
 if TYPE_CHECKING:
@@ -168,7 +169,7 @@ def remove(
             f"\n[{get_dim_style()}]Available collections:[/{get_dim_style()}]"
         )
         for coll in all_collections:
-            console.print(f"  • {coll.name}")
+            console.print(f"  • {escape(coll.name)}")
         console.print()
         raise typer.Exit(1)
 
@@ -185,7 +186,7 @@ def remove(
     # Show collection details
     console.print()
     console.print(
-        f"[{get_heading_style()}]Removing [{get_accent_style()}]{collection}[/{get_accent_style()}] Collection:[/{get_heading_style()}]"
+        f"[{get_heading_style()}]Removing [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] Collection:[/{get_heading_style()}]"
     )
     console.print()
 

@@ -117,8 +117,15 @@ def create_key_value_panel(
                 category = ""
                 key, value = row
             truncated = _truncate(str(value), value_max_len)
-            # Value is content-derived (config value/path) — never markup-parsed.
-            grid.add_row(category, key, render_user_text(truncated))
+            # category/key are dot-path segments a user can set to an
+            # arbitrary string via `config set <key> <value>`; value is
+            # content-derived (config value/path) — none are ever
+            # markup-parsed.
+            grid.add_row(
+                render_user_text(category),
+                render_user_text(key),
+                render_user_text(truncated),
+            )
         else:
             # 2-column mode
             if len(row) == 3:
@@ -126,8 +133,9 @@ def create_key_value_panel(
             else:
                 key, value = row
             truncated = _truncate(str(value), value_max_len)
-            # Value is content-derived (config value/path) — never markup-parsed.
-            grid.add_row(key, render_user_text(truncated))
+            # key/value are content-derived (config key/value, path) —
+            # never markup-parsed.
+            grid.add_row(render_user_text(key), render_user_text(truncated))
 
     return Panel(
         grid,

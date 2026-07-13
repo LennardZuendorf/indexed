@@ -947,3 +947,135 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         # For a single collection, result summary is not shown (create_summary not called)
         mock_create_summary.assert_not_called()
+
+
+class TestUpdateMarkupSafety:
+    """R7 — collection names are user-controlled and must render literally,
+    never be parsed as Rich markup, in the per-collection update header
+    (``_display_collection_update_header``) and the "Updating N Collections:"
+    heading (``resolve_collections_to_update``). Unlike the other tests in
+    this file, ``console`` is deliberately left unmocked so the real Rich
+    renderer exercises the markup-parsed sink."""
+
+    @patch(
+        "indexed.cli.utils.storage_info.display_storage_mode_for_command",
+        lambda *a, **kw: None,
+    )
+    @patch(
+        "indexed.cli.composition.resolve_collections_context",
+        side_effect=lambda *a, **kw: make_cli_context(),
+    )
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    def test_single_collection_header_renders_brackets_literally(
+        self,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_setup_logger,
+        mock_resolve_ctx,
+    ):
+        mock_verbose.return_value = False
+
+        mock_status = Mock()
+        mock_status.name = "my[coll]"
+        mock_status.source_type = "localFiles"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        info = Mock()
+        info.name = "my[coll]"
+        info.source_type = "localFiles"
+        info.number_of_documents = 10
+        info.number_of_chunks = 20
+        info.disk_size_bytes = 1000
+        info.updated_time = None
+        mock_inspect.side_effect = [[info], [info]]
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update", "my[coll]"])
+
+        assert result.exit_code == 0, result.stdout
+        # Exact heading line, not just "my[coll]" anywhere: the later
+        # comparison card / success message already render the name safely
+        # via the pre-existing Text()-wrapped idiom, so a looser assertion
+        # would pass even with this header sink unfixed.
+        assert 'Updating Collection "my[coll]"' in result.stdout
+
+    @patch(
+        "indexed.cli.utils.storage_info.display_storage_mode_for_command",
+        lambda *a, **kw: None,
+    )
+    @patch(
+        "indexed.cli.composition.resolve_collections_context",
+        side_effect=lambda *a, **kw: make_cli_context(),
+    )
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    def test_multi_collection_heading_renders_brackets_literally(
+        self,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_setup_logger,
+        mock_resolve_ctx,
+    ):
+        mock_verbose.return_value = False
+
+        # Rich's markup tag grammar only matches a bracket run starting with
+        # a lowercase letter/#//@ (e.g. "jira[one]"), not a digit
+        # ("jira[1]") — the fixture must start with a letter to actually
+        # exercise the parser.
+        status1 = Mock()
+        status1.name = "jira[one]"
+        status1.source_type = "jira"
+        status1.indexers = ["default"]
+        status2 = Mock()
+        status2.name = "conf[two]"
+        status2.source_type = "confluence"
+        status2.indexers = ["default"]
+        mock_svc_status.return_value = [status1, status2]
+
+        info1 = Mock()
+        info1.name = "jira[one]"
+        info1.source_type = "jira"
+        info1.number_of_documents = 10
+        info1.number_of_chunks = 20
+        info1.disk_size_bytes = 1000
+        info1.updated_time = None
+        info2 = Mock()
+        info2.name = "conf[two]"
+        info2.source_type = "confluence"
+        info2.number_of_documents = 5
+        info2.number_of_chunks = 15
+        info2.disk_size_bytes = 500
+        info2.updated_time = None
+
+        # before x2, after x2
+        mock_inspect.side_effect = [[info1], [info2], [info1], [info2]]
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update"])
+
+        assert result.exit_code == 0, result.stdout
+        # Exact heading line: the per-collection header and success message
+        # below already render each name safely, so a looser assertion
+        # ("jira[one]" anywhere in stdout) would pass even with this
+        # specific multi-collection heading sink unfixed.
+        assert 'Updating 2 Collections: "jira[one]", "conf[two]"' in result.stdout

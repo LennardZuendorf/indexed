@@ -302,3 +302,47 @@ class TestRemoveCommand:
         parsed = json.loads(result.stdout)
         assert parsed["status"] == "removed"
         assert parsed["collection"] == "corrupt-coll"
+
+
+class TestRemoveMarkupSafety:
+    """R7 — collection names are user-controlled and must render literally,
+    never be parsed as Rich markup, in the "Removing ... Collection:" heading
+    and the "Available collections" listing."""
+
+    def test_available_collections_listing_renders_brackets_literally(
+        self, monkeypatch
+    ):
+        """Trying to remove a missing collection lists existing ones —
+        ``console.print(f"  • {coll.name}")`` — a bracketed collection name
+        must not be dropped/crash. (Rich's markup tag grammar only matches
+        a bracket run starting with a lowercase letter/#//@ — "docs[x]", not
+        a digit like "docs[1]" — so the fixture must start with a letter to
+        actually exercise the parser.)"""
+        monkeypatch.setattr(
+            remove_cmd, "inspect", lambda **kwargs: [_make_collection("docs[x]")]
+        )
+
+        result = runner.invoke(remove_cmd.app, ["missing"])
+
+        assert result.exit_code == 1
+        assert "docs[x]" in result.stdout
+
+    def test_removing_heading_renders_brackets_literally(self, monkeypatch):
+        """The "Removing X Collection:" heading embeds the raw collection
+        name inside the app's own markup tags — a bracketed name must render
+        literally rather than being parsed as (or breaking) those tags.
+
+        Asserts the exact heading line (not just "my[coll]" anywhere in
+        stdout): the later detail card / success message already render the
+        name safely via the pre-existing ``Text()``-wrapped idiom, so a
+        looser assertion would pass even with the heading sink unfixed.
+        """
+        monkeypatch.setattr(
+            remove_cmd, "inspect", lambda **kwargs: [_make_collection("my[coll]")]
+        )
+        monkeypatch.setattr(remove_cmd, "clear", lambda *a, **kw: None)
+
+        result = runner.invoke(remove_cmd.app, ["my[coll]", "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Removing my[coll] Collection:" in result.stdout

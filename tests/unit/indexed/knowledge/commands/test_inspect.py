@@ -269,3 +269,50 @@ class TestInspectCollectionsCommand:
 
         assert result.exit_code == 0
         assert "sized-collection" in result.stdout
+
+
+class TestInspectMarkupSafety:
+    """R7 — collection names are user-controlled and must render literally,
+    never be parsed as Rich markup, in the "X Collection Details:" heading
+    and the "Available collections" listing."""
+
+    def test_available_collections_listing_renders_brackets_literally(
+        self, monkeypatch
+    ):
+        """A missing named collection lists existing ones —
+        ``console.print(f"  • {coll.name}")`` — a bracketed collection name
+        must not be dropped/crash. (Rich's markup tag grammar only matches
+        a bracket run starting with a lowercase letter/#//@ — "docs[x]", not
+        a digit like "docs[1]" — so the fixture must start with a letter to
+        actually exercise the parser.)"""
+
+        def fake_inspect(names=None, **kwargs):
+            if names:
+                return []
+            return [_make_collection("docs[x]")]
+
+        monkeypatch.setattr(inspect_cmd, "inspect", fake_inspect)
+
+        result = runner.invoke(inspect_cmd.app, ["missing"])
+
+        assert result.exit_code == 1
+        assert "docs[x]" in result.stdout
+
+    def test_collection_details_heading_renders_brackets_literally(self, monkeypatch):
+        """``format_collection_detail`` embeds the raw collection name
+        inside the app's own markup tags — a bracketed name must render
+        literally rather than being parsed as (or breaking) those tags.
+
+        Asserts the exact heading line (not just "my[coll]" anywhere in
+        stdout): the detail card below it already renders the name safely
+        via the pre-existing ``Text()``-wrapped title idiom, so a looser
+        assertion would pass even with the heading sink unfixed.
+        """
+        coll = _make_collection("my[coll]")
+
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["my[coll]"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "my[coll] Collection Details:" in result.stdout
