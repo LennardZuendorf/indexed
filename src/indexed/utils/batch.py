@@ -66,8 +66,17 @@ def read_items_in_batches(
         are_there_more_items_to_read = start_at < total
 
         if len(items) == 0 and are_there_more_items_to_read:
-            raise RuntimeError(
-                f"Empty {itemsName} page returned at position {start_at} "
-                f"(total={total}); start_at did not advance — refusing to "
-                "loop indefinitely"
+            # R12.5: this generator is consumed by production readers
+            # (UnifiedJiraDocumentReader, ConfluenceDocumentReader) that do
+            # not catch exceptions from it, so raising here would crash the
+            # whole indexing job on what may be a benign empty page
+            # (permission filtering, eventual consistency, a stale total).
+            # Terminate gracefully instead — still ends the loop
+            # (start_at would never advance again), but returns the items
+            # collected so far rather than blowing up the caller.
+            logger.warning(
+                f"batch pagination stopped: empty {itemsName} page at "
+                f"start_at={start_at} with total={total} > start_at; "
+                "returning items collected so far"
             )
+            break

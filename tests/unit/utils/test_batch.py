@@ -164,10 +164,16 @@ class TestReadItemsInBatches:
         ``max_skipped_items_in_row`` doesn't help here — that guard only
         fires on exceptions, and an empty page is not an exception.
 
-        A call-count cap inside the mock (raising a ``BaseException``
+        ``read_items_in_batches`` is consumed in production by
+        ``UnifiedJiraDocumentReader`` and ``ConfluenceDocumentReader``, none
+        of which catch exceptions from this generator — so the fix must
+        terminate GRACEFULLY (stop the generator, don't raise) rather than
+        crash the whole indexing job on what may be a benign empty page
+        (permission filtering, eventual consistency, a stale ``total``). A
+        call-count cap inside the mock (raising a ``BaseException``
         subclass that bypasses the SUT's own ``except Exception`` retry
         machinery) ensures this test fails fast instead of hanging the
-        suite if the RED (pre-fix) behavior is present.
+        suite if the RED (pre-fix, infinite-loop) behavior regresses.
         """
         max_calls = 50
         calls = {"count": 0}
@@ -195,7 +201,7 @@ class TestReadItemsInBatches:
             }
 
         try:
-            list(
+            result = list(
                 read_items_in_batches(
                     read_batch,
                     lambda r: r["items"],
@@ -208,12 +214,10 @@ class TestReadItemsInBatches:
                 f"read_items_in_batches exceeded {max_calls} calls without "
                 "terminating on an empty mid-sequence page (R12.5 regression)"
             )
-        except RuntimeError:
-            pass  # expected: the fix must detect the stuck empty page
-        else:
-            pytest.fail(
-                "expected read_items_in_batches to raise for an empty page "
-                "mid-sequence instead of silently stopping or looping"
-            )
 
+        # Graceful termination: the generator stops right after the empty
+        # page at start_at=5 and yields exactly the 5 items collected
+        # beforehand (0-4) — it must NOT raise (production readers don't
+        # catch RuntimeError from this generator).
+        assert result == list(range(5))
         assert calls["count"] <= max_calls
