@@ -3,7 +3,7 @@ type: feature-plan
 feature: review-remediation
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-07-12
+updated: 2026-07-13
 ---
 
 # Feature: Review Remediation — Implementation Plan
@@ -324,15 +324,17 @@ scripts/connector_stub.py, tests/fixtures/connectors/stub_routes.py, tests/syste
 
 | Unit | Seq | Status |
 |---|---|---|
-| review-remediation/1 | 1 | NOT STARTED |
-| review-remediation/2 | 2 | NOT STARTED |
-| review-remediation/3 | 3 | NOT STARTED |
-| review-remediation/4 | 4 | NOT STARTED |
-| review-remediation/5 | 5 | NOT STARTED |
-| review-remediation/6 | 6 | NOT STARTED |
-| review-remediation/7 | 7 | NOT STARTED |
-| review-remediation/8 | 8 | NOT STARTED |
-| review-remediation/9 | 9 | NOT STARTED |
+| review-remediation/1 | 1 | DONE (R1 + env-map; write-target parity, parity test) |
+| review-remediation/2 | 2 | DONE (R2 lifespan guard + R3 missing-dir ENOENT) |
+| review-remediation/3 | 3 | DONE (R4 BaseException + R5 `or {}` guards) |
+| review-remediation/4 | 4 | DONE (R6 cache key includes parse settings) |
+| review-remediation/5 | 5 | DONE (R7 escape-helper/Text seam; 20 sinks + logger) |
+| review-remediation/6 | 6 | DONE (R8 panel gates + R9 tri-state Optional[bool]) |
+| review-remediation/7 | 7 | DONE (R12 token bounds + oversized split + graceful batch break; R14 IMAGE; .tsx) |
+| review-remediation/8 | 8 | DONE (8a R11 atomic + 0600; 8b R13 wired both readers) |
+| review-remediation/9 | 9 | DONE (MCP robustness + connector correctness + e2e hardening) |
+
+**Wrapped up 2026-07-13.** Executed via subagent-driven development (fresh implementer + task review + fix loop per unit, then a whole-branch review — verdict: ready to merge, no blockers). Open Questions resolved: R13 WIRE (not delete); R7 escape-helper+Text seam (not global `markup=False`). Notable in-flight decisions: R2 guarded at both MCP sites (CLI fail-loud preserved); R14 adds `InputFormat.IMAGE` only; R12.5 batch loop terminates gracefully (break+warn) rather than raising, so live Jira/Confluence readers degrade instead of crashing; R9 guards on `is not None` (not truthiness); mtime change-strategy uses a cheap `mtime OR size` signal (documented to miss same-mtime+same-size edits; use `content_hash` for guaranteed detection). Full suite green at 1592 passed, ~93% coverage, ty 0 diagnostics.
 
 ---
 
