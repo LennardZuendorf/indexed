@@ -339,3 +339,61 @@ class TestFilesDocumentReaderGlobFallback:
         )
         assert len(reader.compiled_include_patterns) == 1
         assert len(reader._compiled_exclude_patterns) == 1
+
+
+class TestFilesDocumentReaderCacheKeyParseSetting:
+    """R6: parse-affecting settings must be in cache key to avoid stale chunks."""
+
+    def test_different_max_tokens_produces_different_details(self, tmp_path):
+        """Two readers with same base/patterns but different max_tokens must have different details."""
+        r1 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            max_tokens=256,
+        )
+        r2 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            max_tokens=512,
+        )
+        details1 = r1.get_reader_details()
+        details2 = r2.get_reader_details()
+        assert details1 != details2, (
+            "Different max_tokens should produce different details dicts"
+        )
+
+    def test_different_ocr_produces_different_details(self, tmp_path):
+        """Two readers with same base/patterns but different ocr must have different details."""
+        r1 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            ocr=True,
+        )
+        r2 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            ocr=False,
+        )
+        details1 = r1.get_reader_details()
+        details2 = r2.get_reader_details()
+        assert details1 != details2, (
+            "Different ocr should produce different details dicts"
+        )
+
+    def test_different_table_structure_produces_different_details(self, tmp_path):
+        """Two readers with same base/patterns but different table_structure must have different details."""
+        r1 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            table_structure=True,
+        )
+        r2 = FilesDocumentReader(
+            base_path=str(tmp_path),
+            include_patterns=[r".*\.txt$"],
+            table_structure=False,
+        )
+        details1 = r1.get_reader_details()
+        details2 = r2.get_reader_details()
+        assert details1 != details2, (
+            "Different table_structure should produce different details dicts"
+        )
