@@ -109,6 +109,16 @@ def _make_count_response(count: int) -> MagicMock:
     return resp
 
 
+def _error_response(status_code: int) -> MagicMock:
+    resp = MagicMock()
+    resp.ok = False
+    resp.status_code = status_code
+    resp.url = "https://acme.atlassian.net/rest/api/3/search/jql"
+    resp.text = "Service Unavailable"
+    resp.json.return_value = {"errorMessages": ["Service Unavailable"]}
+    return resp
+
+
 @pytest.fixture
 def async_reader() -> AsyncJiraCloudDocumentReader:
     return AsyncJiraCloudDocumentReader(
@@ -197,6 +207,94 @@ def test_pagination_with_exact_page_boundary(async_reader):
 
     assert len(result) == 4
     assert mock_post.call_count == 2
+
+
+def test_read_issues_sync_skip_and_continue_on_persistent_page_failure(monkeypatch):
+    """R13: a page that keeps failing (transient 503, retries exhausted at
+    both full-batch and single-item granularity) is skipped-and-logged
+    rather than aborting the whole read with an unhandled exception.
+
+    Pre-fix, ``_read_issues_sync`` hand-rolls a while-loop with no
+    skip-and-continue: an exhausted-retry raise from ``_post_with_retry``
+    propagates straight out, discarding every issue already collected.
+    Post-fix (wired through ``read_items_in_batches``), the failure is
+    logged as a skip and the read terminates gracefully, returning the
+    issues collected so far instead of raising.
+    """
+    monkeypatch.setattr("time.sleep", lambda *a, **k: None)
+
+    reader = AsyncJiraCloudDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        email="user@acme.com",
+        api_token="tok",
+        batch_size=2,
+        number_of_retries=2,
+        max_skipped_items_in_row=3,
+    )
+
+    page1_issues = [{"key": "I-1"}, {"key": "I-2"}]
+    responses = (
+        [_make_search_response(page1_issues, next_token="c2")]
+        + [_error_response(503)] * 2  # full-batch attempt at page 2, retries exhausted
+        + [_error_response(503)] * 2  # single-item fallback, retries exhausted -> skip
+    )
+
+    with (
+        patch("requests.post", side_effect=responses) as mock_post,
+        patch("indexed.utils.batch.logger") as mock_batch_logger,
+    ):
+        result = reader._read_issues_sync()
+
+    assert result == page1_issues
+    assert mock_post.call_count == 5
+    skip_warnings = [
+        call
+        for call in mock_batch_logger.warning.call_args_list
+        if "Skipping one of issues" in call.args[0]
+    ]
+    assert len(skip_warnings) == 1
+
+
+def test_read_issues_sync_recovers_and_continues_after_transient_failure(
+    monkeypatch,
+):
+    """R13: a page that fails once (transient 503) but recovers via the
+    single-item fallback keeps reading subsequent pages instead of
+    aborting — the build continues with the remaining pages."""
+    monkeypatch.setattr("time.sleep", lambda *a, **k: None)
+
+    reader = AsyncJiraCloudDocumentReader(
+        base_url="https://acme.atlassian.net",
+        query="project = TEST",
+        email="user@acme.com",
+        api_token="tok",
+        batch_size=2,
+        number_of_retries=2,
+        max_skipped_items_in_row=3,
+    )
+
+    responses = [
+        _make_search_response([{"key": "I-1"}, {"key": "I-2"}], next_token="c2"),
+        _error_response(503),
+        _error_response(503),
+        _make_search_response([{"key": "I-3"}], next_token="c3"),
+        _make_search_response([{"key": "I-4"}], next_token="c5"),
+        _make_search_response([{"key": "I-5"}, {"key": "I-6"}]),
+    ]
+
+    with patch("requests.post", side_effect=responses) as mock_post:
+        result = reader._read_issues_sync()
+
+    assert [issue["key"] for issue in result] == [
+        "I-1",
+        "I-2",
+        "I-3",
+        "I-4",
+        "I-5",
+        "I-6",
+    ]
+    assert mock_post.call_count == 6
 
 
 def test_async_reader_approximate_count(async_reader):
