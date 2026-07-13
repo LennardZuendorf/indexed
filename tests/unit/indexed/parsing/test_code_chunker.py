@@ -82,12 +82,16 @@ class TestCodeChunkerTokenBounds:
         tokenizes over the real token window must still be split, not
         emitted as one oversized chunk.
         """
-        chunker = CodeChunker(max_tokens=25)  # max_chars = 25 * 4 = 100
-        # Symbol-dense text: the tokenizer emits close to one token per
-        # character here, so this stays well under the char bound but
-        # blows through the token bound.
+        # Symbol-dense text stays well under the char bound but blows through
+        # the token bound. Derive the bound from THIS tokenizer so the test is
+        # environment-independent (token counts for a given string vary across
+        # tokenizer versions/fallbacks): the single dense line sets the budget,
+        # so the two-line function node is guaranteed to exceed it (token-over)
+        # while each individual line still fits (so it is splittable).
         body = "!@#$%^&*()_+-=~`|\\][{}"
-        code = f'def f():\n    return "{body}"\n'
+        dense_line = f'    return "{body}"'
+        code = f"def f():\n{dense_line}\n"
+        chunker = CodeChunker(max_tokens=count_tokens(dense_line) + 1)
         assert len(code) <= chunker._max_chars, "fixture must stay under the char bound"
         assert count_tokens(code) > chunker._max_tokens, (
             "fixture must exceed the token bound to reproduce R12.1"
