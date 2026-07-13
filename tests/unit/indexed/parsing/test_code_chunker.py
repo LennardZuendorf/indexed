@@ -148,6 +148,39 @@ class TestCodeChunkerTokenBounds:
         assert first.metadata["start_line"] == 0
         assert first.metadata["start_line"] <= first.metadata["end_line"]
 
+    def test_oversized_single_nonsemantic_node_is_split(self, tmp_path: Path):
+        """R12.2 gap: the accumulator guard only flushes when it is
+        ALREADY non-empty (`if accumulator and acc_tokens + child_tokens >
+        self._max_tokens`). It never catches a single non-semantic child
+        whose OWN token count already exceeds the budget — that child gets
+        appended to the (empty) accumulator whole and emitted as one
+        oversized `accumulated` chunk. A top-level list literal is a
+        realistic repro: it is not a semantic node (only function/class
+        defs are), so it goes straight to the accumulator.
+        """
+        chunker = CodeChunker(max_tokens=50)
+        items = "\n".join(f'    "item_{i}",' for i in range(300))
+        code = f"BIG = [\n{items}\n]\n"
+        assert count_tokens(code) > chunker._max_tokens * 5, (
+            "fixture must be substantially over budget to reproduce the gap"
+        )
+
+        f = tmp_path / "big_list.py"
+        f.write_text(code)
+        chunks = chunker.chunk_file(f)
+
+        assert len(chunks) > 1, (
+            "a single oversized non-semantic node must be split into "
+            "multiple within-budget chunks, not emitted whole"
+        )
+        for ch in chunks:
+            tokens = count_tokens(ch.text)
+            assert tokens <= chunker._max_tokens, (
+                f"chunk of node_type={ch.metadata.get('node_type')!r} has "
+                f"{tokens} tokens, exceeding the {chunker._max_tokens}-token "
+                "budget"
+            )
+
 
 class TestCodeChunkerTsx:
     """.tsx (P3) — must parse with the tsx grammar, not plain typescript."""

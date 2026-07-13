@@ -221,9 +221,28 @@ class CodeChunker:
                     )
             else:
                 if text.strip():
+                    child_tokens = count_tokens(text)
+
+                    if child_tokens > self._max_tokens:
+                        # R12.2 gap: a single non-semantic child whose OWN
+                        # token count already exceeds the budget must not be
+                        # accumulated whole — flush any pending accumulator
+                        # first, then split this child's own text.
+                        if accumulator:
+                            _flush_accumulator(
+                                acc_end
+                                if acc_end is not None
+                                else child.start_point[0] - 1
+                            )
+                        chunks.extend(
+                            self._split_oversized_text(
+                                text, file_path, language, child.start_point[0]
+                            )
+                        )
+                        continue
+
                     # R12.2: guard the accumulator by the real token bound —
                     # flush before this child would push it over budget.
-                    child_tokens = count_tokens(text)
                     if accumulator and acc_tokens + child_tokens > self._max_tokens:
                         _flush_accumulator(
                             acc_end if acc_end is not None else child.start_point[0] - 1
@@ -242,6 +261,66 @@ class CodeChunker:
         return chunks
 
     # -- helpers ----------------------------------------------------------
+
+    def _split_oversized_text(
+        self,
+        text: str,
+        file_path: str,
+        language: str,
+        start_line: int,
+    ) -> list[ParsedChunk]:
+        """Split a single non-semantic node's text into token-bounded pieces.
+
+        Mirrors ``_line_fallback``'s line-packing loop: a lone non-semantic
+        child (e.g. a large module-level list literal) can itself exceed
+        ``self._max_tokens`` even though it isn't a semantic node eligible
+        for the recursive-split path used for oversized semantic nodes
+        (``_walk_nodes``, the ``count_tokens(text) > self._max_tokens``
+        branch above). Packing it whole into the accumulator would silently
+        blow the token budget (R12.2 gap); line-packing it the same way the
+        whole-file fallback does keeps every emitted chunk within budget,
+        modulo a single physically-indivisible oversized line — the same
+        pre-existing limitation ``_line_fallback`` has.
+        """
+        lines = text.splitlines(keepends=True)
+        chunks: list[ParsedChunk] = []
+        buf: list[str] = []
+        buf_tokens = 0
+        buf_start = start_line
+
+        for i, line in enumerate(lines):
+            line_tokens = count_tokens(line)
+            if buf_tokens + line_tokens > self._max_tokens and buf:
+                chunks.append(
+                    self._make_chunk(
+                        "".join(buf),
+                        file_path,
+                        language,
+                        "accumulated",
+                        buf_start,
+                        start_line + i - 1,
+                    )
+                )
+                buf.clear()
+                buf_tokens = 0
+                buf_start = start_line + i
+
+            buf.append(line)
+            buf_tokens += line_tokens
+
+        if buf:
+            chunks.append(
+                self._make_chunk(
+                    "".join(buf),
+                    file_path,
+                    language,
+                    "accumulated",
+                    buf_start,
+                    start_line + len(lines) - 1,
+                )
+            )
+
+        return chunks
 
     def _make_chunk(
         self,
