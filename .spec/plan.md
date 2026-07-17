@@ -143,6 +143,16 @@ and whether R13 re-wires `max_skipped_items_in_row` skip/retry or deletes the de
 param. Folder deletes before the branch merges per spec rules; any cross-cutting
 outcome (R7 seam) promotes to root tech.md at wrap-up.
 
+### 2026-07-11: CI benchmarking moved to external action
+**Decision:** Drop the local `.benchmarks/benchmark_baseline.py` /
+`benchmark_compare.py` scripts; run CI benchmarks via the third-party composite
+action `lennardzuendorf/pytest-bench-action@v0.0.1` in
+`.github/workflows/python-benchmark.yml`. See [tech.md](tech.md) § CI Benchmarking.
+**Rationale:** Baseline capture + comparison logic is generic CI tooling, not
+product code — maintaining it in-repo duplicated an already-published action
+by the same author. Not tracked as a Feature Sequence row: it's CI
+infrastructure, not shipped product surface.
+
 ### 2026-07-10: Feature 14 (Simplify) complete
 **Decision:** Shipped Feature 14 across six units, each a green commit: simplify/1
 (unvendor `.agents/` skills, one root `AGENTS.md` ≤100 lines, benchmark CI

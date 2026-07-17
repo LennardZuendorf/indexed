@@ -5,8 +5,10 @@ repos:
     hooks:
       - id: trailing-whitespace
         stages: [pre-commit]
+        exclude: ^\.benchmarks/baselines/
       - id: end-of-file-fixer
         stages: [pre-commit]
+        exclude: ^\.benchmarks/baselines/
       - id: check-yaml
         stages: [pre-commit]
       - id: check-toml
