@@ -26,8 +26,8 @@ collection.
 
 | | |
 |---|---|
-| **Owns** | The v2 engine and its on-disk collection format; engine-version detection and routing for all CLI commands and MCP tools; the engine selector surface (flag, env, config); the `[core.v2.*]` config namespace; the v1→v2 migration command; v2 embedding-provider and vector-store configuration; optional reranking |
-| **Does not own** | The v1 engine's behavior or on-disk format (frozen, byte-stable); connectors and parsing (consumed as-is via existing protocols); knowledge graphs and hybrid/BM25 retrieval (future sibling features); flipping the built-in default engine to v2 (separate decision gate); server/multi-user deployment |
+| **Owns** | The v2 engine and its on-disk collection format; engine-version detection and routing for all CLI commands and MCP tools; the engine selector surface (flag, env, config); the `[core.v2.*]` config namespace; the v1→v2 migration command; v2 local-embedding configuration; optional reranking |
+| **Does not own** | The v1 engine's behavior or on-disk format (frozen, byte-stable); connectors and parsing (consumed as-is via existing protocols); remote embedding providers and additional vector stores (Ollama, Qdrant, … — future work behind the seams this feature ships); knowledge graphs and hybrid/BM25 retrieval (future sibling features); flipping the built-in default engine to v2 (separate decision gate); server/multi-user deployment |
 
 ---
 
@@ -165,37 +165,34 @@ from stored content) and MUST NOT remove v1 data until validation passes.
 - **When** the user migrates without the from-source option
 - **Then** migration succeeds using the stored document content
 
-### Requirement: Configurable embedding providers (R8)
+### Requirement: Local, self-contained embeddings (R8)
 
-v2 SHALL support configurable embedding providers. The default SHALL be the
-local model with no network access. Remote providers MUST be explicit opt-in,
-with credentials stored only in `.env`, and their use MUST be disclosed in
-command output (privacy-first principle).
+v2 SHALL run fully locally and self-contained. Its default embedding model
+SHALL be the same model v1 uses, so v2 relevance matches v1 1:1; model data
+already cached for v1 SHALL be reused without re-download; and no network
+access SHALL occur at any point. Remote embedding providers are out of scope
+(future work).
 
-#### Scenario: default stays local
+#### Scenario: same model as v1, fully local
 
-- **Given** no embedding-provider configuration
+- **Given** no embedding configuration
 - **When** a v2 collection is created and searched
-- **Then** the bundled local model is used and no network request is made
+- **Then** the same local model as v1 embeds the text and no network request
+  is made
 
-#### Scenario: remote provider is explicit and disclosed
+#### Scenario: no duplicate model download
 
-- **Given** a configured remote provider with a credential in `.env`
+- **Given** the v1 embedding model is already cached locally
 - **When** a v2 collection is created
-- **Then** the provider is used, and output states that document text is sent
-  to that provider
+- **Then** no model download occurs
 
-#### Scenario: missing credential fails clearly
+### Requirement: Recorded, dispatched store identity (R9)
 
-- **Given** a configured remote provider without its credential
-- **When** creation is attempted
-- **Then** the command fails naming the missing credential and where to set it
-
-### Requirement: Pluggable vector stores (R9)
-
-v2 SHALL default to an embedded store requiring no external service, SHALL
-support selecting an alternative store at creation, SHALL record the store in
-the collection, and MUST load each collection with its recorded store.
+v2 SHALL use an embedded store requiring no external service or daemon, SHALL
+record the store identity in each collection, and MUST load each collection
+with its recorded store — failing loud on an unrecognized identity, never
+silently substituting another store. Additional stores are out of scope
+(future work behind this seam).
 
 #### Scenario: default store is zero-setup
 
@@ -203,11 +200,13 @@ the collection, and MUST load each collection with its recorded store.
 - **When** a v2 collection is created with no store configuration
 - **Then** it works offline with no additional service or daemon
 
-#### Scenario: store round-trips
+#### Scenario: unrecognized store fails loud
 
-- **Given** a v2 collection created with a non-default store
-- **When** it is loaded later for search or update
-- **Then** the recorded store is used (never a hardcoded default)
+- **Given** a collection whose recorded store identity this install does not
+  support
+- **When** it is loaded for any operation
+- **Then** the operation fails naming the recorded store, and no other store
+  is silently used
 
 ### Requirement: Optional reranking (R10)
 
@@ -263,24 +262,16 @@ owns which collection.
 
 ## Non-Goals
 
+- Remote/API embedding providers (Ollama, OpenAI-compatible, …) — future
+  work once the local core is proven (maintainer decision 2026-07-18:
+  local-only, self-contained first).
+- Additional vector stores (Qdrant, …) — the store-identity seam ships now;
+  alternatives come later.
 - Knowledge-graph indexing and retrieval — requires an LLM to add value;
   future sibling feature, LLM-gated.
 - Hybrid/BM25 retrieval and query fusion — future sibling feature on top of v2.
 - Flipping the built-in default engine to v2 — a separate, evidence-gated
-  decision after dogfooding (see plan).
+  decision after dogfooding (criteria approved 2026-07-18; see plan).
 - Automatic or implicit migration of v1 collections.
-- Removing or deprecating the v1 engine.
+- Removing or deprecating the v1 engine (no deprecation planning now).
 - New connectors, parsing changes, or server/multi-user deployment.
-
----
-
-## Open Questions
-
-1. **Default-flip criteria** — what evidence gates making v2 the default for
-   new collections? Proposal: one release of dogfooding, benchmark parity
-   within budget, and zero P1 defects against the v2 lifecycle harness.
-2. **v1 creation deprecation** — once v2 is default, should creating new v1
-   collections warn? Recommendation: warn but keep working for ≥2 minor
-   releases; never break reading.
-3. **Remote-provider disclosure copy** — exact wording/placement of the
-   "text leaves your machine" notice (create output vs. also on search).

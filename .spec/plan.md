@@ -136,11 +136,18 @@ coexisting with the frozen v1 engine. Headline decisions (ADRs in
 **manifest-authoritative** — explicit selectors (`--engine` flag >
 `INDEXED__CORE__ENGINE` > `[core] engine` > default v1) apply to *new*
 collections only, and a conflicting selector on an existing collection fails
-loud; default store SimpleVectorStore (FAISS excluded from v2 — LlamaIndex's
-FAISS integration lacks delete/filters); local embeddings default with remote
-providers opt-in via extras; migration is explicit, offline-by-default,
-backed up and reversible; KG and hybrid retrieval deferred (LLM-gated /
-sibling features). The prior attempt (PR #86 + splits #132–#136, closed/stale
+loud; store is SimpleVectorStore with the store identity recorded and
+dispatched per collection (FAISS excluded from v2 — LlamaIndex's FAISS
+integration lacks delete/filters); embeddings via the native LlamaIndex
+HuggingFace integration with v1's exact model — local-only, self-contained,
+shared model cache; migration is explicit, offline-by-default, backed up and
+reversible; remote providers (Ollama, …), additional stores (Qdrant, …), KG
+and hybrid retrieval all deferred to future features behind the shipped
+seams.
+**Maintainer review 2026-07-18:** `--engine` naming and default-flip criteria
+approved; remote providers + Qdrant descoped (units core-v2/5 and core-v2/7
+retired); no v1 deprecation planning; PRs #132–#136 closed as superseded and
+issues #5/#7 annotated. The prior attempt (PR #86 + splits #132–#136, closed/stale
 against the deleted workspace layout) was reviewed: its adapter-at-boundary,
 version marker, and mismatch-error patterns are kept; its flag-over-manifest
 precedence, delete-before-persist, and hardcoded-FAISS load path are designed

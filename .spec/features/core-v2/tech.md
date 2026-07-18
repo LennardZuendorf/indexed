@@ -37,11 +37,10 @@ src/indexed/core/v1/**                      # FROZEN — no behavior change
 src/indexed/core/v2/__init__.py             # lazy __getattr__ facade (mirror of v1 pattern)
 src/indexed/core/v2/config_models.py        # CoreV2EmbeddingConfig / StorageConfig / SearchConfig
 src/indexed/core/v2/manifest.py             # V2 manifest model (version="2", engine block) + IO
-src/indexed/core/v2/embedding/local.py      # BaseEmbedding adapter over sentence-transformers
-                                            # (reuses v1 model_manager cache; lazy imports)
-src/indexed/core/v2/embedding/remote.py     # OpenAI-compatible / Ollama provider construction
-src/indexed/core/v2/stores.py               # store factory: "simple" (default) | "qdrant";
-                                            # dispatches LOAD on manifest.engine.vectorStore
+src/indexed/core/v2/embedding/local.py      # lazy factory for the native HuggingFaceEmbedding
+                                            # (v1's model + shared HF cache; function-local import)
+src/indexed/core/v2/stores.py               # simple-store construction + LOAD dispatch on
+                                            # manifest.engine.vectorStore (fail-loud on unknown)
 src/indexed/core/v2/adapter.py              # ConvertedDocument dict -> TextNode[] (deterministic ids)
 src/indexed/core/v2/ingestion.py            # create/update via docstore-hash upserts; build-aside +
                                             # atomic rename-swap (reuse DiskPersister semantics)
@@ -55,7 +54,8 @@ src/indexed/cli/knowledge/commands/*.py     # retarget facade imports; create ga
                                             # migrate.py (NEW command)
 src/indexed/mcp/server.py                   # lifespan resolves default engine once into state
 src/indexed/mcp/tools.py|resources.py       # retarget facade imports (per-collection routing inside)
-pyproject.toml                              # + llama-index-core>=0.14,<0.15; optional extras
+pyproject.toml                              # + llama-index-core>=0.14,<0.15
+                                            #   + llama-index-embeddings-huggingface (<0.15)
 ```
 
 ---
@@ -106,7 +106,7 @@ def detect_engine_version(collection_path: Path) -> Literal["1", "2"]
   "engine": {
     "embedding": { "provider": "local", "model": "sentence-transformers/all-MiniLM-L6-v2",
                     "dimension": 384 },
-    "vectorStore": "simple",                        // "simple" | "qdrant"
+    "vectorStore": "simple",                        // "simple" (more stores: future work)
     "scoreKind": "cosine",                          // higher-is-better
     "llamaIndexCoreVersion": "0.14.23",             // rebuild-on-mismatch guard
     "indexedVersion": "0.0.5"
@@ -175,14 +175,8 @@ Optional rerank: `SentenceTransformerRerank` from llama-index-core (lazy
 engine = "1"                       # default engine for NEW collections only
 
 [core.v2.embedding]
-provider   = "local"               # local | openai-like | ollama
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
-base_url   = ""                    # openai-like/ollama
-api_key_env = "INDEXED_EMBED_API_KEY"   # name of .env var; never the secret itself
+model_name = "sentence-transformers/all-MiniLM-L6-v2"   # v1's model — 1:1 parity
 batch_size = 32
-
-[core.v2.storage]
-vector_store = "simple"            # simple | qdrant
 
 [core.v2.search]
 max_docs = 10
@@ -193,6 +187,10 @@ enabled = false
 model   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 top_n   = 10
 ```
+
+No `[core.v2.storage]` key yet — the manifest's `vectorStore` field is the
+seam; a config knob arrives with the second store (no phantom generality).
+No provider/credential keys — v2 is local-only this feature.
 
 Registered explicitly in `composition.register_app_config` (never at import
 time). Env overrides follow the existing mapping: `INDEXED__CORE__ENGINE`,
@@ -241,19 +239,28 @@ key are v1; unknown versions fail loud. No code above the facade may import
 - **No global state:** embed model, transformations, and postprocessors are
   passed explicitly per call; `Settings` is never read or written; retrieval
   path verified to never resolve `Settings.llm`.
-- **Dimension discovery:** LlamaIndex has no dimension API (verified) — the
-  local adapter reads it from sentence-transformers; remote providers embed a
-  probe string once at create and record `dimension` in the manifest.
-- **Dependency pinning:** `llama-index-core>=0.14,<0.15`; integration packages
-  (only pulled via optional extras: `indexed-sh[openai-embeddings]`,
-  `[ollama]`, `[qdrant]`) all pin `<0.15` upstream — core minor bumps are a
-  coordinated lockstep upgrade gated on the characterization suite. Persisted
-  formats are treated as version-bound: `engine.llamaIndexCoreVersion` in the
-  manifest triggers a clear rebuild-on-mismatch message if incompatibility is
-  ever detected.
-- **Concurrency:** default `simple` store is plain files + atomic swap — safe
-  for the CLI-writes-while-MCP-reads pattern. Embedded Qdrant path mode is
-  single-process-locked; documented caveat, and why it is not the default.
+- **Embeddings (native, 1:1 with v1):** `HuggingFaceEmbedding(model_name=
+  "sentence-transformers/all-MiniLM-L6-v2")` from
+  `llama-index-embeddings-huggingface` — the same `SentenceTransformer` class
+  and HF cache as v1, so vectors match v1 exactly and no re-download occurs
+  (maintainer decision: native support over an own adapter). Its two verified
+  caveats are handled: the integration imports sentence-transformers at module
+  top → the integration module itself is imported function-locally; it ships
+  no `py.typed` → scoped ty ignores with reasons. `normalize=True` is the
+  integration default (matches v1's unit-normalized vectors — verify in tests).
+- **Dimension discovery:** LlamaIndex has no dimension API (verified) — v2
+  embeds a probe string once at create and records `dimension` in the
+  manifest (provider-agnostic, future-proof).
+- **Dependency pinning:** exactly two new deps — `llama-index-core>=0.14,<0.15`
+  and `llama-index-embeddings-huggingface` (pins `<0.15` upstream); ~30 MB
+  marginal (torch/sentence-transformers already present). No optional extras
+  this feature; future providers/stores (ollama, qdrant, …) arrive as extras
+  later. Core minor bumps are a coordinated lockstep upgrade gated on the
+  characterization suite. Persisted formats are treated as version-bound:
+  `engine.llamaIndexCoreVersion` in the manifest triggers a clear
+  rebuild-on-mismatch message if incompatibility is ever detected.
+- **Concurrency:** the `simple` store is plain files + atomic swap — safe
+  for the CLI-writes-while-MCP-reads pattern (a key reason it is the store).
 - **MCP:** default engine resolved once in lifespan state (mirrors the
   verified PR #86 pattern); per-collection routing still applies per call.
   v2 MCP e2e tests must run out-of-process (in-process FastMCP client +
@@ -279,9 +286,6 @@ key are v1; unknown versions fail loud. No code above the facade may import
    path `core` coexisting with `core.v1.*`/`core.v2.*` subtables needs a
    registry check (TOML allows it; verify `ConfigRegistry`/`bind()` handles a
    scalar-bearing parent path).
-2. **Qdrant embedded packaging** — ship `[qdrant]` extra in the first release
-   or defer to a fast-follow once the store-dispatch seam is proven? Plan
-   assumes fast-follow (unit core-v2/7).
-3. **`nest-asyncio` interaction with FastMCP** — llama-index-core depends on
+2. **`nest-asyncio` interaction with FastMCP** — llama-index-core depends on
    it; behavior under FastMCP's event loop is unverified. Probe early in
    core-v2/2 (a failing probe moves MCP v2 search to a worker thread).

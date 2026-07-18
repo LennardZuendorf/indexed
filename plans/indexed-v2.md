@@ -19,12 +19,16 @@
 ## 1. Executive summary
 
 Indexed V2 replaces the fixed FAISS + sentence-transformers engine with a
-LlamaIndex-based core to gain configurable embedding providers (local + API),
-pluggable vector stores, optional reranking, and a foundation for richer
-retrieval — without hand-implementing every integration. V1 and V2 coexist:
-the existing v1 engine is **frozen** and keeps serving every existing
-collection unchanged, while v2 collections carry an on-disk version marker and
-a new persisted format.
+LlamaIndex-based core to gain a pluggable retrieval foundation — embedding
+providers, vector stores, reranking — without hand-implementing every
+integration. Per maintainer review (2026-07-18) the first release is
+**local-only and self-contained**: the same HuggingFace model as v1 through
+LlamaIndex's native integration (1:1 relevance, shared model cache), an
+embedded store, and exactly two new dependencies; remote providers and
+additional stores (Ollama, Qdrant, …) come later behind seams this feature
+ships. V1 and V2 coexist: the existing v1 engine is **frozen** and keeps
+serving every existing collection unchanged, while v2 collections carry an
+on-disk version marker and a new persisted format.
 
 The pivotal architectural finding: the repo's designed "v2 swap seam" (the
 `core.v1.engine` facade) is real and load-bearing, but its premise — "a v2
@@ -49,8 +53,9 @@ explicitly designed out.
 
 Recommended build order: routing seam first (pure refactor, zero behavior
 change), v2 MVP second, incremental update + characterization harness third,
-then migration, providers, reranking, and the Qdrant backend. The default
-engine stays **v1** until a parity report gates the flip.
+then migration and reranking. Remote providers and additional stores follow
+as future work behind the shipped seams. The default engine stays **v1**
+until a parity report gates the flip (criteria approved 2026-07-18).
 
 ## 2. Goals and non-goals
 
@@ -60,8 +65,10 @@ engine stays **v1** until a parity report gates the flip.
 - G2 — Safe V1/V2 coexistence: per-collection routing, explicit selection,
   zero cross-engine reads/writes.
 - G3 — Existing v1 collections keep working for every operation, unchanged.
-- G4 — Configurable embedding providers; local, private default.
-- G5 — Pluggable vector stores; embedded zero-daemon default.
+- G4 — Local, self-contained embeddings 1:1 with v1 (same model, shared
+  cache); provider extensibility designed in, shipped later.
+- G5 — Embedded zero-daemon store with a recorded, dispatched store-identity
+  seam; additional stores later.
 - G6 — Optional local reranking; unified relevance semantics across engines.
 - G7 — Explicit, safe, reversible v1→v2 migration (offline by default).
 - G8 — Hold the budgets: <1 s CLI startup, no network by default, search
@@ -69,6 +76,10 @@ engine stays **v1** until a parity report gates the flip.
 
 **Non-goals** (this feature)
 
+- Remote/API embedding providers (Ollama, OpenAI-compatible, …) and
+  additional vector stores (Qdrant, …) — maintainer decision 2026-07-18:
+  local-only, no new big installs; both arrive later behind this feature's
+  seams.
 - Knowledge graphs (LLM-gated; future sibling — see § 16/§ 18).
 - Hybrid/BM25 retrieval and query fusion (future sibling on top of v2).
 - Flipping the default engine to v2 (separate, evidence-gated decision).
@@ -170,10 +181,15 @@ superseded by the adapter.
   right first optional backend. Chroma: heavy server-grade deps +
   `exp(-distance)` scores — weakest fit. LanceDB: heaviest deps. DuckDB:
   hybrid not wired.
-- **`HuggingFaceEmbedding` wrapper rejected**: imports sentence-transformers
-  (→ torch) at module top, ships no `py.typed`, wrong default model — an own
-  ~50-line `BaseEmbedding` adapter over sentence-transformers direct gives
-  identical vectors to v1, lazy imports, and typing. *(source/PyPI)*
+- **`HuggingFaceEmbedding` (native) chosen, caveats handled**: it wraps the
+  same `SentenceTransformer` class v1 uses → identical vectors and a shared
+  HF model cache. Verified caveats: module-top sentence-transformers (→
+  torch) import — handled by importing the *integration module* function-
+  locally; no `py.typed` — scoped ty ignores; default model is
+  `BAAI/bge-small-en` — always pass `model_name` explicitly (v1's model).
+  Maintainer preference for native support over an own adapter
+  (2026-07-18; supersedes the research agent's own-adapter lean).
+  *(source/PyPI)*
 - **Incremental updates map exactly**: `DocstoreStrategy.UPSERTS` compares a
   stored content hash per `ref_doc_id`; unchanged → skip, changed →
   `delete_ref_doc` + `vector_store.delete` + re-embed. Requires stable doc
@@ -231,8 +247,8 @@ flowchart TD
     V1 --> FAISS["FAISS + sentence-transformers<br/>v1 on-disk format"]
     V2 --> ADP["adapter:<br/>ConvertedDocument→TextNode"]
     ADP --> LI["llama-index-core<br/>(retriever-only, explicit components)"]
-    LI --> EMB["embedding: local (default)<br/>| openai-like | ollama"]
-    LI --> VS["vector store: simple (default)<br/>| qdrant (embedded)"]
+    LI --> EMB["embedding: HuggingFaceEmbedding<br/>(local, v1's model — providers later)"]
+    LI --> VS["vector store: simple<br/>(embedded; identity seam for more later)"]
     LI --> RR["rerank: SentenceTransformerRerank<br/>(opt-in)"]
     V2 --> ST["storage/: StorageContext persist<br/>+ version-marked manifest.json"]
     COMP["cli/composition.py<br/>(wiring + selector chain + config specs)"] -.wires.-> F
@@ -359,16 +375,14 @@ extended, not broken; *assumption to verify: registry handles a scalar-bearing
 | Debug | + llama-index-core version, v2 availability |
 
 **New config keys** (registered explicitly in `register_app_config`):
-`[core] engine`; `[core.v2.embedding] provider|model_name|base_url|
-api_key_env|batch_size`; `[core.v2.storage] vector_store`;
+`[core] engine`; `[core.v2.embedding] model_name|batch_size`;
 `[core.v2.search] max_docs|max_chunks|score_threshold`;
-`[core.v2.rerank] enabled|model|top_n`.
+`[core.v2.rerank] enabled|model|top_n`. No `[core.v2.storage]` key yet — the
+manifest's `vectorStore` field is the seam; a config knob arrives with the
+second store. No provider/credential keys — local-only this feature.
 
 **Environment variables:** standard mapping — `INDEXED__CORE__ENGINE`,
-`INDEXED__CORE__V2__EMBEDDING__MODEL_NAME`,
-`INDEXED__CORE__V2__STORAGE__VECTOR_STORE`, etc. Secrets never in TOML: the
-config stores the **name** of the env var (`api_key_env`); the secret lives in
-`.env` (0600, existing machinery).
+`INDEXED__CORE__V2__EMBEDDING__MODEL_NAME`, etc.
 
 **MCP:** tool names/schemas unchanged (`search`, `search_collection`,
 resources). Result envelope gains `engine` and `scoreKind` per collection and
@@ -396,11 +410,6 @@ indexed index inspect docs        # engine=v2 · local/all-MiniLM-L6-v2 · simpl
 # migrate an old collection (offline; backup kept)
 indexed index migrate old-notes --dry-run
 indexed index migrate old-notes
-# remote embeddings, explicitly opted in
-indexed config set core.v2.embedding.provider openai-like
-indexed config set core.v2.embedding.base_url https://api.example.com/v1
-indexed config set core.v2.embedding.api_key_env MY_EMBED_KEY   # secret itself goes to .env
-indexed index create files -c big --engine v2 -p ./corpus       # output discloses remote use
 ```
 
 **Onboarding/diagnostics:** `indexed init` unchanged (v1 default); every
@@ -440,8 +449,8 @@ engineering detail:
 | R5 | Incremental v2 update | parity with v1's headline feature | `v2/ingestion.py`, docstore upserts | needs store delete (simple/qdrant ok) | changed-set-only re-embed asserted by hash/call-count; deletions honored |
 | R6 | v1 untouched | trust + rollback story | none (guard) | byte-stability tests stay green untouched | existing characterization + `test_read_mostly_config` |
 | R7 | Safe migration | adoption path | `migrate.py`, `v2/migration.py` | v1 backup until purge | dry-run/failure/offline scenarios; rollback restores byte-identical dir |
-| R8 | Embedding providers | core V2 goal; privacy-first | `v2/embedding/*`, config, extras | local default = no network | stubbed-endpoint tests; missing-credential/extra errors; disclosure line |
-| R9 | Pluggable stores | core V2 goal | `v2/stores.py`, manifest `vectorStore` | store recorded + load-dispatched (fixes PR #86 bug) | round-trip test incl. unknown-store error; qdrant lifecycle (unit 7) |
+| R8 | Local, self-contained embeddings | privacy + 1:1 v1 parity; maintainer: local-only | `v2/embedding/local.py`, config | same model + shared HF cache → no re-download, no network | vector-parity cosine test; no-network assertion; no-download-when-cached |
+| R9 | Recorded, dispatched store identity | prevents the PR #86 hardcoded-load bug; seam for future stores | `v2/stores.py`, manifest `vectorStore` | simple-only this feature | unknown-store fail-loud test; manifest round-trip |
 | R10 | Optional rerank | quality lever, zero-cost when off | `v2/retrieval.py`, config | off by default | lazy-import probe; order-change fixture; `top_n` |
 | R11 | Unified relevance | mixed ranking must not lie | formatters, `sim = 1 − d²/2` | v1-only output unchanged | mixed-engine ranking test; threshold semantics per engine |
 | R12 | Budgets hold | product principles | lazy imports, benchmarks | — | startup <1 s probe; benchmark gates (create ≤1.5×, warm search ≤2×); no-network assertion |
@@ -469,11 +478,12 @@ def search(query, ..., engine: str | None = None) -> dict     # per-collection r
 def update(configs, ..., engine: str | None = None, manifest_factory) -> None
 # conflicting explicit engine for an existing collection -> EngineMismatchError
 
-# src/indexed/core/v2/embedding/local.py
-class LocalEmbedding(BaseEmbedding):            # lazy sentence-transformers inside
-    def _get_text_embedding(self, text: str) -> list[float]: ...
-    def _get_query_embedding(self, query: str) -> list[float]: ...
-    async def _aget_query_embedding(self, query: str) -> list[float]: ...
+# src/indexed/core/v2/embedding/local.py — native integration, lazily imported
+def make_embed_model(model_name: str, batch_size: int) -> "BaseEmbedding":
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding  # function-local:
+    # the integration imports sentence-transformers (torch) at module top
+    return HuggingFaceEmbedding(model_name=model_name, embed_batch_size=batch_size)
+    # model_name always explicit (upstream default differs); normalize=True is default
 
 # src/indexed/core/v2/adapter.py
 def to_nodes(doc: dict, collection: str) -> list[TextNode]
@@ -498,7 +508,7 @@ Full config models, manifest schema, and error taxonomy: tech.md.
 | `src/indexed/cli/knowledge/commands/*` | retarget imports; `create --engine`; **new** `migrate.py` |
 | `src/indexed/mcp/{server,tools,resources}.py` | retarget; lifespan engine; scoreKind-aware formatting |
 | `src/indexed/mcp/formatting.py`, `search_render.py` | unified relevance (R11) |
-| `pyproject.toml` + `uv.lock` | `llama-index-core>=0.14,<0.15`; extras `[openai-embeddings]`, `[ollama]`, `[qdrant]` |
+| `pyproject.toml` + `uv.lock` | + `llama-index-core>=0.14,<0.15` and `llama-index-embeddings-huggingface` — the only new deps; no extras this feature |
 | `tests/characterization/` | `test_lifecycle_files_v2.py`, `test_lifecycle_cloud_v2.py` |
 | `tests/unit/indexed/core/v2/`, system, benchmarks | new suites + v2 benchmark rows |
 | `skills/index-*`, `docs/` | engine concept, migrate flow, provider/store docs |
@@ -515,11 +525,14 @@ Authoritative unit breakdown (stable IDs, files, verification):
 | P1 MVP | core-v2/2 | v2 create/search/inspect/status/clear (local embeddings, simple store) | v2 known-hit lifecycle; startup <1 s; no-network default |
 | P2 update | core-v2/3 | incremental v2 update + v2 characterization net | changed-set-only re-embed proven; durability regression test |
 | P3 migration | core-v2/4 | `migrate` with dry-run/backup/rollback/validation | R7 scenarios green on real v1 fixture |
-| P4 capabilities | core-v2/5, /6 | remote providers + extras; rerank; unified relevance | stubbed-provider tests; mixed-ranking test; v1 output unchanged |
-| P5 stores + evidence | core-v2/7, /8 | qdrant backend; cloud nets; benchmarks; parity report | benchmark CI within budget; parity numbers recorded |
+| P4 capabilities | core-v2/6 | rerank; unified relevance in formatters | mixed-ranking test; v1 output unchanged |
+| P5 evidence | core-v2/8 | cloud nets; benchmarks; parity report | benchmark CI within budget; parity numbers recorded |
 
 P4/P5 units parallelize after their dependencies (see plan.md dependency
 table). Each unit is one or more green commits passing the full verify gate.
+Units core-v2/5 (remote providers) and core-v2/7 (Qdrant) were **descoped
+2026-07-18** (maintainer: local-only, self-contained first); their IDs are
+retired and the work returns later as fresh features behind the shipped seams.
 
 ## 14. Testing and validation strategy
 
@@ -574,7 +587,7 @@ table). Each unit is one or more green commits passing the full verify gate.
 | Import time busts <1 s startup | high | function-local imports everywhere (verified necessity); startup probe in CI benchmarks |
 | Accidental cross-engine access | high | manifest-authoritative routing; structural (facade-only) enforcement; mismatch tests |
 | Simple store scaling (brute-force, JSON size) | medium | documented <100k scope (same O(N·d) as v1 FlatL2); Qdrant backend as the scale path; benchmarks gate |
-| Concurrent CLI+MCP access on qdrant path mode | medium | not the default; lock-aware error; docs |
+| Concurrent CLI+MCP access on future store backends (e.g. qdrant path-mode lock) | low (deferred) | out of scope this feature; revisit when a second store lands |
 | `nest-asyncio` × FastMCP interaction | medium | probe in P1 (OQ-T3); fallback: v2 search in worker thread; MCP e2e out-of-process regardless |
 | v2 slower than v1 (PR #86: ~2× warm search) | medium | explicit budget (≤2×) + CI gate; rerank off by default; searcher/StorageContext caching |
 | Dependency weight (~30 MB marginal; core drags sqlalchemy/aiohttp/nltk) | low-med | accepted for capability gain; extras keep providers/stores opt-in; wheel unchanged (deps are deps, not vendored) |
@@ -604,18 +617,28 @@ rejected on process-lock / dep-weight + score-semantics grounds.
 - **ADR-3 — Version-dispatching facade at `indexed.core.engine`.** Keeps the
   14-name contract; app blast radius ≈ 12 lazy imports; no per-command
   router. Driver: composition.py/facade are the two designed seams.
-- **ADR-4 — SimpleVectorStore default; Qdrant embedded optional; FAISS
-  excluded from v2.** Drivers: working delete (upserts), verified filters,
-  zero deps, no process lock; FAISS integration strictly weaker (verified).
-- **ADR-5 — Own `BaseEmbedding` adapter over sentence-transformers; remote
-  providers via OpenAI-compatible/Ollama extras.** Drivers: v1-identical
-  vectors, lazy imports, typing; HF wrapper's module-top torch import.
+- **ADR-4 — SimpleVectorStore only; FAISS excluded from v2; additional
+  stores deferred** *(revised 2026-07-18 per maintainer: local-only, no new
+  big installs)*. Drivers: working delete (upserts), verified filters, zero
+  deps, no process lock; FAISS integration strictly weaker (verified). The
+  store-identity seam (recorded in the manifest, dispatched on load) ships
+  now so Qdrant and friends slot in later without format changes.
+- **ADR-5 — Native `llama-index-embeddings-huggingface` with v1's exact
+  model** *(revised 2026-07-18 per maintainer: prefer native support)*.
+  `HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")`
+  wraps the same `SentenceTransformer` class v1 uses → 1:1 vectors and a
+  shared model cache. Caveats handled: integration module imported
+  function-locally (its module-top torch import), scoped ty ignores (no
+  `py.typed`), model name always explicit (upstream default differs). Remote
+  providers (OpenAI-compatible, Ollama) are future work via extras.
 - **ADR-6 — Retriever-only LlamaIndex; explicit components; no `Settings`;
   all imports lazy.** Drivers: LLM-free operation (verified), privacy,
   startup budget.
 - **ADR-7 — Cosine as the unified relevance; v1 mapped `sim = 1 − d²/2`.**
   Driver: exact conversion exists (unit-normalized v1 vectors); merged views
-  must rank truthfully.
+  must rank truthfully. *Accepted "for now" (maintainer): future work should
+  explore richer ranking/retrieval for v2-only collections — graph-based or
+  other LlamaIndex-native rankers — once they exist.*
 - **ADR-8 — Offline migration default (re-embed stored chunks).** Driver:
   works without source credentials; v1 chunks (≤256 tokens) fit any target
   model window. `--from-source` for re-chunking.
@@ -624,17 +647,20 @@ rejected on process-lock / dep-weight + score-semantics grounds.
 
 ## 18. Open questions and decisions needed
 
-**Maintainer decisions:**
+**Maintainer decisions — resolved 2026-07-18:**
 
-1. **Selector naming:** this plan uses `--engine v1|v2` + `[core] engine`
-  (PR precedent, reads naturally in errors). Alternative: `--core`. Decide
-  before core-v2/1.
-2. **Default-flip criteria** (§ 15) — confirm the gate list.
-3. **Qdrant in first release vs fast-follow** (plan assumes fast-follow).
-4. **v1-creation deprecation timeline** (§ 9 proposes warn ≥2 minors post-flip).
-5. **Close PR #132 and stack #133–#136** (superseded; 465 files conflicted) —
-  and annotate issues #5/#7 with this plan.
-6. **`check_sizes.py` ceiling** — approve raising `SRC_LOC_MAX` when v2 lands.
+1. **Selector naming:** ✅ approved — `--engine v1|v2` + `[core] engine` +
+  `INDEXED__CORE__ENGINE`.
+2. **Default-flip criteria** (§ 15): ✅ approved.
+3. **Qdrant timing:** resolved by descope — no additional stores in this
+  feature (local-only, no new big installs); later, behind the shipped
+  store-identity seam.
+4. **v1-creation deprecation timeline:** dropped — no deprecation planning
+  now.
+5. **Close PRs #132–#136 + annotate issues #5/#7:** ✅ approved — executed
+  (PRs closed as superseded; issues annotated with this plan).
+6. **`check_sizes.py` ceiling:** ✅ approved — raise `SRC_LOC_MAX`
+  deliberately in the unit that first exceeds it.
 
 **Technical validation (owned by early units):**
 
@@ -651,10 +677,10 @@ rejected on process-lock / dep-weight + score-semantics grounds.
 | 2 | v2 engine MVP | core-v2/2 | epic 1 | v2 known-hit lifecycle; startup <1 s; offline default |
 | 3 | Incremental update + harness | core-v2/3 | epic 2 | changed-set-only proof; durability regression test |
 | 4 | Migration | core-v2/4 | epic 3 | R7 scenarios on real v1 fixture |
-| 5 | Providers + rerank + relevance | core-v2/5, core-v2/6 | epic 2 | stubbed-provider + mixed-ranking tests; v1 output unchanged |
-| 6 | Qdrant + evidence | core-v2/7, core-v2/8 | epic 3 | store round-trip; benchmarks in budget; parity report |
+| 5 | Rerank + unified relevance | core-v2/6 | epic 2 | mixed-ranking tests; v1 output unchanged |
+| 6 | Evidence (cloud nets, benchmarks, parity report) | core-v2/8 | epic 3 | benchmarks in budget; parity report recorded |
 | 7 | Default flip (new root-plan row) | — (post-feature gate) | epic 6 + dogfooding | flip criteria met; default → "2" |
-| 8 | Siblings (future): hybrid/BM25, KG (LLM-gated), server mode | fresh specs when tackled | epic 6 | out of scope here |
+| 8 | Future features: remote providers (Ollama, OpenAI-like), additional stores (Qdrant, …), hybrid/BM25, KG (LLM-gated), richer v2-only ranking, server mode | fresh specs when tackled | epic 6 | out of scope here |
 
 **Build first: core-v2/1 (the routing seam).** It is pure refactor risk paid
 down early: every later unit lands behind a tested dispatch layer, the
