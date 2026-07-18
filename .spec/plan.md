@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-12
+updated: 2026-07-18
 ---
 
 # Development Plan: indexed
@@ -41,7 +41,8 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
 | 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
-| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ◻ ACTIVE | [features/review-remediation/](features/review-remediation/plan.md) |
+| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder pending wrap-up) |
+| 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ◻ ACTIVE (planning) | [features/core-v2/](features/core-v2/plan.md); full plan: `plans/indexed-v2.md` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -84,23 +85,22 @@ cleanups (cached `get_config()/reload()`, single path/mode resolver) landed. Ful
 suite + system tests green; coverage ≥85% on core/connectors/config; size + import
 gates enforced by `scripts/check_sizes.py` + `scripts/check_imports.py`.
 
-**Active: Feature 15 Review Remediation.** The extra-high-effort code review of
-PR #155 (14 finders + 8 adversarial verifiers + gap sweep) confirmed a set of
-defects the architecture cleanup introduced or left latent — three P1
-crashes/data-loss on common paths (config `set` truncating the untargeted
-`config.toml`; `indexed-mcp run` crashing on a malformed config; fresh-install
-`inspect`/`search` erroring instead of reporting empty), three P1
-silent-wrong/crash connector+cache defects (Confluence `CancelledError`, Jira
-`enhanced_jql` None, document-cache key omitting parse settings), a systemic
-Rich-markup crash on ordinary input (`search "list[int]"`), plus a P2/P3 tail.
-Captured as [features/review-remediation/](features/review-remediation/plan.md),
-nine mostly-independent units ordered by blast radius, each a green commit with a
-regression test. To be worked in the cloud.
+**Active: Feature 16 Core v2 (planning).** Feature 15 (Review Remediation)
+merged to `main` in PR #155 — its wrap-up (promote/archive/delete of
+[features/review-remediation/](features/review-remediation/plan.md)) is still
+owed. The v2 core is now scoped: a LlamaIndex-based engine coexisting with the
+frozen v1 engine behind a version-dispatching facade, with manifest-
+authoritative per-collection routing, explicit engine selection for new
+collections, and safe v1→v2 migration. Spec:
+[features/core-v2/](features/core-v2/product.md); full planning document with
+research, ADRs and backlog: `plans/indexed-v2.md`. Next human gate: approve
+the core-v2 unit plan before implementation starts.
 
-The **v2 core/connectors rewrite** remains the next horizon after remediation — it
-swaps a module behind the `core.v1.engine` facade over the same on-disk format, now
-unblocked (typed contracts + facade + one package + behavior-only suite make it a
-drop-in).
+**Note (supersedes earlier wording):** the v2 rewrite ships behind the *same
+facade names* but over a **new version-marked on-disk format** — the "same
+on-disk format" drop-in premise was superseded by core-v2 ADR-1 (v2's goals —
+pluggable stores, deletes/filters — cannot be expressed in the v1 format;
+`plans/indexed-v2.md` § 17). The v1 format stays frozen and fully supported.
 
 **Non-gating deferral (Feature 14):** the indexer factory/registry + multi-indexer
 plumbing were NOT deleted — the audit's "phantom generality" premise was wrong
@@ -126,6 +126,28 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-18: Feature 16 (Core v2) opened; Feature 15 closed
+**Decision:** Mark Feature 15 DONE (merged to `main` in PR #155; folder
+wrap-up owed). Open Feature 16 Core v2: a LlamaIndex-based second engine
+coexisting with the frozen v1 engine. Headline decisions (ADRs in
+`plans/indexed-v2.md` § 17): v2 uses a **new version-marked on-disk format**
+(supersedes the "same on-disk format" swap premise); routing is
+**manifest-authoritative** — explicit selectors (`--engine` flag >
+`INDEXED__CORE__ENGINE` > `[core] engine` > default v1) apply to *new*
+collections only, and a conflicting selector on an existing collection fails
+loud; default store SimpleVectorStore (FAISS excluded from v2 — LlamaIndex's
+FAISS integration lacks delete/filters); local embeddings default with remote
+providers opt-in via extras; migration is explicit, offline-by-default,
+backed up and reversible; KG and hybrid retrieval deferred (LLM-gated /
+sibling features). The prior attempt (PR #86 + splits #132–#136, closed/stale
+against the deleted workspace layout) was reviewed: its adapter-at-boundary,
+version marker, and mismatch-error patterns are kept; its flag-over-manifest
+precedence, delete-before-persist, and hardcoded-FAISS load path are designed
+out; recommend closing #132–#136 and annotating issues #5/#7.
+**Rationale:** evidence-based reconciliation of the repo's swap-seam design,
+the failed first attempt, and verified LlamaIndex capabilities (research in
+`.spec/features/core-v2/research.md`).
 
 ### 2026-07-12: Feature 15 (Review Remediation) opened
 **Decision:** Capture the confirmed defects from the extra-high-effort review of
