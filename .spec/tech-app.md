@@ -3,10 +3,10 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-06-29
+updated: 2026-07-10
 ---
 
-# Tech Branch: App (`apps/indexed`)
+# Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
 
 The user-facing application — Typer CLI + embedded FastMCP server. UI layer only;
 business logic lives in services/core (see [tech.md](tech.md) § Architectural Rules).
@@ -66,6 +66,13 @@ All terminal output via `rich`:
 - **Accent:** teal (`#00D4AA`) for commands/highlights
 - **Secondary:** dim/grey for metadata
 
+### Markup safety
+
+User-supplied query text and indexed content are **Rich-escaped**
+(`rich.markup.escape` / `Text`) before display — never build markup from
+untrusted content. A `[/...]` or `arr[i]` in a query or document must render
+literally, never raise `MarkupError` and never silently drop the text.
+
 ---
 
 ## Logging Strategy
@@ -80,9 +87,20 @@ All terminal output via `rich`:
 
 ## MCP Server
 
-Embedded `FastMCP` server (`apps/indexed/src/indexed/mcp/`), decomposed into
+Embedded `FastMCP` server (`src/indexed/mcp/`), decomposed into
 `server.py`, `tools.py`, `resources.py`, `formatting.py`, `config.py`. Reuses the
 same `SearchService` + `ConfigService` as the CLI — agent sees what the user sees.
+
+### Freshness & error envelopes
+
+- **No response caching.** The server registers no response-caching middleware —
+  a `search` after a re-index reflects the latest on-disk index (core's searcher
+  cache already provides the latency win and invalidates on load).
+- **Failures are surfaced, never swallowed.** A per-collection failure is reported
+  in the result envelope (an `{error: …}` entry), never dropped as a silent
+  "0 matches"; the boundary envelopes **every** exception (core raises
+  `IndexedError` for missing/corrupt collections) so the agent sees "index
+  failed", not empty results.
 
 ### Tools
 
@@ -125,7 +143,7 @@ def collection_status(name: str) -> dict:
 | **http** | network access | HTTP server on port 8000 |
 | **sse** | Server-Sent Events | SSE streaming |
 
-`apps/indexed/src/indexed/mcp/cli.py` handles transport selection.
+`src/indexed/mcp/cli.py` handles transport selection.
 
 ---
 
@@ -159,8 +177,12 @@ module-level imports (`TYPE_CHECKING`), `__getattr__` module-level lazy loading.
 
 ```python
 def __getattr__(name: str):
-    if name == "index":
-        from core.v1 import Index
-        return Index()
-    raise AttributeError(f"module has no attribute '{name}'")
+    """Lazy load heavy dependencies for tests and performance."""
+    if name == "svc_search":
+        from indexed.core.v1.engine import search
+        return search
+    if name == "SourceConfig":
+        from indexed.core.v1.engine import SourceConfig
+        return SourceConfig
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 ```

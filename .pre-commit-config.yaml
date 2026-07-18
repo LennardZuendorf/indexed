@@ -39,6 +39,14 @@ repos:
         name: ruff (format)
         stages: [pre-commit, pre-push]
 
+  # ty for type checking (pinned to match the `ty` dev dependency in pyproject.toml)
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.58
+    hooks:
+      - id: ty
+        name: ty (type check)
+        stages: [pre-push]
+
   # Local hooks (run on pre-push)
   - repo: local
     hooks:
@@ -52,7 +60,7 @@ repos:
 
       - id: build-check
         name: build wheel (verify buildable)
-        entry: bash -c 'HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed'
+        entry: bash -c 'uv build --wheel --out-dir dist'
         language: system
         stages: [pre-push]
         pass_filenames: false

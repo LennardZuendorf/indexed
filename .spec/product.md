@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-06-09
+updated: 2026-07-07
 ---
 
 # Product Spec: indexed
@@ -52,7 +52,7 @@ What indexed is **not**:
 | **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
 | **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
 | **Single Collection** | ✅ Shipped | Target specific collection for focused results |
-| **Relevance Scoring** | ✅ Shipped | FAISS L2 distance ranking (lower = closer match) |
+| **Relevance Scoring** | ✅ Shipped | FAISS squared-L2 ranking (lower = closer match) |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
 | Filters | 📋 Planned | Filter by date, source type, metadata |
@@ -109,12 +109,6 @@ What indexed is **not**:
 **What:** Run indexed on developer workstation
 **Why:** Privacy, offline access, zero ops overhead
 **Storage:** `~/.indexed/` (global) or `./.indexed/` (local)
-
-### Docker
-
-**What:** Containerized deployment
-**Why:** Isolated environment, reproducible builds
-**Status:** ✅ Shipped (Dockerfile + compose)
 
 ### Server (Future)
 

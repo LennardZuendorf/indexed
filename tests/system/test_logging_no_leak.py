@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from loguru import logger as loguru_logger
 
-from utils import THIRD_PARTY_LOGGERS, bootstrap_logging
+from indexed.utils import THIRD_PARTY_LOGGERS, bootstrap_logging
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +103,7 @@ class TestParsingModuleNoLeakOnRstFixture:
         return tmp_path
 
     def test_no_docling_noise_for_rst(self, capsys, tmp_path):
-        from parsing import ParsingModule
+        from indexed.parsing import ParsingModule
 
         bootstrap_logging("WARNING")
         fixture = self._make_fixture(tmp_path)

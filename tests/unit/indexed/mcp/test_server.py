@@ -1,9 +1,11 @@
 """Tests for the MCP server implementation."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+from indexed.config.errors import ConfigurationError
 
 # Import the server module to access the underlying functions
 import indexed.mcp.server as server_module
@@ -11,8 +13,7 @@ import indexed.mcp.tools as tools_module
 import indexed.mcp.resources as resources_module
 from indexed.mcp.server import (
     mcp,
-    _get_mcp_config,
-    _get_search_config,
+    _get_config,
     lifespan,
 )
 
@@ -77,6 +78,21 @@ def mock_fastmcp_context():
         yield None
 
 
+@pytest.fixture(autouse=True)
+def disable_mcp_response_cache():
+    """Prevent ResponseCachingMiddleware from leaking data between tests."""
+    from fastmcp.server.middleware.caching import ResponseCachingMiddleware
+
+    original = list(mcp.middleware)
+    mcp.middleware = [
+        middleware
+        for middleware in original
+        if not isinstance(middleware, ResponseCachingMiddleware)
+    ]
+    yield
+    mcp.middleware = original
+
+
 class TestServerInstance:
     """Tests for the FastMCP server instance."""
 
@@ -94,31 +110,31 @@ class TestConfigLoading:
     """Tests for configuration loading functions."""
 
     def test_get_mcp_config_returns_config(self) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
-        config = _get_mcp_config()
+        config = _get_config(MCPConfig)
         assert isinstance(config, MCPConfig)
 
     def test_get_search_config_returns_config(self) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
-        config = _get_search_config()
+        config = _get_config(CoreV1SearchConfig)
         assert isinstance(config, CoreV1SearchConfig)
 
     def test_get_mcp_config_fallback_on_error(self) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
-        with patch.object(server_module, "ConfigService") as mock_config:
-            mock_config.instance.side_effect = Exception("Config error")
-            config = _get_mcp_config()
+        with patch.object(server_module, "get_config") as mock_config:
+            mock_config.side_effect = Exception("Config error")
+            config = _get_config(MCPConfig)
             assert isinstance(config, MCPConfig)
 
     def test_get_search_config_fallback_on_error(self) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
-        with patch.object(server_module, "ConfigService") as mock_config:
-            mock_config.instance.side_effect = Exception("Config error")
-            config = _get_search_config()
+        with patch.object(server_module, "get_config") as mock_config:
+            mock_config.side_effect = Exception("Config error")
+            config = _get_config(CoreV1SearchConfig)
             assert isinstance(config, CoreV1SearchConfig)
 
 
@@ -126,7 +142,7 @@ class TestSearchToolFunction:
     """Tests for the search tool underlying function."""
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_returns_results(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
@@ -191,20 +207,22 @@ class TestSearchToolFunction:
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_handles_error(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_search.side_effect = Exception("Search failed")
+        mock_search.side_effect = ConfigurationError("Search failed")
 
         search_tool = _get_tool("search")
         assert search_tool is not None
         result = search_tool.fn("test query")
 
-        assert "error" in result
-        assert "Search failed" in result["error"]
+        assert result == {
+            "error": "Search failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestSearchCollectionToolFunction:
@@ -212,7 +230,7 @@ class TestSearchCollectionToolFunction:
 
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_returns_results(
         self,
         mock_get_config: MagicMock,
@@ -230,6 +248,7 @@ class TestSearchCollectionToolFunction:
 
         mock_status_item = MagicMock()
         mock_status_item.indexers = ["default_indexer"]
+        mock_status_item.source_type = "localFiles"
         mock_status.return_value = [mock_status_item]
 
         mock_search.return_value = {
@@ -263,7 +282,7 @@ class TestSearchCollectionToolFunction:
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_not_found(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -280,7 +299,7 @@ class TestSearchCollectionToolFunction:
 
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "svc_status")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_collection_handles_error(
         self,
         mock_get_config: MagicMock,
@@ -292,15 +311,19 @@ class TestSearchCollectionToolFunction:
 
         mock_status_item = MagicMock()
         mock_status_item.indexers = ["default_indexer"]
+        mock_status_item.source_type = None
         mock_status.return_value = [mock_status_item]
 
-        mock_search.side_effect = Exception("Search failed")
+        mock_search.side_effect = ConfigurationError("Search failed")
 
         search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
         result = search_collection_tool.fn("my_collection", "test query")
 
-        assert "error" in result
+        assert result == {
+            "error": "Search failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionsListResourceFunction:
@@ -322,21 +345,23 @@ class TestCollectionsListResourceFunction:
 
     @patch.object(resources_module, "svc_status")
     def test_collections_list_handles_error(self, mock_status: MagicMock) -> None:
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         resource = _get_resource("resource://collections")
         assert resource is not None
         result = run_async(resource.fn())
 
-        assert "error" in result
-        assert "Status failed" in result["error"]
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionsStatusListResourceFunction:
     """Tests for the collections_status_list resource underlying function."""
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collections_status_list_returns_details(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -368,27 +393,29 @@ class TestCollectionsStatusListResourceFunction:
         assert collections[0]["number_of_chunks"] == 500
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collections_status_list_handles_error(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         resource = _get_resource("resource://collections/status")
         assert resource is not None
         result = run_async(resource.fn())
 
-        assert "error" in result
-        assert "Status failed" in result["error"]
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestCollectionStatusResourceTemplateFunction:
     """Tests for the collection_status resource template underlying function."""
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_returns_details(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -417,7 +444,7 @@ class TestCollectionStatusResourceTemplateFunction:
         assert result["number_of_documents"] == 50
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_not_found(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
@@ -433,19 +460,22 @@ class TestCollectionStatusResourceTemplateFunction:
         assert "not found" in result["error"]
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_collection_status_handles_error(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        mock_status.side_effect = Exception("Status failed")
+        mock_status.side_effect = ConfigurationError("Status failed")
 
         template = _get_template("resource://collection/{name}")
         assert template is not None
         result = run_async(template.fn(name="my_collection"))
 
-        assert "error" in result
+        assert result == {
+            "error": "Status failed",
+            "type": "ConfigurationError",
+        }
 
 
 class TestToolRegistration:
@@ -508,11 +538,11 @@ class TestResourceDispatch:
         assert "alpha" in result.contents[0].content
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_read_collections_status_static(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_get_config.return_value = MCPConfig()
         item = MagicMock()
@@ -534,11 +564,11 @@ class TestResourceDispatch:
         assert "alpha" in result.contents[0].content
 
     @patch.object(resources_module, "svc_status")
-    @patch.object(server_module, "_get_mcp_config")
+    @patch.object(server_module, "_get_config")
     def test_read_single_collection_template(
         self, mock_get_config: MagicMock, mock_status: MagicMock
     ) -> None:
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         mock_get_config.return_value = MCPConfig()
         item = MagicMock()
@@ -564,15 +594,19 @@ class TestResourceDispatch:
 class TestLifespan:
     """Tests for server lifespan context manager."""
 
-    @patch.object(server_module, "_get_mcp_config")
-    @patch.object(server_module, "_get_search_config")
-    def test_lifespan_yields_config(self, mock_get_search, mock_get_mcp) -> None:
-        from core.v1.config_models import MCPConfig, CoreV1SearchConfig
+    @patch.object(server_module, "_get_config")
+    def test_lifespan_yields_config(self, mock_get_config: MagicMock) -> None:
+        from indexed.core.v1.config_models import MCPConfig, CoreV1SearchConfig
 
         mock_mcp_config = MCPConfig()
         mock_search_config = CoreV1SearchConfig()
-        mock_get_mcp.return_value = mock_mcp_config
-        mock_get_search.return_value = mock_search_config
+
+        def _side_effect(model_cls: type) -> object:
+            if model_cls is MCPConfig:
+                return mock_mcp_config
+            return mock_search_config
+
+        mock_get_config.side_effect = _side_effect
 
         async def run_lifespan():
             async with lifespan(mcp) as state:
@@ -585,16 +619,41 @@ class TestLifespan:
         assert result["mcp_config"] == mock_mcp_config
         assert result["search_config"] == mock_search_config
 
+    def test_lifespan_yields_despite_malformed_global_config(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """R2: a malformed global config.toml must not crash the lifespan —
+        ``resolve_collections_context()`` should degrade to a default
+        global-mode context instead of letting TOMLDecodeError escape."""
+        from indexed.config import reload as reload_config
+
+        fake_home = tmp_path / "home"
+        global_root = fake_home / ".indexed"
+        global_root.mkdir(parents=True)
+        (global_root / "config.toml").write_text("not [ valid toml")
+
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        reload_config()
+
+        async def run_lifespan():
+            async with lifespan(mcp) as state:
+                return state
+
+        result = run_async(run_lifespan())
+
+        assert "cli_context" in result
+        assert result["cli_context"].mode == "global"
+
 
 class TestContextHandling:
     """Tests for context handling in tools and resources."""
 
     @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_search_config")
+    @patch.object(server_module, "_get_config")
     def test_search_uses_lifespan_context_when_available(
         self, mock_get_config: MagicMock, mock_search: MagicMock
     ) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         mock_config = CoreV1SearchConfig()
         mock_config.max_docs = 5
@@ -621,7 +680,7 @@ class TestContextHandling:
     def test_search_falls_back_to_getter_when_context_unavailable(
         self, mock_resolve_config: MagicMock, mock_search: MagicMock
     ) -> None:
-        from core.v1.config_models import CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig
 
         mock_config = CoreV1SearchConfig()
         mock_resolve_config.return_value = mock_config
@@ -637,7 +696,7 @@ class TestContextHandling:
     def test_resolve_config_returns_lifespan_value(self) -> None:
         """Direct test: resolve_config returns the lifespan-stored config when present."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -652,7 +711,7 @@ class TestContextHandling:
     def test_resolve_config_falls_back_to_loader_when_key_missing(self) -> None:
         """Direct test: resolve_config calls loader when ctx has no matching key."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -667,7 +726,7 @@ class TestContextHandling:
     def test_resolve_config_falls_back_to_loader_when_ctx_none(self) -> None:
         """Direct test: resolve_config calls loader when ctx is None."""
         from indexed.mcp.config import resolve_config
-        from core.v1.config_models import MCPConfig
+        from indexed.core.v1.config_models import MCPConfig
 
         cfg = MCPConfig()
         loader = MagicMock(return_value=cfg)

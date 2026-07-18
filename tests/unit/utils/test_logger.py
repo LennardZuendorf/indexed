@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from loguru import logger as loguru_logger
 
-from utils.logger import (
+from indexed.utils.logger import (
     THIRD_PARTY_LOGGERS,
     bootstrap_logging,
     emit_status,
@@ -188,6 +188,68 @@ class TestFileSink:
         bootstrap_logging("WARNING", log_dir=tmp_path)
         loguru_logger.warning("no file")
         assert list(tmp_path.glob("indexed-*.log")) == []
+
+
+class TestMarkupSafety:
+    """R7: console-sink content must render literally through Rich, never be
+    markup-parsed. Today, `_make_console_sink` prints `f"[{style}]{line}[/{style}]"`
+    (or `line` directly when `style` is falsy) — both are plain strings handed to a
+    markup-enabled `Console.print`, so bracket characters (`list[int]`) are parsed
+    as style tags and silently dropped. Loguru's default `catch=True` then means a
+    genuine `MarkupError` would swallow the real message/traceback entirely instead
+    of surfacing it.
+    """
+
+    def test_message_with_brackets_renders_in_full(self):
+        from rich.console import Console
+
+        console = Console(record=True, force_terminal=True, width=100)
+        bootstrap_logging("WARNING", rich_console=console)
+        loguru_logger.warning("search query: list[int] failed")
+        text = console.export_text()
+        assert "list[int]" in text
+
+    def test_exception_traceback_renders_in_full(self):
+        from rich.console import Console
+
+        console = Console(record=True, force_terminal=True, width=100)
+        bootstrap_logging("WARNING", rich_console=console)
+        try:
+            raise ValueError("query: list[int] failed")
+        except ValueError:
+            loguru_logger.exception("boom")
+        text = console.export_text()
+        assert "ValueError: query: list[int] failed" in text
+
+    def test_styled_message_with_brackets_renders_in_full(self):
+        """Non-empty theme style branch (f"[{style}]...[/{style}]") is also unsafe."""
+        from rich.console import Console
+
+        console = Console(record=True, force_terminal=True, width=100)
+        bootstrap_logging(
+            "DEBUG", debug=True, rich_console=console, theme_styles={"DEBUG": "dim"}
+        )
+        loguru_logger.debug("cache[key] hit")
+        text = console.export_text()
+        assert "cache[key]" in text
+
+    def test_styled_exception_traceback_renders_in_full(self):
+        """Non-empty theme style branch for the traceback print is also unsafe."""
+        from rich.console import Console
+
+        console = Console(record=True, force_terminal=True, width=100)
+        bootstrap_logging(
+            "DEBUG",
+            debug=True,
+            rich_console=console,
+            theme_styles={"ERROR": "bold red"},
+        )
+        try:
+            raise KeyError("cache[key] missing")
+        except KeyError:
+            loguru_logger.exception("boom")
+        text = console.export_text()
+        assert "cache[key] missing" in text
 
 
 class TestThemeStylesInjection:

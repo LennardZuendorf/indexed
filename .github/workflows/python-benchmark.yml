@@ -42,7 +42,7 @@ jobs:
         setup-command: python -m pip install uv && python -m uv sync
         pre-benchmark-command: |
           uv run python -c "
-          from core.v1.engine.indexes.embeddings.model_manager import ensure_model
+          from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
           ensure_model('all-MiniLM-L6-v2')
           print('Model ready')
           "

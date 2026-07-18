@@ -3,10 +3,10 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-06-09
+updated: 2026-07-10
 ---
 
-# Tech Branch: Config (`indexed-config`)
+# Tech Branch: Config (`src/indexed/config/`)
 
 Unified config: explicit registration, Pydantic validation, automatic secret routing.
 Lowest layer — imports nothing above it (see [tech.md](tech.md) § Architectural Rules).
@@ -48,9 +48,25 @@ vars never overridden.
 
 ---
 
+## Read-Mostly Config & Write Safety
+
+`config.toml` is **user-owned**: `create` / `update` / `search` never write it.
+CLI-arg overrides, date-stamped incremental queries, and cutoffs live in an
+**in-memory overlay** (`ConfigService.set_overlay`); `INDEXED__*` env values are
+applied on top but **never** baked back into TOML. Only `indexed config set`
+persists, and it writes **atomically** — serialize → validate → tmp → `fsync` →
+`os.replace` — rejecting unserializable input (e.g. `null`) **before** the target
+file is touched, so a bad value can never truncate `config.toml`.
+
+**Secrets** (`_is_sensitive_key`) route to the resolved `.env`, never TOML; they
+are **quoted** so a value containing ` #` or `${...}` survives a dotenv reload
+intact, and are **masked** on `config inspect` / `set` output.
+
+---
+
 ## Storage Directory Structure
 
-Storage dirs owned by `indexed-config` (`storage.py`). Persistence semantics:
+Storage dirs owned by `src/indexed/config/` (`storage.py`). Persistence semantics:
 [tech-core.md](tech-core.md) § Persistence Strategy.
 
 ```text
@@ -81,14 +97,21 @@ Not applied to `~/.indexed/` (outside git repos).
 
 ## Implementation
 
-**Key files:**
+**Key files** (`src/indexed/config/`):
 - `service.py` — `ConfigService` slim orchestrator (singleton)
 - `store.py` — `TomlStore` with `read_for_mode()`, schema versioning
 - `workspace.py` — `WorkspaceManager.resolve_storage_mode()`
 - `env_writer.py` — `EnvFileWriter` (secrets → resolved `.env`)
 - `registry.py` — `ConfigRegistry` (typed spec registration)
-- `models.py` — Pydantic validation models
+- `provider.py` — `Provider`, the immutable typed view over merged config
+- `path_utils.py` — dot-path helpers (`get_by_path`) over nested config dicts
+- `storage.py` — `StorageResolver` + storage-dir layout (see § Storage Directory Structure)
 - `errors.py` — `IndexedError` hierarchy
+
+Pydantic validation models are not centralized in a `config/models.py` — each
+caller registers its own `BaseModel` spec with `ConfigService.register()` (e.g.
+`mcp/config.py`, core/CLI specs); `registry.py`/`service.py`/`provider.py` are
+generic over any registered model type.
 
 ```python
 class ConfigService:
@@ -138,6 +161,13 @@ transport = "stdio"
 host = "127.0.0.1"
 port = 8000
 ```
+
+> **Note:** `[core.v1.indexing]` (`chunk_size`/`chunk_overlap`) and most of
+> `[core.v1.embedding]` are currently **registered but unread** — effective
+> chunking uses the embedder's token window ([tech-core.md](tech-core.md)
+> § Chunk-size invariant), not `chunk_size`. Only `embedding.batch_size` and
+> `[core.v1.search]` are wired today. Tracked for wiring/removal in a later
+> config pass.
 
 ---
 

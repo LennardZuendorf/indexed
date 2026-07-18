@@ -5,14 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indexed.utils.simple_output import (
+from indexed.cli.utils.simple_output import (
     is_simple_output,
     print_json,
     reset_simple_output,
     set_simple_output,
 )
 
-CONFIG_SERVICE_PATH = "indexed_config.ConfigService"
+CONFIG_SERVICE_PATH = "indexed.config.get_config"
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +32,7 @@ class TestIsSimpleOutput:
             with patch(CONFIG_SERVICE_PATH) as mock_cs:
                 mock_instance = MagicMock()
                 mock_instance.load_raw.return_value = {}
-                mock_cs.instance.return_value = mock_instance
+                mock_cs.return_value = mock_instance
                 assert is_simple_output() is False
 
     def test_flag_true(self):
@@ -81,7 +81,7 @@ class TestIsSimpleOutput:
         """Config output.simple_output = True returns True."""
         mock_instance = MagicMock()
         mock_instance.load_raw.return_value = {"output": {"simple_output": True}}
-        mock_config_service.instance.return_value = mock_instance
+        mock_config_service.return_value = mock_instance
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is True
@@ -91,7 +91,7 @@ class TestIsSimpleOutput:
         """Config output.simple_output = False returns False."""
         mock_instance = MagicMock()
         mock_instance.load_raw.return_value = {"output": {"simple_output": False}}
-        mock_config_service.instance.return_value = mock_instance
+        mock_config_service.return_value = mock_instance
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is False
@@ -101,7 +101,7 @@ class TestIsSimpleOutput:
         """Missing output section defaults to False."""
         mock_instance = MagicMock()
         mock_instance.load_raw.return_value = {}
-        mock_config_service.instance.return_value = mock_instance
+        mock_config_service.return_value = mock_instance
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is False
@@ -111,7 +111,7 @@ class TestIsSimpleOutput:
         """output section = None defaults to False."""
         mock_instance = MagicMock()
         mock_instance.load_raw.return_value = {"output": None}
-        mock_config_service.instance.return_value = mock_instance
+        mock_config_service.return_value = mock_instance
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is False
@@ -121,7 +121,7 @@ class TestIsSimpleOutput:
         """Non-boolean config value defaults to False."""
         mock_instance = MagicMock()
         mock_instance.load_raw.return_value = {"output": {"simple_output": "yes"}}
-        mock_config_service.instance.return_value = mock_instance
+        mock_config_service.return_value = mock_instance
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is False
@@ -135,7 +135,7 @@ class TestIsSimpleOutput:
     @patch(CONFIG_SERVICE_PATH)
     def test_config_exception_falls_through(self, mock_config_service):
         """If ConfigService raises, default to False."""
-        mock_config_service.instance.side_effect = RuntimeError("not initialized")
+        mock_config_service.side_effect = RuntimeError("not initialized")
 
         with patch.dict(os.environ, {}, clear=True):
             assert is_simple_output() is False
@@ -176,5 +176,5 @@ class TestResetSimpleOutput:
             with patch(CONFIG_SERVICE_PATH) as mock_cs:
                 mock_instance = MagicMock()
                 mock_instance.load_raw.return_value = {}
-                mock_cs.instance.return_value = mock_instance
+                mock_cs.return_value = mock_instance
                 assert is_simple_output() is False

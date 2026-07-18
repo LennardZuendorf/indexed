@@ -1,0 +1,713 @@
+"""Tests for change_tracker — ChangeTracker and IndexState."""
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from indexed.connectors.files.change_tracker import (
+    ChangeTracker,
+    IndexState,
+)
+
+# Git exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE into hook environments
+# (e.g. the pre-push hook that runs this suite). If inherited, the throwaway
+# repos created below operate on the OUTER repo instead — corrupting its index
+# and making `auto` detect git where there is none. Scrub those vars and pin a
+# clean config (no global/system, no hooks, no signing) so every git call here
+# is fully isolated and deterministic regardless of how pytest was invoked.
+_LEAKED_GIT_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+)
+
+
+def _git_env() -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _LEAKED_GIT_VARS}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+def run_git(cwd, *args, check: bool = True) -> subprocess.CompletedProcess:
+    """Run an isolated git command: no inherited GIT_* env, no hooks, no signing."""
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
+        cwd=str(cwd),
+        capture_output=True,
+        check=check,
+        env=_git_env(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env(monkeypatch):
+    """Drop inherited GIT_* vars for every test.
+
+    The code under test (ChangeTracker) shells out to git too — if it inherits a
+    leaked GIT_DIR/GIT_INDEX_FILE it operates on the outer repo. Scrubbing the
+    process env keeps both the test setup and the tracker pinned to their own
+    repos.
+    """
+    for var in _LEAKED_GIT_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+class TestIndexState:
+    def test_roundtrip_json(self):
+        state = IndexState(
+            last_indexed_commit="abc123",
+            file_hashes={"a.txt": "hash1", "b.txt": "hash2"},
+            last_indexed_at="2026-01-01T00:00:00",
+            indexed_file_count=2,
+        )
+        json_str = state.to_json()
+        restored = IndexState.from_json(json_str)
+        assert restored.last_indexed_commit == "abc123"
+        assert restored.file_hashes == {"a.txt": "hash1", "b.txt": "hash2"}
+        assert restored.indexed_file_count == 2
+
+
+class TestChangeTrackerNone:
+    def test_none_strategy_all_added(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="none")
+        changes = tracker.detect_changes([str(f1)], IndexState())
+        assert len(changes) == 1
+        assert changes[0].status == "added"
+
+
+class TestChangeTrackerContentHash:
+    def test_first_run_all_added(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        changes = tracker.detect_changes([str(f1)], IndexState())
+        assert len(changes) == 1
+        assert changes[0].status == "added"
+
+    def test_no_changes(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1)])
+
+        # No changes
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_modified_file(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1)])
+
+        # Modify
+        f1.write_text("world")
+        changes = tracker.detect_changes([str(f1)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+    def test_deleted_file(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1)])
+
+        # Remove file from the list (simulating it's gone)
+        changes = tracker.detect_changes([], state)
+        assert len(changes) == 1
+        assert changes[0].status == "deleted"
+
+    def test_added_file(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1)])
+
+        f2 = tmp_path / "b.txt"
+        f2.write_text("new file")
+        changes = tracker.detect_changes([str(f1), str(f2)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "added"
+        assert changes[0].path == "b.txt"
+
+
+class TestChangeTrackerAuto:
+    def test_auto_picks_content_hash_without_git(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="auto")
+        assert tracker._resolve_strategy() == "content_hash"
+
+    def test_auto_picks_git_with_git_dir(self, tmp_path):
+        (tmp_path / ".git").mkdir()
+        tracker = ChangeTracker(str(tmp_path), strategy="auto")
+        assert tracker._resolve_strategy() == "git"
+
+
+class TestChangeTrackerGit:
+    @pytest.fixture
+    def git_repo(self, tmp_path):
+        """Create a real, isolated git repo for testing."""
+        run_git(tmp_path, "init")
+        f = tmp_path / "initial.txt"
+        f.write_text("initial")
+        run_git(tmp_path, "add", ".")
+        run_git(tmp_path, "commit", "-m", "init")
+        return tmp_path
+
+    def test_first_run_all_added(self, git_repo):
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        changes = tracker.detect_changes([str(f)], IndexState())
+        assert len(changes) == 1
+        assert changes[0].status == "added"
+
+    def test_same_commit_no_changes(self, git_repo):
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+        changes = tracker.detect_changes([str(f)], state)
+        assert changes == []
+
+    def test_detects_modifications(self, git_repo):
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+
+        # Make a new commit with a modification
+        f.write_text("modified content")
+        run_git(git_repo, "add", ".")
+        run_git(git_repo, "commit", "-m", "modify")
+
+        changes = tracker.detect_changes([str(f)], state)
+        statuses = {ch.status for ch in changes}
+        assert "modified" in statuses
+
+    def test_detects_uncommitted_modifications(self, git_repo):
+        """Uncommitted (unstaged) working-tree changes must be detected via git status."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+
+        # Modify the file WITHOUT committing
+        f.write_text("dirty uncommitted change")
+
+        changes = tracker.detect_changes([str(f)], state)
+        statuses = {ch.status for ch in changes}
+        assert "modified" in statuses, "Uncommitted change was not detected"
+
+    def test_detects_staged_modifications(self, git_repo):
+        """Staged (but not committed) changes must be detected via git status."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        state = tracker.build_state([str(f)])
+
+        f.write_text("staged change")
+        run_git(git_repo, "add", str(f))
+
+        changes = tracker.detect_changes([str(f)], state)
+        statuses = {ch.status for ch in changes}
+        assert "modified" in statuses, "Staged change was not detected"
+
+    def test_subdirectory_base_path(self, tmp_path):
+        """ChangeTracker with base_path as a subdirectory must map git paths correctly."""
+        # Create a nested repo: tmp_path/repo/subdir/file.txt
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subdir = repo / "subdir"
+        subdir.mkdir()
+
+        run_git(repo, "init")
+
+        f = subdir / "file.txt"
+        f.write_text("original")
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-m", "init")
+
+        # Tracker uses the subdirectory as base_path (not the repo root)
+        tracker = ChangeTracker(str(subdir), strategy="git")
+        state = tracker.build_state([str(f)])
+
+        # Modify the file and commit
+        f.write_text("modified")
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-m", "modify")
+
+        changes = tracker.detect_changes([str(f)], state)
+        assert len(changes) == 1, f"Expected 1 change, got {changes}"
+        assert changes[0].status == "modified"
+        assert changes[0].path == "file.txt"
+
+    def test_gitignored_file_detected_as_deleted(self, git_repo):
+        """File previously indexed but now excluded (e.g. .gitignore) must be 'deleted'."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+        # State includes initial.txt as indexed
+        state = tracker.build_state([str(f)])
+
+        # Simulate the file being gitignored: still on disk, not in the current walk
+        # Pass an empty file_paths list (as if the walker skipped it)
+        changes = tracker.detect_changes([], state)
+
+        deleted = [ch for ch in changes if ch.status == "deleted"]
+        assert len(deleted) == 1
+        assert deleted[0].path == "initial.txt"
+
+    def test_reverted_edit_reindexed(self, git_repo):
+        """D2: a file edited (and indexed) then reverted back to its committed
+        content must be re-scanned — git HEAD/working-tree are unchanged, so
+        only the stored-hash reconcile catches it."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        f = git_repo / "initial.txt"
+
+        # Simulate: the last successful run indexed an *edited* (uncommitted)
+        # version of the file.
+        f.write_text("edited content that was indexed")
+        state = tracker.build_state([str(f)])
+
+        # The working tree is now reverted back to the committed content —
+        # git sees no diff at all (HEAD unchanged, working tree == HEAD).
+        f.write_text("initial")
+
+        changes = tracker.detect_changes([str(f)], state)
+        assert len(changes) == 1, f"Expected the revert to be detected, got {changes}"
+        assert changes[0].status == "modified"
+        assert changes[0].path == "initial.txt"
+
+    def test_non_ascii_filename_added_and_detected(self, git_repo):
+        """D2: a non-ASCII filename must survive git's C-quoting round trip so
+        it is detected as added, not silently dropped."""
+        tracker = ChangeTracker(str(git_repo), strategy="git")
+        original = git_repo / "initial.txt"
+        state = tracker.build_state([str(original)])
+
+        new_file = git_repo / "café.py"
+        new_file.write_text("print('café')")
+
+        changes = tracker.detect_changes([str(original), str(new_file)], state)
+        statuses = {ch.path: ch.status for ch in changes}
+        assert statuses.get("café.py") == "added", (
+            f"non-ASCII filename must be detected as added, got {statuses!r}"
+        )
+
+
+class TestParseDiffNameStatus:
+    """Unit tests for _parse_diff_name_status without a real git repo."""
+
+    def test_added_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "A\tnew_file.txt\n"
+        result = tracker._parse_diff_name_status(output, None, {"new_file.txt"})
+        assert result == {"new_file.txt": "added"}
+
+    def test_modified_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "M\texisting.txt\n"
+        result = tracker._parse_diff_name_status(output, None, {"existing.txt"})
+        assert result == {"existing.txt": "modified"}
+
+    def test_deleted_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "D\tremoved.txt\n"
+        result = tracker._parse_diff_name_status(output, None, set())
+        assert result == {"removed.txt": "deleted"}
+
+    def test_renamed_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "R100\told_name.txt\tnew_name.txt\n"
+        result = tracker._parse_diff_name_status(output, None, {"new_name.txt"})
+        assert result["old_name.txt"] == "deleted"
+        assert result["new_name.txt"] == "added"
+
+    def test_added_file_not_in_current_rel_ignored(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "A\tnew_file.txt\n"
+        result = tracker._parse_diff_name_status(output, None, set())
+        assert result == {}
+
+    def test_empty_output(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        result = tracker._parse_diff_name_status("", None, set())
+        assert result == {}
+
+    def test_multiple_changes(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "A\ta.txt\nM\tb.txt\nD\tc.txt\n"
+        result = tracker._parse_diff_name_status(output, None, {"a.txt", "b.txt"})
+        assert result == {"a.txt": "added", "b.txt": "modified", "c.txt": "deleted"}
+
+    def test_with_git_toplevel(self, tmp_path):
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        tracker = ChangeTracker(str(sub), strategy="git")
+        output = "M\tsubdir/file.txt\n"
+        result = tracker._parse_diff_name_status(output, str(tmp_path), {"file.txt"})
+        assert result == {"file.txt": "modified"}
+
+    def test_path_outside_base_ignored(self, tmp_path):
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        tracker = ChangeTracker(str(sub), strategy="git")
+        output = "M\tother/file.txt\n"
+        result = tracker._parse_diff_name_status(output, str(tmp_path), {"file.txt"})
+        assert result == {}
+
+    def test_c_quoted_non_ascii_path_unquoted(self, tmp_path):
+        """D2: git's C-quoted octal-escaped form must be unquoted to match."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'M\t"caf\\303\\251.txt"\n'
+        result = tracker._parse_diff_name_status(output, None, {"café.txt"})
+        assert result == {"café.txt": "modified"}
+
+    def test_c_quoted_rename_both_halves_unquoted(self, tmp_path):
+        """D2: each half of a rename is unquoted independently."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'R100\t"old\\303\\251.txt"\t"new\\303\\251.txt"\n'
+        result = tracker._parse_diff_name_status(output, None, {"newé.txt"})
+        assert result["oldé.txt"] == "deleted"
+        assert result["newé.txt"] == "added"
+
+
+class TestParseStatusPorcelain:
+    """Unit tests for _parse_status_porcelain."""
+
+    def test_modified_staged(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "M  file.txt\n"
+        result = tracker._parse_status_porcelain(output, None, {"file.txt"})
+        assert result == {"file.txt": "modified"}
+
+    def test_modified_unstaged(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = " M file.txt\n"
+        result = tracker._parse_status_porcelain(output, None, {"file.txt"})
+        assert result == {"file.txt": "modified"}
+
+    def test_untracked_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "?? new_file.txt\n"
+        result = tracker._parse_status_porcelain(output, None, {"new_file.txt"})
+        assert result == {"new_file.txt": "added"}
+
+    def test_deleted_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "D  removed.txt\n"
+        result = tracker._parse_status_porcelain(output, None, set())
+        assert result == {"removed.txt": "deleted"}
+
+    def test_deleted_unstaged(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = " D removed.txt\n"
+        result = tracker._parse_status_porcelain(output, None, set())
+        assert result == {"removed.txt": "deleted"}
+
+    def test_renamed_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "R  old.txt -> new.txt\n"
+        result = tracker._parse_status_porcelain(output, None, {"new.txt"})
+        assert result["old.txt"] == "deleted"
+        assert result["new.txt"] == "added"
+
+    def test_added_staged(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "A  added.txt\n"
+        result = tracker._parse_status_porcelain(output, None, {"added.txt"})
+        assert result == {"added.txt": "added"}
+
+    def test_short_line_skipped(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = "ab\n"
+        result = tracker._parse_status_porcelain(output, None, set())
+        assert result == {}
+
+    def test_empty_output(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        result = tracker._parse_status_porcelain("", None, set())
+        assert result == {}
+
+    def test_path_outside_base_ignored(self, tmp_path):
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        tracker = ChangeTracker(str(sub), strategy="git")
+        output = " M other/file.txt\n"
+        result = tracker._parse_status_porcelain(output, str(tmp_path), {"file.txt"})
+        assert result == {}
+
+    def test_c_quoted_non_ascii_path_unquoted(self, tmp_path):
+        """D2: git's C-quoted octal-escaped form must be unquoted to match."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'M  "caf\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"café.txt"})
+        assert result == {"café.txt": "modified"}
+
+    def test_c_quoted_untracked_path_unquoted(self, tmp_path):
+        """D2: an untracked non-ASCII path must also be unquoted."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = '?? "caf\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"café.txt"})
+        assert result == {"café.txt": "added"}
+
+    def test_c_quoted_rename_both_halves_unquoted(self, tmp_path):
+        """D2: each half of a rename is unquoted independently, and the whole
+        '"old" -> "new"' field is not treated as one big quoted blob."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        output = 'R  "old\\303\\251.txt" -> "new\\303\\251.txt"\n'
+        result = tracker._parse_status_porcelain(output, None, {"newé.txt"})
+        assert result["oldé.txt"] == "deleted"
+        assert result["newé.txt"] == "added"
+
+
+class TestGitUnquote:
+    """Unit tests for the _git_unquote C-quote helper."""
+
+    def test_unquoted_path_passthrough(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote("plain/path.txt") == "plain/path.txt"
+
+    def test_c_quoted_non_ascii_decoded(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote('"caf\\303\\251.txt"') == "café.txt"
+
+    def test_quoted_ascii_with_special_chars(self, tmp_path):
+        """A quoted path with an escaped tab/quote still round-trips."""
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        assert tracker._git_unquote('"a\\tb.txt"') == "a\tb.txt"
+
+
+class TestChangeTrackerMtime:
+    """Tests for the mtime change detection strategy."""
+
+    def test_first_run_all_added(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        changes = tracker.detect_changes([str(f1)], IndexState())
+        assert len(changes) == 1
+        assert changes[0].status == "added"
+
+    def test_no_changes_when_not_modified(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_modified_file_detected(self, tmp_path):
+        import time
+
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+
+        # Ensure mtime changes
+        time.sleep(0.05)
+        f1.write_text("world")
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+    def test_deleted_file_detected(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+
+        changes = tracker.detect_changes([], state)
+        assert len(changes) == 1
+        assert changes[0].status == "deleted"
+
+    def test_content_change_with_preserved_mtime_and_different_size_detected(
+        self, tmp_path
+    ):
+        """A size check must catch timestamp-preserving edits (rsync -a, git
+        checkout) where content changes but mtime does not advance past the
+        cutoff — as long as the edit also changes the file's size, which is
+        the realistic case for a content edit. mtime alone misses this."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        original_mtime = os.path.getmtime(f1)
+
+        # Content changes (and length changes), but mtime is restored to its
+        # pre-edit value.
+        f1.write_text("completely different content")
+        os.utime(f1, (original_mtime, original_mtime))
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+    def test_same_size_same_mtime_content_change_not_detected(self, tmp_path):
+        """Documents the mtime strategy's known, accepted limitation: a
+        content edit that preserves BOTH mtime and size (e.g. `touch -r`
+        followed by a same-length in-place edit) is invisible to this cheap
+        strategy since it never reads file content. Use content_hash for
+        guaranteed detection regardless of cost."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        original_mtime = os.path.getmtime(f1)
+
+        f1.write_text("world")  # same length (5 bytes), different content
+        os.utime(f1, (original_mtime, original_mtime))
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_no_content_read_in_common_unchanged_case(self, tmp_path, monkeypatch):
+        """The common case (mtime unchanged AND size unchanged, i.e. most
+        files on an incremental run) must not read/hash file content at all
+        — that's the whole performance point of the mtime strategy over
+        content_hash."""
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+
+        def _boom(self, *args, **kwargs):
+            raise AssertionError(
+                "mtime strategy must not read file content when mtime and "
+                "size are both unchanged"
+            )
+
+        monkeypatch.setattr(Path, "read_bytes", _boom)
+
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+    def test_missing_size_in_old_state_falls_back_to_mtime_only(self, tmp_path):
+        """Backward compatibility: a state persisted before size-tracking was
+        added has no `file_sizes` at all. Detection for those entries must
+        fall back to the prior mtime-only comparison rather than crashing."""
+        import time
+
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        old_state = IndexState(
+            last_indexed_commit=state.last_indexed_commit,
+            file_hashes=state.file_hashes,
+            file_sizes=None,  # simulate a pre-size-tracking persisted state
+            last_indexed_at=state.last_indexed_at,
+            indexed_file_count=state.indexed_file_count,
+        )
+
+        # mtime unchanged, size unknown -> mtime-only says "unchanged".
+        changes = tracker.detect_changes([str(f1)], old_state)
+        assert changes == []
+
+        # mtime bumped -> mtime-only still catches it, no crash on missing size.
+        time.sleep(0.05)
+        f1.write_text("world")
+        changes = tracker.detect_changes([str(f1)], old_state)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+    def test_invalid_last_indexed_at(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = IndexState(
+            file_hashes={"a.txt": "somehash"},
+            last_indexed_at="not-a-valid-date",
+        )
+        # Should not crash, cutoff becomes None so no modifications detected
+        changes = tracker.detect_changes([str(f1)], state)
+        assert changes == []
+
+
+class TestChangeTrackerBuildState:
+    """Tests for build_state method."""
+
+    def test_build_state_returns_hashes(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1)])
+        assert state.file_hashes is not None
+        assert "a.txt" in state.file_hashes
+        assert state.indexed_file_count == 1
+        assert state.last_indexed_at is not None
+
+    def test_build_state_returns_sizes(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f1.write_text("hello")  # 5 bytes
+        tracker = ChangeTracker(str(tmp_path), strategy="mtime")
+        state = tracker.build_state([str(f1)])
+        assert state.file_sizes is not None
+        assert state.file_sizes["a.txt"] == 5
+
+    def test_build_state_skips_unreadable(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(tmp_path / "nonexistent.txt")])
+        assert state.file_hashes == {}
+        assert state.indexed_file_count == 1
+
+    def test_build_state_multiple_files(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f2 = tmp_path / "b.txt"
+        f1.write_text("aaa")
+        f2.write_text("bbb")
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        state = tracker.build_state([str(f1), str(f2)])
+        assert len(state.file_hashes) == 2
+        assert state.indexed_file_count == 2
+
+
+class TestGitPathToRel:
+    """Tests for _git_path_to_rel."""
+
+    def test_with_toplevel(self, tmp_path):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        tracker = ChangeTracker(str(sub), strategy="git")
+        result = tracker._git_path_to_rel("sub/file.txt", str(tmp_path))
+        assert result == "file.txt"
+
+    def test_without_toplevel(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="git")
+        result = tracker._git_path_to_rel("file.txt", None)
+        assert result == "file.txt"
+
+    def test_outside_base_returns_none(self, tmp_path):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        tracker = ChangeTracker(str(sub), strategy="git")
+        result = tracker._git_path_to_rel("other/file.txt", str(tmp_path))
+        assert result is None
+
+
+class TestChangeTrackerHashOSError:
+    """Test hash strategy handles OS errors on read."""
+
+    def test_oserror_on_read_skips_file(self, tmp_path):
+        tracker = ChangeTracker(str(tmp_path), strategy="content_hash")
+        # Pass a path that doesn't exist
+        changes = tracker.detect_changes([str(tmp_path / "missing.txt")], IndexState())
+        assert changes == []
