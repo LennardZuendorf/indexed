@@ -72,6 +72,32 @@ class EngineNotAvailableError(CoreError):
         )
 
 
+class CoreV2Error(CoreError):
+    """A core.v2 engine operation failed.
+
+    Wraps upstream (LlamaIndex) exceptions at the v2 service boundary, which
+    have no stable hierarchy (tech.md §Errors), so every failure still inherits
+    :class:`~indexed.config.errors.IndexedError` (CLI exit codes + MCP
+    envelopes keep working).
+    """
+
+
+class UpdateNotSupportedError(CoreV2Error):
+    """``update`` on a v2 collection — deferred to core-v2/3.
+
+    v2 incremental update is not implemented in the create/search MVP; re-create
+    the collection to refresh it for now. Raised (never a crash) so the CLI
+    surfaces an actionable message.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "v2 incremental update arrives in core-v2/3; re-create the "
+            "collection to refresh it for now (indexed index create "
+            "--engine v2 ...)."
+        )
+
+
 class UnknownVectorStoreError(CoreError):
     """A v2 collection records a vector store this installation can't load.
 
@@ -94,8 +120,10 @@ class UnknownVectorStoreError(CoreError):
 
 __all__ = [
     "CoreError",
+    "CoreV2Error",
     "EngineMismatchError",
     "UnknownEngineVersionError",
     "EngineNotAvailableError",
     "UnknownVectorStoreError",
+    "UpdateNotSupportedError",
 ]

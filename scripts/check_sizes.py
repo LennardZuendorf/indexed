@@ -17,7 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 23_500
+SRC_LOC_MAX = 24_600
+# Raised from 23_500 by core-v2/2c, which wires the v2 engine end to end:
+# `core/v2/{persist,ingestion,retrieval,_common}.py` + `core/v2/services/` +
+# the facade's `_engine_impl("2")` branch and per-engine grouping in
+# `core/engine.py` + the CoreV2Error/UpdateNotSupportedError types — genuine
+# new-feature surface, not stealth regrowth; ceiling = measured (24_433) +
+# headroom.
 # Raised from 23_300 by core-v2/2b, which adds the native embedding factory
 # (`core/v2/embedding/local.py`) + vector-store construction/LOAD dispatch
 # (`core/v2/stores.py`) + the UnknownVectorStoreError — genuine new-feature
@@ -29,7 +35,11 @@ SRC_LOC_MAX = 23_500
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 32_800
+TEST_LOC_MAX = 33_800
+# Raised from 32_800 by core-v2/2c's engine tests (persist crash-safety,
+# ingestion/retrieval/services model-free + KNOWN-HIT model-gated, facade
+# grouping + mixed v1/v2, cache-drift guard); ceiling = measured (33_599) +
+# headroom.
 # Raised from 32_500 by core-v2/2b's model-free wiring + real-model
 # (offline-proof / parity / store-dispatch) tests; ceiling = measured
 # (32_684) + headroom.

@@ -369,38 +369,46 @@ def test_update_engine_two_mismatch_message_names_both_engines_and_remedy(
     assert "indexed index migrate legacy" in message
 
 
-# --- create with engine="2": v2 not yet available ----------------------------
+# --- create with engine="2": v2 is now available (core-v2/2c) -----------------
 
 
-def test_create_engine_two_raises_not_available(tmp_path: Path) -> None:
+def test_create_engine_two_routes_to_v2(monkeypatch, tmp_path: Path) -> None:
+    """``create --engine v2`` now routes to the real v2 engine services."""
     import indexed.core.engine as facade
-    from indexed.core.errors import EngineNotAvailableError
+    import indexed.core.v2.services as v2_services
 
-    with pytest.raises(EngineNotAvailableError):
-        facade.create(
-            ["cfg"],
-            engine="2",
-            connector_factory=lambda c: None,
-            collections_path=str(tmp_path),
-        )
+    captured: dict = {}
+    monkeypatch.setattr(
+        v2_services,
+        "create",
+        lambda configs, **kw: captured.update({"configs": configs, "kw": kw}),
+    )
+
+    facade.create(
+        ["cfg"],
+        engine="2",
+        connector_factory=lambda c: None,
+        collections_path=str(tmp_path),
+    )
+
+    assert captured["configs"] == ["cfg"]
+    # engine is resolved by the facade, never forwarded into the engine signature.
+    assert "engine" not in captured["kw"]
 
 
-def test_create_engine_two_does_not_import_llama_index(tmp_path: Path) -> None:
-    """The v2 branch must fail before importing any heavy engine module."""
+def test_v2_services_module_import_is_llama_index_lazy() -> None:
+    """Resolving the v2 engine services module (what ``_engine_impl('2')`` does)
+    must NOT import llama-index at module top, keeping CLI startup <1s."""
+    import subprocess
     import sys
 
-    import indexed.core.engine as facade
-    from indexed.core.errors import EngineNotAvailableError
-
-    with pytest.raises(EngineNotAvailableError):
-        facade.create(
-            ["cfg"],
-            engine="2",
-            connector_factory=lambda c: None,
-            collections_path=str(tmp_path),
-        )
-
-    assert "llama_index" not in sys.modules
+    code = (
+        "import indexed.core.v2.services\n"
+        "import sys\n"
+        "bad = sorted(m for m in sys.modules if m.startswith('llama_index'))\n"
+        "assert not bad, bad\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 # --- routing edge cases ------------------------------------------------------
@@ -448,27 +456,28 @@ def test_search_all_collections_engine_two_enumerates_and_mismatches(
         facade.search("q", configs=None, collections_path=str(tmp_path), engine="2")
 
 
-def test_clear_engine_two_on_missing_collection_is_not_available(
+def test_clear_engine_two_on_missing_collection_routes_to_v2(
     tmp_path: Path,
 ) -> None:
     """An explicit engine on a non-existent collection skips detection (nothing
-    to conflict with) and routes to the requested engine (v2 unavailable)."""
+    to conflict with) and routes to v2, whose clear is a safe no-op."""
     import indexed.core.engine as facade
-    from indexed.core.errors import EngineNotAvailableError
 
-    with pytest.raises(EngineNotAvailableError):
-        facade.clear(["ghost"], collections_path=str(tmp_path), engine="2")
+    # Must not raise: v2 clear of a non-existent dir is a no-op.
+    facade.clear(["ghost"], collections_path=str(tmp_path), engine="2")
+    assert not (tmp_path / "ghost").exists()
 
 
 def test_internal_tmp_dirs_excluded_from_enumeration(tmp_path: Path) -> None:
     """Build-aside/trash dirs are skipped when enumerating for an explicit
-    engine, so they don't spuriously trigger a mismatch."""
+    engine, so they don't spuriously trigger a mismatch and route cleanly to
+    v2 (which discovers no real collection and returns an empty result set)."""
     import indexed.core.engine as facade
-    from indexed.core.errors import EngineNotAvailableError
 
     _make_collection(tmp_path, "col.tmp-1234")
     _make_collection(tmp_path, "col.trash-99")
 
-    # Only transient dirs exist -> nothing real to conflict with -> routes to v2.
-    with pytest.raises(EngineNotAvailableError):
-        facade.search("q", configs=None, collections_path=str(tmp_path), engine="2")
+    result = facade.search(
+        "q", configs=None, collections_path=str(tmp_path), engine="2"
+    )
+    assert result == {}

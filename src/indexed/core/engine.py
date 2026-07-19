@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from indexed.config.errors import ConfigurationError
 from indexed.core.errors import (
     EngineMismatchError,
-    EngineNotAvailableError,
     UnknownEngineVersionError,
 )
 from indexed.core.versioning import EngineVersion, detect_engine_version
@@ -82,15 +81,19 @@ def _validate_engine(engine: str) -> EngineVersion:
 def _engine_impl(version: EngineVersion) -> Any:
     """Return the engine services module for a version.
 
-    The single indirection every routed op dispatches through. core-v2/2 makes
-    the ``"2"`` branch real by importing the v2 engine here instead of raising.
+    The single indirection every routed op dispatches through. core-v2/2c makes
+    the ``"2"`` branch real by importing the v2 engine services here (a
+    function-local import — the v2 services module itself keeps LlamaIndex
+    imports function-local, so this stays cheap and CLI startup stays <1s).
     """
     if version == "1":
         from indexed.core.v1.engine import services as _v1_services
 
         return _v1_services
     if version == "2":
-        raise EngineNotAvailableError("2")
+        from indexed.core.v2 import services as _v2_services
+
+        return _v2_services
     # ``version`` is a validated ``EngineVersion`` before it reaches here, so this
     # branch is unreachable — raise an explicit error rather than ``raise <str>``
     # (which would itself be a ``TypeError``) to make the invariant obvious.
@@ -192,6 +195,84 @@ def _resolve_existing_engine(
     return _DEFAULT_ENGINE
 
 
+# --- per-engine grouping for list-all / mixed-engine ops (core-v2/2c) ---------
+
+
+def _group_names_by_engine(
+    collection_names: List[str],
+    collections_path: Optional[str],
+) -> "dict[EngineVersion, List[str]]":
+    """Split requested names by their on-disk engine, preserving request order.
+
+    Same per-name detection semantics as ``_resolve_existing_engine`` on the
+    default path (R2/R6/R1):
+
+    - readable ``version`` marker → that engine's group;
+    - missing/corrupt/unreadable manifest → the DEFAULT engine's group (so v1's
+      own not-found/corrupt handling still applies — status/inspect omit them,
+      clear deletes them);
+    - readable *unknown* marker → ``UnknownEngineVersionError`` (fail loud).
+
+    Group insertion order follows first appearance, so concatenated results keep
+    a stable order.
+    """
+    base = _collections_base(collections_path)
+    groups: "dict[EngineVersion, List[str]]" = {}
+    for name in collection_names:
+        collection_path = base / name
+        if not (collection_path / "manifest.json").exists():
+            version: EngineVersion = _DEFAULT_ENGINE
+        else:
+            try:
+                version = detect_engine_version(collection_path)
+            except UnknownEngineVersionError:
+                raise
+            except ValueError:
+                version = _DEFAULT_ENGINE
+        groups.setdefault(version, []).append(name)
+    return groups
+
+
+def _coerce_status(version: EngineVersion, raw: Any) -> Any:
+    """v1 returns ``CollectionStatus`` objects already; v2 returns field-keyed
+    dicts — build the shared dataclass from them (the facade may import v1)."""
+    if version != "2":
+        return raw
+    from indexed.core.v1.engine.services import CollectionStatus
+
+    return [CollectionStatus(**d) for d in raw]
+
+
+def _coerce_info(version: EngineVersion, raw: Any) -> Any:
+    """As ``_coerce_status`` but for the detailed ``CollectionInfo`` surface."""
+    if version != "2":
+        return raw
+    from indexed.core.v1.engine.services import CollectionInfo
+
+    return [CollectionInfo(**d) for d in raw]
+
+
+def _configs_for_group(
+    configs: Optional[List[Any]], group_names: List[str]
+) -> List[Any]:
+    """The per-engine subset of ``configs`` for a search group.
+
+    With explicit ``configs`` → the configs whose collection is in this group.
+    With ``configs is None`` (all collections) → minimal stub configs (as v1's
+    own auto-discovery builds), so each engine searches ONLY its own group and
+    never auto-discovers the other engine's collections.
+    """
+    if configs is not None:
+        wanted = set(group_names)
+        return [cfg for cfg in configs if getattr(cfg, "name", cfg) in wanted]
+    from indexed.core.v1.engine.services import SourceConfig
+
+    return [
+        SourceConfig(name=name, type="localFiles", base_url_or_path="", indexer=None)
+        for name in group_names
+    ]
+
+
 # --- routed callables (byte-identical v1 signatures + ``engine``) -------------
 
 
@@ -291,28 +372,43 @@ def search(
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
-    ``configs=None`` (all collections) enumerates the on-disk collections and
-    detects per-collection on both the default and the explicit path; the
-    multi-engine merge lands in a later unit.
+    ``configs=None`` (all collections) enumerates on-disk collections. A mixed
+    v1/v2 set is split per engine and the per-collection result dicts are MERGED
+    (union of collection-keyed dicts, each in its engine's native score units;
+    cross-engine ranking is core-v2/6). An explicit conflicting ``engine`` still
+    raises ``EngineMismatchError`` before any I/O.
     """
+
+    def _run(version: EngineVersion, cfgs: Optional[List[Any]]) -> Dict[str, Any]:
+        out: Dict[str, Any] = _engine_impl(version).search(
+            query,
+            configs=cfgs,
+            max_chunks=max_chunks,
+            max_docs=max_docs,
+            score_threshold=score_threshold,
+            include_full_text=include_full_text,
+            include_all_chunks=include_all_chunks,
+            include_matched_chunks=include_matched_chunks,
+            collections_path=collections_path,
+        )
+        return out
+
     names = (
         [getattr(cfg, "name", cfg) for cfg in configs]
         if configs
         else _existing_collection_names(collections_path)
     )
-    version = _resolve_existing_engine(engine, names, collections_path)
-    result: Dict[str, Any] = _engine_impl(version).search(
-        query,
-        configs=configs,
-        max_chunks=max_chunks,
-        max_docs=max_docs,
-        score_threshold=score_threshold,
-        include_full_text=include_full_text,
-        include_all_chunks=include_all_chunks,
-        include_matched_chunks=include_matched_chunks,
-        collections_path=collections_path,
-    )
-    return result
+    if engine is not None:
+        return _run(_resolve_existing_engine(engine, names, collections_path), configs)
+
+    groups = _group_names_by_engine(names, collections_path)
+    if len(groups) <= 1:
+        return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
+
+    merged: Dict[str, Any] = {}
+    for grp_version, grp_names in groups.items():
+        merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
+    return merged
 
 
 def status(
@@ -322,15 +418,33 @@ def status(
     collections_path: Optional[str] = None,
     engine: Optional[str] = None,
 ) -> List[Any]:
-    """Collection status, routing per the collection's engine (R2)."""
-    names = collection_names or _existing_collection_names(collections_path)
-    version = _resolve_existing_engine(engine, names, collections_path)
-    result: List[Any] = _engine_impl(version).status(
-        collection_names=collection_names,
-        include_index_size=include_index_size,
-        collections_path=collections_path,
-    )
-    return result
+    """Collection status, routing/merging per the collection's engine (R2)."""
+
+    def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
+        return _coerce_status(
+            version,
+            _engine_impl(version).status(
+                collection_names=names,
+                include_index_size=include_index_size,
+                collections_path=collections_path,
+            ),
+        )
+
+    resolved = collection_names or _existing_collection_names(collections_path)
+    if engine is not None:
+        return _run(
+            _resolve_existing_engine(engine, resolved, collections_path),
+            collection_names,
+        )
+
+    groups = _group_names_by_engine(resolved, collections_path)
+    if len(groups) <= 1:
+        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+
+    out: List[Any] = []
+    for grp_version, grp_names in groups.items():
+        out.extend(_run(grp_version, grp_names))
+    return out
 
 
 def inspect(
@@ -340,15 +454,33 @@ def inspect(
     collections_path: Optional[str] = None,
     engine: Optional[str] = None,
 ) -> List[Any]:
-    """Detailed collection inspection, routing per the collection's engine (R2)."""
-    names = collection_names or _existing_collection_names(collections_path)
-    version = _resolve_existing_engine(engine, names, collections_path)
-    result: List[Any] = _engine_impl(version).inspect(
-        collection_names=collection_names,
-        include_index_size=include_index_size,
-        collections_path=collections_path,
-    )
-    return result
+    """Detailed collection inspection, routing/merging per engine (R2)."""
+
+    def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
+        return _coerce_info(
+            version,
+            _engine_impl(version).inspect(
+                collection_names=names,
+                include_index_size=include_index_size,
+                collections_path=collections_path,
+            ),
+        )
+
+    resolved = collection_names or _existing_collection_names(collections_path)
+    if engine is not None:
+        return _run(
+            _resolve_existing_engine(engine, resolved, collections_path),
+            collection_names,
+        )
+
+    groups = _group_names_by_engine(resolved, collections_path)
+    if len(groups) <= 1:
+        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+
+    out: List[Any] = []
+    for grp_version, grp_names in groups.items():
+        out.extend(_run(grp_version, grp_names))
+    return out
 
 
 def __getattr__(name: str) -> Any:

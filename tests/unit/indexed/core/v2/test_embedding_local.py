@@ -178,3 +178,20 @@ def test_parity_with_v1_embedder_is_cosine_one() -> None:
     n1 = math.sqrt(sum(a * a for a in v1))
     n2 = math.sqrt(sum(b * b for b in v2))
     assert dot / (n1 * n2) > 0.9999
+
+
+# --- cache-resolution parity guard (core-v2/2c) ------------------------------
+
+
+def test_v2_cache_check_agrees_with_v1_cache_check() -> None:
+    """v2's ``_is_model_cached`` must agree with v1's ``is_model_cached`` for the
+    default model, so a future v1 cache-resolution edit can't silently drift v2
+    into an offline cache miss (belt-and-suspenders; pure path checks, no model
+    needed). Tests MAY import v1; source may not.
+    """
+    from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+        is_model_cached,
+    )
+
+    for name in (MODEL, "all-MiniLM-L6-v2"):
+        assert local._is_model_cached(name) == is_model_cached(name), name
