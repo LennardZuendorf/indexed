@@ -27,7 +27,7 @@ units:
     requires: ["core-v2/2"]
   - id: "core-v2/8"
     title: "Cloud-connector parity nets, benchmarks, parity report"
-    status: planned
+    status: done
     requires: ["core-v2/3"]
 ---
 

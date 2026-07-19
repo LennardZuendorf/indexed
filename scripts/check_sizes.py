@@ -55,7 +55,13 @@ SRC_LOC_MAX = 26_100
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 36_400
+TEST_LOC_MAX = 36_850
+# Raised from 36_400 by core-v2/8's tests: the v2 cloud-connector lifecycle net
+# (`test_lifecycle_cloud_v2.py`: jira/confluence/outline known-hit
+# create→search→update→inspect→remove), the v2 benchmark rows + subprocess
+# v1-vs-v2 budget-ratio test in `test_e2e_performance.py`, and the
+# out-of-process MCP v2 stdio smoke (`test_mcp_v2_out_of_process.py`) — genuine
+# parity/perf coverage (R4/R12); ceiling = measured (36_579) + headroom.
 # Raised from 35_800 by core-v2/6's tests: the rerank suite (disabled lazy-import
 # probe, enabled fake-reranker order/top_n, gated real-CE) in `test_retrieval.py`,
 # the cross-engine unified-relevance + v1-only byte-identical tests in

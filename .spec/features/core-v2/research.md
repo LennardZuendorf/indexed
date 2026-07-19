@@ -2,7 +2,7 @@
 type: feature-research
 feature: core-v2
 parent: product.md
-updated: 2026-07-18
+updated: 2026-07-19
 ---
 
 # core-v2 — Research
@@ -141,3 +141,49 @@ manifest is authoritative for existing collections and selectors
 migrate v1→v2 only on explicit request, offline by default. Default store
 SimpleVectorStore, Qdrant embedded optional; local embeddings default, remote
 providers opt-in via extras; rerank opt-in; KG/hybrid deferred to siblings.
+
+## v1-vs-v2 parity capture (core-v2/8, measured 2026-07-19)
+
+The evidence base for the later default-flip gate. Measured on all-MiniLM-L6-v2
+(cached, offline) with `tests/benchmarks/test_e2e_performance.py` (perf) and
+dedicated probes (disk/relevance); numbers are from this repo on the CI-class
+runner and will vary by machine — the RATIOS are the durable signal.
+
+| Dimension | v1 | v2 | v2/v1 | Budget | Verdict |
+|---|---|---|---|---|---|
+| Warm create (full CLI) | 8.57 s | 9.78 s | **1.14×** | ≤1.5× | PASS |
+| Warm search (full CLI) | 5.89 s | 7.36 s | **1.25×** | ≤2.0× | PASS |
+| Collection disk (repo-docs corpus) | 46.8 KiB | 180.0 KiB | **3.85×** | (no budget) | noted |
+| Top-hit agreement (needle queries) | — | — | **3/3** | ~1:1 | PASS |
+
+**Perf (R12).** Both budgets hold with margin. Ratios are measured
+OUT-OF-PROCESS (a fresh `indexed` process per invocation, both engines loading
+the same disk-cached model) — the realistic steady state for a CLI tool and the
+fair basis for the tech.md budget, which is about the search-algorithm cost
+(brute-force NumPy vs FAISS FlatL2, same O(N·d)). An *in-process* `CliRunner`
+loop instead hands v1 a cross-invocation process-global embed-model cache that
+v2's per-call `HuggingFaceEmbedding` does not share, inflating the warm-search
+ratio to ~5× — an artifact of a missing v2 embed-model cache, NOT the retrieval
+cost. **Follow-up (non-blocking):** a v2 process-global embed-model cache
+(analogous to v1's `model_manager`) would close that in-process gap and is the
+one clear perf win before or after the default flip; it does not affect the
+real per-process CLI number.
+
+**Disk.** v2 collections are ~3.8× larger on the same corpus: v2's
+`storage/docstore.json` stores every chunk's full node text (the upsert basis)
+plus `index_store.json` and a JSON `default__vector_store.json`, whereas v1
+keeps a compact binary FAISS index alongside `documents/<id>.json`. This is the
+expected cost of the docstore-upsert model (working `delete()`/incremental
+update, tech.md § Update semantics) and is well within local-disk budgets at the
+<100k-doc target scale; it is a data point for the flip, not a regression.
+
+**Relevance (R4).** Top-hit agreement is 3/3 on the needle queries and 1:1 in
+the cloud parity nets (`test_lifecycle_cloud_v2.py`: jira/confluence/outline all
+return the SAME needle document v1 does). Expected — v2 uses v1's exact model
+and unit-normalized vectors (cosine vs squared-L2 induce the same ranking), so
+recall is identical; the two engines are relevance-interchangeable.
+
+**Conclusion.** On perf, disk, and relevance v2 is at parity or within budget
+for a default flip; the only open perf item (in-process embed-model reuse) is an
+optimization, not a blocker. The flip remains a separate gated decision (plan.md
+Open Question 1); this capture is its evidence base.
