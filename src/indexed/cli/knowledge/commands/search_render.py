@@ -172,7 +172,11 @@ def format_search_results(
         f"[{get_heading_style()}]Best Matched Search Result:[/{get_heading_style()}]"
     )
     console.print()
-    _show_top_result_split_cards(all_chunks[0])
+    _show_top_result_split_cards(
+        all_chunks[0],
+        show_relevance=any_v2,
+        higher_is_better_by_collection=higher_is_better_by_collection,
+    )
 
     # Show next 4 results in compact format
     if len(all_chunks) > 1:
@@ -183,7 +187,11 @@ def format_search_results(
         console.print()
 
         for chunk_info in all_chunks[1:5]:  # Show up to 4 more
-            _show_compact_match(chunk_info)
+            _show_compact_match(
+                chunk_info,
+                show_relevance=any_v2,
+                higher_is_better_by_collection=higher_is_better_by_collection,
+            )
 
     # Summary
     console.print()
@@ -195,7 +203,11 @@ def format_search_results(
     console.print()
 
 
-def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
+def _show_top_result_split_cards(
+    chunk_info: ChunkInfo,
+    show_relevance: bool = False,
+    higher_is_better_by_collection: Dict[str, bool] | None = None,
+) -> None:
     """Show the top result chunk in two cards: Meta and Excerpt."""
 
     collection = chunk_info["collection"]
@@ -215,6 +227,16 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
         else (str(score) if score is not None else "N/A")
     )
     meta_rows.append(("Score", score_str))
+
+    # Mixed v1+v2 view: surface one comparable relevance measure right after
+    # the raw score (M2/R11 CLI display) — v1-only view stays byte-identical
+    # (R6), since ``show_relevance`` is only True when a v2 collection is
+    # present in the result set.
+    if show_relevance and isinstance(score, (int, float)):
+        hib = (higher_is_better_by_collection or {}).get(collection, False)
+        rel = _unified_relevance(float(score), hib)
+        meta_rows.append(("Relevance", f"{rel:.4f}"))
+
     meta_rows.append(("Chunk", str(chunk_index)))
 
     # Only include match id if available
@@ -255,7 +277,11 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
     console.print(excerpt_panel)
 
 
-def _show_compact_match(chunk_info: ChunkInfo) -> None:
+def _show_compact_match(
+    chunk_info: ChunkInfo,
+    show_relevance: bool = False,
+    higher_is_better_by_collection: Dict[str, bool] | None = None,
+) -> None:
     """Show a compact single-line match."""
     collection = chunk_info["collection"]
     doc_id = chunk_info["doc_id"]
@@ -267,6 +293,14 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
     else:
         chunk_score = str(score)
 
+    # Mixed v1+v2 view: append the same comparable relevance measure shown on
+    # the top card (M2/R11) — v1-only view stays byte-identical (R6).
+    rel_suffix = ""
+    if show_relevance and isinstance(score, (int, float)):
+        hib = (higher_is_better_by_collection or {}).get(collection, False)
+        rel = _unified_relevance(float(score), hib)
+        rel_suffix = f" / rel {rel:.4f}"
+
     # Format: collection / document / part / match_id
     # collection/doc_id/chunk_score are user/content-derived (collection name,
     # document path or URL, indexed data) — escape before entering this markup
@@ -275,7 +309,7 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
         f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
         f"{escape(str(doc_id))} / "
         f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
-        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]{rel_suffix}"
     )
 
 

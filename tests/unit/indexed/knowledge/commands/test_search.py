@@ -165,13 +165,13 @@ class TestFormatSearchResults:
         sort byte-identical (R6)."""
         captured: Dict[str, Any] = {}
 
-        def fake_show_top(chunk_info):
+        def fake_show_top(chunk_info, **kwargs):
             captured["top"] = chunk_info
 
         monkeypatch.setattr(
             search_render, "_show_top_result_split_cards", fake_show_top
         )
-        monkeypatch.setattr(search_render, "_show_compact_match", lambda *_: None)
+        monkeypatch.setattr(search_render, "_show_compact_match", lambda *_, **__: None)
 
         results: Dict[str, Any] = {
             "v2-coll": {
@@ -206,12 +206,12 @@ class TestFormatSearchResults:
         monkeypatch.setattr(
             search_render,
             "_show_top_result_split_cards",
-            lambda ci: order.append(ci["doc_id"]),
+            lambda ci, **kw: order.append(ci["doc_id"]),
         )
         monkeypatch.setattr(
             search_render,
             "_show_compact_match",
-            lambda ci: order.append(ci["doc_id"]),
+            lambda ci, **kw: order.append(ci["doc_id"]),
         )
         monkeypatch.setattr(
             search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
@@ -265,12 +265,12 @@ class TestFormatSearchResults:
         monkeypatch.setattr(
             search_render,
             "_show_top_result_split_cards",
-            lambda ci: order.append(ci["doc_id"]),
+            lambda ci, **kw: order.append(ci["doc_id"]),
         )
         monkeypatch.setattr(
             search_render,
             "_show_compact_match",
-            lambda ci: order.append(ci["doc_id"]),
+            lambda ci, **kw: order.append(ci["doc_id"]),
         )
         monkeypatch.setattr(
             search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
@@ -304,6 +304,166 @@ class TestFormatSearchResults:
         search_render.format_search_results("query", results=results, limit=5)
 
         assert order == ["best", "mid", "worst"]
+
+    def test_mixed_engines_top_card_shows_relevance_row(self, monkeypatch):
+        """M2/R11 (CLI display): when a v2 collection is present, the top
+        result's meta card surfaces a comparable 'Relevance' row (unified
+        cosine measure) right after the raw 'Score' row, so v2's ~0.0-0.6
+        cosine score is no longer uninterpretable next to v1's ~1.0-2.0
+        squared-L2 distance."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "v1 text"}}
+                        ],
+                    }
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-doc",
+                        "matchedChunks": [
+                            {"score": 0.5, "content": {"indexedData": "v2 text"}}
+                        ],
+                    }
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "Relevance" in text
+        assert "Score" in text
+        # v1-doc (top): raw score 0.4 -> unified relevance 1 - 0.4/2 = 0.8000
+        assert "0.8000" in text
+
+    def test_v1_only_top_card_has_no_relevance_row(self, monkeypatch):
+        """R6: a v1-only search (no scoreKind anywhere) renders EXACTLY as
+        before the M2 feature — no 'Relevance' row/label anywhere in the
+        rendered output."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "v1 text"}}
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "Relevance" not in text
+        assert "Score" in text
+
+    def test_mixed_engines_compact_match_shows_rel_suffix(self, monkeypatch):
+        """M2/R11 (CLI display): the compact 'Other matches' lines append the
+        unified relevance (` / rel X.XXXX`) after the raw score, so v1 and v2
+        rows can be compared visually."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(" ".join(str(a) for a in args))
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-a",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-b",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-a",
+                        "matchedChunks": [
+                            {"score": 0.3, "content": {"indexedData": "c"}}
+                        ],
+                    }
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Order: v1-a (rel .8, top card) > v1-b (rel .5) > v2-a (rel .3).
+        v1_b_line = next(line for line in outputs if "v1-b" in line)
+        v2_a_line = next(line for line in outputs if "v2-a" in line)
+        assert "1.0000" in v1_b_line  # raw score unchanged
+        assert "/ rel 0.5000" in v1_b_line
+        assert "0.3000" in v2_a_line  # v2 raw score IS its relevance
+        assert "/ rel 0.3000" in v2_a_line
+
+    def test_v1_only_compact_match_has_no_rel_suffix(self, monkeypatch):
+        """R6: a v1-only compact match line stays exactly as before — no
+        ' / rel' suffix."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(" ".join(str(a) for a in args))
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-a",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-b",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        joined = "\n".join(outputs)
+        assert "/ rel" not in joined
 
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
