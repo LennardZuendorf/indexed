@@ -151,7 +151,7 @@ available"). Zero behavior change for every existing workflow.
 ```
 src/indexed/core/versioning.py         # NEW detect_engine_version + literals
 src/indexed/core/errors.py             # NEW EngineMismatchError, UnknownEngineVersionError
-src/indexed/core/engine.py             # NEW dispatching facade (14 names + engine=)
+src/indexed/core/engine.py             # NEW dispatching facade (13 names + engine=)
 src/indexed/cli/composition.py         # CliContext.engine, resolve_engine_selector, [core] engine spec
 src/indexed/cli/app.py                 # global --engine; lazy imports -> indexed.core.engine
 src/indexed/cli/knowledge/commands/*   # retarget facade imports; create --engine

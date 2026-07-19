@@ -27,7 +27,7 @@ LlamaIndex `TextNode`s at the engine boundary.
 ## Files
 
 ```
-src/indexed/core/engine.py                  # NEW version-dispatching facade: same 14 names as
+src/indexed/core/engine.py                  # NEW version-dispatching facade: same 13 names as
                                             # core.v1.engine + engine= kwarg; per-collection routing
 src/indexed/core/versioning.py              # NEW detect_engine_version(collection_path) -> "1"|"2";
                                             # EngineVersion literal; UnknownEngineVersionError
@@ -64,7 +64,7 @@ pyproject.toml                              # + llama-index-core>=0.14,<0.15
 
 ### Version-dispatching facade (`indexed.core.engine`)
 
-Re-exports the exact 14-name surface of `core.v1.engine` (verified:
+Re-exports the exact 13-name surface of `core.v1.engine` (verified:
 `SourceConfig`, `CollectionStatus`, `CollectionInfo`, `PhasedProgressCallback`,
 `create`, `update`, `clear`, `collection_exists`, `search`, `SearchService`,
 `status`, `inspect`, `InspectService`) with identical signatures plus:
@@ -257,7 +257,7 @@ directory is preserved as `<name>.v1-backup` until `--purge-backup` (rollback
 ### Engine routing contract (cross-cutting)
 
 Core is consumed only through the version-dispatching facade
-`indexed.core.engine` (same 14 names as the former `core.v1.engine` surface).
+`indexed.core.engine` (same 13 names as the former `core.v1.engine` surface).
 For existing collections the on-disk manifest `version` marker is
 authoritative for engine choice — explicit selectors may only confirm it or
 fail with `EngineMismatchError`; selectors (flag > env > config > default)

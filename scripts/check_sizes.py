@@ -41,9 +41,8 @@ SRC_LOC_MAX = 26_100
 # Raised from 23_500 by core-v2/2c, which wires the v2 engine end to end:
 # `core/v2/{persist,ingestion,retrieval,_common}.py` + `core/v2/services/` +
 # the facade's `_engine_impl("2")` branch and per-engine grouping in
-# `core/engine.py` + the CoreV2Error/UpdateNotSupportedError types — genuine
-# new-feature surface, not stealth regrowth; ceiling = measured (24_433) +
-# headroom.
+# `core/engine.py` + the CoreV2Error type — genuine new-feature surface, not
+# stealth regrowth; ceiling = measured (24_433) + headroom.
 # Raised from 23_300 by core-v2/2b, which adds the native embedding factory
 # (`core/v2/embedding/local.py`) + vector-store construction/LOAD dispatch
 # (`core/v2/stores.py`) + the UnknownVectorStoreError — genuine new-feature

@@ -105,23 +105,32 @@ def migrate(
     # means there is nothing to migrate.
     version = detect_engine_version(collection_dir)
     if version == "2":
-        if purge_backup and backup_dir.is_dir():
-            # Standalone cleanup: the collection was already migrated in a prior
-            # run — drop its retained v1 backup (this is the only path that can
-            # purge a backup once <name> itself is v2).
-            shutil.rmtree(backup_dir)
-            return MigrationResult(
-                name=name,
-                action="purge-backup",
-                dry_run=False,
-                from_source=from_source,
-                number_of_documents=0,
-                number_of_chunks=0,
-                embedding_model=resolve_embedding_config().model_name,
-                vector_store="simple",
-                backup_path=None,
-                backup_purged=True,
-                validated=False,
+        if purge_backup:
+            if backup_dir.is_dir():
+                # Standalone cleanup: the collection was already migrated in a
+                # prior run — drop its retained v1 backup (this is the only path
+                # that can purge a backup once <name> itself is v2). Best-effort
+                # rmtree, consistent with the post-migrate purge below.
+                shutil.rmtree(backup_dir, ignore_errors=True)
+                return MigrationResult(
+                    name=name,
+                    action="purge-backup",
+                    dry_run=False,
+                    from_source=from_source,
+                    number_of_documents=0,
+                    number_of_chunks=0,
+                    embedding_model=resolve_embedding_config().model_name,
+                    vector_store="simple",
+                    backup_path=None,
+                    backup_purged=True,
+                    validated=False,
+                )
+            # --purge-backup on an already-v2 collection with NO backup: a
+            # dedicated message, not the misleading "already a v2 collection;
+            # nothing to migrate" (which implies a migration was expected).
+            raise CoreV2Error(
+                f"No backup to purge for '{name}'; there is no "
+                f"'{backup_dir.name}' directory."
             )
         raise CoreV2Error(
             f"Collection '{name}' is already a v2 collection; nothing to migrate."

@@ -60,18 +60,6 @@ class UnknownEngineVersionError(CoreError):
         )
 
 
-class EngineNotAvailableError(CoreError):
-    """A requested engine version exists in the routing contract but has no
-    implementation yet (v2 arrives in a later core-v2 unit)."""
-
-    def __init__(self, version: str) -> None:
-        self.version = version
-        super().__init__(
-            f"The v{version} engine is not yet available; it arrives in a later "
-            f"unit of the core-v2 feature. Use --engine v1 (the default)."
-        )
-
-
 class CoreV2Error(CoreError):
     """A core.v2 engine operation failed.
 
@@ -80,22 +68,6 @@ class CoreV2Error(CoreError):
     :class:`~indexed.config.errors.IndexedError` (CLI exit codes + MCP
     envelopes keep working).
     """
-
-
-class UpdateNotSupportedError(CoreV2Error):
-    """``update`` on a v2 collection — deferred to core-v2/3.
-
-    v2 incremental update is not implemented in the create/search MVP; re-create
-    the collection to refresh it for now. Raised (never a crash) so the CLI
-    surfaces an actionable message.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            "v2 incremental update arrives in core-v2/3; re-create the "
-            "collection to refresh it for now (indexed index create "
-            "--engine v2 ...)."
-        )
 
 
 class UnknownVectorStoreError(CoreError):
@@ -123,7 +95,5 @@ __all__ = [
     "CoreV2Error",
     "EngineMismatchError",
     "UnknownEngineVersionError",
-    "EngineNotAvailableError",
     "UnknownVectorStoreError",
-    "UpdateNotSupportedError",
 ]

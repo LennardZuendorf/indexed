@@ -205,14 +205,17 @@ def _create_one(
         (staging / "manifest.json").write_text(
             _json_dumps(manifest.to_disk()), encoding="utf-8"
         )
+        replace_dir(staging, base / cfg.name)
     except Exception:
-        # Discard only the aside dir — the prior collection is untouched.
+        # Discard only the aside dir — the prior collection is untouched (a
+        # replace_dir swap failure already rolled the original back), so the
+        # staging dir never leaks on a graceful failure (matches
+        # migration._swap). A hard kill (BaseException) skips this and leaves a
+        # .tmp- dir, which discovery excludes.
         import shutil
 
         shutil.rmtree(staging, ignore_errors=True)
         raise
-
-    replace_dir(staging, base / cfg.name)
 
     # Persist change-tracker state into the FINAL dir (used by the incremental
     # update path); only when the connector supports it (files today).
@@ -360,13 +363,17 @@ def _update_one(
         (staging / "manifest.json").write_text(
             _json_dumps(manifest.to_disk()), encoding="utf-8"
         )
+        replace_dir(staging, collection_dir)
     except Exception:
+        # Discard only the aside dir — the live collection is untouched (a
+        # replace_dir swap failure already rolled it back), so the staging dir
+        # never leaks on a graceful failure (matches migration._swap). A hard
+        # kill (BaseException) skips this and leaves a .tmp- dir, which
+        # discovery excludes.
         import shutil
 
         shutil.rmtree(staging, ignore_errors=True)
         raise
-
-    replace_dir(staging, collection_dir)
 
     # post_run (files: persist the new change-tracker state) runs AFTER a
     # successful swap so the state lands in the final dir and reflects the

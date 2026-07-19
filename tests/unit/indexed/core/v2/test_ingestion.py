@@ -161,17 +161,29 @@ def test_last_modified_document_time_is_max_across_docs(tmp_path: Path) -> None:
     assert manifest["lastModifiedDocumentTime"] == "2026-03-01T00:00:00+00:00"
 
 
-def _crash_before_swap(staging, dest):  # noqa: ANN001
-    raise RuntimeError("simulated crash before atomic swap")
+def _kill_before_swap(staging, dest):  # noqa: ANN001
+    # A BaseException (not Exception) models a hard signal-driven kill: the
+    # ingestion swap wrapper catches only ``Exception`` (so a graceful failure
+    # cleans up), so this bypasses cleanup and leaves the staging dir on disk —
+    # exactly the post-kill state discovery must exclude.
+    raise KeyboardInterrupt("simulated kill before atomic swap")
+
+
+def _fail_before_swap(staging, dest):  # noqa: ANN001
+    raise RuntimeError("simulated swap failure")
 
 
 def test_interrupted_create_staging_dir_excluded_from_discovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A create KILLED after the staging manifest is written but before the swap
-    leaves a complete v2 collection on disk under ``<name>.tmp-...``; discovery
-    (both the v2 helper AND the facade) MUST exclude it — else it surfaces as a
-    phantom collection (core-v2/2c review, Critical).
+    """A create hard-KILLED after the staging manifest is written but before the
+    swap leaves a complete v2 collection on disk under ``<name>.tmp-...``;
+    discovery (both the v2 helper AND the facade) MUST exclude it — else it
+    surfaces as a phantom collection (core-v2/2c review, Critical).
+
+    A hard kill is modeled with a ``BaseException`` so it bypasses the swap
+    wrapper's graceful ``except Exception`` cleanup (a graceful failure removes
+    the staging dir — see ``test_create_swap_failure_removes_staging_dir``).
 
     Deterministic: a letter-leading hex (``e288c54c``) is forced — that is the
     historically-escaping case, so the staging name depends only on the fix
@@ -188,11 +200,11 @@ def test_interrupted_create_staging_dir_excluded_from_discovery(
     monkeypatch.setattr(
         ing.uuid, "uuid4", lambda: types.SimpleNamespace(hex="e288c54c")
     )
-    # Crash the atomic swap so the built staging dir survives on disk.
-    monkeypatch.setattr("indexed.core.v2.persist.replace_dir", _crash_before_swap)
+    # Hard-kill the atomic swap so the built staging dir survives on disk.
+    monkeypatch.setattr("indexed.core.v2.persist.replace_dir", _kill_before_swap)
 
     with mock_embedding(embed_dim=8):
-        with pytest.raises(RuntimeError, match="crash before atomic swap"):
+        with pytest.raises(KeyboardInterrupt, match="kill before atomic swap"):
             ingestion.create(
                 [_cfg("needle")],
                 use_cache=False,
@@ -200,7 +212,7 @@ def test_interrupted_create_staging_dir_excluded_from_discovery(
                 collections_path=str(cols),
             )
 
-    # A complete staging collection (with manifest.json) survived the "crash".
+    # A complete staging collection (with manifest.json) survived the "kill".
     leftovers = [p.name for p in cols.iterdir() if p.name.startswith("needle.tmp-")]
     assert len(leftovers) == 1, f"expected one leftover staging dir, got {leftovers}"
     assert (cols / leftovers[0] / "manifest.json").is_file()
@@ -209,3 +221,29 @@ def test_interrupted_create_staging_dir_excluded_from_discovery(
     # collection was never swapped in, so both return nothing.
     assert discover_v2_collections(cols) == []
     assert _existing_collection_names(str(cols)) == []
+
+
+def test_create_swap_failure_removes_staging_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A graceful ``replace_dir`` swap failure (an ``Exception``) cleans up the
+    ``.tmp-`` staging dir before re-raising — no leaked staging dir (matches
+    ``migration._swap``). The prior collection is untouched (replace_dir rolled
+    it back)."""
+    cols = tmp_path / "cols"
+    docs = [make_doc("d1", ["penguin migration"])]
+
+    monkeypatch.setattr("indexed.core.v2.persist.replace_dir", _fail_before_swap)
+
+    with mock_embedding(embed_dim=8):
+        with pytest.raises(RuntimeError, match="simulated swap failure"):
+            ingestion.create(
+                [_cfg("c1")],
+                use_cache=False,
+                connector_factory=make_connector_factory(docs),
+                collections_path=str(cols),
+            )
+
+    # No staging dir leaked, and the (never-created) target is absent.
+    assert not any(".tmp-" in p.name for p in cols.iterdir())
+    assert not (cols / "c1").exists()

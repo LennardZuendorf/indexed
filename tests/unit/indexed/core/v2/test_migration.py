@@ -251,6 +251,20 @@ def test_purge_backup_standalone_on_migrated_collection(tmp_path: Path) -> None:
     assert not (base / "c1.v1-backup").exists()
 
 
+def test_purge_backup_without_backup_gives_dedicated_error(tmp_path: Path) -> None:
+    base = tmp_path / "cols"
+    _write_v1_collection(base, "c1", _corpus())
+    # Migrate and purge in one go → v2 collection, no backup left on disk.
+    with mock_embedding(embed_dim=8):
+        migration.migrate("c1", collections_path=str(base), purge_backup=True)
+    assert not (base / "c1.v1-backup").exists()
+
+    # --purge-backup again (no backup remains) reports a dedicated "no backup to
+    # purge" message, NOT the misleading "already a v2 collection" fall-through.
+    with pytest.raises(CoreV2Error, match="No backup to purge"):
+        migration.migrate("c1", collections_path=str(base), purge_backup=True)
+
+
 def test_from_source_requires_manifest_factory(tmp_path: Path) -> None:
     base = tmp_path / "cols"
     _write_v1_collection(base, "c1", _corpus())

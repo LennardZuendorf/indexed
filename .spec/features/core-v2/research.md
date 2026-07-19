@@ -23,7 +23,7 @@ and what did the previous attempt get right and wrong?
 
 ### Finding: the swap seam exists, but its format premise does not survive contact
 
-`core/v1/engine/__init__.py` exposes exactly 14 names (verified) and root
+`core/v1/engine/__init__.py` exposes exactly 13 names (verified) and root
 specs designate it "the v2 core-swap seam … same names over the same on-disk
 format". The *names* part holds; the *format* part cannot: v1's layout
 (`manifest.json` + `documents/<id>.json` + `indexes/{index_info,
@@ -106,9 +106,12 @@ CLI-writes/MCP-reads pattern safe. Qdrant embedded (path mode): richest
 wrong default for CLI+MCP concurrency, right first optional backend. Chroma:
 server-grade dep tree + nonstandard `exp(-distance)` scores — weakest fit.
 LanceDB: heaviest deps. HuggingFace embeddings integration imports
-sentence-transformers (→torch) at module top and ships no `py.typed` →
-implement our own `BaseEmbedding` adapter over sentence-transformers direct
-(same vectors as v1, lazy, typed). Scores are store-dependent upstream
+sentence-transformers (→torch) at module top → ADOPT the native
+`HuggingFaceEmbedding` but import the integration module function-locally to
+avoid the module-top torch cost; it reuses v1's SentenceTransformer model +
+shared HF cache (same vectors as v1) and `ty` types the integration source
+directly (the "ships no py.typed" concern did not materialize). Scores are
+store-dependent upstream
 (cosine/exp(-d)/raw) — v2 pins cosine and converts v1 exactly via
 `sim = 1 − d²/2` (v1 vectors are unit-normalized, verified).
 
@@ -127,7 +130,7 @@ future sibling feature.
 | v2 as byte-compatible drop-in behind `core.v1.engine` (root-spec premise) | ruled out | v1 format can't express v2 capabilities; LI FAISS integration can't even read it |
 | Runtime engine router with flag-over-manifest precedence (PR #86/#134) | ruled out | caused the observed mismatch bug class; flags must not override on-disk reality |
 | Adopt `FaissVectorStore` for v2 (PR #86) | ruled out | no delete/filters/stable ids — strictly weaker than v1's own FAISS layer |
-| Adopt `HuggingFaceEmbedding` wrapper | ruled out | module-top torch import + no py.typed; own BaseEmbedding adapter instead |
+| Adopt native `HuggingFaceEmbedding` (function-local import) | **chosen** | reuses v1's model + shared HF cache (1:1 vectors); function-local import avoids the module-top torch cost; `ty` types the integration source directly |
 | Version-dispatching facade + manifest-authoritative routing + new v2 format | **chosen** | see [tech.md](tech.md); ADRs in `plans/indexed-v2.md` |
 
 ## Decision

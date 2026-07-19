@@ -277,6 +277,10 @@ def test_update_failure_mid_swap_leaves_prior_collection_searchable(
     assert (cols / "c1" / "manifest.json").read_bytes() == manifest_before
     assert (cols / "c1" / "storage" / "docstore.json").read_bytes() == docstore_before
 
+    # A graceful swap failure (Exception) removes the staging dir before
+    # re-raising — no leaked ``.tmp-`` dir (item 6, matches migration._swap).
+    assert not any(".tmp-" in p.name for p in cols.iterdir())
+
     # And it is still fully searchable — the original doc is returned; the
     # would-be new doc was never swapped in.
     with mock_embedding(embed_dim=8):
