@@ -255,7 +255,19 @@ class InspectService:
                 # Missing/unreadable collections are OMITTED, not zero-filled —
                 # a placeholder here would defeat every downstream "not found"
                 # guard (see foundation/6 E1/E11).
-                logger.error(f"Error getting status for collection {name}: {e}")
+                #
+                # UX finding L3: a collection that simply doesn't exist is
+                # the expected, common case (surfaced to the user as the
+                # friendly "not found" panel) — logging it at ERROR is
+                # redundant noise. _read_manifest() wraps the underlying
+                # failure in a ValueError without `raise ... from e`, so the
+                # original cause lands in __context__ via implicit chaining;
+                # a genuine read failure (corrupt JSON, permission error,
+                # etc.) has a different underlying cause and must stay loud.
+                if isinstance(e.__cause__ or e.__context__, FileNotFoundError):
+                    logger.debug(f"Error getting status for collection {name}: {e}")
+                else:
+                    logger.error(f"Error getting status for collection {name}: {e}")
 
         return statuses
 
@@ -353,8 +365,12 @@ class InspectService:
 
             except Exception as e:
                 # Missing/unreadable collections are OMITTED, not zero-filled —
-                # see status() above for the same rationale.
-                logger.error(f"Error inspecting collection {name}: {e}")
+                # see status() above for the same rationale, including the
+                # L3 log-level narrowing for the missing-manifest case.
+                if isinstance(e.__cause__ or e.__context__, FileNotFoundError):
+                    logger.debug(f"Error inspecting collection {name}: {e}")
+                else:
+                    logger.error(f"Error inspecting collection {name}: {e}")
 
         return infos
 
