@@ -58,6 +58,28 @@ class ChunkInfo(TypedDict):
     chunk_index: int
 
 
+def _is_content_free(chunk_info: ChunkInfo) -> bool:
+    """True when a chunk's text is just its document's name (a title/filename
+    chunk) — useless as the highlighted excerpt (UX finding M1). Every
+    document carries a ``chunk_number 0`` whose text is only the filename,
+    which for NL queries often out-scores real content.
+
+    Content that's missing entirely (search didn't request matched-chunk
+    content, or the chunk carries no ``indexedData``) is treated as NOT
+    content-free — there's nothing to compare, so top-result selection stays
+    exactly ``all_chunks[0]``, unchanged from before this fix.
+    """
+    obj = chunk_info["chunk"].get("content")
+    if not isinstance(obj, dict) or "indexedData" not in obj:
+        return False
+    content = (obj.get("indexedData") or "").strip()
+    if not content:
+        return False
+    doc = str(chunk_info["doc_id"]).strip()
+    base = doc.rsplit("/", 1)[-1]
+    return content in (doc, base)
+
+
 def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
     """Surface a per-collection search failure instead of silently skipping it.
 
@@ -172,8 +194,16 @@ def format_search_results(
         f"[{get_heading_style()}]Best Matched Search Result:[/{get_heading_style()}]"
     )
     console.print()
+    # M1: chunk_number 0 is always just the document's filename — for NL
+    # queries it often out-scores real content, so surfacing it as the
+    # highlighted excerpt is a useless first impression. Pick the
+    # highest-ranked chunk with real content instead; fall back to
+    # all_chunks[0] if every candidate is content-free. Only the
+    # highlighted pick changes — "Other Matches" below stays the
+    # unmodified all_chunks[1:5] ranked slice.
+    top = next((c for c in all_chunks if not _is_content_free(c)), all_chunks[0])
     _show_top_result_split_cards(
-        all_chunks[0],
+        top,
         show_relevance=any_v2,
         higher_is_better_by_collection=higher_is_better_by_collection,
     )

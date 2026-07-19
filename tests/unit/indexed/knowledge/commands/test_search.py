@@ -82,6 +82,77 @@ class TestSearchCommand:
         assert "Collection 'missing' not found" in result.stdout
 
 
+class TestIsContentFree:
+    """Unit tests for the content-free filename-chunk helper (M1)."""
+
+    def test_content_matches_full_doc_id_is_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_content_matches_basename_only_is_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/nested/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": "auth.py"}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_real_content_is_not_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={
+                "score": 0.1,
+                "content": {"indexedData": "def authenticate(): ..."},
+            },
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_missing_content_key_is_not_content_free(self):
+        """No 'content' key at all (matched-chunk content not requested) —
+        behavior must be unchanged, so this does NOT count as content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_empty_indexed_data_is_not_content_free(self):
+        """An explicit empty string is treated the same as absent content —
+        nothing to compare, so don't skip it."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": ""}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_non_dict_content_is_not_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": "plain string"},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+
 class TestFormatSearchResults:
     """Tests for the search result formatting helpers."""
 
@@ -615,6 +686,169 @@ class TestFormatSearchResults:
         assert "empty-coll" not in joined
         # A real failure must not be reported as a soft "no results found".
         assert "No results found" not in joined
+
+    def test_top_result_skips_content_free_filename_chunk_for_real_content(
+        self, monkeypatch
+    ):
+        """M1: chunk_number 0 is just the document's filename (e.g.
+        'auth.py'), which can out-score real content for NL queries. The
+        highlighted 'Best Matched' excerpt must skip such a content-free
+        top-ranked chunk and show the next-best chunk with real content
+        instead."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth_module.py",
+                        "matchedChunks": [
+                            {
+                                "score": 0.1,
+                                "content": {"indexedData": "src/auth_module.py"},
+                            },
+                            {
+                                "score": 0.3,
+                                "content": {
+                                    "indexedData": "AUTH_MARKER: def authenticate(user, pw): ..."
+                                },
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "AUTH_MARKER" in text
+        # The excerpt panel body itself (not just the Document meta row)
+        # must carry the real-content marker.
+        excerpt_start = text.index("Top Result Excerpt")
+        assert "AUTH_MARKER" in text[excerpt_start:]
+
+    def test_top_result_falls_back_to_first_chunk_when_all_content_free(
+        self, monkeypatch
+    ):
+        """If every candidate chunk is content-free (all filename-only), fall
+        back to all_chunks[0] exactly as before the fix."""
+        captured: Dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: captured.setdefault("top", ci),
+        )
+        monkeypatch.setattr(
+            search_render, "_show_compact_match", lambda *_a, **_kw: None
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+                            {"score": 0.3, "content": {"indexedData": "auth.py"}},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Both candidates are content-free -> fall back to all_chunks[0]
+        # (the first-ranked chunk, score 0.1).
+        assert captured["top"]["chunk"]["score"] == 0.1
+
+    def test_top_result_unchanged_when_content_absent(self, monkeypatch):
+        """When matched-chunk content wasn't requested (no 'content' key at
+        all), selection must be unchanged — still all_chunks[0] — since
+        there's nothing to compare against the filename."""
+        captured: Dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: captured.setdefault("top", ci),
+        )
+        monkeypatch.setattr(
+            search_render, "_show_compact_match", lambda *_a, **_kw: None
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1},  # no content key at all
+                            {"score": 0.3, "content": {"indexedData": "real text"}},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert captured["top"]["chunk"]["score"] == 0.1
+
+    def test_other_matches_list_unchanged_by_top_selection(self, monkeypatch):
+        """'Other Matches' is still exactly `all_chunks[1:5]` — unaffected by
+        which chunk got promoted to the highlighted top (per spec, only the
+        highlighted result changes)."""
+        others: List[Any] = []
+        monkeypatch.setattr(
+            search_render, "_show_top_result_split_cards", lambda *a, **kw: None
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci, **kw: others.append(ci["chunk"]["score"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+                            {
+                                "score": 0.3,
+                                "content": {"indexedData": "real content b"},
+                            },
+                            {
+                                "score": 0.5,
+                                "content": {"indexedData": "real content c"},
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Positional slice all_chunks[1:5] — unchanged by the fact that
+        # all_chunks[1] is ALSO now the highlighted top.
+        assert others == [0.3, 0.5]
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
