@@ -1,7 +1,7 @@
 # Indexed V2 — Planning & Specification (LlamaIndex core)
 
 > **Type:** technical + product planning document · **Feature:** core-v2
-> **Branch:** `claude/indexed-v2-architecture-54i6vs`
+> **Branch:** `claude/indexed-core-v2-impl-avbls0`
 > **Spec source of truth:** [`.spec/features/core-v2/`](../.spec/features/core-v2/product.md)
 > ([product](../.spec/features/core-v2/product.md) ·
 > [tech](../.spec/features/core-v2/tech.md) ·
@@ -38,7 +38,7 @@ metadata filters all require a new persisted format, and LlamaIndex's own
 FAISS integration is strictly weaker than Indexed's v1 FAISS layer (no delete,
 no filters, positional ids — verified upstream). So the seam is raised one
 level: a **version-dispatching facade** (`indexed.core.engine`) with the same
-14-name surface routes per collection, the **manifest is authoritative** for
+13-name surface routes per collection, the **manifest is authoritative** for
 existing collections (explicit selectors can only confirm or fail — never
 silently override), and selectors choose the engine for **new** collections
 only. This one rule eliminates the accidental-cross-engine-write class that
@@ -90,7 +90,7 @@ until a parity report gates the flip (criteria approved 2026-07-18).
 
 ### 3.1 Repository (verified at HEAD)
 
-- **The facade surface is exactly 14 names** in
+- **The facade surface is exactly 13 names** in
   `src/indexed/core/v1/engine/__init__.py` (lazy `__getattr__`):
   `SourceConfig`, `CollectionStatus`, `CollectionInfo`,
   `PhasedProgressCallback`, `create`, `update`, `clear`, `collection_exists`,
@@ -241,7 +241,7 @@ Full contracts: [`.spec/features/core-v2/tech.md`](../.spec/features/core-v2/tec
 flowchart TD
     CLI[CLI commands] --> F
     MCP[MCP tools/resources] --> F
-    F["indexed.core.engine<br/>(version-dispatching facade,<br/>same 14 names + engine=)"]
+    F["indexed.core.engine<br/>(version-dispatching facade,<br/>same 13 names + engine=)"]
     F -->|"manifest: no version key"| V1["core.v1.engine<br/>(FROZEN)"]
     F -->|"manifest: version=2"| V2["core.v2<br/>services"]
     V1 --> FAISS["FAISS + sentence-transformers<br/>v1 on-disk format"]
@@ -259,7 +259,7 @@ Key properties:
 
 - **v2 is additive** (`src/indexed/core/v2/`); v1 is frozen. Both live under
   the `core` package so the import gate applies automatically.
-- **The facade keeps the v1 surface** (all 14 names, same signatures) plus an
+- **The facade keeps the v1 surface** (all 13 names, same signatures) plus an
   optional `engine=` kwarg — the app-layer change is retargeting ~12 lazy
   imports from `indexed.core.v1.engine` to `indexed.core.engine`.
 - **LlamaIndex never leaks upward**: no `llama_index` import outside
@@ -472,7 +472,7 @@ EngineVersion = Literal["1", "2"]
 def detect_engine_version(collection_path: Path) -> EngineVersion: ...
     # no "version" key -> "1"; "2" -> "2"; else UnknownEngineVersionError
 
-# src/indexed/core/engine.py — same 14 names as core.v1.engine, plus engine=
+# src/indexed/core/engine.py — same 13 names as core.v1.engine, plus engine=
 def create(configs, *, engine: str | None = None, ..., connector_factory, ...) -> None
 def search(query, ..., engine: str | None = None) -> dict     # per-collection routing inside
 def update(configs, ..., engine: str | None = None, manifest_factory) -> None
@@ -615,7 +615,7 @@ rejected on process-lock / dep-weight + score-semantics grounds.
   accidental-cross-engine-write class. Consequence: `EngineMismatchError` UX;
   structural safety.
 - **ADR-3 — Version-dispatching facade at `indexed.core.engine`.** Keeps the
-  14-name contract; app blast radius ≈ 12 lazy imports; no per-command
+  13-name contract; app blast radius ≈ 12 lazy imports; no per-command
   router. Driver: composition.py/facade are the two designed seams.
 - **ADR-4 — SimpleVectorStore only; FAISS excluded from v2; additional
   stores deferred** *(revised 2026-07-18 per maintainer: local-only, no new
