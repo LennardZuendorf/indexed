@@ -59,25 +59,28 @@ class ChunkInfo(TypedDict):
 
 
 def _is_content_free(chunk_info: ChunkInfo) -> bool:
-    """True when a chunk's text is just its document's name (a title/filename
-    chunk) — useless as the highlighted excerpt (UX finding M1). Every
-    document carries a ``chunk_number 0`` whose text is only the filename,
-    which for NL queries often out-scores real content.
+    """True when a chunk's text is empty, or is just its document's name (a
+    title/filename chunk) — useless as the highlighted excerpt (UX finding
+    M1). Every document carries a ``chunk_number 0`` whose text is only the
+    filename, which for NL queries often out-scores real content.
 
-    Content that's missing entirely (search didn't request matched-chunk
-    content, or the chunk carries no ``indexedData``) is treated as NOT
-    content-free — there's nothing to compare, so top-result selection stays
-    exactly ``all_chunks[0]``, unchanged from before this fix.
+    Content that's missing entirely (no ``content`` key, ``content`` isn't a
+    dict, or no ``indexedData`` key at all) is treated as NOT content-free —
+    there's nothing to compare, so top-result selection stays exactly
+    ``all_chunks[0]``, unchanged from before this fix. But content that IS
+    present and is an empty string, or equals the doc id / basename, IS
+    content-free.
     """
     obj = chunk_info["chunk"].get("content")
-    if not isinstance(obj, dict) or "indexedData" not in obj:
+    if not isinstance(obj, dict):
         return False
-    content = (obj.get("indexedData") or "").strip()
-    if not content:
+    raw = obj.get("indexedData")
+    if raw is None:
         return False
+    content = str(raw).strip()
     doc = str(chunk_info["doc_id"]).strip()
     base = doc.rsplit("/", 1)[-1]
-    return content in (doc, base)
+    return content in ("", doc, base)
 
 
 def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
@@ -198,9 +201,7 @@ def format_search_results(
     # queries it often out-scores real content, so surfacing it as the
     # highlighted excerpt is a useless first impression. Pick the
     # highest-ranked chunk with real content instead; fall back to
-    # all_chunks[0] if every candidate is content-free. Only the
-    # highlighted pick changes — "Other Matches" below stays the
-    # unmodified all_chunks[1:5] ranked slice.
+    # all_chunks[0] if every candidate is content-free.
     top = next((c for c in all_chunks if not _is_content_free(c)), all_chunks[0])
     _show_top_result_split_cards(
         top,
@@ -208,15 +209,21 @@ def format_search_results(
         higher_is_better_by_collection=higher_is_better_by_collection,
     )
 
-    # Show next 4 results in compact format
-    if len(all_chunks) > 1:
+    # Show next 4 results in compact format, excluding whichever chunk got
+    # promoted to the highlighted top — by identity, so only the exact
+    # promoted object is skipped, not other chunks with an equal score
+    # (review finding: a content-free #1 promotes some all_chunks[k], k>=1,
+    # which the old positional all_chunks[1:5] slice could still include,
+    # duplicating it in both the highlight and the list).
+    others = [c for c in all_chunks if c is not top][:4]
+    if others:
         console.print()
         console.print(
             f"[{get_heading_style()}]Other Search Query Matches[/{get_heading_style()}]"
         )
         console.print()
 
-        for chunk_info in all_chunks[1:5]:  # Show up to 4 more
+        for chunk_info in others:
             _show_compact_match(
                 chunk_info,
                 show_relevance=any_v2,

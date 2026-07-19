@@ -130,14 +130,39 @@ class TestIsContentFree:
         )
         assert search_render._is_content_free(chunk_info) is False
 
-    def test_empty_indexed_data_is_not_content_free(self):
-        """An explicit empty string is treated the same as absent content —
-        nothing to compare, so don't skip it."""
+    def test_empty_indexed_data_string_is_content_free(self):
+        """A present-but-empty indexedData string has nothing useful to show
+        as an excerpt, so it counts as content-free (unlike genuinely MISSING
+        content, which is left unchanged — see the tests below)."""
         chunk_info = search_render.ChunkInfo(
             collection="col",
             doc_id="src/auth.py",
             path="/p",
             chunk={"score": 0.1, "content": {"indexedData": ""}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_indexed_data_key_present_but_none_is_not_content_free(self):
+        """indexedData explicitly None (key present, value None) is treated
+        as MISSING content — behavior must be unchanged, not content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": None}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_content_dict_missing_indexed_data_key_is_not_content_free(self):
+        """A 'content' dict that doesn't carry an 'indexedData' key at all is
+        MISSING content — behavior must be unchanged, not content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"metadata": {}}},
             chunk_index=1,
         )
         assert search_render._is_content_free(chunk_info) is False
@@ -806,10 +831,11 @@ class TestFormatSearchResults:
 
         assert captured["top"]["chunk"]["score"] == 0.1
 
-    def test_other_matches_list_unchanged_by_top_selection(self, monkeypatch):
-        """'Other Matches' is still exactly `all_chunks[1:5]` — unaffected by
-        which chunk got promoted to the highlighted top (per spec, only the
-        highlighted result changes)."""
+    def test_other_matches_excludes_promoted_top(self, monkeypatch):
+        """When a content-free #1 chunk causes some all_chunks[k] (k>=1) to
+        be promoted to the highlighted top, "Other Matches" must NOT also
+        show that same chunk — it must be excluded (by identity), not just a
+        positional all_chunks[1:5] slice, which would duplicate it."""
         others: List[Any] = []
         monkeypatch.setattr(
             search_render, "_show_top_result_split_cards", lambda *a, **kw: None
@@ -846,9 +872,10 @@ class TestFormatSearchResults:
 
         search_render.format_search_results("query", results=results, limit=5)
 
-        # Positional slice all_chunks[1:5] — unchanged by the fact that
-        # all_chunks[1] is ALSO now the highlighted top.
-        assert others == [0.3, 0.5]
+        # all_chunks[0] (score 0.1) is content-free, so all_chunks[1] (score
+        # 0.3) is promoted to the highlighted top. "Other Matches" must show
+        # the REMAINING chunks only — 0.1 and 0.5 — never 0.3 again.
+        assert others == [0.1, 0.5]
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
