@@ -3,7 +3,7 @@ type: feature-tech
 feature: core-v2
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-07-18
+updated: 2026-07-19
 ---
 
 # Feature: Core V2 (LlamaIndex engine) — Architecture
@@ -168,6 +168,17 @@ results with `sim >= threshold` (range 0–1); v1 threshold semantics unchanged.
 Optional rerank: `SentenceTransformerRerank` from llama-index-core (lazy
 `CrossEncoder` import verified) with a configurable cross-encoder model.
 
+**Interim per-collection sort fix (core-v2/2d):** v2's per-collection result
+dict carries an additive `"scoreKind": "cosine"` field (v1's never had this
+key). The CLI (`search_render.py`) and MCP (`mcp/formatting.py`) formatters
+use it to sort each collection's OWN chunks best-first regardless of engine
+(cosine descending vs v1's squared-L2 ascending) — this fixes a real R4 bug
+(a v2 collection's worst chunk was showing as the top result) without
+attempting cross-engine value comparability, which stays core-v2/6's job
+(the `sim = 1 - d²/2` conversion above). A v1 collection carries no
+`scoreKind` key, so its sort key and output are byte-identical to before
+(R6).
+
 ### Config (`[core.v2.*]` + engine selector)
 
 ```toml
@@ -243,11 +254,13 @@ key are v1; unknown versions fail loud. No code above the facade may import
   "sentence-transformers/all-MiniLM-L6-v2")` from
   `llama-index-embeddings-huggingface` — the same `SentenceTransformer` class
   and HF cache as v1, so vectors match v1 exactly and no re-download occurs
-  (maintainer decision: native support over an own adapter). Its two verified
-  caveats are handled: the integration imports sentence-transformers at module
-  top → the integration module itself is imported function-locally; it ships
-  no `py.typed` → scoped ty ignores with reasons. `normalize=True` is the
-  integration default (matches v1's unit-normalized vectors — verify in tests).
+  (maintainer decision: native support over an own adapter). Its one verified
+  caveat is handled: the integration imports sentence-transformers at module
+  top → the integration module itself is imported function-locally. `ty`
+  analyzes the integration's source directly and needs no ignores (core-v2/2b
+  finding — the "ships no py.typed" concern did not materialize in practice).
+  `normalize=True` is the integration default (matches v1's unit-normalized
+  vectors — verified in tests).
 - **Dimension discovery:** LlamaIndex has no dimension API (verified) — v2
   embeds a probe string once at create and records `dimension` in the
   manifest (provider-agnostic, future-proof).
@@ -266,8 +279,20 @@ key are v1; unknown versions fail loud. No code above the facade may import
   v2 MCP e2e tests must run out-of-process (in-process FastMCP client +
   llama-index + torch segfaulted — verified finding from PR #86).
 - **Import gate:** `core/v2/**` obeys the existing edges (imports only
-  `protocols`/`config`/`utils` + third-party); `scripts/check_imports.py`
-  covers it automatically since it keys on the `core` top-level package.
+  `protocols`/`config`/`utils` + third-party). The generic `core` bucket rule
+  in `scripts/check_imports.py` cannot see the `v1`/`v2` split, so core-v2/2d
+  added an explicit `core/v2 ↛ core.v1` edge (with a negative self-test) on
+  top of it — a file under `core/v2/**` may not import `indexed.core.v1.*`.
+- **Disk read-cache (deferred residual, core-v2/2c/2d):** v1's create-time read
+  cache (`CacheReaderDecorator` in `connectors`, backed by `core.v1`'s
+  `DiskPersister`) lives in layers `core/v2` may not import, and it is a pure
+  read-optimization that never changes the documents produced or the on-disk
+  collection. v2 create therefore reads directly from the connector every time
+  (`use_cache`/`caches_path`/`cache_decorator_factory` are accepted for
+  signature parity and discarded); the produced collection is identical either
+  way, only cross-create read caching is not yet wired. Follow-up: a v2-local
+  persister, or a `utils`-level consolidation of `DiskPersister` shared by both
+  engines — tracked for a future core-v2 unit, not blocking.
 
 ## Performance Budget
 

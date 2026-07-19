@@ -2,7 +2,7 @@
 
 The app (CLI/MCP) imports collection/search/inspect operations and the shared
 models from ``indexed.core.engine`` — never from ``core.v1.engine`` (or a future
-``core.v2.engine``) directly. This facade re-exports the exact 14-name v1 surface
+``core.v2.engine``) directly. This facade re-exports the exact 13-name v1 surface
 with identical signatures and adds a thin per-collection routing layer:
 
 - **create** chooses the engine from an already-resolved selector (R3) — a new
@@ -19,7 +19,9 @@ the v1 facade — so CLI startup stays <1s and no LlamaIndex import happens here
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -56,7 +58,7 @@ _ROUTED = frozenset(
     }
 )
 
-# Same 14-name surface as ``core.v1.engine._EXPORTS`` (asserted equal in tests).
+# Same 13-name surface as ``core.v1.engine._EXPORTS`` (asserted equal in tests).
 _EXPORTS = _SHARED_TYPES | _ROUTED
 
 _DEFAULT_ENGINE: EngineVersion = "1"
@@ -271,6 +273,114 @@ def _configs_for_group(
         SourceConfig(name=name, type="localFiles", base_url_or_path="", indexer=None)
         for name in group_names
     ]
+
+
+# --- engine-aware diagnostics (R13) -------------------------------------------
+
+
+@dataclass(frozen=True)
+class EngineDescriptor:
+    """Engine identity for one collection — the R13 diagnostics view.
+
+    A lightweight, engine-agnostic record the app layer renders in
+    inspect/status output so a user can always tell which engine owns which
+    collection. Built by the FACADE (which may read a v2 manifest lazily); the
+    CLI imports it from ``indexed.core.engine``, never from ``core.v2`` directly.
+    ``embedding_*``/``vector_store`` are populated for v2 (from the manifest
+    engine block) and best-effort for v1.
+    """
+
+    name: str
+    engine_version: str  # "1" | "2"
+    embedding_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    vector_store: Optional[str] = None
+
+
+def engine_descriptors(
+    collection_names: Optional[List[str]] = None,
+    *,
+    collections_path: Optional[str] = None,
+) -> List[EngineDescriptor]:
+    """Per-collection engine identity for diagnostics (R13).
+
+    For each readable collection returns its engine version and — for v2 — the
+    recorded embedding model/provider and vector store (read from the v2
+    manifest engine block via a lazy ``core.v2`` import; no LlamaIndex). v1
+    collections report ``engine_version="1"`` with best-effort model/store from
+    the v1 manifest (``vector_store="faiss"``; the indexer name as the model).
+
+    Collections the facade can't classify — missing/corrupt manifest, or an
+    unknown ``version`` marker — are OMITTED (matching v1 inspect/status). This
+    is a DISPLAY helper only, so it never fails loud: the operational ops
+    (search/inspect/status/update/clear) already reject unknown markers via
+    ``_group_names_by_engine``/``_resolve_existing_engine``.
+    """
+    base = _collections_base(collections_path)
+    names = collection_names or _existing_collection_names(collections_path)
+    out: List[EngineDescriptor] = []
+    for name in names:
+        collection_path = base / name
+        if not (collection_path / "manifest.json").exists():
+            continue
+        try:
+            version = detect_engine_version(collection_path)
+        except (ValueError, UnknownEngineVersionError):
+            # Corrupt/unreadable or unknown marker → omit (display never crashes).
+            continue
+        descriptor = (
+            _v2_descriptor(name, collection_path)
+            if version == "2"
+            else _v1_descriptor(name, collection_path)
+        )
+        if descriptor is not None:
+            out.append(descriptor)
+    return out
+
+
+def _v2_descriptor(name: str, collection_path: Path) -> Optional[EngineDescriptor]:
+    """Read the v2 manifest engine block (lazy ``core.v2`` import, no LlamaIndex)."""
+    from indexed.core.v2.manifest import V2Manifest
+
+    try:
+        raw = json.loads(
+            (collection_path / "manifest.json").read_text(encoding="utf-8")
+        )
+        manifest = V2Manifest.from_disk(raw)
+    except Exception:
+        return None
+    return EngineDescriptor(
+        name=name,
+        engine_version="2",
+        embedding_model=manifest.engine.embedding.model,
+        embedding_provider=manifest.engine.embedding.provider,
+        vector_store=manifest.engine.vector_store,
+    )
+
+
+def _v1_descriptor(name: str, collection_path: Path) -> EngineDescriptor:
+    """Best-effort v1 identity (do not over-invest — key requirement is v1 vs v2).
+
+    v1 always embeds with FAISS + sentence-transformers; the manifest's first
+    indexer name is the closest thing v1 records to an embedding-model id.
+    """
+    model: Optional[str] = None
+    try:
+        raw = json.loads(
+            (collection_path / "manifest.json").read_text(encoding="utf-8")
+        )
+        indexers = raw.get("indexers") or []
+        if indexers and isinstance(indexers[0], dict):
+            model = indexers[0].get("name")
+    except Exception:
+        model = None
+    return EngineDescriptor(
+        name=name,
+        engine_version="1",
+        embedding_model=model,
+        embedding_provider=None,
+        vector_store="faiss",
+    )
 
 
 # --- routed callables (byte-identical v1 signatures + ``engine``) -------------

@@ -17,7 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 24_600
+SRC_LOC_MAX = 24_950
+# Raised from 24_600 by core-v2/2d: R13 engine-aware diagnostics
+# (`EngineDescriptor`/`engine_descriptors` in the facade + inspect display),
+# v2 search parity (`include_full_text`/`include_all_chunks` reconstruction in
+# `core/v2/retrieval.py`), scoreKind-conditional formatter ordering, and the
+# check_imports v2-edge guard — genuine new-feature surface; ceiling = measured
+# (24_786) + headroom.
 # Raised from 23_500 by core-v2/2c, which wires the v2 engine end to end:
 # `core/v2/{persist,ingestion,retrieval,_common}.py` + `core/v2/services/` +
 # the facade's `_engine_impl("2")` branch and per-engine grouping in
@@ -35,7 +41,11 @@ SRC_LOC_MAX = 24_600
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 33_800
+TEST_LOC_MAX = 34_650
+# Raised from 33_800 by core-v2/2d's tests: facade `engine_descriptors`,
+# inspect engine-diagnostics, retrieval full-text/all-chunks parity, the
+# store-dispatch integration probe, the scoreKind formatter tests, and the v2
+# create/search CLI system test; ceiling = measured (34_489) + headroom.
 # Raised from 32_800 by core-v2/2c's engine tests (persist crash-safety,
 # ingestion/retrieval/services model-free + KNOWN-HIT model-gated, facade
 # grouping + mixed v1/v2, cache-drift guard); ceiling = measured (33_599) +

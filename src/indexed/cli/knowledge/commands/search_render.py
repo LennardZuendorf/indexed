@@ -27,6 +27,12 @@ from ...utils.components import (
 )
 from ...utils.components.theme import get_detail_card_width
 
+# Score kinds (v2's per-collection ``scoreKind`` field) for which a HIGHER
+# score is a BETTER match. v1 results carry no ``scoreKind`` key at all, so
+# ``dict.get`` defaults a v1 collection out of this set — its sort key stays
+# exactly the raw ascending score, byte-identical to before (R6).
+_HIGHER_IS_BETTER = frozenset({"cosine"})
+
 
 class ChunkInfo(TypedDict):
     collection: str
@@ -79,11 +85,18 @@ def format_search_results(
     all_chunks: List[ChunkInfo] = []
     total_docs = 0
     failed_collections: List[tuple[str, Any]] = []
+    # Per-collection score direction (v2's "scoreKind"; v1 has none, so it
+    # defaults to the ascending/lower-is-better convention — R6 byte-stable).
+    higher_is_better_by_collection: Dict[str, bool] = {}
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
             failed_collections.append((collection_name, collection_results["error"]))
             continue
+
+        higher_is_better_by_collection[collection_name] = (
+            collection_results.get("scoreKind") in _HIGHER_IS_BETTER
+        )
 
         documents = collection_results.get("results", [])
         total_docs += len(documents)
@@ -119,8 +132,15 @@ def format_search_results(
         console.print()
         return
 
-    # Sort chunks by score (ascending - lower is better for distance)
-    all_chunks.sort(key=lambda x: x["chunk"].get("score", 999), reverse=False)
+    # Sort chunks best-first: ascending raw score (v1 distance, lower-better)
+    # unless the owning collection recorded a higher-is-better score kind (v2
+    # cosine), in which case the key is negated so ascending sort still puts
+    # the best match first.
+    def _sort_key(x: ChunkInfo) -> float:
+        score = x["chunk"].get("score", 999)
+        return -score if higher_is_better_by_collection.get(x["collection"]) else score
+
+    all_chunks.sort(key=_sort_key, reverse=False)
 
     # Show top result with split meta/excerpt cards
     console.print(

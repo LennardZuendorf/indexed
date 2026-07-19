@@ -155,6 +155,48 @@ class TestFormatSearchResults:
         assert "error-collection" in error_message
         assert "index unavailable" in error_message
 
+    def test_format_search_results_v2_cosine_scorekind_sorts_best_first(
+        self, monkeypatch
+    ):
+        """R13/R11 (v2 side): a collection recording ``scoreKind: cosine``
+        (higher is better) must show its BEST (highest-score) chunk as the
+        top result, not the lowest — the CLI twin of the MCP formatting fix.
+        A v1 collection (no 'scoreKind' key) keeps the existing ascending
+        sort byte-identical (R6)."""
+        captured: Dict[str, Any] = {}
+
+        def fake_show_top(chunk_info):
+            captured["top"] = chunk_info
+
+        monkeypatch.setattr(
+            search_render, "_show_top_result_split_cards", fake_show_top
+        )
+        monkeypatch.setattr(search_render, "_show_compact_match", lambda *_: None)
+
+        results: Dict[str, Any] = {
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "worst",
+                        "matchedChunks": [
+                            {"score": 0.02, "content": {"indexedData": "low"}}
+                        ],
+                    },
+                    {
+                        "id": "best",
+                        "matchedChunks": [
+                            {"score": 0.91, "content": {"indexedData": "high"}}
+                        ],
+                    },
+                ],
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert captured["top"]["doc_id"] == "best"
+
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
         outputs: List[str] = []

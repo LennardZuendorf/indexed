@@ -64,3 +64,36 @@ def test_core_importing_cli_is_a_violation(tmp_path: Path) -> None:
     violations = checker.check(src)
     assert violations, "expected a violation for core -> cli, got none"
     assert any("core must not import cli" in v for v in violations)
+
+
+def test_core_v2_importing_core_v1_is_a_violation(tmp_path: Path) -> None:
+    """core/v2 -> core.v1 is forbidden: v2 is a self-contained engine (may use only
+    protocols/config/utils + third-party), so it must never import the frozen v1
+    engine internals. The generic 'core' bucket can't see the v1/v2 split."""
+    checker = _load_checker()
+    src = tmp_path / "src" / "indexed"
+    v2_dir = src / "core" / "v2"
+    v2_dir.mkdir(parents=True)
+    (v2_dir / "ingestion.py").write_text(
+        "from indexed.core.v1.engine import services\n"
+    )
+
+    violations = checker.check(src)
+    assert violations, "expected a violation for core/v2 -> core.v1, got none"
+    assert any("core/v2 must not import" in v for v in violations)
+
+
+def test_core_v2_importing_protocols_and_core_errors_is_allowed(tmp_path: Path) -> None:
+    """Legal v2 imports (protocols, core.errors) must NOT be flagged by the
+    v2 -> v1 rule (guards against an over-broad match)."""
+    checker = _load_checker()
+    src = tmp_path / "src" / "indexed"
+    v2_dir = src / "core" / "v2"
+    v2_dir.mkdir(parents=True)
+    (v2_dir / "stores.py").write_text(
+        "from indexed.protocols import BaseConnector\n"
+        "from indexed.core.errors import CoreV2Error\n"
+    )
+
+    violations = checker.check(src)
+    assert violations == [], f"legal v2 imports were flagged: {violations}"

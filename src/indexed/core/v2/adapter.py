@@ -24,6 +24,13 @@ from indexed.protocols.models import ConvertedDocument
 if TYPE_CHECKING:
     from llama_index.core.schema import TextNode
 
+# The engine-owned metadata keys ``to_nodes`` injects onto every node. Retrieval
+# strips these back off when reconstructing a document's original per-chunk
+# metadata for the v1 ``allChunks`` result field (single source of truth).
+RESERVED_METADATA_KEYS = frozenset(
+    {"source_id", "url", "modified_time", "chunk_number", "collection"}
+)
+
 
 def to_nodes(
     doc: Union[dict[str, Any], ConvertedDocument], collection: str
@@ -58,4 +65,4 @@ def to_nodes(
     return nodes
 
 
-__all__ = ["to_nodes"]
+__all__ = ["RESERVED_METADATA_KEYS", "to_nodes"]

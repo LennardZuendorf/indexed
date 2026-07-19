@@ -75,6 +75,84 @@ def test_search_omits_content_when_not_requested(tmp_path: Path) -> None:
     assert "content" not in chunk
 
 
+def test_full_text_and_all_chunks_absent_by_default(tmp_path: Path) -> None:
+    """R4 parity: neither field appears unless explicitly requested (v1)."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["penguin migration", "second chunk"])])
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+    doc = res["c1"]["results"][0]
+    assert "text" not in doc
+    assert "allChunks" not in doc
+
+
+def test_include_full_text_attaches_reconstructed_text(tmp_path: Path) -> None:
+    """``include_full_text`` reconstructs the document text from its chunk nodes
+    (v2 keeps no ``documents/<id>.json``)."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["penguin migration", "second chunk"])])
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            include_full_text=True,
+        )
+    doc = res["c1"]["results"][0]
+    assert doc["id"] == "d1"
+    assert "penguin migration" in doc["text"]
+    assert "second chunk" in doc["text"]
+
+
+def test_include_all_chunks_returns_every_document_chunk(tmp_path: Path) -> None:
+    """``include_all_chunks`` returns ALL of a matched doc's chunks (not only the
+    matched ones), in order, in v1's ``{"indexedData": ...}`` shape."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["penguin migration", "second chunk"])])
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            include_all_chunks=True,
+        )
+    doc = res["c1"]["results"][0]
+    all_chunks = doc["allChunks"]
+    assert [c["indexedData"] for c in all_chunks] == [
+        "penguin migration",
+        "second chunk",
+    ]
+    # No original per-chunk metadata → v1's minimal on-disk shape (indexedData only).
+    assert all(set(c) == {"indexedData"} for c in all_chunks)
+
+
+def test_all_chunks_recovers_original_chunk_metadata(tmp_path: Path) -> None:
+    """A chunk that carried its own metadata surfaces it in ``allChunks`` with the
+    engine-owned keys (source_id/url/chunk_number/collection/modified_time)
+    stripped — v1's on-disk ``{"indexedData", "metadata"}`` shape."""
+    cols = tmp_path / "cols"
+    doc = {
+        "id": "d1",
+        "url": "u",
+        "modifiedTime": "2026-01-10T00:00:00+00:00",
+        "text": "body",
+        "chunks": [{"indexedData": "penguin", "metadata": {"heading": "Intro"}}],
+    }
+    _build(cols, "c1", [doc])
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            include_all_chunks=True,
+        )
+    (chunk,) = res["c1"]["results"][0]["allChunks"]
+    assert chunk["indexedData"] == "penguin"
+    assert chunk["metadata"] == {"heading": "Intro"}  # engine keys stripped
+
+
 def test_search_never_resolves_settings_llm(tmp_path: Path) -> None:
     """Retriever-only: the search path must NEVER read ``Settings.llm`` (no
     as_query_engine, no OpenAI-by-default trap). We install a property that

@@ -11,7 +11,7 @@ units:
     requires: []
   - id: "core-v2/2"
     title: "v2 engine MVP: create/search/inspect/status/clear"
-    status: planned
+    status: done
     requires: ["core-v2/1"]
   - id: "core-v2/3"
     title: "v2 incremental update + lifecycle characterization net"
@@ -350,6 +350,9 @@ numbers recorded; full gate.
 | Root specs still state "v2 over the same on-disk format" | compound step | Superseded by this feature's ADR; root tech.md § Core Facade updated at COMPOUND via the merge block in [tech.md](tech.md) |
 | `.spec/tech-config.md` names `ConfigService.instance()` and `[core.v1.vector_store]` (stale vs code) | compound step | Fix while promoting the `[core] engine` key |
 | `manifest.indexers[]` multi-indexer plumbing deferred "to the v2 rewrite" (root plan) | core-v2/2 | v2 manifest replaces it with the `engine` block; v1 plumbing stays as-is |
+| No `CoreV2StorageConfig` model shipped | core-v2/2 (done) | Followed [tech.md](tech.md) § Config: the manifest's `vectorStore` field is the store-identity seam; a `[core.v2.storage]` knob arrives only with a second store (no phantom generality) |
+| v2 create disk read-cache deferred | core-v2/2 (done) | v1's `CacheReaderDecorator`/`DiskPersister` live in layers `core/v2` may not import; a create-time read-only optimization that never changes the produced collection. Follow-up: a v2-local persister or a `utils`-level `DiskPersister` shared by both engines ([tech.md](tech.md) § Implementation Detail) |
+| `core/v2 ↛ core.v1` import edge | core-v2/2 (done) | The generic `core` bucket in `scripts/check_imports.py` can't see the v1/v2 split; core-v2/2d added an explicit edge + negative self-test |
 
 ---
 

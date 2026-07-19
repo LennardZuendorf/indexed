@@ -167,9 +167,13 @@ def status(
                 "number_of_chunks": manifest.number_of_chunks,
                 "updated_time": manifest.updated_time,
                 "last_modified_document_time": manifest.last_modified_document_time,
-                # Engine-aware indexer/model display is R13 (core-v2/2d); the
-                # base surface carries no v1-style indexer list.
-                "indexers": [],
+                # The v2 embedding model stands in for v1's indexer list: it is
+                # the closest analog and — crucially for R4 surface parity — the
+                # CLI search path skips any collection whose ``indexers`` is empty
+                # (search.py builds its per-collection SourceConfig from
+                # ``indexers[0]``). A one-element list keeps ``search --collection
+                # <v2>`` working exactly like v1.
+                "indexers": [manifest.engine.embedding.model],
                 "index_size": None,
                 "source_type": manifest.reader.type,
                 "relative_path": _relative_path(base / name),
@@ -206,7 +210,8 @@ def inspect(
                 "created_time": manifest.created_time,
                 "updated_time": manifest.updated_time,
                 "last_modified_document_time": manifest.last_modified_document_time,
-                "indexers": [],
+                # See ``status`` — the embedding model is v2's indexer analog.
+                "indexers": [manifest.engine.embedding.model],
             }
         )
     return out

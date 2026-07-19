@@ -12,8 +12,9 @@ Rules (top may import down; nothing imports up into cli/mcp):
   - parsing     ↛ core, connectors, cli, mcp
   - utils       ↛ core, connectors, cli, mcp
   - protocols   ↛ core, connectors, cli, mcp
+  - core/v2     ↛ core.v1   (v2 is self-contained: protocols/config/utils + 3rd-party only)
 
-Run with ``--self-test`` to verify a synthetic forbidden edge is caught.
+Run with ``--self-test`` to verify synthetic forbidden edges are caught.
 """
 
 from __future__ import annotations
@@ -52,20 +53,38 @@ FORBIDDEN: dict[str, frozenset[str]] = {
 }
 
 
+def _imported_modules(tree: ast.AST) -> list[tuple[int, str]]:
+    """Yield (lineno, module) for every absolute ``indexed.*`` import."""
+    out: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            out.append((node.lineno, node.module))
+        elif isinstance(node, ast.Import):
+            out.extend((node.lineno, alias.name) for alias in node.names)
+    return out
+
+
 def _imported_subpackages(tree: ast.AST) -> list[tuple[int, str]]:
     """Yield (lineno, sub) for every absolute ``indexed.<sub>`` import."""
     out: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
-        mods: list[str] = []
-        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            mods.append(node.module)
-        elif isinstance(node, ast.Import):
-            mods.extend(alias.name for alias in node.names)
-        for mod in mods:
-            parts = mod.split(".")
-            if len(parts) >= 2 and parts[0] == "indexed":
-                out.append((node.lineno, parts[1]))
+    for lineno, mod in _imported_modules(tree):
+        parts = mod.split(".")
+        if len(parts) >= 2 and parts[0] == "indexed":
+            out.append((lineno, parts[1]))
     return out
+
+
+def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
+    """Yield (lineno, module) for imports of ``indexed.core.v1`` — forbidden from
+    ``core/v2`` (v2 is a self-contained engine that may use only
+    protocols/config/utils + third-party, never the frozen v1 engine internals).
+    The generic subpackage rule keys on the top-level ``core`` bucket and so
+    cannot see the v1/v2 split; this deeper edge is checked explicitly."""
+    hits: list[tuple[int, str]] = []
+    for lineno, mod in _imported_modules(tree):
+        if mod == "indexed.core.v1" or mod.startswith("indexed.core.v1."):
+            hits.append((lineno, mod))
+    return hits
 
 
 def check(src: Path = SRC) -> list[str]:
@@ -92,6 +111,13 @@ def check(src: Path = SRC) -> list[str]:
                 violations.append(
                     f"{display}:{lineno}: {source_sub} must not import {target}"
                 )
+        # Deeper edge: core/v2 must not import core.v1 (the generic 'core' bucket
+        # rule above can't see the v1/v2 split).
+        if source_sub == "core" and rel.parts[1] == "v2":
+            for lineno, mod in _v2_imports_v1(tree):
+                violations.append(
+                    f"{display}:{lineno}: core/v2 must not import {mod} (v2 ↛ core.v1)"
+                )
     return violations
 
 
@@ -107,7 +133,31 @@ def _self_test() -> int:
             f"SELF-TEST FAILED: caught {caught}, expected {expected}", file=sys.stderr
         )
         return 1
-    print(f"self-test OK: forbidden edges detected for 'core' -> {sorted(caught)}")
+    # v2 ↛ core.v1: a synthetic core/v2 file importing core.v1 IS caught...
+    v2_bad = ast.parse(
+        "from indexed.core.v1.engine import services\nimport indexed.core.v1.constants\n"
+    )
+    if len(_v2_imports_v1(v2_bad)) != 2:
+        print(
+            f"SELF-TEST FAILED: v2->v1 caught {_v2_imports_v1(v2_bad)}, expected 2",
+            file=sys.stderr,
+        )
+        return 1
+    # ...while a legal v2 import (protocols, core.errors) is NOT flagged.
+    v2_ok = ast.parse(
+        "from indexed.protocols import BaseConnector\n"
+        "from indexed.core.errors import CoreV2Error\n"
+    )
+    if _v2_imports_v1(v2_ok):
+        print(
+            f"SELF-TEST FAILED: legal v2 import flagged: {_v2_imports_v1(v2_ok)}",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"self-test OK: forbidden edges detected for 'core' -> {sorted(caught)}; "
+        "v2 ↛ core.v1 enforced"
+    )
     return 0
 
 

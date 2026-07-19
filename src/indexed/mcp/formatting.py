@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+# Score kinds recorded per-collection (v2's ``scoreKind`` field, tech.md "V2
+# manifest") for which a HIGHER score is a BETTER match. v1 carries no
+# ``scoreKind`` key at all — ``dict.get`` defaults it out of this set, so a v1
+# collection's sort key is UNCHANGED (R6: v1-only output byte-identical).
+_HIGHER_IS_BETTER = frozenset({"cosine"})
+
 
 def format_search_results_for_llm(
     raw_results: Dict[str, Any], query: str
@@ -39,6 +45,12 @@ def format_search_results_for_llm(
         if not isinstance(collection_data, dict) or "results" not in collection_data:
             continue
 
+        # v1 carries no "scoreKind" (squared-L2, lower-better, the sort default
+        # below); v2 records "cosine" (higher-better) per collection (R11 v2
+        # side; full cross-engine value unification is a later unit — this only
+        # orders each collection's OWN chunks correctly).
+        higher_is_better = collection_data.get("scoreKind") in _HIGHER_IS_BETTER
+
         documents = collection_data.get("results", [])
         formatted["total_documents_found"] += len(documents)
 
@@ -69,10 +81,15 @@ def format_search_results_for_llm(
                             "document_url": doc_url,
                             "chunk_number": chunk_number,
                             "text": content_text,
+                            # Sort-only, not part of the public envelope shape —
+                            # popped off again right below.
+                            "_sort_key": -score if higher_is_better else score,
                         }
                     )
 
-    all_chunks.sort(key=lambda x: x["relevance_score"])
+    all_chunks.sort(key=lambda x: x["_sort_key"])
+    for chunk in all_chunks:
+        del chunk["_sort_key"]
 
     for idx, chunk in enumerate(all_chunks, 1):
         chunk["rank"] = idx

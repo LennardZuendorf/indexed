@@ -12,6 +12,13 @@ work unchanged.
 Per-collection failures are captured as ``{"error": ...}`` entries (never
 raised), exactly like v1's ``SearchService``. LlamaIndex imports are
 function-local (CLI startup <1s).
+
+``include_full_text``/``include_all_chunks`` match v1's result shape (R4 parity):
+v2 has no on-disk ``documents/<id>.json``, so both are reconstructed from the
+docstore nodes of each matched document (grouped by ``source_id``, ordered by
+``chunk_number``) — ``text`` = the chunk contents concatenated, ``allChunks`` =
+every chunk of the matched document (not only the matched ones), each in v1's
+``{"indexedData": ...}`` shape.
 """
 
 from __future__ import annotations
@@ -80,6 +87,8 @@ def search(
                 max_chunks=max_chunks,
                 score_threshold=score_threshold,
                 include_matched_chunks=include_matched_chunks,
+                include_full_text=include_full_text,
+                include_all_chunks=include_all_chunks,
                 embed_cache=embed_cache,
             )
         except Exception as exc:  # per-collection failure never aborts the rest
@@ -110,6 +119,8 @@ def _search_one(
     max_chunks: int,
     score_threshold: Optional[float],
     include_matched_chunks: bool,
+    include_full_text: bool,
+    include_all_chunks: bool,
     embed_cache: Dict[str, "BaseEmbedding"],
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
@@ -139,17 +150,46 @@ def _search_one(
             if (nws.score if nws.score is not None else 0.0) >= score_threshold
         ]
 
+    # Full-text/all-chunks reconstruction needs every chunk of a matched doc,
+    # not just the retrieved ones — grouped from the docstore by source_id
+    # (only built when requested, so the common path pays nothing).
+    docs_by_source = (
+        _docs_by_source(index) if (include_full_text or include_all_chunks) else None
+    )
+
     results = _group_by_document(
         nodes_with_scores,
         max_docs=max_docs,
         max_chunks=max_chunks,
         include_matched_chunks=include_matched_chunks,
+        include_full_text=include_full_text,
+        include_all_chunks=include_all_chunks,
+        docs_by_source=docs_by_source,
     )
     return {
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
+        "scoreKind": manifest.engine.score_kind,
         "results": results,
     }
+
+
+def _docs_by_source(index: Any) -> Dict[str, List[Any]]:
+    """Group every docstore node by ``source_id``, ordered by ``chunk_number``.
+
+    The basis for reconstructing v1's ``text``/``allChunks`` (v2 keeps no
+    ``documents/<id>.json``, so the docstore nodes are the source of truth).
+    """
+    grouped: Dict[str, List[Any]] = {}
+    for node in index.docstore.docs.values():
+        meta = node.metadata or {}
+        source_id = meta.get("source_id")
+        if source_id is None:
+            continue
+        grouped.setdefault(source_id, []).append(node)
+    for nodes in grouped.values():
+        nodes.sort(key=lambda n: (n.metadata or {}).get("chunk_number", 0))
+    return grouped
 
 
 def _group_by_document(
@@ -158,12 +198,17 @@ def _group_by_document(
     max_docs: int,
     max_chunks: int,
     include_matched_chunks: bool,
+    include_full_text: bool = False,
+    include_all_chunks: bool = False,
+    docs_by_source: Optional[Dict[str, List[Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Group ranked chunk nodes into documents (v1 ``__build_results`` semantics).
 
     New documents are admitted up to ``max_docs`` (never blocked by the chunk
     cap — that would reintroduce A5's starvation); enrichment chunks for an
-    already-admitted document are capped by ``max_chunks``.
+    already-admitted document are capped by ``max_chunks``. When requested,
+    ``text``/``allChunks`` are attached ON FIRST ADMISSION of a document (v1
+    attaches them the same way), reconstructed from ``docs_by_source``.
     """
     result: Dict[str, Dict[str, Any]] = {}
     total_chunks = 0
@@ -186,12 +231,20 @@ def _group_by_document(
         if source_id not in result:
             if len(result) >= max_docs:
                 continue
-            result[source_id] = {
+            entry: Dict[str, Any] = {
                 "id": source_id,
                 "url": url,
                 "path": url,
                 "matchedChunks": [chunk],
             }
+            _attach_document_content(
+                entry,
+                source_id,
+                docs_by_source,
+                include_full_text=include_full_text,
+                include_all_chunks=include_all_chunks,
+            )
+            result[source_id] = entry
             total_chunks += 1
         else:
             if total_chunks >= max_chunks:
@@ -200,6 +253,51 @@ def _group_by_document(
             total_chunks += 1
 
     return list(result.values())
+
+
+def _attach_document_content(
+    entry: Dict[str, Any],
+    source_id: str,
+    docs_by_source: Optional[Dict[str, List[Any]]],
+    *,
+    include_full_text: bool,
+    include_all_chunks: bool,
+) -> None:
+    """Attach v1-shaped ``text``/``allChunks`` for a matched document (R4 parity).
+
+    ``text`` = the document's chunk contents concatenated (v2 keeps no original
+    full-text blob); ``allChunks`` = every chunk of the document (all chunks,
+    not only the matched ones) in v1's on-disk chunk shape.
+    """
+    if not (include_full_text or include_all_chunks) or docs_by_source is None:
+        return
+    nodes = docs_by_source.get(source_id, [])
+    if include_full_text:
+        entry["text"] = "\n".join(n.get_content() for n in nodes)
+    if include_all_chunks:
+        entry["allChunks"] = [_chunk_dict(n) for n in nodes]
+
+
+def _chunk_dict(node: Any) -> Dict[str, Any]:
+    """One v1-shaped ``allChunks`` element from a docstore node.
+
+    v1's ``allChunks`` are the on-disk ConvertedDocument chunk dicts:
+    ``{"indexedData": <text>}`` plus a ``metadata`` key only when the chunk
+    carried its own metadata (``Chunk.to_disk`` drops ``None``). The adapter
+    merged that original per-chunk metadata INTO the node alongside the
+    engine-owned keys, so we recover it by stripping ``RESERVED_METADATA_KEYS``.
+    """
+    from indexed.core.v2.adapter import RESERVED_METADATA_KEYS
+
+    chunk: Dict[str, Any] = {"indexedData": node.get_content()}
+    original = {
+        k: v
+        for k, v in (node.metadata or {}).items()
+        if k not in RESERVED_METADATA_KEYS
+    }
+    if original:
+        chunk["metadata"] = original
+    return chunk
 
 
 __all__ = ["search"]
