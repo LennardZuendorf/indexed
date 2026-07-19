@@ -48,6 +48,29 @@ def test_service_surface_exposes_seven_names() -> None:
         assert callable(getattr(services, name))
 
 
+def test_create_empty_corpus_error_passes_through_unprefixed(tmp_path: Path) -> None:
+    """The service boundary's ``_wrap`` passes typed ``IndexedError``s through
+    unchanged (core-v2/2c review Finding 3): ingestion's empty-corpus
+    ``CoreV2Error`` must keep its own actionable message, NOT get rewrapped
+    with the generic ``"v2 create failed: ..."`` prefix that would otherwise
+    obscure a user-actionable condition.
+    """
+    from indexed.core.errors import CoreV2Error
+
+    cols = tmp_path / "cols"
+    with mock_embedding(embed_dim=8):
+        with pytest.raises(CoreV2Error) as excinfo:
+            services.create(
+                [_cfg("empty")],
+                use_cache=False,
+                connector_factory=make_connector_factory([]),
+                collections_path=str(cols),
+            )
+    message = str(excinfo.value)
+    assert "No documents found for collection 'empty'" in message
+    assert "v2 create failed" not in message
+
+
 def test_update_raises_clear_deferral_error(tmp_path: Path) -> None:
     from indexed.core.errors import UpdateNotSupportedError
 

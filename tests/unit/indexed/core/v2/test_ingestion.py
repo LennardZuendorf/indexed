@@ -9,6 +9,7 @@ suites.
 from __future__ import annotations
 
 import json
+import types
 from pathlib import Path
 
 import pytest
@@ -91,9 +92,13 @@ def test_node_count_equals_chunk_count_no_rechunk(tmp_path: Path) -> None:
 
 
 def test_create_empty_corpus_raises_clear_error(tmp_path: Path) -> None:
+    from indexed.core.errors import CoreV2Error
+
     cols = tmp_path / "cols"
     with mock_embedding(embed_dim=8):
-        with pytest.raises(ValueError, match="No documents found"):
+        # Typed IndexedError (not a bare ValueError) so the service boundary's
+        # _wrap passes the actionable message through unprefixed.
+        with pytest.raises(CoreV2Error, match="No documents found"):
             ingestion.create(
                 [_cfg("empty")],
                 use_cache=False,
@@ -154,3 +159,53 @@ def test_last_modified_document_time_is_max_across_docs(tmp_path: Path) -> None:
         )
     manifest = json.loads((cols / "c1" / "manifest.json").read_text())
     assert manifest["lastModifiedDocumentTime"] == "2026-03-01T00:00:00+00:00"
+
+
+def _crash_before_swap(staging, dest):  # noqa: ANN001
+    raise RuntimeError("simulated crash before atomic swap")
+
+
+def test_interrupted_create_staging_dir_excluded_from_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A create KILLED after the staging manifest is written but before the swap
+    leaves a complete v2 collection on disk under ``<name>.tmp-...``; discovery
+    (both the v2 helper AND the facade) MUST exclude it — else it surfaces as a
+    phantom collection (core-v2/2c review, Critical).
+
+    Deterministic: a letter-leading hex (``e288c54c``) is forced — that is the
+    historically-escaping case, so the staging name depends only on the fix
+    (pid-first prefix), not on a random uuid.
+    """
+    from indexed.core.engine import _existing_collection_names
+    from indexed.core.v2 import ingestion as ing
+    from indexed.core.v2._common import discover_v2_collections
+
+    cols = tmp_path / "cols"
+    docs = [make_doc("needle", ["penguin migration antarctic"])]
+
+    # Force the letter-leading hex that escaped the exclusion regex pre-fix.
+    monkeypatch.setattr(
+        ing.uuid, "uuid4", lambda: types.SimpleNamespace(hex="e288c54c")
+    )
+    # Crash the atomic swap so the built staging dir survives on disk.
+    monkeypatch.setattr("indexed.core.v2.persist.replace_dir", _crash_before_swap)
+
+    with mock_embedding(embed_dim=8):
+        with pytest.raises(RuntimeError, match="crash before atomic swap"):
+            ingestion.create(
+                [_cfg("needle")],
+                use_cache=False,
+                connector_factory=make_connector_factory(docs),
+                collections_path=str(cols),
+            )
+
+    # A complete staging collection (with manifest.json) survived the "crash".
+    leftovers = [p.name for p in cols.iterdir() if p.name.startswith("needle.tmp-")]
+    assert len(leftovers) == 1, f"expected one leftover staging dir, got {leftovers}"
+    assert (cols / leftovers[0] / "manifest.json").is_file()
+
+    # Neither discovery site may surface the staging dir; the real 'needle'
+    # collection was never swapped in, so both return nothing.
+    assert discover_v2_collections(cols) == []
+    assert _existing_collection_names(str(cols)) == []

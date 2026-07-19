@@ -27,6 +27,7 @@ here (see the task report).
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,7 @@ from typing import (
 from indexed.protocols import BaseConnector, SourceConfig
 from indexed.protocols.models import ReaderDetails
 
+from indexed.core.errors import CoreV2Error
 from indexed.core.v2._common import collections_base, resolve_embedding_config
 
 if TYPE_CHECKING:
@@ -115,7 +117,9 @@ def _create_one(
         phased_progress.finish_phase("Fetching Documents")
 
     if not documents:
-        raise ValueError(
+        # Typed IndexedError so the service boundary's ``_wrap`` passes it through
+        # with its own actionable message (not the generic "v2 create failed:").
+        raise CoreV2Error(
             f"No documents found for collection '{cfg.name}'. Check that the "
             "source path exists and contains readable content."
         )
@@ -162,7 +166,12 @@ def _create_one(
         number_of_chunks=len(nodes),
     )
 
-    staging = base / f"{cfg.name}.tmp-{uuid.uuid4().hex[:8]}"
+    # pid FIRST (digits) so the name matches the tmp/trash discovery-exclusion
+    # regex ``\.(?:tmp|trash)-\d+`` in ``_common`` and the facade — mirrors v1's
+    # ``<name>.tmp-<pid>-<hex>`` convention. A bare hex prefix escapes the regex
+    # ~37.5% of the time, so a create killed mid-build would leave a phantom
+    # discoverable collection (core-v2/2c review, Critical).
+    staging = base / f"{cfg.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     staging.mkdir(parents=True, exist_ok=False)
     try:
         persist(storage_context, staging / "storage")
