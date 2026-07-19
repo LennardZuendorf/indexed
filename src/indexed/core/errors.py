@@ -7,7 +7,7 @@ envelopes keep working unchanged.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Iterable, Sequence
 
 from indexed.config.errors import IndexedError
 
@@ -72,9 +72,30 @@ class EngineNotAvailableError(CoreError):
         )
 
 
+class UnknownVectorStoreError(CoreError):
+    """A v2 collection records a vector store this installation can't load.
+
+    Raised by :func:`indexed.core.v2.stores.load_storage_context` when the
+    manifest's ``engine.vectorStore`` is not one this build supports. The
+    engine fails loud (R9) and NEVER silently substitutes another store, so a
+    collection built for a future store is never mis-read as ``simple``.
+    """
+
+    def __init__(self, store: object, *, known: Iterable[str]) -> None:
+        self.store = store
+        self.known = tuple(known)
+        known_str = ", ".join(sorted(self.known))
+        super().__init__(
+            f"Collection manifest records vector store {store!r}, which this "
+            f"installation cannot load. Supported stores: {known_str}. "
+            f"The collection was not modified."
+        )
+
+
 __all__ = [
     "CoreError",
     "EngineMismatchError",
     "UnknownEngineVersionError",
     "EngineNotAvailableError",
+    "UnknownVectorStoreError",
 ]

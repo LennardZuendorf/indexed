@@ -18,6 +18,12 @@ _EXPORTS = frozenset(
         "CoreV2EmbeddingConfig",
         "CoreV2SearchConfig",
         "to_nodes",
+        "build_embed_model",
+        "probe_dimension",
+        "new_storage_context",
+        "load_storage_context",
+        "known_vector_stores",
+        "persist",
     }
 )
 
@@ -28,6 +34,12 @@ _MODULE_FOR = {
     "CoreV2EmbeddingConfig": "config_models",
     "CoreV2SearchConfig": "config_models",
     "to_nodes": "adapter",
+    "build_embed_model": "embedding.local",
+    "probe_dimension": "embedding.local",
+    "new_storage_context": "stores",
+    "load_storage_context": "stores",
+    "known_vector_stores": "stores",
+    "persist": "stores",
 }
 
 
@@ -50,10 +62,20 @@ if TYPE_CHECKING:  # help type-checkers/IDEs see the re-exported names
         CoreV2EmbeddingConfig,
         CoreV2SearchConfig,
     )
+    from indexed.core.v2.embedding.local import (  # noqa: F401
+        build_embed_model,
+        probe_dimension,
+    )
     from indexed.core.v2.manifest import (  # noqa: F401
         V2EmbeddingInfo,
         V2EngineBlock,
         V2Manifest,
+    )
+    from indexed.core.v2.stores import (  # noqa: F401
+        known_vector_stores,
+        load_storage_context,
+        new_storage_context,
+        persist,
     )
 
 

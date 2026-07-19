@@ -17,7 +17,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 23_300
+SRC_LOC_MAX = 23_500
+# Raised from 23_300 by core-v2/2b, which adds the native embedding factory
+# (`core/v2/embedding/local.py`) + vector-store construction/LOAD dispatch
+# (`core/v2/stores.py`) + the UnknownVectorStoreError — genuine new-feature
+# surface, not stealth regrowth; ceiling = measured (23_416) + headroom.
 # Raised from 23_000 by core-v2/2a, which adds the v2 manifest/config-model/
 # adapter package (`core/v2/{__init__,manifest,config_models,adapter}.py`) —
 # genuine new-feature surface (pre-approved in `.spec/lessons.md`'s v1 surface
@@ -25,7 +29,10 @@ SRC_LOC_MAX = 23_300
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 32_500
+TEST_LOC_MAX = 32_800
+# Raised from 32_500 by core-v2/2b's model-free wiring + real-model
+# (offline-proof / parity / store-dispatch) tests; ceiling = measured
+# (32_684) + headroom.
 AGENTS_MD_MAX_LINES = 100
 
 _IGNORED_PARTS = frozenset({".venv", "node_modules", "__pycache__"})
