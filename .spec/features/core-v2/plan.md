@@ -168,6 +168,18 @@ src/indexed/mcp/{server,tools,resources}.py  # retarget; lifespan engine
 - Full existing suite green with zero test-body edits outside patch targets
   (facade patch point moves from `core.v1.engine` to `indexed.core.engine`).
 
+**Routing exceptions (R1/R2):** manifest-based engine routing has three
+carve-outs, so the routing tests above cover only the general case:
+
+- A readable manifest naming an unsupported version still fails loud
+  (`UnknownEngineVersionError`) — that is the general rule, not an exception.
+- A missing or corrupt manifest is tolerated (not a hard engine error): the
+  facade falls through to v1's own not-found/corrupt-collection handling
+  (R6) instead of raising.
+- `collection_exists` is engine-agnostic on the default path — it never
+  detects a version or fails loud on a corrupt/unrecognized marker, since
+  existence is answered identically by either engine.
+
 **Verification:** `uv run pytest -q --cov=src/indexed` green;
 `tests/characterization/` green; new unit tests for versioning/selector/errors.
 

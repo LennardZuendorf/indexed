@@ -3,7 +3,7 @@ type: feature-product
 feature: core-v2
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-07-18
+updated: 2026-07-19
 ---
 
 # Feature: Core V2 (LlamaIndex engine) — Product
@@ -58,6 +58,15 @@ MUST fail loud with an actionable message — never silently fall back to v1.
 - **Then** the operation fails with a message naming the found version and the
   supported versions, and the collection is not modified
 
+#### Exceptions: manifest readability
+
+The fail-loud mandate above applies only to a **readable manifest that names
+an unsupported version**. A **missing or corrupt manifest** is a distinct
+case: it is tolerated, not a hard engine error — the collection is treated as
+absent (a v1-compatible "not found"), preserving v1's own handling of corrupt
+collections (R6). See R2's Exceptions for the full three-case breakdown,
+including the engine-agnostic `collection_exists` probe.
+
 ### Requirement: Safe per-collection routing (R2)
 
 Every CLI command, MCP tool, and internal call operating on an existing
@@ -79,6 +88,24 @@ engine.
 - **When** the user searches across all collections
 - **Then** each collection is searched by its own engine and both contribute
   results
+
+#### Exceptions: routing scope
+
+Manifest-based routing (and the conflict rule above) governs every operation
+except three cases:
+
+- **Unknown engine version** — a readable manifest naming an unsupported
+  version fails loud, naming the found version and the supported versions;
+  the collection is not modified (R1).
+- **Corrupt or missing manifest** — tolerated, not a hard engine error: the
+  collection is treated as absent, so v1's existing not-found/corrupt-
+  collection handling is preserved unchanged (R6).
+- **The `collection_exists` probe** — existence is a filesystem question
+  answered identically by either engine, so it is exempt from manifest-based
+  routing and never fails loud on a corrupt or unrecognized marker.
+
+All other operations resolve the engine from the collection's manifest and
+reject an explicitly requested engine that conflicts with it.
 
 ### Requirement: Explicit engine selection for new collections (R3)
 
