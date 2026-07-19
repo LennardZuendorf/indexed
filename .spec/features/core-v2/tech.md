@@ -165,19 +165,36 @@ v2 `score` = cosine similarity, higher-better. Cross-engine merged views
 convert v1's squared-L2 to cosine exactly: `sim = 1 - d²/2` (valid because v1
 embeddings are unit-normalized). `core.v2.search.score_threshold` keeps
 results with `sim >= threshold` (range 0–1); v1 threshold semantics unchanged.
-Optional rerank: `SentenceTransformerRerank` from llama-index-core (lazy
-`CrossEncoder` import verified) with a configurable cross-encoder model.
+Optional rerank (core-v2/6): `SentenceTransformerRerank` from llama-index-core
+(lazy `CrossEncoder` import verified — importing the postprocessor class does
+NOT import sentence-transformers; only constructing it does) with a
+configurable cross-encoder model, passed EXPLICITLY (never via `Settings`).
+Applied per collection AFTER the retriever returns nodes and AFTER the cosine
+`score_threshold` filter (the threshold is a cosine cutoff; rerank then
+replaces the surviving nodes' scores with cross-encoder scores and keeps
+`top_n`). Disabled by default → zero cost: no `SentenceTransformerRerank`/
+`CrossEncoder` import or model load (proven by an import-guard probe); enabling
+it downloads the CE model on first use (opt-in, unlike the default-local
+embedding path).
 
-**Interim per-collection sort fix (core-v2/2d):** v2's per-collection result
-dict carries an additive `"scoreKind": "cosine"` field (v1's never had this
-key). The CLI (`search_render.py`) and MCP (`mcp/formatting.py`) formatters
-use it to sort each collection's OWN chunks best-first regardless of engine
-(cosine descending vs v1's squared-L2 ascending) — this fixes a real R4 bug
-(a v2 collection's worst chunk was showing as the top result) without
-attempting cross-engine value comparability, which stays core-v2/6's job
-(the `sim = 1 - d²/2` conversion above). A v1 collection carries no
-`scoreKind` key, so its sort key and output are byte-identical to before
-(R6).
+**Per-collection sort fix (core-v2/2d) → cross-engine unification
+(core-v2/6):** v2's per-collection result dict carries an additive
+`"scoreKind": "cosine"` field (v1's never had this key). core-v2/2d used it to
+sort each collection's OWN chunks best-first (cosine descending vs v1's
+squared-L2 ascending), fixing a real R4 bug (a v2 collection's worst chunk
+showed as the top result) without cross-engine value comparability. core-v2/6
+completes R11: when the merged set spans BOTH engines (any `scoreKind` present)
+the CLI (`search_render.py`) and MCP (`mcp/formatting.py`) formatters rank ALL
+chunks on ONE comparable measure — a unified `relevance` = the cosine value for
+v2, and `sim = 1 - d²/2` for v1 — sorted DESCENDING. The MCP path additionally
+surfaces `relevance` + a `score_kind` label while leaving each engine's raw
+`relevance_score` untouched (the unification is for ranking, not a destructive
+rewrite). These two app-layer formatters compute the arithmetic inline (no
+`core.v2` import above the facade). **R6 guard:** the unification applies ONLY
+when a v2 collection is present; a v1-only view (no `scoreKind` anywhere) keeps
+the EXACT pre-feature path — ascending raw distance, no `relevance`/`score_kind`
+field added — so its output is byte-identical (verified by a dedicated
+full-output test plus the green characterization suite).
 
 ### Config (`[core.v2.*]` + engine selector)
 

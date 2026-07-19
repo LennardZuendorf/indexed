@@ -17,7 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 25_800
+SRC_LOC_MAX = 26_100
+# Raised from 25_800 by core-v2/6: opt-in `SentenceTransformerRerank` wiring in
+# `core/v2/retrieval.py` (+ `CoreV2RerankConfig` / `resolve_rerank_config` /
+# registration) and the cross-engine unified-relevance ranking in
+# `mcp/formatting.py` + `cli/.../search_render.py` (R10/R11) — genuine
+# new-feature surface; ceiling = measured (25_857) + headroom.
 # Raised from 25_100 by core-v2/4: the v1->v2 migration service
 # (`core/v2/migration.py`: offline + from-source read, build-aside + validate +
 # backup/atomic-swap/rollback), the facade-exposed `migrate` in `core/engine.py`,
@@ -50,7 +55,12 @@ SRC_LOC_MAX = 25_800
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 35_800
+TEST_LOC_MAX = 36_400
+# Raised from 35_800 by core-v2/6's tests: the rerank suite (disabled lazy-import
+# probe, enabled fake-reranker order/top_n, gated real-CE) in `test_retrieval.py`,
+# the cross-engine unified-relevance + v1-only byte-identical tests in
+# `test_formatting.py` and `test_search.py`, and the rerank config-model/
+# registration tests; ceiling = measured (36_093) + headroom.
 # Raised from 35_200 by core-v2/4's tests: the migration service unit suite
 # (`test_migration.py`: dry-run/offline/failed-validation/rollback/purge/
 # from-source) + the v1->v2 migration CLI system test

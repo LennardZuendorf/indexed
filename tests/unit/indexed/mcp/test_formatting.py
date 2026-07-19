@@ -94,3 +94,106 @@ def test_relevance_score_field_keeps_the_raw_unmodified_value() -> None:
     out = format_search_results_for_llm(raw, "q")
     assert out["results"][0]["relevance_score"] == 0.75
     assert "_sort_key" not in out["results"][0]
+
+
+# --- R11: cross-engine unified relevance -------------------------------------
+
+# Pre-feature v1-only result chunk shape — the EXACT key set a v1-only search
+# must still emit (no ``relevance``/``score_kind`` added). R6 byte-stability.
+_V1_CHUNK_KEYS = {
+    "rank",
+    "relevance_score",
+    "collection",
+    "document_id",
+    "document_url",
+    "chunk_number",
+    "text",
+}
+
+
+def test_mixed_v1_v2_ranks_on_one_comparable_relevance() -> None:
+    """R11: with BOTH engines present, all chunks rank on one comparable
+    measure — cosine, v1's squared-L2 mapped ``sim = 1 - d²/2`` — so a better
+    v2 hit outranks a worse v1 hit and vice-versa (not 'v2 always first')."""
+    raw = {
+        # v1: squared-L2 distances (lower better). rel = 1 - d²/2.
+        "v1-coll": {
+            "collectionName": "v1-coll",
+            "results": [_chunk("v1-strong", 0.1), _chunk("v1-weak", 1.6)],
+        },
+        # v2: cosine (higher better). rel = score.
+        "v2-coll": {
+            "collectionName": "v2-coll",
+            "scoreKind": "cosine",
+            "results": [_chunk("v2-strong", 0.9), _chunk("v2-weak", 0.4)],
+        },
+    }
+    out = format_search_results_for_llm(raw, "q")
+    ids = [r["document_id"] for r in out["results"]]
+    # relevances: v1-strong 0.95 > v2-strong 0.90 > v2-weak 0.40 > v1-weak 0.20
+    assert ids == ["v1-strong", "v2-strong", "v2-weak", "v1-weak"]
+
+    by_id = {r["document_id"]: r for r in out["results"]}
+    # Each engine's RAW score field is preserved untouched.
+    assert by_id["v1-strong"]["relevance_score"] == 0.1
+    assert by_id["v2-strong"]["relevance_score"] == 0.9
+    # Unified relevance is the comparable cosine measure.
+    assert by_id["v1-strong"]["relevance"] == 0.95
+    assert by_id["v2-strong"]["relevance"] == 0.9
+    # score_kind labels how to read the preserved raw score.
+    assert by_id["v1-strong"]["score_kind"] == "l2_squared"
+    assert by_id["v2-strong"]["score_kind"] == "cosine"
+
+
+def test_v1_only_output_is_byte_identical_to_pre_feature() -> None:
+    """R6 guard: a v1-only view (no scoreKind anywhere) must produce the EXACT
+    pre-feature output — ascending raw-score order, ranks 1..N, and NO
+    ``relevance``/``score_kind`` field added. Full result dicts are asserted."""
+    raw = {
+        "v1-a": {
+            "collectionName": "v1-a",
+            "results": [_chunk("worst", 3.0), _chunk("best", 0.1)],
+        },
+        "v1-b": {
+            "collectionName": "v1-b",
+            "results": [_chunk("mid", 1.0)],
+        },
+    }
+    out = format_search_results_for_llm(raw, "q")
+
+    # No cross-engine fields leak into a v1-only view.
+    for r in out["results"]:
+        assert "relevance" not in r
+        assert "score_kind" not in r
+        assert set(r) == _V1_CHUNK_KEYS
+
+    # Exact ordering (ascending raw distance) + exact per-chunk dicts.
+    assert out["results"] == [
+        {
+            "rank": 1,
+            "relevance_score": 0.1,
+            "collection": "v1-a",
+            "document_id": "best",
+            "document_url": "u/best",
+            "chunk_number": 0,
+            "text": "text for best",
+        },
+        {
+            "rank": 2,
+            "relevance_score": 1.0,
+            "collection": "v1-b",
+            "document_id": "mid",
+            "document_url": "u/mid",
+            "chunk_number": 0,
+            "text": "text for mid",
+        },
+        {
+            "rank": 3,
+            "relevance_score": 3.0,
+            "collection": "v1-a",
+            "document_id": "worst",
+            "document_url": "u/worst",
+            "chunk_number": 0,
+            "text": "text for worst",
+        },
+    ]

@@ -34,6 +34,20 @@ from ...utils.components.theme import get_detail_card_width
 _HIGHER_IS_BETTER = frozenset({"cosine"})
 
 
+def _unified_relevance(raw_score: float, higher_is_better: bool) -> float:
+    """Map a raw per-engine score onto one comparable measure — cosine (R11).
+
+    v2 already reports cosine similarity (``higher_is_better``) so its raw score
+    IS the relevance; v1 reports a squared-L2 distance ``d²`` over
+    unit-normalized vectors, so ``sim = 1 - d²/2`` recovers the cosine exactly.
+    Pure arithmetic (mirrors ``mcp/formatting`` so CLI and MCP agree) — the
+    app-layer never imports ``core.v2`` for this.
+    """
+    if higher_is_better:
+        return raw_score
+    return 1.0 - raw_score / 2.0
+
+
 class ChunkInfo(TypedDict):
     collection: str
     doc_id: str
@@ -132,13 +146,22 @@ def format_search_results(
         console.print()
         return
 
-    # Sort chunks best-first: ascending raw score (v1 distance, lower-better)
-    # unless the owning collection recorded a higher-is-better score kind (v2
-    # cosine), in which case the key is negated so ascending sort still puts
-    # the best match first.
-    def _sort_key(x: ChunkInfo) -> float:
-        score = x["chunk"].get("score", 999)
-        return -score if higher_is_better_by_collection.get(x["collection"]) else score
+    # Sort chunks best-first. When a v2 collection is present (mixed or
+    # v2-only) rank ALL chunks on one comparable measure — cosine relevance,
+    # v1's squared-L2 mapped ``sim = 1 - d²/2`` (R11) — descending. When the
+    # view is v1-only (no scoreKind anywhere) keep the EXACT pre-feature sort
+    # (ascending raw distance), so v1-only display order is byte-identical (R6).
+    # The displayed score is always the untouched raw score (preserved).
+    any_v2 = any(higher_is_better_by_collection.values())
+    if any_v2:
+
+        def _sort_key(x: ChunkInfo) -> float:
+            hib = higher_is_better_by_collection.get(x["collection"], False)
+            return -_unified_relevance(x["chunk"].get("score", 999), hib)
+    else:
+
+        def _sort_key(x: ChunkInfo) -> float:
+            return x["chunk"].get("score", 999)
 
     all_chunks.sort(key=_sort_key, reverse=False)
 

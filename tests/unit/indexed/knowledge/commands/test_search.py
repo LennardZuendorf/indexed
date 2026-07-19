@@ -197,6 +197,114 @@ class TestFormatSearchResults:
 
         assert captured["top"]["doc_id"] == "best"
 
+    def test_mixed_engines_rank_on_unified_relevance(self, monkeypatch):
+        """R11 (CLI): with BOTH engines merged, chunks rank on one comparable
+        measure — cosine, v1's squared-L2 mapped ``sim = 1 - d²/2`` — so a
+        better v2 hit outranks a worse v1 hit AND a truly-better v1 hit still
+        leads (not 'v2 always first')."""
+        order: List[str] = []
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-strong",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-weak",
+                        "matchedChunks": [
+                            {"score": 1.6, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-strong",
+                        "matchedChunks": [
+                            {"score": 0.9, "content": {"indexedData": "c"}}
+                        ],
+                    },
+                    {
+                        "id": "v2-weak",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "d"}}
+                        ],
+                    },
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # relevances: v1-strong .95 > v2-strong .90 > v2-weak .40 > v1-weak .20
+        assert order == ["v1-strong", "v2-strong", "v2-weak", "v1-weak"]
+
+    def test_v1_only_keeps_ascending_raw_score_order(self, monkeypatch):
+        """R6 (CLI): a v1-only view (no scoreKind anywhere) keeps the EXACT
+        pre-feature ascending raw-distance order — unchanged by the R11 work."""
+        order: List[str] = []
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "worst",
+                        "matchedChunks": [
+                            {"score": 3.0, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "best",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                    {
+                        "id": "mid",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "c"}}
+                        ],
+                    },
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert order == ["best", "mid", "worst"]
+
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
         outputs: List[str] = []

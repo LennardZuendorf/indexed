@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from indexed.core.v2.config_models import (
         CoreV2EmbeddingConfig,
+        CoreV2RerankConfig,
         CoreV2SearchConfig,
     )
 
@@ -69,6 +70,22 @@ def resolve_search_config() -> "CoreV2SearchConfig":
         return CoreV2SearchConfig()
 
 
+def resolve_rerank_config() -> "CoreV2RerankConfig":
+    """The bound ``[core.v2.rerank]`` config, or its defaults (disabled).
+
+    A direct service/test call that never registered the spec still gets the
+    default (``enabled=False``) — so the zero-cost, no-CrossEncoder path holds.
+    """
+    from indexed.core.v2.config_models import CoreV2RerankConfig
+
+    try:
+        from indexed.config import get_config
+
+        return get_config().bind().get(CoreV2RerankConfig)
+    except Exception:
+        return CoreV2RerankConfig()
+
+
 def is_v2_collection(collection_dir: Path) -> bool:
     """True when ``collection_dir`` holds a readable v2 manifest (``version:"2"``)."""
     manifest_path = collection_dir / "manifest.json"
@@ -101,5 +118,6 @@ __all__ = [
     "discover_v2_collections",
     "is_v2_collection",
     "resolve_embedding_config",
+    "resolve_rerank_config",
     "resolve_search_config",
 ]

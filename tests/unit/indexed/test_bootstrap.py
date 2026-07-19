@@ -39,15 +39,21 @@ def test_register_app_config_is_idempotent():
 
 
 def test_register_app_config_registers_core_v2_specs():
-    from indexed.core.v2.config_models import CoreV2EmbeddingConfig, CoreV2SearchConfig
+    from indexed.core.v2.config_models import (
+        CoreV2EmbeddingConfig,
+        CoreV2RerankConfig,
+        CoreV2SearchConfig,
+    )
 
     reload()
     svc = get_config()
     register_app_config(svc)
     assert svc._registry.has("core.v2.embedding")  # noqa: SLF001
     assert svc._registry.has("core.v2.search")  # noqa: SLF001
+    assert svc._registry.has("core.v2.rerank")  # noqa: SLF001
     assert svc._registry._specs["core.v2.embedding"] is CoreV2EmbeddingConfig  # noqa: SLF001
     assert svc._registry._specs["core.v2.search"] is CoreV2SearchConfig  # noqa: SLF001
+    assert svc._registry._specs["core.v2.rerank"] is CoreV2RerankConfig  # noqa: SLF001
 
 
 def test_core_v2_config_binds_with_defaults_and_overlay_overrides():

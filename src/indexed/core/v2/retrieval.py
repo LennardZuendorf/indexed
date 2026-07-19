@@ -32,6 +32,7 @@ from loguru import logger
 from indexed.core.v2._common import (
     collections_base,
     discover_v2_collections,
+    resolve_rerank_config,
     resolve_search_config,
 )
 
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
     from llama_index.core.base.embeddings.base import BaseEmbedding
     from llama_index.core.schema import NodeWithScore
 
+    from indexed.core.v2.config_models import CoreV2RerankConfig
     from indexed.protocols import SourceConfig
 
 # Upper bound on retrieved chunks so doc-grouping isn't starved by one dominant
@@ -74,6 +76,11 @@ def search(
     else:
         names = [cfg.name for cfg in configs]
 
+    # Resolve the (opt-in) rerank config ONCE per search — same for every
+    # collection. Disabled by default: no CrossEncoder is imported or loaded
+    # unless ``[core.v2.rerank] enabled=true`` (R10, zero cost when off).
+    rerank_cfg = resolve_rerank_config()
+
     # One embed model per distinct model name, reused across collections.
     embed_cache: Dict[str, "BaseEmbedding"] = {}
     results: Dict[str, Any] = {}
@@ -90,6 +97,7 @@ def search(
                 include_full_text=include_full_text,
                 include_all_chunks=include_all_chunks,
                 embed_cache=embed_cache,
+                rerank_cfg=rerank_cfg,
             )
         except Exception as exc:  # per-collection failure never aborts the rest
             logger.error(f"Error searching v2 collection {name}: {exc}")
@@ -110,6 +118,25 @@ def _get_embed_model(
     return embed_cache[model_name]
 
 
+def _apply_rerank(
+    nodes_with_scores: List["NodeWithScore"],
+    query: str,
+    rerank_cfg: "CoreV2RerankConfig",
+) -> List["NodeWithScore"]:
+    """Rerank retrieved nodes with a cross-encoder, keeping ``top_n`` (R10).
+
+    Imports are FUNCTION-LOCAL and reached ONLY when rerank is enabled, so a
+    disabled search never imports ``SentenceTransformerRerank`` or the
+    ``CrossEncoder`` it loads (zero cost, proven by a lazy-import probe). The
+    postprocessor is passed the query and nodes EXPLICITLY — ``Settings`` is
+    never touched (retriever-only contract).
+    """
+    from llama_index.core.postprocessor import SentenceTransformerRerank
+
+    reranker = SentenceTransformerRerank(model=rerank_cfg.model, top_n=rerank_cfg.top_n)
+    return reranker.postprocess_nodes(nodes_with_scores, query_str=query)
+
+
 def _search_one(
     base: Path,
     name: str,
@@ -122,6 +149,7 @@ def _search_one(
     include_full_text: bool,
     include_all_chunks: bool,
     embed_cache: Dict[str, "BaseEmbedding"],
+    rerank_cfg: "CoreV2RerankConfig",
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
 
@@ -144,11 +172,17 @@ def _search_one(
     nodes_with_scores: List["NodeWithScore"] = retriever.retrieve(query)
 
     if score_threshold is not None:
+        # Threshold is a COSINE cutoff (the retriever's score kind), so it is
+        # applied to the vector-similarity scores BEFORE any rerank replaces
+        # them with cross-encoder scores.
         nodes_with_scores = [
             nws
             for nws in nodes_with_scores
             if (nws.score if nws.score is not None else 0.0) >= score_threshold
         ]
+
+    if rerank_cfg.enabled:
+        nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
     # Full-text/all-chunks reconstruction needs every chunk of a matched doc,
     # not just the retrieved ones — grouped from the docstore by source_id
