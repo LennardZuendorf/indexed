@@ -155,9 +155,18 @@ class CoreEngineConfig(BaseModel):
         # Named ``_check_engine_value`` (not ``_validate_engine``) to avoid a
         # cross-file collision with ``core.engine._validate_engine`` (the module
         # function that coerces a selector to an ``EngineVersion``).
-        if v not in ("1", "2"):
-            raise ValueError(f"engine must be '1' or '2', got {v!r}")
-        return v
+        #
+        # Accept the user-facing forms every surface documents (--engine, env,
+        # config) — "1"/"2"/"v1"/"v2" (case-insensitive) — and STORE the
+        # canonical "1"/"2". Kept in sync with
+        # cli.composition.normalize_engine_selector (replicated, not imported:
+        # config must not import the CLI layer).
+        normalized = {"1": "1", "2": "2", "v1": "1", "v2": "2"}.get(
+            str(v).strip().lower()
+        )
+        if normalized is None:
+            raise ValueError(f"engine must be one of '1', '2', 'v1', 'v2', got {v!r}")
+        return normalized
 
 
 class MCPConfig(BaseModel):

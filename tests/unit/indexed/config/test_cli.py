@@ -615,6 +615,40 @@ class TestSetConfig:
             or "not saved" in result.stdout
         )
 
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_engine_normalizes_friendly_alias(self, mock_config_service):
+        """C2 regression: ``config set core.engine v2`` must persist the
+        canonical "2", not the raw "v2" (which the engine-selector resolution
+        path — and a later ``index create`` — would reject)."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = []
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "set", "core.engine", "v2"])
+        assert result.exit_code == 0, result.stdout
+        mock_config.set_value.assert_called_once_with(
+            "core.engine", "2", field_info={"sensitive": False}
+        )
+
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_engine_rejects_bad_value(self, mock_config_service):
+        """C2 regression: ``config set core.engine v3`` must be rejected at
+        write time (naming the accepted forms) instead of being persisted and
+        crashing a later ``index create``."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "set", "core.engine", "v3"])
+        assert result.exit_code == 1
+        assert "v1" in result.stdout.lower()
+        mock_config.set_value.assert_not_called()
+
 
 class TestValidate:
     """Test validate command."""

@@ -80,6 +80,30 @@ def test_core_engine_config_rejects_bad_value() -> None:
         CoreEngineConfig(engine="9")
 
 
+# --- C2 regression: CoreEngineConfig must normalize the friendly v1/v2 forms,
+# not just accept the bare "1"/"2" — env (INDEXED__CORE__ENGINE=v2) and
+# `config set core.engine v2` go through this validator directly. ------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "raw,expected",
+    [("1", "1"), ("2", "2"), ("v1", "1"), ("v2", "2"), ("V2", "2")],
+)
+def test_engine_selector_normalizes(raw: str, expected: str) -> None:
+    from indexed.core.v1.config_models import CoreEngineConfig
+
+    assert CoreEngineConfig(engine=raw).engine == expected
+
+
+@pytest.mark.unit
+def test_engine_selector_rejects_garbage() -> None:
+    from indexed.core.v1.config_models import CoreEngineConfig
+
+    with pytest.raises(ValueError, match="v1"):
+        CoreEngineConfig(engine="v3")
+
+
 def test_bad_core_engine_in_config_fails_loud(monkeypatch, tmp_path: Path) -> None:
     """A malformed ``[core] engine`` value must surface as a config error, not be
     silently downgraded to the default ``"1"`` — consistent with the env path

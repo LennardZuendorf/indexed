@@ -90,6 +90,20 @@ def set_config(
         console.print()
         return
 
+    if key == "core.engine":
+        # C2: validate/normalize through the same model the engine-selector
+        # resolution path uses, so "v1"/"v2"/"1"/"2" (any case) are accepted
+        # and a bad value is rejected at write time instead of crashing a
+        # later `index create`.
+        from indexed.core.v1.config_models import CoreEngineConfig
+
+        try:
+            coerced = CoreEngineConfig(engine=str(value)).engine
+        except ValueError as exc:
+            console.print()
+            print_error(str(exc))
+            raise typer.Exit(1)
+
     is_secret = _is_sensitive_key(key)
     # Secrets are written to .env as-typed (no type coercion, e.g. a purely
     # numeric token must not silently become an int).
