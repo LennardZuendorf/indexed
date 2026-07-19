@@ -5,9 +5,10 @@ Complements ``test_ingestion.py::test_interrupted_create_staging_dir_excluded_fr
 (which proves the FULL create-then-crash path end to end) with a static,
 dependency-free check of BOTH discovery sites directly: ``_common.
 discover_v2_collections`` and the facade's ``core.engine._existing_collection_names``.
-Both use the same tmp/trash exclusion regex (``\\.(?:tmp|trash)-\\d+``, requiring
-a digit immediately after ``-``), so both must agree on every case, with fixed
-(non-random) dir names so the guard cannot flaky-pass.
+Both use the same exclusion regex (``\\.(?:tmp|trash)-\\d+|\\.v1-backup$`` — a
+digit immediately after ``-tmp``/``-trash``, OR a ``.v1-backup`` suffix), so
+both must agree on every case, with fixed (non-random) dir names so the guard
+cannot flaky-pass.
 """
 
 from __future__ import annotations
@@ -44,6 +45,32 @@ def test_digit_leading_and_pid_prefixed_staging_dirs_excluded_both_sites(
     _write_v2_manifest(base / "mydocs")
     _write_v2_manifest(base / "mydocs.tmp-408afba6")
     _write_v2_manifest(base / f"mydocs.tmp-{os.getpid()}-e288c54c")
+
+    assert discover_v2_collections(base) == ["mydocs"]
+    assert _existing_collection_names(str(base)) == ["mydocs"]
+
+
+def test_v1_backup_dirs_excluded_both_sites(tmp_path: Path) -> None:
+    """A migration's retained ``<name>.v1-backup`` (a complete v1 collection) is
+    NOT surfaced by either discovery site — else ``inspect``/``status``/``search``
+    (all-collections) list AND search the backup, duplicating the migrated hits
+    until ``--purge-backup`` (core-v2 pre-merge fix). Both sites exclude any
+    ``*.v1-backup`` dir BY NAME so they agree with the migration backup-name
+    constant (``core/v2/migration.py`` -> ``f"{name}.v1-backup"``).
+    """
+    base = tmp_path / "cols"
+    _write_v2_manifest(base / "mydocs")
+    # The real backup is a v1 collection (unmarked manifest) — excluded from the
+    # facade site by name (it still has a manifest.json, so it would otherwise
+    # be listed).
+    backup = base / "mydocs.v1-backup"
+    backup.mkdir(parents=True, exist_ok=True)
+    (backup / "manifest.json").write_text(
+        json.dumps({"collectionName": "mydocs"}), encoding="utf-8"
+    )
+    # A pathological v2-marked ``*.v1-backup`` proves the v2 site excludes by
+    # NAME too (not merely because a v1 backup fails ``is_v2_collection``).
+    _write_v2_manifest(base / "other.v1-backup")
 
     assert discover_v2_collections(base) == ["mydocs"]
     assert _existing_collection_names(str(base)) == ["mydocs"]

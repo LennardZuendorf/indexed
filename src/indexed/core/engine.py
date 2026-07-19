@@ -64,9 +64,13 @@ _EXPORTS = _SHARED_TYPES | _ROUTED
 _DEFAULT_ENGINE: EngineVersion = "1"
 _SUPPORTED_ENGINES = ("1", "2")
 
-# Transient build-aside/rollback dirs the durable-create path leaves on disk;
-# excluded from collection discovery exactly as v1 does.
-_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(tmp|trash)-\d+")
+# Non-collection dirs excluded from discovery: transient build-aside/rollback
+# dirs the durable-create path leaves on disk (``.tmp-``/``.trash-``, exactly as
+# v1 does) AND a migration's retained ``<name>.v1-backup`` (a complete v1
+# collection kept until ``--purge-backup``) — otherwise the backup would surface
+# as a phantom, duplicating the migrated collection's hits. Kept byte-identical
+# to ``core.v2._common._INTERNAL_COLLECTION_DIR_RE`` so both discovery sites agree.
+_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+|\.v1-backup$")
 
 
 def _validate_engine(engine: str) -> EngineVersion:

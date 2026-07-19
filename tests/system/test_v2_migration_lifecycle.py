@@ -86,6 +86,37 @@ def _search(query: str, collection: str, *, limit: int = 5) -> dict:
     return json.loads(result.stdout)
 
 
+def _search_all(query: str, *, limit: int = 5) -> dict:
+    """Search ALL collections (no ``--collection``) — exercises the discovery
+    path (``_existing_collection_names``) a single-collection search bypasses."""
+    result = runner.invoke(
+        app,
+        [
+            "--local",
+            "--simple-output",
+            "--log-level",
+            "ERROR",
+            "search",
+            query,
+            "--limit",
+            str(limit),
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
+def _inspect_all() -> list:
+    """List ALL collections via ``inspect`` (no name) — the all-collections
+    discovery surface (``_existing_collection_names``)."""
+    result = runner.invoke(
+        app,
+        ["--local", "--simple-output", "--log-level", "ERROR", "inspect"],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
 def _fingerprint(root: Path) -> dict:
     import hashlib
 
@@ -146,6 +177,32 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
     v2_hit = _search(NEEDLE_QUERY, collection)
     assert v2_hit["results"][0]["document_id"].endswith("needle.txt")
     assert "penguin" in v2_hit["results"][0]["text"].lower()
+
+    # --- the retained <name>.v1-backup must NOT be discoverable/searchable ---
+    # (pre-merge fix): while the backup is still on disk, the all-collections
+    # surfaces (inspect/search WITHOUT --collection) must exclude it — else it
+    # is listed AND searched, duplicating the migrated needle hit until purge.
+    assert backup.is_dir()  # the backup is present for this check to be meaningful
+    backup_name = f"{collection}.v1-backup"
+
+    inspected = _inspect_all()
+    listed = {c["name"] for c in inspected}
+    assert collection in listed
+    assert backup_name not in listed, f"backup surfaced in inspect: {sorted(listed)}"
+
+    all_hits = _search_all(NEEDLE_QUERY)
+    hit_collections = {r["collection"] for r in all_hits["results"]}
+    assert backup_name not in hit_collections, (
+        f"backup searched (duplicate hits): {sorted(hit_collections)}"
+    )
+    # The needle is returned from the migrated v2 collection ONLY — not also
+    # from the backup (which would be a duplicate hit).
+    needle_collections = {
+        r["collection"]
+        for r in all_hits["results"]
+        if r["document_id"].endswith("needle.txt")
+    }
+    assert needle_collections == {collection}, needle_collections
 
     # --- standalone --purge-backup cleans up the backup -------------------
     purged = _migrate(collection, "--purge-backup")

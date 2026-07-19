@@ -19,9 +19,13 @@ if TYPE_CHECKING:
         CoreV2SearchConfig,
     )
 
-# Transient build-aside/rollback dirs the durable-create path leaves on disk;
-# excluded from discovery exactly as v1's services do (v1-surface-map §7).
-_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+")
+# Non-collection dirs excluded from discovery: transient build-aside/rollback
+# dirs the durable-create path leaves on disk (``.tmp-``/``.trash-``, exactly as
+# v1's services do — v1-surface-map §7) AND a migration's retained
+# ``<name>.v1-backup`` (a complete v1 collection kept until ``--purge-backup``).
+# Kept byte-identical to ``core.engine._INTERNAL_COLLECTION_DIR_RE`` so both
+# discovery sites agree on every case.
+_INTERNAL_COLLECTION_DIR_RE = re.compile(r"\.(?:tmp|trash)-\d+|\.v1-backup$")
 
 
 def collections_base(collections_path: Optional[str]) -> Path:
