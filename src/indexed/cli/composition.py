@@ -37,6 +37,7 @@ def register_app_config(config_service: ConfigService) -> None:
         CoreV1StorageConfig,
         MCPConfig,
     )
+    from indexed.core.v2.config_models import CoreV2EmbeddingConfig, CoreV2SearchConfig
     from indexed.connectors.confluence.schema import ConfluenceCloudConfig
     from indexed.connectors.files.schema import FileSystemConfig
     from indexed.connectors.jira.schema import JiraCloudConfig
@@ -49,6 +50,8 @@ def register_app_config(config_service: ConfigService) -> None:
     config_service.register(CoreV1SearchConfig, path="core.v1.search")
     config_service.register(CoreV1StorageConfig, path="core.v1.storage")
     config_service.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
+    config_service.register(CoreV2EmbeddingConfig, path="core.v2.embedding")
+    config_service.register(CoreV2SearchConfig, path="core.v2.search")
     config_service.register(MCPConfig, path="mcp")
     config_service.register(FileSystemConfig, path="sources.files")
     config_service.register(JiraCloudConfig, path="sources.jira")

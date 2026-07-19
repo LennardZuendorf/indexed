@@ -17,7 +17,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 23_000
+SRC_LOC_MAX = 23_300
+# Raised from 23_000 by core-v2/2a, which adds the v2 manifest/config-model/
+# adapter package (`core/v2/{__init__,manifest,config_models,adapter}.py`) —
+# genuine new-feature surface (pre-approved in `.spec/lessons.md`'s v1 surface
+# map note), not stealth regrowth; ceiling = measured (23_179) + headroom.
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.

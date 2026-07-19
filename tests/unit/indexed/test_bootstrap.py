@@ -38,6 +38,46 @@ def test_register_app_config_is_idempotent():
     assert len(svc._registry._specs) == n
 
 
+def test_register_app_config_registers_core_v2_specs():
+    from indexed.core.v2.config_models import CoreV2EmbeddingConfig, CoreV2SearchConfig
+
+    reload()
+    svc = get_config()
+    register_app_config(svc)
+    assert svc._registry.has("core.v2.embedding")  # noqa: SLF001
+    assert svc._registry.has("core.v2.search")  # noqa: SLF001
+    assert svc._registry._specs["core.v2.embedding"] is CoreV2EmbeddingConfig  # noqa: SLF001
+    assert svc._registry._specs["core.v2.search"] is CoreV2SearchConfig  # noqa: SLF001
+
+
+def test_core_v2_config_binds_with_defaults_and_overlay_overrides():
+    from indexed.core.v2.config_models import CoreV2EmbeddingConfig, CoreV2SearchConfig
+
+    # Register only the two specs under test (not the full app registry via
+    # register_app_config) so bind() validates only core.v2.*, per
+    # .spec/lessons.md's "ConfigService.set_overlay() is the right tool for
+    # config-dependent unit tests" — bind() otherwise also (re)validates
+    # every other registered path (e.g. sources.files) against whatever the
+    # shared sandboxed config.toml happens to hold at this point in the full
+    # suite, coupling this test to unrelated tests' disk state.
+    reload()
+    svc = get_config()
+    svc.register(CoreV2EmbeddingConfig, path="core.v2.embedding")
+    svc.register(CoreV2SearchConfig, path="core.v2.search")
+
+    svc.set_overlay("core.v2.embedding.batch_size", 64)
+    svc.set_overlay("core.v2.search.max_docs", 5)
+
+    bound = svc.bind()
+    embedding = bound.get(CoreV2EmbeddingConfig)
+    search = bound.get(CoreV2SearchConfig)
+
+    assert embedding.model_name == "sentence-transformers/all-MiniLM-L6-v2"
+    assert embedding.batch_size == 64
+    assert search.max_docs == 5
+    assert search.score_threshold == 0.0
+
+
 def test_build_connector_registry_has_jira():
     reg = build_connector_registry()
     assert "jira" in reg
