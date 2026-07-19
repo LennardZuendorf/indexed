@@ -27,7 +27,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from loguru import logger
 
 from indexed.config.errors import IndexedError
-from indexed.core.errors import CoreV2Error, UpdateNotSupportedError
+from indexed.core.errors import CoreV2Error
 from indexed.core.v2._common import collections_base, discover_v2_collections
 
 # ── exception boundary ────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ def search(
         )
 
 
-# ── update (deferred to core-v2/3) ─────────────────────────────────────────
+# ── update (incremental; core-v2/3) ────────────────────────────────────────
 
 
 def update(
@@ -114,9 +114,21 @@ def update(
     *,
     manifest_factory: Any = None,
 ) -> None:
-    """v2 incremental update is deferred to core-v2/3 (raise, never crash)."""
-    del configs, phased_progress, collections_path, manifest_factory
-    raise UpdateNotSupportedError()
+    """Incrementally update v2 collections (only new/changed docs re-embedded).
+
+    Thin wrapper over :func:`indexed.core.v2.ingestion.update`; all LlamaIndex
+    exceptions are wrapped at this boundary into ``CoreV2Error`` (typed
+    ``IndexedError``s pass through with their actionable messages).
+    """
+    from indexed.core.v2 import ingestion
+
+    with _wrap("update"):
+        ingestion.update(
+            configs,
+            phased_progress=phased_progress,
+            collections_path=collections_path,
+            manifest_factory=manifest_factory,
+        )
 
 
 # ── clear / collection_exists (filesystem ops) ─────────────────────────────

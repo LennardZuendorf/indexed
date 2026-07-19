@@ -15,7 +15,7 @@ units:
     requires: ["core-v2/1"]
   - id: "core-v2/3"
     title: "v2 incremental update + lifecycle characterization net"
-    status: planned
+    status: done
     requires: ["core-v2/2"]
   - id: "core-v2/4"
     title: "Migration command (dry-run, backup, rollback, validation)"
@@ -353,6 +353,7 @@ numbers recorded; full gate.
 | No `CoreV2StorageConfig` model shipped | core-v2/2 (done) | Followed [tech.md](tech.md) § Config: the manifest's `vectorStore` field is the store-identity seam; a `[core.v2.storage]` knob arrives only with a second store (no phantom generality) |
 | v2 create disk read-cache deferred | core-v2/2 (done) | v1's `CacheReaderDecorator`/`DiskPersister` live in layers `core/v2` may not import; a create-time read-only optimization that never changes the produced collection. Follow-up: a v2-local persister or a `utils`-level `DiskPersister` shared by both engines ([tech.md](tech.md) § Implementation Detail) |
 | `core/v2 ↛ core.v1` import edge | core-v2/2 (done) | The generic `core` bucket in `scripts/check_imports.py` can't see the v1/v2 split; core-v2/2d added an explicit edge + negative self-test |
+| `create` now records per-doc content hashes (upsert basis) | core-v2/3 (done) | [tech.md](tech.md) § V2 on-disk layout always specified `docstore.json` carries "ref_doc hashes (upsert basis)"; core-v2/3 realizes it — `ingestion.create` calls `docstore.set_document_hash` so the first `update` can SKIP unchanged docs. The hash is over chunk `indexedData` only (metadata-only changes don't force a re-embed). v2 `update` is build-aside (staging + swap) vs v1's in-place, per § V2 on-disk layout |
 
 ---
 

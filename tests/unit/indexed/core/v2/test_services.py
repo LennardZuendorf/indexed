@@ -2,11 +2,13 @@
 
 Covers the 7-name contract the facade calls: create/search delegate; status/
 inspect return field-keyed dicts that build the shared v1 dataclasses; clear/
-collection_exists are filesystem ops; update raises the clear deferral error.
+collection_exists are filesystem ops; update delegates to the incremental
+ingestion path (wrapping upstream errors at the boundary).
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -71,16 +73,47 @@ def test_create_empty_corpus_error_passes_through_unprefixed(tmp_path: Path) -> 
     assert "v2 create failed" not in message
 
 
-def test_update_raises_clear_deferral_error(tmp_path: Path) -> None:
-    from indexed.core.errors import UpdateNotSupportedError
+def test_update_delegates_to_incremental_ingestion(tmp_path: Path) -> None:
+    """The service ``update`` routes to the real incremental path: a new doc is
+    added, an unchanged doc is skipped (re-embed count proven by the record)."""
+    from tests.unit.indexed.core.v2._engine_helpers import (
+        make_update_manifest_factory,
+        recording_embedding,
+    )
 
-    with pytest.raises(UpdateNotSupportedError) as excinfo:
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("a", ["alpha one"])])
+
+    with recording_embedding(embed_dim=8) as embedded:
         services.update(
             [_cfg("c1")],
-            collections_path=str(tmp_path),
-            manifest_factory=lambda m, p: None,
+            collections_path=str(cols),
+            manifest_factory=make_update_manifest_factory(
+                [make_doc("a", ["alpha one"]), make_doc("b", ["beta one"])]
+            ),
         )
-    assert "core-v2/3" in str(excinfo.value)
+    # Only the new doc ``b`` was embedded; unchanged ``a`` was skipped.
+    assert len(embedded) == 1
+    assert any("beta one" in t for t in embedded)
+
+    manifest = json.loads((cols / "c1" / "manifest.json").read_text())
+    assert manifest["numberOfDocuments"] == 2
+
+
+def test_update_wraps_upstream_errors_as_core_v2_error(tmp_path: Path) -> None:
+    """A non-``IndexedError`` failure inside update is wrapped at the boundary."""
+    from indexed.core.errors import CoreV2Error
+
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("a", ["alpha one"])])
+
+    def _bad_factory(manifest, storage_path):  # noqa: ANN001
+        raise RuntimeError("connector rebuild exploded")
+
+    with pytest.raises(CoreV2Error, match="v2 update failed"):
+        services.update(
+            [_cfg("c1")], collections_path=str(cols), manifest_factory=_bad_factory
+        )
 
 
 def test_collection_exists_true_and_false(tmp_path: Path) -> None:

@@ -145,19 +145,46 @@ def test_search_on_v2_collection_routes_via_facade(tmp_path: Path) -> None:
     assert "error" not in res["c1"]
 
 
-def test_update_on_v2_collection_raises_deferral(tmp_path: Path) -> None:
+def test_update_on_v2_collection_routes_via_facade(tmp_path: Path) -> None:
+    """The facade resolves the collection's engine from its manifest (R2) and
+    routes ``update`` to the v2 incremental path — a new doc becomes searchable."""
+    import json
+
     import indexed.core.engine as facade
-    from indexed.core.errors import UpdateNotSupportedError
+    from indexed.protocols.connectors import ConnectorRun
 
     cols = tmp_path / "cols"
-    _facade_create_v2(cols, "c1", [_doc("d1", ["penguin"])])
+    _facade_create_v2(cols, "c1", [_doc("d1", ["penguin migration antarctic"])])
 
-    with pytest.raises(UpdateNotSupportedError):
+    def _manifest_factory(manifest, storage_path):  # noqa: ANN001
+        # Rebuild a ConnectorRun yielding the new doc (as the files connector's
+        # from_manifest would for a changed corpus).
+        class _R:
+            def read_all_documents(self):
+                yield _doc("d2", ["volcanic soil sulfur caldera"])
+
+            def get_reader_details(self):
+                return {"type": "localFiles", "basePath": "/corpus"}
+
+        class _C:
+            def convert(self, doc):
+                return [doc]
+
+        return ConnectorRun(_R(), _C(), [], None)
+
+    with _mock_embed():
         facade.update(
-            [_cfg("c1")],
-            collections_path=str(cols),
-            manifest_factory=lambda m, p: None,
+            [_cfg("c1")], collections_path=str(cols), manifest_factory=_manifest_factory
         )
+
+    manifest = json.loads((cols / "c1" / "manifest.json").read_text())
+    assert manifest["numberOfDocuments"] == 2
+
+    with _mock_embed():
+        res = facade.search(
+            "volcanic soil", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+    assert {r["id"] for r in res["c1"]["results"]} == {"d1", "d2"}
 
 
 def test_clear_on_v2_collection_via_facade(tmp_path: Path) -> None:

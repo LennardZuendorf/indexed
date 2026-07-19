@@ -66,6 +66,62 @@ def make_connector_factory(
     return lambda cfg: _FakeConnector(list(docs), reader_details)
 
 
+def make_update_manifest_factory(
+    docs: List[dict],
+    *,
+    deletions: Optional[List[str]] = None,
+    post_run: Optional[Callable[[], None]] = None,
+) -> Callable[[Any, str], Any]:
+    """A ``manifest_factory`` yielding a ``ConnectorRun`` over ``docs``.
+
+    Mirrors composition's ``make_manifest_factory``: the v2 update calls this
+    with ``(manifest, storage_path)`` and reads ``run.reader/converter/
+    deletions/post_run`` — exactly what the files connector's ``from_manifest``
+    returns. The fake reader yields only ``docs`` (the connector's job is to hand
+    back the new/changed documents), so unchanged docs are simply absent here.
+    """
+    from indexed.protocols.connectors import ConnectorRun
+
+    def factory(manifest: Any, storage_path: str) -> ConnectorRun:
+        return ConnectorRun(
+            _FakeReader(list(docs), None),
+            _FakeConverter(),
+            list(deletions or []),
+            post_run,
+        )
+
+    return factory
+
+
+@contextmanager
+def recording_embedding(embed_dim: int = 8) -> Iterator[List[str]]:
+    """Patch ``build_embed_model`` with a MockEmbedding that RECORDS embedded texts.
+
+    Yields the shared list of texts passed to ``_get_text_embedding`` (document
+    chunk texts — query embeddings go through ``_get_query_embedding`` and are
+    NOT recorded), so a test can prove incrementality: after an update, the list
+    holds EXACTLY the changed/new chunk texts and none of the unchanged ones.
+    Clear the list (``embedded.clear()``) between create and update to isolate
+    the update's embeddings.
+    """
+    from unittest.mock import patch
+
+    from llama_index.core.embeddings import MockEmbedding
+
+    embedded: List[str] = []
+
+    class _Recording(MockEmbedding):
+        def _get_text_embedding(self, text: str) -> List[float]:
+            embedded.append(text)
+            return super()._get_text_embedding(text)
+
+    with patch(
+        "indexed.core.v2.embedding.local.build_embed_model",
+        return_value=_Recording(embed_dim=embed_dim),
+    ):
+        yield embedded
+
+
 @contextmanager
 def mock_embedding(embed_dim: int = 8) -> Iterator[None]:
     """Patch ``build_embed_model`` at its source with a MockEmbedding.

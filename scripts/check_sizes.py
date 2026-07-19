@@ -17,7 +17,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 24_950
+SRC_LOC_MAX = 25_100
+# Raised from 24_950 by core-v2/3: the v2 incremental `update` path in
+# `core/v2/ingestion.py` (docstore-hash upsert + deletions + build-aside swap +
+# per-doc content hashing shared with create) and the service `update` rewire —
+# genuine new-feature surface; ceiling = measured (25_005) + headroom.
 # Raised from 24_600 by core-v2/2d: R13 engine-aware diagnostics
 # (`EngineDescriptor`/`engine_descriptors` in the facade + inspect display),
 # v2 search parity (`include_full_text`/`include_all_chunks` reconstruction in
@@ -41,7 +45,12 @@ SRC_LOC_MAX = 24_950
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 34_650
+TEST_LOC_MAX = 35_200
+# Raised from 34_650 by core-v2/3's tests: the v2 incremental-update unit suite
+# (`test_ingestion_update.py`: incrementality/embed-count proof, deletions,
+# empty no-op, build-aside mid-swap failure), the service + facade update tests,
+# and the new v2 files-lifecycle characterization net
+# (`test_lifecycle_files_v2.py`); ceiling = measured (35_073) + headroom.
 # Raised from 33_800 by core-v2/2d's tests: facade `engine_descriptors`,
 # inspect engine-diagnostics, retrieval full-text/all-chunks parity, the
 # store-dispatch integration probe, the scoreKind formatter tests, and the v2
