@@ -584,3 +584,58 @@ files inside are still matched by an earlier broad pattern (`*.json`) unless the
 negation also covers them (`!baselines/**`). `git check-ignore -v <path>` shows the
 matching rule for untracked paths and catches this directly; still confirm end-to-end
 with `git add`/`git status`, since that's what CI actually runs.
+
+## Core V2 build via subagent-driven development (2026-07-19)
+
+- **One agent per task — never re-dispatch a "dead" agent without confirming death.** Transcript
+  file size/mtime is NOT a liveness signal (three agents showed a frozen 118-byte transcript while
+  two were actively editing 250k+ tokens of work). Reliable liveness = `SendMessage` result:
+  "Message queued … at its next tool round" = ALIVE; "had no active task; resumed from transcript"
+  = was DORMANT (now revived). Or watch the working-tree diff hash over ~70s (changed = editing;
+  but a pure *reading* phase changes neither tree nor runs a build, so a tree-diff "stall" can be a
+  false positive — confirm with SendMessage). A false-death re-dispatch put 3 agents on one tree; the
+  cooperative agents self-detected and stood down, and the full gate arbitrated a clean merge — but
+  it cost ~1.5h. Stand down / kill the prior dispatch BEFORE re-dispatching.
+- **Subagents that launch the verify gate with `run_in_background` and end their turn go DORMANT** —
+  work committed-or-not, report unwritten, no auto-resume. Brief every implementer: "run the gate in
+  the FOREGROUND; do NOT end your turn until you have committed AND written the report." Revive a
+  dormant one with `SendMessage`.
+- **The CI benchmark action pushes baseline commits (`chore(benchmark): update baseline … [skip ci]`)
+  onto the PR branch itself**, so the next push is a non-fast-forward. `git fetch && git rebase
+  origin/<branch>` before each push (the baseline JSON touches disjoint files — clean rebase).
+- **The whole-branch review catches cross-UNIT gaps no per-unit review can.** Migration created the
+  `<name>.v1-backup` convention (unit 4) but collection-discovery lives in units 1/2, so the default
+  `migrate` left the backup as a discoverable + searchable phantom v1 collection (duplicate hits)
+  until `--purge-backup`. Lesson: the discovery-exclusion regex must exclude EVERY reserved sibling
+  dir, not just `.tmp`/`.trash` — it is now `\.(?:tmp|trash)-\d+|\.v1-backup$` at BOTH sites
+  (`core/engine.py`, `core/v2/_common.py`). Keep the two sites byte-identical.
+- **Manifest-authoritative routing must detect on the DEFAULT (no-`--engine`) path too**, or an
+  unknown `version` marker silently falls back to v1 (R1 violation). Detect per collection; let
+  `UnknownEngineVersionError` propagate (fail loud), but catch the collection-level `ValueError`
+  (corrupt/missing manifest) and fall through to the default engine so v1's own omit/handle behavior
+  is byte-preserved.
+- **Build-aside staging dirs must be named pid-FIRST** (`<name>.tmp-<pid>-<hex>`), not bare-uuid-hex —
+  the `\.(?:tmp|trash)-\d+` discovery-exclusion needs a DIGIT right after `-`; a hex prefix starting
+  with a–f (≈37.5%) escapes it, so a create/update killed mid-build could leave a phantom collection.
+- **v2 incremental update must embed with the collection's RECORDED model** (`manifest.engine.
+  embedding.model`), never the configured default — else new vectors land in a different embedding
+  space than the existing index. `create` uses the configured model (new collection); `update`/
+  `migrate` reuse the recorded one.
+- **LlamaIndex `TextNode.ref_doc_id` is read-only** — set the upsert/delete linkage via
+  `node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=doc_id)`; `delete_ref_doc`
+  keys on the SOURCE relationship (proven by a real `SimpleDocumentStore` round-trip). Docstore
+  per-doc content-hash upsert (skip unchanged, delete+re-embed changed) gives R5 incrementality.
+- **Native `HuggingFaceEmbedding` was ADOPTED** (not an own BaseEmbedding adapter): same
+  SentenceTransformer + HF cache as v1 → 1:1 relevance, zero re-download. Import it FUNCTION-LOCALLY
+  (the integration imports torch at module top). For zero-network-when-cached, pass `cache_folder` +
+  `local_files_only=True` when the model is cached (no `HF_HUB_OFFLINE` env mutation).
+- **R6 for formatters**: gate the cross-engine cosine unification (`sim = 1 − d²/2` for v1) on "a v2
+  collection is present" — v1 results carry no `scoreKind` key, so a v1-only search's output stays
+  byte-identical (no new `relevance` field, unchanged ascending sort). Cross-engine value comparison
+  only kicks in for mixed views.
+- **MCP v2 e2e must run OUT-OF-PROCESS** (spawn the server as a real stdio subprocess) — the in-process
+  FastMCP client + llama-index + torch segfaults (exit 139).
+- **The repo's `spec` skill (`validate.sh`) is a private-repo skill unavailable in an unauthorized
+  session** — a `spec_check.py` frontmatter+link proxy was used; the real validator must be run by
+  the maintainer in an authorized env. Commit signing is also impossible here (no key) → the stop-hook
+  "Unverified" nag is cosmetic; authorship is already `Claude <noreply@anthropic.com>`.
