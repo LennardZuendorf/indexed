@@ -208,10 +208,17 @@ def inspect_collections(
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     collections_path = str(cli_ctx.collections_path)
 
+    # Pass an explicit --engine through so the facade raises on a wrong engine
+    # (R2); omit when unset so v1 behavior is unchanged.
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    engine_kwargs = {"engine": engine_flag} if engine_flag is not None else {}
+
     # Fetch collection info from core - this is connection-agnostic
     if name:
         # Inspect specific collection (no progress bar)
-        collections = inspect_svc([name], collections_path=collections_path)
+        collections = inspect_svc(
+            [name], collections_path=collections_path, **engine_kwargs
+        )
 
         # Check if collection exists and has valid data
         if not collections or collections[0].number_of_documents == 0:
@@ -224,7 +231,9 @@ def inspect_collections(
                 # (foundation/6 E1) — but a directory that still exists on
                 # disk, corrupt or not, deserves an honest status rather than
                 # a misleading "not found" (foundation/6 regression fix).
-                if collection_exists_svc(name, collections_path=collections_path):
+                if collection_exists_svc(
+                    name, collections_path=collections_path, **engine_kwargs
+                ):
                     print_error(f"Collection '{name}' is corrupt or unreadable")
                     console.print()
                     raise typer.Exit(1)
@@ -267,11 +276,11 @@ def inspect_collections(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "inspect":
-        from indexed.core.v1.engine import inspect
+        from indexed.core.engine import inspect
 
         return inspect
     elif name == "collection_exists":
-        from indexed.core.v1.engine import collection_exists
+        from indexed.core.engine import collection_exists
 
         return collection_exists
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

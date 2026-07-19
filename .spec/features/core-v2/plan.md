@@ -3,11 +3,11 @@ type: feature-plan
 feature: core-v2
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-07-18
+updated: 2026-07-19
 units:
   - id: "core-v2/1"
     title: "Engine detection + version-dispatching facade (v1-only behavior)"
-    status: planned
+    status: done
     requires: []
   - id: "core-v2/2"
     title: "v2 engine MVP: create/search/inspect/status/clear"

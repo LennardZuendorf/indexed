@@ -124,6 +124,11 @@ def remove(
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     collections_path = str(cli_ctx.collections_path)
 
+    # Pass an explicit --engine through so removing a wrong-engine collection
+    # raises EngineMismatchError (R2); omit when unset (v1 behavior unchanged).
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    engine_kwargs = {"engine": engine_flag} if engine_flag is not None else {}
+
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
@@ -176,7 +181,7 @@ def remove(
     # Simple output mode: skip confirmation, output JSON
     if simple:
         try:
-            clear_svc([collection], collections_path=collections_path)
+            clear_svc([collection], collections_path=collections_path, **engine_kwargs)
             print_json({"status": "removed", "collection": collection})
         except Exception as e:
             print_json({"status": "error", "collection": collection, "error": str(e)})
@@ -224,7 +229,9 @@ def remove(
         if is_verbose_mode():
             # Verbose mode: show all logs, no progress UI
             with NoOpContext():
-                clear_svc([collection], collections_path=collections_path)
+                clear_svc(
+                    [collection], collections_path=collections_path, **engine_kwargs
+                )
         else:
             # Normal mode: phased progress display
             source_type = target_collection.source_type
@@ -233,7 +240,9 @@ def remove(
 
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Removing collection data")
-                clear_svc([collection], collections_path=collections_path)
+                clear_svc(
+                    [collection], collections_path=collections_path, **engine_kwargs
+                )
                 phased.finish_phase("Removing collection data")
 
         console.print()
@@ -251,15 +260,15 @@ def remove(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "clear":
-        from indexed.core.v1.engine import clear
+        from indexed.core.engine import clear
 
         return clear
     elif name == "inspect":
-        from indexed.core.v1.engine import inspect
+        from indexed.core.engine import inspect
 
         return inspect
     elif name == "collection_exists":
-        from indexed.core.v1.engine import collection_exists
+        from indexed.core.engine import collection_exists
 
         return collection_exists
     elif name == "setup_root_logger":

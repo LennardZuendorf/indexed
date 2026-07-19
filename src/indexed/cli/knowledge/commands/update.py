@@ -115,6 +115,11 @@ def update(
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     update_wiring = wiring_kwargs_for_update(cli_ctx)
+    # Pass an explicit --engine through the facade so updating a wrong-engine
+    # collection raises EngineMismatchError (R2); omit when unset (v1 unchanged).
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    if engine_flag is not None:
+        update_wiring["engine"] = engine_flag
     collections_path = str(cli_ctx.collections_path)
     config_service = cli_ctx.config_service
 

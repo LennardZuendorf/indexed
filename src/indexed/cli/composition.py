@@ -30,6 +30,7 @@ from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 def register_app_config(config_service: ConfigService) -> None:
     """Register all config specs — idempotent, raises on failure."""
     from indexed.core.v1.config_models import (
+        CoreEngineConfig,
         CoreV1EmbeddingConfig,
         CoreV1IndexingConfig,
         CoreV1SearchConfig,
@@ -41,6 +42,9 @@ def register_app_config(config_service: ConfigService) -> None:
     from indexed.connectors.jira.schema import JiraCloudConfig
     from indexed.connectors.outline.schema import OutlineConfig
 
+    # ``[core] engine`` — default engine for NEW collections (R3). Registered at
+    # path ``core``; the model ignores the ``core.v1.*``/``core.v2.*`` extras.
+    config_service.register(CoreEngineConfig, path="core")
     config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
     config_service.register(CoreV1SearchConfig, path="core.v1.search")
     config_service.register(CoreV1StorageConfig, path="core.v1.storage")
@@ -50,6 +54,49 @@ def register_app_config(config_service: ConfigService) -> None:
     config_service.register(JiraCloudConfig, path="sources.jira")
     config_service.register(ConfluenceCloudConfig, path="sources.confluence")
     config_service.register(OutlineConfig, path="sources.outline")
+
+
+# --- engine selection (R3) ----------------------------------------------------
+
+_DEFAULT_ENGINE = "1"
+_ENGINE_ALIASES = {"1": "1", "v1": "1", "2": "2", "v2": "2"}
+
+
+def normalize_engine_selector(value: str) -> str:
+    """Map a user/config engine selector (``1``/``2``/``v1``/``v2``) to ``"1"``/``"2"``."""
+    normalized = _ENGINE_ALIASES.get(str(value).strip().lower())
+    if normalized is None:
+        raise ConfigurationError(
+            f"Invalid engine {value!r}; expected one of: 1, 2, v1, v2"
+        )
+    return normalized
+
+
+def resolve_engine_selector(flag: str | None, config_service: ConfigService) -> str:
+    """Resolve the engine for NEW collections (R3).
+
+    Precedence: ``--engine`` flag > ``INDEXED__CORE__ENGINE`` env >
+    ``[core] engine`` in config.toml > built-in default ``"1"``. Env is read
+    explicitly (not only via the config merge) so the precedence is
+    deterministic; any config/binding failure falls back to the default rather
+    than blocking the command.
+    """
+    if flag is not None:
+        return normalize_engine_selector(flag)
+
+    import os
+
+    env_value = os.environ.get("INDEXED__CORE__ENGINE")
+    if env_value:
+        return normalize_engine_selector(env_value)
+
+    try:
+        from indexed.core.v1.config_models import CoreEngineConfig
+
+        cfg = config_service.bind().get(CoreEngineConfig)
+        return normalize_engine_selector(cfg.engine)
+    except Exception:
+        return _DEFAULT_ENGINE
 
 
 # --- connector construction ---------------------------------------------------

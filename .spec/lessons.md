@@ -1,12 +1,43 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-12
+updated: 2026-07-19
 ---
 
 # Lessons Learned
 
 Accumulated mistakes and earned defaults. Read at session start.
+
+---
+
+## Version-dispatching facade seam (core-v2/1, 2026-07-19)
+
+- **The default (`engine=None`) path must be a pure v1 pass-through — no
+  detection I/O.** Existing-collection ops (`update/clear/collection_exists/
+  search/status/inspect`) only call `detect_engine_version` when an *explicit*
+  `--engine` is given. Detecting on the default path would re-raise on
+  corrupt/missing manifests that v1 deliberately *omits* (status/inspect) or
+  handles specially (remove of a corrupt collection), breaking the
+  characterization net. core-v2/2 extends the None path to detect-and-route —
+  it must preserve those per-collection error semantics.
+- **Route every op through one `_engine_impl(version)` indirection.** v1 returns
+  `core.v1.engine.services`; v2 becomes a one-line import there. Keep it lazy
+  (no heavy/LlamaIndex import at facade module top; facade import ≈ 0.17s).
+- **CLI passes `engine=` only when the flag is set** (`**{"engine": flag} if
+  flag else {}`). Existing command tests use fixed-signature fakes (e.g.
+  `fake_svc_search`) that don't accept `engine=`; passing `engine=None`
+  unconditionally would `TypeError` them. `engine=None` == not passing.
+- **OQ-T1 resolved:** a scalar model (`CoreEngineConfig`, `engine: str`)
+  registered at parent path `core` coexists with `core.v1.*`/`core.v2.*`
+  subtables with no registry change — the flat `ConfigRegistry` + pydantic
+  default `extra="ignore"` drops the sibling tables. Never set `extra="forbid"`
+  on a parent-path model. Validate the value with a `field_validator`, not a
+  `Literal` (a `Literal` field is fine too, but the extras must still be
+  ignored at the model level).
+- **Routing a lazy facade turns re-exported types into `Any` for ty.** After
+  `mcp/tools.py` imported `SourceConfig` from `indexed.core.engine` (module
+  `__getattr__ -> Any`), a previously-needed `# ty: ignore[invalid-argument-type]`
+  became *unused* — remove such stale ignores to keep ty at 0 diagnostics.
 
 ---
 

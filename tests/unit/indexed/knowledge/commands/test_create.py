@@ -837,11 +837,11 @@ class TestCreateModuleGetattr:
         assert result == "flat"
 
     def test_source_config_lazy_load_returns_class(self):
-        import indexed.core.v1.engine as engine_facade
+        import indexed.core.engine as engine_facade
         import indexed.cli.knowledge.commands.create as create_mod
 
         MockSourceConfig = Mock()
-        # create.py resolves SourceConfig through the core facade (core.v1.engine).
+        # create.py resolves SourceConfig through the core facade (core.engine).
         with patch.object(engine_facade, "SourceConfig", MockSourceConfig, create=True):
             result = create_mod.__getattr__("SourceConfig")
         assert result is MockSourceConfig
@@ -1260,7 +1260,7 @@ class TestBuildOutlineSourceConfig:
 
         MockSourceConfig = Mock(return_value=Mock())
         MockIndexer = "flat"
-        import indexed.core.v1.engine as engine_facade
+        import indexed.core.engine as engine_facade
 
         with (
             patch.object(engine_facade, "SourceConfig", MockSourceConfig, create=True),

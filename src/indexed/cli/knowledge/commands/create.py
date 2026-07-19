@@ -252,7 +252,7 @@ def __getattr__(name: str) -> Any:
 
         return DEFAULT_INDEXER
     if name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

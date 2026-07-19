@@ -133,6 +133,30 @@ def get_default_caches_path() -> Path:
         return Path.home() / ".indexed" / "data" / "caches"
 
 
+class CoreEngineConfig(BaseModel):
+    """Default engine selector for NEW collections (``[core] engine``).
+
+    Registered at config path ``core``, so it receives the ENTIRE ``[core]``
+    subtree (including the ``core.v1.*`` / ``core.v2.*`` tables) at validation
+    time. It therefore MUST keep pydantic's default ``extra="ignore"`` to drop
+    those sibling tables — never ``extra="forbid"`` (OQ-T1). The value is
+    validated to ``"1"``/``"2"`` here (not via a ``Literal``) so a bad value
+    fails loud with a clear message. Lives next to ``MCPConfig`` — the sibling
+    non-``core.v1`` model — as the minimal home.
+    """
+
+    engine: str = Field(
+        default="1", description="Default engine for new collections: '1' or '2'"
+    )
+
+    @field_validator("engine")
+    @classmethod
+    def _validate_engine(cls, v: str) -> str:
+        if v not in ("1", "2"):
+            raise ValueError(f"engine must be '1' or '2', got {v!r}")
+        return v
+
+
 class MCPConfig(BaseModel):
     """MCP server configuration."""
 
@@ -177,6 +201,7 @@ __all__ = [
     "CoreV1EmbeddingConfig",
     "CoreV1StorageConfig",
     "CoreV1SearchConfig",
+    "CoreEngineConfig",
     "MCPConfig",
     "PerformanceConfig",
     "LoggingConfig",
