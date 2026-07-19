@@ -1,6 +1,8 @@
 """Tests for config CLI commands."""
 
 from unittest.mock import Mock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from indexed.config.cli import (
@@ -12,6 +14,8 @@ from indexed.config.cli import (
     _masked_config_value,
     _merge_with_defaults,
 )
+
+pytestmark = pytest.mark.unit
 
 runner = CliRunner()
 
@@ -404,6 +408,54 @@ class TestGetConfig:
         from indexed.cli.app import app
 
         result = runner.invoke(app, ["config", "get", "nonexistent.key"])
+        assert result.exit_code == 0
+        assert "not found" in result.stdout.lower()
+
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_unset_shows_effective_default(self, mock_config_service):
+        """UX finding L2: with no explicit ``[core] engine``, `config get
+        core.engine` must surface the effective default ("1") marked as a
+        default, not "Key not found"."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0
+        assert "not found" not in result.stdout.lower()
+        assert "1" in result.stdout
+        assert "default" in result.stdout.lower()
+
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_explicit_value_not_marked_default(
+        self, mock_config_service
+    ):
+        """When ``core.engine`` IS explicitly set, show the set value as-is
+        with no "(default)" marker."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"core": {"engine": "2"}}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0
+        assert "2" in result.stdout
+        assert "default" not in result.stdout.lower()
+
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_missing_key_still_not_found(self, mock_config_service):
+        """A genuinely unknown key (not ``core.engine``) still says "Key not
+        found" — only ``core.engine`` gets the default-resolution treatment."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.v1.embedding.bogus"])
         assert result.exit_code == 0
         assert "not found" in result.stdout.lower()
 
