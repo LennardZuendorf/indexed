@@ -639,3 +639,36 @@ with `git add`/`git status`, since that's what CI actually runs.
   session** — a `spec_check.py` frontmatter+link proxy was used; the real validator must be run by
   the maintainer in an authorized env. Commit signing is also impossible here (no key) → the stop-hook
   "Unverified" nag is cosmetic; authorship is already `Claude <noreply@anthropic.com>`.
+
+## Core-v2 e2e testing (2026-07-19)
+
+- **LlamaIndex embeds `node.get_content(metadata_mode=EMBED)`, which PREPENDS all
+  `node.metadata` to the text before embedding.** The v2 adapter set engine-owned
+  metadata (`source_id`, the full file `url`, `modified_time`, `chunk_number`,
+  `collection`) but never `excluded_embed_metadata_keys`, so every v2 vector was
+  the embedding of `"source_id: …\nurl: file:///…\n…\n\n<chunk text>"` — NOT the
+  chunk text. Measured: true cosine("authentication","auth.py")=0.5791 (v1 recovers
+  it exactly via `1−d²/2`), but v2 returned 0.2430 = cosine of the metadata-prefixed
+  text. This broke R8 (v2 relevance ≠ v1) and R11 (mixed ranking systematically
+  favored v1) while every unit test stayed GREEN and CodeRabbit approved the scoring
+  logic — only an end-to-end score comparison against ground truth caught it. Fix:
+  `node.excluded_embed_metadata_keys = list(node.metadata.keys())` in `adapter.to_nodes`
+  (metadata still available for retrieval; embed text = chunk content alone). Lesson:
+  any adapter that sets node metadata MUST exclude it from the embed text, and vector
+  quality needs an e2e relevance check, not just green unit tests.
+- **Normalize the engine selector (`1/2/v1/v2`) at EVERY entry point, not just the
+  CLI flag.** `--engine v2` worked, but `INDEXED__CORE__ENGINE=v2` and
+  `config set core.engine v2` both crashed create ("engine must be '1' or '2'") —
+  the `v1/v2→1/2` normalizer ran only on the flag path, while `CoreEngineConfig`'s
+  validator (which the env/config paths hit at construction) rejected the friendly
+  forms. Fix: normalize inside `CoreEngineConfig._check_engine_value` (accept
+  `1/2/v1/v2` case-insensitively, store canonical `"1"`/`"2"`), so flag, env, and
+  config all agree. Replicate the mapping inline (config must not import the CLI layer).
+- **`config set` writes values unvalidated** — `config set core.engine v2` persisted
+  `engine = "v2"` and then every later command crashed on load. Validate model-backed
+  keys at write time (`config/commands/` is import-exempt, so it can construct the
+  model to validate) so a bad value is rejected before it bricks the tool.
+- **`config get <key>` for a defaulted key should show the effective default, not
+  "Key not found"** — but resolve it WITHOUT `ConfigService.bind()`, which validates
+  the ENTIRE config and would make a single-key read fail on any unrelated bad section.
+  Read the model's field default directly (`CoreEngineConfig().engine`).
