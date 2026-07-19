@@ -22,7 +22,7 @@ from ...utils.components import (
 )
 
 if TYPE_CHECKING:
-    from indexed.core.v1.engine import CollectionInfo
+    from indexed.core.engine import CollectionInfo
 
 # ---- Use format_size and format_time from @format.py ----
 from ...utils.format import format_size, format_time

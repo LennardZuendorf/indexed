@@ -25,6 +25,7 @@ import typer
 from rich.markup import escape
 from rich.text import Text
 
+from indexed.core.errors import CoreError
 from ...utils.simple_output import print_json
 from ...utils.components.theme import (
     get_heading_style,
@@ -367,6 +368,13 @@ def run_update_loop(
                 with noop_context():
                     cmd.update_service([source_config], **update_wiring)
                 outcome.successfully_updated.append(coll_name)
+            except CoreError:
+                # An engine-routing precondition failure (mismatch / unknown
+                # version / not-available) is not a per-collection processing
+                # error — let it propagate with its full remedy-bearing message
+                # to the CLI's top-level handler, rather than collapsing it into
+                # a generic "Failed to update" (R2 surfacing).
+                raise
             except Exception as e:
                 if not simple:
                     cmd.print_error(
@@ -386,6 +394,10 @@ def run_update_loop(
                     cmd.update_service(
                         [source_config], phased_progress=phased, **update_wiring
                     )
+                except CoreError:
+                    # See the simple/verbose branch: engine-routing failures
+                    # surface with their full message (R2), never collapsed.
+                    raise
                 except Exception as e:
                     coll_error = e
 

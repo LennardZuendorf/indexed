@@ -11,7 +11,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from indexed.core.v1.engine import SourceConfig
+    from indexed.core.engine import SourceConfig
 
 from indexed.config import ConfigService, StorageMode, ValidationResult
 

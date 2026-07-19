@@ -12,14 +12,40 @@ Accumulated mistakes and earned defaults. Read at session start.
 
 ## Version-dispatching facade seam (core-v2/1, 2026-07-19)
 
-- **The default (`engine=None`) path must be a pure v1 pass-through — no
-  detection I/O.** Existing-collection ops (`update/clear/collection_exists/
-  search/status/inspect`) only call `detect_engine_version` when an *explicit*
-  `--engine` is given. Detecting on the default path would re-raise on
-  corrupt/missing manifests that v1 deliberately *omits* (status/inspect) or
-  handles specially (remove of a corrupt collection), breaking the
-  characterization net. core-v2/2 extends the None path to detect-and-route —
-  it must preserve those per-collection error semantics.
+- **The default (`engine=None`) path IS manifest-authoritative — it detects, but
+  tolerates corrupt/missing manifests.** Existing-collection ops (`update/clear/
+  search/status/inspect`) call `detect_engine_version` on BOTH the default and
+  the explicit path. `_resolve_existing_engine` wraps detection so that a
+  readable manifest with an *unknown* marker raises `UnknownEngineVersionError`
+  (fail loud, R1 — never a silent v1 fallback on either path), while a
+  missing/corrupt/unreadable manifest is *swallowed* (`ValueError` → `continue`),
+  falling through to the default engine so v1's own corrupt-collection handling
+  is preserved byte-for-byte (status/inspect omit them; remove deletes them —
+  the R6 concern, handled without sacrificing R1). This was the review fix: the
+  first cut skipped detection when `engine is None`, which silently routed a
+  `version:"3"` collection to v1. `status`/`inspect`/`search` enumerate on-disk
+  collections when no names/configs are given so list-all is authoritative too.
+- **`collection_exists` is the ONE exception — it stays engine-agnostic.** A
+  filesystem existence probe is answered identically by either engine, so
+  `engine=None` routes straight to the default WITHOUT detection: it must never
+  fail loud (a corrupt or future-versioned collection still "exists"), or the
+  create-gate/remove-fallback existence checks would break.
+- **Retarget EVERY app-layer engine seam to the facade, not just the obvious
+  ones.** The `update` command's lazy `__getattr__` still resolved
+  `update_service`/`svc_status`/`inspect` from `core.v1.engine`; since the loop
+  injects `engine=` into `update_wiring`, `update --engine` crashed with
+  `TypeError` (v1's `update()` has no `engine` param). Grep every
+  `from indexed.core.v1.engine import` above the facade when adding a selector.
+- **Engine-routing errors must SURFACE, not be collapsed.** `run_update_loop`
+  swallows per-collection failures (foundation/6 E8) — but `CoreError` subtypes
+  (`EngineMismatchError`/`UnknownEngineVersionError`) are precondition failures
+  whose messages carry the migrate remedy, so re-raise `CoreError` past the
+  generic `except` to reach the CLI top-level handler (mirrors search/inspect).
+- **A bad `[core] engine` value must fail loud, like the env path.**
+  `resolve_engine_selector`'s `except Exception → default` silently downgraded a
+  `[core] engine = "9"` typo to `"1"`. Narrow it: re-raise `ConfigValidationError`
+  whose `.path == "core"`; keep the default fallback only for the genuinely
+  absent/unregistered case (provider `KeyError`).
 - **Route every op through one `_engine_impl(version)` indirection.** v1 returns
   `core.v1.engine.services`; v2 becomes a one-line import there. Keep it lazy
   (no heavy/LlamaIndex import at facade module top; facade import ≈ 0.17s).

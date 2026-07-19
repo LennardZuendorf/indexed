@@ -16,7 +16,7 @@ from functools import partial
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from indexed.core.v1.engine import SourceConfig  # noqa: F401
+    from indexed.core.engine import SourceConfig  # noqa: F401
 
 import typer
 from loguru import logger

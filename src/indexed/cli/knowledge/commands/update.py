@@ -216,21 +216,28 @@ def update(
 
 
 def __getattr__(name: str):
-    """Lazy load heavy dependencies for tests and performance."""
+    """Lazy load heavy dependencies for tests and performance.
+
+    The engine ops resolve through the version-dispatching facade
+    (``indexed.core.engine``), NOT ``core.v1.engine`` directly — so an explicit
+    ``--engine`` injected into ``update_wiring`` reaches per-collection detection
+    (the facade ``update``/``status``/``inspect`` accept ``engine=``; v1's did
+    not, which crashed ``update --engine`` with a ``TypeError``).
+    """
     if name == "update_service":
-        from indexed.core.v1.engine import update
+        from indexed.core.engine import update
 
         return update
     elif name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     elif name == "svc_status":
-        from indexed.core.v1.engine import status
+        from indexed.core.engine import status
 
         return status
     elif name == "inspect":
-        from indexed.core.v1.engine import inspect
+        from indexed.core.engine import inspect
 
         return inspect
     elif name == "setup_root_logger":

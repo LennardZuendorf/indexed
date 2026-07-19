@@ -80,6 +80,27 @@ def test_core_engine_config_rejects_bad_value() -> None:
         CoreEngineConfig(engine="9")
 
 
+def test_bad_core_engine_in_config_fails_loud(monkeypatch, tmp_path: Path) -> None:
+    """A malformed ``[core] engine`` value must surface as a config error, not be
+    silently downgraded to the default ``"1"`` — consistent with the env path
+    (which fails loud via ``normalize_engine_selector``)."""
+    from indexed.config.errors import ConfigurationError
+    from indexed.config.service import ConfigService
+    from indexed.cli.composition import register_app_config, resolve_engine_selector
+
+    monkeypatch.delenv(ENV_VAR, raising=False)
+
+    local_config = tmp_path / ".indexed" / "config.toml"
+    local_config.parent.mkdir(parents=True, exist_ok=True)
+    local_config.write_text('[core]\nengine = "9"\n', encoding="utf-8")
+
+    svc = ConfigService(workspace=tmp_path, mode_override="local")
+    register_app_config(svc)
+
+    with pytest.raises(ConfigurationError):
+        resolve_engine_selector(None, svc)
+
+
 # --- OQ-T1 probe: real ConfigService with core + core.v1.* + core.v2.* --------
 
 

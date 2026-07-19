@@ -25,7 +25,7 @@ from loguru import logger
 from ...utils.console import console
 
 if TYPE_CHECKING:
-    from indexed.core.v1.engine import SourceConfig
+    from indexed.core.engine import SourceConfig
 
 
 # --------------------------------------------------------------------------- #

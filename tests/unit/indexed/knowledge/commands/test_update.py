@@ -1,6 +1,10 @@
 """Tests for knowledge update commands."""
 
+import contextlib
+from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands.update import (
@@ -12,6 +16,109 @@ from indexed.cli.knowledge.commands.update import (
 from tests.unit.indexed.conftest import make_cli_context
 
 runner = CliRunner()
+
+
+class TestUpdateEngineRouting:
+    """core-v2/1: the update command must route through the version-dispatching
+    facade so an explicit ``--engine`` reaches per-collection detection instead
+    of crashing v1's engine-less ``update()`` with a ``TypeError``."""
+
+    def test_update_service_seam_is_the_facade(self):
+        """``update.update_service`` must resolve to the facade ``update`` (which
+        accepts ``engine=``), not v1's engine-less ``update`` (which would
+        ``TypeError`` on the injected ``engine`` kwarg)."""
+        from indexed.cli.knowledge.commands import update as update_cmd
+        import indexed.core.engine as facade
+        import indexed.core.v1.engine as v1
+
+        assert update_cmd.update_service is facade.update
+        assert update_cmd.update_service is not v1.update
+
+    def test_svc_status_and_inspect_seams_are_the_facade(self):
+        from indexed.cli.knowledge.commands import update as update_cmd
+        import indexed.core.engine as facade
+
+        assert update_cmd.svc_status is facade.status
+        assert update_cmd.inspect is facade.inspect
+
+    def test_run_update_loop_propagates_engine_mismatch(self, tmp_path):
+        """An ``EngineMismatchError`` from the facade must surface with its full
+        message (names both engines + migrate remedy), NOT be collapsed into a
+        generic per-collection ``Failed to update`` failure (R2 surfacing)."""
+        from indexed.cli.knowledge.commands import update_service as svc
+        from indexed.core.errors import EngineMismatchError
+
+        status = SimpleNamespace(
+            name="col1", source_type="localFiles", indexers=["default"]
+        )
+
+        def raise_mismatch(configs, **kw):
+            raise EngineMismatchError("col1", found="1", requested="2")
+
+        cmd = SimpleNamespace(
+            svc_status=lambda names=None, **kw: [status],
+            SourceConfig=lambda **kw: SimpleNamespace(**kw),
+            is_verbose_mode=lambda: False,
+            update_service=raise_mismatch,
+            print_error=lambda *a, **kw: None,
+            console=SimpleNamespace(print=lambda *a, **kw: None),
+            inspect=lambda names=None, **kw: [status],
+        )
+
+        with pytest.raises(EngineMismatchError) as excinfo:
+            svc.run_update_loop(
+                cmd,
+                collections=["col1"],
+                before_data={"col1": status},
+                update_wiring={"engine": "2", "manifest_factory": lambda m, p: None},
+                collections_path=str(tmp_path),
+                config_service=SimpleNamespace(clear_overlay=lambda: None),
+                simple=True,
+                noop_context=contextlib.nullcontext,
+                create_phased_progress=None,
+                ensure_credentials=lambda *a, **kw: None,
+            )
+
+        message = str(excinfo.value)
+        assert "v1" in message and "v2" in message
+        assert "indexed index migrate col1" in message
+
+    def test_run_update_loop_still_collects_generic_failures(self, tmp_path):
+        """A non-engine failure (e.g. a genuine indexing error) is still
+        collected per-collection so the batch continues (foundation/6 E8)."""
+        from indexed.cli.knowledge.commands import update_service as svc
+
+        status = SimpleNamespace(
+            name="col1", source_type="localFiles", indexers=["default"]
+        )
+
+        def boom(configs, **kw):
+            raise RuntimeError("indexing blew up")
+
+        cmd = SimpleNamespace(
+            svc_status=lambda names=None, **kw: [status],
+            SourceConfig=lambda **kw: SimpleNamespace(**kw),
+            is_verbose_mode=lambda: False,
+            update_service=boom,
+            print_error=lambda *a, **kw: None,
+            console=SimpleNamespace(print=lambda *a, **kw: None),
+            inspect=lambda names=None, **kw: [status],
+        )
+
+        outcome = svc.run_update_loop(
+            cmd,
+            collections=["col1"],
+            before_data={"col1": status},
+            update_wiring={"manifest_factory": lambda m, p: None},
+            collections_path=str(tmp_path),
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            simple=True,
+            noop_context=contextlib.nullcontext,
+            create_phased_progress=None,
+            ensure_credentials=lambda *a, **kw: None,
+        )
+
+        assert outcome.failed_collections == ["col1"]
 
 
 class TestFormatSourceType:

@@ -24,7 +24,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from indexed.config.errors import ConfigurationError
-from indexed.core.errors import EngineMismatchError, EngineNotAvailableError
+from indexed.core.errors import (
+    EngineMismatchError,
+    EngineNotAvailableError,
+    UnknownEngineVersionError,
+)
 from indexed.core.versioning import EngineVersion, detect_engine_version
 
 # Shared types/classes re-exported unchanged from v1 (no routing) — resolved
@@ -87,7 +91,12 @@ def _engine_impl(version: EngineVersion) -> Any:
         return _v1_services
     if version == "2":
         raise EngineNotAvailableError("2")
-    raise _validate_engine(version)  # pragma: no cover - unreachable, kept explicit
+    # ``version`` is a validated ``EngineVersion`` before it reaches here, so this
+    # branch is unreachable — raise an explicit error rather than ``raise <str>``
+    # (which would itself be a ``TypeError``) to make the invariant obvious.
+    raise ConfigurationError(  # pragma: no cover - unreachable, kept explicit
+        f"No engine implementation registered for version {version!r}"
+    )
 
 
 def _collections_base(collections_path: Optional[str]) -> Path:
@@ -100,7 +109,16 @@ def _collections_base(collections_path: Optional[str]) -> Path:
 
 
 def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
-    """List existing collection names (mirrors v1's manifest-based discovery)."""
+    """List existing collection names for engine detection.
+
+    This intentionally mirrors v1's manifest-based discovery + the
+    ``_INTERNAL_COLLECTION_DIR_RE`` tmp/trash exclusion (see
+    ``search_service``/``inspect_service._discover_collections``). v1 exposes
+    only *private* ``_discover_collections`` methods on the service classes, so
+    there is no public helper to delegate to without instantiating a service; the
+    small reimplementation here is a deliberate residual for a future
+    consolidation, not a new cross-layer dependency.
+    """
     base = _collections_base(collections_path)
     if not base.is_dir():
         return []
@@ -120,31 +138,58 @@ def _resolve_existing_engine(
     collection_names: List[str],
     collections_path: Optional[str],
 ) -> EngineVersion:
-    """Resolve the engine for an existing-collection op.
+    """Resolve the engine for an existing-collection op — manifest-authoritative
+    on BOTH the default and the explicit path (R2).
 
-    ``engine is None`` → route to the default engine directly (no detection I/O),
-    so v1's per-collection behavior (omit corrupt collections in status/inspect,
-    handle corrupt collections in remove) is preserved byte-for-byte on the
-    default path.
+    For every touched collection whose ``manifest.json`` exists, the on-disk
+    ``version`` marker is read:
 
-    An explicit ``engine`` is validated against every touched collection's
-    detected version *before any I/O*; a conflict raises ``EngineMismatchError``.
+    - A readable manifest with an *unknown* marker raises
+      ``UnknownEngineVersionError`` (R1: fail loud — default OR explicit path,
+      never a silent v1 fallback), leaving the collection untouched.
+    - A missing/corrupt/unreadable manifest is *tolerated*: detection raises a
+      collection-level ``ValueError`` which is swallowed here so v1's own
+      handling of corrupt collections is preserved byte-for-byte (status/inspect
+      omit them; remove deletes them) — the R6 concern, handled without
+      sacrificing R1.
+
+    With an explicit ``engine`` a readable marker that disagrees raises
+    ``EngineMismatchError`` before any op I/O. On the default path the detected
+    version is returned when the readable collections agree, else the default
+    engine when none carry a readable marker.
     """
-    if engine is None:
-        return _DEFAULT_ENGINE
-
-    requested = _validate_engine(engine)
+    requested: Optional[EngineVersion] = (
+        _validate_engine(engine) if engine is not None else None
+    )
     base = _collections_base(collections_path)
+    detected_versions: set[EngineVersion] = set()
     for name in collection_names:
         collection_path = base / name
         if not (collection_path / "manifest.json").exists():
-            # Non-existent collection: nothing to conflict with. The op's own
-            # not-found handling still applies once we route.
+            # Non-existent collection: nothing to detect/conflict with. The op's
+            # own not-found handling still applies once we route.
             continue
-        detected = detect_engine_version(collection_path)
-        if detected != requested:
+        try:
+            detected = detect_engine_version(collection_path)
+        except UnknownEngineVersionError:
+            # Readable manifest, unsupported marker → fail loud on either path.
+            raise
+        except ValueError:
+            # Missing/corrupt/unreadable manifest → fall through to v1's own
+            # corrupt-collection handling. Do not raise from the facade (R6).
+            continue
+        if requested is not None and detected != requested:
             raise EngineMismatchError(name, found=detected, requested=requested)
-    return requested
+        detected_versions.add(detected)
+
+    if requested is not None:
+        return requested
+    if len(detected_versions) == 1:
+        return next(iter(detected_versions))
+    # No readable marker among the touched collections, or (unreachable while
+    # only v1 exists) a mixed v1/v2 set — the multi-engine split/merge lands in
+    # core-v2/2. Route to the default engine for now.
+    return _DEFAULT_ENGINE
 
 
 # --- routed callables (byte-identical v1 signatures + ``engine``) -------------
@@ -213,8 +258,18 @@ def collection_exists(
     *,
     engine: Optional[str] = None,
 ) -> bool:
-    """Raw on-disk existence check, routing per the collection's engine (R2)."""
-    version = _resolve_existing_engine(engine, [name], collections_path)
+    """Raw on-disk existence probe — engine-agnostic on the default path.
+
+    Existence is a filesystem question answered identically by either engine, so
+    ``engine=None`` routes straight to the default engine WITHOUT detection: it
+    must never fail loud (e.g. on a readable unknown marker) — a corrupt or
+    future-versioned collection still "exists". An explicit ``engine`` is still
+    validated against the collection's marker for consistency with the other ops.
+    """
+    if engine is None:
+        version: EngineVersion = _DEFAULT_ENGINE
+    else:
+        version = _resolve_existing_engine(engine, [name], collections_path)
     result: bool = _engine_impl(version).collection_exists(
         name, collections_path=collections_path
     )
@@ -236,18 +291,16 @@ def search(
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
-    ``configs=None`` (all collections) routes to the single available engine;
-    the multi-engine merge lands in a later unit.
+    ``configs=None`` (all collections) enumerates the on-disk collections and
+    detects per-collection on both the default and the explicit path; the
+    multi-engine merge lands in a later unit.
     """
-    if engine is None:
-        version: EngineVersion = _DEFAULT_ENGINE
-    else:
-        names = (
-            [getattr(cfg, "name", cfg) for cfg in configs]
-            if configs
-            else _existing_collection_names(collections_path)
-        )
-        version = _resolve_existing_engine(engine, names, collections_path)
+    names = (
+        [getattr(cfg, "name", cfg) for cfg in configs]
+        if configs
+        else _existing_collection_names(collections_path)
+    )
+    version = _resolve_existing_engine(engine, names, collections_path)
     result: Dict[str, Any] = _engine_impl(version).search(
         query,
         configs=configs,
@@ -270,7 +323,7 @@ def status(
     engine: Optional[str] = None,
 ) -> List[Any]:
     """Collection status, routing per the collection's engine (R2)."""
-    names = collection_names or []
+    names = collection_names or _existing_collection_names(collections_path)
     version = _resolve_existing_engine(engine, names, collections_path)
     result: List[Any] = _engine_impl(version).status(
         collection_names=collection_names,
@@ -288,7 +341,7 @@ def inspect(
     engine: Optional[str] = None,
 ) -> List[Any]:
     """Detailed collection inspection, routing per the collection's engine (R2)."""
-    names = collection_names or []
+    names = collection_names or _existing_collection_names(collections_path)
     version = _resolve_existing_engine(engine, names, collections_path)
     result: List[Any] = _engine_impl(version).inspect(
         collection_names=collection_names,

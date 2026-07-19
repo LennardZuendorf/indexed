@@ -151,7 +151,10 @@ class CoreEngineConfig(BaseModel):
 
     @field_validator("engine")
     @classmethod
-    def _validate_engine(cls, v: str) -> str:
+    def _check_engine_value(cls, v: str) -> str:
+        # Named ``_check_engine_value`` (not ``_validate_engine``) to avoid a
+        # cross-file collision with ``core.engine._validate_engine`` (the module
+        # function that coerces a selector to an ``EngineVersion``).
         if v not in ("1", "2"):
             raise ValueError(f"engine must be '1' or '2', got {v!r}")
         return v
