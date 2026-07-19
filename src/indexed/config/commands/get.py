@@ -81,15 +81,12 @@ def get_config(
     # can discover it. Every other key keeps the plain not-found path.
     is_default = False
     if value is None and key == "core.engine":
-        from indexed.config import get_config as _bound_config
         from indexed.core.v1.config_models import CoreEngineConfig
 
-        try:
-            value = _bound_config().bind().get(CoreEngineConfig).engine
-        except KeyError:
-            # Nothing under "core" at all (bind() only validates paths present
-            # in raw config) — fall back to the model's own default.
-            value = CoreEngineConfig().engine
+        # Built-in field default ("1") — no bind(), no whole-config
+        # validation. `config get` on a single unset key must not fail just
+        # because some unrelated section has bad data.
+        value = CoreEngineConfig().engine
         is_default = True
 
     if value is None:

@@ -14,6 +14,7 @@ from indexed.config.cli import (
     _masked_config_value,
     _merge_with_defaults,
 )
+from indexed.config.errors import ConfigValidationError
 
 pytestmark = pytest.mark.unit
 
@@ -425,8 +426,48 @@ class TestGetConfig:
         result = runner.invoke(app, ["config", "get", "core.engine"])
         assert result.exit_code == 0
         assert "not found" not in result.stdout.lower()
-        assert "1" in result.stdout
-        assert "default" in result.stdout.lower()
+        assert "1 (default)" in result.stdout
+
+    @patch("indexed.config.get_config")
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_unset_does_not_bind_whole_config(
+        self, mock_resolve_config, mock_real_get_config
+    ):
+        """Regression: `config get core.engine` on an unset key must be a
+        pure single-key read of the field default. It must NOT call
+        ``.bind()`` — which validates EVERY registered spec (indexing,
+        search, storage, connectors, ...) and raises
+        ``ConfigValidationError`` if ANY unrelated section has bad data,
+        turning a single-key read into a whole-config validation (the
+        blast-radius regression from Task 6).
+
+        ``mock_real_get_config`` patches the actual ``indexed.config.get_config``
+        (distinct from the ``_resolve_config`` seam below, which is what the
+        CLI's own app-level callback uses to bootstrap ``register_app_config``
+        on every invocation — that call must keep succeeding). Its ``.bind()``
+        is rigged to raise ``ConfigValidationError``, standing in for "some
+        unrelated section is broken". Under the old buggy implementation
+        (``from indexed.config import get_config as _bound_config`` then
+        ``_bound_config().bind()``), that re-import resolves to this same
+        patched object and its rigged ``.bind()`` blows up the command. Under
+        the fix, nothing in the ``core.engine``-unset path ever calls
+        ``.bind()`` on either config object, so the command succeeds.
+        """
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_resolve_config.return_value = mock_config
+
+        mock_real_get_config.return_value.bind.side_effect = ConfigValidationError(
+            "sources.jira", "boom: unrelated section is broken"
+        )
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0, result.stdout
+        assert "1 (default)" in result.stdout
+        mock_config.bind.assert_not_called()
+        mock_real_get_config.return_value.bind.assert_not_called()
 
     @patch("indexed.config.commands.get._resolve_config")
     def test_get_core_engine_explicit_value_not_marked_default(
