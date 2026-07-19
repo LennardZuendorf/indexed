@@ -30,8 +30,10 @@ from ...utils.components.theme import get_detail_card_width
 # Score kinds (v2's per-collection ``scoreKind`` field) for which a HIGHER
 # score is a BETTER match. v1 results carry no ``scoreKind`` key at all, so
 # ``dict.get`` defaults a v1 collection out of this set — its sort key stays
-# exactly the raw ascending score, byte-identical to before (R6).
-_HIGHER_IS_BETTER = frozenset({"cosine"})
+# exactly the raw ascending score, byte-identical to before (R6). "rerank" is
+# a cross-encoder relevance (also higher-is-better) reported when
+# ``[core.v2.rerank] enabled=true`` replaces the cosine score (PR #158 review).
+_HIGHER_IS_BETTER = frozenset({"cosine", "rerank"})
 
 
 def _unified_relevance(raw_score: float, higher_is_better: bool) -> float:

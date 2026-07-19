@@ -153,7 +153,7 @@ def _search_one(
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
 
-    from indexed.core.v2.manifest import V2Manifest
+    from indexed.core.v2.manifest import RERANK_SCORE_KIND, V2Manifest
     from indexed.core.v2.stores import load_storage_context
 
     collection_dir = base / name
@@ -200,10 +200,14 @@ def _search_one(
         include_all_chunks=include_all_chunks,
         docs_by_source=docs_by_source,
     )
+    # Reranking REPLACES each NodeWithScore.score with a cross-encoder
+    # relevance, so the manifest's cosine score_kind no longer describes it
+    # (PR #158 review #8) — report the distinct rerank kind instead.
+    score_kind = RERANK_SCORE_KIND if rerank_cfg.enabled else manifest.engine.score_kind
     return {
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
-        "scoreKind": manifest.engine.score_kind,
+        "scoreKind": score_kind,
         "results": results,
     }
 

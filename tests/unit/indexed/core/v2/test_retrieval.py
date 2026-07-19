@@ -369,6 +369,33 @@ def test_rerank_enabled_reorders_and_respects_top_n(
     assert reranked_ids == list(reversed(baseline_ids))[:2]  # order changed
 
 
+@pytest.mark.unit
+def test_reranked_response_uses_rerank_score_kind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Enabled rerank REPLACES ``NodeWithScore.score`` with a cross-encoder
+    relevance, so the response must report ``scoreKind == "rerank"`` — not the
+    manifest's ``"cosine"`` — or downstream mixed-engine sorting mislabels the
+    scores (PR #158 review #8). ``_apply_rerank`` is stubbed to identity so no
+    real cross-encoder loads."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["penguin migration"])])
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="x", top_n=3),
+    )
+    monkeypatch.setattr(retrieval, "_apply_rerank", lambda nws, q, cfg: nws)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    assert res["c1"]["scoreKind"] == "rerank"
+
+
 @pytest.mark.skipif(
     not (model_available() and _cross_encoder_cached()),
     reason="embedding or cross-encoder model not cached",

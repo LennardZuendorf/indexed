@@ -8,7 +8,9 @@ from typing import Any, Dict, List
 # manifest") for which a HIGHER score is a BETTER match. v1 carries no
 # ``scoreKind`` key at all — ``dict.get`` defaults it out of this set, so a v1
 # collection's sort key is UNCHANGED (R6: v1-only output byte-identical).
-_HIGHER_IS_BETTER = frozenset({"cosine"})
+# "rerank" is a cross-encoder relevance (also higher-is-better) reported when
+# ``[core.v2.rerank] enabled=true`` replaces the cosine score (PR #158 review).
+_HIGHER_IS_BETTER = frozenset({"cosine", "rerank"})
 
 
 def _unified_relevance(raw_score: float, higher_is_better: bool) -> float:

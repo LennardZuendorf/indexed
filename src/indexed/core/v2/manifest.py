@@ -32,6 +32,13 @@ def _package_version(name: str) -> str:
         return "unknown"
 
 
+# Score kind reported when a search reranks with a cross-encoder: the returned
+# NodeWithScore.score is a rerank relevance, NOT the manifest's cosine (PR #158
+# review). Higher-is-better, but on a different scale from cosine — so a mixed
+# view containing a reranked collection is not perfectly cross-comparable.
+RERANK_SCORE_KIND = "rerank"
+
+
 def indexed_version() -> str:
     """The installed ``indexed-sh`` distribution version."""
     return _package_version("indexed-sh")
@@ -141,6 +148,7 @@ class V2Manifest(BaseModel):
 
 
 __all__ = [
+    "RERANK_SCORE_KIND",
     "V2EmbeddingInfo",
     "V2EngineBlock",
     "V2Manifest",
