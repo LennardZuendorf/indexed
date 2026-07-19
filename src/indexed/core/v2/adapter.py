@@ -54,13 +54,19 @@ def to_nodes(
         node = TextNode(text=chunk["indexedData"], id_=f"{doc_id}::chunk_{i}")
         node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=doc_id)
         node.metadata = {
+            **(chunk.get("metadata") or {}),
             "source_id": doc_id,
             "url": doc["url"],
             "modified_time": doc.get("modifiedTime"),
             "chunk_number": i,
             "collection": collection,
-            **(chunk.get("metadata") or {}),
         }
+        # Engine-owned metadata (paths, timestamps, chunk numbers) must NEVER enter
+        # the embedded text — LlamaIndex's default metadata_mode=EMBED would prepend
+        # it, polluting the vector and breaking v1 parity (R8) and mixed ranking
+        # (R11). Exclude EVERY metadata key so the embed text is the chunk content
+        # alone, exactly like v1. Metadata stays in the node for retrieval/grouping.
+        node.excluded_embed_metadata_keys = list(node.metadata.keys())
         nodes.append(node)
     return nodes
 

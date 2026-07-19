@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+from llama_index.core.schema import MetadataMode
+
+pytestmark = pytest.mark.unit
+
 
 def _doc(chunks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
@@ -98,3 +103,49 @@ def test_to_nodes_accepts_converted_document_model() -> None:
     doc = ConvertedDocument.model_validate(_doc())
     nodes = to_nodes(doc, collection="demo")
     assert [n.id_ for n in nodes] == ["doc-1::chunk_0", "doc-1::chunk_1"]
+
+
+def _auth_doc() -> dict[str, Any]:
+    return {
+        "id": "auth.py",
+        "url": "file:///tmp/some/very/long/path/auth.py",
+        "modifiedTime": "2026-07-19T14:47:41",
+        "chunks": [
+            {"indexedData": "auth.py"},
+            {"indexedData": "def login(): ...", "metadata": {"lang": "python"}},
+        ],
+    }
+
+
+def test_embed_text_excludes_engine_metadata() -> None:
+    from indexed.core.v2.adapter import to_nodes
+
+    nodes = to_nodes(_auth_doc(), "demo")
+    # The text sent to the embedder must be ONLY the chunk content (R8: 1:1 with v1).
+    assert nodes[0].get_content(metadata_mode=MetadataMode.EMBED) == "auth.py"
+    assert nodes[1].get_content(metadata_mode=MetadataMode.EMBED) == "def login(): ..."
+
+
+def test_metadata_still_available_for_retrieval() -> None:
+    from indexed.core.v2.adapter import to_nodes
+
+    nodes = to_nodes(_auth_doc(), "demo")
+    assert nodes[0].metadata["source_id"] == "auth.py"
+    assert nodes[0].metadata["url"] == "file:///tmp/some/very/long/path/auth.py"
+    assert nodes[0].metadata["collection"] == "demo"
+
+
+def test_chunk_metadata_does_not_clobber_reserved_keys() -> None:
+    # PR review #7: a chunk carrying a reserved key must not override the engine value.
+    from indexed.core.v2.adapter import to_nodes
+
+    doc = {
+        "id": "d1",
+        "url": "u1",
+        "chunks": [
+            {"indexedData": "x", "metadata": {"collection": "attacker", "lang": "py"}}
+        ],
+    }
+    node = to_nodes(doc, "real-collection")[0]
+    assert node.metadata["collection"] == "real-collection"  # engine value wins
+    assert node.metadata["lang"] == "py"  # chunk's own extra metadata preserved
