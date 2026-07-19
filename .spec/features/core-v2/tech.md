@@ -177,6 +177,16 @@ replaces the surviving nodes' scores with cross-encoder scores and keeps
 it downloads the CE model on first use (opt-in, unlike the default-local
 embedding path).
 
+**Known limitation (deferred):** with rerank ENABLED, a v2 collection's
+`matchedChunks[].score` becomes the cross-encoder relevance score (unbounded
+logits, not a `[0,1]` cosine) while `scoreKind` stays `"cosine"`. In the doubly
+niche case of a single search merging a *reranked* v2 collection with a v1
+collection, the cross-engine unified ranking mis-scales the v1↔v2 interleaving
+(each collection's OWN order stays correct). Fixing this is a design decision (a
+distinct `scoreKind` such as `"rerank"` and how it unifies against cosine) left
+to a later unit; the default (rerank off) and v2-only-reranked / v1-only paths
+are unaffected.
+
 **Per-collection sort fix (core-v2/2d) → cross-engine unification
 (core-v2/6):** v2's per-collection result dict carries an additive
 `"scoreKind": "cosine"` field (v1's never had this key). core-v2/2d used it to
