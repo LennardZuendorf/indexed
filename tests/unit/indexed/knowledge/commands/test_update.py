@@ -1056,6 +1056,126 @@ class TestUpdateCommand:
         mock_create_summary.assert_not_called()
 
 
+class TestUpdateCollectionOption:
+    """L4: ``--collection/-c`` must work as an alias for the positional arg,
+    matching ``create``/``search``."""
+
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
+    def test_update_via_collection_option(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """``-c NAME`` must target NAME, not raise "No such option"."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+        mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "test-jira"
+        mock_status.source_type = "jira"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "test-jira"
+        mock_info.source_type = "jira"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000000
+        mock_info.updated_time = "2025-01-01T00:00:00"
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update", "-c", "test-jira"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "No such option" not in result.output
+
+    def test_update_conflicting_positional_and_option_exits_1(self):
+        """Different values for the positional and ``-c`` must error at exit 1."""
+        from indexed.cli.app import app
+
+        result = runner.invoke(
+            app, ["index", "update", "col-a", "--collection", "col-b"]
+        )
+
+        assert result.exit_code == 1
+
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
+    def test_update_same_value_positional_and_option_ok(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Passing the SAME value both ways is not a conflict."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+        mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "test-jira"
+        mock_status.source_type = "jira"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "test-jira"
+        mock_info.source_type = "jira"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000000
+        mock_info.updated_time = "2025-01-01T00:00:00"
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update", "test-jira", "-c", "test-jira"])
+
+        assert result.exit_code == 0, result.stdout
+
+
 class TestUpdateMarkupSafety:
     """R7 — collection names are user-controlled and must render literally,
     never be parsed as Rich markup, in the per-collection update header

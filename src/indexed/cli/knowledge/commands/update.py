@@ -1,6 +1,6 @@
 """Update command for refreshing collections."""
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 
@@ -80,6 +80,14 @@ def update(
     collection: str = typer.Argument(
         None, help="Collection name to update (omit to update all collections)"
     ),
+    collection_opt: Annotated[
+        Optional[str],
+        typer.Option(
+            "--collection",
+            "-c",
+            help="Collection name to update (alias for the positional argument).",
+        ),
+    ] = None,
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -101,6 +109,14 @@ def update(
     ),
 ):
     """Refresh and re-index a collection or all collections."""
+    if collection_opt is not None:
+        if collection and collection != collection_opt:
+            print_error(
+                "Pass the collection once — as a positional OR --collection, not both."
+            )
+            raise typer.Exit(1)
+        collection = collection_opt
+
     # Use module-level lazy-loaded services (supports mocking in tests). The
     # loop/aggregation live in update_service; it reaches these same seams back
     # through ``this_module`` so tests keep patching one place (foundation E8).

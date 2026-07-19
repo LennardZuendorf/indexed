@@ -165,6 +165,49 @@ def test_migrate_from_source_wires_manifest_factory(
     assert captured["manifest_factory"] is sentinel
 
 
+def test_migrate_via_collection_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    """L4: ``-c NAME`` must target NAME, not raise "No such option"."""
+    _install_svc(monkeypatch, lambda *a, **k: _result())
+    result = runner.invoke(migrate_cmd.app, ["-c", "c1"])
+    assert result.exit_code == 0, result.stdout
+    assert "v2" in result.stdout
+
+
+def test_migrate_via_long_collection_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_svc(monkeypatch, lambda *a, **k: _result())
+    result = runner.invoke(migrate_cmd.app, ["--collection", "c1"])
+    assert result.exit_code == 0, result.stdout
+    assert "v2" in result.stdout
+
+
+def test_migrate_conflicting_positional_and_option_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Different values for the positional and ``-c`` must error at exit 1."""
+    _install_svc(monkeypatch, lambda *a, **k: _result())
+    result = runner.invoke(migrate_cmd.app, ["c1", "-c", "c2"])
+    assert result.exit_code == 1
+
+
+def test_migrate_same_value_positional_and_option_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Passing the SAME value both ways is not a conflict."""
+    _install_svc(monkeypatch, lambda *a, **k: _result())
+    result = runner.invoke(migrate_cmd.app, ["c1", "-c", "c1"])
+    assert result.exit_code == 0, result.stdout
+
+
+def test_migrate_neither_positional_nor_option_exits_1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Today's required-arg behavior must be preserved: missing both must
+    still error at exit 1 (was a Click UsageError exit 2 pre-change)."""
+    _install_svc(monkeypatch, lambda *a, **k: _result())
+    result = runner.invoke(migrate_cmd.app, [])
+    assert result.exit_code == 1
+
+
 def test_migrate_purge_backup_render(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_svc(
         monkeypatch,

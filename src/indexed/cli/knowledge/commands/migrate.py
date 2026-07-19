@@ -7,7 +7,7 @@ migration lives in ``indexed.core.v2.migration``. Heavy/core imports stay lazy
 (``__getattr__``) so CLI startup stays <1s.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
 
@@ -32,7 +32,17 @@ app = typer.Typer(help="Migrate a v1 collection to the v2 engine")
 @app.command()
 def migrate(
     ctx: typer.Context,
-    collection: str = typer.Argument(..., help="Collection name to migrate to v2"),
+    collection: Optional[str] = typer.Argument(
+        None, help="Collection name to migrate to v2"
+    ),
+    collection_opt: Annotated[
+        Optional[str],
+        typer.Option(
+            "--collection",
+            "-c",
+            help="Collection name to migrate (alias for the positional argument).",
+        ),
+    ] = None,
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -80,6 +90,20 @@ def migrate(
         indexed index migrate my-docs             # migrate, keep backup
         indexed index migrate my-docs --purge-backup
     """
+    if collection_opt is not None:
+        if collection and collection != collection_opt:
+            print_error(
+                "Pass the collection once — as a positional OR --collection, not both."
+            )
+            raise typer.Exit(1)
+        collection = collection_opt
+
+    if not collection:
+        print_error(
+            "Missing collection name — pass it as a positional argument or with --collection/-c."
+        )
+        raise typer.Exit(1)
+
     # Module-level lazy service (supports monkeypatching in tests).
     from . import migrate as this_module
     from indexed.cli.composition import (

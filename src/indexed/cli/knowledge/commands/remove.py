@@ -1,6 +1,6 @@
 """Remove command for removing collections."""
 
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Annotated, Callable, Optional, TYPE_CHECKING
 
 import typer
 from rich.markup import escape
@@ -83,7 +83,15 @@ def _remove_corrupt_collection(
 @app.command()
 def remove(
     ctx: typer.Context,
-    collection: str = typer.Argument(..., help="Collection name to remove"),
+    collection: Optional[str] = typer.Argument(None, help="Collection name to remove"),
+    collection_opt: Annotated[
+        Optional[str],
+        typer.Option(
+            "--collection",
+            "-c",
+            help="Collection name to remove (alias for the positional argument).",
+        ),
+    ] = None,
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
     verbose: bool = typer.Option(
         False,
@@ -111,6 +119,20 @@ def remove(
         indexed remove my-collection      # Remove with confirmation
         indexed remove my-collection -f   # Remove without confirmation
     """
+    if collection_opt is not None:
+        if collection and collection != collection_opt:
+            print_error(
+                "Pass the collection once — as a positional OR --collection, not both."
+            )
+            raise typer.Exit(1)
+        collection = collection_opt
+
+    if not collection:
+        print_error(
+            "Missing collection name — pass it as a positional argument or with --collection/-c."
+        )
+        raise typer.Exit(1)
+
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import remove as this_module
     from indexed.cli.composition import resolve_collections_context
