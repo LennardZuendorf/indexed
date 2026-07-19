@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from indexed.core.errors import UnknownVectorStoreError
 from indexed.core.v2 import ingestion, retrieval
 from indexed.core.v2.manifest import V2Manifest
@@ -28,6 +30,8 @@ from tests.unit.indexed.core.v2._engine_helpers import (
     make_doc,
     mock_embedding,
 )
+
+pytestmark = pytest.mark.integration
 
 
 def _cfg(name: str) -> SourceConfig:

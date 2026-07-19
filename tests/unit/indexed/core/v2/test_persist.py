@@ -15,6 +15,8 @@ import pytest
 
 from indexed.core.v2.persist import replace_dir
 
+pytestmark = pytest.mark.unit
+
 
 def _mkdir_with(path: Path, marker: str) -> None:
     path.mkdir(parents=True)

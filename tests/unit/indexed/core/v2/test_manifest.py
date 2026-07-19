@@ -16,6 +16,8 @@ from pydantic import ValidationError
 
 from indexed.protocols.models import ReaderDetails
 
+pytestmark = pytest.mark.unit
+
 
 def _reader() -> ReaderDetails:
     return ReaderDetails(type="localFiles", basePath="/tmp/docs")

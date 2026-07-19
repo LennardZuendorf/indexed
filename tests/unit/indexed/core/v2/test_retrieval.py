@@ -24,6 +24,8 @@ from tests.unit.indexed.core.v2._engine_helpers import (
     mock_embedding,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def _cross_encoder_cached() -> bool:
     """True when the default cross-encoder rerank model is already cached.
@@ -239,6 +241,7 @@ def test_search_missing_collection_returns_error_entry_not_raise(
     assert "error" in res["ghost"]
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     not model_available(), reason="Embedding model not cached (all-MiniLM-L6-v2)"
 )
@@ -396,6 +399,7 @@ def test_reranked_response_uses_rerank_score_kind(
     assert res["c1"]["scoreKind"] == "rerank"
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     not (model_available() and _cross_encoder_cached()),
     reason="embedding or cross-encoder model not cached",

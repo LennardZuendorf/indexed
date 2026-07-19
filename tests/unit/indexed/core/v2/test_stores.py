@@ -17,6 +17,8 @@ from indexed.core.v2 import stores
 from indexed.core.v2.manifest import V2Manifest
 from indexed.protocols.models import ReaderDetails
 
+pytestmark = pytest.mark.unit
+
 
 def _manifest(vector_store: str = "simple") -> V2Manifest:
     return V2Manifest.new(
