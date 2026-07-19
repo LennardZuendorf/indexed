@@ -19,7 +19,7 @@ units:
     requires: ["core-v2/2"]
   - id: "core-v2/4"
     title: "Migration command (dry-run, backup, rollback, validation)"
-    status: planned
+    status: done
     requires: ["core-v2/3"]
   - id: "core-v2/6"
     title: "Reranking + unified relevance in CLI/MCP formatters"
@@ -354,6 +354,7 @@ numbers recorded; full gate.
 | v2 create disk read-cache deferred | core-v2/2 (done) | v1's `CacheReaderDecorator`/`DiskPersister` live in layers `core/v2` may not import; a create-time read-only optimization that never changes the produced collection. Follow-up: a v2-local persister or a `utils`-level `DiskPersister` shared by both engines ([tech.md](tech.md) § Implementation Detail) |
 | `core/v2 ↛ core.v1` import edge | core-v2/2 (done) | The generic `core` bucket in `scripts/check_imports.py` can't see the v1/v2 split; core-v2/2d added an explicit edge + negative self-test |
 | `create` now records per-doc content hashes (upsert basis) | core-v2/3 (done) | [tech.md](tech.md) § V2 on-disk layout always specified `docstore.json` carries "ref_doc hashes (upsert basis)"; core-v2/3 realizes it — `ingestion.create` calls `docstore.set_document_hash` so the first `update` can SKIP unchanged docs. The hash is over chunk `indexedData` only (metadata-only changes don't force a re-embed). v2 `update` is build-aside (staging + swap) vs v1's in-place, per § V2 on-disk layout |
+| `migrate` exposed THROUGH the facade; `--from-source` count validation | core-v2/4 (done) | [tech.md](tech.md) § Migration (R7) is realized in `core/v2/migration.py`; the CLI `migrate` command imports only `indexed.core.engine` (above-facade rule), so `migrate` is added to the facade as a plain function (delegating to `core.v2.migration`) — NOT part of the mirrored 13-name `_EXPORTS` surface (like `engine_descriptors`). Validation asserts v2 `numberOfDocuments == v1`'s only on the OFFLINE path (re-embedding stored docs is exact); `--from-source` reflects the live source, so it validates a non-empty, probe-searchable result instead of frozen-count equality. `--from-source` reads via `from_manifest` with a throwaway `storage_path` (no `state.json`) so change-tracking connectors yield the FULL corpus, not an incremental slice |
 
 ---
 

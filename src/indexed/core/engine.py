@@ -383,6 +383,40 @@ def _v1_descriptor(name: str, collection_path: Path) -> EngineDescriptor:
     )
 
 
+# --- migration (v1 -> v2; facade-exposed so the CLI never imports core.v2) ----
+
+
+def migrate(
+    name: str,
+    *,
+    collections_path: Optional[str] = None,
+    dry_run: bool = False,
+    from_source: bool = False,
+    purge_backup: bool = False,
+    manifest_factory: Any = None,
+) -> Any:
+    """Migrate a v1 collection to v2 (R7).
+
+    Exposed THROUGH the facade so the CLI ``migrate`` command imports only
+    ``indexed.core.engine`` (above-facade rule) — the service impl lives in
+    ``indexed.core.v2.migration`` (import-legal under ``core/v2``). Migration is
+    always a v1->v2 build operation (offline by default, or ``--from-source`` via
+    the supplied ``manifest_factory``); the service confirms the source IS a v1
+    collection and fails loud otherwise (``CoreV2Error``). Returns a
+    ``MigrationResult`` the CLI renders (counts, target model/store, backup path).
+    """
+    from indexed.core.v2 import migration
+
+    return migration.migrate(
+        name,
+        collections_path=collections_path,
+        dry_run=dry_run,
+        from_source=from_source,
+        purge_backup=purge_backup,
+        manifest_factory=manifest_factory,
+    )
+
+
 # --- routed callables (byte-identical v1 signatures + ``engine``) -------------
 
 

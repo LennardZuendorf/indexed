@@ -17,7 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 25_100
+SRC_LOC_MAX = 25_800
+# Raised from 25_100 by core-v2/4: the v1->v2 migration service
+# (`core/v2/migration.py`: offline + from-source read, build-aside + validate +
+# backup/atomic-swap/rollback), the facade-exposed `migrate` in `core/engine.py`,
+# and the thin `cli/knowledge/commands/migrate.py` command — genuine new-feature
+# surface (R7); ceiling = measured (25_708) + headroom.
 # Raised from 24_950 by core-v2/3: the v2 incremental `update` path in
 # `core/v2/ingestion.py` (docstore-hash upsert + deletions + build-aside swap +
 # per-doc content hashing shared with create) and the service `update` rewire —
@@ -45,7 +50,12 @@ SRC_LOC_MAX = 25_100
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 35_200
+TEST_LOC_MAX = 35_800
+# Raised from 35_200 by core-v2/4's tests: the migration service unit suite
+# (`test_migration.py`: dry-run/offline/failed-validation/rollback/purge/
+# from-source) + the v1->v2 migration CLI system test
+# (`test_v2_migration_lifecycle.py`: search parity + offline no-network);
+# ceiling = measured (35_553) + headroom.
 # Raised from 34_650 by core-v2/3's tests: the v2 incremental-update unit suite
 # (`test_ingestion_update.py`: incrementality/embed-count proof, deletions,
 # empty no-op, build-aside mid-swap failure), the service + facade update tests,

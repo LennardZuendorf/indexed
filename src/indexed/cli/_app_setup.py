@@ -69,6 +69,11 @@ def register_commands(app: typer.Typer) -> None:
         rich_help_panel=KNOWLEDGE_PANEL,
         help="Remove one or more Collections",
     )(knowledge.remove.remove)
+    app.command(
+        "index migrate",
+        rich_help_panel=KNOWLEDGE_PANEL,
+        help="Migrate a v1 Collection to the v2 Engine",
+    )(knowledge.migrate.migrate)
 
     # Short aliases (hidden — not shown in help)
     app.add_typer(knowledge.create.app, name="create", hidden=True)
@@ -76,6 +81,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command("inspect", hidden=True)(knowledge.inspect.inspect_collections)
     app.command("update", hidden=True)(knowledge.update.update)
     app.command("remove", hidden=True)(knowledge.remove.remove)
+    app.command("migrate", hidden=True)(knowledge.migrate.migrate)
 
     app.add_typer(
         config.app,
