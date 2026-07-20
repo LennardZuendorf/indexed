@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-12
+updated: 2026-07-19
 ---
 
 # Tech Spec: indexed
@@ -401,12 +401,18 @@ concrete types for wiring.
 
 ### Core Facade & App Composition Root
 
-**Core is consumed only through the `core.v1.engine` facade** — `create` / `update` /
-`search` / `inspect` / `status` / `clear` / `collection_exists` (+ the shared models).
-The facade (`engine/__init__.py`, lazy `__getattr__`) is the **v2 core-swap seam**: a v2
-engine ships behind the same names over the same on-disk format and nothing above the
-facade changes. The app never imports `core.v1.engine.services` / `factories` / `core`
-directly (to mock a facade-resolved symbol in tests, patch the facade attribute).
+**Core is consumed only through the version-dispatching facade `indexed.core.engine`**
+— `create` / `update` / `search` / `inspect` / `status` / `clear` / `collection_exists`
+(+ the shared models): 13 names, the same surface as the former `core.v1.engine`, plus an
+`engine=` selector. The facade (lazy `__getattr__`) routes every call to the v1 or v2
+engine. For existing collections the on-disk manifest `version` marker is **authoritative**
+— an explicit selector may only confirm it or fail with `EngineMismatchError`; selectors
+(flag > env > config > default) choose the engine for **new** collections only. A collection
+with no `version` key is v1; an unknown version fails loud (never a silent v1 fallback). No
+code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
+facade-resolved symbol in tests, patch the facade attribute). (v2 ships over a **new
+version-marked on-disk format**, not v1's — the earlier "same format" swap premise was
+superseded by core-v2 ADR-1; v1's format stays frozen.)
 
 **`src/indexed/cli/composition.py` is the single wiring site** — it folds in the
 removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
