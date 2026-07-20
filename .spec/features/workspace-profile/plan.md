@@ -3,7 +3,7 @@ type: feature-plan
 feature: workspace-profile
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-06-22
+updated: 2026-07-20
 ---
 
 # Feature: Workspace Profile — Implementation Plan
@@ -18,7 +18,12 @@ testable and leaves the suite green.
 **Architecture:** [tech.md](tech.md)
 
 **Feature gate:** Standalone cleanup on surviving infra; no upstream feature gate.
-Runs on branch `claude/local-global-store-discussion-xpo0ju`.
+Runs on branch `claude/global-local-storage-workspace-h9sb7z`.
+
+> **Layout note.** Paths target the single package `src/indexed/` (post-Simplify /
+> Feature 14). Verification uses the current gate — `uv run ty check src/indexed`
+> (not mypy), `uv run pytest ... --cov=src/indexed`, and `python scripts/check_imports.py`
+> for the four module edges.
 
 ---
 
@@ -27,7 +32,7 @@ Runs on branch `claude/local-global-store-discussion-xpo0ju`.
 The local/global storage axis conflates "where bytes live" (should be global) with
 "which collections are relevant here" (a per-codebase filter). We remove the storage
 axis entirely and rebuild the local concept as a thin, committable profile. The
-config package is the foundation — every other layer reads paths and filters through
+`config` module is the foundation — every other layer reads paths and filters through
 it — so it lands first and the rest stack on top.
 
 ---
@@ -45,10 +50,11 @@ it — so it lands first and the rest stack on top.
 
 ## Key Technical Decisions
 
-1. **Bottom-up sequencing.** `indexed-config` first — its public API change (drop
+1. **Bottom-up sequencing.** The `config` module first — its public API change (drop
    `mode_override`, `StorageResolver`, `resolve_storage_mode`) breaks downstream
-   imports, so it must land and re-green before core/CLI/MCP build on it.
-2. **Allowlist over path-switching.** Filtering is a `allowed_collection_ids`
+   importers in `cli`/`mcp`, so it must land and re-green before core/CLI/MCP build on
+   it. `config` stays a leaf (module-edge gate green).
+2. **Allowlist over path-switching.** Filtering is an `allowed_collection_ids`
    parameter on read services, not a second storage path. `None` = no filter keeps
    the no-profile path behaviour-identical.
 3. **Overlay merge replaces single-source.** `[workspace.overrides]` deep-merges on
@@ -66,7 +72,7 @@ Units are `workspace-profile/n`, assigned once and never renumbered.
 
 ### workspace-profile/1 — Config foundation: global-only storage + WorkspaceProfile
 
-**Goal:** `indexed-config` exposes one global store and a `WorkspaceProfile`
+**Goal:** The `config` module exposes one global store and a `WorkspaceProfile`
 (filter + overlay merge); all storage-mode machinery removed.
 
 **Requirements:** R1, R3
@@ -76,13 +82,13 @@ Units are `workspace-profile/n`, assigned once and never renumbered.
 **Files:**
 
 ```
-packages/indexed-config/src/indexed_config/storage.py    # strip mode/local/resolver
-packages/indexed-config/src/indexed_config/workspace.py  # WorkspaceManager → WorkspaceProfile
-packages/indexed-config/src/indexed_config/store.py      # overlay merge; schema "2"
-packages/indexed-config/src/indexed_config/service.py    # drop mode_override; add profile accessors
-packages/indexed-config/src/indexed_config/__init__.py   # trim exports
-packages/indexed-config/src/indexed_config/errors.py     # drop StorageConflictError
-tests/unit/indexed_config/*                              # rewrite storage/service/store tests
+src/indexed/config/storage.py    # strip mode/local/resolver
+src/indexed/config/workspace.py  # WorkspaceManager → WorkspaceProfile
+src/indexed/config/store.py      # overlay merge; schema "2"
+src/indexed/config/service.py    # drop mode_override; add profile accessors
+src/indexed/config/__init__.py   # trim exports
+src/indexed/config/errors.py     # drop StorageConflictError
+tests/unit/indexed/config/*      # rewrite storage/service/store/workspace tests
 ```
 
 **Test scenarios:**
@@ -91,7 +97,7 @@ tests/unit/indexed_config/*                              # rewrite storage/servi
 - `WorkspaceProfile.collection_ids()` returns declared ids, `None` when no file.
 - No storage-mode symbols remain importable; `ConfigService.instance()` takes no `mode_override`.
 
-**Verification:** `uv run pytest tests/unit/indexed_config -q` green; `uv run mypy src/` 0 errors.
+**Verification:** `uv run pytest tests/unit/indexed/config -q` green; `uv run ty check src/indexed` 0 diagnostics; `python scripts/check_imports.py` green.
 
 ---
 
@@ -107,10 +113,10 @@ tests/unit/indexed_config/*                              # rewrite storage/servi
 **Files:**
 
 ```
-packages/indexed-core/src/core/v1/config_models.py                  # global-only paths
-packages/indexed-core/src/core/v1/engine/services/search_service.py # allowlist filter
-packages/indexed-core/src/core/v1/engine/services/inspect_service.py# allowlist filter
-tests/unit/indexed_core/*                                           # filter tests
+src/indexed/core/v1/config_models.py                  # global-only paths
+src/indexed/core/v1/engine/services/search_service.py # allowlist filter
+src/indexed/core/v1/engine/services/inspect_service.py# allowlist filter
+tests/unit/indexed/core/services/*                    # filter tests
 ```
 
 **Test scenarios:**
@@ -119,7 +125,7 @@ tests/unit/indexed_core/*                                           # filter tes
 - `allowed_collection_ids=None` searches all (no behaviour change).
 - Empty allowlist yields no results / empty status.
 
-**Verification:** `uv run pytest tests/unit/indexed_core -q` green; mypy clean.
+**Verification:** `uv run pytest tests/unit/indexed/core/services -q` green; `uv run ty check src/indexed` clean.
 
 ---
 
@@ -127,7 +133,7 @@ tests/unit/indexed_core/*                                           # filter tes
 
 **Goal:** Drop `--local`/`--global` and the mode banner; search/inspect apply the
 profile filter; `create` writes global; `update`/`remove` warn out-of-scope;
-`config init` scaffolds the profile; `config inspect` shows it.
+`config` scaffolds the profile; `config inspect` shows it.
 
 **Requirements:** R1, R2, R4
 
@@ -136,22 +142,25 @@ profile filter; `create` writes global; `update`/`remove` warn out-of-scope;
 **Files:**
 
 ```
-apps/indexed/src/indexed/app.py
-apps/indexed/src/indexed/knowledge/commands/create.py, _create_helpers.py
-apps/indexed/src/indexed/knowledge/commands/search.py, inspect.py, update.py, remove.py
-apps/indexed/src/indexed/config/cli.py
-apps/indexed/src/indexed/utils/storage_info.py   # delete → thin scope note
-apps/indexed/src/indexed/utils/conflict_prompt.py # delete
-tests/unit/indexed/*                              # rewrite app/storage_info/conflict/update tests
+src/indexed/cli/app.py, composition.py
+src/indexed/cli/init.py                           # drop storage-mode banner
+src/indexed/cli/knowledge/commands/create.py, _create_helpers.py, _create_options.py
+src/indexed/cli/knowledge/commands/search.py, inspect.py, update.py, remove.py
+src/indexed/config/cli.py, config/commands/       # profile scaffold + inspect
+src/indexed/cli/utils/storage_info.py             # delete → thin scope note
+src/indexed/cli/utils/conflict_prompt.py          # delete
+tests/unit/indexed/test_app.py, test_init_command.py
+tests/unit/indexed/knowledge/commands/*, tests/unit/indexed/cli/utils/*, tests/unit/indexed/utils/test_storage_info.py
+tests/unit/indexed/config/test_cli.py
 ```
 
 **Test scenarios:**
 
 - `--local` is unknown (R1); create lands in `~/.indexed/` regardless of cwd.
 - Search with a profile is scoped; without a profile, unscoped (R2 scenarios).
-- `config init` writes a `[workspace]` skeleton; `update notes` warns when out of scope (R4).
+- Profile scaffold writes a `[workspace]` skeleton; `update notes` warns when out of scope (R4).
 
-**Verification:** `uv run pytest tests/unit/indexed -q` green; `uv run indexed index search` manual smoke; mypy clean.
+**Verification:** `uv run pytest tests/unit/indexed -q` green; `uv run indexed index search` manual smoke; `uv run ty check src/indexed` clean; `python scripts/check_imports.py` green.
 
 ---
 
@@ -167,10 +176,11 @@ resources scope to it and reject out-of-scope named access.
 **Files:**
 
 ```
-apps/indexed/src/indexed/mcp/server.py     # lifespan: load allowlist
-apps/indexed/src/indexed/mcp/tools.py      # pass allowlist; validate access
-apps/indexed/src/indexed/mcp/resources.py  # pass allowlist; validate access
-tests/unit/indexed/mcp/* (or system)       # MCP scope tests
+src/indexed/mcp/server.py     # lifespan: load allowlist
+src/indexed/mcp/tools.py      # pass allowlist; validate access
+src/indexed/mcp/resources.py  # pass allowlist; validate access
+tests/unit/indexed/mcp/*      # MCP scope tests
+tests/system/test_mcp_storage_parity.py  # storage-parity regression
 ```
 
 **Test scenarios:**
@@ -178,7 +188,7 @@ tests/unit/indexed/mcp/* (or system)       # MCP scope tests
 - list_collections / search via MCP return only profile collections.
 - Naming an out-of-scope collection returns an access error.
 
-**Verification:** MCP tool/resource tests green; mypy clean.
+**Verification:** `uv run pytest tests/unit/indexed/mcp tests/system/test_mcp_storage_parity.py -q` green; `uv run ty check src/indexed` clean.
 
 ---
 
@@ -195,9 +205,8 @@ workspace profile; promote the two `<!-- merge -->` blocks from tech.md.
 
 ```
 .spec/tech-config.md, .spec/tech-app.md, .spec/tech.md, .spec/product.md
-.spec/plan.md                                   # Feature Sequence row
-AGENTS.md (root), packages/indexed-config/CLAUDE.md, apps/indexed/CLAUDE.md
-packages/indexed-config/README.md, apps/indexed/README.md
+.spec/plan.md                                   # Feature Sequence row (Feature 16)
+CLAUDE.md / AGENTS.md (root; single package — symlinked), README.md
 .spec/lessons.md                                # record the single-source→overlay reversal
 ```
 

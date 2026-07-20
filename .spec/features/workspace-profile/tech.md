@@ -3,7 +3,7 @@ type: feature-tech
 feature: workspace-profile
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-06-22
+updated: 2026-07-20
 ---
 
 # Feature: Workspace Profile — Architecture
@@ -15,6 +15,14 @@ Collapses the local/global storage axis to a single global root and introduces a
 (`SearchService`, `InspectService`, and MCP) so search/inspect/MCP see only the
 workspace's collections.
 
+> **Layout note.** This spec targets the post-Simplify (Feature 14) single package
+> `src/indexed/`. The former `packages/indexed-config`, `packages/indexed-core`, and
+> `apps/indexed` trees are now the `config/`, `core/`, and `cli/` modules of that one
+> package. The module-edge gate (`scripts/check_imports.py`, four edges) MUST stay
+> green: `config` is a leaf — it never imports up into `core`/`cli`/`mcp`. The
+> allowlist is a plain parameter passed *down* into the read services, so config keeps
+> its leaf position.
+
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
 **Plan:** [plan.md](plan.md)
@@ -24,7 +32,7 @@ workspace's collections.
 ## Files
 
 ```
-packages/indexed-config/src/indexed_config/
+src/indexed/config/
   storage.py            # DELETE StorageMode, StorageResolver, get_local_root,
                         #   has_local/global_storage, _ensure_gitignore, is_local;
                         #   keep plain global-only path helpers
@@ -36,23 +44,28 @@ packages/indexed-config/src/indexed_config/
                         #   add get_workspace_profile() / collection-filter accessor
   __init__.py           # shrink public exports (remove storage-mode symbols)
   errors.py             # drop/repurpose StorageConflictError
+  cli.py                # config command group: profile scaffold + inspect shows profile
+  commands/             # scaffold command lands here (get/list/set/validate siblings)
 
-packages/indexed-core/src/core/v1/
-  config_models.py      # get_default_collections_path/caches_path → always global
-  engine/services/search_service.py   # add allowed_collection_ids filter
-  engine/services/inspect_service.py  # add allowed_collection_ids filter
+src/indexed/core/v1/
+  config_models.py                    # get_default_collections_path/caches_path → always global
+  engine/services/search_service.py   # add allowed_collection_ids filter (method + wrapper)
+  engine/services/inspect_service.py  # add allowed_collection_ids filter (status + inspect + wrappers)
 
-apps/indexed/src/indexed/
+src/indexed/cli/
   app.py                # DELETE --local flag + ctx.obj["mode_override"]
-  knowledge/commands/create.py, _create_helpers.py  # drop --local/mode/explicit paths
+  composition.py        # drop mode_override from the single wiring site
+  init.py               # drop the storage-mode banner (display_storage_mode_for_command)
+  knowledge/commands/create.py, _create_helpers.py, _create_options.py  # drop --local/mode/explicit paths
   knowledge/commands/search.py, inspect.py          # apply workspace filter
   knowledge/commands/update.py, remove.py           # warn if name out of profile
-  config/cli.py         # repurpose `config init` → profile scaffold; inspect shows profile
-  utils/storage_info.py # DELETE (mode display) — replace with a thin scope note
+  utils/storage_info.py    # DELETE (mode display) — replace with a thin scope note
   utils/conflict_prompt.py # DELETE (storage-conflict prompt no longer reachable)
-  mcp/server.py         # load collection filter into lifespan context
-  mcp/tools.py          # pass allowlist to svc_search; validate named access
-  mcp/resources.py      # pass allowlist to svc_status; validate named access
+
+src/indexed/mcp/
+  server.py             # lifespan: load collection filter into context
+  tools.py              # pass allowlist to svc_search; validate named access
+  resources.py          # pass allowlist to svc_status; validate named access
 ```
 
 ---
@@ -60,7 +73,7 @@ apps/indexed/src/indexed/
 ## Contract / API
 
 ```python
-# packages/indexed-config/src/indexed_config/workspace.py
+# src/indexed/config/workspace.py
 class WorkspaceProfile:
     """Reader/writer for ./.indexed/config.toml [workspace] section."""
     def __init__(self, workspace: Path | None = None) -> None: ...
@@ -74,20 +87,20 @@ class WorkspaceProfile:
     def scaffold(self, *, force: bool = False) -> Path:  # write skeleton
         ...
 
-# packages/indexed-config/src/indexed_config/service.py
+# src/indexed/config/service.py
 class ConfigService:
     @classmethod
     def instance(cls, workspace: Path | None = None) -> "ConfigService": ...  # no mode_override
     def get_workspace_profile(self) -> WorkspaceProfile: ...
     def collection_filter(self) -> list[str] | None: ...  # convenience → profile.collection_ids()
 
-# packages/indexed-core/.../search_service.py  (and functional wrapper)
+# src/indexed/core/v1/engine/services/search_service.py  (SearchService.search + module-level wrapper)
 def search(query, *, configs=None,
            allowed_collection_ids: list[str] | None = None,  # NEW
            max_docs=None, max_chunks=None, ...,
            collections_path: str | None = None) -> dict: ...
 
-# packages/indexed-core/.../inspect_service.py  (status + inspect, and wrappers)
+# src/indexed/core/v1/engine/services/inspect_service.py  (status + inspect, and wrappers)
 def status(collection_names=None, *,
            allowed_collection_ids: list[str] | None = None,  # NEW
            include_index_size=False, ...) -> list[CollectionStatus]: ...
@@ -147,6 +160,12 @@ matching global keys; sibling keys are preserved. Per-collection overrides
 (`[workspace.collections.<id>.overrides]`) are applied only when operating on that
 collection (e.g. search config for that collection's searcher).
 
+**Module edges.** `WorkspaceProfile` and the overlay merge live in the `config`
+module, which stays a leaf: it exposes `collection_filter()` / `get_workspace_profile()`
+as data, and the CLI/MCP layers pass the allowlist *down* into the core read services.
+No new `config → core`/`config → cli` import is introduced, so `scripts/check_imports.py`
+stays green.
+
 **Schema version.** Global and profile files carry `[_meta] schema_version = "2"`.
 The bump marks the dropped `[workspace].mode`/`local_path`/`global_path` keys and
 the new `[workspace.collections|overrides]` shape. Clean break — no migration of
@@ -163,4 +182,4 @@ secrets use `CWD/.env`).
 1. **Per-collection override application point.** — Cleanest is to apply
    `collection_overrides(cid)` when building that collection's search config in the
    CLI/MCP layer (services stay override-agnostic, just filtering by id). Confirm
-   during search/2 rather than threading overrides into the engine.
+   during workspace-profile/2 rather than threading overrides into the engine.
