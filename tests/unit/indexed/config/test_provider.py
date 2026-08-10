@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import BaseModel
+
 from indexed.config.provider import Provider
 
 

@@ -10,15 +10,15 @@ from typing import Any
 
 from rich.markup import escape
 
-from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_key_value_panel,
     create_simple_key_value_panel,
-    get_heading_style,
     get_accent_style,
-    get_secondary_style,
     get_dim_style,
+    get_heading_style,
+    get_secondary_style,
 )
+from indexed.cli.utils.console import console
 
 from ._helpers import (
     _get_full_config_schema,

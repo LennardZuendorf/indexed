@@ -25,16 +25,16 @@ import typer
 from rich.markup import escape
 from rich.text import Text
 
-from ...utils.simple_output import print_json
+from ...utils.components import create_detail_card, print_success
 from ...utils.components.theme import (
-    get_heading_style,
     get_dim_style,
-    get_success_style,
     get_error_style,
+    get_heading_style,
+    get_success_style,
 )
-from ...utils.components import print_success, create_detail_card
 from ...utils.console import console
 from ...utils.format import format_source_type
+from ...utils.simple_output import print_json
 
 
 def _read_manifest_reader_config(collection_name: str, collections_path: str) -> dict:
@@ -65,10 +65,11 @@ def _display_collection_update_header(
     patching ``update.console`` capture the header prints too; it defaults to the
     shared console for direct use.
     """
-    from ...utils.components.info_row import create_info_row
-    from ...utils.format import format_path_tilde
-    from ...utils.files_source_display import build_excluded_row_text
     from indexed.connectors.files.schema import DEFAULT_EXCLUDED_DIRS
+
+    from ...utils.components.info_row import create_info_row
+    from ...utils.files_source_display import build_excluded_row_text
+    from ...utils.format import format_path_tilde
 
     heading = get_heading_style()
     # coll_name is user-controlled (the collection name argument) — escape
@@ -120,7 +121,7 @@ def format_update_comparison(
     attributes are omitted.
     """
 
-    def format_change(before_val, after_val) -> "str | Text":
+    def format_change(before_val, after_val) -> str | Text:
         """Format a value change with color coding.
 
         Returns a pre-built ``Text`` (never a bare markup string) — deltas are
@@ -149,7 +150,7 @@ def format_update_comparison(
                 f"{before_val} → {after_val} [{dim}](no change)[/{dim}]"
             )
 
-    def format_size_change(before_bytes, after_bytes) -> "str | Text":
+    def format_size_change(before_bytes, after_bytes) -> str | Text:
         """Format size change with proper units (see format_change docstring)."""
         from indexed.cli.utils.format import format_size
 
@@ -176,7 +177,7 @@ def format_update_comparison(
             )
 
     # Build info rows for the card
-    rows: list[tuple[str, "str | Text"]] = []
+    rows: list[tuple[str, str | Text]] = []
 
     # Collection name
     rows.append(("Collection", after.name))
@@ -369,9 +370,7 @@ def run_update_loop(
                 outcome.successfully_updated.append(coll_name)
             except Exception as e:
                 if not simple:
-                    cmd.print_error(
-                        f"Failed to update collection '{coll_name}': {str(e)}"
-                    )
+                    cmd.print_error(f"Failed to update collection '{coll_name}': {e!s}")
                 outcome.failed_collections.append(coll_name)
                 continue
         else:

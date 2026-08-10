@@ -4,9 +4,11 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
-from indexed.config.store import TomlStore
+
 from indexed.config.storage import StorageResolver
+from indexed.config.store import TomlStore
 from indexed.config.workspace import WorkspaceManager
 
 

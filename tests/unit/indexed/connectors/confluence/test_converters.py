@@ -1,7 +1,9 @@
 """Tests for unified Confluence document converter."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from indexed.connectors.confluence.unified_confluence_document_converter import (
     UnifiedConfluenceDocumentConverter,
 )

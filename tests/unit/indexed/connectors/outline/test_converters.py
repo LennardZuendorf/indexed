@@ -1,8 +1,9 @@
 """Tests for OutlineDocumentConverter chunk emission, title path, and attachment parsing."""
 
 import base64
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def _make_document(

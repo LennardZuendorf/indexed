@@ -1,7 +1,6 @@
 """Configuration schemas for Jira connectors."""
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,9 +10,9 @@ class JiraConfig(BaseModel):
 
     url: str = Field(..., description="Jira base URL")
     query: str = Field(..., description="JQL query to filter issues")
-    token: Optional[str] = Field(None, description="Bearer token (env: JIRA_TOKEN)")
-    login: Optional[str] = Field(None, description="Username (env: JIRA_LOGIN)")
-    password: Optional[str] = Field(None, description="Password (env: JIRA_PASSWORD)")
+    token: str | None = Field(None, description="Bearer token (env: JIRA_TOKEN)")
+    login: str | None = Field(None, description="Username (env: JIRA_LOGIN)")
+    password: str | None = Field(None, description="Password (env: JIRA_PASSWORD)")
     include_attachments: bool = Field(
         default=False, description="Fetch and parse issue attachments"
     )
@@ -27,7 +26,7 @@ class JiraConfig(BaseModel):
         default=10, ge=1, le=100, description="Max attachment size in MB to download"
     )
 
-    def get_token(self) -> Optional[str]:
+    def get_token(self) -> str | None:
         """
         Retrieve the Jira bearer token from the configuration or the JIRA_TOKEN environment variable.
 
@@ -36,7 +35,7 @@ class JiraConfig(BaseModel):
         """
         return self.token or os.getenv("JIRA_TOKEN")
 
-    def get_login(self) -> Optional[str]:
+    def get_login(self) -> str | None:
         """
         Retrieve the configured Jira login, falling back to the JIRA_LOGIN environment variable.
 
@@ -45,7 +44,7 @@ class JiraConfig(BaseModel):
         """
         return self.login or os.getenv("JIRA_LOGIN")
 
-    def get_password(self) -> Optional[str]:
+    def get_password(self) -> str | None:
         """
         Return the configured Jira password or the value of the JIRA_PASSWORD environment variable.
 
@@ -60,12 +59,10 @@ class JiraCloudConfig(BaseModel):
 
     url: str = Field(..., description="Jira Cloud URL (*.atlassian.net)")
     query: str = Field(..., description="JQL query to filter issues")
-    email: Optional[str] = Field(
+    email: str | None = Field(
         None, description="Atlassian account email (env: ATLASSIAN_EMAIL)"
     )
-    api_token: Optional[str] = Field(
-        None, description="API token (env: ATLASSIAN_TOKEN)"
-    )
+    api_token: str | None = Field(None, description="API token (env: ATLASSIAN_TOKEN)")
     include_attachments: bool = Field(
         default=False, description="Fetch and parse issue attachments"
     )
@@ -110,4 +107,4 @@ class JiraCloudConfig(BaseModel):
         return token
 
 
-__all__ = ["JiraConfig", "JiraCloudConfig"]
+__all__ = ["JiraCloudConfig", "JiraConfig"]

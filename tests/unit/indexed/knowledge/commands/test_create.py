@@ -1,14 +1,15 @@
 """Tests for knowledge create commands."""
 
 from unittest.mock import Mock, patch
+
 import pytest
 import typer
 
 from indexed.cli.knowledge.commands.create import (
     _is_cloud,
+    create_confluence,
     create_files,
     create_jira,
-    create_confluence,
 )
 
 
@@ -828,6 +829,7 @@ class TestCreateModuleGetattr:
 
     def test_default_indexer_lazy_load_returns_value(self):
         import sys
+
         import indexed.cli.knowledge.commands.create as create_mod
 
         mock_constants = Mock()
@@ -837,8 +839,8 @@ class TestCreateModuleGetattr:
         assert result == "flat"
 
     def test_source_config_lazy_load_returns_class(self):
-        import indexed.core.v1.engine as engine_facade
         import indexed.cli.knowledge.commands.create as create_mod
+        import indexed.core.v1.engine as engine_facade
 
         MockSourceConfig = Mock()
         # create.py resolves SourceConfig through the core facade (core.v1.engine).
@@ -1131,6 +1133,7 @@ class TestPromptMissingOutlineFields:
     ):
         """Should return immediately when no fields are missing."""
         from types import SimpleNamespace
+
         from indexed.cli.knowledge.commands.create import create_outline
 
         prompt_fn, mock_config = _capture_prompt_fn(
@@ -1150,6 +1153,7 @@ class TestPromptMissingOutlineFields:
     ):
         """Should skip 'url' even if listed in missing fields."""
         from types import SimpleNamespace
+
         from indexed.cli.knowledge.commands.create import create_outline
 
         prompt_fn, mock_config = _capture_prompt_fn(
@@ -1175,6 +1179,7 @@ class TestPromptMissingOutlineFields:
     ):
         """Should call prompt_credential_field for credential fields like api_token."""
         from types import SimpleNamespace
+
         from indexed.cli.knowledge.commands.create import create_outline
 
         mock_prompt_cred.return_value = "secret-token"
@@ -1200,6 +1205,7 @@ class TestPromptMissingOutlineFields:
     ):
         """Should use console.input for non-credential fields."""
         from types import SimpleNamespace
+
         from indexed.cli.knowledge.commands.create import create_outline
 
         mock_console.input.return_value = "some-value"
@@ -1245,6 +1251,7 @@ class TestBuildOutlineSourceConfig:
     ):
         """Should build SourceConfig with outline type and correct URL."""
         import sys
+
         from indexed.cli.knowledge.commands.create import create_outline
 
         captured: dict = {}

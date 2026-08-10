@@ -222,11 +222,13 @@ class TestTomlStoreAtomicWrite:
             config_path = store.workspace_path
             before = config_path.read_bytes()
 
-            with patch(
-                "indexed.config.store.os.replace", side_effect=OSError("disk full")
+            with (
+                patch(
+                    "indexed.config.store.os.replace", side_effect=OSError("disk full")
+                ),
+                pytest.raises(OSError, match="disk full"),
             ):
-                with pytest.raises(OSError, match="disk full"):
-                    store.write({"core": {"chunk_size": 999}})
+                store.write({"core": {"chunk_size": 999}})
 
             assert config_path.read_bytes() == before
             assert not any(config_path.parent.glob("*.tmp"))

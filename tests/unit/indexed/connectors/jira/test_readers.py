@@ -6,10 +6,11 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
 from indexed.connectors.jira.unified_jira_document_reader import (
-    UnifiedJiraDocumentReader,
     JiraAuthType,
+    UnifiedJiraDocumentReader,
 )
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests

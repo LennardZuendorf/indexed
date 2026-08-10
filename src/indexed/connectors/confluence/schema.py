@@ -1,7 +1,6 @@
 """Configuration schemas for Confluence connectors."""
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,9 +10,9 @@ class ConfluenceConfig(BaseModel):
 
     url: str = Field(..., description="Confluence base URL")
     query: str = Field(..., description="CQL query to filter pages")
-    token: Optional[str] = Field(None, description="Bearer token (env: CONF_TOKEN)")
-    login: Optional[str] = Field(None, description="Username (env: CONF_LOGIN)")
-    password: Optional[str] = Field(None, description="Password (env: CONF_PASSWORD)")
+    token: str | None = Field(None, description="Bearer token (env: CONF_TOKEN)")
+    login: str | None = Field(None, description="Username (env: CONF_LOGIN)")
+    password: str | None = Field(None, description="Password (env: CONF_PASSWORD)")
     read_all_comments: bool = Field(
         default=True, description="Read nested comments (yes/no)"
     )
@@ -30,7 +29,7 @@ class ConfluenceConfig(BaseModel):
         default=10, ge=1, le=100, description="Max attachment size in MB to download"
     )
 
-    def get_token(self) -> Optional[str]:
+    def get_token(self) -> str | None:
         """
         Return the configured Confluence token or the CONF_TOKEN environment value.
 
@@ -40,7 +39,7 @@ class ConfluenceConfig(BaseModel):
         """
         return self.token or os.getenv("CONF_TOKEN")
 
-    def get_login(self) -> Optional[str]:
+    def get_login(self) -> str | None:
         """
         Get the Confluence login from configuration or the CONF_LOGIN environment variable.
 
@@ -49,7 +48,7 @@ class ConfluenceConfig(BaseModel):
         """
         return self.login or os.getenv("CONF_LOGIN")
 
-    def get_password(self) -> Optional[str]:
+    def get_password(self) -> str | None:
         """
         Retrieve the configured Confluence password, falling back to the CONF_PASSWORD environment variable.
 
@@ -64,12 +63,10 @@ class ConfluenceCloudConfig(BaseModel):
 
     url: str = Field(..., description="Confluence Cloud URL (*.atlassian.net)")
     query: str = Field(..., description="CQL query to filter pages")
-    email: Optional[str] = Field(
+    email: str | None = Field(
         None, description="Atlassian account email (env: ATLASSIAN_EMAIL)"
     )
-    api_token: Optional[str] = Field(
-        None, description="API token (env: ATLASSIAN_TOKEN)"
-    )
+    api_token: str | None = Field(None, description="API token (env: ATLASSIAN_TOKEN)")
     read_all_comments: bool = Field(
         default=True, description="Read nested comments (yes/no)"
     )
@@ -117,4 +114,4 @@ class ConfluenceCloudConfig(BaseModel):
         return token
 
 
-__all__ = ["ConfluenceConfig", "ConfluenceCloudConfig"]
+__all__ = ["ConfluenceCloudConfig", "ConfluenceConfig"]

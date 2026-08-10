@@ -5,11 +5,12 @@ individual commands for flat registration in the main app.
 """
 
 import webbrowser
+
 import typer
 
-from .commands import create, search, inspect, update, remove
+from ..utils.components.theme import get_secondary_style, get_success_style
 from ..utils.console import console
-from ..utils.components.theme import get_success_style, get_secondary_style
+from .commands import create, inspect, remove, search, update
 
 app = typer.Typer(help="Knowledge / Index Management commands")
 
@@ -44,4 +45,4 @@ def docs() -> None:
         raise typer.Exit(1)
 
 
-__all__ = ["app", "create", "search", "inspect", "update", "remove"]
+__all__ = ["app", "create", "inspect", "remove", "search", "update"]

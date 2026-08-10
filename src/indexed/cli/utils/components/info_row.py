@@ -5,6 +5,7 @@ with consistent formatting and alignment across all CLI commands.
 """
 
 from rich.text import Text
+
 from .theme import get_info_row_label_width, get_label_style, get_value_style
 
 

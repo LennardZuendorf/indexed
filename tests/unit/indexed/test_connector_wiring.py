@@ -7,16 +7,15 @@ replaced is tested in tests/unit/indexed/connectors/test_from_manifest.py).
 
 from unittest.mock import MagicMock, patch
 
-from indexed.protocols import ConnectorRun, Manifest
-
 from indexed.cli.composition import (
+    CliContext,
     make_cache_decorator_factory,
     make_connector_factory,
     make_manifest_factory,
     wiring_kwargs_for_create,
     wiring_kwargs_for_update,
 )
-from indexed.cli.composition import CliContext
+from indexed.protocols import ConnectorRun, Manifest
 
 
 def _manifest(connector_type: str = "jira") -> Manifest:

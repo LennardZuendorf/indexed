@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 
 def format_search_results_for_llm(
-    raw_results: Dict[str, Any], query: str
-) -> Dict[str, Any]:
+    raw_results: dict[str, Any], query: str
+) -> dict[str, Any]:
     """Transform raw search results into an LLM-optimized format.
 
     Flattens nested structures, extracts content directly, and provides
     clear context for each result with relevance ranking.
     """
-    formatted: Dict[str, Any] = {
+    formatted: dict[str, Any] = {
         "query": query,
         "total_collections_searched": 0,
         "total_documents_found": 0,
@@ -21,11 +21,11 @@ def format_search_results_for_llm(
         "results": [],
     }
 
-    all_chunks: List[Dict[str, Any]] = []
+    all_chunks: list[dict[str, Any]] = []
     # A failed collection must reach the agent as "index failed", not a
     # silent "0 matches" (foundation/6 E10) — collected here and always
     # included in the envelope below, even when empty.
-    collection_errors: List[Dict[str, Any]] = []
+    collection_errors: list[dict[str, Any]] = []
 
     for collection_name, collection_data in raw_results.items():
         if isinstance(collection_data, dict) and "error" in collection_data:

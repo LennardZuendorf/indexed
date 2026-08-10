@@ -1,20 +1,25 @@
 """MCP tool implementations for search operations."""
 
-from typing import Any, Callable, Dict, List, Optional, get_args
+from collections.abc import Callable
+from typing import Any, get_args
 
 from fastmcp import Context
 from loguru import logger
 
+from indexed.cli.errors import MCPError, mcp_error_envelope
+from indexed.config.errors import IndexedError
 from indexed.core.v1.engine import (
     SourceConfig,
+)
+from indexed.core.v1.engine import (
     search as svc_search,
+)
+from indexed.core.v1.engine import (
     status as svc_status,
 )
 
-from indexed.config.errors import IndexedError
-
-from indexed.cli.errors import MCPError, mcp_error_envelope
-from .config import resolve_cli_context, resolve_config as _resolve_config
+from .config import resolve_cli_context
+from .config import resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
 # Derived once from the SourceConfig Literal so the set stays in sync with the model.
@@ -25,10 +30,10 @@ _ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset(
 
 def _run_search(
     query: str,
-    configs: Optional[List[Any]],
+    configs: list[Any] | None,
     search_cfg: Any,
     collections_path: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
     try:
         raw_results = svc_search(
@@ -54,7 +59,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     """Register search tools on the FastMCP instance."""
 
     @mcp.tool
-    def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+    def search(query: str, ctx: Context | None = None) -> dict[str, Any]:
         """Search all available document collections for semantically similar content.
 
         Returns results in an LLM-optimized format with flat structure and direct text access.
@@ -79,8 +84,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     def search_collection(
         collection: str,
         query: str,
-        ctx: Optional[Context] = None,
-    ) -> Dict[str, Any]:
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
 
         Returns results in the same LLM-optimized format as the general search tool.

@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Paths to the command files under test
 _COMMANDS_DIR = Path(__file__).resolve().parents[2] / "src" / "indexed" / "cli"
 

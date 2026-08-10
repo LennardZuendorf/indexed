@@ -1,18 +1,16 @@
 """``indexed config list`` — show the resolved configuration."""
 
-from typing import Optional
-
 import typer
 
 # Import get_config at module level so tests can patch it.
 from indexed.config import get_config
 
-from ._helpers import setup_command_logging, _mask_sensitive_raw
+from ._helpers import _mask_sensitive_raw, setup_command_logging
 from ._render import render_config_overview
 
 
 def list_config(
-    section: Optional[str] = typer.Argument(
+    section: str | None = typer.Argument(
         None,
         help="Section to list (sources, core, logging, mcp, performance)",
     ),
@@ -36,7 +34,7 @@ def list_config(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",

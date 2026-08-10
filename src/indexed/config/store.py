@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any
 
 # TOML read (tomllib on 3.11+, fallback to tomli)
 if sys.version_info >= (3, 11):
@@ -20,13 +21,14 @@ from dotenv import load_dotenv
 from .path_utils import deep_merge, get_by_path
 from .storage import (
     StorageMode,
+    get_config_path,
     get_global_root,
     get_local_root,
-    get_config_path,
-    get_env_path as storage_get_env_path,
     resolve_storage_mode,
 )
-
+from .storage import (
+    get_env_path as storage_get_env_path,
+)
 
 CURRENT_SCHEMA_VERSION = "1"
 
@@ -41,8 +43,8 @@ class TomlStore:
     def __init__(
         self,
         *,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
+        workspace: Path | None = None,
+        mode_override: StorageMode | None = None,
     ) -> None:
         """Initialize the TomlStore.
 
@@ -113,7 +115,7 @@ class TomlStore:
         """Return the resolved .env file path as a string."""
         return str(self._env_path)
 
-    def _read_toml_file(self, path: Path) -> Dict[str, Any]:
+    def _read_toml_file(self, path: Path) -> dict[str, Any]:
         """
         Read and parse a TOML file at the given path and return its contents as a dictionary.
 
@@ -136,7 +138,7 @@ class TomlStore:
         with open(path, "rb") as f:
             return tomllib.load(f)
 
-    def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
+    def read_for_mode(self, mode: StorageMode) -> dict[str, Any]:
         """Read config for a specific resolved storage mode (no merging).
 
         Reads ONE config.toml based on the resolved mode,
@@ -163,7 +165,7 @@ class TomlStore:
 
         return self._apply_env_and_finalize(data)
 
-    def read_disk_only_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
+    def read_disk_only_for_mode(self, mode: StorageMode) -> dict[str, Any]:
         """Read config.toml for a resolved storage mode, with NO env overlay.
 
         Unlike read_for_mode(), this does not merge .env or INDEXED__* env
@@ -183,7 +185,7 @@ class TomlStore:
         data["_schema_version"] = schema_version
         return data
 
-    def _apply_env_and_finalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_env_and_finalize(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply INDEXED__* env overrides and extract schema version."""
         env_data = self._env_to_mapping()
         data = deep_merge(data, env_data)
@@ -256,8 +258,8 @@ class TomlStore:
 
     def _configs_have_differences(
         self,
-        local: Dict[str, Any],
-        global_: Dict[str, Any],
+        local: dict[str, Any],
+        global_: dict[str, Any],
     ) -> bool:
         """
         Determine whether any keys present in both config mappings have different values, recursing into nested dicts.
@@ -284,7 +286,7 @@ class TomlStore:
 
         return False
 
-    def get_config_differences(self) -> Dict[str, tuple[Any, Any]]:
+    def get_config_differences(self) -> dict[str, tuple[Any, Any]]:
         """
         Produce a mapping of dot-separated paths to tuples containing the differing (local_value, global_value) for keys present in the workspace config.
 
@@ -297,16 +299,16 @@ class TomlStore:
         local_data = self._read_toml_file(self.workspace_path)
         global_data = self._read_toml_file(self.global_path)
 
-        differences: Dict[str, tuple[Any, Any]] = {}
+        differences: dict[str, tuple[Any, Any]] = {}
         self._collect_differences(local_data, global_data, "", differences)
         return differences
 
     def _collect_differences(
         self,
-        local: Dict[str, Any],
-        global_: Dict[str, Any],
+        local: dict[str, Any],
+        global_: dict[str, Any],
         prefix: str,
-        differences: Dict[str, tuple[Any, Any]],
+        differences: dict[str, tuple[Any, Any]],
     ) -> None:
         """
         Recursively record paths where values differ between a local and global configuration.
@@ -332,7 +334,7 @@ class TomlStore:
             elif local_val != global_val:
                 differences[path] = (local_val, global_val)
 
-    def _load_dotenv(self, env_path: Optional[Path] = None) -> None:
+    def _load_dotenv(self, env_path: Path | None = None) -> None:
         """
         Load variables from a .env file into the process environment using python-dotenv.
 
@@ -354,7 +356,7 @@ class TomlStore:
         # `${...}` expansion from corrupting secrets (C4).
         load_dotenv(str(path), override=False, interpolate=False)
 
-    def _get_workspace_preference(self) -> Optional[StorageMode]:
+    def _get_workspace_preference(self) -> StorageMode | None:
         """Read the stored ``[workspace] mode`` preference from the global config.
 
         Duplicates ``WorkspaceManager.get_preference()`` rather than importing
@@ -373,7 +375,7 @@ class TomlStore:
         return None
 
     def _resolve_write_target(
-        self, *, to_global: bool = False, mode: Optional[StorageMode] = None
+        self, *, to_global: bool = False, mode: StorageMode | None = None
     ) -> Path:
         """
         Determine which config.toml ``write()`` would target right now, without writing.
@@ -411,7 +413,7 @@ class TomlStore:
             )
         return self.workspace_path if mode == "local" else self.global_path
 
-    def resolved_config_path(self, *, mode: Optional[StorageMode] = None) -> Path:
+    def resolved_config_path(self, *, mode: StorageMode | None = None) -> Path:
         """Return the config.toml path a plain ``write()`` would target right now.
 
         Lets a caller snapshot/restore the exact file a subsequent ``set()``/
@@ -428,7 +430,7 @@ class TomlStore:
         data: Mapping[str, Any],
         *,
         to_global: bool = False,
-        mode: Optional[StorageMode] = None,
+        mode: StorageMode | None = None,
     ) -> None:
         """
         Write the given configuration mapping to the appropriate TOML config file (workspace or global).
@@ -479,7 +481,7 @@ class TomlStore:
         """
         self.write(data, to_global=True)
 
-    def _env_to_mapping(self) -> Dict[str, Any]:
+    def _env_to_mapping(self) -> dict[str, Any]:
         """
         Convert environment variables with the `INDEXED__` prefix into a nested dictionary.
 
@@ -497,7 +499,7 @@ class TomlStore:
             mapping (Dict[str, Any]): Nested dictionary representing the matched environment variables, with lowercase keys and string values.
         """
         prefix = "INDEXED__"
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for k, v in os.environ.items():
             if not k.startswith(prefix):
                 continue

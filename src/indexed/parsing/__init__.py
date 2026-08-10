@@ -17,13 +17,13 @@ from .router import FileRouter, ParsingStrategy
 from .schema import ParsedChunk, ParsedDocument
 
 __all__ = [
-    "ParsingModule",
+    "CodeChunker",
+    "DoclingParser",
+    "FileRouter",
     "ParsedChunk",
     "ParsedDocument",
-    "FileRouter",
+    "ParsingModule",
     "ParsingStrategy",
-    "DoclingParser",
-    "CodeChunker",
     "PlaintextParser",
 ]
 

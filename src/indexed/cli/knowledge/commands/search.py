@@ -6,21 +6,19 @@ services — issue #119).
 """
 
 import typer
-from typing import Optional
-
 from rich.markup import escape
 
-from ...utils.logging import is_verbose_mode
-from ...utils.simple_output import is_simple_output, print_json
-from ...utils.console import console
-from ...utils.context_managers import NoOpContext
-from ...utils.progress_bar import create_phased_progress, build_search_phase_label
+from ...utils.components import print_error
 from ...utils.components.theme import (
-    get_heading_style,
     get_accent_style,
     get_dim_style,
+    get_heading_style,
 )
-from ...utils.components import print_error
+from ...utils.console import console
+from ...utils.context_managers import NoOpContext
+from ...utils.logging import is_verbose_mode
+from ...utils.progress_bar import build_search_phase_label, create_phased_progress
+from ...utils.simple_output import is_simple_output, print_json
 from .search_render import format_search_results, format_search_results_compact
 
 app = typer.Typer(help="Search collections")
@@ -39,8 +37,8 @@ def _load_search_config():
     guaranteed to be present by the time this binds (foundation/6d root-cause
     fix — see ``runtime.py``).
     """
-    from indexed.core.v1.config_models import CoreV1SearchConfig
     from indexed.config import get_config
+    from indexed.core.v1.config_models import CoreV1SearchConfig
 
     try:
         provider = get_config().bind()
@@ -56,7 +54,7 @@ def search(
     collection: str = typer.Option(
         None, "--collection", "-c", help="Collection name to search"
     ),
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         "-l",
@@ -84,7 +82,7 @@ def search(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",

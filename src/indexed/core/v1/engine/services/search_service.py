@@ -9,17 +9,19 @@ and caching of search indexes for optimal performance.
 import errno
 import json
 import re
-from typing import List, Optional, Dict, Any
+from typing import Any
+
 from loguru import logger
 
-from indexed.protocols import Manifest
 from indexed.config.errors import StorageError
-from .models import SourceConfig
-from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
+from indexed.core.v1.config_models import get_default_collections_path
 from indexed.core.v1.engine.factories.search_collection_factory import (
     create_collection_searcher,
 )
-from indexed.core.v1.config_models import get_default_collections_path
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
+from indexed.protocols import Manifest
+
+from .models import SourceConfig
 
 # When a score threshold is active, request this many times `max_docs` from
 # the searcher so filtered-out slots can be backfilled from the next-best
@@ -50,14 +52,14 @@ class SearchService:
         ...     print(f"Found {len(result.get('documents', []))} docs in {collection}")
     """
 
-    def __init__(self, collections_path: Optional[str] = None):
+    def __init__(self, collections_path: str | None = None):
         """Initialize the search service with empty cache and default persister.
 
         Args:
             collections_path: Optional path for collections storage.
                              Defaults to resolved path from storage config.
         """
-        self._searcher_cache: Dict[str, Any] = {}
+        self._searcher_cache: dict[str, Any] = {}
         self._collections_path = collections_path or str(get_default_collections_path())
         self._persister = DiskPersister(base_path=self._collections_path)
 
@@ -84,7 +86,7 @@ class SearchService:
             )
         return self._searcher_cache[cache_key]
 
-    def _discover_collections(self) -> List[str]:
+    def _discover_collections(self) -> list[str]:
         """Discover all available collections by scanning the data directory.
 
         Returns:
@@ -118,7 +120,7 @@ class SearchService:
                 top_level_dirs.add(rel_path)
         logger.debug(f"Candidate top-level dirs: {sorted(top_level_dirs)}")
 
-        discovered: List[str] = []
+        discovered: list[str] = []
         for dirname in sorted(top_level_dirs):
             # Skip the transient build-aside/rollback directories the
             # durable-create path leaves on disk — see _INTERNAL_COLLECTION_DIR_RE.
@@ -156,8 +158,8 @@ class SearchService:
             return "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
 
     def _filter_by_score(
-        self, result: Dict[str, Any], score_threshold: float
-    ) -> Dict[str, Any]:
+        self, result: dict[str, Any], score_threshold: float
+    ) -> dict[str, Any]:
         """Filter search results by score threshold.
 
         Scores are squared-L2 distance in [0, 4] (embeddings are
@@ -203,14 +205,14 @@ class SearchService:
         self,
         query: str,
         *,
-        configs: Optional[List[SourceConfig]] = None,
-        max_chunks: Optional[int] = None,
-        max_docs: Optional[int] = None,
-        score_threshold: Optional[float] = None,
+        configs: list[SourceConfig] | None = None,
+        max_chunks: int | None = None,
+        max_docs: int | None = None,
+        score_threshold: float | None = None,
         include_full_text: bool = False,
         include_all_chunks: bool = False,
         include_matched_chunks: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search across one or many collections.
 
         Performs semantic search across specified collections or auto-discovers
@@ -334,15 +336,15 @@ class SearchService:
 
 def search(
     query: str,
-    configs: Optional[List[SourceConfig]] = None,
-    max_chunks: Optional[int] = None,
-    max_docs: Optional[int] = None,
-    score_threshold: Optional[float] = None,
+    configs: list[SourceConfig] | None = None,
+    max_chunks: int | None = None,
+    max_docs: int | None = None,
+    score_threshold: float | None = None,
     include_full_text: bool = False,
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
-    collections_path: Optional[str] = None,
-) -> Dict[str, Any]:
+    collections_path: str | None = None,
+) -> dict[str, Any]:
     """Functional wrapper around SearchService for one-shot CLI usage.
 
     This function provides a stateless interface to the search functionality,

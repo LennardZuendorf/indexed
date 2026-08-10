@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 
 def format_path_tilde(path: str) -> str:
@@ -8,7 +7,7 @@ def format_path_tilde(path: str) -> str:
     return path.replace(str(Path.home()), "~")
 
 
-def format_source_type(source_type: Optional[str]) -> str:
+def format_source_type(source_type: str | None) -> str:
     """Convert an internal source type identifier to a human-readable display name."""
     if not source_type:
         return "Unknown"
@@ -24,7 +23,7 @@ def format_source_type(source_type: Optional[str]) -> str:
     return type_map.get(source_type, source_type.capitalize())
 
 
-def format_time(timestamp: Optional[str]) -> str:
+def format_time(timestamp: str | None) -> str:
     """Format timestamp as nicely human-readable (e.g., '5 mins ago', 'Yesterday at 13:23', etc).
 
     Handles ISO8601 timestamps. If parsing fails, falls back to the raw string or 'unknown'.
@@ -36,10 +35,10 @@ def format_time(timestamp: Optional[str]) -> str:
     if not dt:
         return timestamp
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if dt.tzinfo is None:
         # Assume UTC if tz not present
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     diff = now - dt
 
     total_seconds = int(diff.total_seconds())
@@ -65,7 +64,7 @@ def format_time(timestamp: Optional[str]) -> str:
         return dt.strftime("%Y-%m-%d %H:%M")
 
 
-def _try_parse_to_datetime(timestamp: str) -> Optional[datetime]:
+def _try_parse_to_datetime(timestamp: str) -> datetime | None:
     """Parse string to datetime object, handling common timestamp formats."""
     if not timestamp:
         return None
@@ -76,12 +75,12 @@ def _try_parse_to_datetime(timestamp: str) -> Optional[datetime]:
     except Exception:
         try:
             # Try Unix timestamp (as string/int)
-            return datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+            return datetime.fromtimestamp(float(timestamp), tz=UTC)
         except Exception:
             return None
 
 
-def format_size(bytes: Optional[int]) -> str:
+def format_size(bytes: int | None) -> str:
     """Format bytes to human-readable size."""
     if bytes is None:
         return "unknown"

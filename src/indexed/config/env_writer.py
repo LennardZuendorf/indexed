@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Callable, List
+from collections.abc import Callable
 
 from pydantic.fields import FieldInfo
 
@@ -33,7 +33,7 @@ class EnvFileWriter:
         """Write or update an environment variable in the .env file."""
         env_path = self._get_env_path()
 
-        existing_lines: List[str] = []
+        existing_lines: list[str] = []
         if os.path.exists(env_path):
             with open(env_path, "r") as f:
                 existing_lines = f.readlines()
@@ -41,7 +41,7 @@ class EnvFileWriter:
         quoted_value = _dotenv_quote(value)
 
         key_found = False
-        updated_lines: List[str] = []
+        updated_lines: list[str] = []
         # Regex to match export-prefixed keys: optional "export " prefix followed by KEY=
         key_pattern = re.compile(rf"^(export\s+)?{re.escape(key)}\s*=")
 

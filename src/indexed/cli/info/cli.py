@@ -3,23 +3,22 @@
 Provides commands to access documentation and view license information.
 """
 
-import webbrowser
-from pathlib import Path
-from typing import Optional
-import urllib.request
 import urllib.error
+import urllib.request
+import webbrowser
 from importlib import resources
+from pathlib import Path
 
 import typer
 from rich.markdown import Markdown
 
-from ..utils.console import console
+from ..utils.components import print_error, print_success
 from ..utils.components.theme import (
     get_accent_style,
-    get_secondary_style,
     get_dim_style,
+    get_secondary_style,
 )
-from ..utils.components import print_success, print_error
+from ..utils.console import console
 
 app = typer.Typer(
     help="Information & Help Commands",
@@ -42,7 +41,7 @@ DOC_URLS = {
 
 @app.command("docs")
 def docs(
-    topic: Optional[str] = typer.Argument(
+    topic: str | None = typer.Argument(
         None,
         help="Specific command or topic (index, config, mcp, confluence, files, jira)",
     ),

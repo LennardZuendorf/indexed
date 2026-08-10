@@ -1,29 +1,30 @@
 """``indexed config set`` — set a configuration value at a dot-path."""
 
-from typing import Any, Optional
+from typing import Any
 
 import typer
 from loguru import logger
 from rich.markup import escape
 
-# Import get_config at module level so tests can patch it.
-from indexed.config import get_config
-from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_detail_card,
     get_heading_style,
     get_secondary_style,
     get_warning_style,
-    print_success,
     print_error,
+    print_success,
     print_warning,
 )
+from indexed.cli.utils.console import console
+
+# Import get_config at module level so tests can patch it.
+from indexed.config import get_config
 
 from ._helpers import (
-    setup_command_logging,
     _coerce_value,
     _is_sensitive_key,
     _masked_config_value,
+    setup_command_logging,
 )
 
 
@@ -46,7 +47,7 @@ def set_config(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",

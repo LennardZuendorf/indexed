@@ -8,7 +8,7 @@ We focus on realistic behaviors:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +16,6 @@ from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands import search as search_cmd
 from indexed.cli.knowledge.commands import search_render
-
 
 runner = CliRunner()
 
@@ -105,7 +104,7 @@ class TestFormatSearchResults:
         still chosen by score across the surviving collections), but the
         failure itself must be surfaced, not silently dropped (foundation/6
         E10, CLI twin of the MCP formatting bug)."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -116,7 +115,7 @@ class TestFormatSearchResults:
         )
 
         # Two collections: one with an error, one with results
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "error-collection": {"error": "index unavailable"},
             "ok-collection": {
                 "results": [
@@ -157,7 +156,7 @@ class TestFormatSearchResults:
 
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -173,7 +172,7 @@ class TestFormatSearchResults:
 
     def test_show_all_results_compact_groups_by_collection(self, monkeypatch):
         """_show_all_results_compact should group and count results per collection."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -183,7 +182,7 @@ class TestFormatSearchResults:
             search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "coll1": {"results": [{"id": "a"}, {"id": "b"}]},
             "coll2": {"results": [{"id": "c"}]},
         }
@@ -202,7 +201,7 @@ class TestFormatSearchResults:
 
     def test_format_search_results_no_content_calls_compact(self, monkeypatch):
         """show_content=False should use the compact display path."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -212,7 +211,7 @@ class TestFormatSearchResults:
             search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "coll1": {"results": [{"id": "doc1"}]},
         }
 
@@ -226,7 +225,7 @@ class TestFormatSearchResults:
 
     def test_show_top_result_split_cards_non_dict_content(self, monkeypatch):
         """When chunk content is not a dict, it should be coerced to string."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             outputs.append(str(args))
@@ -247,7 +246,7 @@ class TestFormatSearchResults:
 
     def test_show_compact_match_non_float_score(self, monkeypatch):
         """_show_compact_match with a non-float score should not raise."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -276,7 +275,7 @@ class TestFormatSearchResults:
         """Empty (no-match) collections stay silently skipped, but a failed
         collection must be surfaced — not reported as a bare "no results"
         (foundation/6 E10, CLI twin of the MCP formatting bug)."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -287,7 +286,7 @@ class TestFormatSearchResults:
         )
 
         with patch.object(search_render, "print_error") as mock_error:
-            results: Dict[str, Any] = {
+            results: dict[str, Any] = {
                 "error-coll": {"error": "unavailable"},
                 "empty-coll": {"results": []},
             }
@@ -308,7 +307,7 @@ class TestFormatSearchResults:
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -318,7 +317,7 @@ class TestFormatSearchResults:
             search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "coll1": {
                 "results": [
                     {"id": "doc-a", "score": 0.75},
@@ -399,7 +398,7 @@ class TestSearchCommandExecution:
 
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
-        from unittest.mock import Mock, MagicMock
+        from unittest.mock import MagicMock, Mock
 
         statuses = [self._make_status("col1"), self._make_status("col2")]
 
@@ -414,7 +413,7 @@ class TestSearchCommandExecution:
             lambda **kw: fake_source_config,
         )
 
-        search_results: Dict[str, Any] = {
+        search_results: dict[str, Any] = {
             "col1": {"results": []},
             "col2": {"results": []},
         }
@@ -447,7 +446,7 @@ class TestSearchCommandExecution:
 
     def test_search_specific_collection_compact_output(self, monkeypatch):
         """--compact flag should use compact formatter path."""
-        from unittest.mock import Mock, MagicMock
+        from unittest.mock import MagicMock, Mock
 
         statuses = [self._make_status("myCol")]
 
@@ -524,7 +523,7 @@ class TestSearchCommandExecution:
 
     def test_search_no_content_flag(self, monkeypatch):
         """--no-content flag should pass show_content=False to formatter."""
-        from unittest.mock import Mock, MagicMock
+        from unittest.mock import MagicMock, Mock
 
         statuses = [self._make_status("col1")]
 
@@ -562,7 +561,6 @@ class TestSearchCommandExecution:
     def test_search_simple_output_returns_llm_json(self, monkeypatch):
         """In simple output mode, search should return LLM-formatted JSON."""
         import json
-
         from unittest.mock import Mock
 
         from indexed.cli.utils.simple_output import (
@@ -713,7 +711,7 @@ class TestSearchStatusMessages:
 
         # FakePhased drops the title (like PlainPhasedProgress) and records the
         # start_phase labels — the regression surface for the plain-progress path.
-        phase_labels: List[str] = []
+        phase_labels: list[str] = []
 
         class FakePhased:
             def start_phase(self, label: str):
@@ -795,6 +793,7 @@ class TestSearchStatusMessages:
         """Simple (--simple) output mode must produce no status/headline lines."""
         import json
         from unittest.mock import Mock
+
         from indexed.cli.utils.simple_output import (
             reset_simple_output,
             set_simple_output,
@@ -838,7 +837,7 @@ class TestFormatSearchResultsCompactEdgeCases:
         """format_search_results_compact excludes error collections from the
         results listing, but must still surface the failure (foundation/6
         E10, CLI twin of the MCP formatting bug)."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -849,7 +848,7 @@ class TestFormatSearchResultsCompactEdgeCases:
         )
 
         with patch.object(search_render, "print_error") as mock_error:
-            results: Dict[str, Any] = {
+            results: dict[str, Any] = {
                 "error-coll": {"error": "unavailable"},
                 "good-coll": {"results": [{"id": "doc1", "score": 0.5}]},
             }
@@ -866,7 +865,7 @@ class TestFormatSearchResultsCompactEdgeCases:
 
     def test_compact_skips_empty_collections(self, monkeypatch):
         """format_search_results_compact should skip collections with no results."""
-        outputs: List[str] = []
+        outputs: list[str] = []
 
         def fake_print(*args, **kwargs):
             text = " ".join(str(a) for a in args)
@@ -876,7 +875,7 @@ class TestFormatSearchResultsCompactEdgeCases:
             search_render, "console", type("C", (), {"print": fake_print})()
         )
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "empty-coll": {"results": []},
         }
         search_render.format_search_results_compact("query", results=results)

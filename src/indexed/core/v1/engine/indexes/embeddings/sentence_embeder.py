@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import numpy as np
@@ -33,7 +34,7 @@ class SentenceEmbedder:
         self,
         texts: list[str],
         batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> np.ndarray:
         """Encode a list of texts in one batched call for efficiency.
 

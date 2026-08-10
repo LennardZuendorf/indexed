@@ -5,9 +5,10 @@ This module provides reusable card (panel) components for displaying
 information in bordered containers with consistent styling.
 """
 
-from typing import Optional, Sequence
-from rich.panel import Panel
+from collections.abc import Sequence
+
 from rich.console import Group
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -15,8 +16,8 @@ from .theme import (
     get_card_border_style,
     get_card_padding,
     get_detail_card_width,
-    get_value_style,
     get_label_style,
+    get_value_style,
 )
 
 
@@ -58,8 +59,8 @@ def create_info_rows_with_spacing(rows: Sequence[tuple[str, "str | Text"]]) -> l
 def create_info_card(
     title: str,
     rows: Sequence[tuple[str, "str | Text"]],
-    width: Optional[int] = None,
-    subtitle: Optional[str] = None,
+    width: int | None = None,
+    subtitle: str | None = None,
 ) -> Panel:
     """Create a card panel containing info rows.
 
@@ -88,7 +89,7 @@ def create_info_card(
     # handling in create_info_rows_with_spacing above. Panel accepts a Text
     # title directly, so the dim style still applies.
     if subtitle:
-        title_text: "str | Text" = Text(f"{title} ({subtitle})", style="dim")
+        title_text: str | Text = Text(f"{title} ({subtitle})", style="dim")
     else:
         title_text = Text(str(title), style="dim")
 
@@ -105,7 +106,7 @@ def create_info_card(
 def create_detail_card(
     title: str,
     rows: Sequence[tuple[str, "str | Text"]],
-    subtitle: Optional[str] = None,
+    subtitle: str | None = None,
 ) -> Panel:
     """Create a fixed-width detail card for single item display.
 

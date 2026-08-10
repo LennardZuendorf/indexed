@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from rich.console import Console
 
@@ -26,7 +26,7 @@ StorageMode = Literal["global", "local"]
 def get_storage_indicator(
     mode: StorageMode,
     path: Path,
-    reason: Optional[str] = None,
+    reason: str | None = None,
 ) -> str:
     """
     Constructs a formatted indicator showing the storage mode, the storage root path (with the home directory replaced by `~`), and an optional reason.
@@ -52,7 +52,7 @@ def print_storage_info(
     console: Console,
     mode: StorageMode,
     path: Path,
-    reason: Optional[str] = None,
+    reason: str | None = None,
     *,
     newline_before: bool = False,
     newline_after: bool = True,
@@ -81,9 +81,9 @@ def print_storage_info(
 
 def get_storage_mode_and_reason(
     has_local: bool,
-    mode_override: Optional[StorageMode],
-    config_mode: Optional[StorageMode],
-    workspace_pref: Optional[StorageMode],
+    mode_override: StorageMode | None,
+    config_mode: StorageMode | None,
+    workspace_pref: StorageMode | None,
 ) -> tuple[StorageMode, str]:
     """
     Resolve which storage mode to use and provide a short reason explaining the choice.
@@ -129,11 +129,10 @@ def display_storage_mode_for_command(console: Console) -> None:
     Parameters:
         console (Console): Rich Console to print to.
     """
-    from indexed.config import has_local_config, get_local_root, get_global_root
-
     from indexed.cli.composition import resolve_collections_context
+    from indexed.config import get_global_root, get_local_root, has_local_config
 
-    mode_override: Optional[StorageMode] = None
+    mode_override: StorageMode | None = None
     try:
         import click
 

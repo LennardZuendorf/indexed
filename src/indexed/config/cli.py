@@ -10,10 +10,6 @@ Helper functions are re-exported here for backwards-compatible imports
 
 import typer
 
-from .commands.get import get_config
-from .commands.set import set_config
-from .commands.list import list_config
-from .commands.validate import validate
 from .commands._helpers import (
     _coerce_value,
     _flatten_dict,
@@ -23,6 +19,10 @@ from .commands._helpers import (
     _masked_config_value,
     _merge_with_defaults,
 )
+from .commands.get import get_config
+from .commands.list import list_config
+from .commands.set import set_config
+from .commands.validate import validate
 
 app = typer.Typer(help="Manage configuration")
 
@@ -32,11 +32,6 @@ app.command("list", help="List resolved configuration")(list_config)
 app.command("validate", help="Validate configuration")(validate)
 
 __all__ = [
-    "app",
-    "get_config",
-    "set_config",
-    "list_config",
-    "validate",
     "_coerce_value",
     "_flatten_dict",
     "_format_config_value",
@@ -44,4 +39,9 @@ __all__ = [
     "_mask_sensitive_raw",
     "_masked_config_value",
     "_merge_with_defaults",
+    "app",
+    "get_config",
+    "list_config",
+    "set_config",
+    "validate",
 ]

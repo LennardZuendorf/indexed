@@ -3,9 +3,9 @@
 from unittest.mock import Mock, patch
 
 from indexed.core.v1.engine.services.collection_service import (
-    _resolve_connector,
-    _create_one,
     _collection_exists,
+    _create_one,
+    _resolve_connector,
     collection_exists,
 )
 from indexed.core.v1.engine.services.models import SourceConfig
@@ -113,21 +113,23 @@ class TestCreateFunction:
         cfg = _source_config("test-col")
         factory = Mock()
 
-        with patch(
-            "indexed.core.v1.engine.services.collection_service._clear_caches"
-        ) as mock_clear:
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.services.collection_service._clear_caches"
+            ) as mock_clear,
+            patch(
                 "indexed.core.v1.engine.services.collection_service._collection_exists",
                 return_value=False,
-            ):
-                with patch(
-                    "indexed.core.v1.engine.services.collection_service._create_one"
-                ) as mock_create:
-                    create([cfg], force=True, connector_factory=factory)
+            ),
+            patch(
+                "indexed.core.v1.engine.services.collection_service._create_one"
+            ) as mock_create,
+        ):
+            create([cfg], force=True, connector_factory=factory)
 
-                    mock_clear.assert_called_once()
-                    mock_create.assert_called_once()
-                    assert mock_create.call_args.kwargs["connector_factory"] is factory
+            mock_clear.assert_called_once()
+            mock_create.assert_called_once()
+            assert mock_create.call_args.kwargs["connector_factory"] is factory
 
     def test_create_with_force_and_existing_collection(self):
         from indexed.core.v1.engine.services.collection_service import create

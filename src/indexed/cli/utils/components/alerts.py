@@ -16,10 +16,10 @@ from rich.text import Text
 
 from ..console import console
 from .theme import (
-    get_detail_card_width,
     get_card_padding,
-    get_success_style,
+    get_detail_card_width,
     get_error_style,
+    get_success_style,
     get_warning_style,
 )
 
@@ -127,12 +127,12 @@ def print_info(message: str) -> None:
 
 
 __all__ = [
-    "print_success",
-    "print_error",
-    "print_warning",
-    "print_info",
-    "ICON_SUCCESS",
     "ICON_ERROR",
-    "ICON_WARNING",
     "ICON_INFO",
+    "ICON_SUCCESS",
+    "ICON_WARNING",
+    "print_error",
+    "print_info",
+    "print_success",
+    "print_warning",
 ]

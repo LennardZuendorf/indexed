@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Type, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -13,14 +13,14 @@ class ConfigRegistry:
     """Registry of typed configuration specs keyed by dot-path."""
 
     def __init__(self) -> None:
-        self._specs: Dict[str, Type[BaseModel]] = {}
+        self._specs: dict[str, type[BaseModel]] = {}
 
-    def register(self, spec: Type[T], *, path: str) -> None:
+    def register(self, spec: type[T], *, path: str) -> None:
         """Register a Pydantic model as the config schema for a dot-path."""
         self._specs[path] = spec
 
     @property
-    def specs(self) -> Dict[str, Type[BaseModel]]:
+    def specs(self) -> dict[str, type[BaseModel]]:
         """Return a read-only view of registered specs."""
         return self._specs
 

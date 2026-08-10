@@ -3,22 +3,22 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed.config.errors import (
-    ConfigValidationError,
-    ConfigurationError,
-    IndexedError,
-    StorageConflictError,
-    StorageError,
-)
 
 from indexed.cli.errors import (
-    CLIError,
     EXIT_CODES,
+    CLIError,
     exit_code_for,
     format_cli_error,
     mcp_error_envelope,
 )
 from indexed.cli.utils.components import get_error_style
+from indexed.config.errors import (
+    ConfigurationError,
+    ConfigValidationError,
+    IndexedError,
+    StorageConflictError,
+    StorageError,
+)
 
 
 class TestErrorHelpers:

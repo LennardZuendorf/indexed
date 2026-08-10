@@ -5,7 +5,7 @@ aliases keeps the four command signatures in ``_create_commands.py`` to one line
 per parameter while preserving the exact flags, help text, and help panels.
 """
 
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 import typer
 
@@ -38,7 +38,7 @@ JsonLogsOpt = Annotated[
     ),
 ]
 LogLevelOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
@@ -64,7 +64,7 @@ CollectionFilesOpt = Annotated[
     ),
 ]
 PathOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--path",
         "-p",
@@ -72,7 +72,7 @@ PathOpt = Annotated[
     ),
 ]
 IncludeOpt = Annotated[
-    Optional[List[str]],
+    list[str] | None,
     typer.Option(
         "--include",
         help="List of regex patterns for files/directories to include (can be specified multiple times).",
@@ -80,7 +80,7 @@ IncludeOpt = Annotated[
     ),
 ]
 ExcludeOpt = Annotated[
-    Optional[List[str]],
+    list[str] | None,
     typer.Option(
         "--exclude",
         help="List of regex patterns for files/directories to exclude (can be specified multiple times).",
@@ -102,7 +102,7 @@ UseCacheFilesOpt = Annotated[
     ),
 ]
 RespectGitignoreOpt = Annotated[
-    Optional[bool],
+    bool | None,
     typer.Option(
         "--respect-gitignore/--no-respect-gitignore",
         help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
@@ -119,7 +119,7 @@ CollectionJiraOpt = Annotated[
     ),
 ]
 JiraUrlOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--url",
         "-u",
@@ -127,7 +127,7 @@ JiraUrlOpt = Annotated[
     ),
 ]
 JqlOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--jql",
         "--query",
@@ -136,14 +136,14 @@ JqlOpt = Annotated[
     ),
 ]
 AtlassianEmailOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--email",
         help="Atlassian account email (overrides config/env).",
     ),
 ]
 AtlassianTokenOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--token",
         help="Atlassian API token (overrides env ATLASSIAN_TOKEN).",
@@ -167,7 +167,7 @@ CollectionConfluenceOpt = Annotated[
     ),
 ]
 ConfluenceUrlOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--url",
         "-u",
@@ -175,7 +175,7 @@ ConfluenceUrlOpt = Annotated[
     ),
 ]
 CqlOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--cql",
         "--query",
@@ -184,7 +184,7 @@ CqlOpt = Annotated[
     ),
 ]
 ReadAllCommentsOpt = Annotated[
-    Optional[bool],
+    bool | None,
     typer.Option(
         "--read-all-comments/--first-level-comments",
         help="Read all nested comments if enabled, otherwise include only first-level comments.",
@@ -208,7 +208,7 @@ CollectionOutlineOpt = Annotated[
     ),
 ]
 OutlineUrlOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--url",
         "-u",
@@ -216,14 +216,14 @@ OutlineUrlOpt = Annotated[
     ),
 ]
 OutlineTokenOpt = Annotated[
-    Optional[str],
+    str | None,
     typer.Option(
         "--token",
         help="Outline API token (overrides env OUTLINE_API_TOKEN).",
     ),
 ]
 CollectionIdOpt = Annotated[
-    Optional[List[str]],
+    list[str] | None,
     typer.Option(
         "--collection-id",
         help="Restrict to specific Outline collection IDs (can be specified multiple times). Defaults to all collections.",
@@ -231,14 +231,14 @@ CollectionIdOpt = Annotated[
     ),
 ]
 IncludeAttachmentsOpt = Annotated[
-    Optional[bool],
+    bool | None,
     typer.Option(
         "--include-attachments/--no-include-attachments",
         help="Download and OCR inline images and file attachments.",
     ),
 ]
 OcrOpt = Annotated[
-    Optional[bool],
+    bool | None,
     typer.Option(
         "--ocr/--no-ocr",
         help="Enable OCR for image attachments.",

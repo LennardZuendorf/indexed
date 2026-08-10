@@ -1,16 +1,17 @@
 """Shared configuration resolution for MCP tools and resources."""
 
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 
-from indexed.config import get_config
 from indexed.cli.composition import CliContext, resolve_collections_context
+from indexed.config import get_config
 
 _MISSING = object()
 
 
-def _from_lifespan(ctx: Optional[Any], key: str) -> Any:
+def _from_lifespan(ctx: Any | None, key: str) -> Any:
     """Return the value stored at ``key`` in the FastMCP lifespan context.
 
     Returns _MISSING sentinel when the key is absent or the context is invalid,
@@ -26,7 +27,7 @@ def _from_lifespan(ctx: Optional[Any], key: str) -> Any:
     return _MISSING
 
 
-def resolve_config(ctx: Optional[Any], key: str, loader: Callable[[], Any]) -> Any:
+def resolve_config(ctx: Any | None, key: str, loader: Callable[[], Any]) -> Any:
     """Resolve config from lifespan state or fallback to loader."""
     val = _from_lifespan(ctx, key)
     return val if val is not _MISSING else loader()
@@ -52,7 +53,7 @@ def default_global_context() -> CliContext:
     )
 
 
-def resolve_cli_context(ctx: Optional[Any]) -> CliContext:
+def resolve_cli_context(ctx: Any | None) -> CliContext:
     """Resolve CliContext from lifespan state or build a fresh one.
 
     Falls back to a default global-mode context (R2) when resolution fails

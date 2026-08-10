@@ -1,10 +1,11 @@
 """Tests for OutlineConnector instantiation and protocol compliance."""
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
 from indexed.connectors.outline.connector import OutlineConnector
-from indexed.connectors.outline.schema import OutlineConfig, OUTLINE_CLOUD_URL
+from indexed.connectors.outline.schema import OUTLINE_CLOUD_URL, OutlineConfig
 
 
 @pytest.fixture

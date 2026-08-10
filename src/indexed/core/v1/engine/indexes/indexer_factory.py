@@ -5,7 +5,6 @@ existing ones from disk. It uses the indexer registry for configuration.
 """
 
 import logging
-from typing import Optional
 
 from .indexer_registry import get_indexer_config
 
@@ -41,7 +40,7 @@ def load_indexer(
     indexer_name: str,
     collection_name: str,
     persister,
-    serialized_index: Optional[bytes] = None,
+    serialized_index: bytes | None = None,
 ):
     """Load an existing FAISS indexer from disk.
 

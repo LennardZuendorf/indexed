@@ -15,10 +15,9 @@ import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands import remove as remove_cmd
+from indexed.cli.utils.simple_output import reset_simple_output, set_simple_output
 from indexed.core.v1.engine.services import CollectionInfo
-from indexed.cli.utils.simple_output import set_simple_output, reset_simple_output
 from tests.unit.indexed.conftest import make_cli_context
-
 
 runner = CliRunner()
 

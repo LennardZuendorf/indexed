@@ -4,12 +4,14 @@ This module consolidates the previously separate JiraCloudDocumentReader and
 JiraDocumentReader into a single parameterized class, following DRY principles.
 """
 
+from collections.abc import Iterator
 from enum import Enum
-from typing import Any, Iterator, Optional
+from typing import Any
+
 from atlassian import Jira
 
-from indexed.utils.retry import execute_with_retry
 from indexed.utils.batch import read_items_in_batches
+from indexed.utils.retry import execute_with_retry
 
 
 class JiraAuthType(str, Enum):
@@ -73,11 +75,11 @@ class UnifiedJiraDocumentReader:
         base_url: str,
         query: str,
         auth_type: JiraAuthType = JiraAuthType.CLOUD,
-        email: Optional[str] = None,
-        api_token: Optional[str] = None,
-        token: Optional[str] = None,
-        login: Optional[str] = None,
-        password: Optional[str] = None,
+        email: str | None = None,
+        api_token: str | None = None,
+        token: str | None = None,
+        login: str | None = None,
+        password: str | None = None,
         batch_size: int = 500,
         number_of_retries: int = 3,
         retry_delay: int = 1,
@@ -119,11 +121,11 @@ class UnifiedJiraDocumentReader:
     @staticmethod
     def _validate_auth(
         auth_type: JiraAuthType,
-        email: Optional[str],
-        api_token: Optional[str],
-        token: Optional[str],
-        login: Optional[str],
-        password: Optional[str],
+        email: str | None,
+        api_token: str | None,
+        token: str | None,
+        login: str | None,
+        password: str | None,
     ) -> None:
         """Validate auth parameters for the chosen auth type.
 

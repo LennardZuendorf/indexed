@@ -1,6 +1,7 @@
 """Shared display helpers for local-files source summaries."""
 
 import os
+
 from indexed.connectors.files.schema import DEFAULT_EXCLUDED_DIRS
 
 

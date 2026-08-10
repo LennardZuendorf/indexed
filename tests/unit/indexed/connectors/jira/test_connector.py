@@ -2,14 +2,15 @@
 
 import os
 from unittest.mock import patch
+
 import pytest
-from indexed.connectors.jira.connector import JiraConnector, JiraCloudConnector
-from indexed.connectors.jira.schema import JiraConfig, JiraCloudConfig
+
+from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
+from indexed.connectors.jira.connector import JiraCloudConnector, JiraConnector
+from indexed.connectors.jira.schema import JiraCloudConfig, JiraConfig
 from indexed.connectors.jira.unified_jira_document_reader import (
     UnifiedJiraDocumentReader,
 )
-from indexed.connectors.jira.async_jira_cloud_reader import AsyncJiraCloudDocumentReader
-
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 

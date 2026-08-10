@@ -3,8 +3,10 @@
 Tests the execution timing and measurement functions.
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
+
 from indexed.utils.performance import (
     execute_and_measure_duration,
     log_execution_duration,

@@ -1,8 +1,8 @@
 """Tests for progress bar utilities."""
 
 from indexed.cli.utils.progress_bar import (
-    RichPhasedProgress,
     PlainPhasedProgress,
+    RichPhasedProgress,
     create_phased_progress,
 )
 

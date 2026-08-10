@@ -7,7 +7,6 @@ We focus on realistic behaviors:
 """
 
 from pathlib import Path
-from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +14,6 @@ from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands import inspect as inspect_cmd
 from indexed.core.v1.engine.services import CollectionInfo
-
 
 runner = CliRunner()
 
@@ -89,7 +87,7 @@ class TestInspectCollectionsCommand:
 
     def test_list_all_collections_brief(self, monkeypatch):
         """Listing all collections should show names and totals."""
-        collections: List[CollectionInfo] = [
+        collections: list[CollectionInfo] = [
             _make_collection("docs", docs=3, chunks=5),
             _make_collection("jira", source_type="jira", docs=2, chunks=4),
         ]

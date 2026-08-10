@@ -4,8 +4,10 @@ Tests the execute_with_retry function which handles retries with
 exponential backoff and rate limit awareness.
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+
 from indexed.utils.retry import execute_with_retry
 
 

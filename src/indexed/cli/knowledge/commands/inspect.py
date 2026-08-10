@@ -5,21 +5,22 @@ contains all formatter logic (previously in inspect_formatter.py) for displaying
 with Rich or JSON. Presentation and command logic are now unified in this file.
 """
 
+from typing import TYPE_CHECKING
+
 import typer
-from typing import List, TYPE_CHECKING
 from rich.columns import Columns
 from rich.markup import escape
 
-from ...utils.console import console
-from ...utils.simple_output import is_simple_output, print_json
 from ...utils.components import (
-    create_info_card,
     create_detail_card,
-    get_heading_style,
-    get_dim_style,
+    create_info_card,
     create_summary,
+    get_dim_style,
+    get_heading_style,
     print_error,
 )
+from ...utils.console import console
+from ...utils.simple_output import is_simple_output, print_json
 
 if TYPE_CHECKING:
     from indexed.core.v1.engine import CollectionInfo
@@ -54,7 +55,7 @@ def _build_collection_rows(
 
 
 def format_collection_list(
-    collections: List["CollectionInfo"], verbose: bool = False
+    collections: list["CollectionInfo"], verbose: bool = False
 ) -> None:
     """Display a list of collections with optional verbose detail."""
     if verbose:
@@ -63,7 +64,7 @@ def format_collection_list(
         _show_brief_list(collections)
 
 
-def _show_brief_list(collections: List["CollectionInfo"]) -> None:
+def _show_brief_list(collections: list["CollectionInfo"]) -> None:
     """Show minimal collection info in compact cards."""
     console.print()
     count = len(collections)
@@ -96,7 +97,7 @@ def _show_brief_list(collections: List["CollectionInfo"]) -> None:
     console.print()
 
 
-def _show_verbose_list(collections: List["CollectionInfo"]) -> None:
+def _show_verbose_list(collections: list["CollectionInfo"]) -> None:
     """Show detailed collection info for all collections with unified design."""
     console.print()
     count = len(collections)
@@ -160,7 +161,7 @@ def format_collection_json(info: "CollectionInfo") -> None:
     print_json(output)
 
 
-def format_collections_json(collections: List["CollectionInfo"]) -> None:
+def format_collections_json(collections: list["CollectionInfo"]) -> None:
     """Display a list of collections in JSON."""
     output = [
         {
@@ -198,8 +199,9 @@ def inspect_collections(
         indexed --simple-output inspect            # JSON output
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
-    from . import inspect as this_module
     from indexed.cli.composition import resolve_collections_context
+
+    from . import inspect as this_module
 
     inspect_svc = this_module.inspect
     collection_exists_svc = this_module.collection_exists

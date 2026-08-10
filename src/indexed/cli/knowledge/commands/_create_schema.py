@@ -14,13 +14,14 @@ Nothing here depends on the interactive-prompt seams patched by the create tests
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
-from pydantic import BaseModel
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from loguru import logger
+from pydantic import BaseModel
 
 from ...utils.console import console
 
@@ -44,7 +45,7 @@ def _is_cloud(url: str) -> bool:
     return host.lower().endswith(".atlassian.net")
 
 
-def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
+def _is_pre_setup_verbose(verbose: bool, log_level: str | None) -> bool:
     """Return True when verbose/INFO/DEBUG output is requested.
 
     Use this at command-function top, before ``execute_create_command`` runs
@@ -54,12 +55,13 @@ def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
     return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
 
 
-def _display_files_source_summary(present: Dict[str, Any]) -> None:
+def _display_files_source_summary(present: dict[str, Any]) -> None:
     """Print a concise Files source summary before the creation spinner starts."""
-    from ...utils.components.info_row import create_info_row
-    from ...utils.format import format_path_tilde
-    from ...utils.files_source_display import build_excluded_row_text
     from indexed.connectors.files.schema import DEFAULT_EXCLUDED_DIRS
+
+    from ...utils.components.info_row import create_info_row
+    from ...utils.files_source_display import build_excluded_row_text
+    from ...utils.format import format_path_tilde
 
     path = str(present.get("path", ""))
     respect_gitignore: bool = present.get("respect_gitignore", True)
@@ -89,33 +91,33 @@ def _load(module: str, name: str) -> Any:
     return getattr(importlib.import_module(module), name)
 
 
-def _load_config(module: str, name: str) -> Type[BaseModel]:
+def _load_config(module: str, name: str) -> type[BaseModel]:
     cls = _load(module, name)
     assert isinstance(cls, type)
     return cls
 
 
-def _files_config() -> Type[BaseModel]:
+def _files_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.files.schema", "LocalFilesConfig")
 
 
-def _jira_cloud_config() -> Type[BaseModel]:
+def _jira_cloud_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.jira.schema", "JiraCloudConfig")
 
 
-def _jira_config() -> Type[BaseModel]:
+def _jira_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.jira.schema", "JiraConfig")
 
 
-def _confluence_cloud_config() -> Type[BaseModel]:
+def _confluence_cloud_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.confluence.schema", "ConfluenceCloudConfig")
 
 
-def _confluence_config() -> Type[BaseModel]:
+def _confluence_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.confluence.schema", "ConfluenceConfig")
 
 
-def _outline_config() -> Type[BaseModel]:
+def _outline_config() -> type[BaseModel]:
     return _load_config("indexed.connectors.outline.schema", "OutlineConfig")
 
 
@@ -134,7 +136,7 @@ def _parse_path(raw: str) -> str:
     return normalize_base_path(raw)
 
 
-def _parse_csv(raw: str, default: List[str]) -> List[str]:
+def _parse_csv(raw: str, default: list[str]) -> list[str]:
     return [p.strip() for p in raw.split(",")] if raw else list(default)
 
 
@@ -156,7 +158,7 @@ class FieldSpec:
     error: str = "Value is required"
 
 
-_FILES_FIELDS: Dict[str, FieldSpec] = {
+_FILES_FIELDS: dict[str, FieldSpec] = {
     "path": FieldSpec(
         "Path to files or directory", parse=_parse_path, error="Path is required"
     ),
@@ -184,7 +186,7 @@ _CONFLUENCE_QUERY = FieldSpec(
 # --------------------------------------------------------------------------- #
 # reader_opts builders + verbose-mode pre-creation loggers                     #
 # --------------------------------------------------------------------------- #
-def _files_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
+def _files_reader_opts(present: dict[str, Any]) -> dict[str, Any]:
     return {
         "includePatterns": present.get("include_patterns", ["*"]),
         "excludePatterns": present.get("exclude_patterns", []),
@@ -193,15 +195,15 @@ def _files_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _jira_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
+def _jira_reader_opts(present: dict[str, Any]) -> dict[str, Any]:
     return {}  # Credentials are read from ConfigService by the connector.
 
 
-def _confluence_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
+def _confluence_reader_opts(present: dict[str, Any]) -> dict[str, Any]:
     return {"readAllComments": present.get("read_all_comments", True)}
 
 
-def _outline_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
+def _outline_reader_opts(present: dict[str, Any]) -> dict[str, Any]:
     return {
         "collectionIds": present.get("collection_ids"),
         "includeAttachments": present.get("include_attachments", True),
@@ -209,17 +211,17 @@ def _outline_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _jira_verbose_log(present: Dict[str, Any]) -> None:
+def _jira_verbose_log(present: dict[str, Any]) -> None:
     logger.info("Connecting to Jira at %s...", present["url"])
     logger.info("Using JQL query: %s", present["query"])
 
 
-def _confluence_verbose_log(present: Dict[str, Any]) -> None:
+def _confluence_verbose_log(present: dict[str, Any]) -> None:
     logger.info("Connecting to Confluence at %s...", present["url"])
     logger.info("Using CQL query: %s", present["query"])
 
 
-def _outline_verbose_log(present: Dict[str, Any]) -> None:
+def _outline_verbose_log(present: dict[str, Any]) -> None:
     url = present["url"]
     deployment = "Cloud" if url == _outline_cloud_url() else "self-hosted"
     logger.info("Connecting to Outline at %s (%s)...", url, deployment)
@@ -237,26 +239,26 @@ class SourceSpec:
     display_name: str
     success_suffix: str
     source_path_key: str
-    fields_by_name: Dict[str, FieldSpec]
-    reader_opts: Callable[[Dict[str, Any]], Dict[str, Any]]
+    fields_by_name: dict[str, FieldSpec]
+    reader_opts: Callable[[dict[str, Any]], dict[str, Any]]
     # source-type resolution -------------------------------------------------
     default_source_type: str = ""
-    default_config: Optional[Callable[[], Type[BaseModel]]] = None
+    default_config: Callable[[], type[BaseModel]] | None = None
     cloud_detection: bool = False
     cloud_source_type: str = ""
     server_source_type: str = ""
-    cloud_config: Optional[Callable[[], Type[BaseModel]]] = None
-    server_config: Optional[Callable[[], Type[BaseModel]]] = None
+    cloud_config: Callable[[], type[BaseModel]] | None = None
+    server_config: Callable[[], type[BaseModel]] | None = None
     # url phase --------------------------------------------------------------
     has_url: bool = False
     url_label: str = ""
-    url_default_fn: Optional[Callable[[], str]] = None
+    url_default_fn: Callable[[], str] | None = None
     # server credential check injected into the missing-field loop ----------
     server_auth: bool = False
     server_env: tuple[str, ...] = ()
     # presentation -----------------------------------------------------------
-    verbose_log: Optional[Callable[[Dict[str, Any]], None]] = None
-    pre_display: Optional[Callable[[Dict[str, Any]], None]] = None
+    verbose_log: Callable[[dict[str, Any]], None] | None = None
+    pre_display: Callable[[dict[str, Any]], None] | None = None
     progress_uses_url: bool = False
     has_query: bool = False
 
@@ -266,7 +268,7 @@ class SourceSpec:
         return ("url",) if self.has_url else ()
 
 
-SOURCE_SPECS: Dict[str, SourceSpec] = {
+SOURCE_SPECS: dict[str, SourceSpec] = {
     "files": SourceSpec(
         key="files",
         namespace="sources.files",
@@ -338,7 +340,7 @@ SOURCE_SPECS: Dict[str, SourceSpec] = {
 }
 
 
-def resolve_source(spec: SourceSpec, url: Optional[str]) -> tuple[str, Type[BaseModel]]:
+def resolve_source(spec: SourceSpec, url: str | None) -> tuple[str, type[BaseModel]]:
     """Resolve ``(source_type, config_class)`` from the spec and the resolved URL.
 
     Sources with ``cloud_detection`` pick Cloud vs Server from the URL host
@@ -355,15 +357,15 @@ def resolve_source(spec: SourceSpec, url: Optional[str]) -> tuple[str, Type[Base
 
 def make_build_source_config(
     spec: SourceSpec, source_type: str
-) -> Callable[[Dict[str, Any], str], "SourceConfig"]:
+) -> Callable[[dict[str, Any], str], SourceConfig]:
     """Return a ``build_source_config`` callback bound to one source spec."""
 
-    def build(present: Dict[str, Any], coll_name: str) -> "SourceConfig":
+    def build(present: dict[str, Any], coll_name: str) -> SourceConfig:
         # Resolve SourceConfig/DEFAULT_INDEXER through the create module's lazy
         # facade so tests can patch them at the core seam.
         from indexed.cli.knowledge.commands import create as this_module
 
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "name": coll_name,
             "type": source_type,
             "base_url_or_path": present[spec.source_path_key],

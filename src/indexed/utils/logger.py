@@ -29,8 +29,9 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -98,7 +99,7 @@ _next_status_token = 0
 class InterceptHandler(logging.Handler):
     """Forward stdlib logging records into Loguru, preserving level & origin."""
 
-    def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             level = logger.level(record.levelname).name
         except ValueError:
@@ -132,7 +133,7 @@ _DEFAULT_THEME_STYLES: dict[str, str] = {
 
 
 def _make_console_sink(
-    rich_console: Optional["Console"],
+    rich_console: Console | None,
     theme_styles: dict[str, str],
     show_details: bool,
 ) -> Callable[[Message], None]:
@@ -221,9 +222,9 @@ def bootstrap_logging(
     *,
     debug: bool = False,
     quiet: bool = False,
-    rich_console: Optional["Console"] = None,
-    theme_styles: Optional[dict[str, str]] = None,
-    log_dir: Optional[Path] = None,
+    rich_console: Console | None = None,
+    theme_styles: dict[str, str] | None = None,
+    log_dir: Path | None = None,
     json_mode: bool = False,
 ) -> None:
     """Configure the entire logging stack. Idempotent — safe to call repeatedly.
@@ -371,7 +372,7 @@ def get_current_log_level() -> str:
 # ---------------------------------------------------------------------------
 
 
-def setup_root_logger(level_str: Optional[str] = None, json_mode: bool = False) -> None:
+def setup_root_logger(level_str: str | None = None, json_mode: bool = False) -> None:
     """Deprecated shim — calls ``bootstrap_logging`` for old callers.
 
     Kept to avoid breaking imports during the migration. New code should call
@@ -397,9 +398,9 @@ __all__ = [
     "InterceptHandler",
     "bootstrap_logging",
     "emit_status",
+    "get_current_log_level",
+    "is_verbose_mode",
+    "setup_root_logger",  # shim
     "subscribe_status",
     "unsubscribe_status",
-    "is_verbose_mode",
-    "get_current_log_level",
-    "setup_root_logger",  # shim
 ]

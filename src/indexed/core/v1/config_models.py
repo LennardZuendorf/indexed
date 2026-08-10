@@ -5,7 +5,6 @@ storage, search, and infrastructure settings.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -43,17 +42,17 @@ class CoreV1EmbeddingConfig(BaseModel):
         default="all-MiniLM-L6-v2",
         description="Model name for embeddings",
     )
-    dimension: Optional[int] = Field(
+    dimension: int | None = Field(
         default=None, description="Embedding dimension (auto-detected if None)"
     )
     batch_size: int = Field(
         default=128, ge=1, description="Batch size for embedding generation"
     )
-    device: Optional[str] = Field(
+    device: str | None = Field(
         default=None,
         description="Device for embeddings (cpu, cuda, mps, or None for auto)",
     )
-    api_key_env: Optional[str] = Field(
+    api_key_env: str | None = Field(
         default=None, description="Environment variable name for API key (if needed)"
     )
 
@@ -66,13 +65,13 @@ class CoreV1StorageConfig(BaseModel):
     persistence_enabled: bool = Field(
         default=True, description="Enable persistence to disk"
     )
-    persistence_path: Optional[Path] = Field(
+    persistence_path: Path | None = Field(
         default=None, description="Path for persisting indexes"
     )
 
     @field_validator("persistence_path", mode="before")
     @classmethod
-    def set_default_path(cls, v, info) -> Optional[Path]:
+    def set_default_path(cls, v, info) -> Path | None:
         """Set default persistence path if not provided."""
         if v is None:
             return Path(".indexed/v1/storage")
@@ -90,7 +89,7 @@ class CoreV1SearchConfig(BaseModel):
     max_docs: int = Field(
         default=10, ge=1, le=100, description="Maximum documents to return"
     )
-    max_chunks: Optional[int] = Field(
+    max_chunks: int | None = Field(
         default=30, ge=1, description="Maximum chunks to return"
     )
     include_full_text: bool = Field(
@@ -103,7 +102,7 @@ class CoreV1SearchConfig(BaseModel):
         default=True,
         description="Include matched chunk content (required for LLM usage)",
     )
-    score_threshold: Optional[float] = Field(
+    score_threshold: float | None = Field(
         default=None,
         ge=0.0,
         le=4.0,
@@ -173,13 +172,13 @@ class LoggingConfig(BaseModel):
 
 
 __all__ = [
-    "CoreV1IndexingConfig",
     "CoreV1EmbeddingConfig",
-    "CoreV1StorageConfig",
+    "CoreV1IndexingConfig",
     "CoreV1SearchConfig",
+    "CoreV1StorageConfig",
+    "LoggingConfig",
     "MCPConfig",
     "PerformanceConfig",
-    "LoggingConfig",
-    "get_default_collections_path",
     "get_default_caches_path",
+    "get_default_collections_path",
 ]

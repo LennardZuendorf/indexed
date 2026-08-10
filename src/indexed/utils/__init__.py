@@ -6,6 +6,7 @@
 - Performance: execution timing utilities.
 """
 
+from .batch import read_items_in_batches
 from .logger import (
     THIRD_PARTY_LOGGERS,
     bootstrap_logging,
@@ -16,9 +17,8 @@ from .logger import (
     subscribe_status,
     unsubscribe_status,
 )
-from .batch import read_items_in_batches
-from .retry import execute_with_retry
 from .performance import execute_and_measure_duration, log_execution_duration
+from .retry import execute_with_retry
 
 __all__ = [
     # Logging

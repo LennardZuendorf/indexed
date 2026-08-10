@@ -1,24 +1,25 @@
 """``indexed config get`` — read a single configuration value."""
 
-from typing import Any, Optional
+from typing import Any
 
 import typer
 
-# Aliased at module level (the command below is itself named ``get_config``) so
-# tests can patch this seam without shadowing the Typer command.
-from indexed.config import get_config as _resolve_config
-from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_detail_card,
     get_heading_style,
     print_info,
 )
+from indexed.cli.utils.console import console
+
+# Aliased at module level (the command below is itself named ``get_config``) so
+# tests can patch this seam without shadowing the Typer command.
+from indexed.config import get_config as _resolve_config
 
 from ._helpers import (
-    setup_command_logging,
     _is_sensitive_key,
     _mask_sensitive_raw,
     _masked_config_value,
+    setup_command_logging,
 )
 
 
@@ -37,7 +38,7 @@ def get_config(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",

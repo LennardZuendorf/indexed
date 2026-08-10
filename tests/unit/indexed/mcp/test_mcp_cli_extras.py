@@ -8,7 +8,6 @@ from typer.testing import CliRunner
 
 from indexed.mcp.cli import docs, main
 
-
 runner = CliRunner()
 
 

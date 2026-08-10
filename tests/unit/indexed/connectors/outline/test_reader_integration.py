@@ -7,8 +7,9 @@ attachments.list → attachments.redirect runs through the real orchestration co
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -54,7 +55,7 @@ class _FakeAsyncClient:
     def __init__(self, router: Callable[[str, str], _FakeResp]) -> None:
         self._router = router
 
-    async def __aenter__(self) -> "_FakeAsyncClient":
+    async def __aenter__(self) -> _FakeAsyncClient:
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -122,7 +123,7 @@ def _attachment_bytes(data: bytes, mime: str = "image/png") -> _FakeResp:
 # ---------------------------------------------------------------------------
 
 
-def _make_reader(**overrides: object) -> "OutlineDocumentReader":
+def _make_reader(**overrides: object) -> OutlineDocumentReader:
     from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     kwargs: dict[str, object] = dict(

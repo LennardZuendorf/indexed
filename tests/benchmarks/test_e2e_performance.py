@@ -22,7 +22,6 @@ from typer.testing import CliRunner
 
 from indexed.cli.app import app
 
-
 runner = CliRunner()
 
 # Path to real markdown docs in the repo (used as benchmark corpus)

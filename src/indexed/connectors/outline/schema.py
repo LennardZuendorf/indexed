@@ -1,10 +1,8 @@
 """Configuration schema for the Outline Wiki connector."""
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
-
 
 OUTLINE_CLOUD_URL = "https://app.getoutline.com"
 
@@ -16,10 +14,10 @@ class OutlineConfig(BaseModel):
         default=OUTLINE_CLOUD_URL,
         description="Outline base URL — use https://app.getoutline.com for Cloud, or your own domain for self-hosted",
     )
-    api_token: Optional[str] = Field(
+    api_token: str | None = Field(
         None, description="Outline API token (env: OUTLINE_API_TOKEN)"
     )
-    collection_ids: Optional[list[str]] = Field(
+    collection_ids: list[str] | None = Field(
         None,
         description="Restrict indexing to specific collection IDs. None = index all collections.",
     )
@@ -52,7 +50,7 @@ class OutlineConfig(BaseModel):
         default=True,
         description="Verify TLS certificates. Set False for self-hosted instances with self-signed CAs.",
     )
-    modified_since: Optional[str] = Field(
+    modified_since: str | None = Field(
         None,
         description=(
             "Internal: ISO timestamp cutoff for incremental updates. "
@@ -77,4 +75,4 @@ class OutlineConfig(BaseModel):
         return self.url == OUTLINE_CLOUD_URL
 
 
-__all__ = ["OutlineConfig", "OUTLINE_CLOUD_URL"]
+__all__ = ["OUTLINE_CLOUD_URL", "OutlineConfig"]

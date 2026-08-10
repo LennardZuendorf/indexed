@@ -1,31 +1,28 @@
 """Remove command for removing collections."""
 
-from typing import Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
 
 import typer
 from rich.markup import escape
 from rich.prompt import Confirm
 
-if TYPE_CHECKING:
-    pass
-
-from ...utils.console import console
 from ...utils.components import (
     create_detail_card,
     create_summary,
-    get_heading_style,
-    get_error_style,
     get_accent_style,
     get_dim_style,
-    print_success,
+    get_error_style,
+    get_heading_style,
     print_error,
+    print_success,
     print_warning,
 )
-from ...utils.format import format_size, format_time, format_source_type
-from ...utils.simple_output import is_simple_output, print_json
-from ...utils.logging import is_verbose_mode
-from ...utils.progress_bar import create_phased_progress, build_progress_title
+from ...utils.console import console
 from ...utils.context_managers import NoOpContext
+from ...utils.format import format_size, format_source_type, format_time
+from ...utils.logging import is_verbose_mode
+from ...utils.progress_bar import build_progress_title, create_phased_progress
+from ...utils.simple_output import is_simple_output, print_json
 from ...utils.storage_info import display_storage_mode_for_command
 
 app = typer.Typer(help="Remove collections")
@@ -98,7 +95,7 @@ def remove(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
@@ -112,8 +109,9 @@ def remove(
         indexed remove my-collection -f   # Remove without confirmation
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
-    from . import remove as this_module
     from indexed.cli.composition import resolve_collections_context
+
+    from . import remove as this_module
 
     clear_svc = this_module.clear
     inspect_svc = this_module.inspect

@@ -5,8 +5,10 @@ and create_confluence commands to eliminate code duplication.
 """
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 from loguru import logger
 from pydantic import BaseModel
 
@@ -15,18 +17,17 @@ if TYPE_CHECKING:
 
 from indexed.config import ConfigService, StorageMode, ValidationResult
 
-from ...utils.logging import is_verbose_mode, setup_root_logger
+from ...utils.components import print_error, print_success, print_warning
 from ...utils.console import console
 from ...utils.context_managers import NoOpContext
-from ...utils.components import print_success, print_error, print_warning
-from ...utils.format import format_source_type
-from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.credentials import (
     apply_cli_credential_overrides,
     ensure_credentials_for_source,
     is_credential_field,
 )
-
+from ...utils.format import format_source_type
+from ...utils.logging import is_verbose_mode, setup_root_logger
+from ...utils.progress_bar import build_progress_title, create_phased_progress
 
 # Sentinel returned by `_snapshot_config_toml` when the snapshot read itself
 # fails (e.g. a permission error). Distinct from `None` (file legitimately
@@ -96,22 +97,22 @@ def _restore_config_toml(path: Path, snapshot: object) -> None:
 def execute_create_command(
     collection: str,
     source_type: str,
-    config_class: Type[BaseModel],
+    config_class: type[BaseModel],
     namespace: str,
-    cli_overrides: Dict[str, Any],
+    cli_overrides: dict[str, Any],
     prompt_missing_fields: Callable[[ValidationResult, ConfigService, str], None],
-    build_source_config: Callable[[Dict[str, Any], str], "SourceConfig"],
+    build_source_config: Callable[[dict[str, Any], str], "SourceConfig"],
     success_message_suffix: str,
     verbose: bool,
     json_logs: bool,
-    log_level: Optional[str],
+    log_level: str | None,
     use_cache: bool,
     force: bool,
-    progress_message: Optional[str] = None,
-    verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
-    pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
+    progress_message: str | None = None,
+    verbose_pre_creation_log: Callable[[dict[str, Any]], None] | None = None,
+    pre_creation_display: Callable[[dict[str, Any]], None] | None = None,
     local: bool = False,
-    source_path_key: Optional[str] = None,
+    source_path_key: str | None = None,
 ) -> None:
     """Common execution flow for all create commands.
 
@@ -148,7 +149,7 @@ def execute_create_command(
 
     import typer
 
-    mode_override: Optional[StorageMode] = None
+    mode_override: StorageMode | None = None
     try:
         import click
 
@@ -314,7 +315,7 @@ def execute_create_command(
 
         # If creation failed, show error and exit
         if creation_error:
-            print_error(f"Failed to create collection: {str(creation_error)}")
+            print_error(f"Failed to create collection: {creation_error!s}")
             if is_verbose_mode():
                 logger.exception("Full error details:")
             raise typer.Exit(1)
@@ -354,7 +355,7 @@ def execute_create_command(
             # Re-raise typer.Exit to preserve exit code
             raise
         except Exception as e:
-            print_error(f"Failed to verify collection: {str(e)}")
+            print_error(f"Failed to verify collection: {e!s}")
             if is_verbose_mode():
                 logger.exception("Full error details:")
             raise typer.Exit(1)

@@ -9,8 +9,6 @@ Non-interactive environments (piped output, CI) degrade gracefully via
 Console.is_terminal auto-detection.
 """
 
-from typing import Optional
-
 from rich.console import Console
 from rich.text import Text
 
@@ -25,7 +23,7 @@ def is_interactive() -> bool:
     return console.is_terminal
 
 
-def render_user_text(value: object, style: Optional[str] = None) -> Text:
+def render_user_text(value: object, style: str | None = None) -> Text:
     """Wrap user-/content-derived text so it is never markup-parsed.
 
     ``console`` above has Rich markup enabled (required for the app's own

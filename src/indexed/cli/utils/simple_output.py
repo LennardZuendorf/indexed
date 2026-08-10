@@ -12,10 +12,10 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
-_simple_output_flag: Optional[bool] = None
-_resolved_cache: Optional[bool] = None
+_simple_output_flag: bool | None = None
+_resolved_cache: bool | None = None
 
 
 def set_simple_output(value: bool) -> None:

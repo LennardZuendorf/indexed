@@ -1,6 +1,7 @@
 """Tests for create command helpers."""
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 import typer
 

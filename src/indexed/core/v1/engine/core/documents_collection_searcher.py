@@ -88,7 +88,7 @@ class DocumentCollectionSearcher:
         result = {}
         total_chunks = 0
 
-        for result_number in range(0, len(indexes[0])):
+        for result_number in range(len(indexes[0])):
             # Once both caps are satisfied, nothing further in the (ranked)
             # pool can improve the result — stop early.
             if (

@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 from pytest_httpserver import HTTPServer
@@ -33,7 +33,6 @@ from typer.testing import CliRunner
 
 from indexed.cli.app import app
 from indexed.config.service import reload as reload_config
-
 from tests.fixtures.connectors import payloads, stub_routes
 
 pytestmark = pytest.mark.connectors

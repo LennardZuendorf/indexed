@@ -1,8 +1,10 @@
 """Minimal system test for CLI help command."""
 
 import webbrowser
+
 import pytest
 from typer.testing import CliRunner
+
 from indexed.cli.app import app
 
 

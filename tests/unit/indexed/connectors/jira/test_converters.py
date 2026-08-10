@@ -1,7 +1,9 @@
 """Tests for Jira document converters."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from indexed.connectors.jira.unified_jira_document_converter import (
     UnifiedJiraDocumentConverter,
 )

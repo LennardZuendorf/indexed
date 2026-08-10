@@ -21,9 +21,10 @@ RESOURCES_PANEL = "Resources"
 def register_commands(app: typer.Typer) -> None:
     """Register every subcommand and sub-Typer onto ``app`` (idempotent-ish;
     call exactly once at ``app.py`` import time)."""
-    from . import info, knowledge
-    from .. import mcp
     from indexed.config import cli as config
+
+    from .. import mcp
+    from . import info, knowledge
     from .debug import debug as debug_command
     from .init import init as init_command
 

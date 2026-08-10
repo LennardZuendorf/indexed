@@ -1,6 +1,7 @@
 """Tests for config CLI commands."""
 
 from unittest.mock import Mock, patch
+
 from typer.testing import CliRunner
 
 from indexed.config.cli import (
@@ -501,9 +502,9 @@ class TestSetConfig:
         ``API_TOKEN``, which no connector reads. Drives the real CLI + a real
         (unmocked) ConfigService so the connector registry is populated the
         way production populates it."""
-        from indexed.connectors.jira.schema import JiraCloudConfig
         from indexed.cli.app import app
         from indexed.config.env_writer import EnvFileWriter
+        from indexed.connectors.jira.schema import JiraCloudConfig
 
         expected_var = EnvFileWriter.get_env_var_name(
             "api_token", JiraCloudConfig.model_fields["api_token"]

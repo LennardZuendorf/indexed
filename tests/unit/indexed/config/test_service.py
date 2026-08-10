@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel, Field
+
 from indexed.config.errors import ConfigValidationError
 from indexed.config.service import ConfigService, get_config, reload
 

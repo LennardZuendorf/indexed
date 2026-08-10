@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from indexed.protocols import ConnectorRun
 from indexed.core.v1.engine.factories.update_collection_factory import (
     create_collection_updater,
 )
+from indexed.protocols import ConnectorRun
 
 
 @pytest.mark.unit
@@ -117,8 +117,8 @@ def test_creator_runs_post_hook_after_successful_run() -> None:
     of ``run()`` once the create/update operation succeeds.
     """
     from indexed.core.v1.engine.core.documents_collection_creator import (
-        DocumentCollectionCreator,
         OPERATION_TYPE,
+        DocumentCollectionCreator,
     )
 
     post = MagicMock()

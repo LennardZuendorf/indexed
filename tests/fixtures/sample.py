@@ -1,14 +1,12 @@
 """Sample Python module for testing code chunking."""
 
-from typing import List
-
 
 class Calculator:
     """A simple calculator class."""
 
     def __init__(self, name: str = "calc") -> None:
         self.name = name
-        self.history: List[float] = []
+        self.history: list[float] = []
 
     def add(self, a: float, b: float) -> float:
         """Add two numbers."""

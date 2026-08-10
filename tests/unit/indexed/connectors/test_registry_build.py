@@ -3,10 +3,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed.protocols import SourceConfig
 
 from indexed.cli.composition import build_connector, build_connector_registry
-
+from indexed.protocols import SourceConfig
 
 CONNECTOR_TYPES = [
     "localFiles",

@@ -34,21 +34,23 @@ class TestInitCommand:
         assert "--skip-model" in clean
 
     def test_skips_download_when_cached(self):
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
-            return_value=True,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+                return_value=True,
+            ),
+            patch(
                 "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/tmp/hf/m"}],
                     "total_size_mb": 80,
                 },
-            ):
-                result = runner.invoke(_get_app(), ["init"])
-                assert result.exit_code == 0
-                assert "already" in result.output.lower()
+            ),
+        ):
+            result = runner.invoke(_get_app(), ["init"])
+            assert result.exit_code == 0
+            assert "already" in result.output.lower()
 
     def test_downloads_when_not_cached(self):
         with patch(
@@ -93,20 +95,22 @@ class TestInitCommand:
                     mock_dl.assert_called_once()
 
     def test_skip_model(self):
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
-        ) as mock_dl:
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
+            ) as mock_dl,
+            patch(
                 "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [],
                     "total_size_mb": 0,
                 },
-            ):
-                result = runner.invoke(_get_app(), ["init", "--skip-model"])
-                assert result.exit_code == 0
-                mock_dl.assert_not_called()
+            ),
+        ):
+            result = runner.invoke(_get_app(), ["init", "--skip-model"])
+            assert result.exit_code == 0
+            mock_dl.assert_not_called()
 
     def test_custom_model(self):
         with patch(
@@ -132,41 +136,45 @@ class TestInitCommand:
                     mock_dl.assert_called_once_with("all-mpnet-base-v2", force=False)
 
     def test_idempotent(self):
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
-            return_value=True,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+                return_value=True,
+            ),
+            patch(
                 "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/p"}],
                     "total_size_mb": 80,
                 },
-            ):
-                app = _get_app()
-                r1 = runner.invoke(app, ["init"])
-                r2 = runner.invoke(app, ["init"])
-                assert r1.exit_code == 0
-                assert r2.exit_code == 0
+            ),
+        ):
+            app = _get_app()
+            r1 = runner.invoke(app, ["init"])
+            r2 = runner.invoke(app, ["init"])
+            assert r1.exit_code == 0
+            assert r2.exit_code == 0
 
     def test_setup_complete_message_shown(self):
         """The success panel 'Setup complete!' should always appear."""
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
-            return_value=True,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+                return_value=True,
+            ),
+            patch(
                 "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/tmp/hf/m"}],
                     "total_size_mb": 80,
                 },
-            ):
-                result = runner.invoke(_get_app(), ["init"])
-                assert result.exit_code == 0
-                assert "Setup complete" in result.output
+            ),
+        ):
+            result = runner.invoke(_get_app(), ["init"])
+            assert result.exit_code == 0
+            assert "Setup complete" in result.output
 
     def test_skip_model_shows_skipped_message(self):
         """When --skip-model is used, 'skipped' should appear in output."""

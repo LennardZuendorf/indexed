@@ -42,7 +42,7 @@ class FilesDocumentConverter:
             text = content_part["text"].strip()
             if text:
                 entry: dict = {"indexedData": text}
-                if "metadata" in content_part and content_part["metadata"]:
+                if content_part.get("metadata"):
                     entry["metadata"] = content_part["metadata"]
                 chunks.append(entry)
 

@@ -6,20 +6,20 @@ orchestration of readers, converters, and persisters to build searchable collect
 """
 
 from collections.abc import Callable
-from typing import Any, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
-from indexed.protocols import BaseConnector
-
-from .models import SourceConfig
-from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
+from indexed.core.v1.config_models import (
+    get_default_caches_path,
+    get_default_collections_path,
+)
 from indexed.core.v1.engine.factories._types import ManifestFactory
 from indexed.core.v1.engine.factories.create_collection_factory import (
     create_collection_creator,
 )
-from indexed.core.v1.config_models import (
-    get_default_collections_path,
-    get_default_caches_path,
-)
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
+from indexed.protocols import BaseConnector
+
+from .models import SourceConfig
 
 
 @runtime_checkable
@@ -61,7 +61,7 @@ def _clear_caches(caches_path: str) -> None:
             logger.warning("Could not remove cache entry %s: %s", entry_path, exc)
 
 
-def _collection_exists(name: str, collections_path: Optional[str] = None) -> bool:
+def _collection_exists(name: str, collections_path: str | None = None) -> bool:
     """Check if collection exists on disk.
 
     Args:
@@ -76,7 +76,7 @@ def _collection_exists(name: str, collections_path: Optional[str] = None) -> boo
     return persister.is_path_exists(name)
 
 
-def collection_exists(name: str, collections_path: Optional[str] = None) -> bool:
+def collection_exists(name: str, collections_path: str | None = None) -> bool:
     """Public raw on-disk existence check (present, independent of readability).
 
     ``InspectService`` OMITS collections whose manifest can't be read (a
@@ -92,8 +92,8 @@ def _create_one(
     cfg: SourceConfig,
     use_cache: bool,
     phased_progress=None,
-    collections_path: Optional[str] = None,
-    caches_path: Optional[str] = None,
+    collections_path: str | None = None,
+    caches_path: str | None = None,
     *,
     connector_factory: Callable[[SourceConfig], BaseConnector],
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
@@ -123,7 +123,7 @@ def _create_one(
 def _update_one(
     cfg: SourceConfig,
     phased_progress=None,
-    collections_path: Optional[str] = None,
+    collections_path: str | None = None,
     *,
     manifest_factory: ManifestFactory,
 ) -> None:
@@ -144,13 +144,13 @@ def _update_one(
 
 
 def create(
-    configs: List[SourceConfig],
+    configs: list[SourceConfig],
     *,
     use_cache: bool = True,
     force: bool = False,
     phased_progress=None,
-    collections_path: Optional[str] = None,
-    caches_path: Optional[str] = None,
+    collections_path: str | None = None,
+    caches_path: str | None = None,
     connector_factory: Callable[[SourceConfig], BaseConnector],
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ) -> None:
@@ -176,9 +176,9 @@ def create(
 
 
 def update(
-    configs: List[SourceConfig],
+    configs: list[SourceConfig],
     phased_progress=None,
-    collections_path: Optional[str] = None,
+    collections_path: str | None = None,
     *,
     manifest_factory: ManifestFactory,
 ) -> None:
@@ -194,8 +194,8 @@ def update(
 
 
 def clear(
-    collection_names: List[str],
-    collections_path: Optional[str] = None,
+    collection_names: list[str],
+    collections_path: str | None = None,
 ) -> None:
     """Clear (delete) collections by name."""
     resolved_path = collections_path or str(get_default_collections_path())

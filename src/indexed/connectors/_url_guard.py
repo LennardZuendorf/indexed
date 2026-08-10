@@ -1,7 +1,7 @@
 """Origin guard for credentialed attachment fetches."""
 
 import re
-from urllib.parse import urlsplit, SplitResult
+from urllib.parse import SplitResult, urlsplit
 
 
 def warn_if_off_origin(url: str, base_url: str) -> bool:

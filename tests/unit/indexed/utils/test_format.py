@@ -1,9 +1,8 @@
 """Tests for format utility functions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-
-from indexed.cli.utils.format import format_time, format_size, _try_parse_to_datetime
+from indexed.cli.utils.format import _try_parse_to_datetime, format_size, format_time
 
 
 def _iso(dt: datetime) -> str:
@@ -12,7 +11,7 @@ def _iso(dt: datetime) -> str:
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TestFormatTime:
@@ -85,9 +84,7 @@ class TestFormatTime:
 
     def test_no_timezone_assumes_utc(self):
         # Use UTC now then strip timezone to simulate a naive UTC timestamp
-        dt_naive = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
-            seconds=30
-        )
+        dt_naive = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=30)
         ts = dt_naive.strftime("%Y-%m-%dT%H:%M:%S")
         result = format_time(ts)
         assert result == "just now"

@@ -7,27 +7,25 @@ This module provides:
 """
 
 import time
-from typing import Optional, Dict
 
 from rich.markup import escape
 from rich.progress import (
-    Progress,
     BarColumn,
+    Progress,
     ProgressColumn,
-    TextColumn,
     SpinnerColumn,
     TaskID,
+    TextColumn,
 )
-
-from indexed.utils import subscribe_status, unsubscribe_status
 
 from indexed.cli.utils.components.theme import (
     get_accent_style,
-    get_heading_style,
     get_default_style,
     get_dim_style,
+    get_heading_style,
 )
 from indexed.cli.utils.console import console, is_interactive
+from indexed.utils import subscribe_status, unsubscribe_status
 
 
 class RichPhasedProgress:
@@ -67,10 +65,10 @@ class RichPhasedProgress:
                 ),
             ]
         self._progress = Progress(*columns, console=console, transient=False)
-        self._tasks: Dict[str, TaskID] = {}
-        self._start_times: Dict[str, float] = {}
+        self._tasks: dict[str, TaskID] = {}
+        self._start_times: dict[str, float] = {}
         self._started = False
-        self._sub_token: Optional[int] = None
+        self._sub_token: int | None = None
 
     def __enter__(self) -> "RichPhasedProgress":
         if self._title:
@@ -88,7 +86,7 @@ class RichPhasedProgress:
         self._progress.stop()
         self._started = False
 
-    def start_phase(self, name: str, total: Optional[int] = None) -> None:
+    def start_phase(self, name: str, total: int | None = None) -> None:
         """Begin a named phase with progress bar (if total given) or spinner."""
         if not self._started:
             return
@@ -161,7 +159,7 @@ class PlainPhasedProgress:
 
     def __init__(self) -> None:
         self._phase_order: list[str] = []
-        self._sub_token: Optional[int] = None
+        self._sub_token: int | None = None
 
     def __enter__(self) -> "PlainPhasedProgress":
         self._sub_token = subscribe_status(self.log)
@@ -172,7 +170,7 @@ class PlainPhasedProgress:
             unsubscribe_status(self._sub_token)
             self._sub_token = None
 
-    def start_phase(self, name: str, total: Optional[int] = None) -> None:
+    def start_phase(self, name: str, total: int | None = None) -> None:
         if name not in self._phase_order:
             self._phase_order.append(name)
         idx = self._phase_order.index(name) + 1

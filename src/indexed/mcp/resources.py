@@ -13,19 +13,21 @@ FastMCP v3 also rejects bare list/dict returns — a list is iterated as
 return a dict envelope so v3 serializes them as a single JSON content block.
 """
 
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from fastmcp import Context
 from loguru import logger
 
-from indexed.core.v1.engine import status as svc_status
-from indexed.config.errors import IndexedError
-
 from indexed.cli.errors import MCPError, mcp_error_envelope
-from .config import resolve_cli_context, resolve_config as _resolve_config
+from indexed.config.errors import IndexedError
+from indexed.core.v1.engine import status as svc_status
+
+from .config import resolve_cli_context
+from .config import resolve_config as _resolve_config
 
 
-def _format_status(s: Any) -> Dict[str, Any]:
+def _format_status(s: Any) -> dict[str, Any]:
     """Format a status object into a serializable dict."""
     return {
         "name": s.name,
@@ -49,7 +51,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
         name="CollectionsList",
         description="Return list of available collection names.",
     )
-    def collections_list(ctx: Optional[Context] = None) -> Dict[str, Any]:
+    def collections_list(ctx: Context | None = None) -> dict[str, Any]:
         cli_ctx = resolve_cli_context(ctx)
         collections_path = str(cli_ctx.collections_path)
         try:
@@ -63,7 +65,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
         name="CollectionsStatusList",
         description="Return detailed status information for all collections.",
     )
-    def collections_status_list(ctx: Optional[Context] = None) -> Dict[str, Any]:
+    def collections_status_list(ctx: Context | None = None) -> dict[str, Any]:
         mcp_cfg = _resolve_config(ctx, "mcp_config", get_mcp_config)
         cli_ctx = resolve_cli_context(ctx)
         collections_path = str(cli_ctx.collections_path)
@@ -81,7 +83,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
         name="CollectionStatus",
         description="Return detailed status information for a specific collection.",
     )
-    def collection_status(name: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+    def collection_status(name: str, ctx: Context | None = None) -> dict[str, Any]:
         mcp_cfg = _resolve_config(ctx, "mcp_config", get_mcp_config)
         cli_ctx = resolve_cli_context(ctx)
         collections_path = str(cli_ctx.collections_path)

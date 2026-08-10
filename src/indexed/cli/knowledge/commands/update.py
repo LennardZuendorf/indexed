@@ -1,30 +1,31 @@
 """Update command for refreshing collections."""
 
-from typing import Any, Optional
+from typing import Any
 
 import typer
 
 from indexed.config import ConfigService
-from ...utils.logging import is_verbose_mode
-from ...utils.simple_output import is_simple_output, print_json
-from ...utils.context_managers import NoOpContext
+
+from ...utils.components import print_error, print_info
 from ...utils.components.summary import create_summary
 from ...utils.console import console
-from ...utils.progress_bar import create_phased_progress
-from ...utils.components import print_error, print_info
+from ...utils.context_managers import NoOpContext
 from ...utils.credentials import ensure_credentials_for_source
 from ...utils.format import format_source_type as _format_source_type
+from ...utils.logging import is_verbose_mode
+from ...utils.progress_bar import create_phased_progress
+from ...utils.simple_output import is_simple_output, print_json
 
 # Public/test surface: the Typer app + command, plus the helpers the test suite
 # imports directly. ``_format_source_type`` is re-exported here (the renderer
 # that used it now lives in update_service) — listing it keeps that intentional.
 __all__ = [
+    "_config_existed_before",
+    "_format_source_type",
+    "_format_update_comparison",
+    "_get_config_path",
     "app",
     "update",
-    "_config_existed_before",
-    "_get_config_path",
-    "_format_update_comparison",
-    "_format_source_type",
 ]
 
 app = typer.Typer(help="Update collections")
@@ -93,7 +94,7 @@ def update(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
@@ -109,8 +110,9 @@ def update(
 
     setup_root_logger_svc = this_module.setup_root_logger
 
-    from ...composition import wiring_kwargs_for_update
     from indexed.cli.composition import resolve_collections_context
+
+    from ...composition import wiring_kwargs_for_update
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)

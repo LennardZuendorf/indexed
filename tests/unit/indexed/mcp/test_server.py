@@ -2,19 +2,20 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed.config.errors import ConfigurationError
+
+import indexed.mcp.resources as resources_module
 
 # Import the server module to access the underlying functions
 import indexed.mcp.server as server_module
 import indexed.mcp.tools as tools_module
-import indexed.mcp.resources as resources_module
+from indexed.config.errors import ConfigurationError
 from indexed.mcp.server import (
-    mcp,
     _get_config,
     lifespan,
+    mcp,
 )
 
 
@@ -67,7 +68,7 @@ def _read_resource(uri: str):
 def mock_fastmcp_context():
     """Provide a minimal FastMCP Context via contextvar for dependency injection."""
     try:
-        from fastmcp.server.context import _current_context, Context
+        from fastmcp.server.context import Context, _current_context
 
         dummy_server = MagicMock()
         ctx = Context(dummy_server)
@@ -596,7 +597,7 @@ class TestLifespan:
 
     @patch.object(server_module, "_get_config")
     def test_lifespan_yields_config(self, mock_get_config: MagicMock) -> None:
-        from indexed.core.v1.config_models import MCPConfig, CoreV1SearchConfig
+        from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
 
         mock_mcp_config = MCPConfig()
         mock_search_config = CoreV1SearchConfig()
@@ -695,8 +696,8 @@ class TestContextHandling:
 
     def test_resolve_config_returns_lifespan_value(self) -> None:
         """Direct test: resolve_config returns the lifespan-stored config when present."""
-        from indexed.mcp.config import resolve_config
         from indexed.core.v1.config_models import MCPConfig
+        from indexed.mcp.config import resolve_config
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -710,8 +711,8 @@ class TestContextHandling:
 
     def test_resolve_config_falls_back_to_loader_when_key_missing(self) -> None:
         """Direct test: resolve_config calls loader when ctx has no matching key."""
-        from indexed.mcp.config import resolve_config
         from indexed.core.v1.config_models import MCPConfig
+        from indexed.mcp.config import resolve_config
 
         cfg = MCPConfig()
         ctx = MagicMock()
@@ -725,8 +726,8 @@ class TestContextHandling:
 
     def test_resolve_config_falls_back_to_loader_when_ctx_none(self) -> None:
         """Direct test: resolve_config calls loader when ctx is None."""
-        from indexed.mcp.config import resolve_config
         from indexed.core.v1.config_models import MCPConfig
+        from indexed.mcp.config import resolve_config
 
         cfg = MCPConfig()
         loader = MagicMock(return_value=cfg)

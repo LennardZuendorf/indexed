@@ -7,11 +7,11 @@ import sys
 
 import typer
 
-from .utils.console import console
 from .utils.components import (
     create_key_value_panel,
     get_heading_style,
 )
+from .utils.console import console
 
 
 def _pkg_version(name: str) -> str:

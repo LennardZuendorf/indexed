@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from indexed.config.errors import StorageError
-from indexed.core.v1.engine.services.search_service import SearchService, search
 from indexed.core.v1.engine.services.models import SourceConfig
+from indexed.core.v1.engine.services.search_service import SearchService, search
 
 
 class TestSearchService:

@@ -8,7 +8,8 @@ no BeautifulSoup HTML stripping needed since Outline bodies are already Markdown
 from __future__ import annotations
 
 import base64
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from loguru import logger
 

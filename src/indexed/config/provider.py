@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Type, TypeVar, cast
+from typing import Any, TypeVar, cast
+
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
@@ -11,9 +12,9 @@ class Provider:
 
     def __init__(
         self,
-        slices: Dict[type, BaseModel],
-        raw: Dict[str, Any],
-        path_to_type: Dict[str, Type[BaseModel]] | None = None,
+        slices: dict[type, BaseModel],
+        raw: dict[str, Any],
+        path_to_type: dict[str, type[BaseModel]] | None = None,
     ) -> None:
         """
         Initialize the Provider with typed configuration slices, the merged raw configuration, and an optional mapping from dot-paths to model types.
@@ -27,7 +28,7 @@ class Provider:
         self._raw = raw
         self._path_to_type = path_to_type or {}
 
-    def get(self, spec: Type[T]) -> T:
+    def get(self, spec: type[T]) -> T:
         """
         Retrieve the configuration instance associated with the given Pydantic model type.
 
@@ -71,7 +72,7 @@ class Provider:
         return self._slices[spec]
 
     @property
-    def raw(self) -> Dict[str, Any]:
+    def raw(self) -> dict[str, Any]:
         """
         Return the underlying merged configuration dictionary.
 

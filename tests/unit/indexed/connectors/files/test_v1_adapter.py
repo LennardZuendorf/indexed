@@ -2,9 +2,8 @@
 
 import os
 
-from indexed.parsing.schema import ParsedChunk, ParsedDocument
-
 from indexed.connectors.files.v1_adapter import V1FormatAdapter
+from indexed.parsing.schema import ParsedChunk, ParsedDocument
 
 
 def _make_parsed_doc(file_path: str) -> ParsedDocument:

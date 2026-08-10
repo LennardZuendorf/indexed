@@ -1,7 +1,7 @@
 """Tests for DocumentCollectionCreator update behavior."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import Mock
 
 
@@ -16,8 +16,8 @@ class TestUpdateCollectionTimestamp:
         Now, we update the timestamp to indicate we checked for updates.
         """
         from indexed.core.v1.engine.core.documents_collection_creator import (
-            DocumentCollectionCreator,
             OPERATION_TYPE,
+            DocumentCollectionCreator,
         )
 
         # Create mock components
@@ -82,15 +82,15 @@ class TestUpdateCollectionTimestamp:
         assert new_timestamp is not None
 
         # The new timestamp should be recent (within the last minute)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_diff = now - new_timestamp
         assert time_diff.total_seconds() < 60
 
     def test_update_preserves_other_manifest_fields_when_no_documents(self):
         """Test that other manifest fields are preserved when updating timestamp only."""
         from indexed.core.v1.engine.core.documents_collection_creator import (
-            DocumentCollectionCreator,
             OPERATION_TYPE,
+            DocumentCollectionCreator,
         )
 
         mock_persister = Mock()
@@ -143,8 +143,8 @@ class TestCreateCollection:
 
     def _make_creator(self, **overrides):
         from indexed.core.v1.engine.core.documents_collection_creator import (
-            DocumentCollectionCreator,
             OPERATION_TYPE,
+            DocumentCollectionCreator,
         )
 
         mock_persister = Mock()
@@ -267,8 +267,8 @@ class TestUpdateCollectionWithDeletions:
 
     def test_update_with_explicit_deletions_only(self):
         from indexed.core.v1.engine.core.documents_collection_creator import (
-            DocumentCollectionCreator,
             OPERATION_TYPE,
+            DocumentCollectionCreator,
         )
 
         mock_persister = Mock()
@@ -336,9 +336,10 @@ class TestUpdateCollectionNonExistent:
 
     def test_update_raises_when_collection_missing(self):
         import pytest
+
         from indexed.core.v1.engine.core.documents_collection_creator import (
-            DocumentCollectionCreator,
             OPERATION_TYPE,
+            DocumentCollectionCreator,
         )
 
         mock_persister = Mock()
@@ -362,6 +363,7 @@ class TestOperationType:
 
     def test_unknown_operation_type_raises(self):
         import pytest
+
         from indexed.core.v1.engine.core.documents_collection_creator import (
             DocumentCollectionCreator,
         )

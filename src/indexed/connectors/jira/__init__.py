@@ -1,5 +1,5 @@
 """Jira connectors package."""
 
-from .connector import JiraConnector, JiraCloudConnector
+from .connector import JiraCloudConnector, JiraConnector
 
-__all__ = ["JiraConnector", "JiraCloudConnector"]
+__all__ = ["JiraCloudConnector", "JiraConnector"]

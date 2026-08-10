@@ -1,13 +1,14 @@
 """Tests for knowledge update commands."""
 
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
+
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands.update import (
-    _format_source_type,
     _config_existed_before,
-    _get_config_path,
+    _format_source_type,
     _format_update_comparison,
+    _get_config_path,
 )
 from tests.unit.indexed.conftest import make_cli_context
 

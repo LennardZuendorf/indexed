@@ -4,7 +4,7 @@ This module provides a registry that maps indexer names to their configuration,
 enabling dynamic indexer creation without hardcoded switch statements.
 """
 
-from typing import Dict, NamedTuple, List
+from typing import NamedTuple
 
 
 class IndexerConfig(NamedTuple):
@@ -23,7 +23,7 @@ class IndexerConfig(NamedTuple):
 
 # Registry of available indexer configurations
 # Keys are the short model names, values are full configuration
-INDEXER_CONFIGS: Dict[str, IndexerConfig] = {
+INDEXER_CONFIGS: dict[str, IndexerConfig] = {
     "all-MiniLM-L6-v2": IndexerConfig(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         embedding_dim=384,
@@ -120,14 +120,14 @@ def build_indexer_name(short_name: str, auto: bool = False) -> str:
     return f"{prefix}{short_name}"
 
 
-def list_available_indexers() -> List[str]:
+def list_available_indexers() -> list[str]:
     """List all available full indexer names.
 
     Returns:
         List of full indexer names (both FlatL2 and Auto variants)
     """
     names = []
-    for model_name in INDEXER_CONFIGS.keys():
+    for model_name in INDEXER_CONFIGS:
         names.append(build_indexer_name(model_name))
         names.append(build_indexer_name(model_name, auto=True))
     return names

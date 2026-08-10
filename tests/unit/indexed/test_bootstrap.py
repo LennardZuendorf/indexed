@@ -2,20 +2,20 @@ import importlib
 from unittest.mock import MagicMock, patch
 
 import pytest
-from indexed.config import get_config, reload
-from indexed.config.errors import ConfigurationError
-from indexed.protocols import SourceConfig
 
 from indexed.cli.composition import (
     build_connector,
     build_connector_registry,
     register_app_config,
 )
+from indexed.config import get_config, reload
+from indexed.config.errors import ConfigurationError
+from indexed.protocols import SourceConfig
 
 
 def test_import_core_v1_does_not_register_config(monkeypatch):
     reload()
-    before = len(get_config()._registry._specs)  # noqa: SLF001
+    before = len(get_config()._registry._specs)
     importlib.import_module("indexed.core.v1")
     after = len(get_config()._registry._specs)
     assert before == after
@@ -23,7 +23,7 @@ def test_import_core_v1_does_not_register_config(monkeypatch):
 
 def test_import_connectors_jira_does_not_register_config():
     reload()
-    before = len(get_config()._registry._specs)  # noqa: SLF001
+    before = len(get_config()._registry._specs)
     importlib.import_module("indexed.connectors.jira")
     after = len(get_config()._registry._specs)
     assert before == after

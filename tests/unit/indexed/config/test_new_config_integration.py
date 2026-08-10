@@ -1,6 +1,7 @@
 """Integration tests for new config system migration."""
 
 import pytest
+
 from indexed.config import ConfigService, reload
 
 

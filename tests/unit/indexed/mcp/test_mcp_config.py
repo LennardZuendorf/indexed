@@ -2,12 +2,12 @@
 
 from unittest.mock import MagicMock, patch
 
+from indexed.cli.composition import CliContext
 from indexed.mcp.config import (
     default_global_context,
     resolve_cli_context,
     resolve_config,
 )
-from indexed.cli.composition import CliContext
 
 
 def test_default_global_context_is_global_mode() -> None:

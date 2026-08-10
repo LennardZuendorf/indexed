@@ -6,7 +6,7 @@ indexed collections to AI agents via the Model Context Protocol.
 
 from .cli import app, cli_main, dev, inspect, run
 
-__all__ = ["mcp", "app", "run", "dev", "inspect", "cli_main"]
+__all__ = ["app", "cli_main", "dev", "inspect", "mcp", "run"]
 
 
 # Lazy loading to avoid importing heavy dependencies (core.v1) during CLI startup

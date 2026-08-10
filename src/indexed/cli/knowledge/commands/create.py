@@ -13,7 +13,7 @@ to keep this module (and patching) circular-import free.
 """
 
 from functools import partial
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from indexed.core.v1.engine import SourceConfig  # noqa: F401
@@ -24,19 +24,16 @@ from loguru import logger
 # Imported at module level so the create tests can patch these seams.
 from indexed.config import ConfigService, ValidationResult, get_config
 
-from ...utils.logging import is_verbose_mode
-from ...utils.console import console
-from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import print_error
+from ...utils.components.theme import get_accent_style, get_heading_style
+from ...utils.console import console
 from ...utils.credentials import (
-    prompt_credential_field,
-    is_credential_field,
     check_server_auth_present,
+    is_credential_field,
+    prompt_credential_field,
 )
+from ...utils.logging import is_verbose_mode
 from ._create_helpers import execute_create_command
-
-# Re-exported for tests + characterization (`from ...create import _is_cloud`).
-from ._create_schema import _is_cloud as _is_cloud  # noqa: F401
 from ._create_schema import (
     SOURCE_SPECS,
     SourceSpec,
@@ -44,6 +41,9 @@ from ._create_schema import (
     make_build_source_config,
     resolve_source,
 )
+
+# Re-exported for tests + characterization (`from ...create import _is_cloud`).
+from ._create_schema import _is_cloud as _is_cloud
 
 _LAZY_COMMANDS = {
     "app",
@@ -62,7 +62,7 @@ def _config_header(display_name: str) -> None:
     console.print()
 
 
-def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
+def _display_storage_indicator(verbose: bool, log_level: str | None) -> None:
     """Print the storage-mode indicator unless verbose/debug output is active."""
     if not _is_pre_setup_verbose(verbose, log_level):
         from ...utils.storage_info import display_storage_mode_for_command
@@ -72,11 +72,11 @@ def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
 
 def _resolve_url(
     spec: SourceSpec,
-    url_arg: Optional[str],
+    url_arg: str | None,
     config: ConfigService,
     verbose: bool,
-    log_level: Optional[str],
-) -> Tuple[str, bool]:
+    log_level: str | None,
+) -> tuple[str, bool]:
     """Resolve the source URL, prompting when unknown.
 
     Atlassian sources reject an empty prompt (they need a real host to detect
@@ -183,13 +183,13 @@ def _create(
     spec_key: str,
     *,
     collection: str,
-    url: Optional[str],
-    cli_overrides: Dict[str, Any],
+    url: str | None,
+    cli_overrides: dict[str, Any],
     use_cache: bool,
     force: bool,
     verbose: bool,
     json_logs: bool,
-    log_level: Optional[str],
+    log_level: str | None,
     local: bool,
 ) -> None:
     """Resolve source type + URL from the spec, then run the shared create flow."""
@@ -200,7 +200,7 @@ def _create(
     config = get_config(mode_override="local" if local else None)
     _display_storage_indicator(verbose, log_level)
 
-    resolved_url: Optional[str] = None
+    resolved_url: str | None = None
     url_was_prompted = False
     if spec.has_url:
         resolved_url, url_was_prompted = _resolve_url(

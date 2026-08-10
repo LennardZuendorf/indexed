@@ -10,11 +10,11 @@ from typing import Any
 
 import pytest
 
-from indexed.connectors.confluence.unified_confluence_document_converter import (
-    UnifiedConfluenceDocumentConverter,
-)
 from indexed.connectors.confluence.confluence_document_reader import (
     ConfluenceDocumentReader,
+)
+from indexed.connectors.confluence.unified_confluence_document_converter import (
+    UnifiedConfluenceDocumentConverter,
 )
 from indexed.connectors.jira.unified_jira_document_converter import (
     UnifiedJiraDocumentConverter,

@@ -30,7 +30,7 @@ class ParsedChunk:
     source_type: Literal["document", "code", "plaintext"] = "plaintext"
     content_hash: str = ""
 
-    def __post_init__(self) -> None:  # noqa: D105 – dunder
+    def __post_init__(self) -> None:
         if not self.content_hash:
             object.__setattr__(
                 self, "content_hash", xxhash.xxh64(self.text.encode()).hexdigest()

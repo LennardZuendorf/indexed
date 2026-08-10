@@ -7,7 +7,7 @@ shells reference none of the interactive-prompt seams the create tests patch, so
 they live outside ``create.py`` and are re-exported from it via ``__getattr__``.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import typer
 
@@ -33,7 +33,7 @@ def create_files(
     local: _opt.LocalOpt = False,
 ) -> None:
     """Create a Files collection with parameter resolution and progress tracking."""
-    cli_overrides: Dict[str, Any] = {}
+    cli_overrides: dict[str, Any] = {}
     if path:
         cli_overrides["path"] = path
     if include:
@@ -76,7 +76,7 @@ def create_jira(
     local: _opt.LocalOpt = False,
 ) -> None:
     """Create a Jira collection with parameter resolution and progress tracking."""
-    cli_overrides: Dict[str, Any] = {}
+    cli_overrides: dict[str, Any] = {}
     if jql:
         cli_overrides["query"] = jql
     if email:
@@ -117,7 +117,7 @@ def create_confluence(
     local: _opt.LocalOpt = False,
 ) -> None:
     """Create a Confluence collection with parameter resolution and progress tracking."""
-    cli_overrides: Dict[str, Any] = {}
+    cli_overrides: dict[str, Any] = {}
     if cql:
         cli_overrides["query"] = cql
     if email:
@@ -160,7 +160,7 @@ def create_outline(
     local: _opt.LocalOpt = False,
 ) -> None:
     """Create an Outline Wiki collection (Cloud or any self-hosted deployment)."""
-    cli_overrides: Dict[str, Any] = {}
+    cli_overrides: dict[str, Any] = {}
     if token:
         cli_overrides["api_token"] = token
     if collection_id:

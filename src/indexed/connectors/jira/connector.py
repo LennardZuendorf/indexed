@@ -5,14 +5,16 @@ to provide a standardized BaseConnector interface for both Jira Server/Data Cent
 and Jira Cloud.
 """
 
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
+
 from indexed.config import ConfigurationError
-from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
 from indexed.connectors._incremental import cutoff_date, incremental_query
-from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
-from .unified_jira_document_converter import UnifiedJiraDocumentConverter
+from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
+
 from .async_jira_cloud_reader import AsyncJiraCloudDocumentReader
-from .schema import JiraConfig, JiraCloudConfig
+from .schema import JiraCloudConfig, JiraConfig
+from .unified_jira_document_converter import UnifiedJiraDocumentConverter
+from .unified_jira_document_reader import JiraAuthType, UnifiedJiraDocumentReader
 
 
 def _jira_from_manifest(
@@ -84,9 +86,9 @@ class JiraConnector:
         self,
         url: str,
         query: str,
-        token: Optional[str] = None,
-        login: Optional[str] = None,
-        password: Optional[str] = None,
+        token: str | None = None,
+        login: str | None = None,
+        password: str | None = None,
         include_attachments: bool = False,
         max_chunk_tokens: int = 512,
         ocr_enabled: bool = True,
@@ -419,4 +421,4 @@ class JiraCloudConnector:
         return _jira_from_manifest(cls, manifest, config_service)
 
 
-__all__ = ["JiraConnector", "JiraCloudConnector"]
+__all__ = ["JiraCloudConnector", "JiraConnector"]

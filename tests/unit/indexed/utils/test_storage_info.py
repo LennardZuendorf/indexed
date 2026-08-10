@@ -2,13 +2,14 @@
 
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import pytest
 from rich.console import Console
 
 from indexed.cli.utils.storage_info import (
     get_storage_indicator,
-    print_storage_info,
     get_storage_mode_and_reason,
+    print_storage_info,
 )
 
 

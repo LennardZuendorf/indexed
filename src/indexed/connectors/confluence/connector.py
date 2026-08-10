@@ -14,14 +14,16 @@ Comment depth handling:
 - Legacy readOnlyFirstLevelComments setting is automatically mapped to read_all_comments
 """
 
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
+
 from indexed.config import ConfigurationError
-from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
 from indexed.connectors._incremental import cutoff_date, incremental_query
-from .confluence_document_reader import ConfluenceDocumentReader
-from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
+from indexed.protocols import BaseConnector, ConnectorMetadata, ConnectorRun, Manifest
+
 from .async_confluence_cloud_reader import AsyncConfluenceCloudDocumentReader
-from .schema import ConfluenceConfig, ConfluenceCloudConfig
+from .confluence_document_reader import ConfluenceDocumentReader
+from .schema import ConfluenceCloudConfig, ConfluenceConfig
+from .unified_confluence_document_converter import UnifiedConfluenceDocumentConverter
 
 
 def _confluence_from_manifest(
@@ -96,9 +98,9 @@ class ConfluenceConnector:
         self,
         url: str,
         query: str,
-        token: Optional[str] = None,
-        login: Optional[str] = None,
-        password: Optional[str] = None,
+        token: str | None = None,
+        login: str | None = None,
+        password: str | None = None,
         read_all_comments: bool = True,
         include_attachments: bool = False,
         max_chunk_tokens: int = 512,
@@ -462,4 +464,4 @@ class ConfluenceCloudConnector:
         return _confluence_from_manifest(cls, manifest, config_service)
 
 
-__all__ = ["ConfluenceConnector", "ConfluenceCloudConnector"]
+__all__ = ["ConfluenceCloudConnector", "ConfluenceConnector"]

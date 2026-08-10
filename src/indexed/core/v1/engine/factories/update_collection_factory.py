@@ -11,16 +11,15 @@ import json
 
 from pydantic import ValidationError
 
-from indexed.core.v1.engine.factories._types import ManifestFactory
-from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
-from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
-from indexed.core.v1.engine.core.documents_collection_creator import (
-    DocumentCollectionCreator,
-    OPERATION_TYPE,
-)
 from indexed.core.v1.config_models import get_default_collections_path
+from indexed.core.v1.engine.core.documents_collection_creator import (
+    OPERATION_TYPE,
+    DocumentCollectionCreator,
+)
+from indexed.core.v1.engine.factories._types import ManifestFactory
+from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 from indexed.protocols import Manifest
-
 from indexed.utils.performance import log_execution_duration
 
 

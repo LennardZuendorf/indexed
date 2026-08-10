@@ -8,17 +8,17 @@ use cases.
 
 import errno
 import json
-import re
-from typing import List, Optional, Dict
 import os
+import re
 
 from loguru import logger
 
-from .models import CollectionStatus, CollectionInfo
 from indexed.config.errors import StorageError
-from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
-from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
 from indexed.core.v1.config_models import get_default_collections_path
+from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
+
+from .models import CollectionInfo, CollectionStatus
 
 # Transient directories the durable-create path leaves aside:
 # `<name>.tmp-<pid>-<hex>` staging dirs and `<name>.trash-<pid>` rollback dirs.
@@ -44,14 +44,14 @@ class InspectService:
         >>> print(f"Collection has {statuses[0].number_of_documents} documents")
     """
 
-    def __init__(self, collections_path: Optional[str] = None):
+    def __init__(self, collections_path: str | None = None):
         """Initialize the inspect service with empty cache and default persister.
 
         Args:
             collections_path: Optional path for collections storage.
                              Defaults to resolved path from storage config.
         """
-        self._manifest_cache: Dict[str, dict] = {}
+        self._manifest_cache: dict[str, dict] = {}
         resolved_path = collections_path or str(get_default_collections_path())
         self._persister = DiskPersister(base_path=resolved_path)
 
@@ -83,7 +83,7 @@ class InspectService:
                 )
         return self._manifest_cache[collection_name]
 
-    def _discover_collections(self) -> List[str]:
+    def _discover_collections(self) -> list[str]:
         """Discover all available collections by scanning the data directory.
 
         Returns:
@@ -158,7 +158,7 @@ class InspectService:
 
     def _get_index_file_size_bytes(
         self, collection_name: str, indexer_name: str
-    ) -> Optional[int]:
+    ) -> int | None:
         """Real on-disk byte size of the collection's FAISS index file (F1).
 
         This is a file size via ``os.path.getsize`` — distinct from
@@ -179,10 +179,10 @@ class InspectService:
 
     def status(
         self,
-        collection_names: Optional[List[str]] = None,
+        collection_names: list[str] | None = None,
         *,
         include_index_size: bool = False,
-    ) -> List[CollectionStatus]:
+    ) -> list[CollectionStatus]:
         """Get status information for collections.
 
         Args:
@@ -261,10 +261,10 @@ class InspectService:
 
     def inspect(
         self,
-        collection_names: Optional[List[str]] = None,
+        collection_names: list[str] | None = None,
         *,
         include_index_size: bool = False,
-    ) -> List[CollectionInfo]:
+    ) -> list[CollectionInfo]:
         """Get detailed inspection information for collections.
 
         This method returns enhanced CollectionInfo objects with computed statistics
@@ -360,11 +360,11 @@ class InspectService:
 
 
 def status(
-    collection_names: Optional[List[str]] = None,
+    collection_names: list[str] | None = None,
     *,
     include_index_size: bool = False,
-    collections_path: Optional[str] = None,
-) -> List[CollectionStatus]:
+    collections_path: str | None = None,
+) -> list[CollectionStatus]:
     """Functional wrapper around InspectService for one-shot CLI usage.
 
     This function provides a stateless interface to the inspect functionality,
@@ -403,11 +403,11 @@ def status(
 
 
 def inspect(
-    collection_names: Optional[List[str]] = None,
+    collection_names: list[str] | None = None,
     *,
     include_index_size: bool = False,
-    collections_path: Optional[str] = None,
-) -> List[CollectionInfo]:
+    collections_path: str | None = None,
+) -> list[CollectionInfo]:
     """Functional wrapper for detailed collection inspection.
 
     This function provides a stateless interface to get detailed collection

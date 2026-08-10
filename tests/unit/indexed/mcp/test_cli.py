@@ -16,7 +16,6 @@ from indexed.mcp.cli import (
     run_impl,
 )
 
-
 runner = CliRunner()
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")

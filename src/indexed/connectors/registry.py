@@ -7,18 +7,18 @@ corresponding connector classes. This enables:
 - Easier testing and mocking
 """
 
-from typing import Dict, Type, Any
+from typing import Any
+
+from .confluence.connector import ConfluenceCloudConnector, ConfluenceConnector
 
 # Import all connector classes
 from .files.connector import FileSystemConnector
-from .jira.connector import JiraConnector, JiraCloudConnector
-from .confluence.connector import ConfluenceConnector, ConfluenceCloudConnector
+from .jira.connector import JiraCloudConnector, JiraConnector
 from .outline.connector import OutlineConnector
-
 
 # Registry mapping connector_type strings to connector classes
 # The keys match the connector_type property of each connector
-CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
+CONNECTOR_REGISTRY: dict[str, type[Any]] = {
     "localFiles": FileSystemConnector,
     "jira": JiraConnector,
     "jiraCloud": JiraCloudConnector,
@@ -31,7 +31,7 @@ CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
 # NOTE: Cloud and Server variants use UNIFIED namespaces (e.g., both jira and
 # jiraCloud use "sources.jira"). The Cloud vs Server type is determined at
 # runtime from the URL. This matches the pattern in collection_service.py.
-NAMESPACE_REGISTRY: Dict[str, str] = {
+NAMESPACE_REGISTRY: dict[str, str] = {
     "localFiles": "sources.files",
     "jira": "sources.jira",
     "jiraCloud": "sources.jira",  # Unified with jira
@@ -41,7 +41,7 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
 }
 
 
-def get_connector_class(connector_type: str) -> Type[Any]:
+def get_connector_class(connector_type: str) -> type[Any]:
     """Get connector class by type identifier.
 
     Args:

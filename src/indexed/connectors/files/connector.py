@@ -8,7 +8,7 @@ It also exposes change-tracking methods for incremental indexing.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar, List, Literal
+from typing import ClassVar, Literal
 
 from indexed.config import ConfigService, ConfigurationError
 from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
@@ -43,7 +43,7 @@ class FileSystemConnector:
     def __init__(
         self,
         path: str,
-        include_patterns: List[str] | None = None,
+        include_patterns: list[str] | None = None,
         fail_fast: bool = False,
         *,
         change_tracking: Literal[
@@ -53,7 +53,7 @@ class FileSystemConnector:
         table_structure: bool = True,
         code_chunking: bool = True,
         max_chunk_tokens: int = 512,
-        excluded_dirs: List[str] | None = None,
+        excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
     ) -> None:
         config = FileSystemConfig(
@@ -204,7 +204,7 @@ class FileSystemConnector:
         }
 
     @classmethod
-    def from_config(cls, config_service: ConfigService) -> "FileSystemConnector":
+    def from_config(cls, config_service: ConfigService) -> FileSystemConnector:
         config_service.register(FileSystemConfig, path="sources.files")
         provider = config_service.bind()
         cfg = provider.get(FileSystemConfig)
@@ -252,7 +252,7 @@ class FileSystemConnector:
 
         state = connector.load_state(storage_path)
         if state is not None:
-            specific_files: List[str] | None = [
+            specific_files: list[str] | None = [
                 str(p) for p in connector.get_files_to_process(state)
             ]
             deletions = connector.get_deletions(state)

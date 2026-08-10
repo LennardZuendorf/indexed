@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .path_utils import get_by_path
 from .storage import (
     StorageMode,
     StorageResolver,
+)
+from .storage import (
     resolve_storage_mode as _resolve_mode,
 )
 from .store import TomlStore
@@ -28,14 +30,14 @@ class WorkspaceManager:
         store: TomlStore,
         resolver: StorageResolver,
         workspace: Path,
-        mode_override: Optional[StorageMode] = None,
+        mode_override: StorageMode | None = None,
     ) -> None:
         self._store = store
         self._resolver = resolver
         self._workspace = workspace
         self._mode_override = mode_override
 
-    def get_preference(self) -> Optional[StorageMode]:
+    def get_preference(self) -> StorageMode | None:
         """Retrieve the storage mode preference for a workspace."""
         global_store = TomlStore(mode_override="global")
         raw = global_store.read_for_mode("global")
@@ -50,8 +52,8 @@ class WorkspaceManager:
     def set_preference(
         self,
         mode: StorageMode,
-        workspace_path: Optional[Path] = None,
-        global_path: Optional[str] = None,
+        workspace_path: Path | None = None,
+        global_path: str | None = None,
     ) -> None:
         """Persist the workspace's storage preference into global config."""
         local_path = str(workspace_path or self._workspace)
@@ -59,7 +61,7 @@ class WorkspaceManager:
         global_store = TomlStore(mode_override="global")
         raw = global_store.read_disk_only_for_mode("global")
 
-        workspace_config: Dict[str, str] = {
+        workspace_config: dict[str, str] = {
             "mode": mode,
             "local_path": local_path,
         }
@@ -81,7 +83,7 @@ class WorkspaceManager:
             return True
         return False
 
-    def get_config(self) -> Dict[str, str]:
+    def get_config(self) -> dict[str, str]:
         """Retrieve the effective workspace configuration.
 
         Workspace preferences are persisted in global config.toml only.
@@ -103,7 +105,7 @@ class WorkspaceManager:
         """Check if both local and global configs exist with different values."""
         return self._store.configs_differ()
 
-    def get_differences(self) -> Dict[str, tuple[Any, Any]]:
+    def get_differences(self) -> dict[str, tuple[Any, Any]]:
         """Get differences between local and global configs."""
         return self._store.get_config_differences()
 

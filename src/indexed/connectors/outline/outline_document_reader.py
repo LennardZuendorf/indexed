@@ -9,14 +9,15 @@ from __future__ import annotations
 import asyncio
 import base64
 import re
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Iterator, Optional
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 from loguru import logger
-from indexed.utils.retry import execute_with_retry
 
+from indexed.utils.retry import execute_with_retry
 
 # Window size for concurrent body + attachment fetching
 _FETCH_WINDOW = 100
@@ -65,7 +66,7 @@ class OutlineDocumentReader:
         self,
         base_url: str,
         api_token: str,
-        collection_ids: Optional[list[str]] = None,
+        collection_ids: list[str] | None = None,
         batch_size: int = 50,
         max_concurrent_requests: int = 10,
         include_attachments: bool = True,
@@ -75,7 +76,7 @@ class OutlineDocumentReader:
         number_of_retries: int = 3,
         retry_delay: float = 1.0,
         verify_ssl: bool = True,
-        modified_since: Optional[str] = None,
+        modified_since: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token
@@ -233,7 +234,7 @@ class OutlineDocumentReader:
                 "attachments": attachments_map.get(i, []),
             }
 
-    async def _fetch_bodies_async(self, stubs: list[dict]) -> list[Optional[dict]]:
+    async def _fetch_bodies_async(self, stubs: list[dict]) -> list[dict | None]:
         """Fetch full document bodies for a list of stubs concurrently."""
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         async with httpx.AsyncClient(
@@ -253,7 +254,7 @@ class OutlineDocumentReader:
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
         stub: dict,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Fetch a single document's full body via documents.info."""
         doc_id = stub.get("id", "")
         async with semaphore:
@@ -275,7 +276,7 @@ class OutlineDocumentReader:
         return None
 
     async def _fetch_attachments_async(
-        self, docs: list[Optional[dict]]
+        self, docs: list[dict | None]
     ) -> dict[int, list[dict]]:
         """Fetch and download attachments for all docs concurrently."""
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
@@ -315,7 +316,7 @@ class OutlineDocumentReader:
         self,
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
-        doc: Optional[dict],
+        doc: dict | None,
     ) -> list[dict]:
         """Download all attachments for a single document."""
         if not doc:
@@ -392,7 +393,7 @@ class OutlineDocumentReader:
         semaphore: asyncio.Semaphore,
         att_id: str,
         name: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Download an attachment via the redirect endpoint using its ID."""
         url = f"{self.base_url}/api/attachments.redirect?id={att_id}"
         return await self._download_attachment_url(client, semaphore, url, name, att_id)
@@ -404,7 +405,7 @@ class OutlineDocumentReader:
         url: str,
         filename: str,
         att_id: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Download bytes from a URL, respecting the size cap."""
         async with semaphore:
             from .._url_guard import warn_if_off_origin
@@ -463,7 +464,7 @@ class OutlineDocumentReader:
         }
 
     @staticmethod
-    def _parse_iso_datetime(value: str | None) -> Optional[datetime]:
+    def _parse_iso_datetime(value: str | None) -> datetime | None:
         if not value:
             return None
         normalized = str(value).replace("Z", "+00:00")

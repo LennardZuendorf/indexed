@@ -1,15 +1,15 @@
 """Tests for Confluence reader attachment fetching."""
 
 import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from indexed.connectors.confluence.confluence_document_reader import (
-    ConfluenceDocumentReader,
-)
 from indexed.connectors.confluence.async_confluence_cloud_reader import (
     AsyncConfluenceCloudDocumentReader,
+)
+from indexed.connectors.confluence.confluence_document_reader import (
+    ConfluenceDocumentReader,
 )
 
 pytestmark = pytest.mark.connectors

@@ -3,9 +3,9 @@
 import os
 import tempfile
 from pathlib import Path
-from pydantic import BaseModel, Field
 
 import pytest
+from pydantic import BaseModel, Field
 
 from indexed.config import Provider, get_config, reload
 

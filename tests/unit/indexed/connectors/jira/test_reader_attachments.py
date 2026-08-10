@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from indexed.connectors.jira.unified_jira_document_reader import (
-    UnifiedJiraDocumentReader,
     JiraAuthType,
+    UnifiedJiraDocumentReader,
 )
 
 pytestmark = pytest.mark.connectors

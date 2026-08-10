@@ -7,20 +7,19 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-
 from indexed.config.storage import (
     StorageResolver,
     _ensure_gitignore,
+    ensure_storage_dirs,
+    get_caches_path,
+    get_collections_path,
+    get_config_path,
+    get_data_root,
+    get_env_path,
     get_global_root,
     get_local_root,
-    get_config_path,
-    get_env_path,
-    get_data_root,
-    get_collections_path,
-    get_caches_path,
-    has_local_storage,
     has_local_config,
-    ensure_storage_dirs,
+    has_local_storage,
 )
 
 

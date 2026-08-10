@@ -3,8 +3,8 @@ import re
 import requests
 from requests.exceptions import HTTPError
 
-from indexed.utils.retry import execute_with_retry
 from indexed.utils.batch import read_items_in_batches
+from indexed.utils.retry import execute_with_retry
 
 
 class ConfluenceAPIError(Exception):
@@ -240,6 +240,7 @@ class ConfluenceDocumentReader:
     def __fetch_attachment_bytes(self, url):
         """Download attachment content."""
         from loguru import logger
+
         from .._url_guard import warn_if_off_origin
 
         if not warn_if_off_origin(url, self.base_url):

@@ -1,14 +1,14 @@
 """Services package for indexed application."""
 
+from .collection_service import clear, collection_exists, create, update
+from .inspect_service import InspectService, inspect, status
 from .models import (
-    SourceConfig,
-    CollectionStatus,
     CollectionInfo,
+    CollectionStatus,
     PhasedProgressCallback,
+    SourceConfig,
 )
-from .collection_service import create, update, clear, collection_exists
-from .search_service import search, SearchService
-from .inspect_service import status, inspect, InspectService
+from .search_service import SearchService, search
 
 __all__ = [
     # Models

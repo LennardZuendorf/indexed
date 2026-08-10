@@ -11,7 +11,6 @@ from typer.testing import CliRunner
 
 from indexed.cli.info import cli as info_cli
 
-
 runner = CliRunner()
 
 
@@ -118,7 +117,6 @@ class TestLicenseCommand:
 
         def __enter__(self):
             self._called_flag[0] = True
-            return None
 
         def __exit__(self, exc_type, exc, tb):
             return False

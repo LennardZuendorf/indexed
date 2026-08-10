@@ -2,13 +2,14 @@
 
 import os
 from unittest.mock import Mock, patch
+
 import pytest
 import typer
 
 from indexed.cli.utils.credentials import (
     apply_cli_credential_overrides,
-    ensure_credentials_for_source,
     ensure_atlassian_cloud_credentials,
+    ensure_credentials_for_source,
     ensure_server_credentials,
 )
 
@@ -300,11 +301,10 @@ class TestEnsureAtlassianCloudCredentials:
         mock_config.get.return_value = None
         mock_console.input.return_value = ""  # Empty email triggers exit
 
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(typer.Exit):
-                ensure_atlassian_cloud_credentials(
-                    mock_config, "sources.jira", "Jira Cloud"
-                )
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(typer.Exit):
+            ensure_atlassian_cloud_credentials(
+                mock_config, "sources.jira", "Jira Cloud"
+            )
 
 
 class TestEnsureServerCredentials:
@@ -358,18 +358,18 @@ class TestEnsureServerCredentials:
         mock_config.get.return_value = None
         mock_prompt.return_value = "my_token"
 
-        with patch.dict(os.environ, {}, clear=True):
-            with patch(
-                "indexed.cli.utils.credentials.typer.confirm", return_value=True
-            ):  # Choose token
-                result = ensure_server_credentials(
-                    mock_config,
-                    "sources.jira",
-                    "Jira Server",
-                    token_env_var="JIRA_TOKEN",
-                    login_env_var="JIRA_LOGIN",
-                    password_env_var="JIRA_PASSWORD",
-                )
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("indexed.cli.utils.credentials.typer.confirm", return_value=True),
+        ):  # Choose token
+            result = ensure_server_credentials(
+                mock_config,
+                "sources.jira",
+                "Jira Server",
+                token_env_var="JIRA_TOKEN",
+                login_env_var="JIRA_LOGIN",
+                password_env_var="JIRA_PASSWORD",
+            )
 
         assert "token" in result or "login" in result
 

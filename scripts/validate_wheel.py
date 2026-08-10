@@ -46,7 +46,7 @@ DISALLOW_DUPLICATE_EXTRA_IDS = {
     0x0001,
     0x7075,
 }
-UNPRINTABLE_CHARS = set(range(0x00, 0x20)) | {0x7F}
+UNPRINTABLE_CHARS = set(range(0x20)) | {0x7F}
 
 
 class InvalidZipFileError(Exception):

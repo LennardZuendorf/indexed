@@ -1,9 +1,8 @@
 import os
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 from loguru import logger
@@ -28,8 +27,6 @@ except ImportError:
 
 
 # Core accepts optional progress callbacks for CLI/UI visibility into long-running operations.
-from indexed.utils.performance import log_execution_duration
-
 # Import the typed contracts from the protocols leaf directly — NOT from
 # core.v1.engine.services.models — so engine/core no longer imports upward from
 # engine/services (foundation/7; breaks the cycle behind the old lazy imports).
@@ -38,6 +35,7 @@ from indexed.protocols import (
     DocumentReader,
     PhasedProgressCallback,
 )
+from indexed.utils.performance import log_execution_duration
 
 
 class OPERATION_TYPE(Enum):
@@ -54,7 +52,7 @@ class DocumentCollectionCreator:
         document_indexers,
         persister,
         operation_type: OPERATION_TYPE = OPERATION_TYPE.CREATE,
-        phased_progress: Optional[PhasedProgressCallback] = None,
+        phased_progress: PhasedProgressCallback | None = None,
         explicit_deletions: list[str] | None = None,
         post_run: Callable[[], None] | None = None,
     ):
@@ -95,7 +93,7 @@ class DocumentCollectionCreator:
         self.persister.create_folder(staging_name)
 
         try:
-            update_time = datetime.now(timezone.utc)
+            update_time = datetime.now(UTC)
 
             document_ids, number_of_expected_documents = log_execution_duration(
                 lambda: self.__read_documents(),
@@ -162,7 +160,7 @@ class DocumentCollectionCreator:
             self.persister.read_text_file(self.__build_manifest_path())
         )
 
-        update_time = datetime.now(timezone.utc)
+        update_time = datetime.now(UTC)
 
         if self.explicit_deletions:
             log_execution_duration(
@@ -333,7 +331,7 @@ class DocumentCollectionCreator:
             ):
                 last_modified_document_time = modified_document_time
 
-            for chunk_number in range(0, len(converted_document["chunks"])):
+            for chunk_number in range(len(converted_document["chunks"])):
                 last_index_item_id += 1
 
                 items_to_index.append(

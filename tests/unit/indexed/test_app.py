@@ -1,7 +1,8 @@
 """Tests for main app entry point and initialization."""
 
-from unittest.mock import Mock, patch
 import sys
+from unittest.mock import Mock, patch
+
 from typer.testing import CliRunner
 
 from indexed.cli.app import (

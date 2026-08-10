@@ -9,16 +9,15 @@ serve stale results (including cached error envelopes) for up to an hour after
 a re-index (foundation/6 E9).
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Type, TypedDict
+from typing import Any, TypedDict
 
 from fastmcp import FastMCP
 
-from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
+from indexed.cli.composition import CliContext, register_app_config
 from indexed.config import get_config
-
-from indexed.cli.composition import register_app_config
-from indexed.cli.composition import CliContext
+from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
 
 from .config import resolve_cli_context
 from .resources import register_resources
@@ -33,7 +32,7 @@ class LifespanState(TypedDict):
     cli_context: CliContext
 
 
-def _get_config(model_cls: Type[Any]) -> Any:
+def _get_config(model_cls: type[Any]) -> Any:
     """Load configuration for the given model class, falling back to defaults."""
     try:
         provider = get_config().bind()

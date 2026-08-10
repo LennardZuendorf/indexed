@@ -8,8 +8,8 @@ byte-identical before and after.
 
 import hashlib
 
-from indexed.config import reload, ensure_storage_dirs, get_local_root
 from indexed.cli import composition
+from indexed.config import ensure_storage_dirs, get_local_root, reload
 from indexed.protocols import Manifest
 
 

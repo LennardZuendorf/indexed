@@ -1,20 +1,18 @@
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from indexed.config.errors import missing_wiring_error
-from indexed.protocols import PhasedProgressCallback
-
+from indexed.core.v1.config_models import (
+    get_default_caches_path,
+    get_default_collections_path,
+)
 from indexed.core.v1.engine.core.documents_collection_creator import (
-    DocumentCollectionCreator,
     OPERATION_TYPE,
+    DocumentCollectionCreator,
 )
 from indexed.core.v1.engine.indexes.indexer_factory import create_indexer
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
-from indexed.core.v1.config_models import (
-    get_default_collections_path,
-    get_default_caches_path,
-)
-
+from indexed.protocols import PhasedProgressCallback
 from indexed.utils.performance import log_execution_duration
 
 
@@ -24,9 +22,9 @@ def create_collection_creator(
     document_reader,
     document_converter,
     use_cache=True,
-    phased_progress: Optional[PhasedProgressCallback] = None,
-    collections_path: Optional[str] = None,
-    caches_path: Optional[str] = None,
+    phased_progress: PhasedProgressCallback | None = None,
+    collections_path: str | None = None,
+    caches_path: str | None = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ):
     """Create a collection creator instance."""
@@ -52,9 +50,9 @@ def __create_collection_creator(
     document_reader,
     document_converter,
     use_cache,
-    phased_progress: Optional[PhasedProgressCallback] = None,
-    collections_path: Optional[str] = None,
-    caches_path: Optional[str] = None,
+    phased_progress: PhasedProgressCallback | None = None,
+    collections_path: str | None = None,
+    caches_path: str | None = None,
     cache_decorator_factory: Callable[[Any, DiskPersister], Any] | None = None,
 ):
     resolved_collections_path = collections_path or str(get_default_collections_path())

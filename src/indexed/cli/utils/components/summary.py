@@ -5,6 +5,7 @@ other summary information with consistent styling.
 """
 
 from rich.text import Text
+
 from .theme import get_heading_style
 
 

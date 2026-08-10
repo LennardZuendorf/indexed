@@ -1,8 +1,9 @@
 """Tests for model_manager — HuggingFace cache-aware model management."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 def _make_hf_cache_structure(
@@ -188,12 +189,14 @@ class TestResolveSnapshotPath:
         model_dir = tmp_path / "models--sentence-transformers--broken-model"
         (model_dir / "snapshots").mkdir(parents=True)
         (model_dir / "refs").mkdir(parents=True)
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            pytest.raises(FileNotFoundError, match="no valid snapshot"),
         ):
-            with pytest.raises(FileNotFoundError, match="no valid snapshot"):
-                _resolve_snapshot_path("broken-model")
+            _resolve_snapshot_path("broken-model")
 
 
 class TestEnsureModel:
@@ -211,33 +214,37 @@ class TestEnsureModel:
     def test_downloads_when_not_cached(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
 
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "huggingface_hub.snapshot_download",
                 return_value=str(tmp_path / "downloaded"),
-            ) as mock_dl:
-                ensure_model("all-MiniLM-L6-v2", force=False)
-                mock_dl.assert_called_once_with(
-                    repo_id="sentence-transformers/all-MiniLM-L6-v2"
-                )
+            ) as mock_dl,
+        ):
+            ensure_model("all-MiniLM-L6-v2", force=False)
+            mock_dl.assert_called_once_with(
+                repo_id="sentence-transformers/all-MiniLM-L6-v2"
+            )
 
     def test_force_downloads_even_when_cached(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
 
         _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "huggingface_hub.snapshot_download",
                 return_value=str(tmp_path / "re-dl"),
-            ) as mock_dl:
-                ensure_model("all-MiniLM-L6-v2", force=True)
-                mock_dl.assert_called_once()
+            ) as mock_dl,
+        ):
+            ensure_model("all-MiniLM-L6-v2", force=True)
+            mock_dl.assert_called_once()
 
 
 class TestLoadModel:
@@ -247,22 +254,24 @@ class TestLoadModel:
         load_model.cache_clear()
         _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
         mock_model = MagicMock()
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "sentence_transformers.SentenceTransformer",
                 return_value=mock_model,
-            ) as mock_cls:
-                result = load_model("all-MiniLM-L6-v2")
-                # First call attempts ONNX backend
-                mock_cls.assert_called_once_with(
-                    "sentence-transformers/all-MiniLM-L6-v2",
-                    local_files_only=True,
-                    backend="onnx",
-                )
-                assert result is mock_model
+            ) as mock_cls,
+        ):
+            result = load_model("all-MiniLM-L6-v2")
+            # First call attempts ONNX backend
+            mock_cls.assert_called_once_with(
+                "sentence-transformers/all-MiniLM-L6-v2",
+                local_files_only=True,
+                backend="onnx",
+            )
+            assert result is mock_model
 
     def test_falls_back_to_default_backend_when_onnx_fails(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import load_model
@@ -270,46 +279,50 @@ class TestLoadModel:
         load_model.cache_clear()
         _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
         mock_model = MagicMock()
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "sentence_transformers.SentenceTransformer",
                 side_effect=[RuntimeError("ONNX not available"), mock_model],
-            ) as mock_cls:
-                result = load_model("all-MiniLM-L6-v2")
-                assert mock_cls.call_count == 2
-                # Second call falls back to default backend
-                mock_cls.assert_called_with(
-                    "sentence-transformers/all-MiniLM-L6-v2",
-                    local_files_only=True,
-                )
-                assert result is mock_model
+            ) as mock_cls,
+        ):
+            result = load_model("all-MiniLM-L6-v2")
+            assert mock_cls.call_count == 2
+            # Second call falls back to default backend
+            mock_cls.assert_called_with(
+                "sentence-transformers/all-MiniLM-L6-v2",
+                local_files_only=True,
+            )
+            assert result is mock_model
 
     def test_warns_and_downloads_when_not_cached(self, tmp_path, caplog):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import load_model
 
         load_model.cache_clear()
         mock_model = MagicMock()
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "sentence_transformers.SentenceTransformer",
                 return_value=mock_model,
-            ) as mock_cls:
-                import logging
+            ) as mock_cls,
+        ):
+            import logging
 
-                with caplog.at_level(logging.WARNING):
-                    load_model("not-cached-model")
-                assert "not found in cache" in caplog.text
-                # First attempts ONNX backend for download too
-                mock_cls.assert_called_once_with(
-                    "sentence-transformers/not-cached-model",
-                    backend="onnx",
-                )
+            with caplog.at_level(logging.WARNING):
+                load_model("not-cached-model")
+            assert "not found in cache" in caplog.text
+            # First attempts ONNX backend for download too
+            mock_cls.assert_called_once_with(
+                "sentence-transformers/not-cached-model",
+                backend="onnx",
+            )
 
     def test_lru_cache_returns_same_instance(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import load_model
@@ -317,17 +330,19 @@ class TestLoadModel:
         load_model.cache_clear()
         _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
         mock_model = MagicMock()
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
-        ):
-            with patch(
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch(
                 "sentence_transformers.SentenceTransformer",
                 return_value=mock_model,
-            ):
-                m1 = load_model("all-MiniLM-L6-v2")
-                m2 = load_model("all-MiniLM-L6-v2")
-                assert m1 is m2
+            ),
+        ):
+            m1 = load_model("all-MiniLM-L6-v2")
+            m2 = load_model("all-MiniLM-L6-v2")
+            assert m1 is m2
 
 
 class TestGetCacheInfo:
@@ -362,18 +377,17 @@ class TestGetCacheInfo:
         mock_cache = MagicMock()
         mock_cache.repos = [mock_repo]
 
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch("huggingface_hub.scan_cache_dir", return_value=mock_cache),
         ):
-            with patch("huggingface_hub.scan_cache_dir", return_value=mock_cache):
-                info = get_cache_info()
-                assert len(info["models"]) == 1
-                assert (
-                    info["models"][0]["name"]
-                    == "sentence-transformers/all-MiniLM-L6-v2"
-                )
-                assert info["models"][0]["size_mb"] == 80.0
+            info = get_cache_info()
+            assert len(info["models"]) == 1
+            assert info["models"][0]["name"] == "sentence-transformers/all-MiniLM-L6-v2"
+            assert info["models"][0]["size_mb"] == 80.0
 
     def test_filters_non_st_models(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import (
@@ -396,10 +410,12 @@ class TestGetCacheInfo:
         mock_cache = MagicMock()
         mock_cache.repos = [st_repo, other_repo]
 
-        with patch(
-            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
-            return_value=tmp_path,
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path,
+            ),
+            patch("huggingface_hub.scan_cache_dir", return_value=mock_cache),
         ):
-            with patch("huggingface_hub.scan_cache_dir", return_value=mock_cache):
-                info = get_cache_info()
-                assert len(info["models"]) == 1
+            info = get_cache_info()
+            assert len(info["models"]) == 1

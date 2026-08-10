@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 import webbrowser
-from typing import Any, Dict, List, Literal, Optional, cast
+from typing import Any, Literal, cast
 
 import typer
 
@@ -29,11 +29,11 @@ def _build_inspect_summary(
     name: str,
     fastmcp_version: str,
     mcp_version: str,
-    tools: List[Any],
-    resources: List[Any],
-    templates: List[Any],
-    prompts: List[Any],
-) -> Dict[str, Any]:
+    tools: list[Any],
+    resources: list[Any],
+    templates: list[Any],
+    prompts: list[Any],
+) -> dict[str, Any]:
     """Build a summary dict from in-memory FastMCP component lists."""
     return {
         "name": name,
@@ -55,7 +55,7 @@ def _print_inspect_heading() -> None:
     console.print()
 
 
-def _print_inspect_summary(summary: Dict[str, Any]) -> None:
+def _print_inspect_summary(summary: dict[str, Any]) -> None:
     total = (
         summary["tools_count"] + summary["resources_count"] + summary["prompts_count"]
     )
@@ -71,7 +71,7 @@ def _print_inspect_summary(summary: Dict[str, Any]) -> None:
     console.print()
 
 
-def _display_mcp_inspect(summary: Dict[str, Any]) -> None:
+def _display_mcp_inspect(summary: dict[str, Any]) -> None:
     """Render inspection summary as standard panels."""
     _print_inspect_heading()
 
@@ -118,7 +118,7 @@ def _display_mcp_inspect(summary: Dict[str, Any]) -> None:
     _print_inspect_summary(summary)
 
 
-def _display_mcp_inspect_json(summary: Dict[str, Any]) -> None:
+def _display_mcp_inspect_json(summary: dict[str, Any]) -> None:
     """Render inspection summary as JSON for simple-output mode."""
     from rich.syntax import Syntax
 
@@ -149,15 +149,15 @@ def main(ctx: typer.Context) -> None:
 
 def run_impl(
     transport: str = "stdio",
-    host: Optional[str] = None,
-    port: Optional[int] = None,
-    log_level: Optional[str] = None,
+    host: str | None = None,
+    port: int | None = None,
+    log_level: str | None = None,
     show_banner: bool = True,
 ) -> None:
     """Run the MCP server using FastMCP Python API directly."""
-    from indexed.core.v1.config_models import MCPConfig
     from indexed.cli.composition import register_app_config
     from indexed.config import get_config
+    from indexed.core.v1.config_models import MCPConfig
 
     from .server import mcp
 
@@ -206,13 +206,13 @@ def run(
         "-t",
         help="Transport protocol: stdio (default), http, sse, streamable-http",
     ),
-    host: Optional[str] = typer.Option(
+    host: str | None = typer.Option(
         None, "--host", "-h", help="Host to bind (HTTP/SSE/streamable-http)"
     ),
-    port: Optional[int] = typer.Option(
+    port: int | None = typer.Option(
         None, "--port", "-p", help="Port to bind (HTTP/SSE/streamable-http)"
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None, "--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR)"
     ),
     no_banner: bool = typer.Option(
@@ -236,9 +236,9 @@ def run(
 
 
 def dev_impl(
-    ui_port: Optional[int] = None,
-    server_port: Optional[int] = None,
-    inspector_version: Optional[str] = None,
+    ui_port: int | None = None,
+    server_port: int | None = None,
+    inspector_version: str | None = None,
 ) -> None:
     """Launch MCP Inspector against the indexed server via fastmcp dev inspector.
 
@@ -248,7 +248,7 @@ def dev_impl(
     workspace via `uv run`. Server discovery relies on `fastmcp.json` at the
     repo root; run this command from the repo root.
     """
-    cmd: List[str] = [sys.executable, "-m", "fastmcp.cli", "dev", "inspector"]
+    cmd: list[str] = [sys.executable, "-m", "fastmcp.cli", "dev", "inspector"]
     if ui_port is not None:
         cmd.extend(["--ui-port", str(ui_port)])
     if server_port is not None:
@@ -271,13 +271,13 @@ def dev_impl(
 
 @app.command("dev")
 def dev(
-    ui_port: Optional[int] = typer.Option(
+    ui_port: int | None = typer.Option(
         None, "--ui-port", help="Port for the MCP Inspector UI"
     ),
-    server_port: Optional[int] = typer.Option(
+    server_port: int | None = typer.Option(
         None, "--server-port", help="Port for the MCP Inspector Proxy server"
     ),
-    inspector_version: Optional[str] = typer.Option(
+    inspector_version: str | None = typer.Option(
         None, "--inspector-version", help="Version of the MCP Inspector to use"
     ),
 ) -> None:
@@ -302,7 +302,7 @@ def inspect_impl() -> None:
         import fastmcp as fastmcp_pkg
         import mcp as mcp_pkg
 
-        async def gather() -> Dict[str, Any]:
+        async def gather() -> dict[str, Any]:
             tools = await mcp.list_tools()
             resources = await mcp.list_resources()
             templates = await mcp.list_resource_templates()

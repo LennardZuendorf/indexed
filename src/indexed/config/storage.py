@@ -22,8 +22,7 @@ The storage hierarchy is:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Optional
-
+from typing import Literal
 
 # Storage mode type
 StorageMode = Literal["global", "local"]
@@ -38,7 +37,7 @@ def get_global_root() -> Path:
     return Path.home() / ".indexed"
 
 
-def get_local_root(workspace: Optional[Path] = None) -> Path:
+def get_local_root(workspace: Path | None = None) -> Path:
     """Get the local storage root directory.
 
     Args:
@@ -114,7 +113,7 @@ def get_caches_path(root: Path) -> Path:
     return get_data_root(root) / "caches"
 
 
-def has_local_storage(workspace: Optional[Path] = None) -> bool:
+def has_local_storage(workspace: Path | None = None) -> bool:
     """
     Determine whether a local .indexed storage root exists for the given workspace.
 
@@ -137,7 +136,7 @@ def has_global_storage() -> bool:
     return get_global_root().exists()
 
 
-def has_local_config(workspace: Optional[Path] = None) -> bool:
+def has_local_config(workspace: Path | None = None) -> bool:
     """
     Determine whether the local workspace config file exists.
 
@@ -162,9 +161,9 @@ def has_global_config() -> bool:
 
 def resolve_storage_mode(
     *,
-    mode_override: Optional[StorageMode],
-    workspace_preference: Optional[StorageMode] = None,
-    workspace: Optional[Path] = None,
+    mode_override: StorageMode | None,
+    workspace_preference: StorageMode | None = None,
+    workspace: Path | None = None,
 ) -> StorageMode:
     """Resolve the effective storage mode from the standard cascade.
 
@@ -253,8 +252,8 @@ class StorageResolver:
 
     def __init__(
         self,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
+        workspace: Path | None = None,
+        mode_override: StorageMode | None = None,
     ) -> None:
         """
         Create a StorageResolver bound to a workspace and optional mode override.
@@ -265,7 +264,7 @@ class StorageResolver:
         """
         self._workspace = workspace or Path.cwd()
         self._mode_override = mode_override
-        self._resolved_root: Optional[Path] = None
+        self._resolved_root: Path | None = None
 
     @property
     def global_root(self) -> Path:
@@ -299,7 +298,7 @@ class StorageResolver:
 
     def resolve_root(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> Path:
         """
         Resolve which storage root should be used for operations.
@@ -325,7 +324,7 @@ class StorageResolver:
 
     def get_collections_path(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> Path:
         """
         Resolve the active storage root (using CLI override, workspace preference, or default) and return its collections directory path.
@@ -341,7 +340,7 @@ class StorageResolver:
 
     def get_caches_path(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> Path:
         """
         Resolve the active storage root and return the path to its caches directory.
@@ -357,7 +356,7 @@ class StorageResolver:
 
     def get_config_path(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> Path:
         """
         Resolve the active storage root and return the path to its config file.
@@ -373,7 +372,7 @@ class StorageResolver:
 
     def get_env_path(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> Path:
         """
         Resolve the active storage root and return the path to its `.env` file.
@@ -398,7 +397,7 @@ class StorageResolver:
 
     def ensure_dirs(
         self,
-        workspace_preference: Optional[StorageMode] = None,
+        workspace_preference: StorageMode | None = None,
     ) -> None:
         """
         Ensure storage directories exist for the resolved storage root.

@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from indexed.cli.composition import resolve_collections_context
 from indexed.core.v1.config_models import MCPConfig
 from indexed.mcp.server import mcp
-from indexed.cli.composition import resolve_collections_context
 
 COLLECTION_NAME = "mcp-smoke-collection"
 

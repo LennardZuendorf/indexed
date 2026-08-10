@@ -14,7 +14,7 @@ from indexed.utils import (
 
 __all__ = [
     "bootstrap_logging",
-    "setup_root_logger",
-    "is_verbose_mode",
     "get_current_log_level",
+    "is_verbose_mode",
+    "setup_root_logger",
 ]

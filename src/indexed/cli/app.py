@@ -13,20 +13,19 @@ os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
 import warnings
 
 warnings.filterwarnings("ignore", message="builtin type Swig.*")
-import sys  # noqa: E402
-from pathlib import Path  # noqa: E402
-from typing import Optional  # noqa: E402
+import sys
+from pathlib import Path
 
-import typer  # noqa: E402
-import typer.rich_utils  # noqa: E402
-from indexed.config.errors import IndexedError  # noqa: E402
-from rich.console import Console  # noqa: E402
-from rich.theme import Theme  # noqa: E402
+import typer
+import typer.rich_utils
+from rich.console import Console
+from rich.theme import Theme
 
-from indexed.utils import bootstrap_logging  # noqa: E402
+from indexed.config.errors import IndexedError
+from indexed.utils import bootstrap_logging
 
-from .utils.banner import print_indexed_banner  # noqa: E402
-from .utils.components.theme import (  # noqa: E402
+from .utils.banner import print_indexed_banner
+from .utils.components.theme import (
     get_accent_style,
     get_dim_style,
     get_error_style,
@@ -35,7 +34,7 @@ from .utils.components.theme import (  # noqa: E402
     get_success_style,
     get_warning_style,
 )
-from .utils.console import console as _shared_console  # noqa: E402
+from .utils.console import console as _shared_console
 
 # Single source of truth for level → Rich style mapping. New themes change
 # theme.py; logging picks them up automatically.
@@ -82,7 +81,7 @@ def _init_app(
         help="Enable verbose (INFO) logging",
         rich_help_panel="Debug Options",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",
@@ -155,7 +154,7 @@ def _init_app(
         ensure_storage_dirs(local_root, is_local=True)
 
 
-from ._app_setup import register_commands  # noqa: E402
+from ._app_setup import register_commands
 
 # Wire every subcommand onto the app at import time so the console-script entry
 # points (`indexed.cli.app:app` / `:main`) get a fully-populated CLI.
@@ -163,15 +162,15 @@ register_commands(app)
 
 
 __all__ = [
+    "DEFAULT_INDEXER",  # noqa: F822
+    "SourceConfig",  # noqa: F822
     "app",
     "main",
-    "DEFAULT_INDEXER",  # noqa: F822
-    "svc_create",  # noqa: F822
-    "svc_update",  # noqa: F822
     "svc_clear",  # noqa: F822
+    "svc_create",  # noqa: F822
     "svc_search",  # noqa: F822
     "svc_status",  # noqa: F822
-    "SourceConfig",  # noqa: F822
+    "svc_update",  # noqa: F822
 ]
 
 

@@ -1,11 +1,12 @@
 """Tests for path_utils module."""
 
 import pytest
+
 from indexed.config.path_utils import (
+    deep_merge,
+    delete_by_path,
     get_by_path,
     set_by_path,
-    delete_by_path,
-    deep_merge,
 )
 
 

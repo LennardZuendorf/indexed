@@ -5,20 +5,15 @@ and formatting helpers.
 """
 
 # Import individual modules
-from . import banner
-from . import console
-from . import context_managers
-from . import logging
-from . import simple_output
-from . import components
+from . import banner, components, console, context_managers, logging, simple_output
 from . import format as format_type
 
 __all__ = [
     "banner",
+    "components",
     "console",
     "context_managers",
+    "format_type",
     "logging",
     "simple_output",
-    "components",
-    "format_type",
 ]

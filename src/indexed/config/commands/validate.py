@@ -1,25 +1,25 @@
 """``indexed config validate`` — validate the active configuration."""
 
-from typing import Optional
 from collections import defaultdict
 
 import typer
-from rich.panel import Panel
 from rich.console import Group
+from rich.panel import Panel
 from rich.text import Text
+
+from indexed.cli.utils.components import (
+    get_card_padding,
+    get_detail_card_width,
+    get_error_style,
+    get_heading_style,
+    get_secondary_style,
+    print_error,
+    print_success,
+)
+from indexed.cli.utils.console import console
 
 # Import get_config at module level so tests can patch it.
 from indexed.config import get_config
-from indexed.cli.utils.console import console
-from indexed.cli.utils.components import (
-    get_heading_style,
-    get_error_style,
-    get_secondary_style,
-    get_card_padding,
-    get_detail_card_width,
-    print_success,
-    print_error,
-)
 
 from ._helpers import setup_command_logging
 
@@ -38,7 +38,7 @@ def validate(
         help="Output logs as JSON (structured)",
         rich_help_panel="Logging",
     ),
-    log_level: Optional[str] = typer.Option(
+    log_level: str | None = typer.Option(
         None,
         "--log-level",
         help="Set logging level (DEBUG, INFO, WARNING, ERROR)",

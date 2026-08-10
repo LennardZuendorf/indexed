@@ -7,7 +7,7 @@ between local and global storage when both configs exist with differences.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from rich.console import Console
 from rich.markup import escape
@@ -49,7 +49,7 @@ def format_value(value: Any, max_length: int = 40) -> str:
 
 
 def show_config_differences(
-    differences: Dict[str, tuple[Any, Any]],
+    differences: dict[str, tuple[Any, Any]],
     console: Console,
 ) -> None:
     """Display a table showing config differences between local and global.
@@ -67,7 +67,7 @@ def show_config_differences(
     # before entering the markup string, and the row values passed to
     # `create_detail_card` must be pre-built `Text` — plain strings are now
     # rendered literally, never markup-parsed (foundation/6c bug E2).
-    rows: list[tuple[str, "str | Text"]] = [
+    rows: list[tuple[str, str | Text]] = [
         (
             path,
             Text.from_markup(
@@ -85,8 +85,8 @@ def show_config_differences(
 
 def prompt_storage_choice(
     console: Console,
-    differences: Optional[Dict[str, tuple[Any, Any]]] = None,
-    workspace_path: Optional[Path] = None,
+    differences: dict[str, tuple[Any, Any]] | None = None,
+    workspace_path: Path | None = None,
 ) -> ConflictChoice:
     """
     Prompt the user to select whether to store data in global or local storage for a workspace.
@@ -176,8 +176,8 @@ def show_storage_mode_info(
 
 def handle_storage_conflict(
     console: Console,
-    differences: Optional[Dict[str, tuple[Any, Any]]] = None,
-    workspace_path: Optional[Path] = None,
+    differences: dict[str, tuple[Any, Any]] | None = None,
+    workspace_path: Path | None = None,
 ) -> tuple[Literal["global", "local"], bool]:
     """
     Resolve a storage-mode conflict by prompting the user and return the selected mode and whether the choice should be remembered.

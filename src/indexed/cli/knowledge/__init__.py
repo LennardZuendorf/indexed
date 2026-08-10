@@ -6,7 +6,7 @@ and performing semantic search operations.
 
 from .cli import app
 
-__all__ = ["app", "create", "search", "inspect", "update", "remove"]
+__all__ = ["app", "create", "inspect", "remove", "search", "update"]
 
 
 # Lazy loading to avoid importing heavy dependencies during CLI startup

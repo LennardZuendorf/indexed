@@ -5,19 +5,20 @@ credentials for various connector types (Jira, Confluence, etc.).
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Any
 
 import typer
 from rich.prompt import Prompt
 
 from indexed.config import ConfigService
-from .logging import is_verbose_mode
-from .console import console
-from .components.theme import get_heading_style, get_dim_style, get_accent_style
+
 from .components import print_error
+from .components.theme import get_accent_style, get_dim_style, get_heading_style
+from .console import console
+from .logging import is_verbose_mode
 
 # Maps source types to credential field names and their environment variables.
-SOURCE_CREDENTIAL_ENV_VARS: Dict[str, Dict[str, str]] = {
+SOURCE_CREDENTIAL_ENV_VARS: dict[str, dict[str, str]] = {
     "outline": {
         "api_token": "OUTLINE_API_TOKEN",
     },
@@ -46,7 +47,7 @@ SOURCE_CREDENTIAL_ENV_VARS: Dict[str, Dict[str, str]] = {
 
 def apply_cli_credential_overrides(
     source_type: str,
-    cli_overrides: Dict[str, Any],
+    cli_overrides: dict[str, Any],
 ) -> None:
     """Apply CLI credential overrides to the correct environment variables.
 
@@ -66,7 +67,7 @@ def apply_cli_credential_overrides(
 def ensure_credentials_for_source(
     source_type: str,
     config_service: ConfigService,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
 ) -> None:
     """
     Ensure required credentials exist for the given source type, prompting the user and persisting any missing values.
@@ -126,7 +127,7 @@ def ensure_atlassian_cloud_credentials(
     config_service: ConfigService,
     namespace: str,
     display_name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ensure Atlassian Cloud credentials (email and API token) are present, prompting the user for any missing values and persisting them.
 
@@ -207,7 +208,7 @@ def ensure_server_credentials(
     token_env_var: str,
     login_env_var: str,
     password_env_var: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ensure server/Data Center credentials are present for the given namespace, prompting the user and saving values when necessary.
 
@@ -256,7 +257,7 @@ def ensure_server_credentials(
         or "y"
     )
 
-    result: Dict[str, Any] = {"token": None, "login": None, "password": None}
+    result: dict[str, Any] = {"token": None, "login": None, "password": None}
 
     if auth_choice.lower() in ("y", "yes"):
         token = Prompt.ask(
@@ -327,7 +328,7 @@ def _print_outline_token_guidance() -> None:
 def ensure_outline_credentials(
     config_service: ConfigService,
     namespace: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Ensure Outline API token is present, prompting when missing."""
     token = config_service.get(f"{namespace}.api_token") or os.getenv(
         "OUTLINE_API_TOKEN"
@@ -361,10 +362,10 @@ def ensure_outline_credentials(
 
 def prompt_credential_field(
     field_name: str,
-    field_info: Dict[str, Any],
+    field_info: dict[str, Any],
     config_service: ConfigService,
     namespace: str,
-    source_type: Optional[str] = None,
+    source_type: str | None = None,
 ) -> str:
     """
     Prompt for a credential field, persist it to the config, and export any corresponding environment variable.
@@ -515,7 +516,7 @@ def is_credential_field(field_name: str) -> bool:
 
 
 def check_server_auth_present(
-    validation_present: Dict[str, Any],
+    validation_present: dict[str, Any],
     token_env_var: str,
     login_env_var: str,
     password_env_var: str,

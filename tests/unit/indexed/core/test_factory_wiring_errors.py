@@ -13,7 +13,6 @@ from unittest.mock import Mock
 import pytest
 
 from indexed.config.errors import ConfigurationError
-
 from indexed.core.v1.engine.factories.create_collection_factory import (
     create_collection_creator,
 )

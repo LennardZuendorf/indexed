@@ -22,11 +22,6 @@ never gated.
 
 from __future__ import annotations
 
-# Warm the engine through the services package first: this is the import entry
-# that resolves the cold-import cycle (importing the factories / creator / a
-# searcher directly fails cold — see .spec/lessons.md and test_lifecycle_cloud).
-import indexed.core.v1.engine.services  # noqa: F401
-
 import json
 import os
 from pathlib import Path
@@ -34,6 +29,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+# Warm the engine through the services package first: this is the import entry
+# that resolves the cold-import cycle (importing the factories / creator / a
+# searcher directly fails cold — see .spec/lessons.md and test_lifecycle_cloud).
+import indexed.core.v1.engine.services  # noqa: F401
 from indexed.cli.app import app
 from tests.conftest import model_available
 
@@ -785,7 +784,7 @@ def test_bug_e9_mcp_has_no_response_caching() -> None:
     ``ResponseCachingMiddleware`` (with no re-index invalidation) must be gone."""
     from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 
-    import indexed.mcp.server as server
+    from indexed.mcp import server
 
     assert not any(
         isinstance(mw, ResponseCachingMiddleware) for mw in server.mcp.middleware

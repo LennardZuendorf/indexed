@@ -27,7 +27,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tests.fixtures.connectors import payloads, stub_routes  # noqa: E402
+from tests.fixtures.connectors import payloads, stub_routes
 
 # The stub now checks the Authorization header on every request (it used to
 # accept any/no auth) -- this is the one token that satisfies all three

@@ -4,7 +4,7 @@ A reusable component that combines Table.grid() inside Panel for clean
 key-value displays with proper alignment across the CLI.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from rich import box
 from rich.panel import Panel
@@ -12,11 +12,11 @@ from rich.table import Table
 
 from ..console import render_user_text
 from .theme import (
-    get_label_style,
     get_card_border_style,
-    get_value_style,
     get_heading_style,
+    get_label_style,
     get_secondary_style,
+    get_value_style,
 )
 
 

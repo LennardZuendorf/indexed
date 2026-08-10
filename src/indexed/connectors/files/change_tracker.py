@@ -92,7 +92,7 @@ class ChangeTracker:
             last_indexed_commit=commit,
             file_hashes=hashes,
             file_sizes=sizes,
-            last_indexed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            last_indexed_at=datetime.datetime.now(datetime.UTC).isoformat(),
             indexed_file_count=len(file_paths),
         )
 

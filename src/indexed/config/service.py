@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from .env_writer import EnvFileWriter
 from .errors import ConfigValidationError
-from .path_utils import get_by_path, set_by_path, delete_by_path, deep_merge
-from .registry import ConfigRegistry
-from .store import TomlStore
+from .path_utils import deep_merge, delete_by_path, get_by_path, set_by_path
 from .provider import Provider
+from .registry import ConfigRegistry
 from .storage import StorageMode, StorageResolver
+from .store import TomlStore
 from .workspace import WorkspaceManager
 
 T = TypeVar("T", bound=BaseModel)
@@ -21,9 +21,9 @@ T = TypeVar("T", bound=BaseModel)
 class ValidationResult(BaseModel):
     """Typed result from validate_requirements()."""
 
-    present: Dict[str, Any]
-    missing: List[str]
-    field_info: Dict[str, Dict[str, Any]]
+    present: dict[str, Any]
+    missing: list[str]
+    field_info: dict[str, dict[str, Any]]
 
 
 class ConfigService:
@@ -42,8 +42,8 @@ class ConfigService:
     def __init__(
         self,
         *,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
+        workspace: Path | None = None,
+        mode_override: StorageMode | None = None,
     ) -> None:
         self._workspace_path = workspace or Path.cwd()
         self._mode_override = mode_override
@@ -62,7 +62,7 @@ class ConfigService:
         # written to disk. Lets create/update pass CLI overrides & prompted
         # values through to from_config() reads without persisting them
         # (foundation/6b, bug E4). Cleared per runtime flow via clear_overlay().
-        self._overlay: Dict[str, Any] = {}
+        self._overlay: dict[str, Any] = {}
 
     # ── Properties ───────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ class ConfigService:
 
     # ── Registry (delegates to ConfigRegistry) ───────────────────────────
 
-    def register(self, spec: Type[T], *, path: str) -> None:
+    def register(self, spec: type[T], *, path: str) -> None:
         """Register a typed configuration spec under a dot-separated namespace."""
         self._registry.register(spec, path=path)
 
@@ -103,7 +103,7 @@ class ConfigService:
         mode = self._workspace.resolve_storage_mode()
         return self._store.get_resolved_env_path(mode)
 
-    def load_raw(self) -> Dict[str, Any]:
+    def load_raw(self) -> dict[str, Any]:
         """Retrieve the raw configuration for the effective storage mode.
 
         Resolves the storage mode (CLI override or WorkspaceManager) and reads
@@ -115,9 +115,7 @@ class ConfigService:
             raw = deep_merge(raw, self._overlay)
         return raw
 
-    def save_raw(
-        self, data: Dict[str, Any], mode: Optional[StorageMode] = None
-    ) -> None:
+    def save_raw(self, data: dict[str, Any], mode: StorageMode | None = None) -> None:
         """Persist raw configuration to the workspace TOML store.
 
         Args:
@@ -143,8 +141,8 @@ class ConfigService:
         raw = self.load_raw()
         # Strip internal schema version marker before validation
         raw.pop("_schema_version", None)
-        instances: Dict[type, BaseModel] = {}
-        path_to_type: Dict[str, Type[BaseModel]] = {}
+        instances: dict[type, BaseModel] = {}
+        path_to_type: dict[str, type[BaseModel]] = {}
 
         for path, spec in self._registry.specs.items():
             payload = get_by_path(raw, path, default=None)
@@ -182,7 +180,7 @@ class ConfigService:
             else self._workspace.resolve_storage_mode()
         )
 
-    def _disk_baseline(self, mode: Optional[StorageMode] = None) -> Dict[str, Any]:
+    def _disk_baseline(self, mode: StorageMode | None = None) -> dict[str, Any]:
         """Return the on-disk config for the resolved mode, no env overlay.
 
         set()/delete() persist THIS baseline plus their single change — never
@@ -216,11 +214,11 @@ class ConfigService:
 
     # ── Validation ───────────────────────────────────────────────────────
 
-    def validate(self) -> List[Tuple[str, str]]:
+    def validate(self) -> list[tuple[str, str]]:
         """Validate all registered specs against merged config."""
         raw = self.load_raw()
         raw.pop("_schema_version", None)
-        errors: List[Tuple[str, str]] = []
+        errors: list[tuple[str, str]] = []
         for path, spec in self._registry.specs.items():
             payload = get_by_path(raw, path, default=None)
             if payload in (None, {}):
@@ -233,9 +231,9 @@ class ConfigService:
 
     def validate_requirements(
         self,
-        config_class: Type[BaseModel],
+        config_class: type[BaseModel],
         namespace: str,
-        cli_overrides: Dict[str, Any] | None = None,
+        cli_overrides: dict[str, Any] | None = None,
     ) -> ValidationResult:
         """Determine which fields are provided and which required fields are missing."""
         if cli_overrides is None:
@@ -244,14 +242,14 @@ class ConfigService:
         raw = self.load_raw()
         config_data = get_by_path(raw, namespace, default={}) or {}
 
-        present: Dict[str, Any] = {}
-        missing: List[str] = []
-        field_info: Dict[str, Dict[str, Any]] = {}
+        present: dict[str, Any] = {}
+        missing: list[str] = []
+        field_info: dict[str, dict[str, Any]] = {}
 
         model_fields = config_class.model_fields
 
         for field_name, field in model_fields.items():
-            info: Dict[str, Any] = {
+            info: dict[str, Any] = {
                 "required": field.is_required(),
                 "description": field.description or "",
                 "default": field.default if field.default is not None else None,
@@ -289,7 +287,7 @@ class ConfigService:
         self,
         dot_path: str,
         value: Any,
-        field_info: Dict[str, Any] | None = None,
+        field_info: dict[str, Any] | None = None,
     ) -> None:
         """Set a config value, routing sensitive fields to .env."""
         if field_info and field_info.get("sensitive"):
@@ -317,7 +315,7 @@ class ConfigService:
         """Clear all in-memory overrides — call at the start of a new runtime flow."""
         self._overlay = {}
 
-    def resolve_sensitive_env_var(self, dot_path: str) -> Optional[str]:
+    def resolve_sensitive_env_var(self, dot_path: str) -> str | None:
         """Resolve the connector-declared `.env` key for a sensitive dot-path.
 
         Mirrors the per-field registry lookup ``validate_requirements()`` does
@@ -344,11 +342,11 @@ class ConfigService:
 
     # ── Workspace delegation ─────────────────────────────────────────────
 
-    def get_workspace_preference(self) -> Optional[StorageMode]:
+    def get_workspace_preference(self) -> StorageMode | None:
         """Retrieve the storage mode preference for a workspace."""
         return self._workspace.get_preference()
 
-    def get_workspace_config(self) -> Dict[str, str]:
+    def get_workspace_config(self) -> dict[str, str]:
         """Retrieve the effective workspace configuration."""
         return self._workspace.get_config()
 
@@ -361,13 +359,13 @@ class ConfigService:
 
 # ── Cached accessor ──────────────────────────────────────────────────────
 
-_config_singleton: Optional[ConfigService] = None
+_config_singleton: ConfigService | None = None
 
 
 def get_config(
     *,
-    workspace: Optional[Path] = None,
-    mode_override: Optional[StorageMode] = None,
+    workspace: Path | None = None,
+    mode_override: StorageMode | None = None,
 ) -> ConfigService:
     """Return the process-wide cached ConfigService, creating it on first use.
 

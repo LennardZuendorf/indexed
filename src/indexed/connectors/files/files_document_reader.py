@@ -11,8 +11,9 @@ import datetime
 import fnmatch
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 

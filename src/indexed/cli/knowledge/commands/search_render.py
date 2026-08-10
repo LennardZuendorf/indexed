@@ -7,36 +7,40 @@ escaping (foundation/6c bug E2) and per-collection failure surfacing
 (foundation/6 E10, CLI twin of the MCP formatting bug).
 """
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, TypedDict
+
+from rich.markup import escape
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
-from rich.markup import escape
 
-from ...utils.console import console
-from ...utils.components.theme import get_heading_style, get_accent_style
 from ...utils.components import (
-    create_summary,
     create_detail_card,
+    create_summary,
     get_card_border_style,
     get_card_padding,
-    get_secondary_style,
     get_dim_style,
+    get_secondary_style,
     print_error,
     print_warning,
 )
-from ...utils.components.theme import get_detail_card_width
+from ...utils.components.theme import (
+    get_accent_style,
+    get_detail_card_width,
+    get_heading_style,
+)
+from ...utils.console import console
 
 
 class ChunkInfo(TypedDict):
     collection: str
     doc_id: str
     path: str
-    chunk: Dict[str, Any]
+    chunk: dict[str, Any]
     chunk_index: int
 
 
-def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
+def _print_collection_errors(failed: list[tuple[str, Any]]) -> None:
     """Surface a per-collection search failure instead of silently skipping it.
 
     Mirrors the MCP-side fix (``mcp/formatting.py``): a failed collection must
@@ -53,7 +57,7 @@ def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
 
 def format_search_results(
     query: str,
-    results: Dict[str, Any],
+    results: dict[str, Any],
     limit: int = 5,
     show_content: bool = True,
 ) -> None:
@@ -76,9 +80,9 @@ def format_search_results(
         return
 
     # Collect all chunks across all collections with their metadata
-    all_chunks: List[ChunkInfo] = []
+    all_chunks: list[ChunkInfo] = []
     total_docs = 0
-    failed_collections: List[tuple[str, Any]] = []
+    failed_collections: list[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
@@ -234,10 +238,10 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
     )
 
 
-def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
+def _show_all_results_compact(results: dict[str, Any], limit: int) -> None:
     """Show all results in compact format when content is hidden."""
     total_results = 0
-    failed_collections: List[tuple[str, Any]] = []
+    failed_collections: list[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
@@ -279,7 +283,7 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
 
 def format_search_results_compact(
     query: str,
-    results: Dict[str, Any],
+    results: dict[str, Any],
     limit: int = 10,
 ) -> None:
     """Display search results in compact list format.
@@ -291,7 +295,7 @@ def format_search_results_compact(
     """
 
     total_results = 0
-    failed_collections: List[tuple[str, Any]] = []
+    failed_collections: list[tuple[str, Any]] = []
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:

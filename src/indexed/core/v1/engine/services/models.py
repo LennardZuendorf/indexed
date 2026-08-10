@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List, Optional
 
 from indexed.protocols.models import (
     PhasedProgressCallback,
@@ -16,12 +15,12 @@ class CollectionStatus:
     number_of_chunks: int
     updated_time: str
     last_modified_document_time: str
-    indexers: List[str]
-    index_size: Optional[int] = None
+    indexers: list[str]
+    index_size: int | None = None
     # Newly added optional metadata
-    source_type: Optional[str] = None
-    relative_path: Optional[str] = None
-    disk_size_bytes: Optional[int] = None
+    source_type: str | None = None
+    relative_path: str | None = None
+    disk_size_bytes: int | None = None
 
 
 @dataclass
@@ -36,28 +35,28 @@ class CollectionInfo:
 
     # Basic identity
     name: str
-    source_type: Optional[str] = None
+    source_type: str | None = None
 
     # Counts
     number_of_documents: int = 0
     number_of_chunks: int = 0
 
     # Storage
-    relative_path: Optional[str] = None
-    disk_size_bytes: Optional[int] = None
-    index_size_bytes: Optional[int] = None
+    relative_path: str | None = None
+    disk_size_bytes: int | None = None
+    index_size_bytes: int | None = None
 
     # Timestamps
-    created_time: Optional[str] = None
-    updated_time: Optional[str] = None
-    last_modified_document_time: Optional[str] = None
+    created_time: str | None = None
+    updated_time: str | None = None
+    last_modified_document_time: str | None = None
 
     # Index info
-    indexers: Optional[List[str]] = None
+    indexers: list[str] | None = None
 
     # Computed statistics (calculated from other fields)
-    avg_chunks_per_doc: Optional[float] = None
-    avg_doc_size_bytes: Optional[float] = None
+    avg_chunks_per_doc: float | None = None
+    avg_doc_size_bytes: float | None = None
 
     def __post_init__(self):
         """Calculate derived statistics after initialization."""

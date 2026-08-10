@@ -1,10 +1,11 @@
 """Basic tests for FileSystem connector."""
 
 import tempfile
+
 import pytest
+
 from indexed.connectors.files.connector import FileSystemConnector
 from indexed.connectors.files.files_document_reader import FilesDocumentReader
-
 
 pytestmark = pytest.mark.connectors  # Mark all tests in this file as connector tests
 

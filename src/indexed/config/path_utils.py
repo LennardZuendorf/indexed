@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
+from typing import Any
 
 
 def get_by_path(
@@ -80,7 +81,7 @@ def delete_by_path(data: MutableMapping[str, Any], dot_path: str) -> bool:
     return False
 
 
-def deep_merge(base: Dict[str, Any], overlay: Mapping[str, Any]) -> Dict[str, Any]:
+def deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
     """
     Recursively merge two mappings into a new dictionary, with values from `overlay` overriding or extending `base`.
 
@@ -91,7 +92,7 @@ def deep_merge(base: Dict[str, Any], overlay: Mapping[str, Any]) -> Dict[str, An
     Returns:
         Dict[str, Any]: A new dictionary containing the deep-merged result.
     """
-    res: Dict[str, Any] = dict(base)
+    res: dict[str, Any] = dict(base)
     for k, v in overlay.items():
         if k in res and isinstance(res[k], dict) and isinstance(v, Mapping):
             res[k] = deep_merge(res[k], v)

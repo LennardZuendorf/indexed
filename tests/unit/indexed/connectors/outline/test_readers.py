@@ -1,7 +1,8 @@
 """Tests for OutlineDocumentReader pagination and collection resolution."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 def _make_doc_list_response(docs: list, total: int, offset: int = 0) -> MagicMock:
@@ -289,8 +290,9 @@ def test_incremental_update_includes_stubs_missing_updated_at() -> None:
 
 @pytest.mark.unit
 def test_insecure_tls_logs_warning() -> None:
-    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
     from unittest.mock import patch
+
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     with patch(
         "indexed.connectors.outline.outline_document_reader.logger"
@@ -308,8 +310,9 @@ def test_insecure_tls_logs_warning() -> None:
 
 @pytest.mark.unit
 def test_secure_tls_no_warning() -> None:
-    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
     from unittest.mock import patch
+
+    from indexed.connectors.outline.outline_document_reader import OutlineDocumentReader
 
     with patch(
         "indexed.connectors.outline.outline_document_reader.logger"

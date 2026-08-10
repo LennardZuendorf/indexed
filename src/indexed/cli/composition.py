@@ -13,22 +13,25 @@ trio. Connector/core imports stay lazy so CLI startup remains <1s.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Type
+from typing import Any
 
 from indexed.config import ConfigService, StorageMode, get_config, reload
 from indexed.config.errors import ConfigurationError
-from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
-
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
-
+from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
 # --- config registration ------------------------------------------------------
 
 
 def register_app_config(config_service: ConfigService) -> None:
     """Register all config specs — idempotent, raises on failure."""
+    from indexed.connectors.confluence.schema import ConfluenceCloudConfig
+    from indexed.connectors.files.schema import FileSystemConfig
+    from indexed.connectors.jira.schema import JiraCloudConfig
+    from indexed.connectors.outline.schema import OutlineConfig
     from indexed.core.v1.config_models import (
         CoreV1EmbeddingConfig,
         CoreV1IndexingConfig,
@@ -36,10 +39,6 @@ def register_app_config(config_service: ConfigService) -> None:
         CoreV1StorageConfig,
         MCPConfig,
     )
-    from indexed.connectors.confluence.schema import ConfluenceCloudConfig
-    from indexed.connectors.files.schema import FileSystemConfig
-    from indexed.connectors.jira.schema import JiraCloudConfig
-    from indexed.connectors.outline.schema import OutlineConfig
 
     config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
     config_service.register(CoreV1SearchConfig, path="core.v1.search")
@@ -55,7 +54,7 @@ def register_app_config(config_service: ConfigService) -> None:
 # --- connector construction ---------------------------------------------------
 
 
-def build_connector_registry() -> dict[str, Type[Any]]:
+def build_connector_registry() -> dict[str, type[Any]]:
     from indexed.connectors.registry import CONNECTOR_REGISTRY
 
     return dict(CONNECTOR_REGISTRY)
@@ -64,7 +63,7 @@ def build_connector_registry() -> dict[str, Type[Any]]:
 def build_connector(
     cfg: SourceConfig,
     config_service: ConfigService,
-    registry: dict[str, Type[Any]] | None = None,
+    registry: dict[str, type[Any]] | None = None,
 ) -> BaseConnector:
     from indexed.connectors.registry import get_config_namespace
 

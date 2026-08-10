@@ -6,7 +6,6 @@ Pydantic configuration models.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Type
 
 from pydantic import BaseModel
 
@@ -31,14 +30,14 @@ class ConnectorMetadata:
     description: str
 
     # Configuration schema
-    config_class: Type[BaseModel]
+    config_class: type[BaseModel]
 
     # Versioning
     version: str = "1.0.0"
-    min_core_version: Optional[str] = None
+    min_core_version: str | None = None
 
     # CLI hints
-    example: Optional[str] = None
+    example: str | None = None
 
 
 __all__ = ["ConnectorMetadata"]

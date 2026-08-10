@@ -1,19 +1,16 @@
-from typing import Optional
-
-from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
-from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
+from indexed.core.v1.config_models import get_default_collections_path
 from indexed.core.v1.engine.core.documents_collection_searcher import (
     DocumentCollectionSearcher,
 )
-from indexed.core.v1.config_models import get_default_collections_path
-
+from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
+from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 from indexed.utils.performance import log_execution_duration
 
 
 def create_collection_searcher(
     collection_name,
     index_name,
-    collections_path: Optional[str] = None,
+    collections_path: str | None = None,
 ):
     """Create a collection searcher instance.
 
@@ -34,7 +31,7 @@ def create_collection_searcher(
 def __create_collection_searcher(
     collection_name,
     index_name,
-    collections_path: Optional[str] = None,
+    collections_path: str | None = None,
 ):
     resolved_path = collections_path or str(get_default_collections_path())
     disk_persister = DiskPersister(base_path=resolved_path)

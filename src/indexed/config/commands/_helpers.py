@@ -9,9 +9,8 @@ imports.
 
 import json
 import re
-from typing import Any, Optional
 from collections import defaultdict
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -19,7 +18,7 @@ from collections import defaultdict
 
 
 def setup_command_logging(
-    verbose: bool, json_logs: bool, log_level: Optional[str]
+    verbose: bool, json_logs: bool, log_level: str | None
 ) -> None:
     """Configure root logging for a config command from its shared options."""
     from indexed.cli.utils.logging import setup_root_logger
@@ -197,13 +196,13 @@ def _get_full_config_schema() -> dict[str, dict[str, Any]]:
     """
     try:
         from indexed.core.v1.config_models import (
-            CoreV1IndexingConfig,
             CoreV1EmbeddingConfig,
+            CoreV1IndexingConfig,
             CoreV1SearchConfig,
             CoreV1StorageConfig,
+            LoggingConfig,
             MCPConfig,
             PerformanceConfig,
-            LoggingConfig,
         )
 
         indexing_defaults = CoreV1IndexingConfig().model_dump()

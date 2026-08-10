@@ -2,15 +2,16 @@
 
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import pytest
 from rich.console import Console
 
 from indexed.cli.utils.conflict_prompt import (
     format_value,
-    show_config_differences,
-    prompt_storage_choice,
-    show_storage_mode_info,
     handle_storage_conflict,
+    prompt_storage_choice,
+    show_config_differences,
+    show_storage_mode_info,
 )
 
 

@@ -1,4 +1,4 @@
-from typing import Any, List, Literal, Optional, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,8 +13,8 @@ class SourceConfig(BaseModel):
     base_url_or_path: str = Field(
         ..., description="baseUrl for remote sources OR basePath for files"
     )
-    query: Optional[str] = None
-    indexer: Optional[str] = None
+    query: str | None = None
+    indexer: str | None = None
     reader_opts: dict = Field(
         default_factory=dict, description="Type-specific reader options"
     )
@@ -58,13 +58,13 @@ class Manifest(BaseModel):
     collection_name: str = Field(alias="collectionName")
     # createdTime is CREATE-only and additive; collections written before it
     # existed have none and must not gain one on round-trip.
-    created_time: Optional[str] = Field(default=None, alias="createdTime")
+    created_time: str | None = Field(default=None, alias="createdTime")
     updated_time: str = Field(alias="updatedTime")
     last_modified_document_time: str = Field(alias="lastModifiedDocumentTime")
     number_of_documents: int = Field(alias="numberOfDocuments")
     number_of_chunks: int = Field(alias="numberOfChunks")
     reader: ReaderDetails
-    indexers: List[IndexerRef]
+    indexers: list[IndexerRef]
 
     @classmethod
     def from_disk(cls, raw: dict) -> "Manifest":
@@ -85,7 +85,7 @@ class Chunk(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     indexed_data: str = Field(alias="indexedData")
     # chunk 0 (the path chunk) and any non-metadata chunk omit this key entirely.
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
     def to_disk(self) -> dict:
         return self.model_dump(by_alias=True, exclude_none=True)
@@ -99,7 +99,7 @@ class ConvertedDocument(BaseModel):
     url: str
     modified_time: str = Field(alias="modifiedTime")
     text: str
-    chunks: List[Chunk]
+    chunks: list[Chunk]
 
     def to_disk(self) -> dict:
         # exclude_none drops each chunk's absent metadata key; every other field
@@ -113,7 +113,7 @@ class MatchedChunk(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     chunk_number: int = Field(alias="chunkNumber")
     score: float
-    content: Optional[Any] = None
+    content: Any | None = None
 
 
 class DocumentMatch(BaseModel):
@@ -123,7 +123,7 @@ class DocumentMatch(BaseModel):
     id: str
     url: str
     path: str
-    matched_chunks: List[MatchedChunk] = Field(alias="matchedChunks")
+    matched_chunks: list[MatchedChunk] = Field(alias="matchedChunks")
 
 
 class CollectionSearchResult(BaseModel):
@@ -136,8 +136,8 @@ class CollectionSearchResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     collection_name: str = Field(alias="collectionName")
     indexer_name: str = Field(alias="indexerName")
-    results: List[DocumentMatch] = Field(default_factory=list)
-    error: Optional[str] = None
+    results: list[DocumentMatch] = Field(default_factory=list)
+    error: str | None = None
 
 
 class PhasedProgressCallback(Protocol):
@@ -152,7 +152,7 @@ class PhasedProgressCallback(Protocol):
     "Writing to disk".
     """
 
-    def start_phase(self, name: str, total: Optional[int] = None) -> None:
+    def start_phase(self, name: str, total: int | None = None) -> None:
         """Begin a named phase. If total is given, a progress bar is shown;
         otherwise a spinner is used."""
         ...

@@ -2,20 +2,20 @@
 
 import os
 from unittest.mock import patch
+
 import pytest
 
-from indexed.connectors.confluence.connector import (
-    ConfluenceConnector,
-    ConfluenceCloudConnector,
-)
-from indexed.connectors.confluence.schema import ConfluenceConfig, ConfluenceCloudConfig
-from indexed.connectors.confluence.confluence_document_reader import (
-    ConfluenceDocumentReader,
-)
 from indexed.connectors.confluence.async_confluence_cloud_reader import (
     AsyncConfluenceCloudDocumentReader,
 )
-
+from indexed.connectors.confluence.confluence_document_reader import (
+    ConfluenceDocumentReader,
+)
+from indexed.connectors.confluence.connector import (
+    ConfluenceCloudConnector,
+    ConfluenceConnector,
+)
+from indexed.connectors.confluence.schema import ConfluenceCloudConfig, ConfluenceConfig
 
 pytestmark = pytest.mark.connectors
 

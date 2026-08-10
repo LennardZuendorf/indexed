@@ -5,18 +5,12 @@ Connectors encapsulate the logic for discovering, reading, and converting
 documents from various sources (Jira, Confluence, local files, etc.).
 """
 
+from collections.abc import Callable, Iterable, Iterator
 from typing import (
     Any,
-    Callable,
     ClassVar,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
     NamedTuple,
-    Optional,
     Protocol,
-    Union,
     runtime_checkable,
 )
 
@@ -41,7 +35,7 @@ class DocumentReader(Protocol):
         """Yield the raw documents from the source."""
         ...
 
-    def get_reader_details(self) -> Dict[str, Any]:
+    def get_reader_details(self) -> dict[str, Any]:
         """Return the per-source ``reader`` block for the manifest (has ``type``)."""
         ...
 
@@ -52,7 +46,7 @@ class DocumentConverter(Protocol):
 
     def convert(
         self, doc: Any, /
-    ) -> Union[Iterator[ConvertedDocument], Iterable[Dict[str, Any]]]:
+    ) -> Iterator[ConvertedDocument] | Iterable[dict[str, Any]]:
         """Convert a raw document into the v1 converted-document form.
 
         Today's converters yield/return v1 dicts (``Iterator[dict]`` or
@@ -82,8 +76,8 @@ class ConnectorRun(NamedTuple):
 
     reader: DocumentReader
     converter: DocumentConverter
-    deletions: List[str]
-    post_run: Optional[Callable[[], None]]
+    deletions: list[str]
+    post_run: Callable[[], None] | None
 
 
 @runtime_checkable
@@ -163,7 +157,7 @@ class BaseConnector(Protocol):
 
     # --- Configuration integration (optional but recommended) ---
     @classmethod
-    def config_spec(cls) -> Dict[str, Dict[str, Any]]:
+    def config_spec(cls) -> dict[str, dict[str, Any]]:
         """Return a specification of required/optional config values.
 
         The spec is a mapping of field name -> metadata dict with keys:

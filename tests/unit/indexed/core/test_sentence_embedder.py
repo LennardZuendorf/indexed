@@ -1,12 +1,12 @@
 """Tests for SentenceEmbedder."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
 from indexed.core.v1.engine.indexes.embeddings.sentence_embeder import (
-    SentenceEmbedder,
     DEFAULT_EMBEDDING_BATCH_SIZE,
+    SentenceEmbedder,
 )
 
 

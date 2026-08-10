@@ -5,8 +5,6 @@ data directory structure, and validates configuration.
 Idempotent — safe to run multiple times.
 """
 
-from typing import Optional
-
 import typer
 from rich.markup import escape
 from rich.text import Text
@@ -24,7 +22,7 @@ from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
 
 def init(
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None,
         "--model",
         "-m",
@@ -54,13 +52,13 @@ def init(
         indexed init --force                      # Re-download model
         indexed init --skip-model                 # Directories only
     """
+    from indexed.config import ensure_storage_dirs, get_config, get_global_root
     from indexed.core.v1.engine.indexes.embeddings.model_manager import (
         DEFAULT_MODEL,
         ensure_model,
         get_cache_info,
         is_model_cached,
     )
-    from indexed.config import get_config, ensure_storage_dirs, get_global_root
 
     model_name = model or DEFAULT_MODEL
 

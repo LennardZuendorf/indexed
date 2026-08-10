@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import requests
 from loguru import logger
+
 from indexed.utils.batch import read_items_in_batches
 from indexed.utils.retry import execute_with_retry
 

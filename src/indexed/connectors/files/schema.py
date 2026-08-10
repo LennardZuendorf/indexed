@@ -3,12 +3,12 @@
 import fnmatch
 import re
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 # Directories always pruned during traversal (VCS metadata, build artefacts, env dirs).
-DEFAULT_EXCLUDED_DIRS: List[str] = [
+DEFAULT_EXCLUDED_DIRS: list[str] = [
     ".git",
     ".hg",
     ".svn",
@@ -28,7 +28,7 @@ class FileSystemConfig(BaseModel):
     """Type-safe configuration for FileSystem connector."""
 
     path: str = Field(..., description="Path to files or directory")
-    include_patterns: List[str] = Field(
+    include_patterns: list[str] = Field(
         default=["*"],
         description=(
             "Patterns for files to include (glob or regex). "
@@ -54,7 +54,7 @@ class FileSystemConfig(BaseModel):
         default=True, description="Enable AST-aware code chunking"
     )
     max_chunk_tokens: int = Field(default=512, description="Maximum tokens per chunk")
-    excluded_dirs: List[str] = Field(
+    excluded_dirs: list[str] = Field(
         default_factory=lambda: list(DEFAULT_EXCLUDED_DIRS),
         description="Directory names to prune before descending (e.g. node_modules, .venv)",
     )
@@ -65,7 +65,7 @@ class FileSystemConfig(BaseModel):
 
     @field_validator("include_patterns", mode="before")
     @classmethod
-    def normalize_patterns(cls, patterns: List[str]) -> List[str]:
+    def normalize_patterns(cls, patterns: list[str]) -> list[str]:
         """Accept both regex and glob patterns; strip '!' prefix before compiling.
 
         Valid regex is kept as-is. Patterns that fail regex compilation are
@@ -96,7 +96,7 @@ class FileSystemConfig(BaseModel):
 LocalFilesConfig = FileSystemConfig
 
 __all__ = [
+    "DEFAULT_EXCLUDED_DIRS",
     "FileSystemConfig",
     "LocalFilesConfig",
-    "DEFAULT_EXCLUDED_DIRS",
 ]
