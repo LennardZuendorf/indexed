@@ -13,6 +13,14 @@ foundation first (it is the dependency for everything), then core filtering, the
 units, then MCP, then the docs/spec COMPOUND. Each unit is independently testable and leaves
 the suite green.
 
+> **Atomicity note.** Unit /1 deletes symbols that `cli/` and `mcp/` import today
+> (`mode_override`, `StorageResolver`, `resolve_storage_mode`), so it MUST carry the
+> mechanical call-site updates that keep the tree importable — dropping the argument at the
+> ~8 sites that pass it (`cli/app.py:142-148`, `composition.py:121-150`, the five knowledge
+> commands, `mcp/config.py:66`). Those edits are deletions, not behaviour: the user-facing
+> CLI work (flag removal, scope note, filter application) still lands in /3. Without them /1
+> would leave the suite red until /3, which the per-unit verification below would not catch.
+
 **Parent:** [../../plan.md](../../plan.md)
 **Requirements:** [product.md](product.md)
 **Architecture:** [tech.md](tech.md)
@@ -123,7 +131,9 @@ tests/unit/indexed/config/*      # rewrite storage/service/store/workspace tests
 - Schema `"1"` + `[workspace].mode` → `SchemaVersionError` naming the key; clean `"1"` loads; unknown version raises.
 - No storage-mode symbols remain importable; `get_config()` takes no `mode_override`.
 
-**Verification:** `uv run pytest tests/unit/indexed/config -q` green; `uv run ty check src/indexed` 0 diagnostics; `python scripts/check_imports.py` green.
+**Verification:** `uv run pytest -q --cov=src/indexed` green (**full suite**, not just the
+config subtree — this is what proves the mechanical call-site updates above are complete);
+`uv run ty check src/indexed` 0 diagnostics; `python scripts/check_imports.py` green.
 
 ---
 
