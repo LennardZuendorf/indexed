@@ -3,25 +3,22 @@ type: feature-tech
 feature: workspace-profile
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-07-20
+updated: 2026-08-11
 ---
 
 # Feature: Workspace Profile — Architecture
 
 Collapses the local/global storage axis to a single global root and introduces a
-`WorkspaceProfile` over `./.indexed/config.toml`. Config resolution changes from
-"single source, no merge" to a **global base + workspace overlay**. A
-**collection-id allowlist** threads from the profile through the read paths
-(`SearchService`, `InspectService`, and MCP) so search/inspect/MCP see only the
-workspace's collections.
+`WorkspaceProfile` over `./indexed.config.toml`. Config resolution changes from "single
+source, no merge" to a **global base + workspace overlay**. A **collection-id allowlist**
+threads from the profile through the read paths (`SearchService`, `InspectService`, MCP) so
+search/inspect/MCP see only the workspace's collections. The MCP server resolves the
+workspace **per request** through a documented chain and reports what it resolved.
 
 > **Layout note.** This spec targets the post-Simplify (Feature 14) single package
-> `src/indexed/`. The former `packages/indexed-config`, `packages/indexed-core`, and
-> `apps/indexed` trees are now the `config/`, `core/`, and `cli/` modules of that one
-> package. The module-edge gate (`scripts/check_imports.py`, four edges) MUST stay
-> green: `config` is a leaf — it never imports up into `core`/`cli`/`mcp`. The
-> allowlist is a plain parameter passed *down* into the read services, so config keeps
-> its leaf position.
+> `src/indexed/`. The module-edge gate (`scripts/check_imports.py`, four edges) MUST stay
+> green: `config` is a leaf — it never imports up into `core`/`cli`/`mcp`. The allowlist and
+> the overlay travel *downward* as plain data, so config keeps its leaf position.
 
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
@@ -34,80 +31,118 @@ workspace's collections.
 ```
 src/indexed/config/
   storage.py            # DELETE StorageMode, StorageResolver, get_local_root,
-                        #   has_local/global_storage, _ensure_gitignore, is_local;
+                        #   has_local/global_storage, _ensure_gitignore, resolve_storage_mode;
                         #   keep plain global-only path helpers
+  discovery.py          # NEW: upward profile search (canonical + legacy, $HOME bound)
   workspace.py          # REPLACE WorkspaceManager(mode/preference) → WorkspaceProfile
-                        #   (read/write [workspace]: collection filter + overrides)
-  store.py              # read() = global + workspace overlay merge; drop read_for_mode,
-                        #   mode_override; write() → global only; schema_version → "2"
-  service.py            # drop mode_override, resolver prop, resolve_storage_mode;
-                        #   add get_workspace_profile() / collection-filter accessor
+                        #   + WorkspaceScope (frozen value object) + mtime-keyed cache
+  store.py              # read() = global base; drop read_for_mode/mode_override;
+                        #   write() → global only; schema_version "2" enforcement
+  service.py            # drop mode_override, resolver prop, resolve_storage_mode
   __init__.py           # shrink public exports (remove storage-mode symbols)
-  errors.py             # drop/repurpose StorageConflictError
-  cli.py                # config command group: profile scaffold + inspect shows profile
-  commands/             # scaffold command lands here (get/list/set/validate siblings)
+  errors.py             # drop StorageConflictError; add SchemaVersionError,
+                        #   WorkspaceResolutionError
+  cli.py, commands/     # `config workspace init` scaffold; `config inspect` shows scope
 
 src/indexed/core/v1/
   config_models.py                    # get_default_collections_path/caches_path → always global
-  engine/services/search_service.py   # add allowed_collection_ids filter (method + wrapper)
-  engine/services/inspect_service.py  # add allowed_collection_ids filter (status + inspect + wrappers)
+  engine/services/search_service.py   # allowed_collection_ids filter (method + wrapper)
+  engine/services/inspect_service.py  # allowed_collection_ids filter (status/inspect + wrappers);
+                                      #   relative_path anchored to the workspace, not os.getcwd()
 
 src/indexed/cli/
   app.py                # DELETE --local flag + ctx.obj["mode_override"]
-  composition.py        # drop mode_override from the single wiring site
-  init.py               # drop the storage-mode banner (display_storage_mode_for_command)
-  knowledge/commands/create.py, _create_helpers.py, _create_options.py  # drop --local/mode/explicit paths
-  knowledge/commands/search.py, inspect.py          # apply workspace filter
-  knowledge/commands/update.py, remove.py           # warn if name out of profile
+  composition.py        # build one WorkspaceScope per invocation; drop mode_override
+  init.py               # drop the storage-mode banner
+  knowledge/commands/create.py, _create_helpers.py, _create_options.py  # drop --local; add --no-profile
+  knowledge/commands/search.py, inspect.py          # apply scope filter + scope note
+  knowledge/commands/update.py, remove.py           # warn if out of scope; remove drops entry
   utils/storage_info.py    # DELETE (mode display) — replace with a thin scope note
   utils/conflict_prompt.py # DELETE (storage-conflict prompt no longer reachable)
 
 src/indexed/mcp/
-  server.py             # lifespan: load collection filter into context
-  tools.py              # pass allowlist to svc_search; validate named access
-  resources.py          # pass allowlist to svc_status; validate named access
+  workspace.py          # NEW: the resolution chain + roots probe + per-request scope cache
+  server.py             # lifespan holds env/cwd defaults only — no pinned workspace
+  tools.py              # `workspace` argument; pass allowlist; emit `scope` block
+  resources.py          # resolve via chain steps 2–5; emit `scope` block
+  config.py             # DELETE default_global_context() swallow-all fallback
 ```
 
 ---
 
 ## Contract / API
 
+> **Drift corrected.** The previous revision of this spec named `ConfigService.instance()`.
+> That method does not exist — the real accessor has been `get_config()` / `reload()` since
+> foundation/9 (`config/service.py:367-391`).
+
 ```python
+# src/indexed/config/discovery.py
+CANONICAL_NAME = "indexed.config.toml"
+LEGACY_RELPATH = Path(".indexed") / "config.toml"
+
+def find_profile(start: Path) -> tuple[Path, bool] | None:
+    """Walk up from `start` to $HOME (inclusive) or the filesystem root.
+
+    Returns (path, is_legacy) for the first hit, or None. The legacy form is
+    never matched at $HOME — ~/.indexed/config.toml is the global config.
+    """
+
 # src/indexed/config/workspace.py
 class WorkspaceProfile:
-    """Reader/writer for ./.indexed/config.toml [workspace] section."""
-    def __init__(self, workspace: Path | None = None) -> None: ...
-    def exists(self) -> bool: ...
-    def collection_ids(self) -> list[str] | None:        # None = no filter
-        ...
+    """Reader/writer for a workspace profile file."""
+    def __init__(self, path: Path, *, is_legacy: bool = False) -> None: ...
+    def collection_ids(self) -> list[str]: ...
     def collection_name(self, cid: str) -> str | None: ...
-    def overrides(self) -> dict[str, Any]:               # [workspace.overrides]
-        ...
+    def overrides(self) -> dict[str, Any]: ...
     def collection_overrides(self, cid: str) -> dict[str, Any]: ...
-    def scaffold(self, *, force: bool = False) -> Path:  # write skeleton
-        ...
+    def add_collection(self, cid: str, name: str | None = None) -> None: ...   # atomic
+    def drop_collection(self, cid: str) -> bool: ...                            # atomic
+    @staticmethod
+    def scaffold(workspace: Path, *, force: bool = False) -> Path: ...
 
-# src/indexed/config/service.py
-class ConfigService:
-    @classmethod
-    def instance(cls, workspace: Path | None = None) -> "ConfigService": ...  # no mode_override
-    def get_workspace_profile(self) -> WorkspaceProfile: ...
-    def collection_filter(self) -> list[str] | None: ...  # convenience → profile.collection_ids()
+@dataclass(frozen=True)
+class WorkspaceScope:
+    """Immutable per-invocation / per-request resolution result."""
+    workspace: Path | None
+    profile_path: Path | None
+    source: Literal["argument", "header", "roots", "env", "cwd", "none"]
+    collection_ids: list[str] | None          # None = unfiltered
+    overrides: dict[str, Any]
+    warnings: list[str]
 
-# src/indexed/core/v1/engine/services/search_service.py  (SearchService.search + module-level wrapper)
-def search(query, *, configs=None,
-           allowed_collection_ids: list[str] | None = None,  # NEW
-           max_docs=None, max_chunks=None, ...,
-           collections_path: str | None = None) -> dict: ...
+    def apply(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Deep-merge `overrides` onto a config dict. Pure — no shared state."""
 
-# src/indexed/core/v1/engine/services/inspect_service.py  (status + inspect, and wrappers)
-def status(collection_names=None, *,
-           allowed_collection_ids: list[str] | None = None,  # NEW
-           include_index_size=False, ...) -> list[CollectionStatus]: ...
+def resolve_scope(workspace: Path | None) -> WorkspaceScope: ...   # mtime-keyed cache
+
+# src/indexed/config/service.py  (unchanged accessor, narrowed signature)
+def get_config(*, workspace: Path | None = None) -> ConfigService: ...
+def reload() -> None: ...
+
+# src/indexed/core/v1/engine/services/search_service.py
+class SearchService:
+    def search(self, query: str, *, configs=None, max_chunks=None, max_docs=None,
+               score_threshold=None, include_full_text=False, include_all_chunks=False,
+               include_matched_chunks=False,
+               allowed_collection_ids: list[str] | None = None) -> dict: ...
+
+# module-level wrapper — existing params stay POSITIONAL; the new one is appended keyword-only
+def search(query, configs=None, max_chunks=None, max_docs=None, score_threshold=None,
+           include_full_text=False, include_all_chunks=False, include_matched_chunks=False,
+           collections_path: str | None = None, *,
+           allowed_collection_ids: list[str] | None = None) -> dict: ...
+
+# src/indexed/core/v1/engine/services/inspect_service.py — same shape for status() and inspect()
 ```
 
-`allowed_collection_ids=None` means **no filtering** (preserves behaviour when no
-profile is present). An empty list means **nothing visible**.
+`allowed_collection_ids=None` means **no filtering** (preserves behaviour when no profile is
+present). An empty list means **nothing visible**.
+
+> **Signature hazard.** The existing module wrappers take their parameters *positionally*
+> (`search_service.py:335`, `inspect_service.py:362`). Inserting `allowed_collection_ids`
+> mid-signature would silently rebind existing positional callers. It MUST be appended after
+> `collections_path` and marked keyword-only.
 
 ---
 
@@ -116,16 +151,26 @@ profile is present). An empty list means **nothing visible**.
 <!-- merge -->
 ## Storage model: one global root + workspace overlay
 
-There is exactly one storage root: `~/.indexed/`. Collections and caches always
-live under `~/.indexed/data/`. The former local root (`./.indexed/data/`),
-`StorageResolver` mode resolution, `--local`/`--global` flags, the `[workspace].mode`
-preference, and the `.gitignore` guard are removed.
+There is exactly one storage root: `~/.indexed/`. Collections and caches always live under
+`~/.indexed/data/`. The former local root (`./.indexed/data/`), `StorageResolver` mode
+resolution, `--local`/`--global` flags, the `[workspace].mode` preference, and the
+`.gitignore` guard are removed.
 
-`./.indexed/config.toml` is repurposed as a **workspace profile** with a single
-`[workspace]` section:
+The workspace profile is a single committable file, resolved by walking upward from the
+workspace directory:
 
-- `[workspace.collections.<id>]` — the collection **filter**; each entry carries a
-  display `name` and optional `[...overrides]`.
+1. `<dir>/indexed.config.toml` — canonical
+2. `<dir>/.indexed/config.toml` — legacy, accepted with a one-time deprecation notice
+
+The walk stops at the first hit, and is bounded by `$HOME` (inclusive) or the filesystem
+root. **The legacy form is never matched at `$HOME`**, since `~/.indexed/config.toml` is the
+global config. Both forms in one directory → canonical wins, warn once.
+
+The file carries one `[workspace]` section:
+
+- `[workspace.collections.<id>]` — the collection **filter**. `<id>` MUST equal the
+  collection's directory name under `~/.indexed/data/collections/`; `name` is a display
+  label only.
 - `[workspace.overrides.<section>]` — workspace-wide **setting overrides**.
 
 Config resolution is now **global base + workspace overlay** (replacing the old
@@ -133,53 +178,133 @@ Config resolution is now **global base + workspace overlay** (replacing the old
 
 ```
 Pydantic defaults
-  → ~/.indexed/config.toml            (global base)
-  → ./.indexed/config.toml [workspace.overrides]   (workspace overlay, if present)
+  → ~/.indexed/config.toml                    (global base)
+  → <profile> [workspace.overrides]           (workspace overlay, if present)
   → INDEXED__* env vars
-  → CLI args
+  → CLI args / MCP per-call arguments
 ```
 
-Writes always target the global config; the profile is hand-edited or scaffolded,
-never written to by `config set`.
+`config set` writes the global file only. The profile is written by exactly three commands —
+`config workspace init`, `index create` (append), and `index remove` (drop) — each through
+the same atomic serialize → validate → tmp → `fsync` → `os.replace` path used for
+`config.toml`.
 <!-- /merge -->
 
 <!-- merge -->
 ## Collection filter as an allowlist
 
-Read paths take an optional `allowed_collection_ids`. `SearchService` and
-`InspectService` resolve their candidate set (explicit names or auto-discovery),
-then intersect with the allowlist when it is non-None. The CLI passes
-`ConfigService.instance().collection_filter()`; the MCP server loads the same list
-into its lifespan context and tools/resources read it from there. Named MCP access
-to a collection outside the allowlist returns an access error rather than silently
-widening scope.
+Read paths take an optional `allowed_collection_ids`. `SearchService` and `InspectService`
+resolve their candidate set (explicit names or auto-discovery), then intersect with the
+allowlist when it is non-`None`. The CLI passes the scope resolved for the invocation; MCP
+passes the scope resolved for the request. A declared id with no collection on disk warns
+and is skipped.
+
+The allowlist filters **discovery**, not authority: naming a collection outside it warns and
+proceeds, on CLI and MCP alike. This mirrors MCP's own framing of roots as *"informational
+guidance rather than an access-control mechanism"* — the profile is a default-scope filter,
+not a boundary.
 <!-- /merge -->
 
-**Merge semantics.** The overlay is a deep dict merge: workspace tables override
-matching global keys; sibling keys are preserved. Per-collection overrides
-(`[workspace.collections.<id>.overrides]`) are applied only when operating on that
-collection (e.g. search config for that collection's searcher).
+<!-- merge -->
+## MCP workspace resolution
 
-**Module edges.** `WorkspaceProfile` and the overlay merge live in the `config`
-module, which stays a leaf: it exposes `collection_filter()` / `get_workspace_profile()`
-as data, and the CLI/MCP layers pass the allowlist *down* into the core read services.
-No new `config → core`/`config → cli` import is introduced, so `scripts/check_imports.py`
-stays green.
+MCP is stateless as of protocol revision `2026-07-28` (sessions and `Mcp-Session-Id` were
+removed, SEP-2567), and one server process may serve several workspaces. The workspace is
+therefore resolved **per request**, never pinned at lifespan. First hit wins:
 
-**Schema version.** Global and profile files carry `[_meta] schema_version = "2"`.
-The bump marks the dropped `[workspace].mode`/`local_path`/`global_path` keys and
-the new `[workspace.collections|overrides]` shape. Clean break — no migration of
-old local stores (alpha).
+| # | Source | Notes |
+|---|---|---|
+| 1 | `workspace` tool argument | The spec's own migration target for roots. Tools only — resources take no arguments. |
+| 2 | `Indexed-Workspace` HTTP header | http transport only. `get_http_headers()` returns `{}` under stdio and lowercases keys — look up `indexed-workspace`. |
+| 3 | Client roots (`ctx.list_roots()`) | Guarded + cached; see below. |
+| 4 | `INDEXED_WORKSPACE`, then `CLAUDE_PROJECT_DIR` | Process-wide default. |
+| 5 | Process cwd | **stdio only** — for an http daemon, cwd is a silently wrong answer. |
 
-**`.env`.** With the local root gone, secret resolution is `os.environ` →
-`~/.indexed/.env` → `CWD/.env` (the old `./.indexed/.env` root is dropped; project
-secrets use `CWD/.env`).
+**Why not `INDEXED__workspace`.** `INDEXED__*` names are mapped into the nested config dict,
+so `INDEXED__workspace` would set a scalar `workspace` key colliding with the `[workspace]`
+table and raise from `_env_to_mapping` (`config/store.py:511`). The env var is deliberately
+single-underscore and outside that namespace.
+
+**Roots.** Deprecated as of `2026-07-28` (SEP-2577, earliest removal 2027-07-28), so it is a
+best-effort probe rather than the primary path — but it is the only source that reflects a
+workspace changing mid-session, and Claude Code implements it well (launch dir plus every
+`--add-dir`). It sits behind one function so the eventual MRTR swap is a single edit:
+
+- Guard with `ctx.session.check_client_capability(...)` and `try/except` —
+  `Context.list_roots()` does **not** check the capability and raises against clients that
+  lack roots.
+- Cache the result; invalidate on `notifications/roots/list_changed` while the installed SDK
+  speaks `2025-11-25`, and fall back to a short TTL once that notification is gone.
+- Multi-root policy: exactly one root → use it; several → use the one containing a profile;
+  several *with* profiles → raise, naming the candidates and asking for an explicit
+  `workspace` argument. Never silently pick.
+
+**Fail closed.** `mcp/config.py::default_global_context()` currently swallows every exception
+and hard-codes a global, unfiltered context — with an allowlist that silently *widens* an
+agent's scope, so it is deleted. An explicitly supplied workspace that does not resolve, and
+a profile that is found but unparseable, both raise. Only "no explicit source, no profile
+found" yields an unfiltered view, and the response says so.
+
+**Self-description.** Every tool and resource response carries a `scope` block —
+`{workspace, profile_path, source, collections, warnings}` — so an agent can see the scope it
+got instead of inferring it. Out-of-scope named access reports its warning here, since an
+agent cannot read stderr.
+
+**Version skew.** The installed stack (fastmcp 3.2.4 / mcp 1.25.0) tops out at protocol
+`2025-11-25` and has no `InputRequiredResult`, so classic server-initiated `roots/list` is
+what ships. Under `2026-07-28` the probe changes shape to an `InputRequiredResult` the client
+retries (MRTR, SEP-2322).
+<!-- /merge -->
+
+**Merge semantics.** The overlay is a deep dict merge: workspace tables override matching
+global keys; sibling keys are preserved. It is applied through the pure
+`WorkspaceScope.apply()` helper, **never** by mutating `ConfigService` — `set_overlay()` is
+process-global mutable state and would race between concurrent MCP requests for different
+workspaces. The CLI applies it once at composition; MCP applies it per request. Per-collection
+overrides (`[workspace.collections.<id>.overrides]`) are applied at the CLI/MCP layer when
+building that collection's search config; the engine services stay override-agnostic and only
+filter by id. (Resolves the previous revision's Open Question 1.)
+
+**Singleton caveat.** `get_config()` rebuilds its singleton only on a changed `mode_override`
+(`config/service.py:379-381`); with that parameter gone it would never rebuild on a changed
+`workspace`. This is why the profile is *not* carried in the singleton: `ConfigService`
+serves the global base, and `WorkspaceScope` — an immutable value resolved per invocation or
+request, cached by `(path, mtime)` — carries everything workspace-specific.
+
+**Path handling.** A `workspace` argument is model-generated and prompt-injectable. Resolve
+it with `Path.expanduser().resolve()` (following symlinks), require an existing directory,
+and reject the request otherwise. Confinement is deliberately *not* claimed as a security
+control: the workspace only selects which profile is read, all collection data is global
+either way, and the spec is explicit that roots are not access control. Transport-level
+controls (stdio, loopback binding, auth tokens) remain the real boundary.
+
+**Schema version.** `CURRENT_SCHEMA_VERSION` moves to `"2"` and — unlike today, where
+`_schema_version` is popped and discarded (`store.py:182`, `service.py:144`) — is actually
+enforced: `"2"` passes; `"1"`/absent passes when the file carries none of the removed keys
+(`[workspace].mode`, `local_path`, `global_path`) and raises `SchemaVersionError` naming them
+when it does; anything else raises. Without this the bump would be decoration.
+
+**`.env`.** With the local root gone, secret resolution is `os.environ` → `~/.indexed/.env` →
+`<workspace>/.env`. Note the third is the resolved workspace, not literally the process cwd
+(`store.py:196`) — the two differ once MCP resolves a workspace per request.
+
+**Module edges.** `WorkspaceProfile`, `WorkspaceScope`, and the overlay merge live in the
+`config` module, which stays a leaf: it exposes scope as data, and the CLI/MCP layers pass the
+allowlist *down* into the core read services. No new `config → core`/`config → cli` import,
+so `scripts/check_imports.py` stays green. The roots probe lives in `mcp/workspace.py` — it
+needs the MCP `Context`, which `config` may not import.
 
 ---
 
 ## Open Questions
 
-1. **Per-collection override application point.** — Cleanest is to apply
-   `collection_overrides(cid)` when building that collection's search config in the
-   CLI/MCP layer (services stay override-agnostic, just filtering by id). Confirm
-   during workspace-profile/2 rather than threading overrides into the engine.
+None. Both questions carried by the previous revision are resolved above: per-collection
+overrides apply at the CLI/MCP layer (§ Merge semantics), and out-of-scope named access warns
+and proceeds everywhere (§ Collection filter as an allowlist).
+
+**Documented follow-up (out of scope here).** `2026-07-28` adds `x-mcp-header` (SEP-2243):
+annotating the `workspace` parameter would make conforming clients mirror it as
+`Mcp-Param-Workspace`, collapsing chain steps 1 and 2 into one spec-sanctioned mechanism. It
+also obliges the server to validate header-against-body equality and reject mismatches with
+JSON-RPC `-32020`. The installed SDK cannot exercise either half, so this waits for the SDK
+upgrade rather than shipping half-implemented.
