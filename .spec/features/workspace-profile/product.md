@@ -35,7 +35,7 @@ serving more than one repo has no way to know which profile applies.
 
 ## Requirements
 
-### Requirement: Single global store
+### Requirement: Single global store (R1)
 
 The system SHALL store all collections and caches under `~/.indexed/data/` and MUST NOT
 expose any local-vs-global storage choice (no `--local`/`--global` flag, no storage-mode
@@ -53,7 +53,7 @@ preference, no local data directory).
 - **When** the user runs any command with `--local`
 - **Then** the command fails with an unknown-option error (the flag no longer exists)
 
-### Requirement: Workspace profile discovery
+### Requirement: Workspace profile discovery (R2)
 
 The system SHALL locate the workspace profile by walking upward from the workspace
 directory, taking the first match of `indexed.config.toml` (canonical) then
@@ -86,7 +86,7 @@ canonical form wins and the system warns once.
 - **When** the profile is resolved
 - **Then** the canonical file is used and a warning names the ignored legacy file
 
-### Requirement: Collection filter
+### Requirement: Collection filter (R3)
 
 The workspace profile SHALL restrict which global collections are visible to read
 operations (search, inspect/list, and MCP) to the set declared under
@@ -118,7 +118,7 @@ skipped, not fail the operation.
 - **When** the user runs a search
 - **Then** no collections are searched and the output states the workspace scope is empty
 
-### Requirement: Settings override
+### Requirement: Settings override (R4)
 
 The workspace profile SHALL override a subset of global config settings for the workspace
 via `[workspace.overrides]`, layered on top of the global `~/.indexed/config.toml` and
@@ -137,7 +137,7 @@ below `INDEXED__*` env vars and CLI args. Per-collection overrides under
 - **When** `INDEXED__core__v1__search__max_docs=7` is set in the environment
 - **Then** the effective `max_docs` is `7`
 
-### Requirement: Profile lifecycle from the CLI
+### Requirement: Profile lifecycle from the CLI (R5)
 
 The system SHALL let a user scaffold a workspace profile, and SHALL keep the profile in
 step with collection lifecycle: `create` adds the new collection to the profile in scope,
@@ -175,7 +175,7 @@ outside the profile.
 - **When** the user runs `indexed index update notes`
 - **Then** the command warns that `notes` is not in the workspace profile, and proceeds against the global store
 
-### Requirement: MCP workspace handover
+### Requirement: MCP workspace handover (R6)
 
 The MCP server SHALL resolve the caller's workspace **per request** from the first
 available of: an explicit `workspace` tool argument; an `Indexed-Workspace` HTTP header
@@ -231,7 +231,7 @@ an error rather than fall back to an unfiltered global view.
 - **When** an agent calls the collection-search tool for `notes`
 - **Then** the search proceeds against `notes` and the response `scope.warnings` states that `notes` is outside the workspace profile
 
-### Requirement: Config schema version 2
+### Requirement: Config schema version 2 (R7)
 
 Config and profile files SHALL declare `[_meta] schema_version = "2"`. A file carrying
 version `"1"` or no version SHALL be accepted when it contains no removed keys, and SHALL

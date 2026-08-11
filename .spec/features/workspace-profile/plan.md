@@ -44,13 +44,13 @@ through it — so it lands first and the rest stack on top.
 
 | ID | Requirement | Units |
 |---|---|---|
-| R1 | [Single global store](product.md#requirement-single-global-store) | workspace-profile/1, workspace-profile/3 |
-| R2 | [Workspace profile discovery](product.md#requirement-workspace-profile-discovery) | workspace-profile/1 |
-| R3 | [Collection filter](product.md#requirement-collection-filter) | workspace-profile/2, workspace-profile/3, workspace-profile/5 |
-| R4 | [Settings override](product.md#requirement-settings-override) | workspace-profile/1, workspace-profile/3 |
-| R5 | [Profile lifecycle from the CLI](product.md#requirement-profile-lifecycle-from-the-cli) | workspace-profile/4 |
-| R6 | [MCP workspace handover](product.md#requirement-mcp-workspace-handover) | workspace-profile/5 |
-| R7 | [Config schema version 2](product.md#requirement-config-schema-version-2) | workspace-profile/1 |
+| R1 | [Single global store](product.md#requirement-single-global-store-r1) | workspace-profile/1, workspace-profile/3 |
+| R2 | [Workspace profile discovery](product.md#requirement-workspace-profile-discovery-r2) | workspace-profile/1 |
+| R3 | [Collection filter](product.md#requirement-collection-filter-r3) | workspace-profile/2, workspace-profile/3, workspace-profile/5 |
+| R4 | [Settings override](product.md#requirement-settings-override-r4) | workspace-profile/1, workspace-profile/3 |
+| R5 | [Profile lifecycle from the CLI](product.md#requirement-profile-lifecycle-from-the-cli-r5) | workspace-profile/4 |
+| R6 | [MCP workspace handover](product.md#requirement-mcp-workspace-handover-r6) | workspace-profile/5 |
+| R7 | [Config schema version 2](product.md#requirement-config-schema-version-2-r7) | workspace-profile/1 |
 
 ---
 
