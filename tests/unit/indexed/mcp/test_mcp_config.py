@@ -2,20 +2,20 @@
 
 from unittest.mock import MagicMock, patch
 
-from indexed.mcp.config import (
-    default_global_context,
-    resolve_cli_context,
-    resolve_config,
-)
+import pytest
+
+import indexed.mcp.config as mcp_config
+from indexed.mcp.config import resolve_cli_context, resolve_config
 from indexed.cli.composition import CliContext
 
 
-def test_default_global_context_is_global_mode() -> None:
-    """R2 fallback builder: always resolves to global mode, regardless of
-    any local .indexed config — used when the real resolution path fails."""
-    ctx = default_global_context()
-    assert ctx.mode == "global"
-    assert ctx.collections_path.parts[-3:] == (".indexed", "data", "collections")
+def test_default_global_context_is_gone() -> None:
+    """workspace-profile/1 R1: the swallow-all fallback is deleted.
+
+    It hard-coded an unfiltered global context on ANY failure; with a
+    collection allowlist in play that silently widens an agent's scope.
+    """
+    assert not hasattr(mcp_config, "default_global_context")
 
 
 def test_resolve_config_reads_from_lifespan_state() -> None:
@@ -63,16 +63,12 @@ def test_resolve_cli_context_ignores_bad_context() -> None:
         assert resolve_cli_context(BadCtx()) is built
 
 
-def test_resolve_cli_context_falls_back_on_malformed_config() -> None:
-    """R2: when resolving the real context raises (e.g. TOMLDecodeError from
-    a malformed global config.toml), resolve_cli_context must degrade to the
-    default global-mode context instead of letting the error escape."""
-    fallback = MagicMock(spec=CliContext)
-    with (
-        patch(
-            "indexed.mcp.config.resolve_collections_context",
-            side_effect=RuntimeError("boom"),
-        ),
-        patch("indexed.mcp.config.default_global_context", return_value=fallback),
+def test_resolve_cli_context_fails_closed_on_malformed_config() -> None:
+    """workspace-profile/1 R1: a malformed config must NOT degrade to an
+    unfiltered global view — it raises so the caller sees the failure."""
+    with patch(
+        "indexed.mcp.config.resolve_collections_context",
+        side_effect=RuntimeError("boom"),
     ):
-        assert resolve_cli_context(None) is fallback
+        with pytest.raises(RuntimeError, match="boom"):
+            resolve_cli_context(None)

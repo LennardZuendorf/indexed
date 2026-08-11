@@ -17,26 +17,22 @@ runner = CliRunner()
 KEY = "core.v1.search.max_docs"
 
 
-def test_config_set_get_roundtrip(local_workspace) -> None:
+def test_config_set_get_roundtrip(isolated_workspace) -> None:
     from indexed.config import get_config, reload
 
     # --- set via the real CLI write path ---------------------------------
-    result = runner.invoke(
-        app, ["--local", "--log-level", "ERROR", "config", "set", KEY, "7"]
-    )
+    result = runner.invoke(app, ["--log-level", "ERROR", "config", "set", KEY, "7"])
     assert result.exit_code == 0, result.stdout + result.stderr
 
     # --- read back through a FRESH store loaded from disk ----------------
     reload()
-    service = get_config(workspace=local_workspace.root, mode_override="local")
+    service = get_config(workspace=isolated_workspace.root)
     assert service.get(KEY) == 7
 
     # --- overwrite and confirm the new value round-trips too -------------
-    result = runner.invoke(
-        app, ["--local", "--log-level", "ERROR", "config", "set", KEY, "3"]
-    )
+    result = runner.invoke(app, ["--log-level", "ERROR", "config", "set", KEY, "3"])
     assert result.exit_code == 0, result.stdout + result.stderr
 
     reload()
-    service = get_config(workspace=local_workspace.root, mode_override="local")
+    service = get_config(workspace=isolated_workspace.root)
     assert service.get(KEY) == 3

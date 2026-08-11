@@ -45,15 +45,6 @@ LogLevelOpt = Annotated[
         rich_help_panel=_LOG,
     ),
 ]
-LocalOpt = Annotated[
-    bool,
-    typer.Option(
-        "--local",
-        help="Save the collection to .indexed/ in the current directory instead of ~/.indexed/",
-        rich_help_panel=_STORE,
-    ),
-]
-
 # Files --------------------------------------------------------------------- #
 CollectionFilesOpt = Annotated[
     str,

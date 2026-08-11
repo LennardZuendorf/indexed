@@ -12,8 +12,7 @@ from .path_utils import get_by_path, set_by_path, delete_by_path, deep_merge
 from .registry import ConfigRegistry
 from .store import TomlStore
 from .provider import Provider
-from .storage import StorageMode, StorageResolver
-from .workspace import WorkspaceManager
+from .workspace import clear_scope_cache
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,32 +30,21 @@ class ConfigService:
 
     Thin orchestrator that delegates to:
     - ConfigRegistry: spec registration
-    - WorkspaceManager: workspace preferences, storage paths, conflict detection
     - EnvFileWriter: sensitive field routing to .env files
-    - TomlStore: raw TOML I/O
+    - TomlStore: raw TOML I/O for the one global config
+
+    It serves the GLOBAL base only. The workspace profile is deliberately not
+    held here — see ``workspace.WorkspaceScope``, an immutable value resolved
+    per invocation/request and passed downward (workspace-profile/1).
 
     Access the process-wide cached instance via the module-level
     ``get_config()``; clear it with ``reload()``.
     """
 
-    def __init__(
-        self,
-        *,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
-    ) -> None:
+    def __init__(self, *, workspace: Optional[Path] = None) -> None:
         self._workspace_path = workspace or Path.cwd()
-        self._mode_override = mode_override
-        self._store = TomlStore(
-            workspace=self._workspace_path, mode_override=mode_override
-        )
-        self._resolver = StorageResolver(
-            workspace=self._workspace_path, mode_override=mode_override
-        )
+        self._store = TomlStore(workspace=self._workspace_path)
         self._registry = ConfigRegistry()
-        self._workspace = WorkspaceManager(
-            self._store, self._resolver, self._workspace_path, mode_override
-        )
         self._env_writer = EnvFileWriter(self._resolved_env_path)
         # In-memory-only overrides (R3): merged on top of load_raw() but never
         # written to disk. Lets create/update pass CLI overrides & prompted
@@ -72,19 +60,9 @@ class ConfigService:
         return self._store
 
     @property
-    def resolver(self) -> StorageResolver:
-        """The storage resolver."""
-        return self._resolver
-
-    @property
     def workspace(self) -> Path:
         """Current workspace path."""
         return self._workspace_path
-
-    @property
-    def workspace_manager(self) -> WorkspaceManager:
-        """The workspace manager."""
-        return self._workspace
 
     # ── Registry (delegates to ConfigRegistry) ───────────────────────────
 
@@ -95,39 +73,19 @@ class ConfigService:
     # ── I/O ──────────────────────────────────────────────────────────────
 
     def _resolved_env_path(self) -> str:
-        """Return the .env path for the resolved storage mode.
-
-        Used as the callable for EnvFileWriter so it always writes
-        to the correct .env based on the effective storage mode.
-        """
-        mode = self._workspace.resolve_storage_mode()
-        return self._store.get_resolved_env_path(mode)
+        """Return the .env path secrets are written to (~/.indexed/.env)."""
+        return self._store.get_env_path()
 
     def load_raw(self) -> Dict[str, Any]:
-        """Retrieve the raw configuration for the effective storage mode.
-
-        Resolves the storage mode (CLI override or WorkspaceManager) and reads
-        exactly one config.toml via read_for_mode().
-        """
-        mode = self._resolve_persist_mode()
-        raw = self._store.read_for_mode(mode)
+        """Retrieve the raw global configuration (config.toml + .env + env vars)."""
+        raw = self._store.read()
         if self._overlay:
             raw = deep_merge(raw, self._overlay)
         return raw
 
-    def save_raw(
-        self, data: Dict[str, Any], mode: Optional[StorageMode] = None
-    ) -> None:
-        """Persist raw configuration to the workspace TOML store.
-
-        Args:
-            mode: An already-resolved storage mode to write to verbatim. Pass
-                the same mode used for the corresponding baseline read (see
-                ``set()``/``delete()``) so the read and write targets can
-                never diverge (R1). Omit to fall back to ``TomlStore``'s own
-                resolution (used by callers with no baseline read to match).
-        """
-        self._store.write(data, mode=mode)
+    def save_raw(self, data: Dict[str, Any]) -> None:
+        """Persist raw configuration to the global TOML store."""
+        self._store.write(data)
 
     # ── Typed binding ────────────────────────────────────────────────────
 
@@ -164,54 +122,28 @@ class ConfigService:
         """Retrieve a value from merged config using a dot-separated path."""
         return get_by_path(self.load_raw(), dot_path)
 
-    def _resolve_persist_mode(self) -> StorageMode:
-        """Resolve the storage mode once for a set()/delete() cycle.
-
-        Both the baseline read and the write must target the exact same
-        file. Resolving the mode a single time here and threading it through
-        to ``_disk_baseline()`` and ``save_raw()`` guarantees that — even
-        after a correct write-side resolver fix, calling the cascade twice
-        independently would still leave a seam if the stored preference
-        changed on disk between the two calls (R1). Also used by
-        ``load_raw()`` (read-only, but the same override → preference
-        cascade applies) to avoid duplicating the ternary.
-        """
-        return (
-            self._mode_override
-            if self._mode_override
-            else self._workspace.resolve_storage_mode()
-        )
-
-    def _disk_baseline(self, mode: Optional[StorageMode] = None) -> Dict[str, Any]:
-        """Return the on-disk config for the resolved mode, no env overlay.
+    def _disk_baseline(self) -> Dict[str, Any]:
+        """Return the on-disk global config, no env overlay.
 
         set()/delete() persist THIS baseline plus their single change — never
         the env-merged view from load_raw() — so an INDEXED__*-supplied value
         (e.g. a secret provided only via env) is never baked into config.toml
         by an unrelated write (C2).
-
-        Args:
-            mode: An already-resolved storage mode. Omit to resolve it here
-                (used by callers that don't need to thread it elsewhere).
         """
-        if mode is None:
-            mode = self._resolve_persist_mode()
-        return self._store.read_disk_only_for_mode(mode)
+        return self._store.read_disk_only()
 
     def set(self, dot_path: str, value: Any) -> None:
         """Set a value at the given dot-path and persist."""
-        mode = self._resolve_persist_mode()
-        raw = self._disk_baseline(mode)
+        raw = self._disk_baseline()
         set_by_path(raw, dot_path, value)
-        self.save_raw(raw, mode)
+        self.save_raw(raw)
 
     def delete(self, dot_path: str) -> bool:
         """Delete a value at a dot-path and persist if changed."""
-        mode = self._resolve_persist_mode()
-        raw = self._disk_baseline(mode)
+        raw = self._disk_baseline()
         changed = delete_by_path(raw, dot_path)
         if changed:
-            self.save_raw(raw, mode)
+            self.save_raw(raw)
         return changed
 
     # ── Validation ───────────────────────────────────────────────────────
@@ -342,50 +274,28 @@ class ConfigService:
             return None
         return EnvFileWriter.get_env_var_name(field_name, field)
 
-    # ── Workspace delegation ─────────────────────────────────────────────
-
-    def get_workspace_preference(self) -> Optional[StorageMode]:
-        """Retrieve the storage mode preference for a workspace."""
-        return self._workspace.get_preference()
-
-    def get_workspace_config(self) -> Dict[str, str]:
-        """Retrieve the effective workspace configuration."""
-        return self._workspace.get_config()
-
-    # ── Storage mode resolution (delegates to WorkspaceManager) ─────────
-
-    def resolve_storage_mode(self) -> StorageMode:
-        """Determine the effective storage mode for the current workspace."""
-        return self._workspace.resolve_storage_mode()
-
 
 # ── Cached accessor ──────────────────────────────────────────────────────
 
 _config_singleton: Optional[ConfigService] = None
 
 
-def get_config(
-    *,
-    workspace: Optional[Path] = None,
-    mode_override: Optional[StorageMode] = None,
-) -> ConfigService:
+def get_config(*, workspace: Optional[Path] = None) -> ConfigService:
     """Return the process-wide cached ConfigService, creating it on first use.
 
-    Rebuilds the cached instance when ``mode_override`` is supplied and differs
-    from the cached one (so switching between global/local at runtime yields a
-    correctly-scoped service). Call ``reload()`` to force a fresh instance.
+    The singleton serves the GLOBAL config base, so it never needs rebuilding
+    for a changed workspace: everything workspace-specific travels in an
+    immutable ``WorkspaceScope`` instead (workspace-profile/1). Call
+    ``reload()`` to force a fresh instance.
     """
     global _config_singleton
-    if _config_singleton is None or (
-        mode_override is not None and _config_singleton._mode_override != mode_override
-    ):
-        _config_singleton = ConfigService(
-            workspace=workspace, mode_override=mode_override
-        )
+    if _config_singleton is None:
+        _config_singleton = ConfigService(workspace=workspace)
     return _config_singleton
 
 
 def reload() -> None:
-    """Clear the cached ConfigService so the next ``get_config()`` rebuilds it."""
+    """Clear the cached ConfigService and workspace scopes so both rebuild."""
     global _config_singleton
     _config_singleton = None
+    clear_scope_cache()

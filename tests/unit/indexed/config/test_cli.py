@@ -492,7 +492,7 @@ class TestSetConfig:
         assert "no connector mapping" in result.stdout.lower()
 
     def test_set_config_secret_lands_at_connector_readable_env_key(
-        self, local_workspace
+        self, isolated_workspace
     ):
         """Regression (foundation/4 review finding 1): the secret written by
         ``config set sources.jira.api_token <value>`` must land at the .env
@@ -513,7 +513,6 @@ class TestSetConfig:
         result = runner.invoke(
             app,
             [
-                "--local",
                 "--log-level",
                 "ERROR",
                 "config",
@@ -524,7 +523,7 @@ class TestSetConfig:
         )
         assert result.exit_code == 0, result.stdout
 
-        env_path = local_workspace.local_root / ".env"
+        env_path = isolated_workspace.global_root / ".env"
         assert env_path.exists(), ".env must be created"
         env_text = env_path.read_text()
 

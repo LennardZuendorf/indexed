@@ -48,9 +48,9 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     config_service = get_config()
     register_app_config(config_service)
     # No lifespan context exists yet during startup, so this call always
-    # falls through resolve_cli_context's fresh-resolution path (R2),
-    # degrading to a default global-mode context rather than letting a
-    # malformed/unreadable config.toml crash server startup.
+    # falls through resolve_cli_context's fresh-resolution path. It builds
+    # paths over the one global store (workspace-profile/1, R1) and no longer
+    # degrades to a hard-coded unfiltered context on failure.
     cli_context = resolve_cli_context(None)
     mcp_config = _get_config(MCPConfig)
     search_config = _get_config(CoreV1SearchConfig)

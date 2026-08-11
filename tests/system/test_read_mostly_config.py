@@ -7,8 +7,9 @@ byte-identical before and after.
 """
 
 import hashlib
+from pathlib import Path
 
-from indexed.config import reload, ensure_storage_dirs, get_local_root
+from indexed.config import reload, ensure_storage_dirs, get_global_root
 from indexed.cli import composition
 from indexed.protocols import Manifest
 
@@ -36,12 +37,16 @@ def _jira_manifest() -> Manifest:
 
 
 def test_update_seam_leaves_config_toml_byte_stable(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("JIRA_TOKEN", "test-token")
-    local_root = get_local_root(tmp_path)
-    ensure_storage_dirs(local_root, is_local=True)
+    reload()
+    global_root = get_global_root()
+    ensure_storage_dirs(global_root)
 
-    config_toml = local_root / "config.toml"
+    config_toml = global_root / "config.toml"
     config_toml.write_text(
         '[sources.jira]\nurl = "https://jira.example.com"\nquery = "project = ENG"\n',
         encoding="utf-8",
@@ -49,14 +54,12 @@ def test_update_seam_leaves_config_toml_byte_stable(tmp_path, monkeypatch):
     before = _sha(config_toml)
 
     reload()
-    ctx = composition.resolve_collections_context(
-        mode_override="local", workspace=tmp_path
-    )
+    ctx = composition.resolve_collections_context(workspace=tmp_path)
     factory = composition.make_manifest_factory(ctx)
 
     run = factory(
         _jira_manifest(),
-        str(local_root / "data" / "collections" / "jira-coll"),
+        str(global_root / "data" / "collections" / "jira-coll"),
     )
 
     # The reader was rebuilt AND the dated incremental query was actually applied

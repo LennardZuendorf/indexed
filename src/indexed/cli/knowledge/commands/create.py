@@ -62,14 +62,6 @@ def _config_header(display_name: str) -> None:
     console.print()
 
 
-def _display_storage_indicator(verbose: bool, log_level: Optional[str]) -> None:
-    """Print the storage-mode indicator unless verbose/debug output is active."""
-    if not _is_pre_setup_verbose(verbose, log_level):
-        from ...utils.storage_info import display_storage_mode_for_command
-
-        display_storage_mode_for_command(console)
-
-
 def _resolve_url(
     spec: SourceSpec,
     url_arg: Optional[str],
@@ -190,15 +182,11 @@ def _create(
     verbose: bool,
     json_logs: bool,
     log_level: Optional[str],
-    local: bool,
 ) -> None:
     """Resolve source type + URL from the spec, then run the shared create flow."""
     spec = SOURCE_SPECS[spec_key]
 
-    # Storage indicator prints once here, before any connector header/prompt
-    # (critical-bugs/4); execute_create_command no longer prints it.
-    config = get_config(mode_override="local" if local else None)
-    _display_storage_indicator(verbose, log_level)
+    config = get_config()
 
     resolved_url: Optional[str] = None
     url_was_prompted = False
@@ -231,7 +219,6 @@ def _create(
         ),
         verbose_pre_creation_log=spec.verbose_log,
         pre_creation_display=spec.pre_display,
-        local=local,
         source_path_key=spec.source_path_key,
     )
 

@@ -143,25 +143,30 @@ def model_available() -> bool:
 
 
 @pytest.fixture
-def local_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """An isolated ``./.indexed`` local workspace rooted at ``tmp_path``.
+def isolated_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """An isolated workspace whose ONE global store is rooted at ``tmp_path``.
 
-    Chdirs into ``tmp_path`` and materializes the local storage dirs, so every
-    collection built or CLI command run under this fixture lands in the temp
-    tree — never the real ``~/.indexed``. Returns a namespace with ``root``,
-    ``local_root`` and ``collections_dir``.
+    There is no local storage root any more (workspace-profile/1, R1), so
+    isolation now comes from redirecting ``Path.home()`` into the temp tree:
+    every collection built or CLI command run under this fixture lands in
+    ``tmp_path/home/.indexed`` — never the real ``~/.indexed``. Chdirs into
+    ``tmp_path`` so ``./`` paths and profile discovery start there. Returns a
+    namespace with ``root``, ``global_root`` and ``collections_dir``.
     """
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TQDM_DISABLE", "1")
-    from indexed.config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_global_root
 
     reload_config()
-    local_root = get_local_root(tmp_path)
-    ensure_storage_dirs(local_root, is_local=True)
-    collections_dir = local_root / "data" / "collections"
+    global_root = get_global_root()
+    ensure_storage_dirs(global_root)
+    collections_dir = global_root / "data" / "collections"
     return SimpleNamespace(
         root=tmp_path,
-        local_root=local_root,
+        global_root=global_root,
         collections_dir=collections_dir,
     )
 

@@ -17,47 +17,139 @@ else:
 import tomlkit
 from dotenv import load_dotenv
 
-from .path_utils import deep_merge, get_by_path
+from .errors import SchemaVersionError
+from .path_utils import deep_merge
 from .storage import (
-    StorageMode,
     get_global_root,
-    get_local_root,
     get_config_path,
     get_env_path as storage_get_env_path,
-    resolve_storage_mode,
 )
 
 
-CURRENT_SCHEMA_VERSION = "1"
+CURRENT_SCHEMA_VERSION = "2"
+
+# Keys the storage-mode collapse removed (workspace-profile/1, R1). A version-1
+# file carrying any of them cannot be read as version 2, so it is rejected with
+# a message naming what to delete rather than silently ignored.
+REMOVED_WORKSPACE_KEYS = ("mode", "local_path", "global_path")
+
+
+def env_to_mapping() -> Dict[str, Any]:
+    """
+    Convert environment variables with the `INDEXED__` prefix into a nested dictionary.
+
+    Only variables whose names start with `INDEXED__` are considered. The portion after the prefix is split on `__` to form a nested path; empty segments are ignored and all key segments are lowercased. Values are kept as strings.
+
+    Raises:
+        ValueError: If a variable's final path segment collides with an
+            existing nested dict built by another (order-earlier)
+            variable — e.g. ``INDEXED__A__B`` followed by ``INDEXED__A``
+            — which would otherwise silently drop the nested subtree
+            (R15). Mirrors the same guard already applied to intermediate
+            path segments below.
+
+    Returns:
+        mapping (Dict[str, Any]): Nested dictionary representing the matched environment variables, with lowercase keys and string values.
+    """
+    prefix = "INDEXED__"
+    out: Dict[str, Any] = {}
+    for k, v in os.environ.items():
+        if not k.startswith(prefix):
+            continue
+        parts = [p for p in k[len(prefix) :].split("__") if p]
+        if not parts:
+            continue
+        cur = out
+        for seg in parts[:-1]:
+            seg = seg.lower()
+            # Check for type conflict: if seg exists and is not a dict, raise error
+            if seg in cur and not isinstance(cur[seg], dict):
+                raise ValueError(
+                    f"Environment variable conflict: '{k}' conflicts with existing scalar value at '{seg}'. "
+                    f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix) :]}"
+                )
+            cur = cur.setdefault(seg, {})  # type: ignore[assignment]
+        last = parts[-1].lower()
+        # Guard the final assignment the same way: a scalar must not
+        # silently clobber a nested dict built by an earlier variable.
+        if last in cur and isinstance(cur[last], dict):
+            raise ValueError(
+                f"Environment variable conflict: '{k}' would overwrite the "
+                f"nested value at '{last}' with a scalar. Cannot have both "
+                f"INDEXED__{k[len(prefix) :]} and a nested "
+                f"INDEXED__{k[len(prefix) :]}__* variable."
+            )
+        cur[last] = v
+    return out
+
+
+def enforce_schema_version(data: Mapping[str, Any], path: Path) -> str:
+    """Validate a config/profile file's declared schema version (R7).
+
+    ``"2"`` passes. ``"1"`` or absent passes only when the file carries none of
+    the removed storage-mode keys; when it does, the error names them. Any
+    other version is rejected — the bump is enforcement, not decoration.
+
+    Parameters:
+        data: The freshly-parsed TOML mapping (before any env overlay).
+        path: The file the mapping came from, for the error message.
+
+    Returns:
+        The effective schema version, always ``CURRENT_SCHEMA_VERSION``.
+
+    Raises:
+        SchemaVersionError: On a removed key or an unrecognised version.
+    """
+    meta = data.get("_meta") or {}
+    version = str(meta.get("schema_version", "1")) if isinstance(meta, Mapping) else "1"
+
+    if version == CURRENT_SCHEMA_VERSION:
+        return CURRENT_SCHEMA_VERSION
+
+    if version != "1":
+        raise SchemaVersionError(
+            path,
+            f"unrecognised schema_version {version!r} "
+            f"(this build understands '1' and '{CURRENT_SCHEMA_VERSION}')",
+        )
+
+    workspace = data.get("workspace")
+    offenders = (
+        [f"[workspace].{k}" for k in REMOVED_WORKSPACE_KEYS if k in workspace]
+        if isinstance(workspace, Mapping)
+        else []
+    )
+    if offenders:
+        raise SchemaVersionError(
+            path,
+            f"{', '.join(offenders)} {'was' if len(offenders) == 1 else 'were'} "
+            "removed — local/global storage modes no longer exist. Delete "
+            f"the key(s) and set [_meta] schema_version = "
+            f'"{CURRENT_SCHEMA_VERSION}".',
+        )
+
+    # A clean version-1 file is read as version 2.
+    return CURRENT_SCHEMA_VERSION
 
 
 class TomlStore:
-    """Read/write config for a single resolved storage mode.
+    """Read/write the one global config file (``~/.indexed/config.toml``).
 
-    Runtime reads use read_for_mode(mode) — one config.toml (global OR local),
-    then .env overlay and INDEXED__* env vars.
+    Runtime reads layer ``.env`` files and ``INDEXED__*`` env vars on top of it.
+    The workspace overlay is NOT applied here — it travels as an immutable
+    ``WorkspaceScope`` (see ``workspace.py``) so concurrent MCP requests for
+    different workspaces cannot race through shared state.
     """
 
-    def __init__(
-        self,
-        *,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
-    ) -> None:
+    def __init__(self, *, workspace: Optional[Path] = None) -> None:
         """Initialize the TomlStore.
 
         Args:
-            workspace: Optional workspace path. Defaults to current working directory.
-            mode_override: Optional storage mode override ("global" or "local").
-                          If set, only that config source is used (no merging).
+            workspace: Optional workspace path, used only to locate the
+                workspace-level ``.env``. Defaults to the current working
+                directory.
         """
         self.workspace = workspace or Path.cwd()
-        self._mode_override = mode_override
-
-    @property
-    def _global_root(self) -> Path:
-        """Global storage root directory (~/.indexed)."""
-        return get_global_root()
 
     @property
     def global_path(self) -> Path:
@@ -70,48 +162,13 @@ class TomlStore:
         return get_config_path(get_global_root())
 
     @property
-    def _local_root(self) -> Path:
-        """Local storage root (./.indexed)."""
-        return get_local_root(self.workspace)
-
-    @property
-    def workspace_path(self) -> Path:
-        """
-        Return the workspace/local configuration file path.
-
-        Returns:
-            Path to the workspace/local config file (./.indexed/config.toml).
-        """
-        return get_config_path(get_local_root(self.workspace))
-
-    @property
-    def _env_path(self) -> Path:
-        """Resolved .env file path (global or workspace).
-
-        No workspace preference here (TomlStore only sees the CLI override and the
-        local-config auto-detect), so ``workspace_preference`` is left None.
-        """
-        mode = resolve_storage_mode(
-            mode_override=self._mode_override,
-            workspace_preference=None,
-            workspace=self.workspace,
-        )
-        root = get_local_root(self.workspace) if mode == "local" else get_global_root()
-        return storage_get_env_path(root)
-
-    @property
     def _global_env_path(self) -> Path:
         """Global .env file path (~/.indexed/.env)."""
         return storage_get_env_path(get_global_root())
 
-    @property
-    def _local_env_path(self) -> Path:
-        """Local .env file path (./.indexed/.env)."""
-        return storage_get_env_path(get_local_root(self.workspace))
-
     def get_env_path(self) -> str:
-        """Return the resolved .env file path as a string."""
-        return str(self._env_path)
+        """Return the .env file path secrets are written to, as a string."""
+        return str(self._global_env_path)
 
     def _read_toml_file(self, path: Path) -> Dict[str, Any]:
         """
@@ -136,65 +193,43 @@ class TomlStore:
         with open(path, "rb") as f:
             return tomllib.load(f)
 
-    def read_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
-        """Read config for a specific resolved storage mode (no merging).
+    def read(self) -> Dict[str, Any]:
+        """Read the global config, then overlay ``.env`` files and env vars.
 
-        Reads ONE config.toml based on the resolved mode,
-        and loads .env files in priority order:
-        1. .indexed/.env from the resolved root (loaded first → gets set)
-        2. CWD/.env (loaded second → only fills gaps via override=False)
-        3. Real env vars already in os.environ are never overridden
-
-        Args:
-            mode: The resolved storage mode ("global" or "local").
+        ``.env`` priority (highest first): real ``os.environ`` →
+        ``~/.indexed/.env`` → ``<workspace>/.env`` (R1). Every load uses
+        ``override=False``, so an earlier source always wins.
 
         Returns:
-            Configuration dictionary from the single resolved source.
+            Configuration dictionary with ``_schema_version`` attached.
         """
-        if mode == "local":
-            data = self._read_toml_file(self.workspace_path)
-            self._load_dotenv(self._local_env_path)
-        else:
-            data = self._read_toml_file(self.global_path)
-            self._load_dotenv(self._global_env_path)
+        data = self._read_toml_file(self.global_path)
+        schema_version = enforce_schema_version(data, self.global_path)
 
-        # Load CWD/.env (fills gaps only, never overrides)
+        self._load_dotenv(self._global_env_path)
         self._load_cwd_dotenv()
 
-        return self._apply_env_and_finalize(data)
-
-    def read_disk_only_for_mode(self, mode: StorageMode) -> Dict[str, Any]:
-        """Read config.toml for a resolved storage mode, with NO env overlay.
-
-        Unlike read_for_mode(), this does not merge .env or INDEXED__* env
-        vars — used as the persistence baseline for set()/delete() so an
-        env-supplied value (e.g. a secret set only via INDEXED__*) is never
-        round-tripped into config.toml by an unrelated write (C2).
-
-        Args:
-            mode: The resolved storage mode ("global" or "local").
-
-        Returns:
-            Configuration dictionary read from disk only.
-        """
-        path = self.workspace_path if mode == "local" else self.global_path
-        data = self._read_toml_file(path)
-        schema_version = data.pop("_meta", {}).get("schema_version", "1")
+        data = deep_merge(data, env_to_mapping())
+        data.pop("_meta", None)
         data["_schema_version"] = schema_version
         return data
 
-    def _apply_env_and_finalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply INDEXED__* env overrides and extract schema version."""
-        env_data = self._env_to_mapping()
-        data = deep_merge(data, env_data)
+    def read_disk_only(self) -> Dict[str, Any]:
+        """Read the global config.toml with NO env overlay.
 
-        schema_version = data.pop("_meta", {}).get("schema_version", "1")
+        Unlike read(), this does not merge .env or INDEXED__* env vars — used
+        as the persistence baseline for set()/delete() so an env-supplied value
+        (e.g. a secret set only via INDEXED__*) is never round-tripped into
+        config.toml by an unrelated write (C2).
+        """
+        data = self._read_toml_file(self.global_path)
+        schema_version = enforce_schema_version(data, self.global_path)
+        data.pop("_meta", None)
         data["_schema_version"] = schema_version
-
         return data
 
     def _load_cwd_dotenv(self) -> None:
-        """Load CWD/.env with override=False (fills gaps only).
+        """Load ``<workspace>/.env`` with override=False (fills gaps only).
 
         ``interpolate=False`` (C4): `.env` here is secrets-only, never used
         for ``${VAR}`` composition, so disabling python-dotenv's default
@@ -205,31 +240,6 @@ class TomlStore:
         if cwd_env.exists():
             load_dotenv(str(cwd_env), override=False, interpolate=False)
 
-    def get_resolved_env_path(self, mode: StorageMode) -> str:
-        """Return the .env file path for a specific resolved mode.
-
-        This is used by EnvFileWriter to determine where to write
-        sensitive values based on the resolved storage mode.
-
-        Args:
-            mode: The resolved storage mode ("global" or "local").
-
-        Returns:
-            String path to the .env file for the given mode.
-        """
-        if mode == "local":
-            return str(self._local_env_path)
-        return str(self._global_env_path)
-
-    def has_local_config(self) -> bool:
-        """
-        Determine whether the workspace (local) TOML configuration file exists.
-
-        Returns:
-            True if the workspace config file exists, False otherwise.
-        """
-        return self.workspace_path.exists()
-
     def has_global_config(self) -> bool:
         """
         Determine whether the global TOML configuration file exists.
@@ -238,99 +248,6 @@ class TomlStore:
             `True` if the global config file exists, `False` otherwise.
         """
         return self.global_path.exists()
-
-    def configs_differ(self) -> bool:
-        """
-        Determine whether the workspace (local) and global TOML configurations contain differing values.
-
-        Returns:
-            `true` if both config files exist and at least one value differs; `false` otherwise.
-        """
-        if not self.has_local_config() or not self.has_global_config():
-            return False
-
-        local_data = self._read_toml_file(self.workspace_path)
-        global_data = self._read_toml_file(self.global_path)
-
-        return self._configs_have_differences(local_data, global_data)
-
-    def _configs_have_differences(
-        self,
-        local: Dict[str, Any],
-        global_: Dict[str, Any],
-    ) -> bool:
-        """
-        Determine whether any keys present in both config mappings have different values, recursing into nested dicts.
-
-        Parameters:
-            local (Dict[str, Any]): Local configuration mapping; only keys present here are considered for conflict checks.
-            global_ (Dict[str, Any]): Global configuration mapping to compare against.
-
-        Returns:
-            bool: `True` if a differing value is found for any key present in both mappings, `False` otherwise.
-        """
-        # Check keys in local
-        for key, local_val in local.items():
-            if key not in global_:
-                continue  # Key only in local, not a conflict
-
-            global_val = global_[key]
-
-            if isinstance(local_val, dict) and isinstance(global_val, dict):
-                if self._configs_have_differences(local_val, global_val):
-                    return True
-            elif local_val != global_val:
-                return True
-
-        return False
-
-    def get_config_differences(self) -> Dict[str, tuple[Any, Any]]:
-        """
-        Produce a mapping of dot-separated paths to tuples containing the differing (local_value, global_value) for keys present in the workspace config.
-
-        Returns:
-            Dict[str, tuple[Any, Any]]: Mapping from dot-path (e.g., "section.subkey") to a tuple of (local_value, global_value). Returns an empty dict if either the local or global config is missing or if no differences exist.
-        """
-        if not self.has_local_config() or not self.has_global_config():
-            return {}
-
-        local_data = self._read_toml_file(self.workspace_path)
-        global_data = self._read_toml_file(self.global_path)
-
-        differences: Dict[str, tuple[Any, Any]] = {}
-        self._collect_differences(local_data, global_data, "", differences)
-        return differences
-
-    def _collect_differences(
-        self,
-        local: Dict[str, Any],
-        global_: Dict[str, Any],
-        prefix: str,
-        differences: Dict[str, tuple[Any, Any]],
-    ) -> None:
-        """
-        Recursively record paths where values differ between a local and global configuration.
-
-        Traverse keys present in `local` and, for any key also present in `global_`, record entries in `differences` when the corresponding values differ. Nested dictionaries are descended into; differences are recorded using dot-separated paths (e.g., "section.subkey") with the mapped value (local_value, global_value).
-
-        Parameters:
-            local (Dict[str, Any]): The local configuration subtree to inspect.
-            global_ (Dict[str, Any]): The global configuration subtree to compare against.
-            prefix (str): Dot-separated path prefix for the current recursion level; empty for the root.
-            differences (Dict[str, tuple[Any, Any]]): Mutable mapping that will be populated with path -> (local_value, global_value) for each detected difference.
-        """
-        for key, local_val in local.items():
-            path = f"{prefix}.{key}" if prefix else key
-
-            if key not in global_:
-                continue  # Only in local
-
-            global_val = global_[key]
-
-            if isinstance(local_val, dict) and isinstance(global_val, dict):
-                self._collect_differences(local_val, global_val, path, differences)
-            elif local_val != global_val:
-                differences[path] = (local_val, global_val)
 
     def _load_dotenv(self, env_path: Optional[Path] = None) -> None:
         """
@@ -344,9 +261,9 @@ class TomlStore:
         silently mangled by python-dotenv's default interpolation.
 
         Parameters:
-            env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the store's configured env_path.
+            env_path (Optional[Path]): Path to the .env file to load. If omitted, uses the global .env.
         """
-        path = env_path or self._env_path
+        path = env_path or self._global_env_path
         if not path.exists():
             return
 
@@ -354,175 +271,52 @@ class TomlStore:
         # `${...}` expansion from corrupting secrets (C4).
         load_dotenv(str(path), override=False, interpolate=False)
 
-    def _get_workspace_preference(self) -> Optional[StorageMode]:
-        """Read the stored ``[workspace] mode`` preference from the global config.
-
-        Duplicates ``WorkspaceManager.get_preference()`` rather than importing
-        it: ``workspace.py`` imports ``TomlStore``, so the reverse import
-        would be circular. Kept in lockstep with that method so the write-side
-        resolution below can never diverge from the read-side resolution
-        (``WorkspaceManager.resolve_storage_mode()``) that ``ConfigService``
-        uses for its baseline read (R1).
-        """
-        global_store = TomlStore(mode_override="global")
-        raw = global_store.read_for_mode("global")
-        workspace_config = get_by_path(raw, "workspace", default={}) or {}
-        mode = workspace_config.get("mode")
-        if mode in ("global", "local"):
-            return mode  # type: ignore[return-value]
-        return None
-
-    def _resolve_write_target(
-        self, *, to_global: bool = False, mode: Optional[StorageMode] = None
-    ) -> Path:
-        """
-        Determine which config.toml ``write()`` would target right now, without writing.
-
-        The destination is chosen as follows:
-        - If `to_global` is True, the global config.
-        - Else if `mode` is given, that exact resolved mode is used as-is
-          (lets a caller that already resolved its own mode — e.g.
-          ``ConfigService.set()``/``delete()`` — guarantee this matches the
-          mode it used for the corresponding baseline read).
-        - Else if the instance `mode_override` is "global", the global config.
-        - Else if `mode_override` is "local", the workspace config.
-        - Else if a workspace storage-mode preference is stored, that mode.
-        - Otherwise, the workspace config if it already exists, else the
-          global config (same auto-detection as StorageResolver.resolve_root).
-
-        Parameters:
-            to_global (bool): If True, force the global config; otherwise follow the mode override or auto-detect.
-            mode (Optional[StorageMode]): An already-resolved mode to use verbatim, bypassing the cascade below.
-
-        Returns:
-            Path: The config.toml path ``write()`` would target for this input.
-        """
-        if to_global:
-            return self.global_path
-        if mode is None:
-            # Follow the shared cascade (same as WorkspaceManager.resolve_storage_mode):
-            # override → workspace preference → local-config-present → global.
-            mode = resolve_storage_mode(
-                mode_override=self._mode_override,
-                workspace_preference=(
-                    None if self._mode_override else self._get_workspace_preference()
-                ),
-                workspace=self.workspace,
-            )
-        return self.workspace_path if mode == "local" else self.global_path
-
-    def resolved_config_path(self, *, mode: Optional[StorageMode] = None) -> Path:
-        """Return the config.toml path a plain ``write()`` would target right now.
+    def resolved_config_path(self) -> Path:
+        """Return the config.toml path ``write()`` targets — always the global one.
 
         Lets a caller snapshot/restore the exact file a subsequent ``set()``/
-        ``save_raw()`` will touch (foundation/6b review Finding 1) without
-        duplicating ``write()``'s target-selection logic.
-
-        Parameters:
-            mode (Optional[StorageMode]): An already-resolved mode to use verbatim (see ``_resolve_write_target``).
+        ``save_raw()`` will touch (foundation/6b review Finding 1).
         """
-        return self._resolve_write_target(mode=mode)
+        return self.global_path
 
-    def write(
-        self,
-        data: Mapping[str, Any],
-        *,
-        to_global: bool = False,
-        mode: Optional[StorageMode] = None,
-    ) -> None:
+    def write(self, data: Mapping[str, Any]) -> None:
         """
-        Write the given configuration mapping to the appropriate TOML config file (workspace or global).
-
-        The destination is chosen as described in ``_resolve_write_target()``.
+        Write the given configuration mapping to the global TOML config file.
 
         Parameters:
             data (Mapping[str, Any]): Configuration data to persist.
-            to_global (bool): If True, force writing to the global config; otherwise follow the mode override or default to the workspace.
-            mode (Optional[StorageMode]): An already-resolved mode to use verbatim (see ``_resolve_write_target``).
         """
-        target = self._resolve_write_target(to_global=to_global, mode=mode)
+        write_toml_atomic(self.global_path, data)
 
-        # Build output dict, stripping internal marker and ensuring _meta
-        out = dict(data)
-        out.pop("_schema_version", None)
-        if "_meta" not in out:
-            out["_meta"] = {"schema_version": CURRENT_SCHEMA_VERSION}
 
-        # B3: serialize BEFORE touching the target file, so an unserializable
-        # value (e.g. `None`) raises here and the existing file is never
-        # opened/truncated. Then write atomically (tmp -> fsync -> replace),
-        # mirroring the collections persister's tmp -> fsync -> os.replace
-        # pattern (disk_persister.py) instead of truncating in "w" mode.
-        serialized = tomlkit.dumps(out)
+def write_toml_atomic(target: Path, data: Mapping[str, Any]) -> None:
+    """Serialize ``data`` and replace ``target`` atomically.
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(target.suffix + ".tmp")
+    B3: serialize BEFORE touching the target file, so an unserializable value
+    (e.g. `None`) raises here and the existing file is never opened/truncated.
+    Then write atomically (tmp -> fsync -> replace), mirroring the collections
+    persister's tmp -> fsync -> os.replace pattern (disk_persister.py) instead
+    of truncating in "w" mode. Shared by ``config.toml`` and the workspace
+    profile so both get the same durability guarantee.
+    """
+    out = dict(data)
+    out.pop("_schema_version", None)
+    if "_meta" not in out:
+        out["_meta"] = {"schema_version": CURRENT_SCHEMA_VERSION}
+
+    serialized = tomlkit.dumps(out)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(serialized)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    except Exception:
         try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(serialized)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, target)
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
-
-    def write_to_global(self, data: Mapping[str, Any]) -> None:
-        """
-        Write the provided configuration mapping to the global TOML config file.
-
-        Parameters:
-            data (Mapping[str, Any]): Configuration data to persist; must be representable as TOML.
-        """
-        self.write(data, to_global=True)
-
-    def _env_to_mapping(self) -> Dict[str, Any]:
-        """
-        Convert environment variables with the `INDEXED__` prefix into a nested dictionary.
-
-        Only variables whose names start with `INDEXED__` are considered. The portion after the prefix is split on `__` to form a nested path; empty segments are ignored and all key segments are lowercased. Values are kept as strings.
-
-        Raises:
-            ValueError: If a variable's final path segment collides with an
-                existing nested dict built by another (order-earlier)
-                variable — e.g. ``INDEXED__A__B`` followed by ``INDEXED__A``
-                — which would otherwise silently drop the nested subtree
-                (R15). Mirrors the same guard already applied to intermediate
-                path segments below.
-
-        Returns:
-            mapping (Dict[str, Any]): Nested dictionary representing the matched environment variables, with lowercase keys and string values.
-        """
-        prefix = "INDEXED__"
-        out: Dict[str, Any] = {}
-        for k, v in os.environ.items():
-            if not k.startswith(prefix):
-                continue
-            parts = [p for p in k[len(prefix) :].split("__") if p]
-            if not parts:
-                continue
-            cur = out
-            for seg in parts[:-1]:
-                seg = seg.lower()
-                # Check for type conflict: if seg exists and is not a dict, raise error
-                if seg in cur and not isinstance(cur[seg], dict):
-                    raise ValueError(
-                        f"Environment variable conflict: '{k}' conflicts with existing scalar value at '{seg}'. "
-                        f"Cannot have both INDEXED__{seg.upper()}=value and INDEXED__{k[len(prefix) :]}"
-                    )
-                cur = cur.setdefault(seg, {})  # type: ignore[assignment]
-            last = parts[-1].lower()
-            # Guard the final assignment the same way: a scalar must not
-            # silently clobber a nested dict built by an earlier variable.
-            if last in cur and isinstance(cur[last], dict):
-                raise ValueError(
-                    f"Environment variable conflict: '{k}' would overwrite the "
-                    f"nested value at '{last}' with a scalar. Cannot have both "
-                    f"INDEXED__{k[len(prefix) :]} and a nested "
-                    f"INDEXED__{k[len(prefix) :]}__* variable."
-                )
-            cur[last] = v
-        return out
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise

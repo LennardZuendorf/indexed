@@ -1,7 +1,7 @@
 """System test: verify UI design consistency across CLI commands.
 
 Checks that all major commands use the shared design system components
-(phased progress, storage indicator, alert panels) consistently.
+(phased progress, alert panels) consistently.
 """
 
 import ast
@@ -26,9 +26,6 @@ _COMMAND_FILES = {
 
 # Commands that perform long-running operations and MUST use phased progress
 _PROGRESS_COMMANDS = ["init", "create", "search", "update", "remove"]
-
-# Commands that interact with storage and MUST show the storage mode indicator
-_STORAGE_INDICATOR_COMMANDS = ["init", "create", "search", "update", "remove"]
 
 # Commands that MUST use alert panels (print_success/print_error) for results
 _ALERT_COMMANDS = ["init", "create", "search", "update", "remove"]
@@ -78,13 +75,13 @@ class TestUIDesignConsistency:
             f"Use create_phased_progress() instead."
         )
 
-    @pytest.mark.parametrize("cmd_name", _STORAGE_INDICATOR_COMMANDS)
-    def test_commands_show_storage_mode_indicator(self, cmd_name):
-        """All storage-interacting commands must display the storage mode."""
+    @pytest.mark.parametrize("cmd_name", _PROGRESS_COMMANDS)
+    def test_commands_show_no_storage_mode_banner(self, cmd_name):
+        """workspace-profile/1 R1: the global/local banner is gone for good."""
         source = _read_source(_COMMAND_FILES[cmd_name])
-        assert "display_storage_mode_for_command" in source, (
-            f"{cmd_name} command must call display_storage_mode_for_command(console) "
-            f"to show which storage mode (global/local) is active"
+        assert "display_storage_mode_for_command" not in source, (
+            f"{cmd_name} command must not print a storage-mode banner — "
+            f"there is only one store now"
         )
 
     @pytest.mark.parametrize("cmd_name", _ALERT_COMMANDS)

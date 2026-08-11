@@ -619,12 +619,16 @@ class TestLifespan:
         assert result["mcp_config"] == mock_mcp_config
         assert result["search_config"] == mock_search_config
 
-    def test_lifespan_yields_despite_malformed_global_config(
+    def test_lifespan_context_uses_the_one_global_store(
         self, tmp_path, monkeypatch
     ) -> None:
-        """R2: a malformed global config.toml must not crash the lifespan —
-        ``resolve_collections_context()`` should degrade to a default
-        global-mode context instead of letting TOMLDecodeError escape."""
+        """workspace-profile/1 R1: no storage mode, no local root.
+
+        Path resolution no longer consults config.toml at all, so a malformed
+        one cannot divert where the server looks for collections. (Per-request
+        workspace/profile resolution — and its fail-closed behaviour — is
+        resolved in the request path, not pinned here.)
+        """
         from indexed.config import reload as reload_config
 
         fake_home = tmp_path / "home"
@@ -641,8 +645,9 @@ class TestLifespan:
 
         result = run_async(run_lifespan())
 
-        assert "cli_context" in result
-        assert result["cli_context"].mode == "global"
+        cli_context = result["cli_context"]
+        assert cli_context.collections_path == global_root / "data" / "collections"
+        assert not hasattr(cli_context, "mode")
 
 
 class TestContextHandling:

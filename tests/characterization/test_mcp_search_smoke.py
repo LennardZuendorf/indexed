@@ -45,7 +45,7 @@ def _no_response_cache():
 
 
 def test_mcp_search_tool_returns_seeded_hit(
-    local_workspace, files_corpus: Path, build_collection, _no_response_cache
+    isolated_workspace, files_corpus: Path, build_collection, _no_response_cache
 ) -> None:
     from unittest.mock import MagicMock
 
@@ -56,15 +56,13 @@ def test_mcp_search_tool_returns_seeded_hit(
     # Seed a real, searchable collection at the local workspace's path.
     connector = FileSystemConnector(path=str(files_corpus), include_patterns=["*.txt"])
     build_collection(
-        local_workspace.collections_dir,
+        isolated_workspace.collections_dir,
         COLLECTION,
         connector.reader,
         connector.converter,
     )
 
-    cli_ctx = resolve_collections_context(
-        mode_override="local", workspace=local_workspace.root
-    )
+    cli_ctx = resolve_collections_context(workspace=isolated_workspace.root)
 
     # A lifespan-shaped context passed straight to the tool fn (mirrors how
     # FastMCP injects it), so the tool searches the seeded collection.

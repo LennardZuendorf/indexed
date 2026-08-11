@@ -2,7 +2,7 @@
 
 The shared CLI `console` (`indexed.cli.utils.console.console`) has Rich
 markup parsing enabled — required for the app's own intentional style tags
-(`[dim]...[/dim]`, `[{style}]...[/{style}]` in cards/init/storage_info).
+(`[dim]...[/dim]`, `[{style}]...[/{style}]` in cards/init).
 User-controlled or content-derived strings (search query, collection name,
 config values, file paths, model names) must never reach a markup-parsed
 sink as a raw `str`: bracket characters (e.g. `list[int]`) are parsed as
@@ -229,19 +229,6 @@ class TestCardsTitleSafety:
         text = rec.export_text()
         assert "coll[ection]" in text
         assert "src[type]" in text
-
-
-class TestStorageInfoSafety:
-    """storage_info.py — storage path embedded in the dim-styled indicator."""
-
-    def test_storage_path_with_brackets_renders_literally(self, tmp_path):
-        from indexed.cli.utils.storage_info import print_storage_info
-
-        weird = tmp_path / "proj[ect]"
-        rec = RichConsole(record=True, force_terminal=True, width=100)
-        print_storage_info(rec, "global", weird)
-        text = rec.export_text()
-        assert "proj[ect]" in text
 
 
 class TestInitModelNameSafety:

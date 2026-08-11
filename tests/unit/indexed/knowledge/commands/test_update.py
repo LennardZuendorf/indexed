@@ -42,49 +42,32 @@ class TestFormatSourceType:
 
 
 class TestConfigExistedBefore:
-    """Test _config_existed_before function."""
+    """Test _config_existed_before function (workspace-profile/1, R1)."""
 
-    def test_config_existed_local_mode(self):
-        """Should check local config in local mode."""
+    def test_config_existed_checks_the_one_global_config(self):
+        """Should report on ~/.indexed/config.toml only."""
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "local"
-        mock_config.store.has_local_config.return_value = True
-
-        result = _config_existed_before(mock_config)
-        assert result is True
-        mock_config.store.has_local_config.assert_called_once()
-
-    def test_config_existed_global_mode(self):
-        """Should check global config in global mode."""
-        mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
 
-        result = _config_existed_before(mock_config)
-        assert result is True
+        assert _config_existed_before(mock_config) is True
         mock_config.store.has_global_config.assert_called_once()
+
+    def test_config_missing_is_reported(self):
+        mock_config = Mock()
+        mock_config.store.has_global_config.return_value = False
+
+        assert _config_existed_before(mock_config) is False
 
 
 class TestGetConfigPath:
-    """Test _get_config_path function."""
+    """Test _get_config_path function (workspace-profile/1, R1)."""
 
-    def test_get_config_path_local_mode(self):
-        """Should return workspace path in local mode."""
+    def test_get_config_path_is_always_the_global_path(self):
+        """Should return the global path — there is no other target."""
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "local"
-        mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
-
-        result = _get_config_path(mock_config)
-        assert result == "/workspace/.indexed/config.toml"
-
-    def test_get_config_path_global_mode(self):
-        """Should return global path in global mode."""
-        mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.global_path = "~/.indexed/config.toml"
 
-        result = _get_config_path(mock_config)
-        assert result == "~/.indexed/config.toml"
+        assert _get_config_path(mock_config) == "~/.indexed/config.toml"
 
 
 class TestFormatUpdateComparison:
@@ -167,7 +150,6 @@ class TestUpdateCommand:
         # Setup mocks
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "local"
         mock_config.store.has_local_config.return_value = True
         mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
         mock_config_service.instance.return_value = mock_config
@@ -221,7 +203,6 @@ class TestUpdateCommand:
         """Should update all collections when no collection name provided."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "local"
         mock_config.store.has_local_config.return_value = True
         mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
         mock_config_service.instance.return_value = mock_config
@@ -351,7 +332,6 @@ class TestUpdateCommand:
         # Should exit with error
         assert result.exit_code == 1
 
-    @patch("indexed.cli.utils.storage_info.display_storage_mode_for_command")
     @patch("indexed.cli.composition.resolve_collections_context")
     @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
     @patch("indexed.cli.knowledge.commands.update.ConfigService")
@@ -372,7 +352,6 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
         mock_resolve_context,
-        mock_storage_display,
     ):
         """Should ensure credentials are available for the source."""
         mock_verbose.return_value = False
@@ -415,7 +394,6 @@ class TestUpdateCommand:
         """When no collections exist, update all should print message and return."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -488,7 +466,6 @@ class TestUpdateCommand:
         silent exit-0 success)."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -584,7 +561,6 @@ class TestUpdateCommand:
         """In verbose mode the NoOpContext path should be taken."""
         mock_verbose.return_value = True
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -636,7 +612,6 @@ class TestUpdateCommand:
         """In verbose mode an exception from update_service should exit 1."""
         mock_verbose.return_value = True
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -686,7 +661,6 @@ class TestUpdateCommand:
         """In normal mode an exception from update_service should exit 1."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -716,7 +690,6 @@ class TestUpdateCommand:
 
         assert result.exit_code == 1
 
-    @patch("indexed.cli.utils.storage_info.display_storage_mode_for_command")
     @patch("indexed.cli.composition.resolve_collections_context")
     @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
     @patch("indexed.cli.knowledge.commands.update.ConfigService")
@@ -739,12 +712,10 @@ class TestUpdateCommand:
         mock_config_service,
         mock_setup_logger,
         mock_resolve_context,
-        mock_storage_display,
     ):
         """If config is newly created during update, print_info is called with notice."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.global_path = "~/.indexed/config.toml"
         # Config did NOT exist before, but DOES exist after
         mock_config.store.has_global_config.side_effect = [False, True]
@@ -799,7 +770,6 @@ class TestUpdateCommand:
         """If post-update inspect fails, command succeeds without comparison card."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -850,7 +820,6 @@ class TestUpdateCommand:
         """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -911,7 +880,6 @@ class TestUpdateCommand:
         """Single collection update: comparison card shown, no result summary line."""
         mock_verbose.return_value = False
         mock_config = Mock()
-        mock_config.resolve_storage_mode.return_value = "global"
         mock_config.store.has_global_config.return_value = True
         mock_config_service.instance.return_value = mock_config
 
@@ -957,10 +925,6 @@ class TestUpdateMarkupSafety:
     this file, ``console`` is deliberately left unmocked so the real Rich
     renderer exercises the markup-parsed sink."""
 
-    @patch(
-        "indexed.cli.utils.storage_info.display_storage_mode_for_command",
-        lambda *a, **kw: None,
-    )
     @patch(
         "indexed.cli.composition.resolve_collections_context",
         side_effect=lambda *a, **kw: make_cli_context(),
@@ -1010,10 +974,6 @@ class TestUpdateMarkupSafety:
         # would pass even with this header sink unfixed.
         assert 'Updating Collection "my[coll]"' in result.stdout
 
-    @patch(
-        "indexed.cli.utils.storage_info.display_storage_mode_for_command",
-        lambda *a, **kw: None,
-    )
     @patch(
         "indexed.cli.composition.resolve_collections_context",
         side_effect=lambda *a, **kw: make_cli_context(),

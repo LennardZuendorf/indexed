@@ -20,11 +20,13 @@ class RequiredSpec(BaseModel):
 
 
 @pytest.fixture
-def temp_workspace():
+def temp_workspace(monkeypatch):
     """
-    Create a temporary directory and set it as the current working directory for the fixture's scope.
+    Create a temporary directory, chdir into it, and root the ONE global store there.
 
-    The directory is removed and the original working directory is restored when the fixture finishes.
+    With local storage gone (workspace-profile/1, R1), isolation comes from
+    redirecting ``Path.home()`` into the temp dir so writes land in
+    ``<tmp>/.indexed/config.toml`` rather than the developer's real home.
 
     Returns:
         Path: Path object pointing to the temporary workspace directory for the test.
@@ -32,6 +34,7 @@ def temp_workspace():
     with tempfile.TemporaryDirectory() as tmpdir:
         original_cwd = os.getcwd()
         os.chdir(tmpdir)
+        monkeypatch.setattr(Path, "home", lambda: Path(tmpdir))
         try:
             yield Path(tmpdir)
         finally:
@@ -91,7 +94,7 @@ def test_delete_operation(config_service):
 def test_config_file_creation(temp_workspace):
     """Test that config file is created in correct location."""
     reload()
-    svc = get_config(workspace=temp_workspace, mode_override="local")
+    svc = get_config(workspace=temp_workspace)
     svc.set("test.setting", "value")
 
     config_file = temp_workspace / ".indexed" / "config.toml"
@@ -177,7 +180,7 @@ def test_set_does_not_bake_env_override_into_disk(temp_workspace):
     """C2: an unrelated set() must not persist an INDEXED__*-supplied value —
     env overrides stay an in-memory overlay, never written to config.toml."""
     reload()
-    svc = get_config(workspace=temp_workspace, mode_override="local")
+    svc = get_config(workspace=temp_workspace)
 
     os.environ["INDEXED__sources__jira__api_token"] = "envsecretXYZ"
     try:

@@ -10,6 +10,7 @@ from typing import Any
 
 from rich.markup import escape
 
+from indexed.config.workspace import resolve_scope
 from indexed.cli.utils.console import console
 from indexed.cli.utils.components import (
     create_key_value_panel,
@@ -90,8 +91,8 @@ def render_config_overview(
                 manual_keys += 1
                 manual_sections.add(section_name)
 
-    # Get workspace config separately
-    workspace_config = config.get_workspace_config()
+    # Workspace profile in force for this invocation (workspace-profile/1, R2).
+    scope = resolve_scope(None)
 
     def should_show_key(section: str, key: str, is_default: bool) -> bool:
         """Decide whether a configuration key should be displayed."""
@@ -175,19 +176,14 @@ def render_config_overview(
             console.print()
 
     # Display Workspace panel (if no filter)
-    if workspace_config and not section_filter:
-        ws_rows: list[tuple[str, str]] = []
-        ws_rows.append(("mode", workspace_config.get("mode", "")))
-
-        local_path = workspace_config.get("local_path", "")
-        if len(local_path) > 45:
-            local_path = "..." + local_path[-42:]
-        ws_rows.append(("local_path", local_path))
-
-        global_path = workspace_config.get("global_path", "~/.indexed")
-        if len(global_path) > 45:
-            global_path = "..." + global_path[-42:]
-        ws_rows.append(("global_path", global_path))
+    if scope.profile_path is not None and not section_filter:
+        profile_display = str(scope.profile_path)
+        if len(profile_display) > 45:
+            profile_display = "..." + profile_display[-42:]
+        ws_rows: list[tuple[str, str]] = [
+            ("profile", profile_display),
+            ("collections", ", ".join(scope.collection_ids or []) or "(none)"),
+        ]
 
         panel = create_simple_key_value_panel(
             "Workspace",
@@ -234,7 +230,7 @@ def render_config_overview(
 
     # Summary with manual vs default statistics
     total_keys = manual_keys + default_keys
-    if total_keys == 0 and not workspace_config:
+    if total_keys == 0 and scope.profile_path is None:
         console.print(f"[{get_dim_style()}]No configuration found[/{get_dim_style()}]")
         console.print()
         return
@@ -249,11 +245,12 @@ def render_config_overview(
             f"[{heading}]Overall:[/{heading}] [{get_accent_style()}]{manual_keys}[/{get_accent_style()}] keys "
             f"set manually for [{get_accent_style()}]{section_list}[/{get_accent_style()}]."
         )
-    elif workspace_config:
-        mode = workspace_config.get("mode", "unknown")
+    elif scope.profile_path is not None:
+        count = len(scope.collection_ids or [])
         heading = get_heading_style()
         console.print(
-            f"[{heading}]Overall:[/{heading}] Workspace configured in [{get_accent_style()}]{mode}[/{get_accent_style()}] mode"
+            f"[{heading}]Overall:[/{heading}] Workspace profile scopes "
+            f"[{get_accent_style()}]{count}[/{get_accent_style()}] collections"
         )
     else:
         heading = get_heading_style()

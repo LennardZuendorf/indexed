@@ -13,7 +13,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from indexed.core.v1.engine import SourceConfig
 
-from indexed.config import ConfigService, StorageMode, ValidationResult
+from indexed.config import ConfigService, ValidationResult
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -110,7 +110,6 @@ def execute_create_command(
     progress_message: Optional[str] = None,
     verbose_pre_creation_log: Optional[Callable[[Dict[str, Any]], None]] = None,
     pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
-    local: bool = False,
     source_path_key: Optional[str] = None,
 ) -> None:
     """Common execution flow for all create commands.
@@ -140,7 +139,6 @@ def execute_create_command(
         force: Force overwrite existing collection
         progress_message: Optional custom progress message (defaults to "Creating {collection}")
         verbose_pre_creation_log: Optional callback to log connector-specific info before creation (in verbose mode)
-        local: If True, save the collection to .indexed/data/ in the current directory instead of ~/.indexed/data/
     """
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
@@ -148,21 +146,9 @@ def execute_create_command(
 
     import typer
 
-    mode_override: Optional[StorageMode] = None
-    try:
-        import click
-
-        ctx = click.get_current_context(silent=True)
-        if ctx and ctx.obj:
-            mode_override = ctx.obj.get("mode_override")
-    except Exception:
-        pass
-    if local:
-        mode_override = "local"
-
     from indexed.cli.composition import resolve_collections_context
 
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context()
     config = cli_ctx.config_service
     collections_path = str(cli_ctx.collections_path)
     caches_path = str(cli_ctx.caches_path)
@@ -183,11 +169,6 @@ def execute_create_command(
         # override from a prior (possibly failed) create in the same process
         # can never leak into this one (foundation/6b bug E4).
         config.clear_overlay()
-
-        if local or mode_override == "local":
-            from indexed.config import ensure_storage_dirs, get_local_root
-
-            ensure_storage_dirs(get_local_root(config.workspace), is_local=True)
 
         if is_verbose_mode():
             logger.info("Starting %s collection creation...", source_type)

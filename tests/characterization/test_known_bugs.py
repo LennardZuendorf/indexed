@@ -59,7 +59,7 @@ FIX_F = "fixed in foundation/6"
 
 def _local(*args: str, **kwargs):
     """Invoke the CLI in local mode with a quiet base flag set."""
-    return runner.invoke(app, ["--local", "--log-level", "ERROR", *args], **kwargs)
+    return runner.invoke(app, ["--log-level", "ERROR", *args], **kwargs)
 
 
 def _create_files_collection(name: str, corpus: Path) -> None:
@@ -71,7 +71,6 @@ def _create_files_collection(name: str, corpus: Path) -> None:
         name,
         "--path",
         str(corpus),
-        "--local",
         "--no-cache",
     )
     assert result.exit_code == 0, result.stdout + (result.stderr or "")
@@ -207,12 +206,12 @@ def test_bug_a4_embedder_distinguishes_beyond_model_window() -> None:
 
 @needs_model
 def test_bug_a5_topk_starvation_returns_all_matching_docs(
-    local_workspace, tmp_path: Path
+    isolated_workspace, tmp_path: Path
 ) -> None:
     """A5: when one large many-chunk document and three smaller documents all
     match a query, ``max_docs>=4`` must return all four distinct documents (the
     large doc's chunks fill the fixed neighbour pool today → other docs starve)."""
-    ws = local_workspace
+    ws = isolated_workspace
     query = "kubernetes horizontal pod autoscaler scales pods on cpu metrics"
     corpus = ws.root / "k8s"
     corpus.mkdir()
@@ -260,13 +259,13 @@ def test_bug_a6_score_threshold_accepts_real_l2_range() -> None:
 
 @needs_model
 def test_bug_b1_deletions_only_update_persists_faiss(
-    local_workspace,
+    isolated_workspace,
 ) -> None:
     """B1: after a deletions-only update, a reloaded collection must search
     cleanly with the deleted content gone (today the FAISS file is never
     re-saved, so a query whose neighbours hit the orphan vector raises
     ``KeyError`` → the whole collection errors permanently)."""
-    ws = local_workspace
+    ws = isolated_workspace
     corpus = ws.root / "corpus"
     corpus.mkdir()
     (corpus / "keep1.txt").write_text(
@@ -320,12 +319,12 @@ def test_bug_b2_zero_chunk_batch_does_not_crash_indexer() -> None:
     assert indexer.get_size() == 0
 
 
-def test_bug_b3_config_set_null_preserves_file(local_workspace) -> None:
+def test_bug_b3_config_set_null_preserves_file(isolated_workspace) -> None:
     """B3: a ``config set`` with an unserializable value (``null`` → ``None``)
     must leave ``config.toml`` byte-identical (today ``TomlStore.write`` truncates
     the file in ``"w"`` mode, then ``tomlkit.dump`` raises → file lost)."""
-    ws = local_workspace
-    config_toml = ws.local_root / "config.toml"
+    ws = isolated_workspace
+    config_toml = ws.global_root / "config.toml"
 
     seeded = _local("config", "set", "core.v1.indexing.chunk_size", "512")
     assert seeded.exit_code == 0, seeded.stdout
@@ -389,13 +388,13 @@ def test_bug_b4_failed_create_preserves_existing_collection(tmp_path: Path) -> N
 
 
 def test_bug_c1_config_set_secret_never_hits_toml_or_stdout(
-    local_workspace,
+    isolated_workspace,
 ) -> None:
     """C1: setting a secret must route to ``.env`` and be masked — never written
     to ``config.toml`` in cleartext nor echoed in the summary card
     (``_is_sensitive_key`` is defined but applied on none of these paths today)."""
-    ws = local_workspace
-    config_toml = ws.local_root / "config.toml"
+    ws = isolated_workspace
+    config_toml = ws.global_root / "config.toml"
 
     result = _local("config", "set", "sources.jira.api_token", "supersecret123")
 
@@ -406,16 +405,18 @@ def test_bug_c1_config_set_secret_never_hits_toml_or_stdout(
     )
 
 
-def test_bug_c2_env_secret_not_baked_into_config(local_workspace, monkeypatch) -> None:
+def test_bug_c2_env_secret_not_baked_into_config(
+    isolated_workspace, monkeypatch
+) -> None:
     """C2: an ``INDEXED__*`` env-supplied secret must stay an in-memory overlay —
     an unrelated ``config set`` must not round-trip it into ``config.toml`` (today
     ``save_raw`` persists the env-merged dict)."""
-    ws = local_workspace
+    ws = isolated_workspace
     monkeypatch.setenv("INDEXED__SOURCES__JIRA__API_TOKEN", "envsecretXYZ")
 
     _local("config", "set", "core.v1.indexing.chunk_size", "256")
 
-    config_toml = ws.local_root / "config.toml"
+    config_toml = ws.global_root / "config.toml"
     toml_text = config_toml.read_text() if config_toml.exists() else ""
     assert "envsecretXYZ" not in toml_text, (
         "env-supplied secret must not be persisted into config.toml"
@@ -624,7 +625,7 @@ def test_bug_d4_confluence_image_filename_extracted() -> None:
 # ===========================================================================
 
 
-def test_bug_e1_missing_collection_fails_cleanly(local_workspace) -> None:
+def test_bug_e1_missing_collection_fails_cleanly(isolated_workspace) -> None:
     """E1: a missing collection must produce a clean non-zero exit — never a raw
     ``IndexError`` traceback for ``search -c`` and never exit 0 for ``update``
     (the zero-filled placeholder status defeats every guard today)."""
@@ -672,13 +673,13 @@ def test_bug_e2_rich_markup_injection_does_not_crash() -> None:
     )
 
 
-def test_bug_e3_verbose_flag_is_honored(local_workspace) -> None:
+def test_bug_e3_verbose_flag_is_honored(isolated_workspace) -> None:
     """E3: ``--verbose`` must actually raise the effective log level (each command
     calls ``setup_root_logger(None)`` → ``bootstrap_logging("WARNING")`` today,
     clobbering the callback's resolved level back to WARNING)."""
     from indexed.cli.utils.logging import get_current_log_level
 
-    runner.invoke(app, ["--verbose", "--local", "search", "hello"])
+    runner.invoke(app, ["--verbose", "search", "hello"])
 
     assert get_current_log_level() in ("INFO", "DEBUG"), (
         f"--verbose must leave the log level at INFO/DEBUG, "
@@ -686,11 +687,11 @@ def test_bug_e3_verbose_flag_is_honored(local_workspace) -> None:
     )
 
 
-def test_bug_e4_failed_create_does_not_persist_overrides(local_workspace) -> None:
+def test_bug_e4_failed_create_does_not_persist_overrides(isolated_workspace) -> None:
     """E4: a failed ``create`` must not persist its CLI overrides to
     ``config.toml`` (the bad path is written before creation is attempted today →
     a later create silently reuses it)."""
-    ws = local_workspace
+    ws = isolated_workspace
 
     result = _local(
         "create",
@@ -699,19 +700,18 @@ def test_bug_e4_failed_create_does_not_persist_overrides(local_workspace) -> Non
         "e4",
         "--path",
         "/nonexistent-bad-path-xyz",
-        "--local",
         "--no-cache",
     )
     assert result.exit_code != 0
 
-    config_toml = ws.local_root / "config.toml"
+    config_toml = ws.global_root / "config.toml"
     toml_text = config_toml.read_text() if config_toml.exists() else ""
     assert "/nonexistent-bad-path-xyz" not in toml_text, (
         "a failed create must not leave its path override in config.toml"
     )
 
 
-def test_bug_e5_empty_files_path_is_rejected(local_workspace) -> None:
+def test_bug_e5_empty_files_path_is_rejected(isolated_workspace) -> None:
     """E5: pressing Enter at the files-path prompt must be rejected, not accepted
     as ``""`` (which equals ``Path(".")`` and indexes the whole CWD today)."""
     result = _local("create", "files", "--collection", "e5", input="\n")
@@ -750,11 +750,13 @@ def test_bug_e7_files_path_stored_normalized() -> None:
 
 
 @needs_model
-def test_bug_e8_update_all_continues_past_failure(local_workspace, monkeypatch) -> None:
+def test_bug_e8_update_all_continues_past_failure(
+    isolated_workspace, monkeypatch
+) -> None:
     """E8: ``update`` (all) must attempt every collection even when one fails
     (today it ``break``s the loop on the first failure → later collections stay
     stale and unlisted)."""
-    ws = local_workspace
+    ws = isolated_workspace
     for name in ("cola", "colb"):
         corpus = ws.root / name
         corpus.mkdir()
@@ -811,14 +813,14 @@ def test_bug_e10_mcp_surfaces_per_collection_failure() -> None:
     )
 
 
-def test_bug_e11_missing_collection_not_reported_healthy(local_workspace) -> None:
+def test_bug_e11_missing_collection_not_reported_healthy(isolated_workspace) -> None:
     """E11: a nonexistent collection must not be reported as a zero-filled healthy
     status (the placeholder returned by ``InspectService.status`` makes MCP show a
     missing collection as an empty-but-healthy record today)."""
     from indexed.core.v1.engine.services.inspect_service import InspectService
 
     statuses = InspectService(
-        collections_path=str(local_workspace.collections_dir)
+        collections_path=str(isolated_workspace.collections_dir)
     ).status(["missing-xyz"])
 
     assert statuses == [], (
@@ -828,10 +830,10 @@ def test_bug_e11_missing_collection_not_reported_healthy(local_workspace) -> Non
 
 
 @needs_model
-def test_bug_e12_cli_search_honors_config_max_docs(local_workspace) -> None:
+def test_bug_e12_cli_search_honors_config_max_docs(isolated_workspace) -> None:
     """E12: the CLI ``search`` must honor ``[core.v1.search] max_docs`` so CLI and
     MCP agree (the CLI ignores the section entirely today, using only ``--limit``)."""
-    ws = local_workspace
+    ws = isolated_workspace
     corpus = ws.root / "docs"
     corpus.mkdir()
     for i in range(8):
@@ -866,11 +868,11 @@ def test_bug_e12_cli_search_honors_config_max_docs(local_workspace) -> None:
 
 
 @needs_model
-def test_bug_f1_index_size_is_bytes_not_vector_count(local_workspace) -> None:
+def test_bug_f1_index_size_is_bytes_not_vector_count(isolated_workspace) -> None:
     """F1: ``inspect`` must report a real index byte size, not the vector count
     formatted as bytes (``get_size()`` returns ``ntotal`` today → "100 B" for 100
     vectors)."""
-    ws = local_workspace
+    ws = isolated_workspace
     corpus = ws.root / "corpus"
     corpus.mkdir()
     (corpus / "a.txt").write_text(
@@ -894,10 +896,10 @@ def test_bug_f1_index_size_is_bytes_not_vector_count(local_workspace) -> None:
 
 
 @needs_model
-def test_bug_f2_created_time_is_populated(local_workspace) -> None:
+def test_bug_f2_created_time_is_populated(isolated_workspace) -> None:
     """F2: a freshly created collection must report a ``createdTime`` (the
     manifest writer never sets the key → ``created_time`` is always ``None``)."""
-    ws = local_workspace
+    ws = isolated_workspace
     corpus = ws.root / "corpus"
     corpus.mkdir()
     (corpus / "a.txt").write_text("Notes about deployment pipelines and manifests.\n")
@@ -913,11 +915,11 @@ def test_bug_f2_created_time_is_populated(local_workspace) -> None:
 
 
 @needs_model
-def test_bug_f3_avg_doc_size_excludes_index(local_workspace) -> None:
+def test_bug_f3_avg_doc_size_excludes_index(isolated_workspace) -> None:
     """F3: ``avg_doc_size`` must be computed from document bytes only — today it is
     ``disk_size / n_docs``, which includes the FAISS index, so ``avg * n`` equals
     the whole on-disk size instead of being a strict fraction of it."""
-    ws = local_workspace
+    ws = isolated_workspace
     corpus = ws.root / "corpus"
     corpus.mkdir()
     (corpus / "a.txt").write_text(
