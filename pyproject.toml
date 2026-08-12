@@ -26,44 +26,52 @@ classifiers = [
     "License :: Other/Proprietary License"
 ]
 requires-python = ">=3.11"
+# Floors track the versions the suite actually runs against (see uv.lock), so a
+# fresh resolve can't silently drop to an untested — or known-vulnerable —
+# release. `mcp` in particular must stay >=1.28.1: earlier versions carry three
+# HIGH advisories (GHSA-jpw9-pfvf-9f58, GHSA-hvrp-rf83-w775, GHSA-vj7q-gjh5-988w).
 dependencies = [
     # CLI / MCP
-    "typer>=0.12.3",
-    "rich>=13.7.0",
-    "mcp>=1.13.0",
-    "fastmcp>=3.2.4,<4",
-    "art>=6.0",
+    "typer>=0.26.8",
+    "rich>=15.0.0",
+    # Upper bound is deliberate: mcp 2.0 renames FastMCP -> MCPServer, swaps
+    # httpx for httpx2 (colliding with our own httpx dep) and drops
+    # streamablehttp_client. Today only fastmcp's transitive `mcp<2.0` pin keeps
+    # 2.x out; state the guard here rather than inherit it by accident.
+    "mcp>=1.29.0,<2",
+    "fastmcp>=3.4.7,<4",
+    "art>=6.5",
     # config
-    "pydantic>=2.5.0",
-    "python-dotenv>=1.0.0",
-    "tomlkit>=0.12.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "tomlkit>=0.15.1",
     # utils
-    "loguru>=0.7.0",
+    "loguru>=0.7.3",
     # core (engine / embeddings / faiss)
-    "faiss-cpu>=1.11.0",
-    "sentence-transformers>=5.2.0",
-    "onnxruntime>=1.17.0",
-    "orjson>=3.10.0",
+    "faiss-cpu>=1.15.0",
+    "sentence-transformers>=5.7.0",
+    "onnxruntime>=1.28.0",
+    "orjson>=3.11.9",
     # connectors
-    "requests>=2.32.0",
-    "httpx>=0.27",
+    "requests>=2.34.2",
+    "httpx>=0.28.1",
     "bs4>=0.0.2",
-    "langchain-text-splitters>=0.3.0",
-    "atlassian-python-api>=3.41.16",
-    "pathspec>=0.12",
-    "xxhash>=3.0",
+    "langchain-text-splitters>=1.1.2",
+    "atlassian-python-api>=4.0.7",
+    "pathspec>=1.1.1",
+    "xxhash>=4.0.0",
     # parsing (docling + tree-sitter)
-    "docling>=2.70.0",
-    "docling-core[chunking]>=2.8.0",
-    "tree-sitter>=0.23",
-    "tree-sitter-python>=0.23",
-    "tree-sitter-javascript>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "tree-sitter-java>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-go>=0.23",
-    "tree-sitter-c>=0.23",
-    "tree-sitter-cpp>=0.23",
+    "docling>=2.119.0",
+    "docling-core[chunking]>=2.91.0",
+    "tree-sitter>=0.26.0",
+    "tree-sitter-python>=0.25.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
+    "tree-sitter-java>=0.23.5",
+    "tree-sitter-rust>=0.24.2",
+    "tree-sitter-go>=0.25.0",
+    "tree-sitter-c>=0.24.2",
+    "tree-sitter-cpp>=0.23.4",
 ]
 
 [project.urls]
@@ -87,21 +95,58 @@ only-include = ["src/indexed"]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.2.0",
-    "pytest>=8.4.1",
-    "pytest-benchmark>=4.0.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.14.1",
-    "pytest-httpserver>=1.0.0",
-    "pytest-xdist>=3.5.0",
-    "pytest-rerunfailures>=12.0",
-    "ruff>=0.12.10",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-benchmark>=5.2.3",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "pytest-httpserver>=1.1.5",
+    "pytest-xdist>=3.8.0",
+    "pytest-rerunfailures>=16.4",
+    "ruff>=0.16.2",
     "ty==0.0.58",
     "types-requests>=2.33.0.20260712",
 ]
 
+# ── uv ──────────────────────────────────────────────────────────────────────
+# Minimum versions for transitive dependencies that carry security advisories.
+# These are not imported directly, so they get no entry in [project.dependencies];
+# constraints pin the resolution floor without turning them into direct deps.
+# Each line is a fixed-in version from a confirmed advisory (pip-audit / OSV):
+#   pillow       12.3.0  13 advisories incl. GHSA-6r8x-57c9-28j4 (heap OOB),
+#                        GHSA-jjj6-mw9f-p565 (PDF decompression bomb)
+#   cryptography 50.0.0  GHSA-g6cj-pr64-35w5 — PKCS#7 Bleichenbacher oracle
+#   soupsieve     2.8.4  GHSA-2wc2-fm75-p42x, GHSA-836r-79rf-4m37 — ReDoS / OOM
+#   click         8.3.3  GHSA-47fr-3ffg-hgmw — click.edit() command injection
+#   setuptools   83.0.0  GHSA-h35f-9h28-mq5c
+#   torch         2.13.0 GHSA-rrmf-rvhw-rf47 — torch.jit.script
+[tool.uv]
+constraint-dependencies = [
+    "pillow>=12.3.0",
+    "cryptography>=50.0.0",
+    "soupsieve>=2.8.4",
+    "click>=8.3.3",
+    "setuptools>=83.0.0",
+    "torch>=2.13.0",
+]
+
 # ── Ruff ────────────────────────────────────────────────────────────────────
 [tool.ruff]
+
+[tool.ruff.lint]
+# Pin the rule set explicitly instead of riding ruff's implicit defaults. Ruff
+# 0.16 widened those defaults far beyond the pyflakes/pycodestyle core this repo
+# was written against (~1000 new findings across UP/I/BLE/SIM/RUF), so an empty
+# config silently changes the lint contract on every ruff bump. These four are
+# exactly what ruff <=0.15 enabled by default; widening the set is a deliberate
+# cleanup, not a side effect of a dependency update.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+# Ruff 0.16 formats Python blocks inside Markdown by default, which pulls the
+# docs and the .spec/ sources (including the write-invariant-protected
+# lessons.md) into every `ruff format` run. Keep the formatter on Python only.
+exclude = ["*.md"]
 
 [tool.ruff.lint.per-file-ignores]
 # Connector reader files that use lambdas for tqdm callbacks
@@ -118,6 +163,10 @@ markers = [
     "slow: marks tests as slow",
     "unit: marks unit tests",
     "unit_api: marks unit API tests",
+    # Used by tests/unit/indexed/connectors/outline/test_readers.py. pytest
+    # <=9.0 only warned about this unregistered marker despite --strict-markers;
+    # 9.1 promotes it to a collection error, which is what surfaced it.
+    "api: marks tests exercising a connector API surface",
     "benchmark: marks benchmark tests",
     "connectors: marks connector functionality tests",
     "integration: marks integration tests",

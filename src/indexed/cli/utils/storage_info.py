@@ -23,6 +23,36 @@ logger = logging.getLogger(__name__)
 StorageMode = Literal["global", "local"]
 
 
+def get_context_mode_override() -> Optional[StorageMode]:
+    """Read ``mode_override`` off the active Typer/Click context.
+
+    Typer >=0.26 vendors Click as ``typer._click`` and no longer drives the
+    top-level ``click`` package, so ``click.get_current_context()`` returns
+    ``None`` inside a Typer command even though a context is active — silently
+    losing the ``--local`` override. Read from the vendored context first and
+    fall back to stdlib Click for older Typer.
+
+    Returns:
+        Optional[StorageMode]: The override set by the root callback, or
+        ``None`` when there is no active context or no override.
+    """
+    for module, attr in (
+        ("typer._click.globals", "get_current_context"),
+        ("click", "get_current_context"),
+    ):
+        try:
+            import importlib
+
+            get_current_context = getattr(importlib.import_module(module), attr)
+            ctx = get_current_context(silent=True)
+        except Exception:
+            logger.debug("Could not read context via %s", module, exc_info=True)
+            continue
+        if ctx is not None and ctx.obj:
+            return ctx.obj.get("mode_override")
+    return None
+
+
 def get_storage_indicator(
     mode: StorageMode,
     path: Path,
@@ -133,15 +163,7 @@ def display_storage_mode_for_command(console: Console) -> None:
 
     from indexed.cli.composition import resolve_collections_context
 
-    mode_override: Optional[StorageMode] = None
-    try:
-        import click
-
-        ctx = click.get_current_context(silent=True)
-        if ctx and ctx.obj:
-            mode_override = ctx.obj.get("mode_override")
-    except Exception:
-        logger.debug("Failed to get mode override from Typer context", exc_info=True)
+    mode_override = get_context_mode_override()
 
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     config_service = cli_ctx.config_service

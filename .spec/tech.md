@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-12
+updated: 2026-08-12
 ---
 
 # Tech Spec: indexed
@@ -85,14 +85,14 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **uv** | 0.5+ | Package manager |
 | **FAISS** | latest | Vector similarity search |
 | **sentence-transformers** | latest | Embedding generation |
-| **Typer** | 0.15.1 | CLI framework |
-| **Rich** | 13.0+ | Terminal UI |
+| **Typer** | 0.26+ | CLI framework |
+| **Rich** | 15.0+ | Terminal UI |
 | **FastMCP** | latest | MCP server |
-| **Pydantic** | 2.10+ | Validation |
+| **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.9.1 | Linter + formatter |
+| **ruff** | 0.16.2 | Linter + formatter |
 | **ty** | 0.0.58 | Type checker |
-| **pytest** | 8.3.4 | Testing |
+| **pytest** | 9.1+ | Testing |
 
 ### Package Structure
 
