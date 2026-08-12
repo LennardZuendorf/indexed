@@ -39,7 +39,9 @@ def _search_ids(collections_dir: Path, collection: str, query: str) -> list[str]
 
 
 @pytest.mark.parametrize("source_name", SOURCES)
-def test_cloud_lifecycle(source_name: str, request, local_workspace, build_collection):
+def test_cloud_lifecycle(
+    source_name: str, request, isolated_workspace, build_collection
+):
     # Warm the engine through the services package first: this is the import
     # entry that resolves the current cold-import cycle (importing the factories
     # or the creator directly fails cold — see .spec/lessons.md).
@@ -51,7 +53,7 @@ def test_cloud_lifecycle(source_name: str, request, local_workspace, build_colle
     from indexed.core.v1.engine.services.inspect_service import InspectService
 
     src = request.getfixturevalue(source_name)
-    collections_dir = local_workspace.collections_dir
+    collections_dir = isolated_workspace.collections_dir
     collection = f"{src.reader_type}-net"
 
     # --- create ----------------------------------------------------------

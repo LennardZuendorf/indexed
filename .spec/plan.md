@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-12
+updated: 2026-08-11
 ---
 
 # Development Plan: indexed
@@ -42,6 +42,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
 | 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ◻ ACTIVE | [features/review-remediation/](features/review-remediation/plan.md) |
+| 16 | Workspace profile (storage collapse) | one global store + committable `indexed.config.toml` filter/overrides; `--local` removed; per-request MCP workspace handover — R1–R7 green | ◑ IN PROGRESS | `.spec/features/workspace-profile/` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)

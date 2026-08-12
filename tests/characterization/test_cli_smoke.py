@@ -71,12 +71,16 @@ def _build_searchable_collection(
 
 @pytest.fixture
 def smoke_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.chdir(tmp_path)
-    from indexed.config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_global_root, reload
 
-    local_root = get_local_root(tmp_path)
-    ensure_storage_dirs(local_root, is_local=True)
-    collections_dir = local_root / "data" / "collections"
+    reload()
+    global_root = get_global_root()
+    ensure_storage_dirs(global_root)
+    collections_dir = global_root / "data" / "collections"
 
     source_dir = tmp_path / "docs"
     source_dir.mkdir()
@@ -96,7 +100,6 @@ def test_cli_search_smoke(smoke_workspace: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "--local",
             "--simple-output",
             "--log-level",
             "ERROR",

@@ -70,12 +70,6 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
-    local: bool = typer.Option(
-        False,
-        "--local",
-        help="Use local .indexed/ storage instead of global ~/.indexed/",
-        rich_help_panel="Usage Options",
-    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -103,7 +97,7 @@ def _init_app(
         rich_help_panel="Usage Options",
     ),
 ) -> None:
-    """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
+    """Initialize logging. ConfigService is deferred to commands."""
     if simple_output:
         from .utils.simple_output import set_simple_output
 
@@ -137,22 +131,13 @@ def _init_app(
         json_mode=json_mode,
     )
 
-    # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
-    ctx.obj["mode_override"] = "local" if local else None
 
     from indexed.config import get_config
 
     from .composition import register_app_config
 
-    register_app_config(get_config(mode_override=ctx.obj.get("mode_override")))
-
-    if local:
-        from indexed.config import ensure_storage_dirs, get_local_root
-
-        workspace = Path.cwd()
-        local_root = get_local_root(workspace)
-        ensure_storage_dirs(local_root, is_local=True)
+    register_app_config(get_config())
 
 
 from ._app_setup import register_commands  # noqa: E402

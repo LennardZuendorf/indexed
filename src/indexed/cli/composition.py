@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Type
 
-from indexed.config import ConfigService, StorageMode, get_config, reload
+from indexed.config import (
+    ConfigService,
+    get_global_caches_path,
+    get_global_collections_path,
+    get_config,
+)
 from indexed.config.errors import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
@@ -96,7 +101,6 @@ def build_connector(
 
 @dataclass(frozen=True)
 class CliContext:
-    mode: str
     collections_path: Path
     caches_path: Path
     config_service: ConfigService
@@ -118,34 +122,19 @@ class CliContext:
         return registry
 
 
-def resolve_collections_context(
-    mode_override: StorageMode | None = None,
-    *,
-    workspace: Path | None = None,
-) -> CliContext:
-    # A non-None mode_override forces a fresh ConfigService (via reload()) so a
-    # runtime global→local switch is honored; get_config() otherwise reuses the
-    # cached instance.
-    if mode_override is not None:
-        reload()
-    config_service = get_config(
-        workspace=workspace,
-        mode_override=mode_override,
-    )
-    # The reload() above replaces the singleton with a fresh ConfigRegistry
-    # whenever a non-None mode_override is passed; re-register here (idempotent)
-    # so every caller gets the specs back for free (foundation/6d E12).
+def resolve_collections_context(*, workspace: Path | None = None) -> CliContext:
+    """Build the per-invocation context over the one global store (R1)."""
+    config_service = get_config(workspace=workspace)
+    # Idempotent: every caller gets the registered specs back for free
+    # (foundation/6d E12).
     register_app_config(config_service)
-    mode = config_service.resolve_storage_mode()
-    resolver = config_service.resolver
     # ``connector_registry`` is intentionally omitted: CliContext builds it
     # lazily on first access so commands that never need connectors skip the
     # import cost (startup <1s). Create-time wiring still gets it via the
     # ``connector_factory`` closure.
     return CliContext(
-        mode=mode,
-        collections_path=resolver.get_collections_path(mode),
-        caches_path=resolver.get_caches_path(mode),
+        collections_path=get_global_collections_path(),
+        caches_path=get_global_caches_path(),
         config_service=config_service,
     )
 

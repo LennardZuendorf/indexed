@@ -23,8 +23,6 @@ runner = CliRunner()
 
 def _mock_runtime_context():
     mock_config = MagicMock()
-    mock_config.resolve_storage_mode.return_value = "global"
-    mock_config.get_workspace_preference.return_value = None
     mock_config.store.read.return_value = {}
     return type(
         "MockCtx",
@@ -43,10 +41,6 @@ def _patch_runtime_context():
         patch(
             "indexed.cli.composition.resolve_collections_context",
             side_effect=lambda *args, **kwargs: _mock_runtime_context(),
-        ),
-        patch(
-            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
-            lambda *args, **kwargs: None,
         ),
     ):
         yield

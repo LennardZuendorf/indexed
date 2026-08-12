@@ -27,7 +27,6 @@ class TestInitApp:
 
         _init_app(
             ctx,
-            local=False,
             verbose=False,
             log_level=None,
             json_logs=False,
@@ -47,7 +46,6 @@ class TestInitApp:
 
         _init_app(
             ctx,
-            local=False,
             verbose=True,
             log_level=None,
             json_logs=False,
@@ -68,7 +66,6 @@ class TestInitApp:
 
         _init_app(
             ctx,
-            local=False,
             verbose=False,
             log_level=None,
             json_logs=True,
@@ -77,46 +74,28 @@ class TestInitApp:
         call_kwargs = mock_setup_logger.call_args.kwargs
         assert call_kwargs["json_mode"] is True
 
-    @patch("indexed.cli.app.bootstrap_logging")
-    def test_init_app_local_sets_mode_override(
-        self, mock_setup_logger, mock_getenv_defaults
-    ):
-        """Should set mode_override to 'local' on ctx.obj when --local is passed."""
+    def test_local_flag_is_rejected_as_an_unknown_option(self):
+        """workspace-profile/1 R1: `--local` no longer exists on any command."""
+        for argv in (
+            ["--local", "inspect"],
+            ["index", "create", "files", "--local", "--collection", "x"],
+        ):
+            result = runner.invoke(app, argv)
+            assert result.exit_code != 0, argv
+            assert "No such option: --local" in result.output, argv
+
+    def test_no_storage_mode_is_stashed_on_the_context(self):
+        """workspace-profile/1 R1: ctx.obj carries no mode_override any more."""
         ctx = Mock()
         ctx.invoked_subcommand = "search"
         ctx.resilient_parsing = False
         ctx.ensure_object = Mock()
         ctx.obj = {}
 
-        with patch("indexed.config.has_local_config", return_value=True):
-            _init_app(
-                ctx,
-                local=True,
-                verbose=False,
-                log_level=None,
-                json_logs=False,
-            )
+        with patch("indexed.cli.app.bootstrap_logging"):
+            _init_app(ctx, verbose=False, log_level=None, json_logs=False)
 
-        assert ctx.obj["mode_override"] == "local"
-
-    @patch("indexed.cli.app.bootstrap_logging")
-    def test_init_app_no_flags_sets_none(self, mock_setup_logger, mock_getenv_defaults):
-        """Should set mode_override to None when no storage flags provided."""
-        ctx = Mock()
-        ctx.invoked_subcommand = "search"
-        ctx.resilient_parsing = False
-        ctx.ensure_object = Mock()
-        ctx.obj = {}
-
-        _init_app(
-            ctx,
-            local=False,
-            verbose=False,
-            log_level=None,
-            json_logs=False,
-        )
-
-        assert ctx.obj["mode_override"] is None
+        assert "mode_override" not in ctx.obj
 
 
 class TestAppCommands:

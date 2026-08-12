@@ -32,33 +32,25 @@ app = typer.Typer(help="Update collections")
 
 def _config_existed_before(config_service: ConfigService) -> bool:
     """
-    Determine whether a configuration file existed prior to an operation based on the ConfigService's resolved storage mode.
+    Determine whether the one global config file existed prior to an operation.
 
     Returns:
-        bool: `True` if a local config file exists when storage mode is "local", or `True` if a global config file exists when storage mode is not "local"; `False` otherwise.
+        bool: `True` if ~/.indexed/config.toml exists, `False` otherwise.
     """
-    storage_mode = config_service.resolve_storage_mode()
-    if storage_mode == "local":
-        return config_service.store.has_local_config()
-    else:
-        return config_service.store.has_global_config()
+    return config_service.store.has_global_config()
 
 
 def _get_config_path(config_service: ConfigService) -> str:
     """
-    Return the path to the active configuration file based on the resolved storage mode.
+    Return the path to the one global configuration file.
 
     Parameters:
-        config_service (ConfigService): Service used to determine storage mode and access configured paths.
+        config_service (ConfigService): Service exposing the config store.
 
     Returns:
-        str: The configuration file path — the workspace path when storage mode is "local", otherwise the global path.
+        str: The global config.toml path.
     """
-    storage_mode = config_service.resolve_storage_mode()
-    if storage_mode == "local":
-        return str(config_service.store.workspace_path)
-    else:
-        return str(config_service.store.global_path)
+    return str(config_service.store.global_path)
 
 
 def _format_update_comparison(before, after):
@@ -112,8 +104,7 @@ def update(
     from ...composition import wiring_kwargs_for_update
     from indexed.cli.composition import resolve_collections_context
 
-    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context()
     update_wiring = wiring_kwargs_for_update(cli_ctx)
     collections_path = str(cli_ctx.collections_path)
     config_service = cli_ctx.config_service
@@ -126,12 +117,6 @@ def update(
     config_existed = _config_existed_before(config_service)
 
     simple = is_simple_output()
-
-    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
-    if not is_verbose_mode() and not simple:
-        from ...utils.storage_info import display_storage_mode_for_command
-
-        display_storage_mode_for_command(console)
 
     # Resolve collections + capture before-state (thin command: parse + delegate)
     collections_to_update = svc.resolve_collections_to_update(

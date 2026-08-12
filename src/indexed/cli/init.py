@@ -20,7 +20,6 @@ from indexed.cli.utils.components import (
 )
 from indexed.cli.utils.console import console, render_user_text
 from indexed.cli.utils.progress_bar import create_phased_progress
-from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
 
 def init(
@@ -64,9 +63,7 @@ def init(
 
     model_name = model or DEFAULT_MODEL
 
-    # Initialize ConfigService and display storage mode
     get_config()
-    display_storage_mode_for_command(console)
 
     heading = get_heading_style()
     dim = get_dim_style()

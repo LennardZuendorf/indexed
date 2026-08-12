@@ -117,7 +117,6 @@ def created_collection(benchmark_docs, benchmark_workspace) -> str:
                 "--path",
                 str(benchmark_docs),
                 "--force",
-                "--local",
             ],
         )
         if result.exit_code != 0:
@@ -164,7 +163,6 @@ def test_e2e_create_collection(benchmark, benchmark_docs, benchmark_workspace):
                     "--path",
                     str(benchmark_docs),
                     "--force",
-                    "--local",
                 ],
             )
             assert result.exit_code == 0, (

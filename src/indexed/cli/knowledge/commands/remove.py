@@ -26,7 +26,6 @@ from ...utils.simple_output import is_simple_output, print_json
 from ...utils.logging import is_verbose_mode
 from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.context_managers import NoOpContext
-from ...utils.storage_info import display_storage_mode_for_command
 
 app = typer.Typer(help="Remove collections")
 
@@ -120,8 +119,7 @@ def remove(
     collection_exists_svc = this_module.collection_exists
     setup_root_logger_svc = this_module.setup_root_logger
 
-    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context()
     collections_path = str(cli_ctx.collections_path)
 
     # Setup logging based on options
@@ -129,10 +127,6 @@ def remove(
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
     simple = is_simple_output()
-
-    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
-    if not is_verbose_mode() and not simple:
-        display_storage_mode_for_command(console)
 
     # Fetch all collections to validate
     all_collections = inspect_svc(collections_path=collections_path)

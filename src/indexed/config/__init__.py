@@ -7,18 +7,24 @@ from .errors import (
     ConfigurationError,
     ConfigValidationError,
     StorageError,
-    StorageConflictError,
+    SchemaVersionError,
+    WorkspaceResolutionError,
 )
 from .storage import (
-    StorageMode,
-    StorageResolver,
     get_global_root,
-    get_local_root,
     get_collections_path,
     get_caches_path,
-    has_local_config,
+    get_global_collections_path,
+    get_global_caches_path,
     has_global_config,
     ensure_storage_dirs,
+)
+from .discovery import CANONICAL_NAME, LEGACY_RELPATH, find_profile
+from .workspace import (
+    WorkspaceProfile,
+    WorkspaceScope,
+    clear_scope_cache,
+    resolve_scope,
 )
 
 __all__ = [
@@ -33,15 +39,22 @@ __all__ = [
     "ConfigurationError",
     "ConfigValidationError",
     "StorageError",
-    "StorageConflictError",
-    # Storage (public API)
-    "StorageMode",
-    "StorageResolver",
+    "SchemaVersionError",
+    "WorkspaceResolutionError",
+    # Storage (public API) — one global root
     "get_global_root",
-    "get_local_root",
     "get_collections_path",
     "get_caches_path",
-    "has_local_config",
+    "get_global_collections_path",
+    "get_global_caches_path",
     "has_global_config",
     "ensure_storage_dirs",
+    # Workspace profile + scope
+    "CANONICAL_NAME",
+    "LEGACY_RELPATH",
+    "find_profile",
+    "WorkspaceProfile",
+    "WorkspaceScope",
+    "clear_scope_cache",
+    "resolve_scope",
 ]

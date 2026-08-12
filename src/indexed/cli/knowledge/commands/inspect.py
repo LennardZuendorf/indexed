@@ -204,8 +204,7 @@ def inspect_collections(
     inspect_svc = this_module.inspect
     collection_exists_svc = this_module.collection_exists
 
-    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context()
     collections_path = str(cli_ctx.collections_path)
 
     # Fetch collection info from core - this is connection-agnostic

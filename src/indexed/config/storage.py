@@ -1,36 +1,26 @@
 """Storage path resolution for indexed.
 
-This module provides centralized path resolution for indexed's storage locations,
-supporting both global (~/.indexed) and local (./.indexed) storage modes.
+There is exactly ONE storage root (workspace-profile/1, R1). Collections and
+caches always live under ``~/.indexed/data/``; the former local root
+(``./.indexed/data/``), the ``--local`` flag, the ``[workspace].mode``
+preference and the storage-mode cascade are gone. A workspace narrows and
+overrides (see ``workspace.py``); it never relocates data.
 
-The storage hierarchy is:
-    ~/.indexed/                    # Global default (HOME)
+    ~/.indexed/
     ├── config.toml               # Global configuration
     ├── .env                      # Sensitive credentials
     └── data/
         ├── collections/          # Index storage
         └── caches/               # Document caches
-
-    ./.indexed/                    # Local override (when --local used)
-    ├── config.toml
-    ├── .env
-    └── data/
-        ├── collections/
-        └── caches/
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Optional
-
-
-# Storage mode type
-StorageMode = Literal["global", "local"]
 
 
 def get_global_root() -> Path:
-    """Get the global storage root directory.
+    """Get the one storage root directory.
 
     Returns:
         Path to ~/.indexed
@@ -38,25 +28,12 @@ def get_global_root() -> Path:
     return Path.home() / ".indexed"
 
 
-def get_local_root(workspace: Optional[Path] = None) -> Path:
-    """Get the local storage root directory.
-
-    Args:
-        workspace: Optional workspace path. Defaults to current working directory.
-
-    Returns:
-        Path to ./.indexed relative to workspace
-    """
-    base = workspace or Path.cwd()
-    return base / ".indexed"
-
-
 def get_config_path(root: Path) -> Path:
     """
     Return the path to the config.toml file inside the provided storage root.
 
     Parameters:
-        root (Path): Storage root directory (e.g., global or local)
+        root (Path): Storage root directory.
 
     Returns:
         Path: Path to the config.toml file within the root
@@ -69,7 +46,7 @@ def get_env_path(root: Path) -> Path:
     Return the path to the .env file inside the given storage root.
 
     Parameters:
-        root (Path): Storage root directory (global or local).
+        root (Path): Storage root directory.
 
     Returns:
         Path: Path to the `.env` file within `root`.
@@ -82,7 +59,7 @@ def get_data_root(root: Path) -> Path:
     Resolve the path to the data directory inside a storage root.
 
     Parameters:
-        root (Path): Storage root directory (global or local).
+        root (Path): Storage root directory.
 
     Returns:
         Path: Path to the `data` directory within the given root.
@@ -94,7 +71,7 @@ def get_collections_path(root: Path) -> Path:
     """Get the collections directory for a given root.
 
     Args:
-        root: Storage root directory (global or local)
+        root: Storage root directory
 
     Returns:
         Path to data/collections within the root
@@ -106,7 +83,7 @@ def get_caches_path(root: Path) -> Path:
     """Get the caches directory for a given root.
 
     Args:
-        root: Storage root directory (global or local)
+        root: Storage root directory
 
     Returns:
         Path to data/caches within the root
@@ -114,40 +91,14 @@ def get_caches_path(root: Path) -> Path:
     return get_data_root(root) / "caches"
 
 
-def has_local_storage(workspace: Optional[Path] = None) -> bool:
-    """
-    Determine whether a local .indexed storage root exists for the given workspace.
-
-    Parameters:
-        workspace (Optional[Path]): Workspace directory to check. If None, the current working directory is used.
-
-    Returns:
-        True if the .indexed directory exists at the workspace, False otherwise.
-    """
-    return get_local_root(workspace).exists()
+def get_global_collections_path() -> Path:
+    """Path to the one collections directory (``~/.indexed/data/collections``)."""
+    return get_collections_path(get_global_root())
 
 
-def has_global_storage() -> bool:
-    """
-    Determine whether the global storage root (~/.indexed) exists.
-
-    Returns:
-        True if the global storage root (~/.indexed) exists, False otherwise.
-    """
-    return get_global_root().exists()
-
-
-def has_local_config(workspace: Optional[Path] = None) -> bool:
-    """
-    Determine whether the local workspace config file exists.
-
-    Parameters:
-        workspace (Optional[Path]): Workspace directory; defaults to the current working directory.
-
-    Returns:
-        `true` if the file `.indexed/config.toml` exists in the workspace directory, `false` otherwise.
-    """
-    return get_config_path(get_local_root(workspace)).exists()
+def get_global_caches_path() -> Path:
+    """Path to the one caches directory (``~/.indexed/data/caches``)."""
+    return get_caches_path(get_global_root())
 
 
 def has_global_config() -> bool:
@@ -160,260 +111,14 @@ def has_global_config() -> bool:
     return get_config_path(get_global_root()).exists()
 
 
-def resolve_storage_mode(
-    *,
-    mode_override: Optional[StorageMode],
-    workspace_preference: Optional[StorageMode] = None,
-    workspace: Optional[Path] = None,
-) -> StorageMode:
-    """Resolve the effective storage mode from the standard cascade.
-
-    Single source of truth for the resolution matrix shared by every config-layer
-    consumer (``StorageResolver``, ``WorkspaceManager``, ``TomlStore``). Do not
-    re-implement this cascade elsewhere.
-
-    Resolution order:
-        1. CLI mode override (``mode_override``)
-        2. Workspace preference (``workspace_preference``)
-        3. Auto-detect: a local ``.indexed/config.toml`` present → ``"local"``
-        4. Default ``"global"``
-
-    Parameters:
-        mode_override: Explicit CLI mode ("global"/"local"); wins when set.
-        workspace_preference: Workspace-configured preference, if any.
-        workspace: Workspace directory for the local-config auto-detect; defaults
-            to the current working directory.
-
-    Returns:
-        The resolved storage mode ("global" or "local").
-    """
-    if mode_override:
-        return mode_override
-    if workspace_preference:
-        return workspace_preference
-    if has_local_config(workspace):
-        return "local"
-    return "global"
-
-
-def _ensure_gitignore(root: Path) -> None:
-    """Ensure a .gitignore exists in root with a .env entry.
-
-    Creates the file if missing, or appends `.env` if the file exists
-    but doesn't already contain it.
-
-    Parameters:
-        root (Path): Storage root directory to protect.
-    """
-    gitignore = root / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        # Check if .env is already covered (strip comments and whitespace)
-        has_env = any(
-            line.split("#")[0].strip() == ".env" for line in content.splitlines()
-        )
-        if not has_env:
-            with open(gitignore, "a") as f:
-                # Ensure we start on a new line
-                if content and not content.endswith("\n"):
-                    f.write("\n")
-                f.write(".env\n")
-    else:
-        root.mkdir(parents=True, exist_ok=True)
-        gitignore.write_text(".env\n")
-
-
-def ensure_storage_dirs(root: Path, *, is_local: bool = False) -> None:
+def ensure_storage_dirs(root: Path) -> None:
     """
     Create the storage root and its data, collections, and caches subdirectories if they do not exist.
 
     Parameters:
         root (Path): Root directory under which `data`, `data/collections`, and `data/caches` will be created.
-        is_local (bool): If True, also creates a .gitignore with `.env` entry to prevent accidental commits.
     """
     root.mkdir(parents=True, exist_ok=True)
     get_data_root(root).mkdir(parents=True, exist_ok=True)
     get_collections_path(root).mkdir(parents=True, exist_ok=True)
     get_caches_path(root).mkdir(parents=True, exist_ok=True)
-    if is_local:
-        _ensure_gitignore(root)
-
-
-class StorageResolver:
-    """Resolves storage paths based on mode, flags, and workspace preferences.
-
-    This class provides a stateful way to resolve storage paths, taking into
-    account CLI flags, workspace preferences, and config conflicts.
-
-    Attributes:
-        _workspace: The workspace directory (defaults to cwd)
-        _mode_override: Explicit mode override from CLI flag
-        _resolved_root: Cached resolved root path
-    """
-
-    def __init__(
-        self,
-        workspace: Optional[Path] = None,
-        mode_override: Optional[StorageMode] = None,
-    ) -> None:
-        """
-        Create a StorageResolver bound to a workspace and optional mode override.
-
-        Parameters:
-            workspace (Optional[Path]): Workspace directory; defaults to the current working directory.
-            mode_override (Optional[StorageMode]): Explicit storage mode to force ("global" or "local"); when provided it takes precedence over workspace preference.
-        """
-        self._workspace = workspace or Path.cwd()
-        self._mode_override = mode_override
-        self._resolved_root: Optional[Path] = None
-
-    @property
-    def global_root(self) -> Path:
-        """
-        Access the global storage root path (~/.indexed).
-
-        Returns:
-            global_root (Path): Path to the global storage root directory.
-        """
-        return get_global_root()
-
-    @property
-    def local_root(self) -> Path:
-        """
-        Resolve the local storage root path for the resolver's workspace.
-
-        Returns:
-            Path: Path to the local storage root (./.indexed) for the resolver's workspace.
-        """
-        return get_local_root(self._workspace)
-
-    @property
-    def workspace(self) -> Path:
-        """
-        Return the workspace directory used by the resolver.
-
-        Returns:
-            Path: The resolved workspace directory path.
-        """
-        return self._workspace
-
-    def resolve_root(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> Path:
-        """
-        Resolve which storage root should be used for operations.
-
-        Resolution order:
-        1. CLI mode override (`self._mode_override`)
-        2. `workspace_preference` passed from workspace config
-        3. Auto-detect: if local .indexed/config.toml exists, use local root
-        4. Default to the global root
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Workspace-configured preference, either `"local"` or `"global"`; omitted or None means no preference.
-
-        Returns:
-            Path: The resolved storage root path.
-        """
-        mode = resolve_storage_mode(
-            mode_override=self._mode_override,
-            workspace_preference=workspace_preference,
-            workspace=self._workspace,
-        )
-        return self.local_root if mode == "local" else self.global_root
-
-    def get_collections_path(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> Path:
-        """
-        Resolve the active storage root (using CLI override, workspace preference, or default) and return its collections directory path.
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Optional preference for storage mode ("local" or "global") used during resolution; if omitted the resolver's stored preference or defaults are used.
-
-        Returns:
-            Path: Path to the `data/collections` directory within the resolved storage root.
-        """
-        root = self.resolve_root(workspace_preference)
-        return get_collections_path(root)
-
-    def get_caches_path(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> Path:
-        """
-        Resolve the active storage root and return the path to its caches directory.
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Optional preference for storage mode (e.g., "local" or "global") used when resolving which root to use.
-
-        Returns:
-            Path: Path to the `data/caches` directory under the resolved storage root.
-        """
-        root = self.resolve_root(workspace_preference)
-        return get_caches_path(root)
-
-    def get_config_path(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> Path:
-        """
-        Resolve the active storage root and return the path to its config file.
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Optional preference for 'local' or 'global' storage used when resolving the root; if omitted, the resolver's CLI override, cached resolution, or default rules apply.
-
-        Returns:
-            Path: Path to the `config.toml` file within the resolved storage root.
-        """
-        root = self.resolve_root(workspace_preference)
-        return get_config_path(root)
-
-    def get_env_path(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> Path:
-        """
-        Resolve the active storage root and return the path to its `.env` file.
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Optional preference to choose local or global storage when resolving the root; if omitted, the resolver's current configuration is used.
-
-        Returns:
-            Path: Path to the `.env` file inside the resolved storage root.
-        """
-        root = self.resolve_root(workspace_preference)
-        return get_env_path(root)
-
-    def has_conflict(self) -> bool:
-        """
-        Determine whether both the local and global config files exist.
-
-        Returns:
-            bool: True if both local and global config files exist, False otherwise.
-        """
-        return has_local_config(self._workspace) and has_global_config()
-
-    def ensure_dirs(
-        self,
-        workspace_preference: Optional[StorageMode] = None,
-    ) -> None:
-        """
-        Ensure storage directories exist for the resolved storage root.
-
-        Resolve the active storage root (using the resolver's configuration and the optional
-        workspace_preference) and create the root directory and its required subdirectories
-        (e.g., data, data/collections, data/caches) if they do not already exist.
-
-        When the resolved root is the local root, a .gitignore is also created
-        to prevent accidental .env commits.
-
-        Parameters:
-            workspace_preference (Optional[StorageMode]): Preferred storage mode to use when
-                resolving the root; when omitted the resolver's configured preference is used.
-        """
-        root = self.resolve_root(workspace_preference)
-        is_local = root == self.local_root
-        ensure_storage_dirs(root, is_local=is_local)

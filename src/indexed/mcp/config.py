@@ -2,9 +2,6 @@
 
 from typing import Any, Callable, Optional
 
-from loguru import logger
-
-from indexed.config import get_config
 from indexed.cli.composition import CliContext, resolve_collections_context
 
 _MISSING = object()
@@ -32,38 +29,15 @@ def resolve_config(ctx: Optional[Any], key: str, loader: Callable[[], Any]) -> A
     return val if val is not _MISSING else loader()
 
 
-def default_global_context() -> CliContext:
-    """Build a minimal global-mode CliContext without reading config.toml.
-
-    Used as the degraded fallback (R2) when resolving the real CLI context
-    fails — e.g. a malformed global ``config.toml`` raising
-    ``TOMLDecodeError`` out of ``get_preference``/``read_for_mode``. Those
-    stay fail-loud (the CLI's own error path depends on it); this builds
-    paths directly from an explicit "global" preference, which short-circuits
-    the storage-mode cascade before it ever touches the on-disk config.
-    """
-    config_service = get_config()
-    resolver = config_service.resolver
-    return CliContext(
-        mode="global",
-        collections_path=resolver.get_collections_path("global"),
-        caches_path=resolver.get_caches_path("global"),
-        config_service=config_service,
-    )
-
-
 def resolve_cli_context(ctx: Optional[Any]) -> CliContext:
     """Resolve CliContext from lifespan state or build a fresh one.
 
-    Falls back to a default global-mode context (R2) when resolution fails
-    (e.g. malformed/unreadable config.toml) rather than letting the error
-    escape and crash the request.
+    Fails CLOSED (workspace-profile/1, R1): the former
+    ``default_global_context()`` swallowed every exception and handed back a
+    hard-coded unfiltered context. With a collection allowlist in play that
+    silently *widens* an agent's scope, so a malformed config now raises.
     """
     val = _from_lifespan(ctx, "cli_context")
     if val is not _MISSING:
         return val
-    try:
-        return resolve_collections_context()
-    except Exception as exc:
-        logger.warning(f"Failed to resolve CLI context, using default: {exc}")
-        return default_global_context()
+    return resolve_collections_context()

@@ -7,8 +7,9 @@ from indexed.config.errors import (
     ConfigValidationError,
     ConfigurationError,
     IndexedError,
-    StorageConflictError,
+    SchemaVersionError,
     StorageError,
+    WorkspaceResolutionError,
 )
 
 from indexed.cli.errors import (
@@ -41,7 +42,15 @@ class TestErrorHelpers:
             (ConfigurationError("cfg"), EXIT_CODES[ConfigurationError]),
             (ConfigValidationError("path", "detail"), EXIT_CODES[ConfigurationError]),
             (StorageError("store"), EXIT_CODES[StorageError]),
-            (StorageConflictError("conflict"), EXIT_CODES[StorageError]),
+            # workspace-profile/1: the new config errors map like their base.
+            (
+                SchemaVersionError("/x/config.toml", "bad"),
+                EXIT_CODES[ConfigurationError],
+            ),
+            (
+                WorkspaceResolutionError("no such workspace"),
+                EXIT_CODES[ConfigurationError],
+            ),
             (CLIError("cli"), 1),
             (IndexedError("generic"), 1),
         ],

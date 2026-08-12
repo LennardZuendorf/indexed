@@ -115,15 +115,8 @@ def search(
 
     from indexed.cli.composition import resolve_collections_context
 
-    mode_override = ctx.obj.get("mode_override") if ctx.obj else None
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context()
     collections_path = str(cli_ctx.collections_path)
-
-    # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
-    if not is_verbose_mode() and not simple:
-        from ...utils.storage_info import display_storage_mode_for_command
-
-        display_storage_mode_for_command(console)
 
     # Determine collections to search
     if collection is None:

@@ -863,7 +863,6 @@ class TestCreateOutline:
         verbose=False,
         json_logs=False,
         log_level=None,
-        local=False,
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
@@ -1119,7 +1118,6 @@ class TestPromptMissingOutlineFields:
         verbose=False,
         json_logs=False,
         log_level=None,
-        local=False,
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
@@ -1233,7 +1231,6 @@ class TestBuildOutlineSourceConfig:
         verbose=False,
         json_logs=False,
         log_level=None,
-        local=False,
     )
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
@@ -1290,87 +1287,6 @@ class TestBuildOutlineSourceConfig:
         assert call_kwargs["base_url_or_path"] == "https://app.getoutline.com"
 
 
-class TestStorageIndicatorOrdering:
-    """Verify indicator prints before connector header/prompts (critical-bugs/4)."""
-
-    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.get_config")
-    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
-    @patch("indexed.cli.knowledge.commands.create.console")
-    def test_jira_indicator_before_configuration_heading(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
-    ):
-        """Indicator must appear before 'Jira Configuration' heading."""
-        mock_config = Mock()
-        mock_config.get.return_value = None
-        mock_config_service.return_value = mock_config
-        mock_verbose.return_value = False
-        mock_console.input.return_value = "https://jira.example.com"
-
-        call_order: list[str] = []
-
-        def track_display(console_arg):
-            call_order.append("indicator")
-
-        def track_print(*args, **kwargs):
-            if args and "Jira Configuration" in str(args[0]):
-                call_order.append("heading")
-
-        mock_console.print.side_effect = track_print
-
-        with patch(
-            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
-            side_effect=track_display,
-        ):
-            create_jira(
-                collection="test-jira",
-                url=None,
-                jql=None,
-                email=None,
-                token=None,
-                use_cache=True,
-                force=False,
-                verbose=False,
-                json_logs=False,
-                log_level=None,
-            )
-
-        assert "indicator" in call_order, "indicator never printed"
-        assert "heading" in call_order, "heading never printed"
-        assert call_order.index("indicator") < call_order.index("heading")
-
-    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
-    @patch("indexed.cli.knowledge.commands.create.get_config")
-    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
-    @patch("indexed.cli.knowledge.commands.create.console")
-    def test_indicator_printed_exactly_once(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute
-    ):
-        """Indicator not duplicated — execute_create_command no longer calls it."""
-        mock_config = Mock()
-        mock_config.get.return_value = "https://jira.example.com"
-        mock_config_service.return_value = mock_config
-        mock_verbose.return_value = False
-
-        with patch(
-            "indexed.cli.utils.storage_info.display_storage_mode_for_command"
-        ) as mock_display:
-            create_jira(
-                collection="test-jira",
-                url="https://jira.example.com",
-                jql="project = TEST",
-                email=None,
-                token=None,
-                use_cache=True,
-                force=False,
-                verbose=False,
-                json_logs=False,
-                log_level=None,
-            )
-
-        mock_display.assert_called_once()
-
-
 class TestCreateFailureConfigRestore:
     """Review Finding 1 (foundation/6b): a failed create must leave
     config.toml byte-identical to before the run, even when a credential
@@ -1385,7 +1301,7 @@ class TestCreateFailureConfigRestore:
 
     @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
     def test_failed_jira_create_restores_config_toml(
-        self, mock_svc_create, local_workspace
+        self, mock_svc_create, isolated_workspace
     ):
         from typer.testing import CliRunner
 
@@ -1393,14 +1309,13 @@ class TestCreateFailureConfigRestore:
 
         mock_svc_create.side_effect = RuntimeError("simulated create failure")
 
-        config_toml = local_workspace.local_root / "config.toml"
+        config_toml = isolated_workspace.global_root / "config.toml"
         before = config_toml.read_bytes() if config_toml.exists() else None
 
         runner = CliRunner()
         result = runner.invoke(
             app,
             [
-                "--local",
                 "--log-level",
                 "ERROR",
                 "create",

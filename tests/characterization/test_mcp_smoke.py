@@ -20,15 +20,19 @@ COLLECTION_NAME = "mcp-smoke-collection"
 def mcp_resource_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write_manifest
 ):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.chdir(tmp_path)
-    from indexed.config import ensure_storage_dirs, get_local_root
+    from indexed.config import ensure_storage_dirs, get_global_root, reload
 
-    local_root = get_local_root(tmp_path)
-    ensure_storage_dirs(local_root, is_local=True)
-    collections_dir = local_root / "data" / "collections"
+    reload()
+    global_root = get_global_root()
+    ensure_storage_dirs(global_root)
+    collections_dir = global_root / "data" / "collections"
     write_manifest(collections_dir, COLLECTION_NAME)
 
-    cli_ctx = resolve_collections_context(mode_override="local", workspace=tmp_path)
+    cli_ctx = resolve_collections_context(workspace=tmp_path)
     mcp_config = MCPConfig()
 
     from fastmcp.server.context import _current_context

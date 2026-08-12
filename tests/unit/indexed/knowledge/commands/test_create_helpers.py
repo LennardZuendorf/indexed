@@ -22,10 +22,6 @@ def _patch_runtime_context():
             "indexed.cli.composition.resolve_collections_context",
             side_effect=resolve_context,
         ),
-        patch(
-            "indexed.cli.utils.storage_info.display_storage_mode_for_command",
-            lambda *args, **kwargs: None,
-        ),
     ):
         yield
 

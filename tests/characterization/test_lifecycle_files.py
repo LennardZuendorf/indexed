@@ -33,9 +33,7 @@ COLLECTION = "files-net"
 
 def _run(*args: str):
     """Invoke the CLI with a quiet, deterministic base flag set."""
-    return runner.invoke(
-        app, ["--local", "--simple-output", "--log-level", "ERROR", *args]
-    )
+    return runner.invoke(app, ["--simple-output", "--log-level", "ERROR", *args])
 
 
 def _search(query: str, *, limit: int = 5) -> dict:
@@ -45,15 +43,14 @@ def _search(query: str, *, limit: int = 5) -> dict:
 
 
 def test_files_lifecycle_create_search_update_inspect_remove(
-    local_workspace, files_corpus: Path
+    isolated_workspace, files_corpus: Path
 ) -> None:
-    ws = local_workspace
+    ws = isolated_workspace
 
     # --- create ----------------------------------------------------------
     created = runner.invoke(
         app,
         [
-            "--local",
             "--log-level",
             "ERROR",
             "create",
@@ -62,7 +59,6 @@ def test_files_lifecycle_create_search_update_inspect_remove(
             COLLECTION,
             "--path",
             str(files_corpus),
-            "--local",
             "--no-cache",
         ],
     )
@@ -90,7 +86,7 @@ def test_files_lifecycle_create_search_update_inspect_remove(
     )
     updated = runner.invoke(
         app,
-        ["--local", "--log-level", "ERROR", "update", COLLECTION],
+        ["--log-level", "ERROR", "update", COLLECTION],
     )
     assert updated.exit_code == 0, updated.stdout + updated.stderr
 
@@ -102,7 +98,7 @@ def test_files_lifecycle_create_search_update_inspect_remove(
     # --- inspect ---------------------------------------------------------
     inspected = runner.invoke(
         app,
-        ["--local", "--log-level", "ERROR", "inspect", COLLECTION],
+        ["--log-level", "ERROR", "inspect", COLLECTION],
     )
     assert inspected.exit_code == 0, inspected.stdout + inspected.stderr
     assert COLLECTION in inspected.stdout
@@ -110,7 +106,7 @@ def test_files_lifecycle_create_search_update_inspect_remove(
     # --- remove ----------------------------------------------------------
     removed = runner.invoke(
         app,
-        ["--local", "--log-level", "ERROR", "remove", COLLECTION, "--force"],
+        ["--log-level", "ERROR", "remove", COLLECTION, "--force"],
     )
     assert removed.exit_code == 0, removed.stdout + removed.stderr
     assert not (ws.collections_dir / COLLECTION).exists()
