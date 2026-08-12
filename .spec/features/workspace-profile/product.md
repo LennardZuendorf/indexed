@@ -3,7 +3,7 @@ type: feature-product
 feature: workspace-profile
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Feature: Workspace Profile — Product
@@ -28,8 +28,15 @@ serving more than one repo has no way to know which profile applies.
 
 | | |
 |---|---|
-| **Owns** | The `[workspace]` profile schema and its file discovery (canonical `indexed.config.toml` + legacy `./.indexed/config.toml`); collection-filter (allowlist) semantics across CLI search/inspect and MCP; the MCP workspace-resolution chain and the `scope` block on MCP responses; profile lifecycle from the CLI; removal of the local-vs-global storage mode; `schema_version = "2"` enforcement. |
-| **Does not own** | The indexing/search engine, connectors, parsing. The `indexed migrate` legacy-data mover (`./data/` → `~/.indexed/`) — orthogonal, stays as-is. MCP transport security (auth tokens, `Origin` validation, loopback binding) — pre-existing concerns, untouched here. |
+| **Owns** | The `[workspace]` profile schema and its file discovery (canonical `indexed.config.toml` + legacy `./.indexed/config.toml`); collection-filter (allowlist) semantics across CLI search/inspect and MCP; the MCP workspace-resolution chain and the `scope` block on MCP responses; profile lifecycle from the CLI; removal of the local-vs-global storage mode; `schema_version = "2"` enforcement; the workspace's slot in the engine-selection chain. |
+| **Does not own** | The indexing/search engine itself, connectors, parsing. **The v1/v2 engines and the version-dispatching facade (`core/engine.py`) — owned by Core v2 (PR #162); this feature only threads an allowlist through it and contributes one link to its selection chain.** The `indexed migrate` legacy-data mover (`./data/` → `~/.indexed/`) — orthogonal, stays as-is. MCP transport security (auth tokens, `Origin` validation, loopback binding) — pre-existing concerns, untouched here. |
+
+> **Upstream gate.** This feature is sequenced **after** Core v2 (PR #162). #162 introduces
+> the version-dispatching facade `core/engine.py` and repoints `cli/` and `mcp/` at it, so
+> the collection allowlist must be threaded through that facade rather than through
+> `core/v1/engine/services/*` — otherwise the workspace filter would apply to v1 collections
+> only and silently miss every v2 collection. See [tech.md](tech.md) § Collection filter as
+> an allowlist.
 
 ---
 
@@ -136,6 +143,34 @@ below `INDEXED__*` env vars and CLI args. Per-collection overrides under
 - **Given** a profile setting `[workspace.overrides.search] max_docs = 3`
 - **When** `INDEXED__core__v1__search__max_docs=7` is set in the environment
 - **Then** the effective `max_docs` is `7`
+
+### Requirement: Per-workspace default engine (R8)
+
+The workspace profile SHALL be able to set the default core engine for new collections
+created in that workspace, via `[workspace.overrides.core] engine`. It slots into the
+existing engine-selection chain introduced by Core v2 (PR #162) — `--engine` flag ›
+`INDEXED__CORE__ENGINE` env › workspace profile › global `[core] engine` › built-in default
+— so an explicit flag or env var still wins, and the profile still beats global config.
+The engine of an **existing** collection is never changed by the profile: it is read from
+that collection's own manifest.
+
+#### Scenario: A workspace pins its default engine
+
+- **Given** a global `[core] engine = "v1"` and a profile with `[workspace.overrides.core] engine = "v2"`
+- **When** the user runs `indexed index create api --source files --source-path ./api` in that workspace
+- **Then** the collection is created on the v2 engine
+
+#### Scenario: An explicit flag still wins over the profile
+
+- **Given** a profile with `[workspace.overrides.core] engine = "v2"`
+- **When** the user runs `indexed index create api ... --engine v1`
+- **Then** the collection is created on the v1 engine
+
+#### Scenario: The profile never re-engines an existing collection
+
+- **Given** an existing v1 collection `docs` and a profile setting `engine = "v2"`
+- **When** the user searches or updates `docs`
+- **Then** `docs` is served by the v1 engine, routed from its own manifest, and no migration is implied
 
 ### Requirement: Profile lifecycle from the CLI (R5)
 

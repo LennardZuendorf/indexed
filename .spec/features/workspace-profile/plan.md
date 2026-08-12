@@ -3,7 +3,7 @@ type: feature-plan
 feature: workspace-profile
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Feature: Workspace Profile — Implementation Plan
@@ -25,7 +25,10 @@ the suite green.
 **Requirements:** [product.md](product.md)
 **Architecture:** [tech.md](tech.md)
 
-**Feature gate:** Standalone cleanup on surviving infra; no upstream feature gate.
+**Feature gate:** ⛔ **Blocked on Core v2 (PR #162).** #162 introduces the version-dispatching
+facade `core/engine.py` and repoints `cli/` and `mcp/` at it. Units /2 and /5 build directly
+on that surface and MUST NOT start until #162 is merged and this branch is rebased onto it.
+Units /1, /3 and /4 are engine-agnostic and can proceed independently.
 
 > **Layout note.** Paths target the single package `src/indexed/` (post-Simplify /
 > Feature 14). Verification uses the current gate — `uv run ty check src/indexed` (not mypy),
@@ -59,6 +62,7 @@ through it — so it lands first and the rest stack on top.
 | R5 | [Profile lifecycle from the CLI](product.md#requirement-profile-lifecycle-from-the-cli-r5) | workspace-profile/4 |
 | R6 | [MCP workspace handover](product.md#requirement-mcp-workspace-handover-r6) | workspace-profile/5 |
 | R7 | [Config schema version 2](product.md#requirement-config-schema-version-2-r7) | workspace-profile/1 |
+| R8 | [Per-workspace default engine](product.md#requirement-per-workspace-default-engine-r8) | workspace-profile/2, workspace-profile/4 |
 
 ---
 
@@ -68,10 +72,12 @@ through it — so it lands first and the rest stack on top.
    `mode_override`, `StorageResolver`, `resolve_storage_mode`) breaks downstream importers in
    `cli`/`mcp`, so it must land and re-green before the rest build on it. `config` stays a
    leaf (module-edge gate green).
-2. **Allowlist over path-switching.** Filtering is an `allowed_collection_ids` parameter on
-   read services, not a second storage path. `None` = no filter keeps the no-profile path
-   behaviour-identical. Appended **keyword-only** — the existing module wrappers take
-   positional parameters.
+2. **Allowlist over path-switching, applied at the facade.** Filtering is an
+   `allowed_collection_ids` parameter, not a second storage path. It is applied at
+   `core/engine.py` **before** the per-engine split, so one implementation covers v1, v2 and
+   anything later; the per-engine services stay filter-agnostic. `None` = no filter keeps the
+   no-profile path behaviour-identical. Appended **keyword-only** — the facade's leading
+   parameters are positional.
 3. **Overlay merge replaces single-source.** `[workspace.overrides]` deep-merges on global;
    this is the one config-principle reversal and is recorded in COMPOUND.
 4. **Scope is an immutable value, not singleton state.** `WorkspaceScope` is resolved per CLI
@@ -137,35 +143,49 @@ config subtree — this is what proves the mechanical call-site updates above ar
 
 ---
 
-### workspace-profile/2 — Core: collection-id allowlist on search/inspect
+### workspace-profile/2 — Core: engine-agnostic allowlist at the dispatching facade
 
-**Goal:** `SearchService` and `InspectService` (+ functional wrappers) accept
-`allowed_collection_ids`; default path helpers always return global.
+**Goal:** `core/engine.py` (#162's version-dispatching facade) accepts
+`allowed_collection_ids` and applies it **before** the per-engine split, so the filter covers
+v1 and v2 alike; default path helpers always return global; `[workspace.overrides.core]
+engine` flows through the existing selection chain.
 
-**Requirements:** R3
+**Requirements:** R3, R8
 
-**Dependencies:** workspace-profile/1
+**Dependencies:** workspace-profile/1, **PR #162 merged and this branch rebased onto it**
+
+> **Why the facade, not the v1 services.** After #162, CLI and MCP call `core/engine.py`,
+> which routes each collection to v1 or v2 from its own manifest. Filtering inside
+> `core/v1/engine/services/*` would leave every **v2** collection unfiltered — a workspace
+> declaring `docs` would still return hits from unrelated v2 collections, with no test in
+> this plan catching it. The facade is the only chokepoint both engines pass through.
 
 **Files:**
 
 ```
-src/indexed/core/v1/config_models.py                   # global-only paths
-src/indexed/core/v1/engine/services/search_service.py  # allowlist filter
-src/indexed/core/v1/engine/services/inspect_service.py # allowlist filter; workspace-anchored
-                                                       #   relative_path (was os.getcwd())
-tests/unit/indexed/core/services/*                     # filter tests
+src/indexed/core/engine.py             # allowlist param on search/status/inspect; intersect
+                                       #   the candidate set BEFORE _group_names_by_engine
+src/indexed/core/v1/config_models.py   # global-only paths
+src/indexed/core/v1/engine/services/inspect_service.py  # workspace-anchored relative_path
+                                                        #   (was os.getcwd()); no filtering here
+tests/unit/indexed/core/                # facade filter tests, incl. a MIXED v1+v2 set
 ```
 
 **Test scenarios:**
 
 - `search(..., allowed_collection_ids=["a"])` over collections `a`,`b` searches only `a`.
+- **Mixed-engine guard:** over a v1 collection and a v2 collection, an allowlist naming only
+  the v1 one returns nothing from the v2 one. This is the regression test for the hole above
+  and MUST fail if the filter is moved back into the v1 services.
 - `allowed_collection_ids=None` searches all (no behaviour change).
 - Empty allowlist yields no results / empty status.
 - A declared id with no collection on disk warns and is skipped, not raised.
-- Existing positional wrapper calls keep their meaning — a positional call with the old
+- Existing positional facade calls keep their meaning — a positional call with the old
   argument count binds exactly as before.
+- `[workspace.overrides.core] engine = "v2"` makes a new collection v2; `--engine v1` still
+  overrides it; an existing v1 collection is still served by v1 (R8 scenarios).
 
-**Verification:** `uv run pytest tests/unit/indexed/core/services -q` green; `uv run ty check src/indexed` clean.
+**Verification:** `uv run pytest tests/unit/indexed/core -q` green; `uv run ty check src/indexed` clean; `python scripts/check_imports.py` green.
 
 ---
 
@@ -243,15 +263,20 @@ scopes tools and resources to it, reports a `scope` block on every response, and
 
 **Requirements:** R6, R3
 
-**Dependencies:** workspace-profile/1, workspace-profile/2
+**Dependencies:** workspace-profile/1, workspace-profile/2, **PR #162 merged and rebased**
+
+> **Rebase note.** #162 modifies all four MCP files below. This unit builds on *its* versions,
+> not today's — it passes the allowlist to the facade rather than to the v1 services, and its
+> `scope` block coexists with #162's engine/relevance fields in the response payload.
 
 **Files:**
 
 ```
 src/indexed/mcp/workspace.py  # NEW: resolution chain, roots probe, per-request cache
 src/indexed/mcp/server.py     # lifespan holds env/cwd defaults only
-src/indexed/mcp/tools.py      # `workspace` argument; allowlist; scope block
+src/indexed/mcp/tools.py      # `workspace` argument; allowlist → facade; scope block
 src/indexed/mcp/resources.py  # chain steps 2–5; scope block
+src/indexed/mcp/formatting.py # scope block alongside #162's engine/relevance fields
 src/indexed/mcp/config.py     # delete default_global_context()
 tests/unit/indexed/mcp/*
 tests/system/test_mcp_workspace_scope.py   # replaces test_mcp_storage_parity.py
@@ -278,7 +303,7 @@ tests/system/test_mcp_workspace_scope.py   # replaces test_mcp_storage_parity.py
 **Goal:** Specs, AGENTS/CLAUDE files, and READMEs describe one global store, the workspace
 profile, and the MCP handover; promote the three `<!-- merge -->` blocks from tech.md.
 
-**Requirements:** R1–R7
+**Requirements:** R1–R8
 
 **Dependencies:** workspace-profile/1–5
 
@@ -286,7 +311,9 @@ profile, and the MCP handover; promote the three `<!-- merge -->` blocks from te
 
 ```
 .spec/tech-config.md, .spec/tech-app.md, .spec/tech.md, .spec/product.md
-.spec/plan.md                                   # Feature Sequence row (Feature 16)
+.spec/plan.md         # Feature Sequence row — RENUMBER 16 → 17 (#162 claims 16).
+                      #   Deferred to here on purpose: root .spec/ is writable only in
+                      #   feature.compound / strategy.spec / setup.apply.
 CLAUDE.md / AGENTS.md (root; symlinked), README.md   # incl. the .mcp.json handover recipes
 .spec/lessons.md                                # single-source→overlay reversal; the
                                                 #   INDEXED__workspace collision; roots deprecation
@@ -307,10 +334,10 @@ CLAUDE.md / AGENTS.md (root; symlinked), README.md   # incl. the .mcp.json hando
 | Unit | Blocks | Blocked by |
 |---|---|---|
 | workspace-profile/1 | /2, /3, /4, /5 | — |
-| workspace-profile/2 | /3, /5 | /1 |
+| workspace-profile/2 | /3, /5 | /1, **PR #162** |
 | workspace-profile/3 | /4, /6 | /1, /2 |
 | workspace-profile/4 | /6 | /1, /3 |
-| workspace-profile/5 | /6 | /1, /2 |
+| workspace-profile/5 | /6 | /1, /2, **PR #162** |
 | workspace-profile/6 | — | /1–/5 |
 
 ---
@@ -319,11 +346,11 @@ CLAUDE.md / AGENTS.md (root; symlinked), README.md   # incl. the .mcp.json hando
 
 | Unit | Status |
 |---|---|
-| workspace-profile/1 | NOT STARTED |
-| workspace-profile/2 | NOT STARTED |
+| workspace-profile/1 | CODE LANDED (bd04b0a) — implementer ended without a report; task review NOT done |
+| workspace-profile/2 | BLOCKED on PR #162 |
 | workspace-profile/3 | NOT STARTED |
 | workspace-profile/4 | NOT STARTED |
-| workspace-profile/5 | NOT STARTED |
+| workspace-profile/5 | BLOCKED on PR #162 |
 | workspace-profile/6 | NOT STARTED |
 
 ---
@@ -331,5 +358,10 @@ CLAUDE.md / AGENTS.md (root; symlinked), README.md   # incl. the .mcp.json hando
 ## Open Questions
 
 None. Out-of-scope named operations warn and proceed (CLI and MCP); per-collection overrides
-apply at the CLI/MCP layer. The `x-mcp-header` convergence is a documented follow-up in
+apply at the CLI/MCP layer.
+
+**Paused 2026-08-12.** Work is paused at the plan gate pending PR #162. On resume: re-cross
+the gate (`/flow feature.impl confirm`), review /1's landed code first — its implementer
+ended without filing a report, so `bd04b0a` has NOT been through task review — then rebase
+onto #162 before starting /2. The `x-mcp-header` convergence is a documented follow-up in
 [tech.md](tech.md), deliberately deferred until the SDK speaks protocol `2026-07-28`.

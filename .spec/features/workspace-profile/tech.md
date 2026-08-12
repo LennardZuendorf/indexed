@@ -3,7 +3,7 @@ type: feature-tech
 feature: workspace-profile
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Feature: Workspace Profile — Architecture
@@ -11,14 +11,23 @@ updated: 2026-08-11
 Collapses the local/global storage axis to a single global root and introduces a
 `WorkspaceProfile` over `./indexed.config.toml`. Config resolution changes from "single
 source, no merge" to a **global base + workspace overlay**. A **collection-id allowlist**
-threads from the profile through the read paths (`SearchService`, `InspectService`, MCP) so
-search/inspect/MCP see only the workspace's collections. The MCP server resolves the
-workspace **per request** through a documented chain and reports what it resolved.
+threads from the profile through the read paths — applied at the version-dispatching facade
+`core/engine.py` so it covers every engine — and CLI/MCP see only the workspace's
+collections. The MCP server resolves the workspace **per request** through a documented
+chain and reports what it resolved. The profile also contributes one link to the engine-
+selection chain for newly created collections.
 
 > **Layout note.** This spec targets the post-Simplify (Feature 14) single package
 > `src/indexed/`. The module-edge gate (`scripts/check_imports.py`, four edges) MUST stay
 > green: `config` is a leaf — it never imports up into `core`/`cli`/`mcp`. The allowlist and
 > the overlay travel *downward* as plain data, so config keeps its leaf position.
+
+> **Upstream gate — Core v2 (PR #162).** This feature is sequenced **after** #162 and its
+> code units build on the post-#162 tree. Two consequences run through this document: the
+> collection allowlist is applied at the dispatching facade `core/engine.py`, **not** in
+> `core/v1/engine/services/*`; and the MCP unit rebases onto #162's `server.py`, `tools.py`,
+> `resources.py` and `formatting.py` rather than today's. Both are correctness requirements,
+> not merge conveniences — see § Collection filter as an allowlist.
 
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
@@ -44,11 +53,11 @@ src/indexed/config/
                         #   WorkspaceResolutionError
   cli.py, commands/     # `config workspace init` scaffold; `config inspect` shows scope
 
-src/indexed/core/v1/
-  config_models.py                    # get_default_collections_path/caches_path → always global
-  engine/services/search_service.py   # allowed_collection_ids filter (method + wrapper)
-  engine/services/inspect_service.py  # allowed_collection_ids filter (status/inspect + wrappers);
-                                      #   relative_path anchored to the workspace, not os.getcwd()
+src/indexed/core/
+  engine.py                           # PR #162's dispatching facade — allowlist applied HERE,
+                                      #   in search/status/inspect, BEFORE the per-engine split
+  v1/config_models.py                 # get_default_collections_path/caches_path → always global
+  v1/engine/services/inspect_service.py  # relative_path anchored to the workspace, not os.getcwd()
 
 src/indexed/cli/
   app.py                # DELETE --local flag + ctx.obj["mode_override"]
@@ -120,29 +129,35 @@ def resolve_scope(workspace: Path | None) -> WorkspaceScope: ...   # mtime-keyed
 def get_config(*, workspace: Path | None = None) -> ConfigService: ...
 def reload() -> None: ...
 
-# src/indexed/core/v1/engine/services/search_service.py
-class SearchService:
-    def search(self, query: str, *, configs=None, max_chunks=None, max_docs=None,
-               score_threshold=None, include_full_text=False, include_all_chunks=False,
-               include_matched_chunks=False,
-               allowed_collection_ids: list[str] | None = None) -> dict: ...
-
-# module-level wrapper — existing params stay POSITIONAL; the new one is appended keyword-only
+# src/indexed/core/engine.py — PR #162's dispatching facade. The allowlist is appended
+# alongside the existing keyword-only `engine`, and applied BEFORE the per-engine split.
 def search(query, configs=None, max_chunks=None, max_docs=None, score_threshold=None,
            include_full_text=False, include_all_chunks=False, include_matched_chunks=False,
            collections_path: str | None = None, *,
+           engine: str | None = None,
            allowed_collection_ids: list[str] | None = None) -> dict: ...
 
-# src/indexed/core/v1/engine/services/inspect_service.py — same shape for status() and inspect()
+def status(collection_names=None, *, include_index_size: bool = False,
+           collections_path: str | None = None, engine: str | None = None,
+           allowed_collection_ids: list[str] | None = None) -> list: ...
+
+def inspect(collection_names=None, *, include_index_size: bool = False,
+            collections_path: str | None = None, engine: str | None = None,
+            allowed_collection_ids: list[str] | None = None) -> list: ...
 ```
 
 `allowed_collection_ids=None` means **no filtering** (preserves behaviour when no profile is
 present). An empty list means **nothing visible**.
 
-> **Signature hazard.** The existing module wrappers take their parameters *positionally*
-> (`search_service.py:335`, `inspect_service.py:362`). Inserting `allowed_collection_ids`
-> mid-signature would silently rebind existing positional callers. It MUST be appended after
-> `collections_path` and marked keyword-only.
+> **Signature hazard.** The facade's leading parameters are *positional*
+> (`core/engine.py:508` `search`, `:562` `status`, `:598` `inspect`), exactly as the v1
+> wrappers were. Inserting `allowed_collection_ids` mid-signature would silently rebind
+> existing positional callers. It MUST be appended after the existing keyword-only `engine`.
+
+> **Do not filter in the v1/v2 services.** The per-engine implementations stay
+> filter-agnostic. Filtering there would have to be duplicated per engine and would regress
+> the moment a v3 arrives; filtering at the facade covers every engine by construction. See
+> § Collection filter as an allowlist.
 
 ---
 
@@ -193,11 +208,22 @@ the same atomic serialize → validate → tmp → `fsync` → `os.replace` path
 <!-- merge -->
 ## Collection filter as an allowlist
 
-Read paths take an optional `allowed_collection_ids`. `SearchService` and `InspectService`
-resolve their candidate set (explicit names or auto-discovery), then intersect with the
-allowlist when it is non-`None`. The CLI passes the scope resolved for the invocation; MCP
-passes the scope resolved for the request. A declared id with no collection on disk warns
-and is skipped.
+Read paths take an optional `allowed_collection_ids`. The filter is applied at the
+**version-dispatching facade** `core/engine.py` (introduced by Core v2, PR #162), which
+resolves the candidate set — explicit names or on-disk enumeration — and groups it per
+engine before fanning out. Intersecting with the allowlist there, *before* the per-engine
+split, is what makes the filter engine-agnostic.
+
+Applying it inside `core/v1/engine/services/*` instead would be a **silent correctness
+hole**: the CLI and MCP call the facade, which routes each collection to v1 or v2 from its
+own manifest, so a v1-only filter would leave every v2 collection unfiltered. A workspace
+declaring `docs` would still return hits from unrelated v2 collections. The facade is the
+only chokepoint both engines pass through.
+
+`engine.search()` and `engine.status()`/`inspect()` already end in `*, engine: str | None =
+None`; `allowed_collection_ids` is appended alongside it, keyword-only. The CLI passes the
+scope resolved for the invocation; MCP passes the scope resolved for the request. A declared
+id with no collection on disk warns and is skipped.
 
 The allowlist filters **discovery**, not authority: naming a collection outside it warns and
 proceeds, on CLI and MCP alike. This mirrors MCP's own framing of roots as *"informational
@@ -255,6 +281,19 @@ agent cannot read stderr.
 what ships. Under `2026-07-28` the probe changes shape to an `InputRequiredResult` the client
 retries (MRTR, SEP-2322).
 <!-- /merge -->
+
+**Engine selection.** Core v2 (PR #162) resolves the engine for a *new* collection as
+`--engine` flag › `INDEXED__CORE__ENGINE` env › `[core] engine` config › built-in default
+(v1). The workspace profile contributes to the config link of that chain: because
+`[workspace.overrides]` deep-merges onto the global base *below* env and CLI args, setting
+`[workspace.overrides.core] engine` lands in exactly the right position with no new
+precedence rule — flag and env still win, the profile still beats global config. No change
+to #162's resolver is required; it reads the merged config it is already given.
+
+Existing collections are unaffected: the facade routes each one from its own manifest
+(`core/versioning.py`), never from config. The profile therefore cannot re-engine or
+implicitly migrate a collection, and `#162`'s `EngineMismatchError` still fires on a genuine
+conflict.
 
 **Merge semantics.** The overlay is a deep dict merge: workspace tables override matching
 global keys; sibling keys are preserved. It is applied through the pure
