@@ -18,10 +18,6 @@ concurrency:
   group: benchmark-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Default for any job that does not set its own; benchmark widens it below.
-permissions:
-  contents: read
-
 jobs:
   benchmark:
     if: github.event.pull_request.draft != true

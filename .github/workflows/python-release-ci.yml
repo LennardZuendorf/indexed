@@ -28,10 +28,6 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-# Default for any job that does not set its own; release jobs widen it below.
-permissions:
-  contents: read
-
 jobs:
   # ── 1. Build wheel + sdist from the tag and validate ────────────────────────
   build:
