@@ -508,6 +508,21 @@ adds a secret or a hole in branch protection to maintain a value that a build ca
 compute from the tag it already has. If CI wants to push to `main`, that is the
 signal the value shouldn't live in `main`.
 
+**Corollary — a derived version needs the git history it derives from.** Any job
+that builds or installs the package checks out at `fetch-depth: 0`. Measured on a
+depth-1 tagless checkout: hatch-vcs emits `0.1.dev1+g<sha>` with only a
+`UserWarning: … is shallow`, and both `validate_wheel.py` and
+`twine check --strict` still pass. A wrong version that goes green is worse than
+a build that breaks, so the release job also asserts the built dist filenames
+carry the tag version.
+
+**Scheme:** `version_scheme = "post-release"`, so off-tag builds read
+`0.0.7.post4+g5d98c95` — anchored on the last tag. The setuptools-scm default
+(`guess-next-dev`) invents `0.0.8.devN`, which lies whenever the next release
+isn't a patch bump — and since the version is chosen at release time here, it
+cannot know. Don't let the version scheme predict a decision the maintainer
+hasn't made yet.
+
 ---
 
 ## `test_e2e_search_collection` is order-dependent, not deterministic

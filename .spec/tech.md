@@ -241,9 +241,21 @@ publishing (no token). There is **no backmerge job**: `main` has no version to
 drift, so nothing has to be written back. Still no `sync_version.py`.
 
 `uv.lock` records the root package as `(dynamic)` with no `version` field, so
-the lock does not churn per commit. Off-tag builds yield
-`X.Y.(Z+1).devN+g<sha>`; that local segment is a deliberate tripwire — PyPI
-rejects it, and the build job's assert catches it first.
+the lock does not churn per commit.
+
+Off-tag builds use the `post-release` scheme (`raw-options` in
+`[tool.hatch.version]`), yielding `<last-tag>.post<N>+g<sha>` — e.g.
+`0.0.7.post4+g5d98c95` for four commits past `v0.0.7`, plus a `.dYYYYMMDD`
+suffix when the tree is dirty. It anchors on the **last** tag rather than
+guessing the next one; the default `guess-next-dev` would claim `0.0.8.devN`,
+which is wrong whenever the next release isn't a patch bump. The `+g<sha>`
+local segment is also a tripwire: PyPI rejects local versions, and the release
+job's assert catches the mismatch before upload.
+
+Every workflow that builds or installs the package checks out at
+`fetch-depth: 0`. On a shallow tagless checkout hatch-vcs falls back to
+`0.1.devN+g<sha>` with only a `UserWarning`, and `validate_wheel.py` and
+`twine check --strict` both still pass — a wrong version that goes green.
 
 ---
 

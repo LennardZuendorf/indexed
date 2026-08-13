@@ -10,6 +10,10 @@ on:
       - 'tests/system/**'
       - 'tests/benchmarks/**'
 
+# Read-only default; the benchmark job below opts into the writes it needs.
+permissions:
+  contents: read
+
 concurrency:
   group: benchmark-${{ github.event.pull_request.number }}
   cancel-in-progress: true

@@ -81,10 +81,14 @@ indexed-mcp = "indexed.mcp.cli:cli_main"
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
-# Version source: the git tag. On a tagged commit this yields the exact
-# release version (v0.0.7 -> 0.0.7); off-tag it yields a PEP 440 dev version.
+# Version source: the git tag. On a tagged commit this yields the exact release
+# version (v0.0.7 -> 0.0.7). Off-tag, post-release anchors on the LAST tag
+# rather than guessing the next one: 0.0.7.post4+g5d98c95 reads as "v0.0.7 plus
+# 4 commits, at 5d98c95". The default (guess-next-dev) would invent 0.0.8.devN,
+# which is wrong whenever the next release isn't a patch bump.
 [tool.hatch.version]
 source = "vcs"
+raw-options = { version_scheme = "post-release" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/indexed"]

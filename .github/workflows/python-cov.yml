@@ -12,6 +12,17 @@ on:
   push:
     branches: [ "main", "building" ]
 
+# Least privilege by default: this workflow only reads the repo. Codecov upload
+# authenticates with CODECOV_TOKEN, not the GITHUB_TOKEN, so no write is needed.
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same ref — the full suite is the long pole,
+# so a superseded run is the most expensive thing to leave running.
+concurrency:
+  group: cov-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   full-test-suite:
     if: github.event_name == 'push' || github.event.pull_request.draft != true
@@ -23,18 +34,25 @@ jobs:
         python-version: ["3.14"]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # hatch-vcs reads the version from git tags at install time; without
+          # them `uv sync` installs the project as 0.1.devN and warns that the
+          # checkout is shallow.
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Ruff and pytest come from the project's dev dependencies, not from
+      # standalone tool installs, so the versions match what runs locally.
       - name: Install dependencies
         run: |
           python -m pip install uv
           python -m uv sync
-          # Ruff and pytest should be installed via project dependencies, not as standalone tools
 
       - name: Security audit (OSV)
         run: uv tool run pip-audit --vulnerability-service osv

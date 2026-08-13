@@ -19,6 +19,11 @@ on:
     types: [published]
   workflow_dispatch:   # build-only smoke test (no tag, no publish)
 
+# Read-only default; the publish job opts into the writes it needs (OIDC token
+# + attaching dists to the Release). A job-level block replaces this one wholly.
+permissions:
+  contents: read
+
 concurrency:
   group: release
   cancel-in-progress: false
