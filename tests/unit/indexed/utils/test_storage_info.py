@@ -16,9 +16,8 @@ from indexed.cli.utils.storage_info import (
 class TestGetContextModeOverride:
     """Test reading ``mode_override`` off the active Typer context.
 
-    Driven through a real Typer app rather than a mocked context: the bug this
-    guards against (Typer >=0.26 vendoring Click, so the top-level ``click``
-    package no longer sees the active context) is invisible to a mock.
+    Driven through a real Typer app — a mocked context cannot catch the
+    vendored-Click break this guards against.
     """
 
     @staticmethod

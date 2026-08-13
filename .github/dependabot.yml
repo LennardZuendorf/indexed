@@ -1,7 +1,4 @@
-# Dependabot was not configured before this file, so the dependency tree drifted
-# until advisories accumulated (22 across 7 packages at the time this landed).
-# Grouping keeps the noise to a couple of PRs a week rather than one per package;
-# security updates are deliberately left ungrouped so they arrive on their own.
+# Grouped so a refresh lands as a couple of PRs, not one per package.
 version: 2
 updates:
   - package-ecosystem: "uv"
@@ -10,11 +7,9 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     commit-message:
-      # Matches the repo's convention: <type>(<scope>): <subject>, <=50 chars.
       prefix: "build(deps)"
       prefix-development: "build(deps-dev)"
     groups:
-      # The ML/parsing stack moves together and is slow to verify — one PR.
       ml-and-parsing:
         patterns:
           - "torch*"

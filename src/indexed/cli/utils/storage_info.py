@@ -26,11 +26,8 @@ StorageMode = Literal["global", "local"]
 def get_context_mode_override() -> Optional[StorageMode]:
     """Read ``mode_override`` off the active Typer/Click context.
 
-    Typer >=0.26 vendors Click as ``typer._click`` and no longer drives the
-    top-level ``click`` package, so ``click.get_current_context()`` returns
-    ``None`` inside a Typer command even though a context is active — silently
-    losing the ``--local`` override. Read from the vendored context first and
-    fall back to stdlib Click for older Typer.
+    Typer >=0.26 vendors Click, so ``click.get_current_context()`` returns
+    ``None`` inside a Typer command. Try the vendored context first.
 
     Returns:
         Optional[StorageMode]: The override set by the root callback, or

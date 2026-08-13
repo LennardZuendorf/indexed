@@ -26,18 +26,13 @@ classifiers = [
     "License :: Other/Proprietary License"
 ]
 requires-python = ">=3.11"
-# Floors track the versions the suite actually runs against (see uv.lock), so a
-# fresh resolve can't silently drop to an untested — or known-vulnerable —
-# release. `mcp` in particular must stay >=1.28.1: earlier versions carry three
-# HIGH advisories (GHSA-jpw9-pfvf-9f58, GHSA-hvrp-rf83-w775, GHSA-vj7q-gjh5-988w).
+# Floors track the versions the suite runs against, so a fresh resolve can't
+# drop to an untested combination. mcp >=1.28.1 is a security floor.
 dependencies = [
     # CLI / MCP
     "typer>=0.26.8",
     "rich>=15.0.0",
-    # Upper bound is deliberate: mcp 2.0 renames FastMCP -> MCPServer, swaps
-    # httpx for httpx2 (colliding with our own httpx dep) and drops
-    # streamablehttp_client. Today only fastmcp's transitive `mcp<2.0` pin keeps
-    # 2.x out; state the guard here rather than inherit it by accident.
+    # <2: mcp 2.0 renames FastMCP -> MCPServer and swaps httpx for httpx2.
     "mcp>=1.29.0,<2",
     "fastmcp>=3.4.7,<4",
     "art>=6.5",
@@ -109,17 +104,8 @@ dev = [
 ]
 
 # ── uv ──────────────────────────────────────────────────────────────────────
-# Minimum versions for transitive dependencies that carry security advisories.
-# These are not imported directly, so they get no entry in [project.dependencies];
-# constraints pin the resolution floor without turning them into direct deps.
-# Each line is a fixed-in version from a confirmed advisory (pip-audit / OSV):
-#   pillow       12.3.0  13 advisories incl. GHSA-6r8x-57c9-28j4 (heap OOB),
-#                        GHSA-jjj6-mw9f-p565 (PDF decompression bomb)
-#   cryptography 50.0.0  GHSA-g6cj-pr64-35w5 — PKCS#7 Bleichenbacher oracle
-#   soupsieve     2.8.4  GHSA-2wc2-fm75-p42x, GHSA-836r-79rf-4m37 — ReDoS / OOM
-#   click         8.3.3  GHSA-47fr-3ffg-hgmw — click.edit() command injection
-#   setuptools   83.0.0  GHSA-h35f-9h28-mq5c
-#   torch         2.13.0 GHSA-rrmf-rvhw-rf47 — torch.jit.script
+# Security floors for transitive deps. Not imported directly, so they get no
+# [project.dependencies] entry; each version is a pip-audit fixed-in.
 [tool.uv]
 constraint-dependencies = [
     "pillow>=12.3.0",
@@ -134,18 +120,12 @@ constraint-dependencies = [
 [tool.ruff]
 
 [tool.ruff.lint]
-# Pin the rule set explicitly instead of riding ruff's implicit defaults. Ruff
-# 0.16 widened those defaults far beyond the pyflakes/pycodestyle core this repo
-# was written against (~1000 new findings across UP/I/BLE/SIM/RUF), so an empty
-# config silently changes the lint contract on every ruff bump. These four are
-# exactly what ruff <=0.15 enabled by default; widening the set is a deliberate
-# cleanup, not a side effect of a dependency update.
+# Pinned explicitly: ruff 0.16 widened its implicit defaults to ~413 rules
+# (~1000 findings here). These four are what ruff <=0.15 enabled by default.
 select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.format]
-# Ruff 0.16 formats Python blocks inside Markdown by default, which pulls the
-# docs and the .spec/ sources (including the write-invariant-protected
-# lessons.md) into every `ruff format` run. Keep the formatter on Python only.
+# Ruff 0.16 formats Python blocks in Markdown by default; keep it off the docs.
 exclude = ["*.md"]
 
 [tool.ruff.lint.per-file-ignores]
@@ -163,9 +143,6 @@ markers = [
     "slow: marks tests as slow",
     "unit: marks unit tests",
     "unit_api: marks unit API tests",
-    # Used by tests/unit/indexed/connectors/outline/test_readers.py. pytest
-    # <=9.0 only warned about this unregistered marker despite --strict-markers;
-    # 9.1 promotes it to a collection error, which is what surfaced it.
     "api: marks tests exercising a connector API surface",
     "benchmark: marks benchmark tests",
     "connectors: marks connector functionality tests",

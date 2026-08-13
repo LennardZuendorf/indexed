@@ -26,9 +26,7 @@ repos:
         stages: [pre-commit]
 
   # Ruff for linting and formatting
-  # Keep this rev in step with the `ruff` dev dependency in pyproject.toml —
-  # ruff 0.15 changed the formatter style guide, so a hook and a local ruff on
-  # opposite sides of that line fight over the same files.
+  # Keep this rev in step with the `ruff` dev dependency in pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.2
     hooks:

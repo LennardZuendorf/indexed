@@ -55,8 +55,6 @@ class FaissIndexer:
             batch_size=_resolve_embedding_batch_size(),
             progress_callback=progress_callback,
         )
-        # faiss-cpu >=1.15 ships stubs for the Python-level API, so the old
-        # SWIG raw-C-signature mismatch (and its ty: ignore) is gone.
         self.faiss_index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
 
     def remove_ids(self, ids):
