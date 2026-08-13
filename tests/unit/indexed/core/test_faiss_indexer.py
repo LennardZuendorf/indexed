@@ -83,6 +83,32 @@ class TestFaissIndexerRemoveIds:
         indexer.faiss_index.remove_ids.assert_called_once()
 
 
+class TestFaissIndexerSearch:
+    def test_search_embeds_query_and_forwards_k(self):
+        """Query embedding is expanded to a (1, dim) batch before search."""
+        indexer, embedder = _make_indexer()
+        embedder.embed.return_value = np.array([0.5] * 8)
+        indexer.faiss_index = MagicMock()
+        indexer.faiss_index.search.return_value = ("distances", "labels")
+
+        result = indexer.search("query text", 5)
+
+        embedder.embed.assert_called_once_with("query text")
+        args = indexer.faiss_index.search.call_args[0]
+        assert args[0].shape == (1, 8)
+        assert args[1] == 5
+        assert result == ("distances", "labels")
+
+    def test_search_defaults_to_ten_results(self):
+        indexer, embedder = _make_indexer()
+        embedder.embed.return_value = np.array([0.5] * 8)
+        indexer.faiss_index = MagicMock()
+
+        indexer.search("query text")
+
+        assert indexer.faiss_index.search.call_args[0][1] == 10
+
+
 class TestFaissIndexerMisc:
     def test_get_name(self):
         indexer, _ = _make_indexer()

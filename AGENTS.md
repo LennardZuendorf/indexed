@@ -79,8 +79,7 @@ config through `ConfigService`; lazy-load heavy ML imports inside functions; bum
 **NEVER** — use `pip`/`poetry` or activate a venv; proceed past a gate without
 confirmation; skip tests/coverage/types before pushing; import heavy ML libs at module
 top; hardcode config values; create a file when editing one works; exceed 50 chars in a
-commit subject or add a body/footer; leave a spec drifting from the code; narrate a
-change in comments, docstrings or PR prose beyond what the surrounding code already does.
+commit subject or add a body/footer; leave a spec drifting from the code; over-comment.
 
 **Commit** (only when asked; one line, ≤50 chars, imperative):
 `<type>(<scope>): <subject>` — feat/fix/refactor/perf/style/test/docs/build/ci/chore.
@@ -94,12 +93,7 @@ coverage is measured on installed packages (`--cov=src`); `ConfigService` is a s
 (respect the priority chain); connectors are Protocol-based with `from_manifest`; core is
 consumed only through the `core.v1.engine` facade, with `composition.py` the single wiring
 site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
-spec in the same cycle. KISS wins.
-
-**Comments are terse.** One line stating the non-obvious *why*; the rest belongs in the
-PR body or nowhere. No advisory tables, changelog recaps, or rationale essays in config
-files — a reader who wants the history has `git blame`. Same for PR descriptions: state
-what changed and what verified it, not every step taken to get there.
+spec in the same cycle; a comment is one line of *why*, never an essay. KISS wins.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

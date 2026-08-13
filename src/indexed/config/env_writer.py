@@ -61,17 +61,22 @@ class EnvFileWriter:
 
         os.makedirs(os.path.dirname(env_path), exist_ok=True)
 
-        # Atomic write: tmp -> fsync -> chmod 0600 -> os.replace (mirror
-        # TomlStore.write pattern). The temp file is a fresh inode with
-        # umask-derived permissions, so it must be hardened to 0600 before
-        # the replace or the resulting .env would leak to group/world read.
+        # Atomic write: tmp -> fsync -> os.replace. The temp file is opened
+        # 0600 via os.open rather than chmod'ed afterwards — a chmod after the
+        # write leaves the secrets readable at umask perms for the duration of
+        # the write. O_EXCL on a fresh inode so a pre-existing tmp cannot
+        # donate wider permissions.
         tmp = env_path + ".tmp"
         try:
-            with open(tmp, "w") as f:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.writelines(updated_lines)
                 f.flush()
                 os.fsync(f.fileno())
-            os.chmod(tmp, 0o600)
             os.replace(tmp, env_path)
         except Exception:
             try:
