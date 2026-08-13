@@ -28,44 +28,47 @@ classifiers = [
     "License :: Other/Proprietary License"
 ]
 requires-python = ">=3.11"
+# Floors track the versions the suite runs against, so a fresh resolve can't
+# drop to an untested combination. mcp >=1.28.1 is a security floor.
 dependencies = [
     # CLI / MCP
-    "typer>=0.12.3",
-    "rich>=13.7.0",
-    "mcp>=1.13.0",
-    "fastmcp>=3.2.4,<4",
-    "art>=6.0",
+    "typer>=0.26.8",
+    "rich>=15.0.0",
+    # <2: mcp 2.0 renames FastMCP -> MCPServer and swaps httpx for httpx2.
+    "mcp>=1.29.0,<2",
+    "fastmcp>=3.4.7,<4",
+    "art>=6.5",
     # config
-    "pydantic>=2.5.0",
-    "python-dotenv>=1.0.0",
-    "tomlkit>=0.12.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "tomlkit>=0.15.1",
     # utils
-    "loguru>=0.7.0",
+    "loguru>=0.7.3",
     # core (engine / embeddings / faiss)
-    "faiss-cpu>=1.11.0",
-    "sentence-transformers>=5.2.0",
-    "onnxruntime>=1.17.0",
-    "orjson>=3.10.0",
+    "faiss-cpu>=1.15.0",
+    "sentence-transformers>=5.7.0",
+    "onnxruntime>=1.28.0",
+    "orjson>=3.11.9",
     # connectors
-    "requests>=2.32.0",
-    "httpx>=0.27",
+    "requests>=2.34.2",
+    "httpx>=0.28.1",
     "bs4>=0.0.2",
-    "langchain-text-splitters>=0.3.0",
-    "atlassian-python-api>=3.41.16",
-    "pathspec>=0.12",
-    "xxhash>=3.0",
+    "langchain-text-splitters>=1.1.2",
+    "atlassian-python-api>=4.0.7",
+    "pathspec>=1.1.1",
+    "xxhash>=4.0.0",
     # parsing (docling + tree-sitter)
-    "docling>=2.70.0",
-    "docling-core[chunking]>=2.8.0",
-    "tree-sitter>=0.23",
-    "tree-sitter-python>=0.23",
-    "tree-sitter-javascript>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "tree-sitter-java>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-go>=0.23",
-    "tree-sitter-c>=0.23",
-    "tree-sitter-cpp>=0.23",
+    "docling>=2.119.0",
+    "docling-core[chunking]>=2.91.0",
+    "tree-sitter>=0.26.0",
+    "tree-sitter-python>=0.25.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
+    "tree-sitter-java>=0.23.5",
+    "tree-sitter-rust>=0.24.2",
+    "tree-sitter-go>=0.25.0",
+    "tree-sitter-c>=0.24.2",
+    "tree-sitter-cpp>=0.23.4",
 ]
 
 [project.urls]
@@ -111,21 +114,43 @@ only-include = ["src/indexed"]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.2.0",
-    "pytest>=8.4.1",
-    "pytest-benchmark>=4.0.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.14.1",
-    "pytest-httpserver>=1.0.0",
-    "pytest-xdist>=3.5.0",
-    "pytest-rerunfailures>=12.0",
-    "ruff>=0.12.10",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-benchmark>=5.2.3",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "pytest-httpserver>=1.1.5",
+    "pytest-xdist>=3.8.0",
+    "pytest-rerunfailures>=16.4",
+    "ruff>=0.16.2",
     "ty==0.0.58",
     "types-requests>=2.33.0.20260712",
 ]
 
+# ── uv ──────────────────────────────────────────────────────────────────────
+# Security floors for transitive deps. Not imported directly, so they get no
+# [project.dependencies] entry; each version is a pip-audit fixed-in.
+[tool.uv]
+constraint-dependencies = [
+    "pillow>=12.3.0",
+    "cryptography>=50.0.0",
+    "soupsieve>=2.8.4",
+    "click>=8.3.3",
+    "setuptools>=83.0.0",
+    "torch>=2.13.0",
+]
+
 # ── Ruff ────────────────────────────────────────────────────────────────────
 [tool.ruff]
+
+[tool.ruff.lint]
+# Pinned explicitly: ruff 0.16 widened its implicit defaults to ~413 rules
+# (~1000 findings here). These four are what ruff <=0.15 enabled by default.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+# Ruff 0.16 formats Python blocks in Markdown by default; keep it off the docs.
+exclude = ["*.md"]
 
 [tool.ruff.lint.per-file-ignores]
 # Connector reader files that use lambdas for tqdm callbacks
@@ -142,6 +167,7 @@ markers = [
     "slow: marks tests as slow",
     "unit: marks unit tests",
     "unit_api: marks unit API tests",
+    "api: marks tests exercising a connector API surface",
     "benchmark: marks benchmark tests",
     "connectors: marks connector functionality tests",
     "integration: marks integration tests",

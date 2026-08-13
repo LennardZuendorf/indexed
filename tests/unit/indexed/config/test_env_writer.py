@@ -155,6 +155,39 @@ class TestEnvFileWriterWrite:
         mode = stat.S_IMODE(os.stat(env_path).st_mode)
         assert mode == 0o600
 
+    def test_tmp_file_is_never_group_or_world_readable(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The secrets must not sit at umask perms mid-write.
+
+        Snapshots the temp file's mode at fsync — while the secrets are on
+        disk and the file is still open — so a chmod-after-write regression
+        (readable to other local users for the duration) fails here. The
+        process umask is set for real: os.open() masks against the kernel's
+        umask, not a patched os.umask, so under a restrictive runner umask the
+        buggy path would also land on 0600 and this test would pass blind.
+        """
+        env_path = tmp_path / ".env"
+        seen: dict[str, int] = {}
+        real_fsync = os.fsync
+
+        def spy(fd):
+            tmp = str(env_path) + ".tmp"
+            if os.path.exists(tmp):
+                seen["mode"] = stat.S_IMODE(os.stat(tmp).st_mode)
+            return real_fsync(fd)
+
+        monkeypatch.setattr(os, "fsync", spy)
+
+        previous_umask = os.umask(0o022)
+        try:
+            EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+        finally:
+            os.umask(previous_umask)
+
+        assert seen["mode"] == 0o600
+        assert not seen["mode"] & (stat.S_IRGRP | stat.S_IROTH)
+
 
 class TestIsSensitiveField:
     def test_detects_sensitive_names(self):
