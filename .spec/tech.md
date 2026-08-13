@@ -87,7 +87,7 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **sentence-transformers** | latest | Embedding generation |
 | **Typer** | 0.26+ | CLI framework |
 | **Rich** | 15.0+ | Terminal UI |
-| **FastMCP** | latest | MCP server |
+| **FastMCP** | 3.4+, <4 | MCP server |
 | **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
 | **ruff** | 0.16.2 | Linter + formatter |

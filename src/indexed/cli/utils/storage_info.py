@@ -46,7 +46,11 @@ def get_context_mode_override() -> Optional[StorageMode]:
             logger.debug("Could not read context via %s", module, exc_info=True)
             continue
         if ctx is not None and ctx.obj:
-            return ctx.obj.get("mode_override")
+            # ctx.obj is untyped, so anything could have been stashed there;
+            # only hand a real StorageMode to resolve_collections_context().
+            override = ctx.obj.get("mode_override")
+            if override in ("global", "local"):
+                return override
     return None
 
 

@@ -1,6 +1,7 @@
 """Comprehensive tests for storage_info utility module."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import pytest
 from rich.console import Console
@@ -51,6 +52,32 @@ class TestGetContextModeOverride:
 
     def test_returns_none_outside_any_context(self):
         """Should degrade to None rather than raise when no CLI is running."""
+        assert get_context_mode_override() is None
+
+    def test_falls_back_to_stdlib_click_context(self, monkeypatch):
+        """Pre-0.26 Typer drove stdlib Click; that branch must still work."""
+        import click
+        from typer._click import globals as typer_globals
+
+        monkeypatch.setattr(typer_globals, "get_current_context", lambda **_: None)
+        monkeypatch.setattr(
+            click,
+            "get_current_context",
+            lambda **_: SimpleNamespace(obj={"mode_override": "local"}),
+        )
+
+        assert get_context_mode_override() == "local"
+
+    def test_ignores_non_storage_mode_values(self, monkeypatch):
+        """ctx.obj is untyped — a junk override must not reach the resolver."""
+        from typer._click import globals as typer_globals
+
+        monkeypatch.setattr(
+            typer_globals,
+            "get_current_context",
+            lambda **_: SimpleNamespace(obj={"mode_override": "bogus"}),
+        )
+
         assert get_context_mode_override() is None
 
 
