@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-12
+updated: 2026-08-13
 ---
 
 # Tech Spec: indexed
@@ -231,14 +231,19 @@ uv run --with twine twine check --strict dist/*      # metadata render check (wh
 ### Release
 
 The GitHub Release **tag** is the version, decided at release time — no manual
-pre-bump in a PR. On `release: published`, the build job checks out the tag and
-runs `uv version --frozen <tag>` so the wheel carries the tag version, then
-validates (validate_wheel + `twine check --strict`) and publishes wheel + sdist
-to PyPI via OIDC trusted publishing (no token). A backmerge job then writes the
-bump back to `main` (`uv version --no-sync <tag>` → both `pyproject.toml` and
-`uv.lock`) and commits it with `chore: release <tag> [skip ci]`, so `main` stays
-truthful between releases. Still no `sync_version.py` — native `uv version`
-replaces it.
+pre-bump in a PR. `pyproject.toml` declares `dynamic = ["version"]` and
+**hatch-vcs** resolves the version from `git describe` at build time, so no
+version string is stored in the repo at all. On `release: published`, the build
+job checks out the tag at `fetch-depth: 0` (hatch-vcs needs the tags), builds,
+asserts the built dists carry the tag version, validates (validate_wheel +
+`twine check --strict`), and publishes wheel + sdist to PyPI via OIDC trusted
+publishing (no token). There is **no backmerge job**: `main` has no version to
+drift, so nothing has to be written back. Still no `sync_version.py`.
+
+`uv.lock` records the root package as `(dynamic)` with no `version` field, so
+the lock does not churn per commit. Off-tag builds yield
+`X.Y.(Z+1).devN+g<sha>`; that local segment is a deliberate tripwire — PyPI
+rejects it, and the build job's assert catches it first.
 
 ---
 

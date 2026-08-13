@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-07-12
+updated: 2026-08-13
 ---
 
 # Lessons Learned
@@ -485,17 +485,28 @@ port is a different origin for credential purposes; fail closed.
 ## Release versioning is tag-driven (2026-07-12)
 
 **Lesson:** The GitHub Release **tag** is the version. Nothing is pre-bumped in a
-PR. On `release: published`, the build job runs `uv version --frozen <tag>` so the
-wheel carries the tag version; publish OIDC-uploads wheel + sdist. A backmerge job
-then runs `uv version --no-sync <tag>` on a fresh `main` checkout and commits the
-bump (`pyproject.toml` + `uv.lock`) back with `chore: release <tag> [skip ci]`.
-There is no `sync_version.py` (native `uv version` replaces it) and no
-"tag == pyproject version" guard (the tag is the source of truth now).
+PR. `pyproject.toml` carries `dynamic = ["version"]` + `[tool.hatch.version]
+source = "vcs"`, so hatch-vcs reads the tag at build time and the repo stores no
+version string at all. There is no `sync_version.py` and no "tag == pyproject
+version" guard — the tag is the only source of truth.
 
 **Why:** The maintainer doesn't know at PR-merge time whether a merge will be
-released, so pre-bumping the version in the PR (Model A) is impractical. Tagging at
-release time and backmerging the bump keeps `main` truthful between releases
-without any manual bump.
+released, so pre-bumping the version in the PR (Model A) is impractical.
+
+**Superseded (2026-08-13):** the original design tagged at release time and then
+*backmerged* the bump — a job that ran `uv version --no-sync <tag>` on a fresh
+`main` checkout and pushed `chore: release <tag> [skip ci]` straight to `main`.
+It never worked once. Its first execution (v0.0.7, run 11) was rejected with
+`GH013: - Changes must be made through a pull request` — the `main` ruleset
+forbids direct pushes, and `secrets.GITHUB_TOKEN` is not a bypass actor and
+cannot be made one by any `permissions:` block. `main` sat at `0.0.5` while PyPI
+served `0.0.7`.
+
+**Rule:** *don't write state back to a protected branch from CI.* Derive it
+instead. Every workaround (PR-per-release + auto-merge, App-token ruleset bypass)
+adds a secret or a hole in branch protection to maintain a value that a build can
+compute from the tag it already has. If CI wants to push to `main`, that is the
+signal the value shouldn't live in `main`.
 
 ---
 

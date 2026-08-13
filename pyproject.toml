@@ -4,7 +4,9 @@
 
 [project]
 name = "indexed-sh"
-version = "0.0.5"
+# Version comes from the git tag (hatch-vcs) — never hand-edited, never
+# backmerged. A release tag vX.Y.Z IS the version; see .github/workflows.
+dynamic = ["version"]
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 license = { text = "See LICENSE file" }
@@ -76,8 +78,13 @@ indexed = "indexed.cli.app:main"
 indexed-mcp = "indexed.mcp.cli:cli_main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+# Version source: the git tag. On a tagged commit this yields the exact
+# release version (v0.0.7 -> 0.0.7); off-tag it yields a PEP 440 dev version.
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/indexed"]
