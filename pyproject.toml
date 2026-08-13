@@ -4,7 +4,9 @@
 
 [project]
 name = "indexed-sh"
-version = "0.0.5"
+# Version comes from the git tag (hatch-vcs) — never hand-edited, never
+# backmerged. A release tag vX.Y.Z IS the version; see .github/workflows.
+dynamic = ["version"]
 description = "CLI and MCP server for semantic document search with AI agent integration"
 readme = "README.md"
 license = { text = "See LICENSE file" }
@@ -76,8 +78,30 @@ indexed = "indexed.cli.app:main"
 indexed-mcp = "indexed.mcp.cli:cli_main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2", "hatch-vcs>=0.4,<1"]
 build-backend = "hatchling.build"
+
+# Version source: the git tag. On a tagged commit this yields the exact release
+# version (v0.0.7 -> 0.0.7). Off-tag, post-release anchors on the LAST tag
+# rather than guessing the next one: 0.0.7.post4+g5d98c95 reads as "v0.0.7 plus
+# 4 commits, at 5d98c95". The default (guess-next-dev) would invent 0.0.8.devN,
+# which is wrong whenever the next release isn't a patch bump.
+#
+# fallback_version keeps a tree with no .git buildable — GitHub's auto-generated
+# source tarball, a vendored copy, a `COPY . .` that omits .git. Without it those
+# builds die with a LookupError, which the static version never did. Measured:
+#
+#   no .git                  -> 0.0.0
+#   .git, but no tag reachable -> 0.0.0.postN+g<sha>   (fallback as the base)
+#   tags reachable, off-tag  -> 0.0.7.postN+g<sha>
+#   HEAD == tag              -> exact tag version
+#
+# So it never hides a shallow or tagless checkout behind a plausible number: the
+# .postN+g<sha> suffix is still there and still fails the release job's assert.
+# A bare 0.0.0 means "built without history" and can't reach PyPI either.
+[tool.hatch.version]
+source = "vcs"
+raw-options = { version_scheme = "post-release", fallback_version = "0.0.0" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/indexed"]

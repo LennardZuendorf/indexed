@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-07-12
+updated: 2026-08-13
 ---
 
 # Tech Spec: indexed
@@ -231,14 +231,52 @@ uv run --with twine twine check --strict dist/*      # metadata render check (wh
 ### Release
 
 The GitHub Release **tag** is the version, decided at release time — no manual
-pre-bump in a PR. On `release: published`, the build job checks out the tag and
-runs `uv version --frozen <tag>` so the wheel carries the tag version, then
-validates (validate_wheel + `twine check --strict`) and publishes wheel + sdist
-to PyPI via OIDC trusted publishing (no token). A backmerge job then writes the
-bump back to `main` (`uv version --no-sync <tag>` → both `pyproject.toml` and
-`uv.lock`) and commits it with `chore: release <tag> [skip ci]`, so `main` stays
-truthful between releases. Still no `sync_version.py` — native `uv version`
-replaces it.
+pre-bump in a PR. `pyproject.toml` declares `dynamic = ["version"]` and
+**hatch-vcs** resolves the version from `git describe` at build time, so no
+version string is stored in the repo at all. On `release: published`, the build
+job checks out the tag at `fetch-depth: 0` (hatch-vcs needs the tags), builds,
+asserts the built dists carry the tag version, validates (validate_wheel +
+`twine check --strict`), and publishes wheel + sdist to PyPI via OIDC trusted
+publishing (no token). There is **no backmerge job**: `main` has no version to
+drift, so nothing has to be written back. Still no `sync_version.py`.
+
+`uv.lock`'s root-package entry simply omits the `version` field (uv reports the
+change as `indexed-sh v0.0.5 -> (dynamic)`; no such token is written to the
+file), so the lock does not churn per commit.
+
+Off-tag builds use the `post-release` scheme (`raw-options` in
+`[tool.hatch.version]`), yielding `<last-tag>.post<N>+g<sha>` — e.g.
+`0.0.7.post4+g5d98c95` for four commits past `v0.0.7`, plus a `.dYYYYMMDD`
+suffix when the tree is dirty. It anchors on the **last** tag rather than
+guessing the next one; the default `guess-next-dev` would claim `0.0.8.devN`,
+which is wrong whenever the next release isn't a patch bump. The `+g<sha>`
+local segment is also a tripwire: PyPI rejects local versions, and the release
+job's assert catches the mismatch before upload.
+
+`python-ci.yml`, `python-cov.yml`, and `python-release-ci.yml` check out at
+`fetch-depth: 0`. On a shallow tagless checkout hatch-vcs resolves to
+`0.0.0.postN+g<sha>` with only a `UserWarning`, and `validate_wheel.py` and
+`twine check --strict` both still pass — a wrong version that goes green.
+`python-benchmark.yml` is the exception: `pytest-bench-action` checks out at a
+hardcoded `fetch-depth: 2` that no input overrides, so its install carries a
+non-tag version. Nothing in the benchmark suite reads the version, so this is
+tolerated rather than fixed.
+
+Building from a tree with **no** `.git` (GitHub's auto-generated source tarball,
+a vendored copy) resolves to the `fallback_version` of `0.0.0`. Without that
+fallback hatch-vcs raises `LookupError` and the build dies — a regression
+against the old static version. The fallback also supplies the base when git is
+readable but no tag is reachable, which is why a shallow checkout reads
+`0.0.0.postN+g<sha>` rather than `0.0.postN+g<sha>` — but it never yields a bare
+`0.0.0` there, so the release assert still catches it. Measured with the current
+config:
+
+| checkout | built version |
+| --- | --- |
+| `HEAD` == tag, clean | exact tag version |
+| tags reachable, off-tag | `0.0.7.post3+g21083d3d9` |
+| shallow, tagless, clean | `0.0.0.post2+ga0347642e` |
+| no `.git` | `0.0.0` |
 
 ---
 
