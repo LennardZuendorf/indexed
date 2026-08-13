@@ -17,11 +17,76 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 23_000
+SRC_LOC_MAX = 26_100
+# Raised from 25_800 by core-v2/6: opt-in `SentenceTransformerRerank` wiring in
+# `core/v2/retrieval.py` (+ `CoreV2RerankConfig` / `resolve_rerank_config` /
+# registration) and the cross-engine unified-relevance ranking in
+# `mcp/formatting.py` + `cli/.../search_render.py` (R10/R11) — genuine
+# new-feature surface; ceiling = measured (25_857) + headroom.
+# Raised from 25_100 by core-v2/4: the v1->v2 migration service
+# (`core/v2/migration.py`: offline + from-source read, build-aside + validate +
+# backup/atomic-swap/rollback), the facade-exposed `migrate` in `core/engine.py`,
+# and the thin `cli/knowledge/commands/migrate.py` command — genuine new-feature
+# surface (R7); ceiling = measured (25_708) + headroom.
+# Raised from 24_950 by core-v2/3: the v2 incremental `update` path in
+# `core/v2/ingestion.py` (docstore-hash upsert + deletions + build-aside swap +
+# per-doc content hashing shared with create) and the service `update` rewire —
+# genuine new-feature surface; ceiling = measured (25_005) + headroom.
+# Raised from 24_600 by core-v2/2d: R13 engine-aware diagnostics
+# (`EngineDescriptor`/`engine_descriptors` in the facade + inspect display),
+# v2 search parity (`include_full_text`/`include_all_chunks` reconstruction in
+# `core/v2/retrieval.py`), scoreKind-conditional formatter ordering, and the
+# check_imports v2-edge guard — genuine new-feature surface; ceiling = measured
+# (24_786) + headroom.
+# Raised from 23_500 by core-v2/2c, which wires the v2 engine end to end:
+# `core/v2/{persist,ingestion,retrieval,_common}.py` + `core/v2/services/` +
+# the facade's `_engine_impl("2")` branch and per-engine grouping in
+# `core/engine.py` + the CoreV2Error type — genuine new-feature surface, not
+# stealth regrowth; ceiling = measured (24_433) + headroom.
+# Raised from 23_300 by core-v2/2b, which adds the native embedding factory
+# (`core/v2/embedding/local.py`) + vector-store construction/LOAD dispatch
+# (`core/v2/stores.py`) + the UnknownVectorStoreError — genuine new-feature
+# surface, not stealth regrowth; ceiling = measured (23_416) + headroom.
+# Raised from 23_000 by core-v2/2a, which adds the v2 manifest/config-model/
+# adapter package (`core/v2/{__init__,manifest,config_models,adapter}.py`) —
+# genuine new-feature surface (pre-approved in `.spec/lessons.md`'s v1 surface
+# map note), not stealth regrowth; ceiling = measured (23_179) + headroom.
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 32_500
+TEST_LOC_MAX = 36_850
+# Raised from 36_400 by core-v2/8's tests: the v2 cloud-connector lifecycle net
+# (`test_lifecycle_cloud_v2.py`: jira/confluence/outline known-hit
+# create→search→update→inspect→remove), the v2 benchmark rows + subprocess
+# v1-vs-v2 budget-ratio test in `test_e2e_performance.py`, and the
+# out-of-process MCP v2 stdio smoke (`test_mcp_v2_out_of_process.py`) — genuine
+# parity/perf coverage (R4/R12); ceiling = measured (36_579) + headroom.
+# Raised from 35_800 by core-v2/6's tests: the rerank suite (disabled lazy-import
+# probe, enabled fake-reranker order/top_n, gated real-CE) in `test_retrieval.py`,
+# the cross-engine unified-relevance + v1-only byte-identical tests in
+# `test_formatting.py` and `test_search.py`, and the rerank config-model/
+# registration tests; ceiling = measured (36_093) + headroom.
+# Raised from 35_200 by core-v2/4's tests: the migration service unit suite
+# (`test_migration.py`: dry-run/offline/failed-validation/rollback/purge/
+# from-source) + the v1->v2 migration CLI system test
+# (`test_v2_migration_lifecycle.py`: search parity + offline no-network);
+# ceiling = measured (35_553) + headroom.
+# Raised from 34_650 by core-v2/3's tests: the v2 incremental-update unit suite
+# (`test_ingestion_update.py`: incrementality/embed-count proof, deletions,
+# empty no-op, build-aside mid-swap failure), the service + facade update tests,
+# and the new v2 files-lifecycle characterization net
+# (`test_lifecycle_files_v2.py`); ceiling = measured (35_073) + headroom.
+# Raised from 33_800 by core-v2/2d's tests: facade `engine_descriptors`,
+# inspect engine-diagnostics, retrieval full-text/all-chunks parity, the
+# store-dispatch integration probe, the scoreKind formatter tests, and the v2
+# create/search CLI system test; ceiling = measured (34_489) + headroom.
+# Raised from 32_800 by core-v2/2c's engine tests (persist crash-safety,
+# ingestion/retrieval/services model-free + KNOWN-HIT model-gated, facade
+# grouping + mixed v1/v2, cache-drift guard); ceiling = measured (33_599) +
+# headroom.
+# Raised from 32_500 by core-v2/2b's model-free wiring + real-model
+# (offline-proof / parity / store-dispatch) tests; ceiling = measured
+# (32_684) + headroom.
 AGENTS_MD_MAX_LINES = 100
 
 _IGNORED_PARTS = frozenset({".venv", "node_modules", "__pycache__"})

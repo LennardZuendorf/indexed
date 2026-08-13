@@ -259,3 +259,89 @@ class TestDiscoverCollectionsFailsLoud:
         service = InspectService(collections_path=str(tmp_path / "does-not-exist"))
 
         assert service._discover_collections() == []
+
+
+class TestMissingManifestLogLevel:
+    """UX finding L3: a missing collection is the expected, common
+    "not found" case — its manifest-read failure must not log at ERROR
+    (redundant noise above the friendly "not found" panel). Genuine read
+    errors (corrupt/undecodable manifest, permission failures, etc.) are
+    real problems and must stay at ERROR so operators still see them.
+
+    inspect_service logs via loguru (not stdlib logging), so assert on its
+    stderr sink rather than caplog — same pattern as
+    TestDiscoverCollectionsFailsLoud above.
+    """
+
+    def test_status_missing_collection_does_not_log_error(self, tmp_path, capsys):
+        from loguru import logger as loguru_logger
+
+        loguru_logger.remove()
+        loguru_logger.add(sys.stderr, level="ERROR")
+        try:
+            statuses = InspectService(collections_path=str(tmp_path)).status(
+                ["does-not-exist"]
+            )
+        finally:
+            loguru_logger.remove()
+
+        # Friendly behavior unchanged: missing collection is simply omitted.
+        assert statuses == []
+        stderr = capsys.readouterr().err
+        assert "ERROR" not in stderr
+
+    def test_status_genuine_read_error_still_logs_error(self, tmp_path, capsys):
+        from loguru import logger as loguru_logger
+
+        # The collection dir exists but its manifest is corrupt — a real
+        # failure, distinct from "collection doesn't exist at all".
+        coll_dir = tmp_path / "broken"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{not valid json")
+
+        loguru_logger.remove()
+        loguru_logger.add(sys.stderr, level="ERROR")
+        try:
+            statuses = InspectService(collections_path=str(tmp_path)).status(["broken"])
+        finally:
+            loguru_logger.remove()
+
+        assert statuses == []
+        stderr = capsys.readouterr().err
+        assert "ERROR" in stderr
+        assert "Error getting status for collection broken" in stderr
+
+    def test_inspect_missing_collection_does_not_log_error(self, tmp_path, capsys):
+        from loguru import logger as loguru_logger
+
+        loguru_logger.remove()
+        loguru_logger.add(sys.stderr, level="ERROR")
+        try:
+            infos = InspectService(collections_path=str(tmp_path)).inspect(
+                ["does-not-exist"]
+            )
+        finally:
+            loguru_logger.remove()
+
+        assert infos == []
+        stderr = capsys.readouterr().err
+        assert "ERROR" not in stderr
+
+    def test_inspect_genuine_read_error_still_logs_error(self, tmp_path, capsys):
+        from loguru import logger as loguru_logger
+
+        coll_dir = tmp_path / "broken"
+        coll_dir.mkdir()
+        (coll_dir / "manifest.json").write_text("{not valid json")
+
+        loguru_logger.remove()
+        loguru_logger.add(sys.stderr, level="ERROR")
+        try:
+            infos = InspectService(collections_path=str(tmp_path)).inspect(["broken"])
+        finally:
+            loguru_logger.remove()
+
+        assert infos == []
+        stderr = capsys.readouterr().err
+        assert "ERROR" in stderr
+        assert "Error inspecting collection broken" in stderr

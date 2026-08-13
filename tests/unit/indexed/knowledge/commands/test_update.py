@@ -1,6 +1,10 @@
 """Tests for knowledge update commands."""
 
+import contextlib
+from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands.update import (
@@ -12,6 +16,109 @@ from indexed.cli.knowledge.commands.update import (
 from tests.unit.indexed.conftest import make_cli_context
 
 runner = CliRunner()
+
+
+class TestUpdateEngineRouting:
+    """core-v2/1: the update command must route through the version-dispatching
+    facade so an explicit ``--engine`` reaches per-collection detection instead
+    of crashing v1's engine-less ``update()`` with a ``TypeError``."""
+
+    def test_update_service_seam_is_the_facade(self):
+        """``update.update_service`` must resolve to the facade ``update`` (which
+        accepts ``engine=``), not v1's engine-less ``update`` (which would
+        ``TypeError`` on the injected ``engine`` kwarg)."""
+        from indexed.cli.knowledge.commands import update as update_cmd
+        import indexed.core.engine as facade
+        import indexed.core.v1.engine as v1
+
+        assert update_cmd.update_service is facade.update
+        assert update_cmd.update_service is not v1.update
+
+    def test_svc_status_and_inspect_seams_are_the_facade(self):
+        from indexed.cli.knowledge.commands import update as update_cmd
+        import indexed.core.engine as facade
+
+        assert update_cmd.svc_status is facade.status
+        assert update_cmd.inspect is facade.inspect
+
+    def test_run_update_loop_propagates_engine_mismatch(self, tmp_path):
+        """An ``EngineMismatchError`` from the facade must surface with its full
+        message (names both engines + migrate remedy), NOT be collapsed into a
+        generic per-collection ``Failed to update`` failure (R2 surfacing)."""
+        from indexed.cli.knowledge.commands import update_service as svc
+        from indexed.core.errors import EngineMismatchError
+
+        status = SimpleNamespace(
+            name="col1", source_type="localFiles", indexers=["default"]
+        )
+
+        def raise_mismatch(configs, **kw):
+            raise EngineMismatchError("col1", found="1", requested="2")
+
+        cmd = SimpleNamespace(
+            svc_status=lambda names=None, **kw: [status],
+            SourceConfig=lambda **kw: SimpleNamespace(**kw),
+            is_verbose_mode=lambda: False,
+            update_service=raise_mismatch,
+            print_error=lambda *a, **kw: None,
+            console=SimpleNamespace(print=lambda *a, **kw: None),
+            inspect=lambda names=None, **kw: [status],
+        )
+
+        with pytest.raises(EngineMismatchError) as excinfo:
+            svc.run_update_loop(
+                cmd,
+                collections=["col1"],
+                before_data={"col1": status},
+                update_wiring={"engine": "2", "manifest_factory": lambda m, p: None},
+                collections_path=str(tmp_path),
+                config_service=SimpleNamespace(clear_overlay=lambda: None),
+                simple=True,
+                noop_context=contextlib.nullcontext,
+                create_phased_progress=None,
+                ensure_credentials=lambda *a, **kw: None,
+            )
+
+        message = str(excinfo.value)
+        assert "v1" in message and "v2" in message
+        assert "indexed index migrate col1" in message
+
+    def test_run_update_loop_still_collects_generic_failures(self, tmp_path):
+        """A non-engine failure (e.g. a genuine indexing error) is still
+        collected per-collection so the batch continues (foundation/6 E8)."""
+        from indexed.cli.knowledge.commands import update_service as svc
+
+        status = SimpleNamespace(
+            name="col1", source_type="localFiles", indexers=["default"]
+        )
+
+        def boom(configs, **kw):
+            raise RuntimeError("indexing blew up")
+
+        cmd = SimpleNamespace(
+            svc_status=lambda names=None, **kw: [status],
+            SourceConfig=lambda **kw: SimpleNamespace(**kw),
+            is_verbose_mode=lambda: False,
+            update_service=boom,
+            print_error=lambda *a, **kw: None,
+            console=SimpleNamespace(print=lambda *a, **kw: None),
+            inspect=lambda names=None, **kw: [status],
+        )
+
+        outcome = svc.run_update_loop(
+            cmd,
+            collections=["col1"],
+            before_data={"col1": status},
+            update_wiring={"manifest_factory": lambda m, p: None},
+            collections_path=str(tmp_path),
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            simple=True,
+            noop_context=contextlib.nullcontext,
+            create_phased_progress=None,
+            ensure_credentials=lambda *a, **kw: None,
+        )
+
+        assert outcome.failed_collections == ["col1"]
 
 
 class TestFormatSourceType:
@@ -947,6 +1054,126 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         # For a single collection, result summary is not shown (create_summary not called)
         mock_create_summary.assert_not_called()
+
+
+class TestUpdateCollectionOption:
+    """L4: ``--collection/-c`` must work as an alias for the positional arg,
+    matching ``create``/``search``."""
+
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
+    def test_update_via_collection_option(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """``-c NAME`` must target NAME, not raise "No such option"."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+        mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "test-jira"
+        mock_status.source_type = "jira"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "test-jira"
+        mock_info.source_type = "jira"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000000
+        mock_info.updated_time = "2025-01-01T00:00:00"
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update", "-c", "test-jira"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "No such option" not in result.output
+
+    def test_update_conflicting_positional_and_option_exits_1(self):
+        """Different values for the positional and ``-c`` must error at exit 1."""
+        from indexed.cli.app import app
+
+        result = runner.invoke(
+            app, ["index", "update", "col-a", "--collection", "col-b"]
+        )
+
+        assert result.exit_code == 1
+
+    @patch("indexed.cli.knowledge.commands.update.setup_root_logger")
+    @patch("indexed.cli.knowledge.commands.update.ConfigService")
+    @patch("indexed.cli.knowledge.commands.update.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.update.svc_status")
+    @patch("indexed.cli.knowledge.commands.update.inspect")
+    @patch("indexed.cli.knowledge.commands.update.ensure_credentials_for_source")
+    @patch("indexed.cli.knowledge.commands.update.update_service")
+    @patch("indexed.cli.knowledge.commands.update.NoOpContext")
+    @patch("indexed.cli.knowledge.commands.update.console")
+    def test_update_same_value_positional_and_option_ok(
+        self,
+        mock_console,
+        mock_noop,
+        mock_update_service,
+        mock_ensure_creds,
+        mock_inspect,
+        mock_svc_status,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """Passing the SAME value both ways is not a conflict."""
+        mock_verbose.return_value = False
+        mock_config = Mock()
+        mock_config.resolve_storage_mode.return_value = "local"
+        mock_config.store.has_local_config.return_value = True
+        mock_config.store.workspace_path = "/workspace/.indexed/config.toml"
+        mock_config_service.instance.return_value = mock_config
+
+        mock_status = Mock()
+        mock_status.name = "test-jira"
+        mock_status.source_type = "jira"
+        mock_status.indexers = ["default"]
+        mock_svc_status.return_value = [mock_status]
+
+        mock_info = Mock()
+        mock_info.name = "test-jira"
+        mock_info.source_type = "jira"
+        mock_info.number_of_documents = 10
+        mock_info.number_of_chunks = 50
+        mock_info.disk_size_bytes = 1000000
+        mock_info.updated_time = "2025-01-01T00:00:00"
+        mock_inspect.return_value = [mock_info]
+
+        mock_update_service.return_value = None
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["index", "update", "test-jira", "-c", "test-jira"])
+
+        assert result.exit_code == 0, result.stdout
 
 
 class TestUpdateMarkupSafety:

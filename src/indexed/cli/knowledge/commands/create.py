@@ -16,7 +16,7 @@ from functools import partial
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from indexed.core.v1.engine import SourceConfig  # noqa: F401
+    from indexed.core.engine import SourceConfig  # noqa: F401
 
 import typer
 from loguru import logger
@@ -252,7 +252,7 @@ def __getattr__(name: str) -> Any:
 
         return DEFAULT_INDEXER
     if name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

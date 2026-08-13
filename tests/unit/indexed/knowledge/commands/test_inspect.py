@@ -14,6 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.knowledge.commands import inspect as inspect_cmd
+from indexed.core.engine import EngineDescriptor
 from indexed.core.v1.engine.services import CollectionInfo
 
 
@@ -269,6 +270,107 @@ class TestInspectCollectionsCommand:
 
         assert result.exit_code == 0
         assert "sized-collection" in result.stdout
+
+
+class TestInspectEngineDiagnostics:
+    """R13 — inspect shows each collection's engine version, and a v2 row shows
+    its embedding model/provider and store type. Additive: v1 rows keep their
+    existing lines (R6)."""
+
+    def test_v2_rich_shows_engine_model_and_store(self, monkeypatch):
+        coll = _make_collection("v2c")
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+        monkeypatch.setattr(
+            inspect_cmd,
+            "engine_descriptors",
+            lambda *a, **kw: [
+                EngineDescriptor(
+                    name="v2c",
+                    engine_version="2",
+                    embedding_model="all-MiniLM-L6-v2",
+                    embedding_provider="local",
+                    vector_store="simple",
+                )
+            ],
+        )
+
+        result = runner.invoke(inspect_cmd.app, ["v2c"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Engine" in result.stdout
+        assert "v2" in result.stdout
+        assert "simple" in result.stdout
+
+    def test_v1_rich_shows_engine_v1(self, monkeypatch):
+        coll = _make_collection("v1c")
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+        monkeypatch.setattr(
+            inspect_cmd,
+            "engine_descriptors",
+            lambda *a, **kw: [
+                EngineDescriptor(name="v1c", engine_version="1", vector_store="faiss")
+            ],
+        )
+
+        result = runner.invoke(inspect_cmd.app, ["v1c"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "v1" in result.stdout
+
+    def test_simple_output_carries_engine_fields(self, monkeypatch):
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        coll = _make_collection("v2c")
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+        monkeypatch.setattr(
+            inspect_cmd,
+            "engine_descriptors",
+            lambda *a, **kw: [
+                EngineDescriptor(
+                    name="v2c",
+                    engine_version="2",
+                    embedding_model="all-MiniLM-L6-v2",
+                    embedding_provider="local",
+                    vector_store="simple",
+                )
+            ],
+        )
+        set_simple_output(True)
+        try:
+            result = runner.invoke(inspect_cmd.app, ["v2c"])
+            assert result.exit_code == 0
+            assert '"engine": "2"' in result.stdout
+            assert '"vector_store": "simple"' in result.stdout
+            assert '"embedding_provider": "local"' in result.stdout
+        finally:
+            reset_simple_output()
+
+    def test_list_mixed_engines_shows_both(self, monkeypatch):
+        colls = [_make_collection("v1c"), _make_collection("v2c")]
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: colls)
+        monkeypatch.setattr(
+            inspect_cmd,
+            "engine_descriptors",
+            lambda *a, **kw: [
+                EngineDescriptor(name="v1c", engine_version="1", vector_store="faiss"),
+                EngineDescriptor(
+                    name="v2c",
+                    engine_version="2",
+                    embedding_model="all-MiniLM-L6-v2",
+                    embedding_provider="local",
+                    vector_store="simple",
+                ),
+            ],
+        )
+
+        result = runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.stdout
+        assert "v1c" in result.stdout and "v2c" in result.stdout
+        assert "simple" in result.stdout
 
 
 class TestInspectMarkupSafety:

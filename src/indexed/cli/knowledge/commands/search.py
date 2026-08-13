@@ -119,6 +119,12 @@ def search(
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     collections_path = str(cli_ctx.collections_path)
 
+    # An explicit --engine on an existing-collection op is passed through so the
+    # facade raises EngineMismatchError on a wrong engine (R2). Omit when unset
+    # so the facade infers from each collection (default v1 behavior unchanged).
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    engine_kwargs = {"engine": engine_flag} if engine_flag is not None else {}
+
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
         from ...utils.storage_info import display_storage_mode_for_command
@@ -231,6 +237,7 @@ def search(
                     score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
+                    **engine_kwargs,
                 )
                 results.update(result)
     else:
@@ -251,6 +258,7 @@ def search(
                     score_threshold=score_threshold,
                     include_matched_chunks=True,
                     collections_path=collections_path,
+                    **engine_kwargs,
                 )
                 results.update(result)
                 phased.finish_phase(phase_label)
@@ -271,15 +279,15 @@ def search(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "svc_search":
-        from indexed.core.v1.engine import search
+        from indexed.core.engine import search
 
         return search
     elif name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     elif name == "status":
-        from indexed.core.v1.engine import status
+        from indexed.core.engine import status
 
         return status
     elif name == "setup_root_logger":

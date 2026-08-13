@@ -102,6 +102,12 @@ def _init_app(
         help="Machine-readable JSON output (for programmatic use)",
         rich_help_panel="Usage Options",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Engine for NEW collections: v1 or v2 (default: v1)",
+        rich_help_panel="Usage Options",
+    ),
 ) -> None:
     """Initialize logging and handle storage flags. ConfigService is deferred to commands."""
     if simple_output:
@@ -140,6 +146,15 @@ def _init_app(
     # Store resolved mode_override on ctx.obj for subcommands to access
     ctx.ensure_object(dict)
     ctx.obj["mode_override"] = "local" if local else None
+    # Store the raw (normalized) engine selector, mirroring mode_override: None
+    # when unset. ``isinstance`` guards the direct-call path in tests where the
+    # unpassed option is still its typer OptionInfo default, not a str/None.
+    if isinstance(engine, str):
+        from .composition import normalize_engine_selector
+
+        ctx.obj["engine"] = normalize_engine_selector(engine)
+    else:
+        ctx.obj["engine"] = None
 
     from indexed.config import get_config
 
@@ -182,27 +197,27 @@ def __getattr__(name: str):
 
         return DEFAULT_INDEXER
     elif name == "svc_create":
-        from indexed.core.v1.engine import create
+        from indexed.core.engine import create
 
         return create
     elif name == "svc_update":
-        from indexed.core.v1.engine import update
+        from indexed.core.engine import update
 
         return update
     elif name == "svc_clear":
-        from indexed.core.v1.engine import clear
+        from indexed.core.engine import clear
 
         return clear
     elif name == "svc_search":
-        from indexed.core.v1.engine import search
+        from indexed.core.engine import search
 
         return search
     elif name == "svc_status":
-        from indexed.core.v1.engine import status
+        from indexed.core.engine import status
 
         return status
     elif name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

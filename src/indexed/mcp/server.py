@@ -19,6 +19,7 @@ from indexed.config import get_config
 
 from indexed.cli.composition import register_app_config
 from indexed.cli.composition import CliContext
+from indexed.cli.composition import resolve_engine_selector
 
 from .config import resolve_cli_context
 from .resources import register_resources
@@ -31,6 +32,10 @@ class LifespanState(TypedDict):
     mcp_config: MCPConfig
     search_config: CoreV1SearchConfig
     cli_context: CliContext
+    # Default engine for new collections, resolved once at startup (core-v2/1).
+    # The read-only MCP tools route per collection through the facade; this is
+    # the create-time default (MCP has no create tool today) — stored, minimal.
+    engine: str
 
 
 def _get_config(model_cls: Type[Any]) -> Any:
@@ -54,10 +59,12 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     cli_context = resolve_cli_context(None)
     mcp_config = _get_config(MCPConfig)
     search_config = _get_config(CoreV1SearchConfig)
+    engine = resolve_engine_selector(None, config_service)
     yield {
         "mcp_config": mcp_config,
         "search_config": search_config,
         "cli_context": cli_context,
+        "engine": engine,
     }
 
 

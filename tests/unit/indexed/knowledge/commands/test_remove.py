@@ -304,6 +304,77 @@ class TestRemoveCommand:
         assert parsed["collection"] == "corrupt-coll"
 
 
+class TestRemoveCollectionOption:
+    """L4: ``--collection/-c`` must work as an alias for the positional arg,
+    matching ``create``/``search``."""
+
+    def test_collection_option_targets_named_collection(self, monkeypatch):
+        """``-c NAME`` must target NAME, not raise "No such option"."""
+        monkeypatch.setattr(
+            remove_cmd, "inspect", lambda **kwargs: [_make_collection("docs")]
+        )
+
+        cleared = []
+
+        def fake_clear(collections, **kwargs):
+            cleared.extend(collections)
+
+        monkeypatch.setattr(remove_cmd, "clear", fake_clear)
+
+        result = runner.invoke(remove_cmd.app, ["-c", "docs", "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert cleared == ["docs"]
+
+    def test_long_collection_option_targets_named_collection(self, monkeypatch):
+        monkeypatch.setattr(
+            remove_cmd, "inspect", lambda **kwargs: [_make_collection("docs")]
+        )
+
+        cleared = []
+
+        def fake_clear(collections, **kwargs):
+            cleared.extend(collections)
+
+        monkeypatch.setattr(remove_cmd, "clear", fake_clear)
+
+        result = runner.invoke(remove_cmd.app, ["--collection", "docs", "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert cleared == ["docs"]
+
+    def test_conflicting_positional_and_option_exits_1(self):
+        """Different values for the positional and ``-c`` must error at exit 1."""
+        result = runner.invoke(remove_cmd.app, ["docs", "-c", "other", "--force"])
+
+        assert result.exit_code == 1
+
+    def test_same_value_positional_and_option_ok(self, monkeypatch):
+        """Passing the SAME value both ways is not a conflict."""
+        monkeypatch.setattr(
+            remove_cmd, "inspect", lambda **kwargs: [_make_collection("docs")]
+        )
+
+        cleared = []
+
+        def fake_clear(collections, **kwargs):
+            cleared.extend(collections)
+
+        monkeypatch.setattr(remove_cmd, "clear", fake_clear)
+
+        result = runner.invoke(remove_cmd.app, ["docs", "-c", "docs", "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert cleared == ["docs"]
+
+    def test_neither_positional_nor_option_exits_1(self):
+        """Today's required-arg behavior must be preserved: missing both must
+        still error at exit 1 (was a Click UsageError exit 2 pre-change)."""
+        result = runner.invoke(remove_cmd.app, [])
+
+        assert result.exit_code == 1
+
+
 class TestRemoveMarkupSafety:
     """R7 — collection names are user-controlled and must render literally,
     never be parsed as Rich markup, in the "Removing ... Collection:" heading

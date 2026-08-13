@@ -133,6 +133,42 @@ def get_default_caches_path() -> Path:
         return Path.home() / ".indexed" / "data" / "caches"
 
 
+class CoreEngineConfig(BaseModel):
+    """Default engine selector for NEW collections (``[core] engine``).
+
+    Registered at config path ``core``, so it receives the ENTIRE ``[core]``
+    subtree (including the ``core.v1.*`` / ``core.v2.*`` tables) at validation
+    time. It therefore MUST keep pydantic's default ``extra="ignore"`` to drop
+    those sibling tables — never ``extra="forbid"`` (OQ-T1). The value is
+    validated to ``"1"``/``"2"`` here (not via a ``Literal``) so a bad value
+    fails loud with a clear message. Lives next to ``MCPConfig`` — the sibling
+    non-``core.v1`` model — as the minimal home.
+    """
+
+    engine: str = Field(
+        default="1", description="Default engine for new collections: '1' or '2'"
+    )
+
+    @field_validator("engine")
+    @classmethod
+    def _check_engine_value(cls, v: str) -> str:
+        # Named ``_check_engine_value`` (not ``_validate_engine``) to avoid a
+        # cross-file collision with ``core.engine._validate_engine`` (the module
+        # function that coerces a selector to an ``EngineVersion``).
+        #
+        # Accept the user-facing forms every surface documents (--engine, env,
+        # config) — "1"/"2"/"v1"/"v2" (case-insensitive) — and STORE the
+        # canonical "1"/"2". Kept in sync with
+        # cli.composition.normalize_engine_selector (replicated, not imported:
+        # config must not import the CLI layer).
+        normalized = {"1": "1", "2": "2", "v1": "1", "v2": "2"}.get(
+            str(v).strip().lower()
+        )
+        if normalized is None:
+            raise ValueError(f"engine must be one of '1', '2', 'v1', 'v2', got {v!r}")
+        return normalized
+
+
 class MCPConfig(BaseModel):
     """MCP server configuration."""
 
@@ -177,6 +213,7 @@ __all__ = [
     "CoreV1EmbeddingConfig",
     "CoreV1StorageConfig",
     "CoreV1SearchConfig",
+    "CoreEngineConfig",
     "MCPConfig",
     "PerformanceConfig",
     "LoggingConfig",

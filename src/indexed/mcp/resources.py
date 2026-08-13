@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, Optional
 from fastmcp import Context
 from loguru import logger
 
-from indexed.core.v1.engine import status as svc_status
+from indexed.core.engine import status as svc_status
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope

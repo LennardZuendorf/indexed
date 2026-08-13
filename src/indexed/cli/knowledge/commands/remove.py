@@ -1,6 +1,6 @@
 """Remove command for removing collections."""
 
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Annotated, Callable, Optional, TYPE_CHECKING
 
 import typer
 from rich.markup import escape
@@ -83,7 +83,15 @@ def _remove_corrupt_collection(
 @app.command()
 def remove(
     ctx: typer.Context,
-    collection: str = typer.Argument(..., help="Collection name to remove"),
+    collection: Optional[str] = typer.Argument(None, help="Collection name to remove"),
+    collection_opt: Annotated[
+        Optional[str],
+        typer.Option(
+            "--collection",
+            "-c",
+            help="Collection name to remove (alias for the positional argument).",
+        ),
+    ] = None,
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
     verbose: bool = typer.Option(
         False,
@@ -111,6 +119,20 @@ def remove(
         indexed remove my-collection      # Remove with confirmation
         indexed remove my-collection -f   # Remove without confirmation
     """
+    if collection_opt is not None:
+        if collection and collection != collection_opt:
+            print_error(
+                "Pass the collection once — as a positional OR --collection, not both."
+            )
+            raise typer.Exit(1)
+        collection = collection_opt
+
+    if not collection:
+        print_error(
+            "Missing collection name — pass it as a positional argument or with --collection/-c."
+        )
+        raise typer.Exit(1)
+
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import remove as this_module
     from indexed.cli.composition import resolve_collections_context
@@ -123,6 +145,11 @@ def remove(
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     collections_path = str(cli_ctx.collections_path)
+
+    # Pass an explicit --engine through so removing a wrong-engine collection
+    # raises EngineMismatchError (R2); omit when unset (v1 behavior unchanged).
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    engine_kwargs = {"engine": engine_flag} if engine_flag is not None else {}
 
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
@@ -176,7 +203,7 @@ def remove(
     # Simple output mode: skip confirmation, output JSON
     if simple:
         try:
-            clear_svc([collection], collections_path=collections_path)
+            clear_svc([collection], collections_path=collections_path, **engine_kwargs)
             print_json({"status": "removed", "collection": collection})
         except Exception as e:
             print_json({"status": "error", "collection": collection, "error": str(e)})
@@ -224,7 +251,9 @@ def remove(
         if is_verbose_mode():
             # Verbose mode: show all logs, no progress UI
             with NoOpContext():
-                clear_svc([collection], collections_path=collections_path)
+                clear_svc(
+                    [collection], collections_path=collections_path, **engine_kwargs
+                )
         else:
             # Normal mode: phased progress display
             source_type = target_collection.source_type
@@ -233,7 +262,9 @@ def remove(
 
             with create_phased_progress(title=title) as phased:
                 phased.start_phase("Removing collection data")
-                clear_svc([collection], collections_path=collections_path)
+                clear_svc(
+                    [collection], collections_path=collections_path, **engine_kwargs
+                )
                 phased.finish_phase("Removing collection data")
 
         console.print()
@@ -251,15 +282,15 @@ def remove(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "clear":
-        from indexed.core.v1.engine import clear
+        from indexed.core.engine import clear
 
         return clear
     elif name == "inspect":
-        from indexed.core.v1.engine import inspect
+        from indexed.core.engine import inspect
 
         return inspect
     elif name == "collection_exists":
-        from indexed.core.v1.engine import collection_exists
+        from indexed.core.engine import collection_exists
 
         return collection_exists
     elif name == "setup_root_logger":
