@@ -94,8 +94,9 @@ class TestFaissIndexerSearch:
         result = indexer.search("query text", 5)
 
         embedder.embed.assert_called_once_with("query text")
+        indexer.faiss_index.search.assert_called_once()
         args = indexer.faiss_index.search.call_args[0]
-        assert args[0].shape == (1, 8)
+        np.testing.assert_array_equal(args[0], np.array([[0.5] * 8]))
         assert args[1] == 5
         assert result == ("distances", "labels")
 

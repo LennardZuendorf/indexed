@@ -61,11 +61,8 @@ class EnvFileWriter:
 
         os.makedirs(os.path.dirname(env_path), exist_ok=True)
 
-        # Atomic write: tmp -> fsync -> os.replace. The temp file is opened
-        # 0600 via os.open rather than chmod'ed afterwards — a chmod after the
-        # write leaves the secrets readable at umask perms for the duration of
-        # the write. O_EXCL on a fresh inode so a pre-existing tmp cannot
-        # donate wider permissions.
+        # Opened 0600 rather than chmod'ed after: a later chmod leaves the
+        # secrets at umask perms for the duration of the write.
         tmp = env_path + ".tmp"
         try:
             try:

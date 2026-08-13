@@ -162,7 +162,10 @@ class TestEnvFileWriterWrite:
 
         Snapshots the temp file's mode at fsync — while the secrets are on
         disk and the file is still open — so a chmod-after-write regression
-        (readable to other local users for the duration) fails here.
+        (readable to other local users for the duration) fails here. The
+        process umask is set for real: os.open() masks against the kernel's
+        umask, not a patched os.umask, so under a restrictive runner umask the
+        buggy path would also land on 0600 and this test would pass blind.
         """
         env_path = tmp_path / ".env"
         seen: dict[str, int] = {}
@@ -175,9 +178,12 @@ class TestEnvFileWriterWrite:
             return real_fsync(fd)
 
         monkeypatch.setattr(os, "fsync", spy)
-        monkeypatch.setattr(os, "umask", lambda _: 0)
 
-        EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+        previous_umask = os.umask(0o022)
+        try:
+            EnvFileWriter(lambda: str(env_path)).write("JIRA_TOKEN", "secret")
+        finally:
+            os.umask(previous_umask)
 
         assert seen["mode"] == 0o600
         assert not seen["mode"] & (stat.S_IRGRP | stat.S_IROTH)
