@@ -12,6 +12,20 @@ on:
   push:
     branches: [ "main", "building" ]
 
+# Least privilege by default: every job here only reads the repo. Any job that
+# needs more must opt in explicitly at the job level.
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same ref — a force-push or a quick follow-up
+# commit shouldn't leave the previous matrix burning runners. Keyed by event so
+# a manual dispatch doesn't cancel the push run for the same ref. Cancellation
+# is PR-only: on main, every commit keeps its own result rather than being
+# superseded by the next merge.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-system-tests:
     if: github.event_name == 'push' || github.event.pull_request.draft != true
@@ -23,9 +37,20 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The version is derived from git tags (hatch-vcs), so the wheel built
+        # below needs them. On a depth-1 tagless checkout hatch-vcs silently
+        # resolves to 0.0.0.postN+g<sha> and every gate here still passes — a
+        # wrong version that goes green. Full history prevents that.
+        fetch-depth: 0
+        # Nothing here pushes; don't leave GITHUB_TOKEN in .git/config for the
+        # test/build steps that follow.
+        persist-credentials: false
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
       with:
         python-version: ${{ matrix.python-version }}
 

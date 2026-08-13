@@ -1,15 +1,84 @@
 """Comprehensive tests for storage_info utility module."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import pytest
 from rich.console import Console
 
 from indexed.cli.utils.storage_info import (
+    get_context_mode_override,
     get_storage_indicator,
     print_storage_info,
     get_storage_mode_and_reason,
 )
+
+
+class TestGetContextModeOverride:
+    """Test reading ``mode_override`` off the active Typer context.
+
+    Driven through a real Typer app — a mocked context cannot catch the
+    vendored-Click break this guards against.
+    """
+
+    @staticmethod
+    def _run(args):
+        import typer
+        from typer.testing import CliRunner
+
+        app = typer.Typer()
+        seen = {}
+
+        @app.callback()
+        def main(ctx: typer.Context, local: bool = typer.Option(False, "--local")):
+            ctx.ensure_object(dict)
+            ctx.obj["mode_override"] = "local" if local else None
+
+        @app.command()
+        def show():
+            seen["mode"] = get_context_mode_override()
+
+        result = CliRunner().invoke(app, args)
+        assert result.exception is None, result.exception
+        return seen["mode"]
+
+    def test_reads_local_override_from_active_context(self):
+        """Should see the override the root callback stored on ctx.obj."""
+        assert self._run(["--local", "show"]) == "local"
+
+    def test_returns_none_without_override(self):
+        """Should return None when the callback set no override."""
+        assert self._run(["show"]) is None
+
+    def test_returns_none_outside_any_context(self):
+        """Should degrade to None rather than raise when no CLI is running."""
+        assert get_context_mode_override() is None
+
+    def test_falls_back_to_stdlib_click_context(self, monkeypatch):
+        """Pre-0.26 Typer drove stdlib Click; that branch must still work."""
+        import click
+        from typer._click import globals as typer_globals
+
+        monkeypatch.setattr(typer_globals, "get_current_context", lambda **_: None)
+        monkeypatch.setattr(
+            click,
+            "get_current_context",
+            lambda **_: SimpleNamespace(obj={"mode_override": "local"}),
+        )
+
+        assert get_context_mode_override() == "local"
+
+    def test_ignores_non_storage_mode_values(self, monkeypatch):
+        """ctx.obj is untyped — a junk override must not reach the resolver."""
+        from typer._click import globals as typer_globals
+
+        monkeypatch.setattr(
+            typer_globals,
+            "get_current_context",
+            lambda **_: SimpleNamespace(obj={"mode_override": "bogus"}),
+        )
+
+        assert get_context_mode_override() is None
 
 
 class TestGetStorageIndicator:

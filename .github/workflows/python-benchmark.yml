@@ -10,6 +10,10 @@ on:
       - 'tests/system/**'
       - 'tests/benchmarks/**'
 
+# Read-only default; the benchmark job below opts into the writes it needs.
+permissions:
+  contents: read
+
 concurrency:
   group: benchmark-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -29,13 +33,18 @@ jobs:
 
     steps:
     - name: Cache HuggingFace embedding model
-      uses: actions/cache@v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
         key: hf-model-all-MiniLM-L6-v2
 
+    # This action does its own checkout at a hardcoded fetch-depth: 2 with no
+    # tags and no input to override it, so `uv sync` below installs the package
+    # as 0.0.0.postN+g<sha> rather than a tag-derived version. Harmless here —
+    # nothing under tests/system or tests/benchmarks asserts a version — but it
+    # is why the "every workflow uses fetch-depth: 0" rule has an exception.
     - name: Run benchmarks
-      uses: lennardzuendorf/pytest-bench-action@v1.0.2
+      uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
       with:
         python-version: ${{ matrix.python-version }}
         github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 from rich.console import Console
 
@@ -21,6 +21,37 @@ logger = logging.getLogger(__name__)
 
 
 StorageMode = Literal["global", "local"]
+
+
+def get_context_value(key: str) -> object | None:
+    """Read a value from the active Typer/Click context.
+
+    Typer >=0.26 vendors Click, so ``click.get_current_context()`` returns
+    ``None`` inside a Typer command. Try the vendored context first.
+    """
+    for module, attr in (
+        ("typer._click.globals", "get_current_context"),
+        ("click", "get_current_context"),
+    ):
+        try:
+            import importlib
+
+            get_current_context = getattr(importlib.import_module(module), attr)
+            ctx = get_current_context(silent=True)
+        except Exception:
+            logger.debug("Could not read context via %s", module, exc_info=True)
+            continue
+        if ctx is not None and ctx.obj:
+            return ctx.obj.get(key)
+    return None
+
+
+def get_context_mode_override() -> Optional[StorageMode]:
+    """Read a valid ``mode_override`` from the active Typer/Click context."""
+    override = get_context_value("mode_override")
+    if override in ("global", "local"):
+        return cast(StorageMode, override)
+    return None
 
 
 def get_storage_indicator(
@@ -133,15 +164,7 @@ def display_storage_mode_for_command(console: Console) -> None:
 
     from indexed.cli.composition import resolve_collections_context
 
-    mode_override: Optional[StorageMode] = None
-    try:
-        import click
-
-        ctx = click.get_current_context(silent=True)
-        if ctx and ctx.obj:
-            mode_override = ctx.obj.get("mode_override")
-    except Exception:
-        logger.debug("Failed to get mode override from Typer context", exc_info=True)
+    mode_override = get_context_mode_override()
 
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     config_service = cli_ctx.config_service

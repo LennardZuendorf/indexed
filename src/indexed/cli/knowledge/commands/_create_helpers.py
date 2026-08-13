@@ -20,6 +20,7 @@ from ...utils.console import console
 from ...utils.context_managers import NoOpContext
 from ...utils.components import print_success, print_error, print_warning
 from ...utils.format import format_source_type
+from ...utils.storage_info import get_context_mode_override, get_context_value
 from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.credentials import (
     apply_cli_credential_overrides,
@@ -148,17 +149,9 @@ def execute_create_command(
 
     import typer
 
-    mode_override: Optional[StorageMode] = None
-    engine_flag: Optional[str] = None
-    try:
-        import click
-
-        ctx = click.get_current_context(silent=True)
-        if ctx and ctx.obj:
-            mode_override = ctx.obj.get("mode_override")
-            engine_flag = ctx.obj.get("engine")
-    except Exception:
-        pass
+    mode_override: Optional[StorageMode] = get_context_mode_override()
+    context_engine = get_context_value("engine")
+    engine_flag = context_engine if isinstance(context_engine, str) else None
     if local:
         mode_override = "local"
 

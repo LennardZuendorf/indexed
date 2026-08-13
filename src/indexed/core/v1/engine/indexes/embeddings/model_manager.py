@@ -224,7 +224,7 @@ def get_cache_info() -> dict:
         return {
             "cache_dir": str(cache_dir),
             "models": models,
-            "total_size_mb": round(sum(m["size_mb"] for m in models), 1),
+            "total_size_mb": round(sum(float(m["size_mb"]) for m in models), 1),
         }
 
     except Exception as e:
@@ -248,5 +248,5 @@ def get_cache_info() -> dict:
         return {
             "cache_dir": str(cache_dir),
             "models": models,
-            "total_size_mb": round(sum(m["size_mb"] for m in models), 1),
+            "total_size_mb": round(sum(float(m["size_mb"]) for m in models), 1),
         }
