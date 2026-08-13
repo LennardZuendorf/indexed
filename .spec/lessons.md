@@ -510,11 +510,19 @@ signal the value shouldn't live in `main`.
 
 **Corollary — a derived version needs the git history it derives from.** Any job
 that builds or installs the package checks out at `fetch-depth: 0`. Measured on a
-depth-1 tagless checkout: hatch-vcs emits `0.1.dev1+g<sha>` with only a
+depth-1 tagless checkout: hatch-vcs resolves to `0.0.0.postN+g<sha>` with only a
 `UserWarning: … is shallow`, and both `validate_wheel.py` and
 `twine check --strict` still pass. A wrong version that goes green is worse than
 a build that breaks, so the release job also asserts the built dist filenames
-carry the tag version.
+carry the tag version. A tree with no `.git` at all is a separate case: it raises
+`LookupError` and needs an explicit `fallback_version`, or building from GitHub's
+source tarball breaks.
+
+**And a measured figure is only true for the config it was measured under.** The
+number above was first recorded as `0.1.dev1+g<sha>` — correct under the default
+`guess-next-dev`, stale the moment the scheme changed to `post-release` one
+commit later. Re-measure before restating, and treat "Measured:" in this file as
+a claim that has to survive the next config change, not a fact that ages well.
 
 **Scheme:** `version_scheme = "post-release"`, so off-tag builds read
 `0.0.7.post4+g5d98c95` — anchored on the last tag. The setuptools-scm default

@@ -63,7 +63,12 @@ jobs:
         REF_NAME: ${{ github.ref_name }}
       run: |
         ver="${REF_NAME#v}"
-        if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        # Leading zeros are rejected here rather than downstream: PEP 440
+        # normalizes 1.02.3 to 1.2.3, so the dist filenames would not match and
+        # the failure would surface at the assert as a confusing version
+        # mismatch instead of "your tag is malformed".
+        if ! printf '%s' "$ver" \
+           | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
           echo "::error::release tag '$REF_NAME' is not a X.Y.Z semver version"
           exit 1
         fi
@@ -73,10 +78,13 @@ jobs:
       run: uv build --out-dir dist
 
     - name: Verify built version matches the release tag
-      # Guard rail for the dynamic version: a dirty tree or a checkout that
-      # can't reach the tag makes hatch-vcs emit a `X.Y.Z.devN+g<sha>` version
-      # instead. PyPI rejects local segments anyway — fail here, where the
-      # mismatch is legible, rather than at upload.
+      # Guard rail for the dynamic version. A dirty tree, a shallow checkout, or
+      # a missing .git each make hatch-vcs resolve to something other than the
+      # tag (`X.Y.Z.postN+g<sha>`, `0.0.0.postN+g<sha>`, or a bare `0.0.0`) —
+      # and neither validate_wheel.py nor `twine check --strict` rejects any of
+      # them. This step is the only thing between that and PyPI, so it runs
+      # before both. The count check matters because the publish step uploads
+      # everything in dist/, not just the two files named here.
       if: github.event_name == 'release'
       env:
         REF_NAME: ${{ github.ref_name }}
@@ -85,6 +93,11 @@ jobs:
         if [ ! -f "dist/indexed_sh-${ver}-py3-none-any.whl" ] \
            || [ ! -f "dist/indexed_sh-${ver}.tar.gz" ]; then
           echo "::error::built dists do not carry version $ver (tag $REF_NAME)"
+          ls -1 dist
+          exit 1
+        fi
+        if [ "$(ls -1 dist | wc -l)" -ne 2 ]; then
+          echo "::error::dist/ holds artifacts beyond the expected wheel + sdist"
           ls -1 dist
           exit 1
         fi

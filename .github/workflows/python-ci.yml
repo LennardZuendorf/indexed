@@ -18,10 +18,13 @@ permissions:
   contents: read
 
 # Supersede in-flight runs for the same ref — a force-push or a quick follow-up
-# commit shouldn't leave the previous matrix burning runners.
+# commit shouldn't leave the previous matrix burning runners. Keyed by event so
+# a manual dispatch doesn't cancel the push run for the same ref. Cancellation
+# is PR-only: on main, every commit keeps its own result rather than being
+# superseded by the next merge.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-system-tests:
@@ -39,7 +42,7 @@ jobs:
       with:
         # The version is derived from git tags (hatch-vcs), so the wheel built
         # below needs them. On a depth-1 tagless checkout hatch-vcs silently
-        # falls back to 0.1.devN+g<sha> and every gate here still passes — a
+        # resolves to 0.0.0.postN+g<sha> and every gate here still passes — a
         # wrong version that goes green. Full history prevents that.
         fetch-depth: 0
 

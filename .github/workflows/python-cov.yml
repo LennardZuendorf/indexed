@@ -18,10 +18,13 @@ permissions:
   contents: read
 
 # Supersede in-flight runs for the same ref — the full suite is the long pole,
-# so a superseded run is the most expensive thing to leave running.
+# so a superseded run is the most expensive thing to leave running. Keyed by
+# event so a manual dispatch doesn't cancel the push run for the same ref.
+# Cancellation is PR-only: cancelling on main would drop that commit's coverage
+# upload to Codecov.
 concurrency:
-  group: cov-${{ github.ref }}
-  cancel-in-progress: true
+  group: cov-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   full-test-suite:
@@ -38,8 +41,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           # hatch-vcs reads the version from git tags at install time; without
-          # them `uv sync` installs the project as 0.1.devN and warns that the
-          # checkout is shallow.
+          # them `uv sync` installs the project as 0.0.0.postN+g<sha> and warns
+          # that the checkout is shallow.
           fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
