@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # hatch-vcs reads the version from git tags at install time; without
           # them `uv sync` installs the project as 0.0.0.postN+g<sha> and warns
@@ -78,7 +78,7 @@ jobs:
           uv run pytest tests/unit/ --cov=indexed --cov-branch --cov-report=xml --cov-report=term-missing --cov-fail-under=85 -v
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
