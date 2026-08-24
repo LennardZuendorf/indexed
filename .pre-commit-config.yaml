@@ -28,7 +28,7 @@ repos:
   # Ruff for linting and formatting
   # Keep this rev in step with the `ruff` dev dependency in pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.2
+    rev: v0.16.4
     hooks:
       # Run the linter on pre-commit (with auto-fix) and pre-push
       - id: ruff
@@ -42,7 +42,7 @@ repos:
 
   # ty for type checking (pinned to match the `ty` dev dependency in pyproject.toml)
   - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.58
+    rev: v0.0.74
     hooks:
       - id: ty
         name: ty (type check)
