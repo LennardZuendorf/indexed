@@ -396,6 +396,61 @@ def test_create_engine_two_routes_to_v2(monkeypatch, tmp_path: Path) -> None:
     assert "engine" not in captured["kw"]
 
 
+def test_create_engine_two_on_v1_marker_raises_mismatch(tmp_path: Path) -> None:
+    """``create --engine v2`` against an EXISTING v1 collection must raise
+    ``EngineMismatchError`` before any I/O, not silently overwrite it (#185)."""
+    import indexed.core.engine as facade
+    from indexed.core.errors import EngineMismatchError
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    cfg = facade.SourceConfig(name="legacy", type="localFiles", base_url_or_path="")
+
+    with pytest.raises(EngineMismatchError) as excinfo:
+        facade.create(
+            [cfg],
+            engine="2",
+            connector_factory=lambda c: None,
+            collections_path=str(tmp_path),
+        )
+
+    message = str(excinfo.value)
+    assert "v1" in message and "v2" in message
+    assert "indexed index migrate legacy" in message
+
+
+def test_create_without_engine_on_existing_v2_collection_routes_to_v2(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Re-running ``create`` with no ``--engine`` against an existing v2
+    collection must route to v2 (matching the on-disk manifest), not silently
+    dispatch to the v1 default and replace the collection (#185)."""
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+    import indexed.core.v2.services as v2_services
+
+    _make_collection(tmp_path, "flip-test", {"version": "2"})
+    captured: dict = {}
+    monkeypatch.setattr(
+        v2_services,
+        "create",
+        lambda configs, **kw: captured.update({"configs": configs, "kw": kw}),
+    )
+    monkeypatch.setattr(
+        v1_services,
+        "create",
+        lambda *a, **kw: pytest.fail("must not route to v1"),
+    )
+    cfg = facade.SourceConfig(name="flip-test", type="localFiles", base_url_or_path="")
+
+    facade.create(
+        [cfg],
+        connector_factory=lambda c: None,
+        collections_path=str(tmp_path),
+    )
+
+    assert captured["configs"] == [cfg]
+
+
 def test_v2_services_module_import_is_llama_index_lazy() -> None:
     """Resolving the v2 engine services module (what ``_engine_impl('2')`` does)
     must NOT import llama-index at module top, keeping CLI startup <1s."""

@@ -706,3 +706,24 @@ with `git add`/`git status`, since that's what CI actually runs.
   "Key not found"** — but resolve it WITHOUT `ConfigService.bind()`, which validates
   the ENTIRE config and would make a single-key read fail on any unrelated bad section.
   Read the model's field default directly (`CoreEngineConfig().engine`).
+
+## `create` skipped the existing-engine check the other routed ops share (#185, 2026-08-29)
+
+- `core.engine.create()` validated only the *requested* selector
+  (`_validate_engine(engine or _DEFAULT_ENGINE)`) instead of resolving against the
+  target's on-disk manifest like `update`/`clear` do via `_resolve_existing_engine`.
+  Re-running `create` on an existing collection with no (or a conflicting) `--engine`
+  silently dispatched to the default/requested engine, build-aside-and-swapped the
+  whole collection directory, and destroyed the other engine's index — no error, no
+  warning beyond a generic "already exists, overwrite?" prompt that never mentions
+  engines. `.spec/tech.md` already documented the correct contract ("an explicit
+  selector may only confirm [the manifest] or fail with `EngineMismatchError`");
+  the code just didn't implement it for `create`, and no test exercised `create`
+  against an *existing* collection with a conflicting/absent engine to catch it.
+  Fix: `create` now extracts names from `configs` and calls the same
+  `_resolve_existing_engine(engine, names, collections_path)` the other routed ops
+  use — manifest wins for existing names, selector still picks the engine for
+  genuinely new ones. Lesson: every routed op in a version-dispatching facade needs
+  its own existing-collection regression test, even when the pattern is "obviously"
+  shared — a facade with N routed callables needs N call sites verified, not just
+  the ones that happen to already have tests.

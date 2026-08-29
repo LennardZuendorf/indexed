@@ -5,11 +5,11 @@ models from ``indexed.core.engine`` — never from ``core.v1.engine`` (or a futu
 ``core.v2.engine``) directly. This facade re-exports the exact 13-name v1 surface
 with identical signatures and adds a thin per-collection routing layer:
 
-- **create** chooses the engine from an already-resolved selector (R3) — a new
-  collection's engine.
-- **existing-collection ops** resolve the engine FROM the collection's on-disk
-  ``version`` marker (R2); an explicit conflicting ``engine`` raises
-  ``EngineMismatchError`` before any I/O.
+- **create** chooses the engine from an already-resolved selector (R3) for a
+  genuinely new collection name.
+- **any op touching an existing collection** — ``create`` included — resolves
+  the engine FROM the collection's on-disk ``version`` marker (R2); an explicit
+  conflicting ``engine`` raises ``EngineMismatchError`` before any I/O.
 
 Only v1 exists today: unmarked and ``version: "1"`` collections route to v1;
 ``--engine v2`` (``engine="2"``) is detected and fails cleanly until a later unit
@@ -436,9 +436,13 @@ def create(
     connector_factory: Any,
     cache_decorator_factory: Any = None,
 ) -> None:
-    """Create collections with the selector-chosen engine (R3). ``engine=None``
-    defaults to ``"1"``."""
-    version = _validate_engine(engine or _DEFAULT_ENGINE)
+    """Create collections with the selector-chosen engine (R3/R2). A name that
+    already exists on disk is resolved like the other routed ops: the manifest
+    ``version`` is authoritative, and an explicit conflicting ``engine`` raises
+    ``EngineMismatchError`` before any I/O. ``engine=None`` defaults to ``"1"``
+    only for names with no existing collection."""
+    names = [getattr(cfg, "name", cfg) for cfg in configs]
+    version = _resolve_existing_engine(engine, names, collections_path)
     _engine_impl(version).create(
         configs,
         use_cache=use_cache,
