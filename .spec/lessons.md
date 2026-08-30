@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-08-13
+updated: 2026-08-30
 ---
 
 # Lessons Learned
@@ -727,3 +727,24 @@ with `git add`/`git status`, since that's what CI actually runs.
   its own existing-collection regression test, even when the pattern is "obviously"
   shared — a facade with N routed callables needs N call sites verified, not just
   the ones that happen to already have tests.
+
+## Consolidated 8 Dependabot/pre-commit dependency PRs (2026-08-30)
+
+- **`.pre-commit-config.yaml`'s `ty` hook rev had already drifted from the
+  `ty==` pin in `pyproject.toml`** (config at `v0.0.58`, pyproject pinned
+  `0.0.69`) before any of this round's bumps — the "keep this rev in step"
+  comment next to the hook was not enforced anywhere. When bumping an
+  exact-pinned dev tool, grep for every OTHER place that pins the same
+  version (pre-commit hook revs are the usual suspect) and update them
+  together; a comment asserting two files stay in sync is not a guarantee.
+- **`sentence-transformers` 6.0.0 renamed `get_sentence_embedding_dimension()`
+  to `get_embedding_dimension()`** (old name kept as a deprecated shim,
+  `FutureWarning` only — not a hard break). It doesn't fail tests, so a
+  green suite can still ship a newly-introduced deprecation warning from a
+  dependency bump. Grep test output for new warnings after any ML-library
+  bump, not just the pass/fail count.
+- Dependabot leaves range-constrained deps (`>=` floors) untouched in
+  `pyproject.toml` and bumps only `uv.lock`; it only touches `pyproject.toml`
+  for exact pins (here: `ty==`). Replicating N dependabot PRs by hand is
+  `uv lock --upgrade-package <name>` for each package plus the one exact-pin
+  edit — no floor bumps needed to reproduce the same resolution.
