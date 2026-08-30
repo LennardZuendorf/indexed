@@ -171,3 +171,101 @@ def test_v2_default_create_and_search_never_touch_the_network(
         app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
     )
     assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def _replay_create(ws, collection: str, files_corpus: Path, *, engine):
+    import indexed.core.engine as facade
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.core.v1.constants import DEFAULT_INDEXER
+
+    facade.create(
+        [
+            facade.SourceConfig(
+                name=collection,
+                type="localFiles",
+                base_url_or_path=str(files_corpus),
+                indexer=DEFAULT_INDEXER,
+            )
+        ],
+        engine=engine,
+        use_cache=False,
+        force=True,
+        collections_path=str(ws.collections_dir),
+        caches_path=str(ws.local_root / "data" / "caches"),
+        connector_factory=lambda cfg: FileSystemConnector(path=str(files_corpus)),
+    )
+
+
+def test_v2_create_replay_without_engine_flag_stays_v2(
+    local_workspace, files_corpus: Path
+) -> None:
+    """Regression test for #185 (E2E, real embeddings — complements the mocked
+    unit test ``test_create_without_engine_on_existing_v2_collection_routes_to_v2``
+    in ``test_engine_facade.py``).
+
+    Before the #185 fix, ``indexed.core.engine.create`` was the one routed op
+    that never checked a target collection's EXISTING on-disk manifest
+    ``version`` before dispatching — a bare re-run with no ``--engine`` silently
+    defaulted to v1, build-aside-and-swapped the whole collection directory, and
+    destroyed the v2 index (manifest ``version`` went from ``"2"`` to absent/v1),
+    no error raised. The fix routes a no-selector replay to the collection's
+    OWN existing engine via ``_resolve_existing_engine`` (manifest-authoritative,
+    matching ``update``/``clear``) — it must NOT raise, and must NOT flip to v1.
+    """
+    ws = local_workspace
+    collection = "flip-test"
+
+    created = _create_v2(collection, files_corpus)
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    manifest_before = json.loads(manifest_path.read_text())
+    assert manifest_before["version"] == "2"
+
+    # Re-run create on the SAME name, engine=None — must stay v2, not flip.
+    _replay_create(ws, collection, files_corpus, engine=None)
+
+    manifest_after = json.loads(manifest_path.read_text())
+    assert manifest_after["version"] == "2", (
+        "create() with no --engine flipped an existing v2 collection to a "
+        f"different engine on replay (manifest version is now "
+        f"{manifest_after.get('version')!r}) instead of routing to the "
+        "collection's own existing engine."
+    )
+
+
+def test_v2_create_replay_with_conflicting_engine_raises_mismatch(
+    local_workspace, files_corpus: Path
+) -> None:
+    """Regression test for #185 (E2E, real embeddings — complements the mocked
+    unit test ``test_create_engine_two_on_v1_marker_raises_mismatch`` in
+    ``test_engine_facade.py``, exercised here in the opposite direction: an
+    EXPLICIT conflicting ``--engine`` against a real, existing v2 collection).
+
+    An explicit ``engine`` that conflicts with a collection's on-disk manifest
+    must raise ``EngineMismatchError`` before any I/O — never silently replace
+    the collection with the requested engine instead of the existing one.
+    """
+    from indexed.core.errors import EngineMismatchError
+
+    ws = local_workspace
+    collection = "flip-test-explicit"
+
+    created = _create_v2(collection, files_corpus)
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    manifest_before = json.loads(manifest_path.read_text())
+    assert manifest_before["version"] == "2"
+
+    # Re-run create on the SAME name with an explicit conflicting engine="1".
+    with pytest.raises(EngineMismatchError):
+        _replay_create(ws, collection, files_corpus, engine="1")
+
+    # The original v2 collection must be UNTOUCHED — no I/O before the raise.
+    manifest_after = json.loads(manifest_path.read_text())
+    assert manifest_after["version"] == "2", (
+        "create() with an explicit conflicting --engine silently replaced the "
+        f"v2 collection instead of raising EngineMismatchError before any I/O "
+        f"(manifest version is now {manifest_after.get('version')!r})"
+    )
