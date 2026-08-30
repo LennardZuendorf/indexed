@@ -173,6 +173,68 @@ def test_v2_default_create_and_search_never_touch_the_network(
     assert removed.exit_code == 0, removed.stdout + removed.stderr
 
 
+def test_v2_create_cli_replay_without_engine_flag_stays_v2(
+    local_workspace, files_corpus: Path
+) -> None:
+    """CLI-level regression test for #185 — drives the real ``indexed index
+    create`` command (through ``cli/knowledge/commands/_create_helpers.py``'s
+    selector resolution), not the facade directly.
+
+    ``core.engine.create()`` was fixed (see ``_resolve_existing_engine`` above
+    ``create``) to defer to an existing collection's manifest when ``engine``
+    is ``None`` — but ``_create_helpers.py`` always resolves a concrete engine
+    string via ``resolve_engine_selector(engine_flag, config)`` (default
+    ``"1"``) BEFORE calling the facade, and passes that resolved string
+    unconditionally. So a bare CLI replay with no ``--engine`` never actually
+    reaches the facade as ``engine=None`` — it reaches it as ``engine="1"``,
+    which the fixed facade correctly (but unhelpfully) treats as an EXPLICIT
+    conflicting request against an existing v2 collection and rejects with
+    ``EngineMismatchError``, whose own message says "Re-run without --engine"
+    — exactly what the user just did. The silent data loss from #185 is gone
+    (confirmed: the collection's manifest ``version`` stays ``"2"``), but the
+    fix's own intent (a no-flag replay should succeed and stay v2, matching
+    ``update``/``clear`` and this module's own docstring) is not reachable
+    from the real CLI. This test intentionally asserts that INTENDED
+    behavior and is expected to fail until ``_create_helpers.py`` is changed
+    to pass ``engine=None`` through when the user did not explicitly set
+    ``--engine``/the env var/``[core] engine`` (mirroring how ``update.py``
+    already does this).
+    """
+    ws = local_workspace
+    collection = "flip-test-cli"
+
+    created = _create_v2(collection, files_corpus)
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    assert json.loads(manifest_path.read_text())["version"] == "2"
+
+    replayed = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "files",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--force",
+            "--no-cache",
+        ],
+    )
+
+    assert replayed.exit_code == 0, (
+        "a bare `indexed index create` replay (no --engine) against an "
+        "existing v2 collection should succeed and stay v2, not error — "
+        f"got exit={replayed.exit_code}: {replayed.stdout}{replayed.stderr}"
+    )
+    manifest_after = json.loads(manifest_path.read_text())
+    assert manifest_after["version"] == "2"
+
+
 def _replay_create(ws, collection: str, files_corpus: Path, *, engine):
     import indexed.core.engine as facade
     from indexed.connectors.files.connector import FileSystemConnector
