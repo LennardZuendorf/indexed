@@ -235,6 +235,49 @@ def test_v2_create_cli_replay_without_engine_flag_stays_v2(
     assert manifest_after["version"] == "2"
 
 
+def test_v2_create_cli_new_collection_env_var_still_selects_v2(
+    local_workspace, files_corpus: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for the #185 fix's own blast radius: a GENUINELY NEW
+    collection name with no ``--engine`` flag must still honor
+    ``INDEXED__CORE__ENGINE`` via the full selector chain
+    (``resolve_engine_selector``) in ``_create_helpers.py``.
+
+    The #185 fix makes ``create`` pass the raw ``--engine`` flag (not the
+    resolved selector) for an EXISTING collection name, so an unflagged
+    replay defers to the manifest instead of the env/config default. That
+    branch must not swallow the selector chain for a brand-new name too — if
+    it did, a user with ``INDEXED__CORE__ENGINE=v2`` set and no ``--engine``
+    flag creating a new collection would silently fall back to v1.
+    """
+    monkeypatch.setenv("INDEXED__CORE__ENGINE", "v2")
+    collection = "new-collection-env-engine"
+
+    created = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "files",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--no-cache",
+        ],
+    )
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = local_workspace.collections_dir / collection / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["version"] == "2", (
+        "a brand-new collection with INDEXED__CORE__ENGINE=v2 set and no "
+        f"--engine flag must be created as v2, got version={manifest.get('version')!r}"
+    )
+
+
 def _replay_create(ws, collection: str, files_corpus: Path, *, engine):
     import indexed.core.engine as facade
     from indexed.connectors.files.connector import FileSystemConnector

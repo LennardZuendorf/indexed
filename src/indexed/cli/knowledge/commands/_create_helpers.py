@@ -164,9 +164,32 @@ def execute_create_command(
     config = cli_ctx.config_service
     collections_path = str(cli_ctx.collections_path)
     caches_path = str(cli_ctx.caches_path)
-    # Resolve the engine for this NEW collection via the selector chain (R3):
-    # --engine flag > INDEXED__CORE__ENGINE > [core] engine > default "1".
-    resolved_engine = resolve_engine_selector(engine_flag, config)
+
+    # Determine once whether `collection` already has a collection on disk —
+    # both the engine resolution below and the overwrite prompt further down
+    # need this, and it's a pure filesystem read (no side effects), so a
+    # single check is safe to reuse for both (avoids a second disk probe and
+    # keeps the two decisions from ever disagreeing).
+    from indexed.core.engine import collection_exists
+
+    collection_already_exists = collection_exists(
+        collection, collections_path=collections_path
+    )
+
+    # Resolve the engine to pass to svc_create (#185).
+    # - Existing collection name (a `create` replay): only the raw --engine
+    #   flag counts. Falling through to the env var/config selector chain
+    #   here would turn "no --engine passed" into an explicit, possibly
+    #   conflicting request and make the facade's EngineMismatchError fire on
+    #   every unflagged replay. Passing the raw flag (None when unset) lets
+    #   the facade's `_resolve_existing_engine` defer to the manifest, same
+    #   as `update`/`search`/`remove` already do.
+    # - Genuinely new collection name: keep the full selector chain (R3) —
+    #   --engine flag > INDEXED__CORE__ENGINE > [core] engine > default "1".
+    if collection_already_exists:
+        resolved_engine = engine_flag
+    else:
+        resolved_engine = resolve_engine_selector(engine_flag, config)
 
     # Review Finding 1 (foundation/6b): snapshot config.toml's exact bytes
     # before ANY prompt/write in this run. The Jira/Confluence credential
@@ -251,15 +274,13 @@ def execute_create_command(
         svc_create = this_module.svc_create
         svc_status = this_module.svc_status
 
-        # Check if collection already exists (prompt unless --force)
-        if not force:
-            from indexed.core.engine import collection_exists
-
-            if collection_exists(collection, collections_path=collections_path):
-                console.print()
-                print_warning(f"Collection '{collection}' already exists.")
-                if not typer.confirm("Overwrite?", default=False):
-                    raise typer.Exit(0)
+        # Prompt for overwrite confirmation (unless --force), reusing the
+        # existence check already done above for engine resolution.
+        if not force and collection_already_exists:
+            console.print()
+            print_warning(f"Collection '{collection}' already exists.")
+            if not typer.confirm("Overwrite?", default=False):
+                raise typer.Exit(0)
 
         # Build source config using connector-specific callback
         cfg = build_source_config(validation.present, collection)
