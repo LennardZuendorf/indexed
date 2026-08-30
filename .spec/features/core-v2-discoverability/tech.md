@@ -8,8 +8,9 @@ updated: 2026-08-30
 
 # Feature: Core v2 Discoverability — Architecture
 
-Where each of #188's five findings lives at HEAD, and the fix shape. Line
-numbers are anchors — verify against the file before editing.
+Where each of #188's five findings lives at HEAD, plus two same-shape
+sibling defects folded in on maintainer request (R6, R7), and the fix shape
+for each. Line numbers are anchors — verify against the file before editing.
 
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
@@ -26,13 +27,15 @@ src/indexed/cli/knowledge/commands/_create_options.py         # new EngineOpt al
 src/indexed/cli/knowledge/commands/_create_commands.py        # thread engine through 4 shells (R1)
 src/indexed/cli/knowledge/commands/create.py                  # _create() forwards engine (R1)
 src/indexed/cli/knowledge/commands/_create_helpers.py         # execute_create_command: subcommand engine overrides context (R1)
-src/indexed/cli/knowledge/commands/search.py                  # new --rerank/--no-rerank option (R2)
+src/indexed/cli/knowledge/commands/search.py                  # new --rerank/--no-rerank option + v1-no-effect hint (R2)
 src/indexed/core/engine.py                                    # search() facade: thread optional rerank kwarg to v2 only (R2)
 src/indexed/core/v2/retrieval.py                               # search(): optional rerank override of resolve_rerank_config() (R2)
 src/indexed/core/v2/_common.py                                 # resolve_rerank_config() (R2, reference — no change)
+src/indexed/core/versioning.py                                 # detect_engine_version() (R2, reference — no change)
 src/indexed/config/commands/set.py                             # core.engine special case: reuse normalize_engine_selector (R3)
+src/indexed/cli/composition.py                                 # resolve_engine_selector config.toml branch: raw get() instead of bind() (R6)
 README.md                                                      # Usage section: --engine + index migrate examples (R4)
-src/indexed/cli/knowledge/cli.py                                # migrate registration: drop the help= override (R5)
+src/indexed/cli/knowledge/cli.py                                # drop help= override on migrate + search/inspect/update/remove (R5, R7)
 src/indexed/cli/knowledge/commands/migrate.py                  # dead module-level Typer app (R5, optional cleanup)
 ```
 
@@ -100,10 +103,23 @@ does not forward any rerank kwarg to the v2 impl today.
 3. `core/v2/retrieval.py::search()` (line 52-62): add `rerank: Optional[bool] = None`; when not `None`, override before the enabled-check — `rerank_cfg = resolve_rerank_config(); if rerank is not None: rerank_cfg = rerank_cfg.model_copy(update={"enabled": rerank})`.
 4. No change inside `_apply_rerank`/`_search_one` — they already gate purely on `rerank_cfg.enabled`.
 
-**Open (Requirement scenario 3):** what happens when `--rerank` is passed for
-a search that resolves to a v1 collection (or a mixed v1+v2 multi-collection
-search). The flag must not crash; whether it silently no-ops or prints a
-one-line notice is a design call — see Open Questions.
+**v1-no-effect hint (resolved):** when `--rerank` is passed explicitly (not
+`None`) and none of the collections actually searched are v2, print a
+one-line notice rather than silently no-op. `search.py` already resolves
+`collections_to_search` (a list of names) and `collections_path` before
+calling `svc_search` (lines 116-196 as of this writing); `core/versioning.py`
+exposes `detect_engine_version(collection_path: Path) -> EngineVersion`, a
+cheap manifest-only read with no engine import needed. Add, after
+`collections_to_search` is finalized (around line 196) and before/after the
+search loop: check `any(detect_engine_version(Path(collections_path) /
+name) == EngineVersion.V2 for name in collections_to_search)`; when `rerank
+is True` and that's `False`, `print_info(...)` a note such as `"--rerank has
+no effect: reranking is v2-only, and no searched collection uses the v2
+engine."` (verify the exact `EngineVersion` member names in
+`core/versioning.py` before implementing). No hint when `rerank` is `None`
+(flag omitted) or `False` (explicitly disabled — nothing to note) or when at
+least one searched collection is v2 (rerank applies to that one, even in a
+mixed search).
 
 ### R3 — `config set core.engine` leaks a raw pydantic dump (CONFIRMED)
 
@@ -181,6 +197,87 @@ module-level `app = typer.Typer(help=...)` is dead — `cli.py` imports
 `migrate.migrate` directly, never `migrate.app`. Safe to delete if nothing
 else references it (confirm via grep before removing).
 
+### R6 — `[core] engine` in config.toml also leaks a raw dump (CONFIRMED, expanded scope)
+
+`resolve_engine_selector`'s config.toml branch (`composition.py:107-121`)
+today does:
+
+```python
+try:
+    from indexed.core.v1.config_models import CoreEngineConfig
+    cfg = config_service.bind().get(CoreEngineConfig)
+    return normalize_engine_selector(cfg.engine)
+except ConfigValidationError as exc:
+    if exc.path == "core":
+        raise
+    return _DEFAULT_ENGINE
+except Exception:
+    return _DEFAULT_ENGINE
+```
+
+`bind()` validates via pydantic and wraps any failure as
+`ConfigValidationError(path, str(exc))` (`config/service.py:157`) — same raw
+multi-line dump shape as R3, and it propagates verbatim on `exc.path ==
+"core"` (fail-loud is correct; the *message* is not clean).
+
+**Fix:** stop going through `bind()`/pydantic for this lookup entirely.
+`ConfigService.get(dot_path)` (`config/service.py:163-165`) returns the raw
+merged value with **no** validation (`get_by_path(self.load_raw(),
+dot_path)`, defaulting to `None` when absent —
+`config/path_utils.py:get_by_path`). Replace the whole try/except with:
+
+```python
+raw_value = config_service.get("core.engine")
+if raw_value is None:
+    return _DEFAULT_ENGINE
+return normalize_engine_selector(raw_value)
+```
+
+This is simpler than today's code (no `CoreEngineConfig`/
+`ConfigValidationError` import needed in this function at all) and produces
+the byte-identical clean message on a bad value — the exact same
+`normalize_engine_selector` call the flag/env paths already make. No
+semantic change to the "genuinely absent" default-fallback behavior (`None`
+→ `_DEFAULT_ENGINE`, same as today's `except Exception` catch-all for an
+unregistered path). By the time this branch runs, `INDEXED__CORE__ENGINE`
+has already been checked and found empty (lines 103-105), so there's no risk
+of this raw read disagreeing with an env-merged value.
+
+### R7 — `--help` discards the docstring on `search`/`inspect`/`update`/`remove` too (CONFIRMED, expanded scope)
+
+Same mechanism as R5 (Typer's `inspect.getdoc()` fallback only fires when
+`command_info.help is None`), same registration file
+(`knowledge/cli.py:17-20`), three more sites carrying real content dropped
+today:
+
+- `search.py:94-101` — `Examples:` block, 4 invocations.
+- `inspect.py:257-264` — `Examples:` block, 4 invocations (verified: docstring exists, same override pattern).
+- `remove.py:116-121` — `Examples:` block, 2 invocations (the `-f`/force behavior).
+- `update.py:111` — one-line docstring only (`"Refresh and re-index a collection or all collections."`); no content is currently lost, but the override is removed anyway for consistency — a future docstring expansion here will now actually reach `--help`.
+
+**Fix:** drop `help=` on all four registrations at `cli.py:17-20`, mirroring
+R5's `migrate` fix exactly:
+
+```python
+app.command("search")(search.search)
+app.command("inspect")(inspect.inspect_collections)
+app.command("update")(update.update)
+app.command("remove")(remove.remove)
+```
+
+Each docstring's first line becomes the new short-help shown in `indexed
+index --help`'s command listing — verified readable: "Search across
+collections using semantic similarity.", "Show all indexed collections or
+inspect a specific collection.", "Refresh and re-index a collection or all
+collections.", "Remove a collection from the index." — all at least as clear
+as the current generic one-liners they replace.
+
+**Verification risk:** any existing test asserting the exact current
+one-line help text (`"Search collections"`, `"Inspect collections"`,
+`"Update collections"`, `"Remove collections"`) in a `--help` snapshot will
+need updating to the new docstring-derived short-help — grep
+`tests/` for these literal strings before implementing.
+
 ---
 
 ## Open Questions
@@ -190,22 +287,8 @@ else references it (confirm via grep before removing).
    earlier, or accept that surfacing `--engine` on `create` resolves the
    issue's concrete repro and leave the flat commands (`search`/`inspect`/
    `update`/`remove`, where `--engine` already works pre-subcommand) as is?
-   Recommendation: the latter — no hint infrastructure unless a future issue
-   asks for it.
-2. **R2 v1/mixed-collection `--rerank`** — silent no-op, or a one-line
-   `print_info`/log note that reranking only applies to v2 collections in
-   this search? Recommendation: a one-line note when the flag was explicitly
-   passed `True` and no v2 collection was actually searched — consistent with
-   #188's own discoverability theme (don't let a flag silently do nothing).
-3. **Config.toml `[core] engine` error path (descoped, flag for follow-up)**
-   — `resolve_engine_selector`'s `except ConfigValidationError` re-raise
-   (`composition.py:112-120`) is *also* not clean: `ConfigValidationError`
-   wraps the raw `str(exc)` pydantic dump (`config/service.py:156-157`,
-   `errors.py:14-20`). Same defect shape as R3, one more surface, not named
-   in #188. Worth a follow-up issue rather than silently expanding this
-   feature's scope.
-4. **R5 pattern on `search`/`update`/`remove` (descoped, flag for
-   follow-up)** — same `help=`-discards-docstring mechanism, smaller stakes
-   (`update` has a trivial one-liner docstring; `search`/`remove` have
-   `Examples:` blocks worth surfacing too). Not named in #188; candidate for
-   a small follow-up sweep.
+   **Resolved (2026-08-30, this feature): the latter** — no generic hint
+   infrastructure built here; R1's own fix (adding `--engine` to `index
+   create`) resolves the concrete repro, and R2's `--rerank` hint below
+   covers the "don't let a flag silently do nothing" case that's actually in
+   scope.

@@ -10,13 +10,15 @@ updated: 2026-08-30
 
 Fixes the five product/UX gaps clustered in
 [issue #188](https://github.com/LennardZuendorf/indexed/issues/188), found during
-the review of PR #162 (Core v2). The underlying v2 safety story (migration
-dry-run/backup/rollback, v1-stays-default scoping) is already correct and
-verified — these are discoverability and consistency gaps a first-time v2
-adopter hits, not correctness risks. Users are indexed CLI operators trying v2
-for the first time; the output is a CLI/docs surface where `--engine`,
-reranking, and `index migrate` are where a user would actually look for them,
-and errors read the same regardless of which surface caught them.
+the review of PR #162 (Core v2), plus two same-shape sibling defects folded
+in on maintainer request (R6, R7 below). The underlying v2 safety story
+(migration dry-run/backup/rollback, v1-stays-default scoping) is already
+correct and verified — these are discoverability and consistency gaps a
+first-time v2 adopter hits, not correctness risks. Users are indexed CLI
+operators trying v2 for the first time; the output is a CLI/docs surface
+where `--engine`, reranking, and `index migrate` are where a user would
+actually look for them, and errors read the same regardless of which surface
+caught them.
 
 **Parent:** [../../product.md](../../product.md)
 **Architecture:** [tech.md](tech.md)
@@ -28,8 +30,8 @@ and errors read the same regardless of which surface caught them.
 
 | | |
 |---|---|
-| **Owns** | `--engine` on `index create`/`index create <source>` help + parsing (`src/indexed/cli/knowledge/commands/_create_options.py`, `_create_commands.py`, `create.py`, `_create_helpers.py`); a discoverable rerank flag on `index search` (`search.py`, `core/engine.py`, `core/v2/retrieval.py`); a clean `config set core.engine` error message (`config/commands/set.py`); Core v2 footprint in `README.md`; `index migrate --help` rendering its full safety docstring (`knowledge/cli.py`, `knowledge/commands/migrate.py`) |
-| **Does not own** | Reranking *correctness* (tracked in a separate companion code-quality issue referenced by #188); the external hosted docs site (`indexed.sh/docs`); v1→v2 migration mechanics themselves (already shipped, Feature 16); the same `help=`-overrides-docstring pattern on `search`/`update`/`remove` (pre-existing elsewhere, not required by #188 — see tech.md Open Questions); the `[core] engine` config.toml validation error path (a related but distinct raw-dump site not named in #188 — see tech.md Open Questions) |
+| **Owns** | `--engine` on `index create`/`index create <source>` help + parsing (`src/indexed/cli/knowledge/commands/_create_options.py`, `_create_commands.py`, `create.py`, `_create_helpers.py`); a discoverable rerank flag with a v1-no-effect hint on `index search` (`search.py`, `core/engine.py`, `core/v2/retrieval.py`, `core/versioning.py`); clean, identical engine-error messages across all four surfaces — `--engine`, env, `config set core.engine`, and `config.toml` (`config/commands/set.py`, `cli/composition.py`); Core v2 footprint in `README.md`; every knowledge-command's `--help` rendering its full docstring, not just `migrate`'s (`knowledge/cli.py`, `knowledge/commands/{migrate,search,inspect,update,remove}.py`) |
+| **Does not own** | Reranking *correctness* (tracked in a separate companion code-quality issue referenced by #188); the external hosted docs site (`indexed.sh/docs`); v1→v2 migration mechanics themselves (already shipped, Feature 16); a generic Click "misplaced option" hint mechanism for `--engine` on the flat commands (descoped, see Non-Goals) |
 
 ---
 
@@ -89,10 +91,11 @@ that one search.
 #### Scenario: rerank flag on a v1-only search
 
 - **Given** a v1 collection (no rerank support in v1) and `--rerank` passed
-- **When** the search runs
-- **Then** the command MUST NOT crash and MUST make it visible to the user
-  that reranking did not apply (exact wording — silent no-op vs. an explicit
-  note — is an implementation decision, see tech.md Open Questions).
+  explicitly
+- **When** the search runs and none of the searched collections are v2
+- **Then** the command MUST NOT crash, and MUST print a one-line hint stating
+  that `--rerank` had no effect because reranking is v2-only — never a
+  silent no-op (#188's own theme is "don't let a flag silently do nothing").
 
 ### Requirement: config set reports the same clean engine error as the flag and env paths
 
@@ -139,6 +142,47 @@ designed to reassure a user before a data-changing operation.
   collection is kept as `<name>.v1-backup` and the operation is rollback-safe,
   plus the `Examples:` block — not only `"Migrate a v1 collection to v2"`.
 
+### Requirement: `[core] engine` in config.toml reports the same clean error too
+
+The system MUST report the identical clean, single-line message for an
+invalid `[core] engine` value set directly in `config.toml` (hand-edited, not
+via `config set`) as the other three surfaces — closing the last of the four
+places an invalid engine selector can be caught.
+
+#### Scenario: hand-edited config.toml has a bad engine value
+
+- **Given** `config.toml` contains `[core]\nengine = "v3"` (edited outside
+  `config set`, e.g. by hand or by another tool)
+- **When** the user runs any command that resolves the default engine for a
+  new collection (e.g. `indexed index create files --path ./docs`)
+- **Then** the error MUST be the single line `Invalid engine 'v3'; expected
+  one of: 1, 2, v1, v2`, not a multi-line pydantic dump routed through
+  `ConfigValidationError`.
+
+### Requirement: command `--help` shows each command's full guidance, not a generic one-liner
+
+The system MUST render each knowledge-management command's own docstring
+(including its `Examples:` block, where present) via `--help`, matching the
+fix applied to `migrate`. This closes the same defect on the three other
+commands that go through the same registration path (`search`, `inspect`,
+`update`, `remove`) instead of leaving it as a known-but-unfixed pattern.
+
+#### Scenario: user checks search examples before running it
+
+- **Given** a user runs `indexed index search --help` (or the root-aliased
+  `indexed search --help`)
+- **When** the help text renders
+- **Then** it MUST include the `Examples:` block (four example invocations),
+  not only `"Search collections"`.
+
+#### Scenario: same for inspect and remove
+
+- **Given** a user runs `indexed index inspect --help` or `indexed index
+  remove --help`
+- **When** the help text renders
+- **Then** each MUST include its own `Examples:` block, not only the current
+  one-line summary.
+
 ---
 
 ## Non-Goals
@@ -148,11 +192,11 @@ designed to reassure a user before a data-changing operation.
 - Rewriting or duplicating the hosted docs site (`indexed.sh/docs`) content —
   README additions stay short and point there for detail, matching the
   existing `## Documentation` pattern.
-- Fixing the same `help=`-overrides-docstring pattern on `search`/`update`/
-  `remove` (pre-existing elsewhere; #188 names only `migrate`).
-- Fixing the `[core] engine` config.toml validation error path (also not
-  fully clean today, but not named in #188 — flagged as a follow-up, see
-  tech.md Open Questions).
 - Any change to v1→v2 migration mechanics, v2 engine internals, or the
   version-dispatching facade beyond the one new `rerank` passthrough
   parameter.
+- A generic Click "did you mean the top-level flag?" hint mechanism for a
+  misplaced option in general (considered for `--engine` on the flat commands
+  `search`/`inspect`/`update`/`remove`, where it already works pre-subcommand
+  — descoped since fixing `index create` directly resolves #188's concrete
+  repro; see tech.md Open Questions).
