@@ -27,6 +27,28 @@ from ...utils.components import (
 )
 from ...utils.components.theme import get_detail_card_width
 
+# Score kinds (v2's per-collection ``scoreKind`` field) for which a HIGHER
+# score is a BETTER match. v1 results carry no ``scoreKind`` key at all, so
+# ``dict.get`` defaults a v1 collection out of this set — its sort key stays
+# exactly the raw ascending score, byte-identical to before (R6). "rerank" is
+# a cross-encoder relevance (also higher-is-better) reported when
+# ``[core.v2.rerank] enabled=true`` replaces the cosine score (PR #158 review).
+_HIGHER_IS_BETTER = frozenset({"cosine", "rerank"})
+
+
+def _unified_relevance(raw_score: float, higher_is_better: bool) -> float:
+    """Map a raw per-engine score onto one comparable measure — cosine (R11).
+
+    v2 already reports cosine similarity (``higher_is_better``) so its raw score
+    IS the relevance; v1 reports a squared-L2 distance ``d²`` over
+    unit-normalized vectors, so ``sim = 1 - d²/2`` recovers the cosine exactly.
+    Pure arithmetic (mirrors ``mcp/formatting`` so CLI and MCP agree) — the
+    app-layer never imports ``core.v2`` for this.
+    """
+    if higher_is_better:
+        return raw_score
+    return 1.0 - raw_score / 2.0
+
 
 class ChunkInfo(TypedDict):
     collection: str
@@ -34,6 +56,31 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
+
+
+def _is_content_free(chunk_info: ChunkInfo) -> bool:
+    """True when a chunk's text is empty, or is just its document's name (a
+    title/filename chunk) — useless as the highlighted excerpt (UX finding
+    M1). Every document carries a ``chunk_number 0`` whose text is only the
+    filename, which for NL queries often out-scores real content.
+
+    Content that's missing entirely (no ``content`` key, ``content`` isn't a
+    dict, or no ``indexedData`` key at all) is treated as NOT content-free —
+    there's nothing to compare, so top-result selection stays exactly
+    ``all_chunks[0]``, unchanged from before this fix. But content that IS
+    present and is an empty string, or equals the doc id / basename, IS
+    content-free.
+    """
+    obj = chunk_info["chunk"].get("content")
+    if not isinstance(obj, dict):
+        return False
+    raw = obj.get("indexedData")
+    if raw is None:
+        return False
+    content = str(raw).strip()
+    doc = str(chunk_info["doc_id"]).strip()
+    base = doc.rsplit("/", 1)[-1]
+    return content in ("", doc, base)
 
 
 def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
@@ -79,11 +126,18 @@ def format_search_results(
     all_chunks: List[ChunkInfo] = []
     total_docs = 0
     failed_collections: List[tuple[str, Any]] = []
+    # Per-collection score direction (v2's "scoreKind"; v1 has none, so it
+    # defaults to the ascending/lower-is-better convention — R6 byte-stable).
+    higher_is_better_by_collection: Dict[str, bool] = {}
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
             failed_collections.append((collection_name, collection_results["error"]))
             continue
+
+        higher_is_better_by_collection[collection_name] = (
+            collection_results.get("scoreKind") in _HIGHER_IS_BETTER
+        )
 
         documents = collection_results.get("results", [])
         total_docs += len(documents)
@@ -119,26 +173,62 @@ def format_search_results(
         console.print()
         return
 
-    # Sort chunks by score (ascending - lower is better for distance)
-    all_chunks.sort(key=lambda x: x["chunk"].get("score", 999), reverse=False)
+    # Sort chunks best-first. When a v2 collection is present (mixed or
+    # v2-only) rank ALL chunks on one comparable measure — cosine relevance,
+    # v1's squared-L2 mapped ``sim = 1 - d²/2`` (R11) — descending. When the
+    # view is v1-only (no scoreKind anywhere) keep the EXACT pre-feature sort
+    # (ascending raw distance), so v1-only display order is byte-identical (R6).
+    # The displayed score is always the untouched raw score (preserved).
+    any_v2 = any(higher_is_better_by_collection.values())
+    if any_v2:
+
+        def _sort_key(x: ChunkInfo) -> float:
+            hib = higher_is_better_by_collection.get(x["collection"], False)
+            return -_unified_relevance(x["chunk"].get("score", 999), hib)
+    else:
+
+        def _sort_key(x: ChunkInfo) -> float:
+            return x["chunk"].get("score", 999)
+
+    all_chunks.sort(key=_sort_key, reverse=False)
 
     # Show top result with split meta/excerpt cards
     console.print(
         f"[{get_heading_style()}]Best Matched Search Result:[/{get_heading_style()}]"
     )
     console.print()
-    _show_top_result_split_cards(all_chunks[0])
+    # M1: chunk_number 0 is always just the document's filename — for NL
+    # queries it often out-scores real content, so surfacing it as the
+    # highlighted excerpt is a useless first impression. Pick the
+    # highest-ranked chunk with real content instead; fall back to
+    # all_chunks[0] if every candidate is content-free.
+    top = next((c for c in all_chunks if not _is_content_free(c)), all_chunks[0])
+    _show_top_result_split_cards(
+        top,
+        show_relevance=any_v2,
+        higher_is_better_by_collection=higher_is_better_by_collection,
+    )
 
-    # Show next 4 results in compact format
-    if len(all_chunks) > 1:
+    # Show next 4 results in compact format, excluding whichever chunk got
+    # promoted to the highlighted top — by identity, so only the exact
+    # promoted object is skipped, not other chunks with an equal score
+    # (review finding: a content-free #1 promotes some all_chunks[k], k>=1,
+    # which the old positional all_chunks[1:5] slice could still include,
+    # duplicating it in both the highlight and the list).
+    others = [c for c in all_chunks if c is not top][:4]
+    if others:
         console.print()
         console.print(
             f"[{get_heading_style()}]Other Search Query Matches[/{get_heading_style()}]"
         )
         console.print()
 
-        for chunk_info in all_chunks[1:5]:  # Show up to 4 more
-            _show_compact_match(chunk_info)
+        for chunk_info in others:
+            _show_compact_match(
+                chunk_info,
+                show_relevance=any_v2,
+                higher_is_better_by_collection=higher_is_better_by_collection,
+            )
 
     # Summary
     console.print()
@@ -150,7 +240,11 @@ def format_search_results(
     console.print()
 
 
-def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
+def _show_top_result_split_cards(
+    chunk_info: ChunkInfo,
+    show_relevance: bool = False,
+    higher_is_better_by_collection: Dict[str, bool] | None = None,
+) -> None:
     """Show the top result chunk in two cards: Meta and Excerpt."""
 
     collection = chunk_info["collection"]
@@ -170,6 +264,16 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
         else (str(score) if score is not None else "N/A")
     )
     meta_rows.append(("Score", score_str))
+
+    # Mixed v1+v2 view: surface one comparable relevance measure right after
+    # the raw score (M2/R11 CLI display) — v1-only view stays byte-identical
+    # (R6), since ``show_relevance`` is only True when a v2 collection is
+    # present in the result set.
+    if show_relevance and isinstance(score, (int, float)):
+        hib = (higher_is_better_by_collection or {}).get(collection, False)
+        rel = _unified_relevance(float(score), hib)
+        meta_rows.append(("Relevance", f"{rel:.4f}"))
+
     meta_rows.append(("Chunk", str(chunk_index)))
 
     # Only include match id if available
@@ -210,7 +314,11 @@ def _show_top_result_split_cards(chunk_info: ChunkInfo) -> None:
     console.print(excerpt_panel)
 
 
-def _show_compact_match(chunk_info: ChunkInfo) -> None:
+def _show_compact_match(
+    chunk_info: ChunkInfo,
+    show_relevance: bool = False,
+    higher_is_better_by_collection: Dict[str, bool] | None = None,
+) -> None:
     """Show a compact single-line match."""
     collection = chunk_info["collection"]
     doc_id = chunk_info["doc_id"]
@@ -222,6 +330,14 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
     else:
         chunk_score = str(score)
 
+    # Mixed v1+v2 view: append the same comparable relevance measure shown on
+    # the top card (M2/R11) — v1-only view stays byte-identical (R6).
+    rel_suffix = ""
+    if show_relevance and isinstance(score, (int, float)):
+        hib = (higher_is_better_by_collection or {}).get(collection, False)
+        rel = _unified_relevance(float(score), hib)
+        rel_suffix = f" / rel {rel:.4f}"
+
     # Format: collection / document / part / match_id
     # collection/doc_id/chunk_score are user/content-derived (collection name,
     # document path or URL, indexed data) — escape before entering this markup
@@ -230,7 +346,7 @@ def _show_compact_match(chunk_info: ChunkInfo) -> None:
         f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
         f"{escape(str(doc_id))} / "
         f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
-        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]"
+        f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]{rel_suffix}"
     )
 
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Type
 
 from indexed.config import ConfigService, StorageMode, get_config, reload
-from indexed.config.errors import ConfigurationError
+from indexed.config.errors import ConfigurationError, ConfigValidationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
@@ -30,26 +30,102 @@ from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 def register_app_config(config_service: ConfigService) -> None:
     """Register all config specs — idempotent, raises on failure."""
     from indexed.core.v1.config_models import (
+        CoreEngineConfig,
         CoreV1EmbeddingConfig,
         CoreV1IndexingConfig,
         CoreV1SearchConfig,
         CoreV1StorageConfig,
         MCPConfig,
     )
+    from indexed.core.v2.config_models import (
+        CoreV2EmbeddingConfig,
+        CoreV2RerankConfig,
+        CoreV2SearchConfig,
+    )
     from indexed.connectors.confluence.schema import ConfluenceCloudConfig
     from indexed.connectors.files.schema import FileSystemConfig
     from indexed.connectors.jira.schema import JiraCloudConfig
     from indexed.connectors.outline.schema import OutlineConfig
 
+    # ``[core] engine`` — default engine for NEW collections (R3). Registered at
+    # path ``core``; the model ignores the ``core.v1.*``/``core.v2.*`` extras.
+    config_service.register(CoreEngineConfig, path="core")
     config_service.register(CoreV1IndexingConfig, path="core.v1.indexing")
     config_service.register(CoreV1SearchConfig, path="core.v1.search")
     config_service.register(CoreV1StorageConfig, path="core.v1.storage")
     config_service.register(CoreV1EmbeddingConfig, path="core.v1.embedding")
+    config_service.register(CoreV2EmbeddingConfig, path="core.v2.embedding")
+    config_service.register(CoreV2SearchConfig, path="core.v2.search")
+    config_service.register(CoreV2RerankConfig, path="core.v2.rerank")
     config_service.register(MCPConfig, path="mcp")
     config_service.register(FileSystemConfig, path="sources.files")
     config_service.register(JiraCloudConfig, path="sources.jira")
     config_service.register(ConfluenceCloudConfig, path="sources.confluence")
     config_service.register(OutlineConfig, path="sources.outline")
+
+
+# --- engine selection (R3) ----------------------------------------------------
+
+_DEFAULT_ENGINE = "1"
+_ENGINE_ALIASES = {"1": "1", "v1": "1", "2": "2", "v2": "2"}
+
+
+def normalize_engine_selector(value: str) -> str:
+    """Map a user/config engine selector (``1``/``2``/``v1``/``v2``) to ``"1"``/``"2"``."""
+    normalized = _ENGINE_ALIASES.get(str(value).strip().lower())
+    if normalized is None:
+        raise ConfigurationError(
+            f"Invalid engine {value!r}; expected one of: 1, 2, v1, v2"
+        )
+    return normalized
+
+
+def resolve_engine_selector(flag: str | None, config_service: ConfigService) -> str:
+    """Resolve the engine for NEW collections (R3).
+
+    Precedence: ``--engine`` flag > ``INDEXED__CORE__ENGINE`` env >
+    ``[core] engine`` in config.toml > built-in default ``"1"``. Env is read
+    explicitly (not only via the config merge) so the precedence is
+    deterministic.
+
+    A malformed ``[core] engine`` value fails loud (a ``ConfigValidationError``
+    for the ``core`` path propagates) so it is NOT silently downgraded to the
+    default — consistent with the env path, which validates before this point.
+    The default fallback is reserved for the genuinely-absent / unregistered
+    case (and any unrelated binding hiccup, which the command surfaces in its own
+    context rather than as an engine error).
+    """
+    if flag is not None:
+        return normalize_engine_selector(flag)
+
+    import os
+
+    env_value = os.environ.get("INDEXED__CORE__ENGINE")
+    if env_value:
+        return normalize_engine_selector(env_value)
+
+    try:
+        from indexed.core.v1.config_models import CoreEngineConfig
+
+        cfg = config_service.bind().get(CoreEngineConfig)
+        return normalize_engine_selector(cfg.engine)
+    except ConfigValidationError as exc:
+        # A bad ``[core] engine`` value trips ``CoreEngineConfig``'s validator at
+        # ``bind()`` time → ``ConfigValidationError(path="core")``. That must
+        # surface (fail loud, consistent with the env path), not be downgraded to
+        # the default. An unrelated config error (different path) is not the
+        # engine selector's concern — fall through so the invoking command
+        # reports it where it belongs.
+        if exc.path == "core":
+            raise
+        return _DEFAULT_ENGINE
+    except Exception:
+        # Genuinely absent / unregistered ``[core] engine`` (KeyError from the
+        # provider) or another binding hiccup → built-in default. A real
+        # ``cfg.engine`` is already validated to "1"/"2", so
+        # ``normalize_engine_selector`` here only fails for a non-config test
+        # double, which correctly falls back.
+        return _DEFAULT_ENGINE
 
 
 # --- connector construction ---------------------------------------------------

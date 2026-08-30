@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, get_args
 from fastmcp import Context
 from loguru import logger
 
-from indexed.core.v1.engine import (
+from indexed.core.engine import (
     SourceConfig,
     search as svc_search,
     status as svc_status,
@@ -126,7 +126,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         # model) — a static checker can't see through that indirection.
         source_config = SourceConfig(
             name=collection,
-            type=source_type,  # ty: ignore[invalid-argument-type]
+            type=source_type,
             base_url_or_path="",
             indexer=default_indexer,
         )

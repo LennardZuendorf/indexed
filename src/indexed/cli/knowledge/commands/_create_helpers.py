@@ -11,7 +11,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from indexed.core.v1.engine import SourceConfig
+    from indexed.core.engine import SourceConfig
 
 from indexed.config import ConfigService, StorageMode, ValidationResult
 
@@ -20,7 +20,7 @@ from ...utils.console import console
 from ...utils.context_managers import NoOpContext
 from ...utils.components import print_success, print_error, print_warning
 from ...utils.format import format_source_type
-from ...utils.storage_info import get_context_mode_override
+from ...utils.storage_info import get_context_mode_override, get_context_value
 from ...utils.progress_bar import create_phased_progress, build_progress_title
 from ...utils.credentials import (
     apply_cli_credential_overrides,
@@ -150,15 +150,46 @@ def execute_create_command(
     import typer
 
     mode_override: Optional[StorageMode] = get_context_mode_override()
+    context_engine = get_context_value("engine")
+    engine_flag = context_engine if isinstance(context_engine, str) else None
     if local:
         mode_override = "local"
 
-    from indexed.cli.composition import resolve_collections_context
+    from indexed.cli.composition import (
+        resolve_collections_context,
+        resolve_engine_selector,
+    )
 
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     config = cli_ctx.config_service
     collections_path = str(cli_ctx.collections_path)
     caches_path = str(cli_ctx.caches_path)
+
+    # Determine once whether `collection` already has a collection on disk —
+    # both the engine resolution below and the overwrite prompt further down
+    # need this, and it's a pure filesystem read (no side effects), so a
+    # single check is safe to reuse for both (avoids a second disk probe and
+    # keeps the two decisions from ever disagreeing).
+    from indexed.core.engine import collection_exists
+
+    collection_already_exists = collection_exists(
+        collection, collections_path=collections_path
+    )
+
+    # Resolve the engine to pass to svc_create (#185).
+    # - Existing collection name (a `create` replay): only the raw --engine
+    #   flag counts. Falling through to the env var/config selector chain
+    #   here would turn "no --engine passed" into an explicit, possibly
+    #   conflicting request and make the facade's EngineMismatchError fire on
+    #   every unflagged replay. Passing the raw flag (None when unset) lets
+    #   the facade's `_resolve_existing_engine` defer to the manifest, same
+    #   as `update`/`search`/`remove` already do.
+    # - Genuinely new collection name: keep the full selector chain (R3) —
+    #   --engine flag > INDEXED__CORE__ENGINE > [core] engine > default "1".
+    if collection_already_exists:
+        resolved_engine = engine_flag
+    else:
+        resolved_engine = resolve_engine_selector(engine_flag, config)
 
     # Review Finding 1 (foundation/6b): snapshot config.toml's exact bytes
     # before ANY prompt/write in this run. The Jira/Confluence credential
@@ -243,15 +274,13 @@ def execute_create_command(
         svc_create = this_module.svc_create
         svc_status = this_module.svc_status
 
-        # Check if collection already exists (prompt unless --force)
-        if not force:
-            from indexed.core.v1.engine import collection_exists
-
-            if collection_exists(collection, collections_path=collections_path):
-                console.print()
-                print_warning(f"Collection '{collection}' already exists.")
-                if not typer.confirm("Overwrite?", default=False):
-                    raise typer.Exit(0)
+        # Prompt for overwrite confirmation (unless --force), reusing the
+        # existence check already done above for engine resolution.
+        if not force and collection_already_exists:
+            console.print()
+            print_warning(f"Collection '{collection}' already exists.")
+            if not typer.confirm("Overwrite?", default=False):
+                raise typer.Exit(0)
 
         # Build source config using connector-specific callback
         cfg = build_source_config(validation.present, collection)
@@ -275,6 +304,7 @@ def execute_create_command(
                     logger.info("Creating collection '%s'...", collection)
                     svc_create(
                         [cfg],
+                        engine=resolved_engine,
                         use_cache=use_cache,
                         force=force,
                         collections_path=collections_path,
@@ -292,6 +322,7 @@ def execute_create_command(
                     try:
                         svc_create(
                             [cfg],
+                            engine=resolved_engine,
                             use_cache=use_cache,
                             force=force,
                             phased_progress=phased,
@@ -371,11 +402,11 @@ def execute_create_command(
 def __getattr__(name: str):
     """Lazy load heavy dependencies for tests and performance."""
     if name == "svc_create":
-        from indexed.core.v1.engine import create
+        from indexed.core.engine import create
 
         return create
     elif name == "svc_status":
-        from indexed.core.v1.engine import status
+        from indexed.core.engine import status
 
         return status
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

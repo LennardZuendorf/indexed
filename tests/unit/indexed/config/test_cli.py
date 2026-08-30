@@ -1,6 +1,8 @@
 """Tests for config CLI commands."""
 
 from unittest.mock import Mock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from indexed.config.cli import (
@@ -12,6 +14,9 @@ from indexed.config.cli import (
     _masked_config_value,
     _merge_with_defaults,
 )
+from indexed.config.errors import ConfigValidationError
+
+pytestmark = pytest.mark.unit
 
 runner = CliRunner()
 
@@ -407,6 +412,94 @@ class TestGetConfig:
         assert result.exit_code == 0
         assert "not found" in result.stdout.lower()
 
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_unset_shows_effective_default(self, mock_config_service):
+        """UX finding L2: with no explicit ``[core] engine``, `config get
+        core.engine` must surface the effective default ("1") marked as a
+        default, not "Key not found"."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0
+        assert "not found" not in result.stdout.lower()
+        assert "1 (default)" in result.stdout
+
+    @patch("indexed.config.get_config")
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_unset_does_not_bind_whole_config(
+        self, mock_resolve_config, mock_real_get_config
+    ):
+        """Regression: `config get core.engine` on an unset key must be a
+        pure single-key read of the field default. It must NOT call
+        ``.bind()`` — which validates EVERY registered spec (indexing,
+        search, storage, connectors, ...) and raises
+        ``ConfigValidationError`` if ANY unrelated section has bad data,
+        turning a single-key read into a whole-config validation (the
+        blast-radius regression from Task 6).
+
+        ``mock_real_get_config`` patches the actual ``indexed.config.get_config``
+        (distinct from the ``_resolve_config`` seam below, which is what the
+        CLI's own app-level callback uses to bootstrap ``register_app_config``
+        on every invocation — that call must keep succeeding). Its ``.bind()``
+        is rigged to raise ``ConfigValidationError``, standing in for "some
+        unrelated section is broken". Under the old buggy implementation
+        (``from indexed.config import get_config as _bound_config`` then
+        ``_bound_config().bind()``), that re-import resolves to this same
+        patched object and its rigged ``.bind()`` blows up the command. Under
+        the fix, nothing in the ``core.engine``-unset path ever calls
+        ``.bind()`` on either config object, so the command succeeds.
+        """
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_resolve_config.return_value = mock_config
+
+        mock_real_get_config.return_value.bind.side_effect = ConfigValidationError(
+            "sources.jira", "boom: unrelated section is broken"
+        )
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0, result.stdout
+        assert "1 (default)" in result.stdout
+        mock_config.bind.assert_not_called()
+        mock_real_get_config.return_value.bind.assert_not_called()
+
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_core_engine_explicit_value_not_marked_default(
+        self, mock_config_service
+    ):
+        """When ``core.engine`` IS explicitly set, show the set value as-is
+        with no "(default)" marker."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {"core": {"engine": "2"}}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.engine"])
+        assert result.exit_code == 0
+        assert "2" in result.stdout
+        assert "default" not in result.stdout.lower()
+
+    @patch("indexed.config.commands.get._resolve_config")
+    def test_get_missing_key_still_not_found(self, mock_config_service):
+        """A genuinely unknown key (not ``core.engine``) still says "Key not
+        found" — only ``core.engine`` gets the default-resolution treatment."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "get", "core.v1.embedding.bogus"])
+        assert result.exit_code == 0
+        assert "not found" in result.stdout.lower()
+
 
 class TestSetConfig:
     """Test set command."""
@@ -614,6 +707,40 @@ class TestSetConfig:
             or "Dry-run" in result.stdout
             or "not saved" in result.stdout
         )
+
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_engine_normalizes_friendly_alias(self, mock_config_service):
+        """C2 regression: ``config set core.engine v2`` must persist the
+        canonical "2", not the raw "v2" (which the engine-selector resolution
+        path — and a later ``index create`` — would reject)."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config.validate.return_value = []
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "set", "core.engine", "v2"])
+        assert result.exit_code == 0, result.stdout
+        mock_config.set_value.assert_called_once_with(
+            "core.engine", "2", field_info={"sensitive": False}
+        )
+
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_engine_rejects_bad_value(self, mock_config_service):
+        """C2 regression: ``config set core.engine v3`` must be rejected at
+        write time (naming the accepted forms) instead of being persisted and
+        crashing a later ``index create``."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "set", "core.engine", "v3"])
+        assert result.exit_code == 1
+        assert "v1" in result.stdout.lower()
+        mock_config.set_value.assert_not_called()
 
 
 class TestValidate:

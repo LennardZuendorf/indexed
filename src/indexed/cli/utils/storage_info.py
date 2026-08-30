@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 from rich.console import Console
 
@@ -23,15 +23,11 @@ logger = logging.getLogger(__name__)
 StorageMode = Literal["global", "local"]
 
 
-def get_context_mode_override() -> Optional[StorageMode]:
-    """Read ``mode_override`` off the active Typer/Click context.
+def get_context_value(key: str) -> object | None:
+    """Read a value from the active Typer/Click context.
 
     Typer >=0.26 vendors Click, so ``click.get_current_context()`` returns
     ``None`` inside a Typer command. Try the vendored context first.
-
-    Returns:
-        Optional[StorageMode]: The override set by the root callback, or
-        ``None`` when there is no active context or no override.
     """
     for module, attr in (
         ("typer._click.globals", "get_current_context"),
@@ -46,11 +42,15 @@ def get_context_mode_override() -> Optional[StorageMode]:
             logger.debug("Could not read context via %s", module, exc_info=True)
             continue
         if ctx is not None and ctx.obj:
-            # ctx.obj is untyped, so anything could have been stashed there;
-            # only hand a real StorageMode to resolve_collections_context().
-            override = ctx.obj.get("mode_override")
-            if override in ("global", "local"):
-                return override
+            return ctx.obj.get(key)
+    return None
+
+
+def get_context_mode_override() -> Optional[StorageMode]:
+    """Read a valid ``mode_override`` from the active Typer/Click context."""
+    override = get_context_value("mode_override")
+    if override in ("global", "local"):
+        return cast(StorageMode, override)
     return None
 
 

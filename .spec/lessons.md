@@ -10,6 +10,63 @@ Accumulated mistakes and earned defaults. Read at session start.
 
 ---
 
+## Version-dispatching facade seam (core-v2/1, 2026-07-19)
+
+- **The default (`engine=None`) path IS manifest-authoritative — it detects, but
+  tolerates corrupt/missing manifests.** Existing-collection ops (`update/clear/
+  search/status/inspect`) call `detect_engine_version` on BOTH the default and
+  the explicit path. `_resolve_existing_engine` wraps detection so that a
+  readable manifest with an *unknown* marker raises `UnknownEngineVersionError`
+  (fail loud, R1 — never a silent v1 fallback on either path), while a
+  missing/corrupt/unreadable manifest is *swallowed* (`ValueError` → `continue`),
+  falling through to the default engine so v1's own corrupt-collection handling
+  is preserved byte-for-byte (status/inspect omit them; remove deletes them —
+  the R6 concern, handled without sacrificing R1). This was the review fix: the
+  first cut skipped detection when `engine is None`, which silently routed a
+  `version:"3"` collection to v1. `status`/`inspect`/`search` enumerate on-disk
+  collections when no names/configs are given so list-all is authoritative too.
+- **`collection_exists` is the ONE exception — it stays engine-agnostic.** A
+  filesystem existence probe is answered identically by either engine, so
+  `engine=None` routes straight to the default WITHOUT detection: it must never
+  fail loud (a corrupt or future-versioned collection still "exists"), or the
+  create-gate/remove-fallback existence checks would break.
+- **Retarget EVERY app-layer engine seam to the facade, not just the obvious
+  ones.** The `update` command's lazy `__getattr__` still resolved
+  `update_service`/`svc_status`/`inspect` from `core.v1.engine`; since the loop
+  injects `engine=` into `update_wiring`, `update --engine` crashed with
+  `TypeError` (v1's `update()` has no `engine` param). Grep every
+  `from indexed.core.v1.engine import` above the facade when adding a selector.
+- **Engine-routing errors must SURFACE, not be collapsed.** `run_update_loop`
+  swallows per-collection failures (foundation/6 E8) — but `CoreError` subtypes
+  (`EngineMismatchError`/`UnknownEngineVersionError`) are precondition failures
+  whose messages carry the migrate remedy, so re-raise `CoreError` past the
+  generic `except` to reach the CLI top-level handler (mirrors search/inspect).
+- **A bad `[core] engine` value must fail loud, like the env path.**
+  `resolve_engine_selector`'s `except Exception → default` silently downgraded a
+  `[core] engine = "9"` typo to `"1"`. Narrow it: re-raise `ConfigValidationError`
+  whose `.path == "core"`; keep the default fallback only for the genuinely
+  absent/unregistered case (provider `KeyError`).
+- **Route every op through one `_engine_impl(version)` indirection.** v1 returns
+  `core.v1.engine.services`; v2 becomes a one-line import there. Keep it lazy
+  (no heavy/LlamaIndex import at facade module top; facade import ≈ 0.17s).
+- **CLI passes `engine=` only when the flag is set** (`**{"engine": flag} if
+  flag else {}`). Existing command tests use fixed-signature fakes (e.g.
+  `fake_svc_search`) that don't accept `engine=`; passing `engine=None`
+  unconditionally would `TypeError` them. `engine=None` == not passing.
+- **OQ-T1 resolved:** a scalar model (`CoreEngineConfig`, `engine: str`)
+  registered at parent path `core` coexists with `core.v1.*`/`core.v2.*`
+  subtables with no registry change — the flat `ConfigRegistry` + pydantic
+  default `extra="ignore"` drops the sibling tables. Never set `extra="forbid"`
+  on a parent-path model. Validate the value with a `field_validator`, not a
+  `Literal` (a `Literal` field is fine too, but the extras must still be
+  ignored at the model level).
+- **Routing a lazy facade turns re-exported types into `Any` for ty.** After
+  `mcp/tools.py` imported `SourceConfig` from `indexed.core.engine` (module
+  `__getattr__ -> Any`), a previously-needed `# ty: ignore[invalid-argument-type]`
+  became *unused* — remove such stale ignores to keep ty at 0 diagnostics.
+
+---
+
 ## Architecture audit (2026-07-03)
 
 - **Graph before polish.** Fix `core→connectors` and extract `indexed-protocols`
@@ -561,3 +618,112 @@ files inside are still matched by an earlier broad pattern (`*.json`) unless the
 negation also covers them (`!baselines/**`). `git check-ignore -v <path>` shows the
 matching rule for untracked paths and catches this directly; still confirm end-to-end
 with `git add`/`git status`, since that's what CI actually runs.
+
+## Core V2 build via subagent-driven development (2026-07-19)
+
+- **One agent per task — never re-dispatch a "dead" agent without confirming death.** Transcript
+  file size/mtime is NOT a liveness signal (three agents showed a frozen 118-byte transcript while
+  two were actively editing 250k+ tokens of work). Reliable liveness = `SendMessage` result:
+  "Message queued … at its next tool round" = ALIVE; "had no active task; resumed from transcript"
+  = was DORMANT (now revived). Or watch the working-tree diff hash over ~70s (changed = editing;
+  but a pure *reading* phase changes neither tree nor runs a build, so a tree-diff "stall" can be a
+  false positive — confirm with SendMessage). A false-death re-dispatch put 3 agents on one tree; the
+  cooperative agents self-detected and stood down, and the full gate arbitrated a clean merge — but
+  it cost ~1.5h. Stand down / kill the prior dispatch BEFORE re-dispatching.
+- **Subagents that launch the verify gate with `run_in_background` and end their turn go DORMANT** —
+  work committed-or-not, report unwritten, no auto-resume. Brief every implementer: "run the gate in
+  the FOREGROUND; do NOT end your turn until you have committed AND written the report." Revive a
+  dormant one with `SendMessage`.
+- **The CI benchmark action pushes baseline commits (`chore(benchmark): update baseline … [skip ci]`)
+  onto the PR branch itself**, so the next push is a non-fast-forward. `git fetch && git rebase
+  origin/<branch>` before each push (the baseline JSON touches disjoint files — clean rebase).
+- **The whole-branch review catches cross-UNIT gaps no per-unit review can.** Migration created the
+  `<name>.v1-backup` convention (unit 4) but collection-discovery lives in units 1/2, so the default
+  `migrate` left the backup as a discoverable + searchable phantom v1 collection (duplicate hits)
+  until `--purge-backup`. Lesson: the discovery-exclusion regex must exclude EVERY reserved sibling
+  dir, not just `.tmp`/`.trash` — it is now `\.(?:tmp|trash)-\d+|\.v1-backup$` at BOTH sites
+  (`core/engine.py`, `core/v2/_common.py`). Keep the two sites byte-identical.
+- **Manifest-authoritative routing must detect on the DEFAULT (no-`--engine`) path too**, or an
+  unknown `version` marker silently falls back to v1 (R1 violation). Detect per collection; let
+  `UnknownEngineVersionError` propagate (fail loud), but catch the collection-level `ValueError`
+  (corrupt/missing manifest) and fall through to the default engine so v1's own omit/handle behavior
+  is byte-preserved.
+- **Build-aside staging dirs must be named pid-FIRST** (`<name>.tmp-<pid>-<hex>`), not bare-uuid-hex —
+  the `\.(?:tmp|trash)-\d+` discovery-exclusion needs a DIGIT right after `-`; a hex prefix starting
+  with a–f (≈37.5%) escapes it, so a create/update killed mid-build could leave a phantom collection.
+- **v2 incremental update must embed with the collection's RECORDED model** (`manifest.engine.
+  embedding.model`), never the configured default — else new vectors land in a different embedding
+  space than the existing index. `create` uses the configured model (new collection); `update`/
+  `migrate` reuse the recorded one.
+- **LlamaIndex `TextNode.ref_doc_id` is read-only** — set the upsert/delete linkage via
+  `node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=doc_id)`; `delete_ref_doc`
+  keys on the SOURCE relationship (proven by a real `SimpleDocumentStore` round-trip). Docstore
+  per-doc content-hash upsert (skip unchanged, delete+re-embed changed) gives R5 incrementality.
+- **Native `HuggingFaceEmbedding` was ADOPTED** (not an own BaseEmbedding adapter): same
+  SentenceTransformer + HF cache as v1 → 1:1 relevance, zero re-download. Import it FUNCTION-LOCALLY
+  (the integration imports torch at module top). For zero-network-when-cached, pass `cache_folder` +
+  `local_files_only=True` when the model is cached (no `HF_HUB_OFFLINE` env mutation).
+- **R6 for formatters**: gate the cross-engine cosine unification (`sim = 1 − d²/2` for v1) on "a v2
+  collection is present" — v1 results carry no `scoreKind` key, so a v1-only search's output stays
+  byte-identical (no new `relevance` field, unchanged ascending sort). Cross-engine value comparison
+  only kicks in for mixed views.
+- **MCP v2 e2e must run OUT-OF-PROCESS** (spawn the server as a real stdio subprocess) — the in-process
+  FastMCP client + llama-index + torch segfaults (exit 139).
+- **The repo's `spec` skill (`validate.sh`) is a private-repo skill unavailable in an unauthorized
+  session** — a `spec_check.py` frontmatter+link proxy was used; the real validator must be run by
+  the maintainer in an authorized env. Commit signing is also impossible here (no key) → the stop-hook
+  "Unverified" nag is cosmetic; authorship is already `Claude <noreply@anthropic.com>`.
+
+## Core-v2 e2e testing (2026-07-19)
+
+- **LlamaIndex embeds `node.get_content(metadata_mode=EMBED)`, which PREPENDS all
+  `node.metadata` to the text before embedding.** The v2 adapter set engine-owned
+  metadata (`source_id`, the full file `url`, `modified_time`, `chunk_number`,
+  `collection`) but never `excluded_embed_metadata_keys`, so every v2 vector was
+  the embedding of `"source_id: …\nurl: file:///…\n…\n\n<chunk text>"` — NOT the
+  chunk text. Measured: true cosine("authentication","auth.py")=0.5791 (v1 recovers
+  it exactly via `1−d²/2`), but v2 returned 0.2430 = cosine of the metadata-prefixed
+  text. This broke R8 (v2 relevance ≠ v1) and R11 (mixed ranking systematically
+  favored v1) while every unit test stayed GREEN and CodeRabbit approved the scoring
+  logic — only an end-to-end score comparison against ground truth caught it. Fix:
+  `node.excluded_embed_metadata_keys = list(node.metadata.keys())` in `adapter.to_nodes`
+  (metadata still available for retrieval; embed text = chunk content alone). Lesson:
+  any adapter that sets node metadata MUST exclude it from the embed text, and vector
+  quality needs an e2e relevance check, not just green unit tests.
+- **Normalize the engine selector (`1/2/v1/v2`) at EVERY entry point, not just the
+  CLI flag.** `--engine v2` worked, but `INDEXED__CORE__ENGINE=v2` and
+  `config set core.engine v2` both crashed create ("engine must be '1' or '2'") —
+  the `v1/v2→1/2` normalizer ran only on the flag path, while `CoreEngineConfig`'s
+  validator (which the env/config paths hit at construction) rejected the friendly
+  forms. Fix: normalize inside `CoreEngineConfig._check_engine_value` (accept
+  `1/2/v1/v2` case-insensitively, store canonical `"1"`/`"2"`), so flag, env, and
+  config all agree. Replicate the mapping inline (config must not import the CLI layer).
+- **`config set` writes values unvalidated** — `config set core.engine v2` persisted
+  `engine = "v2"` and then every later command crashed on load. Validate model-backed
+  keys at write time (`config/commands/` is import-exempt, so it can construct the
+  model to validate) so a bad value is rejected before it bricks the tool.
+- **`config get <key>` for a defaulted key should show the effective default, not
+  "Key not found"** — but resolve it WITHOUT `ConfigService.bind()`, which validates
+  the ENTIRE config and would make a single-key read fail on any unrelated bad section.
+  Read the model's field default directly (`CoreEngineConfig().engine`).
+
+## `create` skipped the existing-engine check the other routed ops share (#185, 2026-08-29)
+
+- `core.engine.create()` validated only the *requested* selector
+  (`_validate_engine(engine or _DEFAULT_ENGINE)`) instead of resolving against the
+  target's on-disk manifest like `update`/`clear` do via `_resolve_existing_engine`.
+  Re-running `create` on an existing collection with no (or a conflicting) `--engine`
+  silently dispatched to the default/requested engine, build-aside-and-swapped the
+  whole collection directory, and destroyed the other engine's index — no error, no
+  warning beyond a generic "already exists, overwrite?" prompt that never mentions
+  engines. `.spec/tech.md` already documented the correct contract ("an explicit
+  selector may only confirm [the manifest] or fail with `EngineMismatchError`");
+  the code just didn't implement it for `create`, and no test exercised `create`
+  against an *existing* collection with a conflicting/absent engine to catch it.
+  Fix: `create` now extracts names from `configs` and calls the same
+  `_resolve_existing_engine(engine, names, collections_path)` the other routed ops
+  use — manifest wins for existing names, selector still picks the engine for
+  genuinely new ones. Lesson: every routed op in a version-dispatching facade needs
+  its own existing-collection regression test, even when the pattern is "obviously"
+  shared — a facade with N routed callables needs N call sites verified, not just
+  the ones that happen to already have tests.

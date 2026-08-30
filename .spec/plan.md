@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-12
+updated: 2026-07-19
 ---
 
 # Development Plan: indexed
@@ -41,7 +41,8 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
 | 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
-| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ◻ ACTIVE | [features/review-remediation/](features/review-remediation/plan.md) |
+| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder wrapped up 2026-07-19) |
+| 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -84,23 +85,26 @@ cleanups (cached `get_config()/reload()`, single path/mode resolver) landed. Ful
 suite + system tests green; coverage ≥85% on core/connectors/config; size + import
 gates enforced by `scripts/check_sizes.py` + `scripts/check_imports.py`.
 
-**Active: Feature 15 Review Remediation.** The extra-high-effort code review of
-PR #155 (14 finders + 8 adversarial verifiers + gap sweep) confirmed a set of
-defects the architecture cleanup introduced or left latent — three P1
-crashes/data-loss on common paths (config `set` truncating the untargeted
-`config.toml`; `indexed-mcp run` crashing on a malformed config; fresh-install
-`inspect`/`search` erroring instead of reporting empty), three P1
-silent-wrong/crash connector+cache defects (Confluence `CancelledError`, Jira
-`enhanced_jql` None, document-cache key omitting parse settings), a systemic
-Rich-markup crash on ordinary input (`search "list[int]"`), plus a P2/P3 tail.
-Captured as [features/review-remediation/](features/review-remediation/plan.md),
-nine mostly-independent units ordered by blast radius, each a green commit with a
-regression test. To be worked in the cloud.
+**Feature 16 Core v2 is DONE** (implemented in PR #158 + end-to-end testing
+fixes, 2026-07-19): a LlamaIndex-based engine coexisting with the frozen v1
+engine behind the version-dispatching `indexed.core.engine` facade, with
+manifest-authoritative per-collection routing, explicit engine selection for new
+collections, optional reranking, unified cross-engine relevance, and safe v1→v2
+migration (dry-run, automatic backup, rollback, purge). Live surface:
+`src/indexed/core/v2/`, `core/engine.py`, `core/versioning.py`; tests
+`tests/unit/indexed/core/v2/`. Feature 15 (Review Remediation, merged in PR #155)
+and Feature 16 both had their feature-spec folders promoted + deleted on
+2026-07-19 (v2 routing contract → [tech.md](tech.md) § Core Facade & App
+Composition Root; lessons → [lessons.md](lessons.md)). The full v2 planning
+artifact (research + ADRs) lives in git history (PR #158).
 
-The **v2 core/connectors rewrite** remains the next horizon after remediation — it
-swaps a module behind the `core.v1.engine` facade over the same on-disk format, now
-unblocked (typed contracts + facade + one package + behavior-only suite make it a
-drop-in).
+**No feature is currently active.**
+
+**Note (supersedes earlier wording):** the v2 rewrite ships behind the *same
+facade names* but over a **new version-marked on-disk format** — the "same
+on-disk format" drop-in premise was superseded by core-v2 ADR-1 (v2's goals —
+pluggable stores, deletes/filters — cannot be expressed in the v1 format;
+core-v2 ADR-1, git history / PR #158). The v1 format stays frozen and fully supported.
 
 **Non-gating deferral (Feature 14):** the indexer factory/registry + multi-indexer
 plumbing were NOT deleted — the audit's "phantom generality" premise was wrong
@@ -126,6 +130,57 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-07-19: Feature 16 (Core v2) shipped; Features 15 + 16 folders wrapped up
+**Decision:** Core v2 is implemented (PR #158) and hardened by an end-to-end
+testing pass that found two real bugs the unit tests + review missed — v2 was
+embedding engine-owned metadata (paths/timestamps/chunk numbers) into every
+vector (broke v1 relevance parity R8 and mixed ranking R11; fixed by excluding
+metadata from the embed text), and the `v2` engine selector crashed via env/
+config (only `--engine` normalized it; fixed in `CoreEngineConfig`'s validator).
+Also shipped: distinct reranked `scoreKind`, unified relevance shown in mixed CLI
+search, filename-only chunks no longer highlighted as the top result, `--collection`
+alias on update/remove/migrate, and quieter missing-collection logs. Marked
+Feature 16 DONE. **Wrapped up both owed feature folders:** promoted the core-v2
+"Engine routing contract" cross-cutting block into [tech.md](tech.md) § Core
+Facade & App Composition Root (correcting the stale "same on-disk format" swap
+premise — v2 uses a new version-marked format), compounded the testing lessons
+into [lessons.md](lessons.md), then **deleted** `features/core-v2/` and
+`features/review-remediation/` (review-remediation had no pending merge blocks;
+its content shipped with PR #155). CODE IS TRUTH — live surface is `core/v2/`,
+the facade, and `tests/`.
+**Rationale:** a completed feature folder must not linger; durable cross-cutting
+content lives in root specs, resolved detail in git history. E2E UX testing (not
+just green unit tests) is what caught the metadata-in-embedding regression.
+
+### 2026-07-18: Feature 16 (Core v2) opened; Feature 15 closed
+**Decision:** Mark Feature 15 DONE (merged to `main` in PR #155; folder
+wrap-up owed). Open Feature 16 Core v2: a LlamaIndex-based second engine
+coexisting with the frozen v1 engine. Headline decisions (ADRs in the v2
+planning doc, since moved to git history / PR #158): v2 uses a **new version-marked on-disk format**
+(supersedes the "same on-disk format" swap premise); routing is
+**manifest-authoritative** — explicit selectors (`--engine` flag >
+`INDEXED__CORE__ENGINE` > `[core] engine` > default v1) apply to *new*
+collections only, and a conflicting selector on an existing collection fails
+loud; store is SimpleVectorStore with the store identity recorded and
+dispatched per collection (FAISS excluded from v2 — LlamaIndex's FAISS
+integration lacks delete/filters); embeddings via the native LlamaIndex
+HuggingFace integration with v1's exact model — local-only, self-contained,
+shared model cache; migration is explicit, offline-by-default, backed up and
+reversible; remote providers (Ollama, …), additional stores (Qdrant, …), KG
+and hybrid retrieval all deferred to future features behind the shipped
+seams.
+**Maintainer review 2026-07-18:** `--engine` naming and default-flip criteria
+approved; remote providers + Qdrant descoped (units core-v2/5 and core-v2/7
+retired); no v1 deprecation planning; PRs #132–#136 closed as superseded and
+issues #5/#7 annotated. The prior attempt (PR #86 + splits #132–#136, closed/stale
+against the deleted workspace layout) was reviewed: its adapter-at-boundary,
+version marker, and mismatch-error patterns are kept; its flag-over-manifest
+precedence, delete-before-persist, and hardcoded-FAISS load path are designed
+out; recommend closing #132–#136 and annotating issues #5/#7.
+**Rationale:** evidence-based reconciliation of the repo's swap-seam design,
+the failed first attempt, and verified LlamaIndex capabilities (research in
+git history / PR #158; feature folder deleted 2026-07-19).
 
 ### 2026-07-12: Feature 15 (Review Remediation) opened
 **Decision:** Capture the confirmed defects from the extra-high-effort review of

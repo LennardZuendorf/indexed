@@ -82,6 +82,102 @@ class TestSearchCommand:
         assert "Collection 'missing' not found" in result.stdout
 
 
+class TestIsContentFree:
+    """Unit tests for the content-free filename-chunk helper (M1)."""
+
+    def test_content_matches_full_doc_id_is_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_content_matches_basename_only_is_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/nested/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": "auth.py"}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_real_content_is_not_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={
+                "score": 0.1,
+                "content": {"indexedData": "def authenticate(): ..."},
+            },
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_missing_content_key_is_not_content_free(self):
+        """No 'content' key at all (matched-chunk content not requested) —
+        behavior must be unchanged, so this does NOT count as content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_empty_indexed_data_string_is_content_free(self):
+        """A present-but-empty indexedData string has nothing useful to show
+        as an excerpt, so it counts as content-free (unlike genuinely MISSING
+        content, which is left unchanged — see the tests below)."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": ""}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is True
+
+    def test_indexed_data_key_present_but_none_is_not_content_free(self):
+        """indexedData explicitly None (key present, value None) is treated
+        as MISSING content — behavior must be unchanged, not content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"indexedData": None}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_content_dict_missing_indexed_data_key_is_not_content_free(self):
+        """A 'content' dict that doesn't carry an 'indexedData' key at all is
+        MISSING content — behavior must be unchanged, not content-free."""
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": {"metadata": {}}},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+    def test_non_dict_content_is_not_content_free(self):
+        chunk_info = search_render.ChunkInfo(
+            collection="col",
+            doc_id="src/auth.py",
+            path="/p",
+            chunk={"score": 0.1, "content": "plain string"},
+            chunk_index=1,
+        )
+        assert search_render._is_content_free(chunk_info) is False
+
+
 class TestFormatSearchResults:
     """Tests for the search result formatting helpers."""
 
@@ -154,6 +250,316 @@ class TestFormatSearchResults:
         error_message = mock_error.call_args[0][0]
         assert "error-collection" in error_message
         assert "index unavailable" in error_message
+
+    def test_format_search_results_v2_cosine_scorekind_sorts_best_first(
+        self, monkeypatch
+    ):
+        """R13/R11 (v2 side): a collection recording ``scoreKind: cosine``
+        (higher is better) must show its BEST (highest-score) chunk as the
+        top result, not the lowest — the CLI twin of the MCP formatting fix.
+        A v1 collection (no 'scoreKind' key) keeps the existing ascending
+        sort byte-identical (R6)."""
+        captured: Dict[str, Any] = {}
+
+        def fake_show_top(chunk_info, **kwargs):
+            captured["top"] = chunk_info
+
+        monkeypatch.setattr(
+            search_render, "_show_top_result_split_cards", fake_show_top
+        )
+        monkeypatch.setattr(search_render, "_show_compact_match", lambda *_, **__: None)
+
+        results: Dict[str, Any] = {
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "worst",
+                        "matchedChunks": [
+                            {"score": 0.02, "content": {"indexedData": "low"}}
+                        ],
+                    },
+                    {
+                        "id": "best",
+                        "matchedChunks": [
+                            {"score": 0.91, "content": {"indexedData": "high"}}
+                        ],
+                    },
+                ],
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert captured["top"]["doc_id"] == "best"
+
+    def test_mixed_engines_rank_on_unified_relevance(self, monkeypatch):
+        """R11 (CLI): with BOTH engines merged, chunks rank on one comparable
+        measure — cosine, v1's squared-L2 mapped ``sim = 1 - d²/2`` — so a
+        better v2 hit outranks a worse v1 hit AND a truly-better v1 hit still
+        leads (not 'v2 always first')."""
+        order: List[str] = []
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci, **kw: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-strong",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-weak",
+                        "matchedChunks": [
+                            {"score": 1.6, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-strong",
+                        "matchedChunks": [
+                            {"score": 0.9, "content": {"indexedData": "c"}}
+                        ],
+                    },
+                    {
+                        "id": "v2-weak",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "d"}}
+                        ],
+                    },
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # relevances: v1-strong .95 > v2-strong .90 > v2-weak .40 > v1-weak .20
+        assert order == ["v1-strong", "v2-strong", "v2-weak", "v1-weak"]
+
+    def test_v1_only_keeps_ascending_raw_score_order(self, monkeypatch):
+        """R6 (CLI): a v1-only view (no scoreKind anywhere) keeps the EXACT
+        pre-feature ascending raw-distance order — unchanged by the R11 work."""
+        order: List[str] = []
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci, **kw: order.append(ci["doc_id"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "worst",
+                        "matchedChunks": [
+                            {"score": 3.0, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "best",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                    {
+                        "id": "mid",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "c"}}
+                        ],
+                    },
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert order == ["best", "mid", "worst"]
+
+    def test_mixed_engines_top_card_shows_relevance_row(self, monkeypatch):
+        """M2/R11 (CLI display): when a v2 collection is present, the top
+        result's meta card surfaces a comparable 'Relevance' row (unified
+        cosine measure) right after the raw 'Score' row, so v2's ~0.0-0.6
+        cosine score is no longer uninterpretable next to v1's ~1.0-2.0
+        squared-L2 distance."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "v1 text"}}
+                        ],
+                    }
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-doc",
+                        "matchedChunks": [
+                            {"score": 0.5, "content": {"indexedData": "v2 text"}}
+                        ],
+                    }
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "Relevance" in text
+        assert "Score" in text
+        # v1-doc (top): raw score 0.4 -> unified relevance 1 - 0.4/2 = 0.8000
+        assert "0.8000" in text
+
+    def test_v1_only_top_card_has_no_relevance_row(self, monkeypatch):
+        """R6: a v1-only search (no scoreKind anywhere) renders EXACTLY as
+        before the M2 feature — no 'Relevance' row/label anywhere in the
+        rendered output."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "v1 text"}}
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "Relevance" not in text
+        assert "Score" in text
+
+    def test_mixed_engines_compact_match_shows_rel_suffix(self, monkeypatch):
+        """M2/R11 (CLI display): the compact 'Other matches' lines append the
+        unified relevance (` / rel X.XXXX`) after the raw score, so v1 and v2
+        rows can be compared visually."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(" ".join(str(a) for a in args))
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-a",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-b",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            },
+            "v2-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "v2-a",
+                        "matchedChunks": [
+                            {"score": 0.3, "content": {"indexedData": "c"}}
+                        ],
+                    }
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Order: v1-a (rel .8, top card) > v1-b (rel .5) > v2-a (rel .3).
+        v1_b_line = next(line for line in outputs if "v1-b" in line)
+        v2_a_line = next(line for line in outputs if "v2-a" in line)
+        assert "1.0000" in v1_b_line  # raw score unchanged
+        assert "/ rel 0.5000" in v1_b_line
+        assert "0.3000" in v2_a_line  # v2 raw score IS its relevance
+        assert "/ rel 0.3000" in v2_a_line
+
+    def test_v1_only_compact_match_has_no_rel_suffix(self, monkeypatch):
+        """R6: a v1-only compact match line stays exactly as before — no
+        ' / rel' suffix."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(" ".join(str(a) for a in args))
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-a",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "a"}}
+                        ],
+                    },
+                    {
+                        "id": "v1-b",
+                        "matchedChunks": [
+                            {"score": 1.0, "content": {"indexedData": "b"}}
+                        ],
+                    },
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        joined = "\n".join(outputs)
+        assert "/ rel" not in joined
 
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
@@ -305,6 +711,171 @@ class TestFormatSearchResults:
         assert "empty-coll" not in joined
         # A real failure must not be reported as a soft "no results found".
         assert "No results found" not in joined
+
+    def test_top_result_skips_content_free_filename_chunk_for_real_content(
+        self, monkeypatch
+    ):
+        """M1: chunk_number 0 is just the document's filename (e.g.
+        'auth.py'), which can out-score real content for NL queries. The
+        highlighted 'Best Matched' excerpt must skip such a content-free
+        top-ranked chunk and show the next-best chunk with real content
+        instead."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth_module.py",
+                        "matchedChunks": [
+                            {
+                                "score": 0.1,
+                                "content": {"indexedData": "src/auth_module.py"},
+                            },
+                            {
+                                "score": 0.3,
+                                "content": {
+                                    "indexedData": "AUTH_MARKER: def authenticate(user, pw): ..."
+                                },
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "AUTH_MARKER" in text
+        # The excerpt panel body itself (not just the Document meta row)
+        # must carry the real-content marker.
+        excerpt_start = text.index("Top Result Excerpt")
+        assert "AUTH_MARKER" in text[excerpt_start:]
+
+    def test_top_result_falls_back_to_first_chunk_when_all_content_free(
+        self, monkeypatch
+    ):
+        """If every candidate chunk is content-free (all filename-only), fall
+        back to all_chunks[0] exactly as before the fix."""
+        captured: Dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: captured.setdefault("top", ci),
+        )
+        monkeypatch.setattr(
+            search_render, "_show_compact_match", lambda *_a, **_kw: None
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+                            {"score": 0.3, "content": {"indexedData": "auth.py"}},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Both candidates are content-free -> fall back to all_chunks[0]
+        # (the first-ranked chunk, score 0.1).
+        assert captured["top"]["chunk"]["score"] == 0.1
+
+    def test_top_result_unchanged_when_content_absent(self, monkeypatch):
+        """When matched-chunk content wasn't requested (no 'content' key at
+        all), selection must be unchanged — still all_chunks[0] — since
+        there's nothing to compare against the filename."""
+        captured: Dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            search_render,
+            "_show_top_result_split_cards",
+            lambda ci, **kw: captured.setdefault("top", ci),
+        )
+        monkeypatch.setattr(
+            search_render, "_show_compact_match", lambda *_a, **_kw: None
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1},  # no content key at all
+                            {"score": 0.3, "content": {"indexedData": "real text"}},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert captured["top"]["chunk"]["score"] == 0.1
+
+    def test_other_matches_excludes_promoted_top(self, monkeypatch):
+        """When a content-free #1 chunk causes some all_chunks[k] (k>=1) to
+        be promoted to the highlighted top, "Other Matches" must NOT also
+        show that same chunk — it must be excluded (by identity), not just a
+        positional all_chunks[1:5] slice, which would duplicate it."""
+        others: List[Any] = []
+        monkeypatch.setattr(
+            search_render, "_show_top_result_split_cards", lambda *a, **kw: None
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci, **kw: others.append(ci["chunk"]["score"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+                            {
+                                "score": 0.3,
+                                "content": {"indexedData": "real content b"},
+                            },
+                            {
+                                "score": 0.5,
+                                "content": {"indexedData": "real content c"},
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # all_chunks[0] (score 0.1) is content-free, so all_chunks[1] (score
+        # 0.3) is promoted to the highlighted top. "Other Matches" must show
+        # the REMAINING chunks only — 0.1 and 0.5 — never 0.3 again.
+        assert others == [0.1, 0.5]
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""

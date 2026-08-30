@@ -1,6 +1,6 @@
 """Update command for refreshing collections."""
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 
@@ -80,6 +80,14 @@ def update(
     collection: str = typer.Argument(
         None, help="Collection name to update (omit to update all collections)"
     ),
+    collection_opt: Annotated[
+        Optional[str],
+        typer.Option(
+            "--collection",
+            "-c",
+            help="Collection name to update (alias for the positional argument).",
+        ),
+    ] = None,
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -101,6 +109,14 @@ def update(
     ),
 ):
     """Refresh and re-index a collection or all collections."""
+    if collection_opt is not None:
+        if collection and collection != collection_opt:
+            print_error(
+                "Pass the collection once — as a positional OR --collection, not both."
+            )
+            raise typer.Exit(1)
+        collection = collection_opt
+
     # Use module-level lazy-loaded services (supports mocking in tests). The
     # loop/aggregation live in update_service; it reaches these same seams back
     # through ``this_module`` so tests keep patching one place (foundation E8).
@@ -115,6 +131,11 @@ def update(
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     update_wiring = wiring_kwargs_for_update(cli_ctx)
+    # Pass an explicit --engine through the facade so updating a wrong-engine
+    # collection raises EngineMismatchError (R2); omit when unset (v1 unchanged).
+    engine_flag = ctx.obj.get("engine") if ctx.obj else None
+    if engine_flag is not None:
+        update_wiring["engine"] = engine_flag
     collections_path = str(cli_ctx.collections_path)
     config_service = cli_ctx.config_service
 
@@ -211,21 +232,28 @@ def update(
 
 
 def __getattr__(name: str):
-    """Lazy load heavy dependencies for tests and performance."""
+    """Lazy load heavy dependencies for tests and performance.
+
+    The engine ops resolve through the version-dispatching facade
+    (``indexed.core.engine``), NOT ``core.v1.engine`` directly — so an explicit
+    ``--engine`` injected into ``update_wiring`` reaches per-collection detection
+    (the facade ``update``/``status``/``inspect`` accept ``engine=``; v1's did
+    not, which crashed ``update --engine`` with a ``TypeError``).
+    """
     if name == "update_service":
-        from indexed.core.v1.engine import update
+        from indexed.core.engine import update
 
         return update
     elif name == "SourceConfig":
-        from indexed.core.v1.engine import SourceConfig
+        from indexed.core.engine import SourceConfig
 
         return SourceConfig
     elif name == "svc_status":
-        from indexed.core.v1.engine import status
+        from indexed.core.engine import status
 
         return status
     elif name == "inspect":
-        from indexed.core.v1.engine import inspect
+        from indexed.core.engine import inspect
 
         return inspect
     elif name == "setup_root_logger":

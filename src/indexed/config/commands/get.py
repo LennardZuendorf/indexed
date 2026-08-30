@@ -75,6 +75,20 @@ def get_config(
         print_json({key: out})
         return
 
+    # L2: `core.engine` always has an effective value even when unset — the
+    # engine selector for NEW collections defaults to "1" (v1). Resolve and
+    # show that default (marked as such) instead of "Key not found", so users
+    # can discover it. Every other key keeps the plain not-found path.
+    is_default = False
+    if value is None and key == "core.engine":
+        from indexed.core.v1.config_models import CoreEngineConfig
+
+        # Built-in field default ("1") — no bind(), no whole-config
+        # validation. `config get` on a single unset key must not fail just
+        # because some unrelated section has bad data.
+        value = CoreEngineConfig().engine
+        is_default = True
+
     if value is None:
         console.print()
         print_info(f"Key not found: {key}")
@@ -85,7 +99,10 @@ def get_config(
     console.print(f"[{get_heading_style()}]Configuration Value[/{get_heading_style()}]")
     console.print()
 
-    rows = [("Key", key), ("Value", _masked_config_value(key, value))]
+    display_value = _masked_config_value(key, value)
+    if is_default:
+        display_value = f"{display_value} (default)"
+    rows = [("Key", key), ("Value", display_value)]
     card = create_detail_card(title="Configuration Value", rows=rows)
     console.print(card)
     console.print()
