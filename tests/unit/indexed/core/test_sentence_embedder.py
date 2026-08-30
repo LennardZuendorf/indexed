@@ -142,7 +142,7 @@ class TestSentenceEmbedderBatch:
         ``np.vstack([])`` (shape ``(0,)``), which the FAISS indexer's
         ``add_with_ids`` cannot unpack."""
         mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.get_embedding_dimension.return_value = 384
         mock_get_model.return_value = mock_model
 
         embedder = SentenceEmbedder()
@@ -160,7 +160,7 @@ class TestSentenceEmbedderBatch:
         (previously only the callback-less branch avoided the malformed
         ``np.vstack([])`` shape)."""
         mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.get_embedding_dimension.return_value = 384
         mock_get_model.return_value = mock_model
 
         embedder = SentenceEmbedder()
@@ -226,7 +226,7 @@ class TestSentenceEmbedderDimensions:
     )
     def test_get_number_of_dimensions(self, mock_get_model):
         mock_model = MagicMock()
-        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.get_embedding_dimension.return_value = 384
         mock_get_model.return_value = mock_model
 
         embedder = SentenceEmbedder()
