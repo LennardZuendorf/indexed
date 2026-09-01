@@ -146,6 +146,57 @@ class TestCreateFiles:
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
     @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_threads_engine_flag(self, mock_config_service, mock_execute):
+        """core-v2-discoverability/1: --engine on `create files` reaches
+        execute_create_command unchanged (raw) — _create_helpers normalizes it."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="test-files",
+            path="/test/path",
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_engine_defaults_to_none(
+        self, mock_config_service, mock_execute
+    ):
+        """When --engine is not passed, the flag threads through as None
+        (root-level context resolution is unaffected)."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="test-files",
+            path="/test/path",
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] is None
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     def test_create_files_explicit_no_respect_gitignore_is_honored(
         self, mock_config_service, mock_execute
     ):
@@ -289,6 +340,37 @@ class TestCreateJira:
 
         mock_print_error.assert_called()
         mock_execute.assert_not_called()
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_jira_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create jira` reaches
+        execute_create_command unchanged (raw)."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_jira(
+            collection="test-jira",
+            url="https://company.atlassian.net",
+            jql="project = TEST",
+            email=None,
+            token=None,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
 class TestCreateConfluence:
@@ -442,6 +524,38 @@ class TestCreateConfluence:
         call_kwargs = mock_execute.call_args.kwargs
         cli_overrides = call_kwargs.get("cli_overrides", {})
         assert cli_overrides["read_all_comments"] is False
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_confluence_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create confluence` reaches
+        execute_create_command unchanged (raw)."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_confluence(
+            collection="test-confluence",
+            url="https://company.atlassian.net",
+            cql="type=page",
+            email=None,
+            token=None,
+            read_all_comments=True,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
 def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execute):
@@ -1101,6 +1215,33 @@ class TestCreateOutline:
         cli_overrides = call_kwargs.get("cli_overrides", {})
         assert cli_overrides["include_attachments"] is False
         assert cli_overrides["ocr_enabled"] is False
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_outline_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create outline` reaches
+        execute_create_command unchanged (raw)."""
+        from indexed.cli.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "engine": "v2",
+            }
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
 @pytest.mark.unit

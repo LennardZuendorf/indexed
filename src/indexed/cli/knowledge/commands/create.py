@@ -191,6 +191,7 @@ def _create(
     json_logs: bool,
     log_level: Optional[str],
     local: bool,
+    engine: Optional[str],
 ) -> None:
     """Resolve source type + URL from the spec, then run the shared create flow."""
     spec = SOURCE_SPECS[spec_key]
@@ -233,6 +234,7 @@ def _create(
         pre_creation_display=spec.pre_display,
         local=local,
         source_path_key=spec.source_path_key,
+        engine=engine,
     )
 
 

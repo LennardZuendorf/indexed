@@ -53,6 +53,14 @@ LocalOpt = Annotated[
         rich_help_panel=_STORE,
     ),
 ]
+EngineOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--engine",
+        help="Engine for this NEW collection: v1 or v2 (default: v1)",
+        rich_help_panel=_STORE,
+    ),
+]
 
 # Files --------------------------------------------------------------------- #
 CollectionFilesOpt = Annotated[

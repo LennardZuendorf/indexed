@@ -31,6 +31,7 @@ def create_files(
     log_level: _opt.LogLevelOpt = None,
     respect_gitignore: _opt.RespectGitignoreOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Files collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -56,6 +57,7 @@ def create_files(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -74,6 +76,7 @@ def create_jira(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Jira collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -95,6 +98,7 @@ def create_jira(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -115,6 +119,7 @@ def create_confluence(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Confluence collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -138,6 +143,7 @@ def create_confluence(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -158,6 +164,7 @@ def create_outline(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create an Outline Wiki collection (Cloud or any self-hosted deployment)."""
     cli_overrides: Dict[str, Any] = {}
@@ -181,4 +188,5 @@ def create_outline(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
