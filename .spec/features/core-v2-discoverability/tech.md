@@ -3,7 +3,7 @@ type: feature-tech
 feature: core-v2-discoverability
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # Feature: Core v2 Discoverability — Architecture
@@ -23,8 +23,8 @@ for each. Line numbers are anchors — verify against the file before editing.
 ```
 src/indexed/cli/app.py                                        # root --engine option (R1, unchanged reference)
 src/indexed/cli/composition.py                                # normalize_engine_selector / resolve_engine_selector (R1, R3 reuse)
-src/indexed/cli/knowledge/commands/_create_options.py         # new EngineOpt alias (R1)
-src/indexed/cli/knowledge/commands/_create_commands.py        # thread engine through 4 shells (R1)
+src/indexed/cli/knowledge/commands/_create_options.py         # new EngineOpt + GroupEngineOpt aliases (R1)
+src/indexed/cli/knowledge/commands/_create_commands.py        # thread engine through 4 shells + group callback (R1)
 src/indexed/cli/knowledge/commands/create.py                  # _create() forwards engine (R1)
 src/indexed/cli/knowledge/commands/_create_helpers.py         # execute_create_command: subcommand engine overrides context (R1)
 src/indexed/cli/knowledge/commands/search.py                  # new --rerank/--no-rerank option + v1-no-effect hint (R2)
@@ -72,6 +72,22 @@ context-derived `mode_override` (`if local: mode_override = "local"`, line
 3. `create.py::_create` (line 182-236) gains an `engine: Optional[str]` keyword param, forwarded to `execute_create_command(..., engine=engine, ...)` (mirrors `local=local` at line 234).
 4. `execute_create_command` gains `engine: Optional[str] = None`; after computing `engine_flag` from context (line 154), add `if engine is not None: engine_flag = engine` — same shape as the `local` override at line 155-156.
 
+5. The requirement names **both** surfaces (`index create --help` *and*
+   `index create files --help`), so the `create` group gets the flag too:
+   a `@app.callback()` in `_create_commands.py` taking `GroupEngineOpt`
+   (`_create_options.py`, a no-help-panel twin of `EngineOpt` so it lands in
+   the group's main Options block). It is a **second writer of the root's
+   slot**, not a third resolution tier: Click hands a child context its
+   parent's `obj` object, so `ctx.ensure_object(dict); ctx.obj["engine"] =
+   normalize_engine_selector(engine)` mutates the very dict `_init_app`
+   populates, and `execute_create_command`'s existing
+   `get_context_value("engine")` fallback picks it up with no other change.
+   It writes **only** when the flag was explicitly passed, so an unflagged
+   `create` never clobbers a root-level `--engine` with `None`. Precedence
+   ends up leaf flag > group flag > root flag > env > config > default; the
+   leaf still wins because it arrives as an explicit kwarg, which means the
+   existing-collection raw-flag-only path is untouched.
+
 No change to the root-level `--engine` behavior (Requirement scenario 3):
 when the subcommand flag is unset, `engine_flag` still comes from
 `ctx.obj["engine"]` exactly as today.
@@ -98,7 +114,7 @@ does not forward any rerank kwarg to the v2 impl today.
 
 **Fix:**
 
-1. `search.py`: add `rerank: Optional[bool] = typer.Option(None, "--rerank/--no-rerank", help="Rerank results with a cross-encoder (v2 collections only; overrides [core.v2.rerank] for this search).")`, following the same `None`-means-config-default idiom `--limit` already uses (`search.py:198-206`).
+1. `search.py`: add `rerank: Optional[bool] = typer.Option(None, "--rerank/--no-rerank", help="Rerank results with a cross-encoder (v2 collections only; overrides core.v2.rerank for this search).")`, following the same `None`-means-config-default idiom `--limit` already uses (`search.py:198-206`). The config key is written **unbracketed**, exactly as `--limit`'s `core.v1.search.max_docs` is: Rich parses `[core.v2.rerank]` as a markup tag and silently drops it from the rendered `--help`, taking the one fact the help text carries with it.
 2. `core/engine.py::search()` (line 512): add `rerank: Optional[bool] = None`, forwarded only into the v2 `_engine_impl` call (v1 ignores it — no param to accept it).
 3. `core/v2/retrieval.py::search()` (line 52-62): add `rerank: Optional[bool] = None`; when not `None`, override before the enabled-check — `rerank_cfg = resolve_rerank_config(); if rerank is not None: rerank_cfg = rerank_cfg.model_copy(update={"enabled": rerank})`.
 4. No change inside `_apply_rerank`/`_search_one` — they already gate purely on `rerank_cfg.enabled`.
@@ -120,6 +136,16 @@ engine."` (verify the exact `EngineVersion` member names in
 (flag omitted) or `False` (explicitly disabled — nothing to note) or when at
 least one searched collection is v2 (rerank applies to that one, even in a
 mixed search).
+
+**Stream routing (`--simple-output`):** the notice fires on *every* surface —
+"never a silent no-op" is the requirement — but the stream differs.
+`utils/console.py`'s shared `console` is bound to **stdout**, and under
+`--simple-output` stdout is a JSON envelope (`utils/simple_output.py`'s
+contract), so a `print_info` panel there would break `json.loads()` for the
+programmatic consumer this mode exists for. In simple mode the notice is
+therefore emitted as one plain line on **stderr** (`typer.echo(..., err=True)`
+— not the Rich panel, not `console`), leaving stdout byte-for-byte parseable;
+every other mode keeps the `print_info` panel unchanged.
 
 ### R3 — `config set core.engine` leaks a raw pydantic dump (CONFIRMED)
 
