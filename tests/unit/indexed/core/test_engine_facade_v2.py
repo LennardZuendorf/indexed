@@ -145,6 +145,32 @@ def test_search_on_v2_collection_routes_via_facade(tmp_path: Path) -> None:
     assert "error" not in res["c1"]
 
 
+def test_search_rerank_reaches_v2_and_overrides_disabled_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``facade.search(..., rerank=True)`` on a v2 collection overrides the
+    default-disabled ``[core.v2.rerank]`` for that one call (core-v2-
+    discoverability/2, R2) — proven end to end via the ``scoreKind: rerank``
+    marker retrieval.py only sets once a rerank actually ran. ``_apply_rerank``
+    is stubbed to identity so no real cross-encoder is loaded."""
+    import indexed.core.engine as facade
+    from indexed.core.v2 import retrieval
+
+    monkeypatch.setattr(retrieval, "_apply_rerank", lambda nws, q, cfg: nws)
+
+    cols = tmp_path / "cols"
+    _facade_create_v2(cols, "c1", [_doc("d1", ["penguin migration"])])
+
+    with _mock_embed():
+        res = facade.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            rerank=True,
+        )
+    assert res["c1"]["scoreKind"] == "rerank"
+
+
 def test_update_on_v2_collection_routes_via_facade(tmp_path: Path) -> None:
     """The facade resolves the collection's engine from its manifest (R2) and
     routes ``update`` to the v2 incremental path — a new doc becomes searchable."""

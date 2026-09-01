@@ -436,3 +436,92 @@ def test_rerank_enabled_real_cross_encoder(
     docs = res["files-v2"]["results"]
     assert docs, "reranked search returns hits"
     assert len(docs) <= 2  # top_n respected
+
+
+# --- core-v2-discoverability/2: per-call `rerank` override -------------------
+
+
+def test_rerank_true_overrides_disabled_config_without_mutating_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``rerank=True`` forces a rerank even when ``[core.v2.rerank]`` is
+    disabled, and never mutates the resolved config object (CLI --rerank on
+    one call must not leak into config.toml or later calls)."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["alpha"]), make_doc("d2", ["beta"])])
+
+    disabled_cfg = CoreV2RerankConfig(enabled=False, model="test-ce", top_n=1)
+    monkeypatch.setattr(retrieval, "resolve_rerank_config", lambda: disabled_cfg)
+
+    applied_cfgs = []
+    monkeypatch.setattr(
+        retrieval,
+        "_apply_rerank",
+        lambda nws, q, cfg: applied_cfgs.append(cfg) or nws,
+    )
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "alpha",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            rerank=True,
+        )
+
+    assert len(applied_cfgs) == 1, "rerank=True must apply rerank despite enabled=False"
+    assert applied_cfgs[0].enabled is True
+    assert disabled_cfg.enabled is False  # the resolved config is untouched
+    assert res["c1"]["scoreKind"] == "rerank"
+
+
+def test_rerank_false_overrides_enabled_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``rerank=False`` suppresses rerank even when ``[core.v2.rerank]`` is
+    enabled."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["alpha"])])
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="test-ce", top_n=1),
+    )
+
+    def _must_not_run(nws, q, cfg):  # noqa: ANN001, ANN202
+        raise AssertionError("rerank=False must not apply rerank")
+
+    monkeypatch.setattr(retrieval, "_apply_rerank", _must_not_run)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "alpha",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            rerank=False,
+        )
+
+    assert res["c1"]["scoreKind"] != "rerank"
+
+
+def test_rerank_none_defers_to_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``rerank=None`` (the default — no override requested) leaves the
+    resolved config in charge, unchanged from before this override existed."""
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["alpha"])])
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="test-ce", top_n=1),
+    )
+    monkeypatch.setattr(retrieval, "_apply_rerank", lambda nws, q, cfg: nws)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "alpha", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    assert res["c1"]["scoreKind"] == "rerank"

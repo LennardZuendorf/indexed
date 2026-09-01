@@ -135,6 +135,33 @@ def test_create_without_engine_routes_to_v1(monkeypatch, tmp_path: Path) -> None
     assert "engine" not in captured["kwargs"]
 
 
+def test_search_rerank_not_forwarded_to_v1(monkeypatch, tmp_path: Path) -> None:
+    """v1's ``search`` has no ``rerank`` param (core-v2-discoverability/2, R2)
+    — an explicit ``rerank=True``/``False`` on an all-v1 search must never be
+    forwarded, or v1's ``search`` would raise ``TypeError`` on the unexpected
+    kwarg."""
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy")
+    captured = {}
+
+    def fake_search(query, **kwargs):
+        captured["kwargs"] = kwargs
+        return {}
+
+    monkeypatch.setattr(v1_services, "search", fake_search)
+
+    facade.search(
+        "q",
+        configs=[type("Cfg", (), {"name": "legacy"})()],
+        collections_path=str(tmp_path),
+        rerank=True,
+    )
+
+    assert "rerank" not in captured["kwargs"]
+
+
 # --- explicit engine="1" confirms and routes to v1 ---------------------------
 
 
