@@ -3,7 +3,7 @@ type: feature-product
 feature: core-v2-discoverability
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # Feature: Core v2 Discoverability — Product
@@ -158,6 +158,16 @@ places an invalid engine selector can be caught.
 - **Then** the error MUST be the single line `Invalid engine 'v3'; expected
   one of: 1, 2, v1, v2`, not a multi-line pydantic dump routed through
   `ConfigValidationError`.
+
+**Known remaining surface (out of scope for this feature):** `indexed config
+validate` (and `config list`/`config get core.engine`'s display of a bad
+value) still routes through `CoreEngineConfig`/pydantic directly rather than
+`normalize_engine_selector`, so a bad `core.engine` value shows a raw
+multi-line dump (or no warning at all) there — found during this feature's
+final review, confirmed genuinely outside R3/R6's 4-surface enumeration
+(`--engine` flag, env, `config set`, `config.toml`). Left undone rather than
+silently expanding scope past the CONFIRMed plan; a real candidate for a
+follow-up unit if the maintainer wants full closure.
 
 ### Requirement: command `--help` shows each command's full guidance, not a generic one-liner
 

@@ -3,7 +3,7 @@ type: feature-plan
 feature: core-v2-discoverability
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # Feature: Core v2 Discoverability — Implementation Plan
@@ -246,19 +246,27 @@ strings first.
 
 | Unit | Status |
 |---|---|
-| core-v2-discoverability/1 | TODO |
-| core-v2-discoverability/2 | TODO |
-| core-v2-discoverability/3 | TODO |
-| core-v2-discoverability/4 | TODO |
-| core-v2-discoverability/5 | TODO |
+| core-v2-discoverability/1 | ✅ DONE — `--engine` on the 4 `index create` leaf subcommands, plus a group-level `--engine` callback on `index create` itself (added in the final whole-branch review's fix wave to satisfy R1's full requirement text, which named both `index create --help` and `index create files --help`). Commits `e75897c`, `7a53d2c`. |
+| core-v2-discoverability/2 | ✅ DONE — `--rerank`/`--no-rerank` on `index search`, overriding `[core.v2.rerank]` per-call; v1-no-effect hint (Rich panel normally, plain line on stderr under `--simple-output` to keep stdout JSON-pure). Commits `2eaea71`, `3a6cc8e`, `c6f4328`, `0078d39`. |
+| core-v2-discoverability/3 | ✅ DONE — clean, byte-identical single-line engine-validation error on all 4 surfaces (`--engine` flag, env, `config set core.engine`, hand-edited `config.toml`), verified live on every surface. Commit `7e951b6`. |
+| core-v2-discoverability/4 | ✅ DONE — README `## Usage` gained one `--engine` example and one `index migrate` example, verified against actual CLI source. Commit `9f2fc40`. |
+| core-v2-discoverability/5 | ✅ DONE — `migrate`/`search`/`inspect`/`update`/`remove --help` all render their own full docstring (incl. `Examples:` blocks) instead of a generic one-liner. Commit `ba101d4`. |
 
-**Not started — awaiting CONFIRM.** This plan was produced by investigating
-issue #188 via 4 parallel research subagents against `main` (2026-08-30); all
-file:line anchors in tech.md were re-verified by direct reads after the
-subagent pass. Both Open Questions were then resolved on maintainer
-follow-up (same day): rerank-on-v1 UX gets a print-a-hint fix (folded into
-R2/unit 2), and the two sibling defects originally flagged as descoped
-follow-ups (config.toml `[core] engine` raw dump; `search`/`inspect`/
-`update`/`remove` losing their `--help` docstrings) are now in scope as R6
-(unit 3) and R7 (unit 5). Only Open Question 1 (R1's generic misplaced-option
-hint) stays descoped, by explicit maintainer choice.
+**All 5 units DONE (2026-09-01).** Implemented via `superpowers:subagent-driven-development`:
+one fresh implementer subagent per unit, a task-scoped spec+quality review after
+each (all 5 came back Spec ✅ / Approved, only Minor findings deferred), then a
+final whole-branch review on the most capable available model to catch
+cross-unit gaps no per-unit review could see. That review found no Critical
+issues but 2 real, verified bugs the per-unit reviews missed — `--rerank`'s
+help text silently lost its config-key name to Rich markup parsing, and
+`index create --help` (the group, not just its leaf subcommands) didn't show
+`--engine` despite R1's requirement text naming both surfaces — plus one
+genuine spec tension (R2's "never a silent no-op" vs. the JSON-purity fix
+already landed for `--simple-output`), fixed by routing the hint to stderr
+under `--simple-output` instead of dropping it. All three fixed in one fix
+wave, verified by one scoped re-review: ready to merge. A 4th finding (a 5th
+engine-error surface, `config validate`/`list`/`get`, outside R3/R6's
+4-surface scope) was deliberately left undone rather than silently expanding
+scope past the CONFIRMed plan — documented in product.md as a known
+remaining surface. Full gate green throughout: ruff/ty/import-graph clean,
+full suite passing with 93.30% coverage (>85% required).

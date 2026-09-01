@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # Development Plan: indexed
@@ -43,7 +43,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
 | 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder wrapped up 2026-07-19) |
 | 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
-| 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 green | ○ PLANNED | `.spec/features/core-v2-discoverability/` |
+| 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 green | ✅ DONE | `src/indexed/cli/knowledge/commands/{_create_options,_create_commands,create,_create_helpers,search}.py`, `core/engine.py`, `core/v2/{retrieval,services}`, `config/commands/set.py`, `cli/composition.py`, `README.md`, `cli/knowledge/cli.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -99,18 +99,31 @@ and Feature 16 both had their feature-spec folders promoted + deleted on
 Composition Root; lessons → [lessons.md](lessons.md)). The full v2 planning
 artifact (research + ADRs) lives in git history (PR #158).
 
-**Feature 17 Core v2 Discoverability is PLANNED** (spec drafted 2026-08-30,
-scope expanded same day on maintainer follow-up): seven product/UX
-requirements, five units, clustered from the PR #162 review in
+**Feature 17 Core v2 Discoverability is DONE** (implemented 2026-09-01, spec
+drafted 2026-08-30): seven product/UX requirements, five units, clustered
+from the PR #162 review in
 [issue #188](https://github.com/LennardZuendorf/indexed/issues/188) plus two
 same-shape sibling defects folded in — `--engine` surfaced on `index create`
-subcommands; a `--rerank`/`--no-rerank` flag on `index search` that prints a
-hint rather than silently no-op on a v1-only search; a clean single-line
-engine-error message on all four surfaces that can catch a bad value
-(`--engine` flag, env, `config set core.engine`, and hand-edited
-`config.toml`); Core v2 mentioned in README; and every knowledge command's
-`--help` (not just `migrate`'s) rendering its own docstring. No correctness
-risk; Core v2 itself (Feature 16) already works. Awaiting CONFIRM before IMPL.
+and its four leaf subcommands (plus a group-level `--engine` callback on
+`index create` itself, added during final review to fully satisfy R1's
+requirement text); a `--rerank`/`--no-rerank` flag on `index search` that
+prints a hint rather than silently no-op on a v1-only search (routed to
+stderr under `--simple-output` to keep stdout JSON-pure); a clean,
+byte-identical single-line engine-error message on all four surfaces that
+can catch a bad value (`--engine` flag, env, `config set core.engine`, and
+hand-edited `config.toml`); Core v2 mentioned in README's `## Usage`; and
+every knowledge command's `--help` (not just `migrate`'s) rendering its own
+docstring. No correctness risk; Core v2 itself (Feature 16) already worked —
+this was entirely a discoverability/UX surface fix. Implemented via
+`superpowers:subagent-driven-development` (one implementer + one task review
+per unit, all 5 Approved) plus a final whole-branch review that caught 2 real
+cross-unit bugs a per-unit review couldn't (a Rich-markup bug swallowing
+`--rerank`'s help text, and the group-level `--engine` gap above), fixed in
+one wave and re-verified clean. One newly-discovered 5th engine-error surface
+(`config validate`/`list`/`get`) was deliberately left out of scope rather
+than expanding past the CONFIRMed plan — recorded in product.md as a known
+follow-up candidate. Full gate green: ruff/ty/import-graph clean, full suite
+93.30% coverage (>85% required).
 Spec: [features/core-v2-discoverability/](features/core-v2-discoverability/).
 
 **Note (supersedes earlier wording):** the v2 rewrite ships behind the *same
@@ -143,6 +156,50 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-09-01: Feature 17 (Core v2 Discoverability, issue #188) shipped
+**Decision:** Implemented all 5 units (R1–R7 green) via
+`superpowers:subagent-driven-development` — a fresh implementer subagent per
+unit, a task-scoped spec+quality review after each (all 5 Approved, only
+Minor findings deferred to this log), then a final whole-branch review on the
+most capable available model to catch what no per-unit review could: cross-unit
+interactions. That review found no Critical issues but 3 real Important ones,
+fixed in one wave and re-verified clean by a scoped re-review:
+1. `--rerank`'s `--help` text contained the literal substring `[core.v2.rerank]`,
+   which Rich's markup parser silently swallowed from the rendered output —
+   the exact config key the flag's help exists to name was invisible. Fixed
+   by dropping the brackets (matching the neighboring `--limit` option's
+   existing unbracketed-config-key convention); the regression test was
+   strengthened to assert the key text itself, not just the flag name.
+2. R1's own requirement text named BOTH `index create --help` (the group) and
+   `index create files --help` (the leaf) — only the leaf shipped in the
+   original 5-unit plan (that was the CONFIRMed scope; the group surface was
+   a gap the final review caught, not a plan violation). Fixed by adding a
+   group-level `--engine` callback on `create.app`, mirroring the root app's
+   own callback pattern exactly (writes into the same `ctx.obj["engine"]`
+   slot via Click's parent→child `obj` inheritance) — verified empirically,
+   not just by reasoning about Click internals, and confirmed to leave every
+   existing R1 test (leaf position, leaf help, root-only regression,
+   existing-collection raw-flag-only replay) untouched. Effective precedence:
+   leaf flag > group flag > root flag > env > config > default.
+3. R2's "never a silent no-op" requirement was technically violated for
+   `--rerank` under `--simple-output` — a prior, independently-verified-correct
+   fix had fully suppressed the hint there to protect stdout's JSON purity.
+   Resolved by routing the hint to **stderr** under `--simple-output` instead
+   of dropping it (`typer.echo(notice, err=True)`) — stdout stays pure,
+   parseable JSON; the notice still exists on a channel a human running the
+   command would see.
+A 4th finding — a 5th surface (`config validate`/`list`/`get`) that still
+leaks a raw pydantic dump or shows no warning for a bad `core.engine` value —
+was deliberately left unfixed rather than silently expanding scope past the
+CONFIRMed 7-requirement plan; recorded in product.md as a known remaining
+surface for a future follow-up unit, not fixed ad-hoc mid-review.
+**Rationale:** the two-human-gate model (plan→impl, verify→ship) means new
+scope discovered during the ship-side review doesn't get silently absorbed
+into the CONFIRMed plan's units — genuine requirement gaps the confirmed text
+already covered (finding 2) get fixed; genuinely new scope (the 5th surface)
+gets documented and deferred instead. Full gate green throughout: ruff/ty/
+import-graph clean, full suite 93.30% coverage (>85% required).
 
 ### 2026-08-30: Feature 17 (Core v2 Discoverability, issue #188) opened; scope expanded same day
 **Decision:** Capture the five PR #162-review UX findings in

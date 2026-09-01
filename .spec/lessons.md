@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-08-13
+updated: 2026-09-01
 ---
 
 # Lessons Learned
@@ -727,3 +727,60 @@ with `git add`/`git status`, since that's what CI actually runs.
   its own existing-collection regression test, even when the pattern is "obviously"
   shared — a facade with N routed callables needs N call sites verified, not just
   the ones that happen to already have tests.
+
+## Core v2 discoverability, issue #188 (2026-09-01)
+
+- **Rich silently swallows bracketed `[...]` text inside a Typer `help=`
+  string.** `--rerank`'s help text named its config key as `[core.v2.rerank]`;
+  Rich's console markup parser treats `[core.v2.rerank]` as a style tag and
+  drops it from rendered `--help` output entirely — no warning, no error, the
+  text just vanishes. The codebase already defends against this on the
+  *print* side (`rich.markup.escape` calls in `app.py`, `search_render.py`,
+  `inspect.py`), but the *option-declaration* side (`typer.Option(help=...)`
+  strings) had no equivalent guard, and no existing test asserted the
+  rendered text contained the config key — only that the flag name did. A
+  neighboring option (`--limit`) had already worked around this by writing
+  its config key unbracketed (`core.v1.search.max_docs`); that's the
+  established convention now. **Rule: never write a bracketed
+  `[dotted.config.key]` inside a `typer.Option(help=...)` string — either
+  drop the brackets or escape them (`\[...]`), and any test for a `--help`
+  string that names a config key should assert the key text itself appears
+  in rendered output, not just the flag name.**
+- **Click gives a child `Context` its parent's `ctx.obj` by identity, not a
+  copy** — confirmed empirically, not just by reading Click's source.
+  Adding a `--engine` option to a Typer *group* callback (`index create`,
+  sitting between the root app and its 4 leaf subcommands) and having it do
+  `ctx.ensure_object(dict); ctx.obj["engine"] = normalize_engine_selector(v)`
+  writes into the exact same dict the root app's own `--engine` callback
+  populates — so a downstream reader that already does
+  `get_context_value("engine")` picks up the group-level write with **zero**
+  other code changes. This makes "add a flag at an intermediate level of a
+  Typer app tree" cheap: mirror the root callback's write pattern exactly
+  (guard on `isinstance(value, str)` so an unset flag never clobbers a value
+  set at an outer level with `None`), and the existing read-side plumbing
+  just works. Don't invent a new resolution tier or thread a new parameter
+  through every intermediate function — the shared `ctx.obj` slot is already
+  the mechanism.
+- **A CONFIRMed unit's tech.md fix shape can under-cover its own product.md
+  requirement's literal text.** R1's binding requirement prose said
+  `--engine` MUST show in *both* `index create --help` (the group) and
+  `index create files --help` (the leaf); the unit's Given/When/Then
+  scenarios only spelled out the leaf case, and the CONFIRMed tech.md fix
+  shape implemented only the leaf. Five per-unit reviews (each correctly
+  checking the diff against its own brief) couldn't catch this — the gap
+  only showed up at the final whole-branch review, reading product.md's
+  requirement prose directly rather than the narrower scenario blocks.
+  Lesson: a final whole-branch review should re-check implementation against
+  the *requirement text*, not just re-verify each unit's own scenario
+  blocks — a scenario can under-specify its own MUST statement.
+- **Subagents repeatedly backgrounded the full `pytest` run and ended their
+  turn instead of waiting for it, despite explicit instructions not to.**
+  3 of 5 unit implementers and once during the final fix wave did this in
+  this session, even with the dormancy lesson already documented below
+  (Core V2 build, 2026-07-19) and repeated explicitly in every dispatch
+  prompt. Detecting it is cheap (`git status` for uncommitted work + a
+  missing report file), and `SendMessage` to the same agent ID reliably
+  resumes it with full context — no work was lost across 4 revivals. Given
+  how often this recurs, treat it as an expected step in every dispatch's
+  handling, not an anomaly: check for dormancy before assuming a "DONE" or a
+  suspiciously terse completion message is real.
