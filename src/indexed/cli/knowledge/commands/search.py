@@ -70,9 +70,13 @@ def search(
     rerank: Optional[bool] = typer.Option(
         None,
         "--rerank/--no-rerank",
+        # Config key written UNBRACKETED, exactly like --limit's
+        # `core.v1.search.max_docs` above: Rich parses `[core.v2.rerank]` as a
+        # markup tag and silently drops it from the rendered --help, taking the
+        # one fact this help text exists to convey with it.
         help=(
             "Rerank results with a cross-encoder (v2 collections only; "
-            "overrides [core.v2.rerank] for this search)."
+            "overrides core.v2.rerank for this search)."
         ),
     ),
     compact: bool = typer.Option(
@@ -240,12 +244,13 @@ def search(
     # --rerank was explicitly requested but reranking is v2-only: if none of
     # the collections actually being searched are v2, the flag would
     # otherwise silently no-op. Resolved per-collection via the same
-    # manifest-only detection the engine facade routes on (R2). Skipped
-    # entirely in --simple-output mode: stdout there is a JSON envelope
-    # (simple_output.py's contract), and an unconditional print_info(...)
-    # would inject a Rich panel before it, breaking json.loads() for any
-    # programmatic consumer.
-    if rerank is True and not simple:
+    # manifest-only detection the engine facade routes on (R2). The notice is
+    # never a silent no-op on ANY surface, but the stream differs:
+    # --simple-output's stdout is a JSON envelope (simple_output.py's
+    # contract), so there the one-liner goes to stderr — plain text, not the
+    # Rich panel, and not the stdout-bound `console` — leaving stdout
+    # byte-for-byte parseable by json.loads().
+    if rerank is True:
         from indexed.core.errors import UnknownEngineVersionError
         from indexed.core.versioning import detect_engine_version
 
@@ -256,10 +261,14 @@ def search(
                 return False
 
         if not any(_is_v2(name) for name in collections_to_search):
-            print_info(
+            notice = (
                 "--rerank has no effect: reranking is v2-only, and no "
                 "searched collection uses the v2 engine."
             )
+            if simple:
+                typer.echo(notice, err=True)
+            else:
+                print_info(notice)
 
     # Search each collection with phased progress
     results = {}

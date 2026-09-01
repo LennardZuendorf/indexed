@@ -1429,12 +1429,20 @@ class TestRerankFlag:
         )
 
     def test_search_help_shows_rerank_flag(self):
-        """`index search --help` documents --rerank/--no-rerank."""
+        """`index search --help` documents --rerank/--no-rerank *and* names
+        the config key it overrides.
+
+        The key must be written unbracketed (like --limit's
+        ``core.v1.search.max_docs``): Rich parses ``[core.v2.rerank]`` as a
+        markup tag and silently drops it, so a flag-name-only assertion
+        passed while the one fact this help text carries was missing from
+        the rendered output."""
         result = runner.invoke(search_cmd.app, ["--help"])
 
         assert result.exit_code == 0
         assert "--rerank" in result.stdout
         assert "--no-rerank" in result.stdout
+        assert "core.v2.rerank" in result.stdout
 
     def test_flag_omitted_forwards_no_rerank_kwarg(self, monkeypatch):
         """No flag passed → identical to today: svc_search gets no 'rerank'
@@ -1560,9 +1568,48 @@ class TestRerankFlag:
             # The hint text must be nowhere in stdout, not even alongside
             # valid JSON.
             assert "no effect" not in result.stdout
-            # The all-v1-fleet check itself is skipped entirely in simple
-            # mode (nothing to gate the JSON contract against).
-            assert detect_calls == []
+            # The all-v1-fleet check DOES still run in simple mode — the
+            # notice is merely rerouted to stderr (R2: never a silent
+            # no-op, on any surface), so detection must have happened.
+            assert detect_calls
+        finally:
+            reset_simple_output()
+
+    def test_rerank_v1_only_simple_output_emits_notice_on_stderr(self, monkeypatch):
+        """R2's "never a silent no-op" holds for --simple-output too: the
+        one-line notice is written to STDERR, keeping stdout a pure JSON
+        envelope while the machine-readable surface — the one an agent or
+        script is most likely to drive — still says the flag did nothing."""
+        import json
+
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version", lambda path: "1"
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {"v1col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+            assert result.exit_code == 0
+            # stdout: still pure JSON, with no notice text in it.
+            json.loads(result.stdout)
+            assert "no effect" not in result.stdout
+            # stderr: carries the notice, as one plain line (no Rich panel
+            # borders — the shared `console` is bound to stdout).
+            assert "no effect" in result.stderr
+            assert "v2-only" in result.stderr
+            assert "╭" not in result.stderr
         finally:
             reset_simple_output()
 
