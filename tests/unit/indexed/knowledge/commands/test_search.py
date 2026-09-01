@@ -1515,6 +1515,57 @@ class TestRerankFlag:
         assert "no effect" in result.stdout
         assert "v2-only" in result.stdout
 
+    def test_rerank_v1_only_simple_output_stays_clean_json(self, monkeypatch):
+        """--rerank on an all-v1 fleet under --simple-output must NOT print
+        the Rich info panel: stdout there is a JSON envelope
+        (simple_output.py's contract), so the hint would otherwise break
+        json.loads() for any programmatic consumer (review finding #1)."""
+        import json
+
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        detect_calls: List[Any] = []
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version",
+            lambda path: detect_calls.append(path) or "1",
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {
+                "v1col": {
+                    "results": [
+                        {
+                            "id": "doc1",
+                            "matchedChunks": [{"chunkNumber": 0, "score": 0.1}],
+                        }
+                    ]
+                }
+            }
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+            assert result.exit_code == 0
+            # Must parse as JSON outright — a leaked info panel above the
+            # JSON body would make this raise.
+            parsed = json.loads(result.stdout)
+            assert parsed["query"] == "my-query"
+            # The hint text must be nowhere in stdout, not even alongside
+            # valid JSON.
+            assert "no effect" not in result.stdout
+            # The all-v1-fleet check itself is skipped entirely in simple
+            # mode (nothing to gate the JSON contract against).
+            assert detect_calls == []
+        finally:
+            reset_simple_output()
+
     def test_rerank_on_mixed_v1_v2_search_prints_no_hint(self, monkeypatch):
         """--rerank on a search spanning one v1 and one v2 collection prints
         no hint — the flag DID apply, to the v2 collection."""

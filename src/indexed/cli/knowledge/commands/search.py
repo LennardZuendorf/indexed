@@ -240,14 +240,19 @@ def search(
     # --rerank was explicitly requested but reranking is v2-only: if none of
     # the collections actually being searched are v2, the flag would
     # otherwise silently no-op. Resolved per-collection via the same
-    # manifest-only detection the engine facade routes on (R2).
-    if rerank is True:
+    # manifest-only detection the engine facade routes on (R2). Skipped
+    # entirely in --simple-output mode: stdout there is a JSON envelope
+    # (simple_output.py's contract), and an unconditional print_info(...)
+    # would inject a Rich panel before it, breaking json.loads() for any
+    # programmatic consumer.
+    if rerank is True and not simple:
+        from indexed.core.errors import UnknownEngineVersionError
         from indexed.core.versioning import detect_engine_version
 
         def _is_v2(coll_name: str) -> bool:
             try:
                 return detect_engine_version(Path(collections_path) / coll_name) == "2"
-            except Exception:
+            except (ValueError, UnknownEngineVersionError):
                 return False
 
         if not any(_is_v2(name) for name in collections_to_search):
