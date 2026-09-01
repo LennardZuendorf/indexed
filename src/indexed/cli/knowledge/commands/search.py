@@ -5,6 +5,8 @@ and delegates all result rendering to ``search_render`` (thin command, fat
 services — issue #119).
 """
 
+from pathlib import Path
+
 import typer
 from typing import Optional
 
@@ -20,7 +22,7 @@ from ...utils.components.theme import (
     get_accent_style,
     get_dim_style,
 )
-from ...utils.components import print_error
+from ...utils.components import print_error, print_info
 from .search_render import format_search_results, format_search_results_compact
 
 app = typer.Typer(help="Search collections")
@@ -63,6 +65,14 @@ def search(
         help=(
             "Number of results per collection (default: configured "
             "core.v1.search.max_docs)"
+        ),
+    ),
+    rerank: Optional[bool] = typer.Option(
+        None,
+        "--rerank/--no-rerank",
+        help=(
+            "Rerank results with a cross-encoder (v2 collections only; "
+            "overrides [core.v2.rerank] for this search)."
         ),
     ),
     compact: bool = typer.Option(
@@ -124,6 +134,11 @@ def search(
     # so the facade infers from each collection (default v1 behavior unchanged).
     engine_flag = ctx.obj.get("engine") if ctx.obj else None
     engine_kwargs = {"engine": engine_flag} if engine_flag is not None else {}
+
+    # --rerank/--no-rerank overrides [core.v2.rerank] enabled for this one
+    # search (v2 only); omitted (None, the default) means "use the
+    # configured default" — same None-means-config-default idiom as --limit.
+    rerank_kwargs = {"rerank": rerank} if rerank is not None else {}
 
     # Display storage mode indicator (not in verbose/simple mode, to keep logs clean)
     if not is_verbose_mode() and not simple:
@@ -222,6 +237,25 @@ def search(
             raise typer.Exit(1)
         return
 
+    # --rerank was explicitly requested but reranking is v2-only: if none of
+    # the collections actually being searched are v2, the flag would
+    # otherwise silently no-op. Resolved per-collection via the same
+    # manifest-only detection the engine facade routes on (R2).
+    if rerank is True:
+        from indexed.core.versioning import detect_engine_version
+
+        def _is_v2(coll_name: str) -> bool:
+            try:
+                return detect_engine_version(Path(collections_path) / coll_name) == "2"
+            except Exception:
+                return False
+
+        if not any(_is_v2(name) for name in collections_to_search):
+            print_info(
+                "--rerank has no effect: reranking is v2-only, and no "
+                "searched collection uses the v2 engine."
+            )
+
     # Search each collection with phased progress
     results = {}
 
@@ -238,6 +272,7 @@ def search(
                     include_matched_chunks=True,
                     collections_path=collections_path,
                     **engine_kwargs,
+                    **rerank_kwargs,
                 )
                 results.update(result)
     else:
@@ -259,6 +294,7 @@ def search(
                     include_matched_chunks=True,
                     collections_path=collections_path,
                     **engine_kwargs,
+                    **rerank_kwargs,
                 )
                 results.update(result)
                 phased.finish_phase(phase_label)

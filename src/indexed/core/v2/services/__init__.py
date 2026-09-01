@@ -87,6 +87,8 @@ def search(
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
     collections_path: Optional[str] = None,
+    *,
+    rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
     from indexed.core.v2 import retrieval
 
@@ -101,6 +103,7 @@ def search(
             include_all_chunks=include_all_chunks,
             include_matched_chunks=include_matched_chunks,
             collections_path=collections_path,
+            rerank=rerank,
         )
 
 

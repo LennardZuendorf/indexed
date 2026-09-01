@@ -521,6 +521,7 @@ def search(
     collections_path: Optional[str] = None,
     *,
     engine: Optional[str] = None,
+    rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
@@ -528,10 +529,15 @@ def search(
     v1/v2 set is split per engine and the per-collection result dicts are MERGED
     (union of collection-keyed dicts, each in its engine's native score units;
     cross-engine ranking is core-v2/6). An explicit conflicting ``engine`` still
-    raises ``EngineMismatchError`` before any I/O.
+    raises ``EngineMismatchError`` before any I/O. ``rerank`` overrides
+    ``[core.v2.rerank] enabled`` for this call; it is forwarded only when
+    routing to the v2 impl — v1 has no rerank concept and no such param.
     """
 
     def _run(version: EngineVersion, cfgs: Optional[List[Any]]) -> Dict[str, Any]:
+        rerank_kwargs = (
+            {"rerank": rerank} if version == "2" and rerank is not None else {}
+        )
         out: Dict[str, Any] = _engine_impl(version).search(
             query,
             configs=cfgs,
@@ -542,6 +548,7 @@ def search(
             include_all_chunks=include_all_chunks,
             include_matched_chunks=include_matched_chunks,
             collections_path=collections_path,
+            **rerank_kwargs,
         )
         return out
 
