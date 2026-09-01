@@ -1571,3 +1571,108 @@ class TestCreateFailureConfigRestore:
         )
         assert "f1.atlassian.net" not in text
         assert "project = F1" not in text
+
+
+class TestCreateGroupEngineOption:
+    """core-v2-discoverability/1 (R1): `--engine` on the `index create`
+    GROUP itself (`index create --engine v2 files ...`), not only on the four
+    leaf subcommands. R1's requirement text names both surfaces; the group one
+    was missing, so the flag was invisible exactly where issue #188 says a
+    user looks for it — one level up the command tree.
+
+    The group callback is a second writer of the SAME normalized
+    ``ctx.obj["engine"]`` slot the root callback owns, which
+    ``execute_create_command`` already reads back through
+    ``get_context_value``. These tests pin that plumbing (the real
+    create-a-v2-collection proof lives in the system suite)."""
+
+    @staticmethod
+    def _invoke(argv):
+        """Run `create.app` with the real callback but a stubbed executor,
+        capturing what the context and the leaf kwarg each carried."""
+        from typer.testing import CliRunner
+
+        from indexed.cli.knowledge.commands import create as create_mod
+        from indexed.cli.utils.storage_info import get_context_value
+
+        seen = {}
+
+        def fake_execute(*args, **kwargs):
+            seen["context_engine"] = get_context_value("engine")
+            seen["leaf_engine"] = kwargs.get("engine")
+
+        with (
+            patch.object(create_mod, "execute_create_command", fake_execute),
+            patch.object(create_mod, "get_config", Mock()),
+        ):
+            result = CliRunner().invoke(create_mod.app, argv)
+        return result, seen
+
+    def test_group_help_lists_engine(self):
+        """`index create --help` shows --engine among its own options."""
+        from typer.testing import CliRunner
+
+        from indexed.cli.knowledge.commands import create as create_mod
+
+        result = CliRunner().invoke(create_mod.app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--engine" in result.stdout
+
+    def test_group_engine_normalized_onto_context(self):
+        """A group-level `--engine v2` lands on ctx.obj["engine"] already
+        normalized to "2" — the same invariant the root callback holds — and
+        leaves the leaf kwarg untouched at None."""
+        result, seen = self._invoke(
+            ["--engine", "v2", "files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] == "2"
+        assert seen["leaf_engine"] is None
+
+    def test_group_engine_unset_leaves_context_untouched(self):
+        """No group flag → nothing written, so a root-level `--engine`
+        already on the context is never clobbered with None."""
+        result, seen = self._invoke(
+            ["files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] is None
+        assert seen["leaf_engine"] is None
+
+    def test_leaf_engine_still_reaches_executor_alongside_group_flag(self):
+        """The leaf flag is unaffected by the new group tier: it still
+        arrives raw as its own kwarg (where `_create_helpers` gives it
+        precedence over the context value)."""
+        result, seen = self._invoke(
+            [
+                "--engine",
+                "v1",
+                "files",
+                "--engine",
+                "v2",
+                "--collection",
+                "c",
+                "--path",
+                "/test/path",
+            ]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] == "1"
+        assert seen["leaf_engine"] == "v2"
+
+    def test_invalid_group_engine_fails_loud(self):
+        """A bad value fails with the same clean message as the root/leaf
+        surfaces rather than being silently ignored."""
+        from indexed.config.errors import ConfigurationError
+
+        result, _ = self._invoke(
+            ["--engine", "v9", "files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code != 0
+        assert isinstance(result.exception, ConfigurationError)
+        assert "Invalid engine 'v9'" in str(result.exception)
