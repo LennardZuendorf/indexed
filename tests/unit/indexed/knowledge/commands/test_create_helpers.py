@@ -50,6 +50,7 @@ class TestExecuteCreateCommand:
     ):
         """Should create collection when all required fields are present."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test", "include_patterns": ["*"]},
             missing=[],
@@ -116,6 +117,7 @@ class TestExecuteCreateCommand:
     ):
         """Should prompt for missing fields."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={},
             missing=["path"],
@@ -178,6 +180,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle creation errors gracefully."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -234,6 +237,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle invalid collection verification."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -289,6 +293,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle collection without updated_time."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -348,6 +353,7 @@ class TestExecuteCreateCommand:
     ):
         """Should log verbose information in verbose mode."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -413,6 +419,7 @@ class TestExecuteCreateCommand:
     ):
         """Should call verbose_pre_creation_log callback when provided."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://test.com", "query": "test"},
             missing=[],
@@ -477,6 +484,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle Exception raised by svc_status during verification."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -539,6 +547,7 @@ class TestExecuteCreateCommand:
     ):
         """Should ensure credentials after Phase 1 prompts."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
             missing=[],
@@ -608,6 +617,7 @@ class TestExecuteCreateCommand:
     ):
         """Should not write credential fields via generic config.set_overlay loop."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
             missing=[],

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Type
 
 from indexed.config import ConfigService, StorageMode, get_config, reload
-from indexed.config.errors import ConfigurationError, ConfigValidationError
+from indexed.config.errors import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
@@ -88,12 +88,15 @@ def resolve_engine_selector(flag: str | None, config_service: ConfigService) -> 
     explicitly (not only via the config merge) so the precedence is
     deterministic.
 
-    A malformed ``[core] engine`` value fails loud (a ``ConfigValidationError``
-    for the ``core`` path propagates) so it is NOT silently downgraded to the
-    default — consistent with the env path, which validates before this point.
-    The default fallback is reserved for the genuinely-absent / unregistered
-    case (and any unrelated binding hiccup, which the command surfaces in its own
-    context rather than as an engine error).
+    A malformed ``[core] engine`` value fails loud (``normalize_engine_selector``
+    raises ``ConfigurationError``) so it is NOT silently downgraded to the
+    default — consistent with the env path, which validates the same way. The
+    default fallback is reserved for the genuinely-absent / unregistered case.
+
+    This reads the raw merged value via ``ConfigService.get`` (no pydantic
+    binding) so a bad value produces the exact same clean single-line message
+    as the flag/env paths — never a raw multi-line ``ConfigValidationError``
+    dump (R6).
     """
     if flag is not None:
         return normalize_engine_selector(flag)
@@ -105,27 +108,16 @@ def resolve_engine_selector(flag: str | None, config_service: ConfigService) -> 
         return normalize_engine_selector(env_value)
 
     try:
-        from indexed.core.v1.config_models import CoreEngineConfig
-
-        cfg = config_service.bind().get(CoreEngineConfig)
-        return normalize_engine_selector(cfg.engine)
-    except ConfigValidationError as exc:
-        # A bad ``[core] engine`` value trips ``CoreEngineConfig``'s validator at
-        # ``bind()`` time → ``ConfigValidationError(path="core")``. That must
-        # surface (fail loud, consistent with the env path), not be downgraded to
-        # the default. An unrelated config error (different path) is not the
-        # engine selector's concern — fall through so the invoking command
-        # reports it where it belongs.
-        if exc.path == "core":
-            raise
-        return _DEFAULT_ENGINE
+        raw_value = config_service.get("core.engine")
     except Exception:
-        # Genuinely absent / unregistered ``[core] engine`` (KeyError from the
-        # provider) or another binding hiccup → built-in default. A real
-        # ``cfg.engine`` is already validated to "1"/"2", so
-        # ``normalize_engine_selector`` here only fails for a non-config test
-        # double, which correctly falls back.
+        # A malformed/unreadable config.toml must not crash resolution — same
+        # tolerance ``mcp/server.py``'s ``_get_config`` already gives every
+        # other config read (R2). This is infra-level ("can't read the file"),
+        # not a bad value, so it degrades to the default rather than raising.
         return _DEFAULT_ENGINE
+    if raw_value is None:
+        return _DEFAULT_ENGINE
+    return normalize_engine_selector(raw_value)
 
 
 # --- connector construction ---------------------------------------------------

@@ -739,7 +739,11 @@ class TestSetConfig:
 
         result = runner.invoke(app, ["config", "set", "core.engine", "v3"])
         assert result.exit_code == 1
-        assert "v1" in result.stdout.lower()
+        # R3: config set now raises through composition.normalize_engine_selector
+        # directly, so this is the exact same message the --engine flag and
+        # INDEXED__CORE__ENGINE env paths already produce — not a raw
+        # multi-line pydantic ValidationError dump.
+        assert "Invalid engine 'v3'; expected one of: 1, 2, v1, v2" in result.stdout
         mock_config.set_value.assert_not_called()
 
 

@@ -16,10 +16,8 @@ ENV_VAR = "INDEXED__CORE__ENGINE"
 
 
 def _config_service_with_engine(engine_value: str) -> MagicMock:
-    from indexed.core.v1.config_models import CoreEngineConfig
-
     svc = MagicMock()
-    svc.bind.return_value.get.return_value = CoreEngineConfig(engine=engine_value)
+    svc.get.return_value = engine_value
     return svc
 
 
@@ -64,9 +62,9 @@ def test_default_is_one(monkeypatch) -> None:
     from indexed.cli.composition import resolve_engine_selector
 
     monkeypatch.delenv(ENV_VAR, raising=False)
-    # A config service that has no [core] engine registered: bind().get raises.
+    # A config service with no [core] engine set: raw get() returns None.
     svc = MagicMock()
-    svc.bind.return_value.get.side_effect = KeyError("not registered")
+    svc.get.return_value = None
 
     assert resolve_engine_selector(None, svc) == "1"
 
@@ -123,6 +121,52 @@ def test_bad_core_engine_in_config_fails_loud(monkeypatch, tmp_path: Path) -> No
 
     with pytest.raises(ConfigurationError):
         resolve_engine_selector(None, svc)
+
+
+def test_bad_core_engine_in_config_matches_flag_env_message(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """R6: a hand-edited ``config.toml`` with a bad ``[core] engine`` must raise
+    the exact same single-line message the ``--engine``/env paths produce — not
+    a raw multi-line ``ConfigValidationError`` dump routed through pydantic."""
+    from indexed.config.errors import ConfigurationError
+    from indexed.config.service import ConfigService
+    from indexed.cli.composition import register_app_config, resolve_engine_selector
+
+    monkeypatch.delenv(ENV_VAR, raising=False)
+
+    local_config = tmp_path / ".indexed" / "config.toml"
+    local_config.parent.mkdir(parents=True, exist_ok=True)
+    local_config.write_text('[core]\nengine = "v3"\n', encoding="utf-8")
+
+    svc = ConfigService(workspace=tmp_path, mode_override="local")
+    register_app_config(svc)
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        resolve_engine_selector(None, svc)
+
+    assert str(exc_info.value) == "Invalid engine 'v3'; expected one of: 1, 2, v1, v2"
+
+
+def test_config_toml_no_core_section_falls_back_to_default(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """R6: an absent ``[core]`` section (or unset ``engine`` key) still falls
+    back to the built-in default ``"1"``, unchanged from today — the raw
+    ``ConfigService.get`` read must not treat "absent" as an error."""
+    from indexed.config.service import ConfigService
+    from indexed.cli.composition import register_app_config, resolve_engine_selector
+
+    monkeypatch.delenv(ENV_VAR, raising=False)
+
+    local_config = tmp_path / ".indexed" / "config.toml"
+    local_config.parent.mkdir(parents=True, exist_ok=True)
+    local_config.write_text("[core.v1.search]\nmax_docs = 5\n", encoding="utf-8")
+
+    svc = ConfigService(workspace=tmp_path, mode_override="local")
+    register_app_config(svc)
+
+    assert resolve_engine_selector(None, svc) == "1"
 
 
 # --- OQ-T1 probe: real ConfigService with core + core.v1.* + core.v2.* --------
