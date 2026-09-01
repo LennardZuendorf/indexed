@@ -40,3 +40,62 @@ class TestDocsCommand:
         result = runner.invoke(app, ["docs"])
 
         assert result.exit_code == 1
+
+
+class TestCommandHelpShowsDocstring:
+    """`--help` for each knowledge command renders its own full docstring
+    (including its Examples: block, where present) instead of the old
+    one-line ``help=`` override (core-v2-discoverability/5, R5/R7)."""
+
+    def test_migrate_help_shows_safety_explanation_and_examples(self):
+        """`migrate --help` must reassure the user before a data-changing op."""
+        result = runner.invoke(app, ["migrate", "--help"])
+
+        assert result.exit_code == 0
+        assert "v1-backup" in result.stdout
+        assert "rollback-safe" in result.stdout
+        assert "Examples:" in result.stdout
+
+    def test_search_help_shows_examples(self):
+        result = runner.invoke(app, ["search", "--help"])
+
+        assert result.exit_code == 0
+        assert "Examples:" in result.stdout
+
+    def test_inspect_help_shows_examples(self):
+        result = runner.invoke(app, ["inspect", "--help"])
+
+        assert result.exit_code == 0
+        assert "Examples:" in result.stdout
+
+    def test_remove_help_shows_examples(self):
+        result = runner.invoke(app, ["remove", "--help"])
+
+        assert result.exit_code == 0
+        assert "Examples:" in result.stdout
+
+    def test_update_help_shows_docstring_no_regression(self):
+        """update's docstring is currently one line — no Examples: block yet,
+        but it must still render (not fall back to a generic override)."""
+        result = runner.invoke(app, ["update", "--help"])
+
+        assert result.exit_code == 0
+        assert "Refresh and re-index a collection" in result.stdout
+
+    def test_index_help_listing_uses_docstring_first_lines(self):
+        """`indexed index --help`'s one-line command listing derives from
+        each docstring's first line and still reads sensibly for all five."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "Search across collections using semantic similarity." in result.stdout
+        assert (
+            "Show all indexed collections or inspect a specific collection."
+            in result.stdout
+        )
+        assert "Refresh and re-index a collection or all collections." in result.stdout
+        assert "Remove a collection from the index." in result.stdout
+        assert (
+            "Convert a v1 collection to the v2 engine (offline by default)."
+            in result.stdout
+        )
