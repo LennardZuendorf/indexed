@@ -137,4 +137,4 @@ class SentenceEmbedder:
         return result
 
     def get_number_of_dimensions(self):
-        return self.model.get_sentence_embedding_dimension()
+        return self.model.get_embedding_dimension()
