@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-07-10
+updated: 2026-09-02
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -53,6 +53,42 @@ Full single-source config detail: [tech-config.md](tech-config.md).
 
 ---
 
+## Engine Selection (`--engine`)
+
+Selects v1 vs v2 for a **new** collection only (existing collections are
+manifest-authoritative — the facade infers their engine, a conflicting
+`--engine` fails loud). Resolution order, highest wins:
+
+1. Leaf-command flag (e.g. `index create files --engine v2`)
+2. Group-callback flag (e.g. `index create --engine v2 files`)
+3. Root-callback flag (e.g. `indexed --engine v2 index create files`)
+4. `INDEXED__CORE__ENGINE` env var
+5. `[core] engine` in `config.toml`
+6. Built-in default (`v1`)
+
+All three CLI-flag tiers (leaf/group/root) write into the **same** `ctx.obj`
+dict — Click hands a child `Context` its parent's `obj` by identity, not a
+copy, so a group or leaf callback doing `ctx.obj["engine"] =
+normalize_engine_selector(v)` mutates the exact object the root callback
+populated. `execute_create_command`'s single `get_context_value("engine")`
+read sees whichever tier actually wrote, with no extra resolution code. Each
+tier writes **only when the flag was explicitly passed** (guard on
+`isinstance(value, str)`), so an unset flag at any level never clobbers a
+value set by an outer level with `None`. This is the general pattern for
+adding a flag at an intermediate level of the Typer app tree — mirror the
+root callback's write, don't invent a new resolution tier or thread a new
+parameter through every intermediate function.
+
+All four non-CLI-flag surfaces that can reject an invalid engine value
+(`--engine`, env, `config set core.engine`, hand-edited `config.toml`) share
+one normalizer, `composition.normalize_engine_selector` — every surface
+raises the identical single-line `Invalid engine 'x'; expected one of: 1, 2,
+v1, v2`, never a raw pydantic `ValidationError` dump. `config set`'s
+`core.engine` special case and `resolve_engine_selector`'s config.toml
+branch both call it directly rather than parsing pydantic's error shape.
+
+---
+
 ## Rich UI Patterns
 
 All terminal output via `rich`:
@@ -72,6 +108,15 @@ User-supplied query text and indexed content are **Rich-escaped**
 (`rich.markup.escape` / `Text`) before display — never build markup from
 untrusted content. A `[/...]` or `arr[i]` in a query or document must render
 literally, never raise `MarkupError` and never silently drop the text.
+
+The same parser also runs over **static option help text** — a bracketed
+`[dotted.config.key]` inside a `typer.Option(help=...)` string is parsed as a
+style tag and silently dropped from rendered `--help` output (no error, no
+warning). Never write a bracketed config key in a `help=` string; write it
+unbracketed (`core.v1.search.max_docs`, not `[core.v1.search.max_docs]`) as
+`--limit` and `--rerank` both do. A test asserting a `--help` string names a
+config key must assert the key text itself appears in rendered output, not
+just that the flag exists.
 
 ---
 

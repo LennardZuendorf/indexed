@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-09-01
+updated: 2026-09-02
 ---
 
 # Development Plan: indexed
@@ -121,10 +121,20 @@ cross-unit bugs a per-unit review couldn't (a Rich-markup bug swallowing
 `--rerank`'s help text, and the group-level `--engine` gap above), fixed in
 one wave and re-verified clean. One newly-discovered 5th engine-error surface
 (`config validate`/`list`/`get`) was deliberately left out of scope rather
-than expanding past the CONFIRMed plan — recorded in product.md as a known
-follow-up candidate. Full gate green: ruff/ty/import-graph clean, full suite
-93.30% coverage (>85% required).
-Spec: [features/core-v2-discoverability/](features/core-v2-discoverability/).
+than expanding past the CONFIRMed plan — recorded as a known follow-up
+candidate (see below). Full gate green: ruff/ty/import-graph clean, full
+suite 93.30% coverage (>85% required). **Wrapped up 2026-09-02:** the
+durable cross-cutting content promoted to root specs — the leaf/group/root
+`--engine` precedence + shared-`ctx.obj` mechanism and the four-surface
+error normalizer to [tech-app.md](tech-app.md) § Engine Selection; the Rich
+markup-swallows-bracketed-help-text gotcha to [tech-app.md](tech-app.md) §
+Markup Safety and `AGENTS.md` Learnings; `--engine`/`index migrate`/
+reranking as shipped rows in [product.md](product.md) § Features (CLI +
+Search — also closed pre-existing drift where Feature 16 had shipped without
+a features-table update); resolved backlog (the R1-R7 fix-by-fix detail,
+the 5th engine-error surface note, the deferred generic misplaced-option
+hint) lives in PR #191 and git history, not the spec. Feature-spec folder
+deleted — live surface is code + root specs only.
 
 **Note (supersedes earlier wording):** the v2 rewrite ships behind the *same
 facade names* but over a **new version-marked on-disk format** — the "same
@@ -200,6 +210,36 @@ into the CONFIRMed plan's units — genuine requirement gaps the confirmed text
 already covered (finding 2) get fixed; genuinely new scope (the 5th surface)
 gets documented and deferred instead. Full gate green throughout: ruff/ty/
 import-graph clean, full suite 93.30% coverage (>85% required).
+
+### 2026-09-02: Feature 17 (Core v2 Discoverability) shipped; folder wrapped up
+**Decision:** Merge PR #191's branch into `main`-tracking state (conflict was
+narrow — `.spec/lessons.md` only, both sides had appended new dated entries
+at the same spot; every generated/dependency file `main` had moved touched
+in the interim — `uv.lock`, workflow YAMLs, `pyproject.toml`, a
+`sentence-transformers` rename — merged clean via git's own three-way merge,
+verified with `uv lock --check` plus a full re-run of the gate post-merge:
+1893 passed, 93.32% coverage). Promoted the durable cross-cutting content and
+**deleted** `features/core-v2-discoverability/`: the `--engine`
+leaf/group/root precedence pattern (Click hands a child `Context` its
+parent's `ctx.obj` by identity — a group/leaf callback writing into it needs
+no new resolution tier) and the four-surface engine-error normalizer went to
+[tech-app.md](tech-app.md) § Engine Selection; the Rich-swallows-bracketed-
+help-text gotcha went to [tech-app.md](tech-app.md) § Markup Safety and
+`AGENTS.md` Learnings (broadly reusable — any future `typer.Option(help=...)`
+naming a config key is at risk); `--engine`, `index migrate`, and reranking
+became shipped rows in [product.md](product.md) § Features, also backfilling
+pre-existing drift where Feature 16 (2026-07-19) had shipped without a
+features-table update. Two items were deliberately left as **unresolved
+follow-up candidates, not spec backlog:** a 5th engine-error surface
+(`config validate`/`list`/`get`, found during the feature's final review,
+confirmed outside R3/R6's 4-surface scope) and the same `help=`-discards-
+docstring pattern already fixed on 5 commands but never audited for full
+repo coverage. Neither blocks anything; either is a candidate GitHub issue if
+a maintainer wants full closure, not something worth re-opening this spec
+for. **Rationale:** a completed feature folder must not linger; durable
+cross-cutting content belongs in root specs, resolved fix-by-fix detail
+belongs in PR #191 + git history. CODE IS TRUTH — live surface is
+`src/indexed/cli/`, `core/engine.py`, `core/v2/`, and `tests/`.
 
 ### 2026-08-30: Feature 17 (Core v2 Discoverability, issue #188) opened; scope expanded same day
 **Decision:** Capture the five PR #162-review UX findings in
