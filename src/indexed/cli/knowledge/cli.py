@@ -14,11 +14,11 @@ from ..utils.components.theme import get_success_style, get_secondary_style
 app = typer.Typer(help="Knowledge / Index Management commands")
 
 app.add_typer(create.app, name="create", help="Create new collections")
-app.command("search", help="Search collections")(search.search)
-app.command("inspect", help="Inspect collections")(inspect.inspect_collections)
-app.command("update", help="Update collections")(update.update)
-app.command("remove", help="Remove collections")(remove.remove)
-app.command("migrate", help="Migrate a v1 collection to v2")(migrate.migrate)
+app.command("search")(search.search)
+app.command("inspect")(inspect.inspect_collections)
+app.command("update")(update.update)
+app.command("remove")(remove.remove)
+app.command("migrate")(migrate.migrate)
 
 
 @app.command("docs", rich_help_panel="Resources")

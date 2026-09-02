@@ -91,15 +91,16 @@ def set_config(
         return
 
     if key == "core.engine":
-        # C2: validate/normalize through the same model the engine-selector
-        # resolution path uses, so "v1"/"v2"/"1"/"2" (any case) are accepted
-        # and a bad value is rejected at write time instead of crashing a
-        # later `index create`.
-        from indexed.core.v1.config_models import CoreEngineConfig
+        # R3: validate/normalize through the exact same normalizer the
+        # engine-selector resolution path (--engine/env) uses, so all three
+        # surfaces report a byte-identical clean message on a bad value
+        # instead of a raw multi-line pydantic dump.
+        from indexed.cli import composition
+        from indexed.config.errors import ConfigurationError
 
         try:
-            coerced = CoreEngineConfig(engine=str(value)).engine
-        except ValueError as exc:
+            coerced = composition.normalize_engine_selector(str(value))
+        except ConfigurationError as exc:
             console.print()
             print_error(str(exc))
             raise typer.Exit(1)

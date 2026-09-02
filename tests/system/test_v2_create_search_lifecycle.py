@@ -339,6 +339,194 @@ def test_v2_create_replay_without_engine_flag_stays_v2(
     )
 
 
+def test_v2_create_subcommand_engine_flag(local_workspace, files_corpus: Path) -> None:
+    """core-v2-discoverability/1 (R1): `index create files --engine v2`
+    (subcommand-level flag, not the root callback) succeeds and creates a v2
+    collection — the primary Given/When/Then scenario in product.md."""
+    ws = local_workspace
+    collection = "files-v2-subcommand-flag"
+
+    created = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "files",
+            "--engine",
+            "v2",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--local",
+            "--no-cache",
+        ],
+    )
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["version"] == "2"
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def test_v2_create_group_engine_flag(local_workspace, files_corpus: Path) -> None:
+    """core-v2-discoverability/1 (R1): `index create --engine v2 files ...`
+    — the flag BEFORE the subcommand name, on the `create` group itself —
+    is accepted and really produces a v2 collection. R1's requirement text
+    names this surface alongside the leaf one; it used to hard-fail with
+    "No such option: --engine"."""
+    ws = local_workspace
+    collection = "files-v2-group-flag"
+
+    created = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "--engine",
+            "v2",
+            "files",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--local",
+            "--no-cache",
+        ],
+    )
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["version"] == "2"
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def test_v2_create_subcommand_engine_beats_group_engine(
+    local_workspace, files_corpus: Path
+) -> None:
+    """The new group tier must not disturb the leaf's own override: a leaf
+    `--engine v1` still wins over a group `--engine v2` (the leaf arrives as
+    an explicit kwarg, which `_create_helpers` prefers over the context
+    value the group writes)."""
+    ws = local_workspace
+    collection = "files-leaf-beats-group"
+
+    created = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "--engine",
+            "v2",
+            "files",
+            "--engine",
+            "v1",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--local",
+            "--no-cache",
+        ],
+    )
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest = json.loads(
+        (ws.collections_dir / collection / "manifest.json").read_text()
+    )
+    assert manifest.get("version") != "2", (
+        "a leaf --engine v1 must still win over a group-level --engine v2"
+    )
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def test_v2_create_subcommand_engine_replay_on_existing_collection(
+    local_workspace, files_corpus: Path
+) -> None:
+    """core-v2-discoverability/1 (R1 test scenario 4): a subcommand-level
+    `--engine v2` against an EXISTING v2 collection name still takes the
+    raw-flag-only path (no full resolver chain) — same semantics as today's
+    root-level `--engine` on the `collection_already_exists` branch. A
+    matching engine is a no-op replay (succeeds, stays v2); this only proves
+    the flag reaches the raw-flag path, not the env/config selector chain."""
+    ws = local_workspace
+    collection = "files-v2-subcommand-replay"
+
+    created = _create_v2(collection, files_corpus)
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    assert json.loads(manifest_path.read_text())["version"] == "2"
+
+    replayed = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "create",
+            "files",
+            "--engine",
+            "v2",
+            "--collection",
+            collection,
+            "--path",
+            str(files_corpus),
+            "--force",
+            "--no-cache",
+        ],
+    )
+    assert replayed.exit_code == 0, replayed.stdout + replayed.stderr
+    manifest_after = json.loads(manifest_path.read_text())
+    assert manifest_after["version"] == "2"
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def test_v2_root_engine_flag_only_still_works(
+    local_workspace, files_corpus: Path
+) -> None:
+    """R1 test scenario 3 (regression, not new): `indexed --engine v2 index
+    create files ...` — root-level flag only, no subcommand flag — behaves
+    identically to before this unit (the subcommand flag is additive)."""
+    ws = local_workspace
+    collection = "files-v2-root-flag-only"
+
+    created = _create_v2(collection, files_corpus)
+    assert created.exit_code == 0, created.stdout + created.stderr
+
+    manifest_path = ws.collections_dir / collection / "manifest.json"
+    assert json.loads(manifest_path.read_text())["version"] == "2"
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
 def test_v2_create_replay_with_conflicting_engine_raises_mismatch(
     local_workspace, files_corpus: Path
 ) -> None:

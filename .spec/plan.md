@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-07-19
+updated: 2026-09-02
 ---
 
 # Development Plan: indexed
@@ -43,6 +43,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
 | 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder wrapped up 2026-07-19) |
 | 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
+| 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 green | ✅ DONE | `src/indexed/cli/knowledge/commands/{_create_options,_create_commands,create,_create_helpers,search}.py`, `core/engine.py`, `core/v2/{retrieval,services}`, `config/commands/set.py`, `cli/composition.py`, `README.md`, `cli/knowledge/cli.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)
@@ -98,7 +99,42 @@ and Feature 16 both had their feature-spec folders promoted + deleted on
 Composition Root; lessons → [lessons.md](lessons.md)). The full v2 planning
 artifact (research + ADRs) lives in git history (PR #158).
 
-**No feature is currently active.**
+**Feature 17 Core v2 Discoverability is DONE** (implemented 2026-09-01, spec
+drafted 2026-08-30): seven product/UX requirements, five units, clustered
+from the PR #162 review in
+[issue #188](https://github.com/LennardZuendorf/indexed/issues/188) plus two
+same-shape sibling defects folded in — `--engine` surfaced on `index create`
+and its four leaf subcommands (plus a group-level `--engine` callback on
+`index create` itself, added during final review to fully satisfy R1's
+requirement text); a `--rerank`/`--no-rerank` flag on `index search` that
+prints a hint rather than silently no-op on a v1-only search (routed to
+stderr under `--simple-output` to keep stdout JSON-pure); a clean,
+byte-identical single-line engine-error message on all four surfaces that
+can catch a bad value (`--engine` flag, env, `config set core.engine`, and
+hand-edited `config.toml`); Core v2 mentioned in README's `## Usage`; and
+every knowledge command's `--help` (not just `migrate`'s) rendering its own
+docstring. No correctness risk; Core v2 itself (Feature 16) already worked —
+this was entirely a discoverability/UX surface fix. Implemented via
+`superpowers:subagent-driven-development` (one implementer + one task review
+per unit, all 5 Approved) plus a final whole-branch review that caught 2 real
+cross-unit bugs a per-unit review couldn't (a Rich-markup bug swallowing
+`--rerank`'s help text, and the group-level `--engine` gap above), fixed in
+one wave and re-verified clean. One newly-discovered 5th engine-error surface
+(`config validate`/`list`/`get`) was deliberately left out of scope rather
+than expanding past the CONFIRMed plan — recorded as a known follow-up
+candidate (see below). Full gate green: ruff/ty/import-graph clean, full
+suite 93.30% coverage (>85% required). **Wrapped up 2026-09-02:** the
+durable cross-cutting content promoted to root specs — the leaf/group/root
+`--engine` precedence + shared-`ctx.obj` mechanism and the four-surface
+error normalizer to [tech-app.md](tech-app.md) § Engine Selection; the Rich
+markup-swallows-bracketed-help-text gotcha to [tech-app.md](tech-app.md) §
+Markup Safety and `AGENTS.md` Learnings; `--engine`/`index migrate`/
+reranking as shipped rows in [product.md](product.md) § Features (CLI +
+Search — also closed pre-existing drift where Feature 16 had shipped without
+a features-table update); resolved backlog (the R1-R7 fix-by-fix detail,
+the 5th engine-error surface note, the deferred generic misplaced-option
+hint) lives in PR #191 and git history, not the spec. Feature-spec folder
+deleted — live surface is code + root specs only.
 
 **Note (supersedes earlier wording):** the v2 rewrite ships behind the *same
 facade names* but over a **new version-marked on-disk format** — the "same
@@ -130,6 +166,117 @@ over schedule.
 ---
 
 ## Decision Log
+
+### 2026-09-01: Feature 17 (Core v2 Discoverability, issue #188) shipped
+**Decision:** Implemented all 5 units (R1–R7 green) via
+`superpowers:subagent-driven-development` — a fresh implementer subagent per
+unit, a task-scoped spec+quality review after each (all 5 Approved, only
+Minor findings deferred to this log), then a final whole-branch review on the
+most capable available model to catch what no per-unit review could: cross-unit
+interactions. That review found no Critical issues but 3 real Important ones,
+fixed in one wave and re-verified clean by a scoped re-review:
+1. `--rerank`'s `--help` text contained the literal substring `[core.v2.rerank]`,
+   which Rich's markup parser silently swallowed from the rendered output —
+   the exact config key the flag's help exists to name was invisible. Fixed
+   by dropping the brackets (matching the neighboring `--limit` option's
+   existing unbracketed-config-key convention); the regression test was
+   strengthened to assert the key text itself, not just the flag name.
+2. R1's own requirement text named BOTH `index create --help` (the group) and
+   `index create files --help` (the leaf) — only the leaf shipped in the
+   original 5-unit plan (that was the CONFIRMed scope; the group surface was
+   a gap the final review caught, not a plan violation). Fixed by adding a
+   group-level `--engine` callback on `create.app`, mirroring the root app's
+   own callback pattern exactly (writes into the same `ctx.obj["engine"]`
+   slot via Click's parent→child `obj` inheritance) — verified empirically,
+   not just by reasoning about Click internals, and confirmed to leave every
+   existing R1 test (leaf position, leaf help, root-only regression,
+   existing-collection raw-flag-only replay) untouched. Effective precedence:
+   leaf flag > group flag > root flag > env > config > default.
+3. R2's "never a silent no-op" requirement was technically violated for
+   `--rerank` under `--simple-output` — a prior, independently-verified-correct
+   fix had fully suppressed the hint there to protect stdout's JSON purity.
+   Resolved by routing the hint to **stderr** under `--simple-output` instead
+   of dropping it (`typer.echo(notice, err=True)`) — stdout stays pure,
+   parseable JSON; the notice still exists on a channel a human running the
+   command would see.
+A 4th finding — a 5th surface (`config validate`/`list`/`get`) that still
+leaks a raw pydantic dump or shows no warning for a bad `core.engine` value —
+was deliberately left unfixed rather than silently expanding scope past the
+CONFIRMed 7-requirement plan; recorded in product.md as a known remaining
+surface for a future follow-up unit, not fixed ad-hoc mid-review.
+**Rationale:** the two-human-gate model (plan→impl, verify→ship) means new
+scope discovered during the ship-side review doesn't get silently absorbed
+into the CONFIRMed plan's units — genuine requirement gaps the confirmed text
+already covered (finding 2) get fixed; genuinely new scope (the 5th surface)
+gets documented and deferred instead. Full gate green throughout: ruff/ty/
+import-graph clean, full suite 93.30% coverage (>85% required).
+
+### 2026-09-02: Feature 17 (Core v2 Discoverability) shipped; folder wrapped up
+**Decision:** Merge PR #191's branch into `main`-tracking state (conflict was
+narrow — `.spec/lessons.md` only, both sides had appended new dated entries
+at the same spot; every generated/dependency file `main` had moved touched
+in the interim — `uv.lock`, workflow YAMLs, `pyproject.toml`, a
+`sentence-transformers` rename — merged clean via git's own three-way merge,
+verified with `uv lock --check` plus a full re-run of the gate post-merge:
+1893 passed, 93.32% coverage). Promoted the durable cross-cutting content and
+**deleted** `features/core-v2-discoverability/`: the `--engine`
+leaf/group/root precedence pattern (Click hands a child `Context` its
+parent's `ctx.obj` by identity — a group/leaf callback writing into it needs
+no new resolution tier) and the four-surface engine-error normalizer went to
+[tech-app.md](tech-app.md) § Engine Selection; the Rich-swallows-bracketed-
+help-text gotcha went to [tech-app.md](tech-app.md) § Markup Safety and
+`AGENTS.md` Learnings (broadly reusable — any future `typer.Option(help=...)`
+naming a config key is at risk); `--engine`, `index migrate`, and reranking
+became shipped rows in [product.md](product.md) § Features, also backfilling
+pre-existing drift where Feature 16 (2026-07-19) had shipped without a
+features-table update. Two items were deliberately left as **unresolved
+follow-up candidates, not spec backlog:** a 5th engine-error surface
+(`config validate`/`list`/`get`, found during the feature's final review,
+confirmed outside R3/R6's 4-surface scope) and the same `help=`-discards-
+docstring pattern already fixed on 5 commands but never audited for full
+repo coverage. Neither blocks anything; either is a candidate GitHub issue if
+a maintainer wants full closure, not something worth re-opening this spec
+for. **Rationale:** a completed feature folder must not linger; durable
+cross-cutting content belongs in root specs, resolved fix-by-fix detail
+belongs in PR #191 + git history. CODE IS TRUTH — live surface is
+`src/indexed/cli/`, `core/engine.py`, `core/v2/`, and `tests/`.
+
+### 2026-08-30: Feature 17 (Core v2 Discoverability, issue #188) opened; scope expanded same day
+**Decision:** Capture the five PR #162-review UX findings in
+[issue #188](https://github.com/LennardZuendorf/indexed/issues/188) as
+Feature 17 rather than fixing ad-hoc: `--engine` invisible on `index create`
+subcommands (root-only today, mirrors the existing `--local` pattern for the
+fix); reranking has no CLI flag (v2-only, `[core.v2.rerank]` today); `config
+set core.engine` prints a raw multi-line pydantic dump instead of the clean
+single-line message `--engine`/`INDEXED__CORE__ENGINE` already produce (fix:
+reuse `composition.normalize_engine_selector` directly — `config/commands/`
+is exempt from the config-package import-purity rule, so no layering
+violation); README has zero Core v2 mention; and `index migrate --help`
+discards its safety docstring because `knowledge/cli.py` registers it with an
+explicit `help=` override. Investigated via 4 parallel research subagents
+against `main`, all file:line anchors re-verified by direct reads.
+**Same-day follow-up:** on maintainer review, two questions left open by the
+initial spec were resolved and two related-but-descoped defects were pulled
+into scope rather than left as follow-ups: (1) `--rerank` on a search that
+resolves to no v2 collection now must print a one-line hint instead of
+silently no-op (`core/versioning.py::detect_engine_version` per searched
+collection decides); (2) the config.toml `[core] engine` path gets the same
+clean-error fix as `config set` — `resolve_engine_selector`'s config.toml
+branch drops `bind()`/pydantic entirely in favor of a raw
+`config_service.get("core.engine")` read, closing the last of four surfaces
+that can catch a bad engine value; (3) the `help=`-discards-docstring fix
+extends from `migrate` to its three siblings (`search`/`inspect`/`update`/
+`remove`), same file (`knowledge/cli.py`), same mechanism. The one item that
+stays descoped by explicit maintainer choice: a generic Click "did you mean
+the top-level flag?" hint for a misplaced `--engine` on the flat commands —
+R1's direct fix (surfacing `--engine` on `index create`) already resolves
+#188's concrete repro. Now 7 requirements across 5 units (R6 rides with R3's
+unit, R7 with R5's). **Rationale:** all seven are discoverability/consistency
+gaps on a feature (Core v2) whose safety story already works and is verified
+— small, disjoint, no data-loss risk — but worth a spec so each fix carries
+its own scenario instead of being patched ad-hoc during a support pass; the
+two folded-in defects are the same shape as findings already in the spec, so
+fixing them alongside is cheaper than tracking a separate follow-up issue.
 
 ### 2026-07-19: Feature 16 (Core v2) shipped; Features 15 + 16 folders wrapped up
 **Decision:** Core v2 is implemented (PR #158) and hardened by an end-to-end

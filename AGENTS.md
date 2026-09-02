@@ -93,7 +93,9 @@ coverage is measured on installed packages (`--cov=src`); `ConfigService` is a s
 (respect the priority chain); connectors are Protocol-based with `from_manifest`; core is
 consumed only through the `core.v1.engine` facade, with `composition.py` the single wiring
 site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
-spec in the same cycle; a comment is one line of *why*, never an essay. KISS wins.
+spec in the same cycle; a comment is one line of *why*, never an essay; Rich silently drops
+a bracketed `[dotted.key]` from any `typer.Option(help=...)` string (parsed as a markup
+tag, not printed) — write config keys unbracketed in help text. KISS wins.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

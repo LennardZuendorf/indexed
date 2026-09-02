@@ -159,6 +159,7 @@ uv run indexed --help
 indexed index create files --collection my-project --path ./src
 indexed index create jiraCloud --collection jira-issues
 indexed index create confluenceCloud --collection wiki
+indexed index create files --collection my-app --path ./src --engine v2
 
 # Search
 indexed index search "authentication flow"
@@ -169,6 +170,7 @@ indexed index inspect                    # list all collections
 indexed index inspect my-project         # inspect specific collection
 indexed index update my-project          # update a collection
 indexed index remove my-project          # delete a collection
+indexed index migrate my-project         # migrate to the v2 engine
 
 # Configuration
 indexed config inspect                   # view config

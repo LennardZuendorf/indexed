@@ -53,6 +53,25 @@ LocalOpt = Annotated[
         rich_help_panel=_STORE,
     ),
 ]
+EngineOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--engine",
+        help="Engine for this NEW collection: v1 or v2 (default: v1)",
+        rich_help_panel=_STORE,
+    ),
+]
+# Group-level twin for the ``create`` callback (``index create --engine v2
+# files ...``). Same flag and wording as ``EngineOpt``; no help panel, so
+# ``index create --help`` lists it in the main Options block — the group has no
+# other Storage options for a panel to hold.
+GroupEngineOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--engine",
+        help="Engine for this NEW collection: v1 or v2 (default: v1)",
+    ),
+]
 
 # Files --------------------------------------------------------------------- #
 CollectionFilesOpt = Annotated[

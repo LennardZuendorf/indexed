@@ -146,6 +146,57 @@ class TestCreateFiles:
 
     @patch("indexed.cli.knowledge.commands.create.execute_create_command")
     @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_threads_engine_flag(self, mock_config_service, mock_execute):
+        """core-v2-discoverability/1: --engine on `create files` reaches
+        execute_create_command unchanged (raw) — _create_helpers normalizes it."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="test-files",
+            path="/test/path",
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    def test_create_files_engine_defaults_to_none(
+        self, mock_config_service, mock_execute
+    ):
+        """When --engine is not passed, the flag threads through as None
+        (root-level context resolution is unaffected)."""
+        mock_config = Mock()
+        mock_config_service.return_value = mock_config
+
+        create_files(
+            collection="test-files",
+            path="/test/path",
+            include=None,
+            exclude=None,
+            fail_fast=False,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] is None
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
     def test_create_files_explicit_no_respect_gitignore_is_honored(
         self, mock_config_service, mock_execute
     ):
@@ -289,6 +340,37 @@ class TestCreateJira:
 
         mock_print_error.assert_called()
         mock_execute.assert_not_called()
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_jira_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create jira` reaches
+        execute_create_command unchanged (raw)."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_jira(
+            collection="test-jira",
+            url="https://company.atlassian.net",
+            jql="project = TEST",
+            email=None,
+            token=None,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
 class TestCreateConfluence:
@@ -442,6 +524,38 @@ class TestCreateConfluence:
         call_kwargs = mock_execute.call_args.kwargs
         cli_overrides = call_kwargs.get("cli_overrides", {})
         assert cli_overrides["read_all_comments"] is False
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_confluence_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create confluence` reaches
+        execute_create_command unchanged (raw)."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_confluence(
+            collection="test-confluence",
+            url="https://company.atlassian.net",
+            cql="type=page",
+            email=None,
+            token=None,
+            read_all_comments=True,
+            use_cache=True,
+            force=False,
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            engine="v2",
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
 def _capture_prompt_fn(create_fn, create_kwargs, mock_config_service, mock_execute):
@@ -1102,6 +1216,33 @@ class TestCreateOutline:
         assert cli_overrides["include_attachments"] is False
         assert cli_overrides["ocr_enabled"] is False
 
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_outline_threads_engine_flag(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """core-v2-discoverability/1: --engine on `create outline` reaches
+        execute_create_command unchanged (raw)."""
+        from indexed.cli.knowledge.commands.create import create_outline
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_outline(
+            **{
+                **self._default_kwargs,
+                "url": "https://app.getoutline.com",
+                "engine": "v2",
+            }
+        )
+
+        mock_execute.assert_called_once()
+        assert mock_execute.call_args.kwargs["engine"] == "v2"
+
 
 @pytest.mark.unit
 class TestPromptMissingOutlineFields:
@@ -1430,3 +1571,108 @@ class TestCreateFailureConfigRestore:
         )
         assert "f1.atlassian.net" not in text
         assert "project = F1" not in text
+
+
+class TestCreateGroupEngineOption:
+    """core-v2-discoverability/1 (R1): `--engine` on the `index create`
+    GROUP itself (`index create --engine v2 files ...`), not only on the four
+    leaf subcommands. R1's requirement text names both surfaces; the group one
+    was missing, so the flag was invisible exactly where issue #188 says a
+    user looks for it — one level up the command tree.
+
+    The group callback is a second writer of the SAME normalized
+    ``ctx.obj["engine"]`` slot the root callback owns, which
+    ``execute_create_command`` already reads back through
+    ``get_context_value``. These tests pin that plumbing (the real
+    create-a-v2-collection proof lives in the system suite)."""
+
+    @staticmethod
+    def _invoke(argv):
+        """Run `create.app` with the real callback but a stubbed executor,
+        capturing what the context and the leaf kwarg each carried."""
+        from typer.testing import CliRunner
+
+        from indexed.cli.knowledge.commands import create as create_mod
+        from indexed.cli.utils.storage_info import get_context_value
+
+        seen = {}
+
+        def fake_execute(*args, **kwargs):
+            seen["context_engine"] = get_context_value("engine")
+            seen["leaf_engine"] = kwargs.get("engine")
+
+        with (
+            patch.object(create_mod, "execute_create_command", fake_execute),
+            patch.object(create_mod, "get_config", Mock()),
+        ):
+            result = CliRunner().invoke(create_mod.app, argv)
+        return result, seen
+
+    def test_group_help_lists_engine(self):
+        """`index create --help` shows --engine among its own options."""
+        from typer.testing import CliRunner
+
+        from indexed.cli.knowledge.commands import create as create_mod
+
+        result = CliRunner().invoke(create_mod.app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--engine" in result.stdout
+
+    def test_group_engine_normalized_onto_context(self):
+        """A group-level `--engine v2` lands on ctx.obj["engine"] already
+        normalized to "2" — the same invariant the root callback holds — and
+        leaves the leaf kwarg untouched at None."""
+        result, seen = self._invoke(
+            ["--engine", "v2", "files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] == "2"
+        assert seen["leaf_engine"] is None
+
+    def test_group_engine_unset_leaves_context_untouched(self):
+        """No group flag → nothing written, so a root-level `--engine`
+        already on the context is never clobbered with None."""
+        result, seen = self._invoke(
+            ["files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] is None
+        assert seen["leaf_engine"] is None
+
+    def test_leaf_engine_still_reaches_executor_alongside_group_flag(self):
+        """The leaf flag is unaffected by the new group tier: it still
+        arrives raw as its own kwarg (where `_create_helpers` gives it
+        precedence over the context value)."""
+        result, seen = self._invoke(
+            [
+                "--engine",
+                "v1",
+                "files",
+                "--engine",
+                "v2",
+                "--collection",
+                "c",
+                "--path",
+                "/test/path",
+            ]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert seen["context_engine"] == "1"
+        assert seen["leaf_engine"] == "v2"
+
+    def test_invalid_group_engine_fails_loud(self):
+        """A bad value fails with the same clean message as the root/leaf
+        surfaces rather than being silently ignored."""
+        from indexed.config.errors import ConfigurationError
+
+        result, _ = self._invoke(
+            ["--engine", "v9", "files", "--collection", "c", "--path", "/test/path"]
+        )
+
+        assert result.exit_code != 0
+        assert isinstance(result.exception, ConfigurationError)
+        assert "Invalid engine 'v9'" in str(result.exception)

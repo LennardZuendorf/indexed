@@ -1402,6 +1402,264 @@ class TestSearchStatusMessages:
             reset_simple_output()
 
 
+class TestRerankFlag:
+    """Tests for --rerank/--no-rerank on `index search` (core-v2-discoverability/2)."""
+
+    def _make_status(self, name: str):
+        from unittest.mock import Mock
+
+        s = Mock()
+        s.name = name
+        s.indexers = ["default"]
+        return s
+
+    def _wire_common(self, monkeypatch, statuses):
+        from unittest.mock import Mock, MagicMock
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: Mock())
+
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
+        )
+
+    def test_search_help_shows_rerank_flag(self):
+        """`index search --help` documents --rerank/--no-rerank *and* names
+        the config key it overrides.
+
+        The key must be written unbracketed (like --limit's
+        ``core.v1.search.max_docs``): Rich parses ``[core.v2.rerank]`` as a
+        markup tag and silently drops it, so a flag-name-only assertion
+        passed while the one fact this help text carries was missing from
+        the rendered output."""
+        result = runner.invoke(search_cmd.app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--rerank" in result.stdout
+        assert "--no-rerank" in result.stdout
+        assert "core.v2.rerank" in result.stdout
+
+    def test_flag_omitted_forwards_no_rerank_kwarg(self, monkeypatch):
+        """No flag passed → identical to today: svc_search gets no 'rerank'
+        kwarg at all (config alone decides, same as before this unit)."""
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+        assert "rerank" not in captured
+
+    def test_rerank_flag_on_v2_collection_forwards_true_and_no_hint(self, monkeypatch):
+        """--rerank on a v2 collection forwards rerank=True to svc_search and
+        prints no v1-no-effect hint (at least one searched collection is v2)."""
+        self._wire_common(monkeypatch, [self._make_status("v2col")])
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version", lambda path: "2"
+        )
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"v2col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+        assert result.exit_code == 0
+        assert captured.get("rerank") is True
+        assert "no effect" not in result.stdout
+
+    def test_no_rerank_flag_forwards_false(self, monkeypatch):
+        """--no-rerank explicitly forwards rerank=False (disables even a
+        config with enabled=true) and never prints the no-effect hint."""
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--no-rerank"])
+
+        assert result.exit_code == 0
+        assert captured.get("rerank") is False
+        assert "no effect" not in result.stdout
+
+    def test_rerank_on_v1_only_search_prints_hint_and_does_not_crash(self, monkeypatch):
+        """--rerank passed explicitly, all searched collections resolve to
+        v1 → no crash, and a one-line hint is printed (never a silent
+        no-op), resolved via detect_engine_version per searched collection."""
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version", lambda path: "1"
+        )
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"v1col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+        assert result.exit_code == 0
+        assert captured.get("rerank") is True
+        assert "no effect" in result.stdout
+        assert "v2-only" in result.stdout
+
+    def test_rerank_v1_only_simple_output_stays_clean_json(self, monkeypatch):
+        """--rerank on an all-v1 fleet under --simple-output must NOT print
+        the Rich info panel: stdout there is a JSON envelope
+        (simple_output.py's contract), so the hint would otherwise break
+        json.loads() for any programmatic consumer (review finding #1)."""
+        import json
+
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        detect_calls: List[Any] = []
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version",
+            lambda path: detect_calls.append(path) or "1",
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {
+                "v1col": {
+                    "results": [
+                        {
+                            "id": "doc1",
+                            "matchedChunks": [{"chunkNumber": 0, "score": 0.1}],
+                        }
+                    ]
+                }
+            }
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+            assert result.exit_code == 0
+            # Must parse as JSON outright — a leaked info panel above the
+            # JSON body would make this raise.
+            parsed = json.loads(result.stdout)
+            assert parsed["query"] == "my-query"
+            # The hint text must be nowhere in stdout, not even alongside
+            # valid JSON.
+            assert "no effect" not in result.stdout
+            # The all-v1-fleet check DOES still run in simple mode — the
+            # notice is merely rerouted to stderr (R2: never a silent
+            # no-op, on any surface), so detection must have happened.
+            assert detect_calls
+        finally:
+            reset_simple_output()
+
+    def test_rerank_v1_only_simple_output_emits_notice_on_stderr(self, monkeypatch):
+        """R2's "never a silent no-op" holds for --simple-output too: the
+        one-line notice is written to STDERR, keeping stdout a pure JSON
+        envelope while the machine-readable surface — the one an agent or
+        script is most likely to drive — still says the flag did nothing."""
+        import json
+
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version", lambda path: "1"
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {"v1col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+            assert result.exit_code == 0
+            # stdout: still pure JSON, with no notice text in it.
+            json.loads(result.stdout)
+            assert "no effect" not in result.stdout
+            # stderr: carries the notice, as one plain line (no Rich panel
+            # borders — the shared `console` is bound to stdout).
+            assert "no effect" in result.stderr
+            assert "v2-only" in result.stderr
+            assert "╭" not in result.stderr
+        finally:
+            reset_simple_output()
+
+    def test_rerank_on_mixed_v1_v2_search_prints_no_hint(self, monkeypatch):
+        """--rerank on a search spanning one v1 and one v2 collection prints
+        no hint — the flag DID apply, to the v2 collection."""
+        self._wire_common(
+            monkeypatch, [self._make_status("v1col"), self._make_status("v2col")]
+        )
+
+        def fake_detect(path):
+            return "2" if path.name == "v2col" else "1"
+
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version", fake_detect
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {"v1col": {"results": []}, "v2col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--rerank"])
+
+        assert result.exit_code == 0
+        assert "no effect" not in result.stdout
+
+    def test_rerank_none_default_prints_no_hint_even_if_v1_only(self, monkeypatch):
+        """Flag omitted (rerank stays None) → no hint at all, even against
+        an all-v1 fleet — the hint is only for an explicit, defeated --rerank."""
+        self._wire_common(monkeypatch, [self._make_status("v1col")])
+        detect_calls = []
+        monkeypatch.setattr(
+            "indexed.core.versioning.detect_engine_version",
+            lambda path: detect_calls.append(path) or "1",
+        )
+
+        def fake_svc_search(query, **kwargs):
+            return {"v1col": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+        assert "no effect" not in result.stdout
+        # detect_engine_version is only invoked when rerank is True.
+        assert detect_calls == []
+
+
 class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""
 

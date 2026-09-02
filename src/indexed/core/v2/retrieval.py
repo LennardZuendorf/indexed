@@ -59,11 +59,15 @@ def search(
     include_all_chunks: bool = False,
     include_matched_chunks: bool = False,
     collections_path: Optional[str] = None,
+    rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search v2 collections; return ``{collection: per-collection-result}``.
 
     ``configs=None`` discovers all on-disk v2 collections. Matches v1's
     ``search`` signature/defaults so the facade can route to it unchanged.
+    ``rerank``, when not ``None``, overrides ``[core.v2.rerank] enabled`` for
+    this call only (CLI ``--rerank``/``--no-rerank``, R2) without touching the
+    stored config.
     """
     if max_docs is None:
         max_docs = resolve_search_config().max_docs
@@ -80,6 +84,10 @@ def search(
     # collection. Disabled by default: no CrossEncoder is imported or loaded
     # unless ``[core.v2.rerank] enabled=true`` (R10, zero cost when off).
     rerank_cfg = resolve_rerank_config()
+    if rerank is not None:
+        # Per-call override (immutable update — never mutates the shared,
+        # possibly-cached config instance).
+        rerank_cfg = rerank_cfg.model_copy(update={"enabled": rerank})
 
     # One embed model per distinct model name, reused across collections.
     embed_cache: Dict[str, "BaseEmbedding"] = {}

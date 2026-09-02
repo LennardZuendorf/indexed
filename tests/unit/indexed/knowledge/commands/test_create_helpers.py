@@ -50,6 +50,7 @@ class TestExecuteCreateCommand:
     ):
         """Should create collection when all required fields are present."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test", "include_patterns": ["*"]},
             missing=[],
@@ -116,6 +117,7 @@ class TestExecuteCreateCommand:
     ):
         """Should prompt for missing fields."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={},
             missing=["path"],
@@ -178,6 +180,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle creation errors gracefully."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -234,6 +237,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle invalid collection verification."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -289,6 +293,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle collection without updated_time."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -348,6 +353,7 @@ class TestExecuteCreateCommand:
     ):
         """Should log verbose information in verbose mode."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -413,6 +419,7 @@ class TestExecuteCreateCommand:
     ):
         """Should call verbose_pre_creation_log callback when provided."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://test.com", "query": "test"},
             missing=[],
@@ -477,6 +484,7 @@ class TestExecuteCreateCommand:
     ):
         """Should handle Exception raised by svc_status during verification."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"path": "/test"},
             missing=[],
@@ -539,6 +547,7 @@ class TestExecuteCreateCommand:
     ):
         """Should ensure credentials after Phase 1 prompts."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
             missing=[],
@@ -608,6 +617,7 @@ class TestExecuteCreateCommand:
     ):
         """Should not write credential fields via generic config.set_overlay loop."""
         mock_config = Mock()
+        mock_config.get.return_value = None
         mock_config.validate_requirements.return_value = ValidationResult(
             present={"url": "https://app.getoutline.com"},
             missing=[],
@@ -661,3 +671,231 @@ class TestExecuteCreateCommand:
             call.args[0] for call in mock_config.set_value.call_args_list if call.args
         ]
         assert "sources.outline.api_token" not in set_value_calls
+
+
+class TestExecuteCreateCommandEngineOverride:
+    """core-v2-discoverability/1: subcommand ``--engine`` override on
+    ``execute_create_command`` (mirrors the existing ``local`` override)."""
+
+    @staticmethod
+    def _build_source_config(present, coll_name):
+        return SourceConfig(
+            name=coll_name,
+            type="localFiles",
+            base_url_or_path=present["path"],
+            indexer="default",
+        )
+
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.core.engine.collection_exists")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
+    def test_subcommand_engine_normalized_for_new_collection(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_exists,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """A raw '--engine v2' on a genuinely new collection is normalized
+        (v2 -> "2") through the full resolver chain before reaching svc_create."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"}, missing=[], field_info={}
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_exists.return_value = False
+
+        mock_status_item = MagicMock()
+        mock_status_item.number_of_documents = 3
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status.return_value = [mock_status_item]
+
+        execute_create_command(
+            collection="new-collection",
+            source_type="localFiles",
+            config_class=Mock,
+            namespace="sources.files",
+            cli_overrides={},
+            prompt_missing_fields=lambda v, c, n: None,
+            build_source_config=self._build_source_config,
+            success_message_suffix="from files",
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            use_cache=True,
+            force=False,
+            engine="v2",
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["engine"] == "2"
+
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands._create_helpers.get_context_value")
+    @patch("indexed.core.engine.collection_exists")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
+    def test_subcommand_engine_overrides_context_value(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_exists,
+        mock_context_value,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """The subcommand flag wins over a root-level `--engine` already on
+        the context (mirrors `if local: mode_override = "local"`)."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"}, missing=[], field_info={}
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_exists.return_value = False
+        # Simulate a root-level `--engine v1` already resolved onto the
+        # context (ctx.obj["engine"] is always pre-normalized by app.py).
+        mock_context_value.return_value = "1"
+
+        mock_status_item = MagicMock()
+        mock_status_item.number_of_documents = 3
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status.return_value = [mock_status_item]
+
+        execute_create_command(
+            collection="new-collection",
+            source_type="localFiles",
+            config_class=Mock,
+            namespace="sources.files",
+            cli_overrides={},
+            prompt_missing_fields=lambda v, c, n: None,
+            build_source_config=self._build_source_config,
+            success_message_suffix="from files",
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            use_cache=True,
+            force=False,
+            engine="v2",
+        )
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["engine"] == "2"
+
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.core.engine.collection_exists")
+    @patch("indexed.cli.composition.resolve_engine_selector")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
+    def test_existing_collection_engine_skips_full_selector_chain(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_resolve_selector,
+        mock_exists,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """A subcommand `--engine` on an EXISTING collection name takes the
+        raw-flag-only path (no env/config selector chain) — same as the
+        pre-existing context-only behavior (`collection_already_exists`
+        branch), just normalized first."""
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"}, missing=[], field_info={}
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_exists.return_value = True
+
+        mock_status_item = MagicMock()
+        mock_status_item.number_of_documents = 3
+        mock_status_item.updated_time = "2024-01-01T00:00:00"
+        mock_status.return_value = [mock_status_item]
+
+        execute_create_command(
+            collection="existing-collection",
+            source_type="localFiles",
+            config_class=Mock,
+            namespace="sources.files",
+            cli_overrides={},
+            prompt_missing_fields=lambda v, c, n: None,
+            build_source_config=self._build_source_config,
+            success_message_suffix="from files",
+            verbose=False,
+            json_logs=False,
+            log_level=None,
+            use_cache=True,
+            force=True,  # skip the interactive overwrite confirm
+            engine="v2",
+        )
+
+        mock_resolve_selector.assert_not_called()
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["engine"] == "2"
+
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.core.engine.collection_exists")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
+    def test_invalid_subcommand_engine_raises(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_exists,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        """An unrecognized --engine value fails loud, same as the root flag."""
+        from indexed.config import ConfigurationError
+
+        mock_config = Mock()
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"}, missing=[], field_info={}
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_exists.return_value = False
+
+        with pytest.raises(ConfigurationError):
+            execute_create_command(
+                collection="new-collection",
+                source_type="localFiles",
+                config_class=Mock,
+                namespace="sources.files",
+                cli_overrides={},
+                prompt_missing_fields=lambda v, c, n: None,
+                build_source_config=self._build_source_config,
+                success_message_suffix="from files",
+                verbose=False,
+                json_logs=False,
+                log_level=None,
+                use_cache=True,
+                force=False,
+                engine="v3",
+            )
+
+        mock_create.assert_not_called()

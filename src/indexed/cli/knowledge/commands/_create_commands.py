@@ -17,6 +17,34 @@ from .create import _create
 app = typer.Typer(help="Create new collections")
 
 
+@app.callback()
+def create_group(
+    ctx: typer.Context,
+    engine: _opt.GroupEngineOpt = None,
+) -> None:
+    """Create new collections."""
+    # `index create --engine v2 files ...`: the group tier of the same flag the
+    # root callback owns (app.py's `_init_app`), so R1's "MUST show it in
+    # `index create --help`" surface is real and not just documented. It writes
+    # the SAME normalized `ctx.obj["engine"]` slot the root writes and
+    # `execute_create_command` already reads back via `get_context_value`
+    # (Click hands a child context its parent's `obj` object, so this mutates
+    # the root's dict) — no new plumbing, and no effect on the leaf `--engine`,
+    # which still wins because it arrives as an explicit kwarg.
+    #
+    # `isinstance` guards two paths at once: the flag genuinely unset (None),
+    # and a direct call in tests where the unpassed default is still typer's
+    # `OptionInfo`. Only an explicitly-passed value writes, so an unflagged
+    # `create` never clobbers a root-level `--engine` with None.
+    if not isinstance(engine, str):
+        return
+
+    from indexed.cli.composition import normalize_engine_selector
+
+    ctx.ensure_object(dict)
+    ctx.obj["engine"] = normalize_engine_selector(engine)
+
+
 @app.command("files", help="Create a new collection from local files or folders.")
 def create_files(
     collection: _opt.CollectionFilesOpt = "files",
@@ -31,6 +59,7 @@ def create_files(
     log_level: _opt.LogLevelOpt = None,
     respect_gitignore: _opt.RespectGitignoreOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Files collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -56,6 +85,7 @@ def create_files(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -74,6 +104,7 @@ def create_jira(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Jira collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -95,6 +126,7 @@ def create_jira(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -115,6 +147,7 @@ def create_confluence(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create a Confluence collection with parameter resolution and progress tracking."""
     cli_overrides: Dict[str, Any] = {}
@@ -138,6 +171,7 @@ def create_confluence(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )
 
 
@@ -158,6 +192,7 @@ def create_outline(
     json_logs: _opt.JsonLogsOpt = False,
     log_level: _opt.LogLevelOpt = None,
     local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
 ) -> None:
     """Create an Outline Wiki collection (Cloud or any self-hosted deployment)."""
     cli_overrides: Dict[str, Any] = {}
@@ -181,4 +216,5 @@ def create_outline(
         json_logs=json_logs,
         log_level=log_level,
         local=local,
+        engine=engine,
     )

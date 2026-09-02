@@ -113,6 +113,7 @@ def execute_create_command(
     pre_creation_display: Optional[Callable[[Dict[str, Any]], None]] = None,
     local: bool = False,
     source_path_key: Optional[str] = None,
+    engine: Optional[str] = None,
 ) -> None:
     """Common execution flow for all create commands.
 
@@ -142,6 +143,11 @@ def execute_create_command(
         progress_message: Optional custom progress message (defaults to "Creating {collection}")
         verbose_pre_creation_log: Optional callback to log connector-specific info before creation (in verbose mode)
         local: If True, save the collection to .indexed/data/ in the current directory instead of ~/.indexed/data/
+        engine: Explicit engine selector for this subcommand invocation
+            (e.g. "v1"/"v2"/"1"/"2"). Overrides the root ``--engine`` context
+            value, mirroring ``local``. Normalized the same way the root
+            callback normalizes it, so the raw-flag-only path below (used for
+            an existing collection) always sees "1"/"2".
     """
     # Setup logging based on options
     effective_level = log_level or ("INFO" if verbose else None)
@@ -152,6 +158,15 @@ def execute_create_command(
     mode_override: Optional[StorageMode] = get_context_mode_override()
     context_engine = get_context_value("engine")
     engine_flag = context_engine if isinstance(context_engine, str) else None
+    if engine is not None:
+        # The root callback normalizes ctx.obj["engine"] before it ever
+        # reaches engine_flag (app.py's _init_app); a subcommand-level
+        # override must match that invariant so the raw-flag-only path
+        # below (collection_already_exists) never sees an un-normalized
+        # "v1"/"v2" where only "1"/"2" is valid.
+        from indexed.cli.composition import normalize_engine_selector
+
+        engine_flag = normalize_engine_selector(engine)
     if local:
         mode_override = "local"
 
