@@ -90,6 +90,7 @@ def search(
     *,
     rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
+    """Search v2 collections; ``rerank`` overrides ``[core.v2.rerank]`` per call."""
     from indexed.core.v2 import retrieval
 
     with _wrap("search"):

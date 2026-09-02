@@ -79,7 +79,7 @@ adding a flag at an intermediate level of the Typer app tree — mirror the
 root callback's write, don't invent a new resolution tier or thread a new
 parameter through every intermediate function.
 
-All four non-CLI-flag surfaces that can reject an invalid engine value
+All four surfaces that can reject an invalid engine value
 (`--engine`, env, `config set core.engine`, hand-edited `config.toml`) share
 one normalizer, `composition.normalize_engine_selector` — every surface
 raises the identical single-line `Invalid engine 'x'; expected one of: 1, 2,

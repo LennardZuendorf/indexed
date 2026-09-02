@@ -1,9 +1,15 @@
-"""Tests for knowledge CLI docs command."""
+"""Tests for knowledge CLI docs command and per-command --help rendering."""
 
 from unittest.mock import patch
+import pytest
 from typer.testing import CliRunner
 
+from indexed.cli.app import app as root_app
 from indexed.cli.knowledge.cli import app
+
+# Module-level marker (same idiom as tests/unit/indexed/config/test_cli.py) so
+# `pytest -m unit` selects every class here, not just one.
+pytestmark = pytest.mark.unit
 
 runner = CliRunner()
 
@@ -57,18 +63,21 @@ class TestCommandHelpShowsDocstring:
         assert "Examples:" in result.stdout
 
     def test_search_help_shows_examples(self):
+        """`search --help` renders its docstring's Examples: block."""
         result = runner.invoke(app, ["search", "--help"])
 
         assert result.exit_code == 0
         assert "Examples:" in result.stdout
 
     def test_inspect_help_shows_examples(self):
+        """`inspect --help` renders its docstring's Examples: block."""
         result = runner.invoke(app, ["inspect", "--help"])
 
         assert result.exit_code == 0
         assert "Examples:" in result.stdout
 
     def test_remove_help_shows_examples(self):
+        """`remove --help` renders its docstring's Examples: block."""
         result = runner.invoke(app, ["remove", "--help"])
 
         assert result.exit_code == 0
@@ -99,3 +108,25 @@ class TestCommandHelpShowsDocstring:
             "Convert a v1 collection to the v2 engine (offline by default)."
             in result.stdout
         )
+
+
+class TestCreateEngineFlagHelp:
+    """`--engine` is discoverable in `--help` at BOTH surfaces R1 names — the
+    `index create files` leaf and the `index create` group — not only on the
+    root callback. Driven through the real root app so the asserted command
+    paths are the ones a user actually types (issue #188)."""
+
+    def test_index_create_files_help_shows_engine_flag(self):
+        """`index create files --help` lists the leaf-level `--engine`."""
+        result = runner.invoke(root_app, ["index", "create", "files", "--help"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "--engine" in result.stdout
+
+    def test_index_create_group_help_shows_engine_flag(self):
+        """`index create --help` lists the group-level `--engine`, one level up
+        the tree — where issue #188 says the user looks for it."""
+        result = runner.invoke(root_app, ["index", "create", "--help"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "--engine" in result.stdout

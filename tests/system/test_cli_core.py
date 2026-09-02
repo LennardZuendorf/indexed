@@ -26,26 +26,6 @@ def test_cli_help(benchmark):
     benchmark(run_help)
 
 
-def test_index_create_files_help_shows_engine_flag():
-    """core-v2-discoverability/1 (R1): `--engine` is discoverable on the
-    `index create files` subcommand's own --help, not only the root callback."""
-    runner = CliRunner()
-    result = runner.invoke(app, ["index", "create", "files", "--help"])
-    assert result.exit_code == 0, result.stdout
-    assert "--engine" in result.stdout
-
-
-def test_index_create_group_help_shows_engine_flag():
-    """core-v2-discoverability/1 (R1): R1 names BOTH surfaces — the leaf
-    above and the GROUP itself. `index create --help` must list `--engine`
-    too, or the flag stays invisible exactly where issue #188 says a user
-    looks for it, one level up the command tree."""
-    runner = CliRunner()
-    result = runner.invoke(app, ["index", "create", "--help"])
-    assert result.exit_code == 0, result.stdout
-    assert "--engine" in result.stdout
-
-
 @pytest.mark.benchmark(min_rounds=3, max_time=1.0)
 def test_cli_license(benchmark):
     runner = CliRunner()
