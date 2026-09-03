@@ -92,7 +92,11 @@ def _display_collection_update_header(
         # persisted collections display correctly without a create/update cycle.
         is_default = positive == ["*"] or positive == [fnmatch.translate("*")]
         patterns_display = "* (all files)" if is_default else ", ".join(positive)
-        console.print(create_info_row("Included Patterns", patterns_display))
+        # Label kept inside `get_info_row_label_width()` (10) so it pads and
+        # aligns like the Type/Path/Excluded rows around it (R3) — the former
+        # "Included Patterns" (17) overran the budget and jammed the value
+        # straight onto the label with no separating space.
+        console.print(create_info_row("Included", patterns_display))
 
         _dirs = reader_config.get("excludedDirs")
         excluded_dirs: list[str] = (

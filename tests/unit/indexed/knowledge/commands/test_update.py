@@ -1373,3 +1373,34 @@ class TestIncludedPatternsDisplay:
             {"basePath": "/tmp/does-not-exist", "includePatterns": [legacy_py]}
         )
         assert "* (all files)" not in output
+
+    def test_include_row_aligns_with_the_rows_around_it(self):
+        """R3's second half (final-review I3): the row must be *padded
+        consistently* with Type/Path/Excluded. `create_info_row` pads to
+        `get_info_row_label_width()`; the old 17-char "Included Patterns"
+        label overran that budget and jammed the value onto the label with no
+        separating space. Assert the real column, not just the value text."""
+        from indexed.cli.utils.components.theme import get_info_row_label_width
+
+        output = self._rendered_text(
+            {
+                "basePath": "/tmp/does-not-exist",
+                "includePatterns": ["*"],
+                "excludedDirs": ["node_modules", ".git"],
+                "respectGitignore": True,
+            }
+        )
+        label_width = get_info_row_label_width()
+        rows = [
+            line
+            for line in output.splitlines()
+            if line.startswith(("Type", "Path", "Included", "Excluded"))
+        ]
+        assert len(rows) == 4, output
+        for line in rows:
+            label = line[:label_width]
+            # Label fits the budget *and* leaves at least one space before the
+            # value, so every row's value starts at the same column.
+            assert label.rstrip() != label, repr(line)
+            assert len(label.rstrip()) <= label_width - 1, repr(line)
+            assert line[label_width] != " ", repr(line)
