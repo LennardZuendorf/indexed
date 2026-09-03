@@ -363,4 +363,81 @@ class TestDetailCardWidthScaling:
         from indexed.cli.utils.components import theme
 
         monkeypatch.setattr(theme, "console", _FakeConsole(width=300))
-        assert theme.get_detail_card_width() == 100
+        assert theme.get_detail_card_width() == 120
+
+
+# A realistic v2 engine descriptor as `index inspect <name>` renders it
+# (65 chars) — the value R2's acceptance scenario is written against.
+_V2_DESCRIPTOR = "v2 · huggingface · sentence-transformers/all-MiniLM-L6-v2 · faiss"
+
+
+class TestDetailCardDescriptorFitsOnOneLine:
+    """cards.py + theme.py — R2's acceptance scenario, rendered.
+
+    `get_detail_card_width()` returning a bigger number is not the
+    requirement: the requirement is that a v2 collection's engine descriptor
+    renders on ONE line at a terminal of at least 100 columns. That needs both
+    a max card width that fits it and a label column that stops claiming a
+    third of the card for a six-character label (final-review I2).
+    """
+
+    @staticmethod
+    def _render(terminal_width: int) -> str:
+        from indexed.cli.utils.components import cards, theme
+
+        original = theme.console
+        theme.console = _FakeConsole(width=terminal_width)
+        try:
+            card = cards.create_detail_card(
+                title="docs",
+                rows=[
+                    ("Type", "localFiles"),
+                    ("Path", "~/projects/indexed/docs"),
+                    ("Engine", _V2_DESCRIPTOR),
+                    ("Documents", "13"),
+                ],
+            )
+            rec = RichConsole(record=True, width=terminal_width, no_color=True)
+            rec.print(card)
+            return rec.export_text()
+        finally:
+            theme.console = original
+
+    @staticmethod
+    def _descriptor_lines(text: str) -> list[str]:
+        return [line for line in text.splitlines() if "MiniLM" in line]
+
+    def test_descriptor_renders_on_one_line_at_100_columns(self):
+        text = self._render(100)
+        lines = self._descriptor_lines(text)
+        assert len(lines) == 1, text
+        # Whole descriptor on that single line, unwrapped and un-ellipsized.
+        assert _V2_DESCRIPTOR in lines[0], text
+        assert "…" not in lines[0], text
+
+    def test_descriptor_renders_on_one_line_at_200_columns(self):
+        text = self._render(200)
+        lines = self._descriptor_lines(text)
+        assert len(lines) == 1, text
+        assert _V2_DESCRIPTOR in lines[0], text
+
+    def test_long_label_is_not_truncated_by_the_label_column_floor(self):
+        """The label column has a *floor*, not a fixed width — a long config
+        dot-path label (conflict_prompt's rows) must still render in full."""
+        from indexed.cli.utils.components import cards, theme
+
+        original = theme.console
+        theme.console = _FakeConsole(width=100)
+        try:
+            card = cards.create_detail_card(
+                title="Config Differences",
+                rows=[("storage.collectionsPath", "~/.indexed/data/collections")],
+            )
+            rec = RichConsole(record=True, width=100, no_color=True)
+            rec.print(card)
+        finally:
+            theme.console = original
+
+        text = rec.export_text()
+        assert "storage.collectionsPath" in text
+        assert "…" not in text

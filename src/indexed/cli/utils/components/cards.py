@@ -19,6 +19,10 @@ from .theme import (
     get_label_style,
 )
 
+# Floor for the label column so short labels ("Type", "Path") still line up
+# with the longest fixed label this codebase renders ("Embedding model", 15).
+_LABEL_COLUMN_MIN_WIDTH = 18
+
 
 def create_info_rows_with_spacing(rows: Sequence[tuple[str, "str | Text"]]) -> list:
     """
@@ -37,11 +41,20 @@ def create_info_rows_with_spacing(rows: Sequence[tuple[str, "str | Text"]]) -> l
     function to guess intent from bracket characters.
     """
     table = Table.grid(expand=True, padding=(0, 1))
-    # Set appropriate alignment and style for columns
+    # Label column: sized to its own content with a floor of
+    # ``_LABEL_COLUMN_MIN_WIDTH`` — NOT a ``ratio``. A proportional label
+    # column handed a short label like "Engine" a third of the card anyway,
+    # starving the value column so a 65-char v2 engine descriptor wrapped even
+    # on a wide terminal (R2). Auto-sizing keeps long labels (config dot-paths
+    # in the conflict card) intact while leaving the rest to the value.
     table.add_column(
-        justify="left", style=get_label_style(), ratio=1
-    )  # Use label_style for left column
-    table.add_column(justify="right", ratio=2)
+        justify="left",
+        style=get_label_style(),
+        min_width=_LABEL_COLUMN_MIN_WIDTH,
+        no_wrap=True,
+    )
+    # Value column absorbs all remaining width.
+    table.add_column(justify="right", ratio=1)
     value_style = get_value_style()
     for label, value in rows:
         label_text = str(label)

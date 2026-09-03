@@ -51,9 +51,11 @@ def get_info_row_label_width() -> int:
     return 10
 
 
-# Card widths
+# Card widths. The max is sized so a realistic v2 engine descriptor
+# ("v2 · huggingface · sentence-transformers/all-MiniLM-L6-v2 · faiss", 65
+# chars) still renders on one line beside its label on a wide terminal (R2).
 _DETAIL_CARD_MIN_WIDTH = 60
-_DETAIL_CARD_MAX_WIDTH = 100
+_DETAIL_CARD_MAX_WIDTH = 120
 
 
 def get_detail_card_width() -> int:
