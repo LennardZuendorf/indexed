@@ -835,7 +835,10 @@ class TestFormatSearchResults:
         """When a content-free #1 chunk causes some all_chunks[k] (k>=1) to
         be promoted to the highlighted top, "Other Matches" must NOT also
         show that same chunk — it must be excluded (by identity), not just a
-        positional all_chunks[1:5] slice, which would duplicate it."""
+        positional all_chunks[1:5] slice, which would duplicate it. "Other
+        Matches" must also draw from the same content-free-filtered pool as
+        the top pick (R5), so the content-free chunk itself never leaks into
+        Other Matches either."""
         others: List[Any] = []
         monkeypatch.setattr(
             search_render, "_show_top_result_split_cards", lambda *a, **kw: None
@@ -873,9 +876,195 @@ class TestFormatSearchResults:
         search_render.format_search_results("query", results=results, limit=5)
 
         # all_chunks[0] (score 0.1) is content-free, so all_chunks[1] (score
-        # 0.3) is promoted to the highlighted top. "Other Matches" must show
-        # the REMAINING chunks only — 0.1 and 0.5 — never 0.3 again.
-        assert others == [0.1, 0.5]
+        # 0.3) is promoted to the highlighted top. "Other Matches" must draw
+        # from the SAME content-free-filtered pool as the top pick (R5), so
+        # the content-free 0.1 chunk must never leak into either section —
+        # only the remaining real-content chunk, 0.5, should show.
+        assert others == [0.5]
+
+    def test_other_matches_falls_back_to_all_chunks_when_all_content_free(
+        self, monkeypatch
+    ):
+        """R5: when every chunk is content-free, "Other Matches" falls back
+        to the unfiltered ``all_chunks`` pool (same fallback as the top
+        pick) instead of ending up empty."""
+        others: List[Any] = []
+        monkeypatch.setattr(
+            search_render, "_show_top_result_split_cards", lambda *a, **kw: None
+        )
+        monkeypatch.setattr(
+            search_render,
+            "_show_compact_match",
+            lambda ci, **kw: others.append(ci["chunk"]["score"]),
+        )
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+
+        results: Dict[str, Any] = {
+            "coll1": {
+                "results": [
+                    {
+                        "id": "src/auth.py",
+                        "matchedChunks": [
+                            {"score": 0.1, "content": {"indexedData": "src/auth.py"}},
+                            {"score": 0.3, "content": {"indexedData": "auth.py"}},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        # Both chunks are content-free -> top falls back to all_chunks[0]
+        # (score 0.1); "Other Matches" must fall back the same way and still
+        # show the remaining chunk (score 0.3), not come up empty.
+        assert others == [0.3]
+
+    def test_rerank_score_kind_labels_top_result_score(self, monkeypatch):
+        """R6: a result with scoreKind 'rerank' renders a distinguishing
+        label on the rendered score, not indistinguishable from cosine."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "rerank-coll": {
+                "scoreKind": "rerank",
+                "results": [
+                    {
+                        "id": "rerank-doc",
+                        "matchedChunks": [
+                            {"score": 6.27, "content": {"indexedData": "real text"}}
+                        ],
+                    }
+                ],
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "6.2700 (rerank)" in text
+        assert "(cosine)" not in text
+
+    def test_cosine_score_kind_labels_compact_match_score(self, monkeypatch):
+        """R6: a result with scoreKind 'cosine' renders its own label on the
+        compact "Other Matches" score, not mislabeled as rerank."""
+        outputs: List[str] = []
+
+        def fake_print(*args, **kwargs):
+            outputs.append(" ".join(str(a) for a in args))
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": fake_print})()
+        )
+
+        results: Dict[str, Any] = {
+            "cosine-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "doc-a",
+                        "matchedChunks": [
+                            {"score": 0.9, "content": {"indexedData": "best"}}
+                        ],
+                    },
+                    {
+                        "id": "doc-b",
+                        "matchedChunks": [
+                            {"score": 0.3, "content": {"indexedData": "second"}}
+                        ],
+                    },
+                ],
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        doc_b_line = next(line for line in outputs if "doc-b" in line)
+        assert "0.3000 (cosine)" in doc_b_line
+        assert "(rerank)" not in doc_b_line
+
+    def test_rerank_and_cosine_score_kind_labels_not_cross_confused(self, monkeypatch):
+        """R6: with a rerank collection and a cosine collection both present,
+        each rendered score keeps its own label — a rerank score is never
+        rendered with the cosine label, and vice versa."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "rerank-coll": {
+                "scoreKind": "rerank",
+                "results": [
+                    {
+                        "id": "rerank-doc",
+                        "matchedChunks": [
+                            {"score": 6.27, "content": {"indexedData": "rerank text"}}
+                        ],
+                    }
+                ],
+            },
+            "cosine-coll": {
+                "scoreKind": "cosine",
+                "results": [
+                    {
+                        "id": "cosine-doc",
+                        "matchedChunks": [
+                            {"score": 0.5, "content": {"indexedData": "cosine text"}}
+                        ],
+                    }
+                ],
+            },
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        # rerank's raw score (6.27) beats cosine's (0.5) on the unified
+        # relevance measure, so rerank-doc is promoted to Top Result and
+        # cosine-doc lands in Other Matches — split on that heading to check
+        # each section carries only its own label.
+        split_at = text.index("Other Search Query Matches")
+        top_section = text[:split_at]
+        others_section = text[split_at:]
+
+        assert "(rerank)" in top_section
+        assert "(cosine)" not in top_section
+        assert "(cosine)" in others_section
+        assert "(rerank)" not in others_section
+
+    def test_v1_only_score_has_no_scale_label(self, monkeypatch):
+        """R6: a v1-only search (no scoreKind anywhere) must not grow a
+        scale label — score_kind_by_collection stays empty for it, so the
+        label code must handle a missing/None scoreKind gracefully."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {
+                "results": [
+                    {
+                        "id": "v1-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "v1 text"}}
+                        ],
+                    }
+                ]
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "(cosine)" not in text
+        assert "(rerank)" not in text
 
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
