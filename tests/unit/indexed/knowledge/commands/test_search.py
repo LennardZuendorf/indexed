@@ -1066,6 +1066,69 @@ class TestFormatSearchResults:
         assert "(cosine)" not in text
         assert "(rerank)" not in text
 
+    def test_compact_view_labels_rerank_score_kind(self, monkeypatch):
+        """R6 (final-review I4): `index search --compact` routes through
+        `format_search_results_compact`, which rendered a bare `[6.2700]` and
+        never read `scoreKind`. It must carry the same label the meta card and
+        `_show_compact_match` render."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "rerank-coll": {
+                "scoreKind": "rerank",
+                "results": [{"id": "rerank-doc", "score": 6.27}],
+            }
+        }
+
+        search_render.format_search_results_compact("query", results=results, limit=10)
+
+        text = record_console.export_text()
+        assert "6.2700 (rerank)" in text
+        assert "(cosine)" not in text
+
+    def test_compact_view_labels_cosine_score_kind(self, monkeypatch):
+        """R6 (final-review I4): the cosine label is not cross-confused with
+        rerank on the `--compact` path either."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "cosine-coll": {
+                "scoreKind": "cosine",
+                "results": [{"id": "cosine-doc", "score": 0.3}],
+            }
+        }
+
+        search_render.format_search_results_compact("query", results=results, limit=10)
+
+        text = record_console.export_text()
+        assert "0.3000 (cosine)" in text
+        assert "(rerank)" not in text
+
+    def test_compact_view_v1_score_has_no_scale_label(self, monkeypatch):
+        """R6 byte-stability: a v1 collection carries no `scoreKind`, so the
+        `--compact` line must stay exactly as it rendered before."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "v1-coll": {"results": [{"id": "v1-doc", "score": 0.75}]},
+        }
+
+        search_render.format_search_results_compact("query", results=results, limit=10)
+
+        text = record_console.export_text()
+        assert "v1-doc [0.7500]" in text
+        assert "(cosine)" not in text
+        assert "(rerank)" not in text
+
     def test_format_search_results_compact_with_results(self, monkeypatch):
         """format_search_results_compact should list docs with scores and show total."""
         outputs: List[str] = []

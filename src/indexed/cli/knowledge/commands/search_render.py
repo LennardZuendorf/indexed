@@ -449,6 +449,14 @@ def format_search_results_compact(
 
         total_results += len(documents)
 
+        # R6: same scale label the meta card and `_show_compact_match` render.
+        # This loop is already scoped to one collection, so the per-collection
+        # lookup those functions do through `score_kind_by_collection` reduces
+        # to reading the collection's own raw `scoreKind` here. v1 collections
+        # carry no `scoreKind` key and stay unlabeled (byte-stable).
+        raw_score_kind = collection_results.get("scoreKind")
+        score_kind = raw_score_kind if isinstance(raw_score_kind, str) else None
+
         # Collection header — collection_name/doc_id are content-derived, so
         # escape them before entering markup (foundation/6c bug E2).
         console.print(
@@ -461,9 +469,10 @@ def format_search_results_compact(
             score = doc.get("score")
 
             if score is not None:
-                score_str = (
-                    f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
-                )
+                score_text = f"{score:.4f}" if isinstance(score, float) else str(score)
+                if score_kind:
+                    score_text = f"{score_text} ({score_kind})"
+                score_str = f" [{score_text}]"
                 console.print(
                     f"  {i}. {escape(str(doc_id))}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
                 )
