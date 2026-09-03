@@ -7,6 +7,7 @@ We focus on realistic behaviors:
 - formatter behavior for no results and mixed results
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
@@ -1428,7 +1429,7 @@ class TestRerankFlag:
             search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
-    def test_search_help_shows_rerank_flag(self, monkeypatch):
+    def test_search_help_shows_rerank_flag(self):
         """`index search --help` documents --rerank/--no-rerank *and* names
         the config key it overrides.
 
@@ -1437,19 +1438,16 @@ class TestRerankFlag:
         markup tag and silently drops it, so a flag-name-only assertion
         passed while the one fact this help text carries was missing from
         the rendered output."""
-        import typer.rich_utils
-
-        # Typer renders --help through a fixed-width Console
-        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
-        # import time) that ignores COLUMNS entirely once set — pin it so the
-        # assertion doesn't depend on the runner's actual terminal size.
-        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
         result = runner.invoke(search_cmd.app, ["--help"])
 
         assert result.exit_code == 0
-        assert "--rerank" in result.stdout
-        assert "--no-rerank" in result.stdout
-        assert "core.v2.rerank" in result.stdout
+        # The rich highlighter can style adjacent characters of a flag name
+        # as separate spans (observed on CI's runners, not locally) — strip
+        # ANSI so the assertion checks logical content, not exact styling.
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "--rerank" in clean
+        assert "--no-rerank" in clean
+        assert "core.v2.rerank" in clean
 
     def test_flag_omitted_forwards_no_rerank_kwarg(self, monkeypatch):
         """No flag passed → identical to today: svc_search gets no 'rerank'

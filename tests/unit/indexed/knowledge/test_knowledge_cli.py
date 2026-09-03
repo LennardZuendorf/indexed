@@ -1,5 +1,6 @@
 """Tests for knowledge CLI docs command and per-command --help rendering."""
 
+import re
 from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
@@ -116,27 +117,20 @@ class TestCreateEngineFlagHelp:
     root callback. Driven through the real root app so the asserted command
     paths are the ones a user actually types (issue #188)."""
 
-    def test_index_create_files_help_shows_engine_flag(self, monkeypatch):
+    def test_index_create_files_help_shows_engine_flag(self):
         """`index create files --help` lists the leaf-level `--engine`."""
-        import typer.rich_utils
-
-        # Typer renders --help through a fixed-width Console
-        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
-        # import time) that ignores COLUMNS entirely once set — pin it so the
-        # assertion doesn't depend on the runner's actual terminal size.
-        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
         result = runner.invoke(root_app, ["index", "create", "files", "--help"])
 
         assert result.exit_code == 0, result.stdout
-        assert "--engine" in result.stdout
+        # The rich highlighter can style adjacent characters of a flag name
+        # as separate spans (observed on CI's runners, not locally) — strip
+        # ANSI so the assertion checks logical content, not exact styling.
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
-    def test_index_create_group_help_shows_engine_flag(self, monkeypatch):
+    def test_index_create_group_help_shows_engine_flag(self):
         """`index create --help` lists the group-level `--engine`, one level up
         the tree — where issue #188 says the user looks for it."""
-        import typer.rich_utils
-
-        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
         result = runner.invoke(root_app, ["index", "create", "--help"])
 
         assert result.exit_code == 0, result.stdout
-        assert "--engine" in result.stdout
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)

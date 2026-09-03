@@ -1,5 +1,6 @@
 """Tests for knowledge create commands."""
 
+import re
 from unittest.mock import Mock, patch
 import pytest
 import typer
@@ -1608,22 +1609,19 @@ class TestCreateGroupEngineOption:
             result = CliRunner().invoke(create_mod.app, argv)
         return result, seen
 
-    def test_group_help_lists_engine(self, monkeypatch):
+    def test_group_help_lists_engine(self):
         """`index create --help` shows --engine among its own options."""
-        import typer.rich_utils
         from typer.testing import CliRunner
 
         from indexed.cli.knowledge.commands import create as create_mod
 
-        # Typer renders --help through a fixed-width Console
-        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
-        # import time) that ignores COLUMNS entirely once set — pin it so the
-        # assertion doesn't depend on the runner's actual terminal size.
-        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
         result = CliRunner().invoke(create_mod.app, ["--help"])
 
         assert result.exit_code == 0
-        assert "--engine" in result.stdout
+        # The rich highlighter can style "-" and "-engine" as two adjacent
+        # spans (observed on CI's runners, not locally) — strip ANSI so the
+        # assertion checks logical content, not exact byte-level styling.
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     def test_group_engine_normalized_onto_context(self):
         """A group-level `--engine v2` lands on ctx.obj["engine"] already
