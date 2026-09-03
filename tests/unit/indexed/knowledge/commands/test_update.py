@@ -1,6 +1,7 @@
 """Tests for knowledge update commands."""
 
 import contextlib
+import fnmatch
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
 
@@ -1306,3 +1307,69 @@ class TestUpdateMarkupSafety:
         # ("jira[one]" anywhere in stdout) would pass even with this
         # specific multi-collection heading sink unfixed.
         assert 'Updating 2 Collections: "jira[one]", "conf[two]"' in result.stdout
+
+
+class TestIncludedPatternsDisplay:
+    """R3 / rendering-fixes/2: the "Included Patterns" row must show the
+    user's own pattern text, never an ``fnmatch.translate()`` regex string.
+
+    Exercises ``_display_collection_update_header`` directly with a fake
+    console so the printed ``Text`` rows can be inspected without going
+    through the full CLI invocation machinery.
+    """
+
+    @staticmethod
+    def _rendered_text(reader_config: dict) -> str:
+        from indexed.cli.knowledge.commands.update_service import (
+            _display_collection_update_header,
+        )
+
+        printed: list[str] = []
+        fake_console = SimpleNamespace(
+            print=lambda *a, **kw: printed.append(
+                getattr(a[0], "plain", str(a[0])) if a else ""
+            )
+        )
+        _display_collection_update_header(
+            "docs", "localFiles", reader_config, console=fake_console
+        )
+        return "\n".join(printed)
+
+    def test_default_pattern_shows_all_files_label(self):
+        """New-style manifest (Part A): ["*"] stored literally."""
+        output = self._rendered_text(
+            {"basePath": "/tmp/does-not-exist", "includePatterns": ["*"]}
+        )
+        assert "* (all files)" in output
+
+    def test_custom_glob_pattern_shows_literal_text_never_translated(self):
+        """New-style manifest (Part A): ["*.py"] stored literally, and the
+        display must never show its fnmatch.translate() form."""
+        output = self._rendered_text(
+            {"basePath": "/tmp/does-not-exist", "includePatterns": ["*.py"]}
+        )
+        assert "*.py" in output
+        assert "(?s:" not in output
+
+    def test_legacy_translated_default_pattern_shows_all_files_label(self):
+        """Part B: a manifest persisted under the pre-fix behavior stores
+        fnmatch.translate("*") verbatim; the display-time fallback must
+        still recognize it and label it "* (all files)", with the raw
+        translated string never reaching the rendered output."""
+        legacy_star = fnmatch.translate("*")
+        output = self._rendered_text(
+            {"basePath": "/tmp/does-not-exist", "includePatterns": [legacy_star]}
+        )
+        assert "* (all files)" in output
+        assert legacy_star not in output
+
+    def test_legacy_translated_custom_glob_is_not_mislabeled_all_files(self):
+        """The Part B fallback recognizes only the default "*" translation --
+        a legacy translated non-default glob must not be mislabeled
+        "* (all files)"; it displays as its raw (still-cryptic) stored text,
+        matching pre-existing behavior for that already-lossy case."""
+        legacy_py = fnmatch.translate("*.py")
+        output = self._rendered_text(
+            {"basePath": "/tmp/does-not-exist", "includePatterns": [legacy_py]}
+        )
+        assert "* (all files)" not in output

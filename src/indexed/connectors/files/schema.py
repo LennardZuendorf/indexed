@@ -69,8 +69,12 @@ class FileSystemConfig(BaseModel):
         """Accept both regex and glob patterns; strip '!' prefix before compiling.
 
         Valid regex is kept as-is. Patterns that fail regex compilation are
-        treated as globs and converted via fnmatch.translate, e.g. ``*.md``
-        becomes ``(?s:.*\\.md)\\Z``.
+        treated as globs: ``fnmatch.translate`` is called only to confirm the
+        glob is parseable (an unparseable pattern still raises), but the
+        original glob text is what's stored -- not the translated regex --
+        so it survives into the manifest and any user-facing display.
+        ``FilesDocumentReader._compile`` re-derives the working regex from
+        this raw text at match time via the identical fallback.
         """
         result = []
         for pattern in patterns:
@@ -78,9 +82,9 @@ class FileSystemConfig(BaseModel):
             bare = pattern[1:] if prefix else pattern
             try:
                 re.compile(bare)
-                result.append(prefix + bare)
             except re.error:
-                result.append(prefix + fnmatch.translate(bare))
+                fnmatch.translate(bare)
+            result.append(prefix + bare)
         return result
 
     @field_validator("path")

@@ -18,6 +18,7 @@ loaders resolve exactly as they do for the command itself.
 
 from __future__ import annotations
 
+import fnmatch
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -85,7 +86,12 @@ def _display_collection_update_header(
 
         include_patterns: list[str] = reader_config.get("includePatterns") or ["*"]
         positive = [p for p in include_patterns if not p.startswith("!")]
-        patterns_display = "* (all files)" if positive == ["*"] else ", ".join(positive)
+        # Manifests written before the schema fix (rendering-fixes/2, Part A)
+        # persisted fnmatch.translate("*") instead of the literal "*" for the
+        # default pattern; recognize that known translation too so already-
+        # persisted collections display correctly without a create/update cycle.
+        is_default = positive == ["*"] or positive == [fnmatch.translate("*")]
+        patterns_display = "* (all files)" if is_default else ", ".join(positive)
         console.print(create_info_row("Included Patterns", patterns_display))
 
         _dirs = reader_config.get("excludedDirs")
