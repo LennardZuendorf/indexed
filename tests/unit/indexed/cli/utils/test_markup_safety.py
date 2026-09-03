@@ -276,6 +276,61 @@ class TestInitModelNameSafety:
         assert "/tmp/hf/cache[x]" in result.output
 
 
+class TestAlertPanelDoubleEscape:
+    """alerts.py — `print_error`/`print_warning` render through a
+    `rich.text.Text`, which is literal by construction. Anything pre-escaped
+    with `rich.markup.escape()` before reaching that sink leaks a visible
+    backslash into the output (final-review I1).
+    """
+
+    def test_top_level_cli_error_with_brackets_is_not_double_escaped(self, monkeypatch):
+        """`main()`'s `IndexedError` handler is the sink every uncaught CLI
+        error passes through; a bracketed config key in the message (e.g.
+        `[core.v2.rerank].enabled`) must print verbatim, not `\\[core...`.
+        """
+        import sys
+
+        import pytest
+
+        from indexed.cli import app as app_module
+        from indexed.cli.utils.components import alerts
+        from indexed.config.errors import ConfigurationError
+
+        rec = RichConsole(record=True, force_terminal=True, width=120)
+        monkeypatch.setattr(alerts, "console", rec)
+        monkeypatch.setattr(app_module, "bootstrap_logging", lambda **kw: None)
+        monkeypatch.setattr(sys, "argv", ["indexed", "config", "get", "x"])
+
+        def _raise() -> None:
+            raise ConfigurationError("Unknown key [core.v2.rerank].enabled in config")
+
+        monkeypatch.setattr(app_module, "app", _raise)
+
+        with pytest.raises(SystemExit) as exc_info:
+            app_module.main()
+
+        assert exc_info.value.code == 2
+        text = rec.export_text()
+        assert "[core.v2.rerank].enabled" in text
+        assert "\\[" not in text
+
+    def test_collection_error_with_brackets_is_not_double_escaped(self, monkeypatch):
+        """search_render._print_collection_errors feeds the same `Text` sink
+        (pre-existing instance of the same double-escape family)."""
+        from indexed.cli.knowledge.commands import search_render
+        from indexed.cli.utils.components import alerts
+
+        rec = RichConsole(record=True, force_terminal=True, width=120)
+        monkeypatch.setattr(alerts, "console", rec)
+
+        search_render._print_collection_errors([("my[coll]", "index[0] missing")])
+
+        text = rec.export_text()
+        assert "my[coll]" in text
+        assert "index[0] missing" in text
+        assert "\\[" not in text
+
+
 class _FakeConsole:
     """Stand-in for the shared console, exposing only `.width` (R2)."""
 

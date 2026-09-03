@@ -240,15 +240,13 @@ def main() -> None:
     try:
         app()
     except IndexedError as exc:
-        from rich.markup import escape
-
         from .errors import exit_code_for, format_cli_error
 
-        # The error message can embed configuration/collection values supplied
-        # by the user — escape before it enters this styled print so markup
-        # like `[/bold]` renders verbatim instead of raising `MarkupError`
-        # (foundation/6c bug E2).
-        print_error(escape(format_cli_error(exc)))
+        # No `escape()` here: `print_error` renders through a `rich.text.Text`
+        # sink, which is literal by construction (never markup-parsed), so a
+        # user-supplied `[core.v2.rerank].enabled` prints verbatim. Escaping
+        # first would leak the backslash into the output.
+        print_error(format_cli_error(exc))
         # `app()` already ran (and exited) the click runner — `typer.Exit`
         # raised here would be uncaught (no click main() left to interpret
         # it), producing a traceback and losing the mapped exit code

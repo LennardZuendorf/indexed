@@ -91,11 +91,11 @@ def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
     (foundation/6 E10, CLI twin of the same bug).
     """
     for collection_name, error in failed:
-        # collection_name/error are content-derived — escape before entering
-        # markup (foundation/6c bug E2).
-        print_error(
-            f"Collection '{escape(str(collection_name))}' failed: {escape(str(error))}"
-        )
+        # No `escape()`: `print_error` renders through a `rich.text.Text` sink,
+        # which is literal by construction (never markup-parsed), so a
+        # bracket-bearing collection name or error string prints verbatim.
+        # Escaping first would leak the backslash into the output.
+        print_error(f"Collection '{collection_name!s}' failed: {error!s}")
 
 
 def format_search_results(
