@@ -120,7 +120,7 @@ class TestCreateFiles:
     def test_create_files_omits_respect_gitignore_when_flag_unset(
         self, mock_config_service, mock_execute
     ):
-        """R9: when --respect-gitignore/--no-respect-gitignore is not passed
+        """R9: when --gitignore/--no-gitignore is not passed
         on the CLI, cli_overrides must not contain respect_gitignore at all —
         otherwise it always beats config.toml's sources.files.respect_gitignore."""
         mock_config = Mock()
@@ -200,7 +200,7 @@ class TestCreateFiles:
     def test_create_files_explicit_no_respect_gitignore_is_honored(
         self, mock_config_service, mock_execute
     ):
-        """R9: an explicit --no-respect-gitignore (False) is a legitimate
+        """R9: an explicit --no-gitignore (False) is a legitimate
         choice and must still reach cli_overrides — the guard must be
         `is not None`, not truthiness."""
         mock_config = Mock()
@@ -1676,3 +1676,28 @@ class TestCreateGroupEngineOption:
         assert result.exit_code != 0
         assert isinstance(result.exception, ConfigurationError)
         assert "Invalid engine 'v9'" in str(result.exception)
+
+
+class TestCreateFilesHelpRendering:
+    """Verify --help output renders correctly without truncation (R4)."""
+
+    def test_create_files_help_no_gitignore_flag_truncation_at_80_columns(self):
+        """rendering-fixes/3: `index create files --help` at 80 columns must
+        show full --gitignore/--no-gitignore flag text without ellipsis (…)
+        truncation."""
+        from typer.testing import CliRunner
+
+        from indexed.cli.knowledge.commands import create as create_mod
+
+        # Set COLUMNS=80 to simulate an 80-column terminal
+        runner = CliRunner(env={"COLUMNS": "80"})
+        result = runner.invoke(create_mod.app, ["files", "--help"])
+
+        assert result.exit_code == 0, result.stdout
+        # Verify the full flag text appears without truncation
+        assert "--gitignore" in result.stdout
+        assert "--no-gitignore" in result.stdout
+        # Ensure no mid-word truncation (the bug was "--no-respect-gitign…")
+        assert "--no-gitign…" not in result.stdout
+        # Verify help text is present
+        assert "Respect .gitignore files" in result.stdout
