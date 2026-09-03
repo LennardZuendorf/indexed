@@ -1437,7 +1437,7 @@ class TestRerankFlag:
         markup tag and silently drops it, so a flag-name-only assertion
         passed while the one fact this help text carries was missing from
         the rendered output."""
-        result = runner.invoke(search_cmd.app, ["--help"])
+        result = runner.invoke(search_cmd.app, ["--help"], env={"COLUMNS": "120"})
 
         assert result.exit_code == 0
         assert "--rerank" in result.stdout

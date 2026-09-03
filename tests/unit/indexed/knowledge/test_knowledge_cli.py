@@ -118,7 +118,9 @@ class TestCreateEngineFlagHelp:
 
     def test_index_create_files_help_shows_engine_flag(self):
         """`index create files --help` lists the leaf-level `--engine`."""
-        result = runner.invoke(root_app, ["index", "create", "files", "--help"])
+        result = runner.invoke(
+            root_app, ["index", "create", "files", "--help"], env={"COLUMNS": "120"}
+        )
 
         assert result.exit_code == 0, result.stdout
         assert "--engine" in result.stdout
@@ -126,7 +128,9 @@ class TestCreateEngineFlagHelp:
     def test_index_create_group_help_shows_engine_flag(self):
         """`index create --help` lists the group-level `--engine`, one level up
         the tree — where issue #188 says the user looks for it."""
-        result = runner.invoke(root_app, ["index", "create", "--help"])
+        result = runner.invoke(
+            root_app, ["index", "create", "--help"], env={"COLUMNS": "120"}
+        )
 
         assert result.exit_code == 0, result.stdout
         assert "--engine" in result.stdout

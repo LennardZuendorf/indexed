@@ -1614,7 +1614,7 @@ class TestCreateGroupEngineOption:
 
         from indexed.cli.knowledge.commands import create as create_mod
 
-        result = CliRunner().invoke(create_mod.app, ["--help"])
+        result = CliRunner().invoke(create_mod.app, ["--help"], env={"COLUMNS": "120"})
 
         assert result.exit_code == 0
         assert "--engine" in result.stdout
