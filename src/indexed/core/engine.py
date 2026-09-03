@@ -565,7 +565,7 @@ def search(
         return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
 
     merged: Dict[str, Any] = {}
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     return merged
 
@@ -601,7 +601,7 @@ def status(
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
     out: List[Any] = []
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         out.extend(_run(grp_version, grp_names))
     return out
 
@@ -637,7 +637,7 @@ def inspect(
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
     out: List[Any] = []
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         out.extend(_run(grp_version, grp_names))
     return out
 
