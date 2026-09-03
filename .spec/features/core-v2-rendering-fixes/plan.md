@@ -3,7 +3,7 @@ type: feature-plan
 feature: core-v2-rendering-fixes
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-09-02
+updated: 2026-09-03
 ---
 
 # Feature: Core v2 Rendering Fixes — Implementation Plan
@@ -210,3 +210,30 @@ root `.spec/plan.md`'s Feature Sequence table; fold any load-bearing pattern
 (e.g. "detail-card width must derive from the terminal, never hardcode") into
 `.spec/lessons.md`; retire this feature folder once merged, per the precedent set
 when `review-remediation` was retired into root tech specs.
+
+**Done (2026-09-03):** Feature 18 row + Decision Log entry added to root
+`.spec/plan.md`; 5 lessons folded into `.spec/lessons.md` § "Core v2 rendering
+fixes". Feature folder NOT yet retired — retirement happens after this branch
+merges, per the review-remediation precedent (`.spec/plan.md`'s 2026-07-09
+decision).
+
+## Final outcome (2026-09-03)
+
+All 8 requirements shipped; full Decision Log entry at
+[../../plan.md](../../plan.md#decision-log). Two notes for anyone reading this
+plan's unit descriptions against the final diff:
+
+- **R4 (Unit 3) resolved as planned:** the Open Question above was resolved as
+  RENAME (`--gitignore/--no-gitignore`), per the plan's own recommended
+  default. `tech.md`'s R4 section and this file's prose still cite the OLD
+  flag name (`--respect-gitignore/...`) where they describe the bug that was
+  found and the decision being made — that's correct as historical narrative
+  of what the review observed, not a description of current behavior.
+- **R2 (Unit 1)'s width numbers changed after Unit 1 shipped.** Unit 1 landed
+  `_DETAIL_CARD_MAX_WIDTH = 100`; the final whole-branch review found R2's own
+  acceptance scenario (one line at 100+ columns) still failed at that cap
+  combined with a ratio-based label column, and the fix wave raised the max
+  to 120 and changed the label column to min-width/auto-sizing. `tech.md`'s
+  R2 section (written before Unit 1 shipped) still describes the `[60, 100]`
+  clamp as the fix shape — the shipped value is `[60, 120]` with a different
+  column-sizing mechanism. See the root Decision Log entry for the full story.
