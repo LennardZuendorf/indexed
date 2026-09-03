@@ -1428,7 +1428,7 @@ class TestRerankFlag:
             search_cmd, "create_phased_progress", lambda **kw: phased_mock
         )
 
-    def test_search_help_shows_rerank_flag(self):
+    def test_search_help_shows_rerank_flag(self, monkeypatch):
         """`index search --help` documents --rerank/--no-rerank *and* names
         the config key it overrides.
 
@@ -1437,7 +1437,14 @@ class TestRerankFlag:
         markup tag and silently drops it, so a flag-name-only assertion
         passed while the one fact this help text carries was missing from
         the rendered output."""
-        result = runner.invoke(search_cmd.app, ["--help"], env={"COLUMNS": "120"})
+        import typer.rich_utils
+
+        # Typer renders --help through a fixed-width Console
+        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
+        # import time) that ignores COLUMNS entirely once set — pin it so the
+        # assertion doesn't depend on the runner's actual terminal size.
+        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
+        result = runner.invoke(search_cmd.app, ["--help"])
 
         assert result.exit_code == 0
         assert "--rerank" in result.stdout

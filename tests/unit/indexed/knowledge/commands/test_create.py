@@ -1608,13 +1608,19 @@ class TestCreateGroupEngineOption:
             result = CliRunner().invoke(create_mod.app, argv)
         return result, seen
 
-    def test_group_help_lists_engine(self):
+    def test_group_help_lists_engine(self, monkeypatch):
         """`index create --help` shows --engine among its own options."""
+        import typer.rich_utils
         from typer.testing import CliRunner
 
         from indexed.cli.knowledge.commands import create as create_mod
 
-        result = CliRunner().invoke(create_mod.app, ["--help"], env={"COLUMNS": "120"})
+        # Typer renders --help through a fixed-width Console
+        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
+        # import time) that ignores COLUMNS entirely once set — pin it so the
+        # assertion doesn't depend on the runner's actual terminal size.
+        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
+        result = CliRunner().invoke(create_mod.app, ["--help"])
 
         assert result.exit_code == 0
         assert "--engine" in result.stdout

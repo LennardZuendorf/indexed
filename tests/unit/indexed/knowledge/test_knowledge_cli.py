@@ -116,21 +116,27 @@ class TestCreateEngineFlagHelp:
     root callback. Driven through the real root app so the asserted command
     paths are the ones a user actually types (issue #188)."""
 
-    def test_index_create_files_help_shows_engine_flag(self):
+    def test_index_create_files_help_shows_engine_flag(self, monkeypatch):
         """`index create files --help` lists the leaf-level `--engine`."""
-        result = runner.invoke(
-            root_app, ["index", "create", "files", "--help"], env={"COLUMNS": "120"}
-        )
+        import typer.rich_utils
+
+        # Typer renders --help through a fixed-width Console
+        # (`typer.rich_utils.MAX_WIDTH`, read once from `TERMINAL_WIDTH` at
+        # import time) that ignores COLUMNS entirely once set — pin it so the
+        # assertion doesn't depend on the runner's actual terminal size.
+        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
+        result = runner.invoke(root_app, ["index", "create", "files", "--help"])
 
         assert result.exit_code == 0, result.stdout
         assert "--engine" in result.stdout
 
-    def test_index_create_group_help_shows_engine_flag(self):
+    def test_index_create_group_help_shows_engine_flag(self, monkeypatch):
         """`index create --help` lists the group-level `--engine`, one level up
         the tree — where issue #188 says the user looks for it."""
-        result = runner.invoke(
-            root_app, ["index", "create", "--help"], env={"COLUMNS": "120"}
-        )
+        import typer.rich_utils
+
+        monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 120)
+        result = runner.invoke(root_app, ["index", "create", "--help"])
 
         assert result.exit_code == 0, result.stdout
         assert "--engine" in result.stdout
