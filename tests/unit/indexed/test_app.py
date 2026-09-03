@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 import sys
+import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.app import (
@@ -161,3 +162,23 @@ class TestMainFunction:
             mock_app.assert_called_once()
         finally:
             sys.argv = original_argv
+
+    @patch("indexed.cli.app.app")
+    @patch("indexed.cli.app.bootstrap_logging")
+    def test_main_renders_indexed_error_as_bordered_panel(
+        self, mock_bootstrap, mock_app, capsys
+    ):
+        """R1: an IndexedError from app() renders as a bordered `✗` panel,
+        not bare styled text (matches print_error's alert panel style)."""
+        from indexed.core.errors import EngineMismatchError
+
+        mock_app.side_effect = EngineMismatchError("my-coll", found="1", requested="2")
+
+        with pytest.raises(SystemExit):
+            from indexed.cli.app import main
+
+            main()
+
+        captured = capsys.readouterr()
+        assert "✗" in captured.out
+        assert "╭" in captured.out and "╰" in captured.out

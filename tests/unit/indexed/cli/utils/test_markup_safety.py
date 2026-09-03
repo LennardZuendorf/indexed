@@ -274,3 +274,38 @@ class TestInitModelNameSafety:
         assert result.exit_code == 0
         assert "org/model[v2]" in result.output
         assert "/tmp/hf/cache[x]" in result.output
+
+
+class _FakeConsole:
+    """Stand-in for the shared console, exposing only `.width` (R2)."""
+
+    def __init__(self, width: int) -> None:
+        self.width = width
+
+
+class TestDetailCardWidthScaling:
+    """theme.py — get_detail_card_width() sizes to the live terminal (R2).
+
+    Detail cards used a hardcoded 60-column width regardless of the actual
+    terminal size, causing overflow on narrow terminals and an oddly narrow
+    card on wide ones. The width must now track the live terminal width,
+    clamped to a sane [min, max] range.
+    """
+
+    def test_narrow_terminal_clamps_to_minimum(self, monkeypatch):
+        from indexed.cli.utils.components import theme
+
+        monkeypatch.setattr(theme, "console", _FakeConsole(width=20))
+        assert theme.get_detail_card_width() == 60
+
+    def test_mid_width_terminal_scales_with_terminal(self, monkeypatch):
+        from indexed.cli.utils.components import theme
+
+        monkeypatch.setattr(theme, "console", _FakeConsole(width=75))
+        assert theme.get_detail_card_width() == 75
+
+    def test_wide_terminal_clamps_to_maximum(self, monkeypatch):
+        from indexed.cli.utils.components import theme
+
+        monkeypatch.setattr(theme, "console", _FakeConsole(width=300))
+        assert theme.get_detail_card_width() == 100

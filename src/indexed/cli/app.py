@@ -26,6 +26,7 @@ from rich.theme import Theme  # noqa: E402
 from indexed.utils import bootstrap_logging  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
+from .utils.components.alerts import print_error  # noqa: E402
 from .utils.components.theme import (  # noqa: E402
     get_accent_style,
     get_dim_style,
@@ -247,7 +248,7 @@ def main() -> None:
         # by the user — escape before it enters this styled print so markup
         # like `[/bold]` renders verbatim instead of raising `MarkupError`
         # (foundation/6c bug E2).
-        _shared_console.print(escape(format_cli_error(exc)), style=get_error_style())
+        print_error(escape(format_cli_error(exc)))
         # `app()` already ran (and exited) the click runner — `typer.Exit`
         # raised here would be uncaught (no click main() left to interpret
         # it), producing a traceback and losing the mapped exit code
