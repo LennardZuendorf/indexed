@@ -418,3 +418,94 @@ class TestInspectMarkupSafety:
 
         assert result.exit_code == 0, result.stdout
         assert "my[coll] Collection Details:" in result.stdout
+
+
+class TestInspectListViewPathRendering:
+    """rendering-fixes/5 R7 — the list view's Path row must not
+    ellipsis-truncate a value the detail view renders in full. Columns
+    squeezes each card to roughly terminal_width / N, and the ratio=2 value
+    column used to fall back to Rich's default single-line ellipsis overflow
+    (``create_info_rows_with_spacing`` in cards.py)."""
+
+    # A path long enough to overflow the squeezed value column of a 3-card
+    # row at a realistic terminal width. The exact fold point shifts a
+    # character or two between the list view's per-panel width and the
+    # detail view's card width, so assertions key off a short marker at the
+    # very end of the path (never itself split further) rather than the
+    # full string.
+    _LONG_PATH = (
+        "/home/user/projects/some-org/some-really-long-repository-name/"
+        "docs/subfolder-xyz789"
+    )
+    _TAIL_MARKER = "xyz789"
+
+    @staticmethod
+    def _collection(name: str, relative_path: str) -> CollectionInfo:
+        return CollectionInfo(
+            name=name,
+            source_type="localFiles",
+            relative_path=relative_path,
+            number_of_documents=3,
+            number_of_chunks=5,
+            disk_size_bytes=1024,
+            index_size_bytes=512,
+            created_time="2025-01-01T00:00:00Z",
+            updated_time="2025-01-02T00:00:00Z",
+        )
+
+    def test_list_view_long_path_not_truncated(self, monkeypatch):
+        """Three collections listed together (no name arg): the long path
+        must render in full (wrapped, never mid-word-ellipsis-truncated)
+        even though ``Columns(equal=True)`` squeezes each card to roughly a
+        third of the terminal width."""
+        collections = [
+            self._collection("alpha", self._LONG_PATH),
+            self._collection("beta", "/short/path"),
+            self._collection("gamma", "/another/short/path"),
+        ]
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: collections)
+
+        wide_runner = CliRunner(env={"COLUMNS": "100"})
+        result = wide_runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.stdout
+        assert "…" not in result.stdout
+        assert self._TAIL_MARKER in result.stdout
+
+    def test_detail_view_long_path_not_truncated(self, monkeypatch):
+        """Same long path via ``index inspect <name>`` (detail view, single
+        card, never ``Columns``-wrapped) — the shared row renderer must not
+        ellipsis-truncate it there either."""
+        coll = self._collection("alpha", self._LONG_PATH)
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        wide_runner = CliRunner(env={"COLUMNS": "100"})
+        result = wide_runner.invoke(inspect_cmd.app, ["alpha"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "…" not in result.stdout
+        assert self._TAIL_MARKER in result.stdout
+
+    def test_list_view_short_path_layout_unaffected(self, monkeypatch):
+        """Short values keep the existing single-line, side-by-side card
+        layout — the fold override must be a no-op when nothing overflows.
+        Three collections (not two) to match the width the long-path case
+        above already proved clean — a 2-card row at this width squeezes the
+        unrelated *label* column enough to ellipsis "Documents" on its own,
+        a pre-existing characteristic of that column this task doesn't
+        touch."""
+        collections = [
+            self._collection("alpha", "/short/path"),
+            self._collection("beta", "/short/path2"),
+            self._collection("gamma", "/another/short/path"),
+        ]
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: collections)
+
+        wide_runner = CliRunner(env={"COLUMNS": "100"})
+        result = wide_runner.invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.stdout
+        assert "…" not in result.stdout
+        assert "/short/path" in result.stdout
+        assert "/short/path2" in result.stdout
+        assert "/another/short/path" in result.stdout

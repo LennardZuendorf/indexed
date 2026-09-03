@@ -50,7 +50,13 @@ def create_info_rows_with_spacing(rows: Sequence[tuple[str, "str | Text"]]) -> l
             value_text = value
         else:
             # Plain/untrusted content: literal text, never markup-parsed.
-            value_text = Text(str(value), style=value_style)
+            # The Path row can be squeezed narrow by Columns(equal=True) in
+            # the list view (rendering-fixes/5 R7) — fold-wrap it onto extra
+            # lines instead of the column's default ellipsis so the full
+            # value stays visible. Other rows keep the default single-line
+            # ellipsis behavior.
+            overflow = "fold" if label_text == "Path" else None
+            value_text = Text(str(value), style=value_style, overflow=overflow)
         table.add_row(label_text, value_text)
     return [table]
 
