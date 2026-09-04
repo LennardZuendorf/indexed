@@ -1076,7 +1076,14 @@ class TestFormatSearchResults:
         "rerank". That must never render as a trustworthy scale label, and
         must never be treated as higher-is-better (which would invert sort
         order for a scale nobody has actually validated) — it's dropped to
-        the same "absent" state as a v1 collection instead."""
+        the same "absent" state as a v1 collection instead.
+
+        Two chunks with distinct scores prove the sort-order fallback, not
+        just label suppression: if "some-future-kind" were (incorrectly)
+        treated as higher-is-better, the 0.9-scored chunk would be promoted
+        to Top Result. Treated as absent (v1-style ascending raw score, the
+        correct behavior), the lower-scored 0.4 chunk is promoted instead.
+        """
         from rich.console import Console
 
         record_console = Console(record=True, width=100, no_color=True)
@@ -1089,7 +1096,14 @@ class TestFormatSearchResults:
                     {
                         "id": "future-doc",
                         "matchedChunks": [
-                            {"score": 0.4, "content": {"indexedData": "future text"}}
+                            {
+                                "score": 0.4,
+                                "content": {"indexedData": "lower score text"},
+                            },
+                            {
+                                "score": 0.9,
+                                "content": {"indexedData": "higher score text"},
+                            },
                         ],
                     }
                 ],
@@ -1102,6 +1116,19 @@ class TestFormatSearchResults:
         assert "(some-future-kind)" not in text
         assert "(cosine)" not in text
         assert "(rerank)" not in text
+
+        # Sort-order fallback: ascending raw score (v1-style), so the
+        # lower-scored chunk is Top Result and the higher-scored one lands
+        # in Other Matches — the opposite of what higher-is-better would do.
+        # "Other Matches" renders only collection/doc/chunk/score metadata
+        # (no excerpt text), so assert on the score value there instead.
+        split_at = text.index("Other Search Query Matches")
+        top_section = text[:split_at]
+        others_section = text[split_at:]
+        assert "lower score text" in top_section
+        assert "higher score text" not in top_section
+        assert "0.9000" in others_section
+        assert "0.4000" not in others_section
 
     def test_compact_view_labels_rerank_score_kind(self, monkeypatch):
         """R6 (final-review I4): `index search --compact` routes through

@@ -1690,16 +1690,42 @@ class TestCreateFilesHelpRendering:
     def test_create_files_help_no_gitignore_flag_truncation_at_80_columns(self):
         """rendering-fixes/3: `index create files --help` at 80 columns must
         show full --gitignore/--no-gitignore flag text without ellipsis (…)
-        truncation."""
-        from typer.testing import CliRunner
+        truncation.
 
-        from indexed.cli.knowledge.commands import create as create_mod
+        Runs the real CLI as a subprocess (matching how this was manually
+        verified: ``COLUMNS=80 uv run indexed index create files --help``)
+        rather than through in-process ``typer.testing.CliRunner``. Typer's
+        own ``--help`` renderer determines its Console's width from process
+        state that a per-invocation ``CliRunner(env=...)`` override doesn't
+        reliably reach when the test runs under coverage instrumentation —
+        confirmed non-reproducible via the app's OWN width-aware code (which
+        reads ``console.width`` per-call, see ``test_inspect.py``'s
+        equivalent COLUMNS-driven tests), so this is a Typer/test-harness
+        interaction, not an application bug. A subprocess sidesteps it
+        entirely and exercises the actual user-facing entry point.
+        """
+        import os
+        import subprocess
+        import sys
 
-        # Set COLUMNS=80 to simulate an 80-column terminal
-        runner = CliRunner(env={"COLUMNS": "80"})
-        result = runner.invoke(create_mod.app, ["files", "--help"])
+        env = {**os.environ, "COLUMNS": "80", "TERM": "dumb"}
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "indexed.cli.app",
+                "index",
+                "create",
+                "files",
+                "--help",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
-        assert result.exit_code == 0, result.stdout
+        assert result.returncode == 0, result.stdout + result.stderr
         # Verify the full flag text appears without truncation
         assert "--gitignore" in result.stdout
         assert "--no-gitignore" in result.stdout
