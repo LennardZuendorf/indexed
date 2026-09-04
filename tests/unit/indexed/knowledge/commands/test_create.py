@@ -12,6 +12,8 @@ from indexed.cli.knowledge.commands.create import (
     create_confluence,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestIsCloud:
     """Test _is_cloud function."""

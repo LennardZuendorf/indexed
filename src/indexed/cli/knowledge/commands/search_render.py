@@ -139,11 +139,14 @@ def format_search_results(
             failed_collections.append((collection_name, collection_results["error"]))
             continue
 
+        # Restrict to the known kinds: an unrecognized string (a malformed or
+        # future-versioned manifest) must never be treated as higher-is-better
+        # nor rendered as a trustworthy scale label — it's dropped to the same
+        # "absent" state as a v1 collection instead.
         raw_score_kind = collection_results.get("scoreKind")
-        higher_is_better_by_collection[collection_name] = (
-            raw_score_kind in _HIGHER_IS_BETTER
-        )
-        if isinstance(raw_score_kind, str):
+        is_known_score_kind = raw_score_kind in _HIGHER_IS_BETTER
+        higher_is_better_by_collection[collection_name] = is_known_score_kind
+        if is_known_score_kind:
             score_kind_by_collection[collection_name] = raw_score_kind
 
         documents = collection_results.get("results", [])
@@ -453,9 +456,11 @@ def format_search_results_compact(
         # This loop is already scoped to one collection, so the per-collection
         # lookup those functions do through `score_kind_by_collection` reduces
         # to reading the collection's own raw `scoreKind` here. v1 collections
-        # carry no `scoreKind` key and stay unlabeled (byte-stable).
+        # carry no `scoreKind` key and stay unlabeled (byte-stable); an
+        # unrecognized kind (malformed/future manifest) is treated the same
+        # way — never rendered as a trustworthy label.
         raw_score_kind = collection_results.get("scoreKind")
-        score_kind = raw_score_kind if isinstance(raw_score_kind, str) else None
+        score_kind = raw_score_kind if raw_score_kind in _HIGHER_IS_BETTER else None
 
         # Collection header — collection_name/doc_id are content-derived, so
         # escape them before entering markup (foundation/6c bug E2).

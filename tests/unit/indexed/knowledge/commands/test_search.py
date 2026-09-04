@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 from indexed.cli.knowledge.commands import search as search_cmd
 from indexed.cli.knowledge.commands import search_render
 
+pytestmark = pytest.mark.unit
 
 runner = CliRunner()
 
@@ -1064,6 +1065,41 @@ class TestFormatSearchResults:
         search_render.format_search_results("query", results=results, limit=5)
 
         text = record_console.export_text()
+        assert "(cosine)" not in text
+        assert "(rerank)" not in text
+
+    def test_unsupported_score_kind_is_not_labeled_or_treated_higher_is_better(
+        self, monkeypatch
+    ):
+        """R6: `V2Manifest.score_kind` is an unrestricted `str` — a malformed
+        or future-versioned manifest could carry a value other than "cosine"/
+        "rerank". That must never render as a trustworthy scale label, and
+        must never be treated as higher-is-better (which would invert sort
+        order for a scale nobody has actually validated) — it's dropped to
+        the same "absent" state as a v1 collection instead."""
+        from rich.console import Console
+
+        record_console = Console(record=True, width=100, no_color=True)
+        monkeypatch.setattr(search_render, "console", record_console)
+
+        results: Dict[str, Any] = {
+            "future-coll": {
+                "scoreKind": "some-future-kind",
+                "results": [
+                    {
+                        "id": "future-doc",
+                        "matchedChunks": [
+                            {"score": 0.4, "content": {"indexedData": "future text"}}
+                        ],
+                    }
+                ],
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        text = record_console.export_text()
+        assert "(some-future-kind)" not in text
         assert "(cosine)" not in text
         assert "(rerank)" not in text
 

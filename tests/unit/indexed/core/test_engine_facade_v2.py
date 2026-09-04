@@ -265,6 +265,7 @@ def test_mixed_v1_v2_status_lists_both(
     assert [s.name for s in statuses] == ["v1-coll", "v2-coll"]
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(
     not model_available(), reason="Embedding model not cached (all-MiniLM-L6-v2)"
 )
