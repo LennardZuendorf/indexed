@@ -1,5 +1,6 @@
 """Tests for knowledge create commands."""
 
+import re
 from unittest.mock import Mock, patch
 import pytest
 import typer
@@ -1617,7 +1618,10 @@ class TestCreateGroupEngineOption:
         result = CliRunner().invoke(create_mod.app, ["--help"])
 
         assert result.exit_code == 0
-        assert "--engine" in result.stdout
+        # The rich highlighter can style "-" and "-engine" as two adjacent
+        # spans (observed on CI's runners, not locally) — strip ANSI so the
+        # assertion checks logical content, not exact byte-level styling.
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     def test_group_engine_normalized_onto_context(self):
         """A group-level `--engine v2` lands on ctx.obj["engine"] already

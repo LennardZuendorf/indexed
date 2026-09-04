@@ -1,5 +1,6 @@
 """Tests for knowledge CLI docs command and per-command --help rendering."""
 
+import re
 from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
@@ -121,7 +122,10 @@ class TestCreateEngineFlagHelp:
         result = runner.invoke(root_app, ["index", "create", "files", "--help"])
 
         assert result.exit_code == 0, result.stdout
-        assert "--engine" in result.stdout
+        # The rich highlighter can style adjacent characters of a flag name
+        # as separate spans (observed on CI's runners, not locally) — strip
+        # ANSI so the assertion checks logical content, not exact styling.
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     def test_index_create_group_help_shows_engine_flag(self):
         """`index create --help` lists the group-level `--engine`, one level up
@@ -129,4 +133,4 @@ class TestCreateEngineFlagHelp:
         result = runner.invoke(root_app, ["index", "create", "--help"])
 
         assert result.exit_code == 0, result.stdout
-        assert "--engine" in result.stdout
+        assert "--engine" in re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
