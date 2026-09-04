@@ -7,33 +7,6 @@ and a FastMCP
 source of truth is `.spec/`; earned lessons are in `.spec/lessons.md` — read both at
 session start.
 
-## Workflow
-
-Run this cycle per unit of work; each phase is a gate you may not skip:
-
-```
-ASK → read .spec/ → PLAN → CONFIRM → IMPL → VERIFY → COMPOUND
-```
-
-- **ASK / PLAN / CONFIRM** — clarify scope, cite the specs you read, get explicit
-  approval before writing code. Scale ceremony to risk: a one-line fix skips PLAN.
-- **IMPL** — edit existing files over new ones; test-first where the spec says so.
-- **VERIFY** — run the full gate below and show real output. No output, no claim.
-- **COMPOUND** — fold changes back into `.spec/` + `.spec/lessons.md`. A change that
-  outdates a doc isn't done until the doc is fixed.
-
-Delegate research and multi-file exploration to subagents to keep context clean.
-
-### Verify gate (from PROJECT ROOT, all must pass)
-
-```bash
-uv run ruff check . --fix && uv run ruff format
-uv run ty check src/indexed                    # 0 diagnostics, full-tree clean
-uv run pytest -q --cov=src/indexed             # full suite, >85% coverage
-python scripts/check_imports.py                # module-edge gate (4 edges, one package)
-bash .agents/skills/spec/scripts/validate.sh   # only if .spec/ was touched → 0 errors
-```
-
 ## Context
 
 Four layers, top calls down only: **CLI/MCP** (`indexed.cli` / `indexed.mcp`) →

@@ -17,7 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 26_100
+SRC_LOC_MAX = 26_450
+# Raised from 26_100 by core-v2-discoverability/issue #188 (#191): group-level
+# `--engine` on `index create` (`_create_options.py`/`_create_commands.py`/
+# `_create_helpers.py`, plus `create.py`/`search.py`/`cli.py`/
+# `composition.py` wiring) and config-key discoverability for
+# `--rerank`/`--no-rerank` — genuine discoverability surface, not stealth
+# regrowth; ceiling = measured (26_235) + headroom.
 # Raised from 25_800 by core-v2/6: opt-in `SentenceTransformerRerank` wiring in
 # `core/v2/retrieval.py` (+ `CoreV2RerankConfig` / `resolve_rerank_config` /
 # registration) and the cross-engine unified-relevance ranking in
@@ -54,7 +60,14 @@ SRC_LOC_MAX = 26_100
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 36_850
+TEST_LOC_MAX = 39_600
+# Raised from 36_850 by core-v2-discoverability/issue #188 (#191)'s tests: the
+# new `test_v2_create_search_lifecycle.py` system test, and expanded coverage
+# in `test_create.py`/`test_create_helpers.py`/`test_search.py`/
+# `test_knowledge_cli.py`/`test_retrieval.py`/`test_engine_facade*.py`/
+# `test_engine_selector.py` for the group-`--engine` and `--rerank` surfaces —
+# genuine discoverability/regression coverage, not stealth regrowth; ceiling =
+# measured (39_283) + headroom.
 # Raised from 36_400 by core-v2/8's tests: the v2 cloud-connector lifecycle net
 # (`test_lifecycle_cloud_v2.py`: jira/confluence/outline known-hit
 # create→search→update→inspect→remove), the v2 benchmark rows + subprocess
