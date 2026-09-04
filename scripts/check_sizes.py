@@ -60,7 +60,17 @@ SRC_LOC_MAX = 26_450
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 39_600
+TEST_LOC_MAX = 40_600
+# Raised from 39_600 by core-v2-rendering-fixes/issue #187's tests: red->green
+# regression coverage for all 8 issue #187 findings (error-panel rendering,
+# terminal-derived detail-card width, Included-Patterns display, the
+# --gitignore/--no-gitignore help-truncation fix, shared content-free search
+# filtering, cosine/rerank score labels, inspect list-view path wrapping,
+# stable engine-group ordering), plus the final-whole-branch-review fix wave's
+# tests (double-escape regression guard, wide-terminal card rendering, row
+# alignment, --compact score labels) and PR-review-response coverage
+# (unsupported-scoreKind guard); genuine defect-guarding coverage, not stealth
+# regrowth; ceiling = measured (40_288) + headroom.
 # Raised from 36_850 by core-v2-discoverability/issue #188 (#191)'s tests: the
 # new `test_v2_create_search_lifecycle.py` system test, and expanded coverage
 # in `test_create.py`/`test_create_helpers.py`/`test_search.py`/
