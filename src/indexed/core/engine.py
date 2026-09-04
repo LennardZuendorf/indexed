@@ -219,8 +219,12 @@ def _group_names_by_engine(
       clear deletes them);
     - readable *unknown* marker → ``UnknownEngineVersionError`` (fail loud).
 
-    Group insertion order follows first appearance, so concatenated results keep
-    a stable order.
+    Group insertion order follows first appearance in ``collection_names`` — this
+    function's own dict order is NOT a stable/deterministic key (it depends on
+    caller-supplied order, e.g. alphabetical discovery). Callers that expose
+    grouped output to a user (``status``/``inspect``) MUST iterate
+    ``sorted(groups.items())`` themselves for a deterministic ascending-version
+    order (rendering-fixes/5 R8) — this function does not do that sorting.
     """
     base = _collections_base(collections_path)
     groups: "dict[EngineVersion, List[str]]" = {}

@@ -23,7 +23,7 @@ alone.
 
 ## Files
 
-```
+```text
 src/indexed/cli/app.py                                          # top-level IndexedError catch prints bare text (R1)
 src/indexed/cli/utils/components/alerts.py                      # print_error() — the panel pattern to reuse (R1)
 src/indexed/cli/utils/components/theme.py                       # get_detail_card_width() hardcoded 60 (R2)
@@ -61,9 +61,20 @@ _shared_console.print(escape(format_cli_error(exc)), style=get_error_style())
 already uses, and what the issue holds up as the standard to match.
 
 **Fix:** in `app.py:250`, replace the bare `console.print(...)` call with
-`print_error(escape(format_cli_error(exc)))` (or the equivalent `Panel`
-construction), keeping the existing `escape()` and `exit_code_for(exc)`/`sys.exit`
-flow unchanged. Single fix point — no per-command changes needed.
+`print_error(format_cli_error(exc))`, keeping the existing `exit_code_for(exc)`/
+`sys.exit` flow unchanged. Single fix point — no per-command changes needed.
+
+**Shipped correction (2026-09-03, final whole-branch review):** the fix above
+initially kept the pre-existing `escape()` call — correct for the OLD sink
+(`console.print(msg, style=...)`, which is markup-*parsed*) but wrong for the
+NEW one: `print_error`'s `Text(...)` sink renders **literally**, so `escape()`
+made escape backslashes print visibly for any message containing `[`
+(e.g. `\[core.v2.rerank].enabled`). The shipped code drops `escape()` entirely
+— `print_error(format_cli_error(exc))` — since a `Text()` sink is markup-safe
+by construction. The same pattern was found and fixed in a second, pre-existing
+call site (`search_render.py`'s `_print_collection_errors`), outside this
+feature's original 8 findings. See `.spec/plan.md`'s 2026-09-03 Decision Log
+entry for the full story.
 
 ### R2 — detail cards hardcoded to 60 columns (CONFIRMED)
 
@@ -85,6 +96,17 @@ shared `console` singleton in `cli/utils/console.py`, or
 `shutil.get_terminal_size()`), clamped to a sane `[min, max]` range (e.g.
 `[60, 100]`) so narrow terminals still don't overflow and very wide ones aren't
 absurdly stretched. No call-site changes required.
+
+**Shipped correction (2026-09-03, final whole-branch review):** `[60, 100]`
+was the initial clamp, but the final review found R2's own acceptance scenario
+(a realistic v2 model descriptor on one line at 100+ columns) still failed at
+that cap, compounded by `create_info_rows_with_spacing`'s label column
+(`cards.py`) being pure `ratio=1` against the value's `ratio=2` — a short
+label like `"Engine"` still ate disproportionate width. Shipped: max raised to
+`[60, 120]`, and the label column changed to a `min_width`, auto-sizing column
+instead of ratio-based, so long values get the remaining space. Verified by
+rendering the actual failing descriptor at multiple terminal widths, not by
+re-deriving the arithmetic.
 
 ### R3 — raw regex leaks into "Included Patterns" (CONFIRMED — root cause traced past the display layer)
 
@@ -147,7 +169,7 @@ No test currently covers this; new tests belong in
 
 Reproduced directly: `COLUMNS=80 uv run indexed index create files --help` renders
 
-```
+```text
 │ --respect-gitignore      --no-respect-gitign…          Respect .gitignore    │
 ```
 

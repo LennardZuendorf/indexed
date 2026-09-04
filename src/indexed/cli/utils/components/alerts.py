@@ -7,7 +7,7 @@ to communicate status.
 Design Decisions:
 - Panel-based alerts match the card-based design system
 - Simple icons (✓, ✗, ⚠, ℹ) for reliable terminal rendering
-- Fixed width (60 chars) to match other card widths
+- Terminal-derived width, clamped to [60, 120] chars, to match other card widths
 - Border colors communicate status (green/red/yellow/dim)
 """
 

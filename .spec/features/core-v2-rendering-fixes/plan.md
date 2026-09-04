@@ -73,7 +73,7 @@ cards size to the terminal instead of a fixed 60 columns.
 
 **Files:**
 
-```
+```text
 src/indexed/cli/app.py                       # top-level IndexedError catch: use print_error, not bare console.print
 src/indexed/cli/utils/components/theme.py    # get_detail_card_width(): derive from terminal, clamp [min,max]
 ```
@@ -101,7 +101,7 @@ collections.
 
 **Files:**
 
-```
+```text
 src/indexed/connectors/files/schema.py             # normalize_patterns: keep original text, not the translated form
 src/indexed/cli/knowledge/commands/update_service.py  # defensive default-wildcard recognition for legacy manifests
 ```
@@ -128,7 +128,7 @@ flag pair in full at 80 columns.
 
 **Files:**
 
-```
+```text
 src/indexed/cli/knowledge/commands/_create_options.py   # flag string rename
 ```
 
@@ -152,7 +152,7 @@ Result"; rendered scores carry a cosine/rerank label.
 
 **Files:**
 
-```
+```text
 src/indexed/cli/knowledge/commands/search_render.py   # shared content-free-filtered pool; thread scoreKind into render calls
 ```
 
@@ -177,7 +177,7 @@ view; engine groups sort deterministically.
 
 **Files:**
 
-```
+```text
 src/indexed/cli/knowledge/commands/inspect.py       # (indirect — consumes cards.py / engine.py; no logic change expected here)
 src/indexed/cli/utils/components/cards.py           # create_info_rows_with_spacing: stop ellipsis-truncating Path row
 src/indexed/core/engine.py                          # sorted(groups.items()) at inspect()/status() group-emission sites
