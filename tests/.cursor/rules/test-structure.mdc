@@ -4,164 +4,71 @@ alwaysApply: false
 ---
 # Test Structure and Organization Rules
 
-## Test Type Definitions
-
-### Unit Tests (`tests/unit/`)
-**Scope:** Single class or function in isolation.
-
-**Purpose:** Test individual components with all dependencies mocked.
-
-**Structure:**
-- One test file per module/package
-- Mirror source structure: `tests/unit/{package}/{module}/test_{component}.py`
-- Mock all external dependencies
-- Fast execution (< 100ms per test)
-
-**Example:**
-```python
-# tests/unit/indexed_core/test_faiss_indexer.py
-def test_faiss_indexer_creates_index():
-    """Test FaissIndexer in isolation with mocked dependencies."""
-    # Mock EmbeddingService, DiskPersister
-    # Test only FaissIndexer behavior
-```
-
-### Integration Tests (`tests/integration/`)
-**Scope:** Multiple classes/functions **within a single module**.
-
-**Purpose:** Verify that multiple components within the same module work together correctly.
-
-**Structure:**
-- One test file per module integration scenario
-- Mirror source structure: `tests/integration/{package}/{module}/test_{module}_integration.py`
-- Use real components within the module (no mocking of module internals)
-- Mock only external dependencies (APIs, file system via fixtures)
-- Use session-scoped fixtures for expensive operations (e.g., indexed collections)
-
-**Examples:**
-```python
-# tests/integration/indexed-core/engine/test_engine_indexing_integration.py
-def test_document_collection_creator_with_faiss_indexer():
-    """Test DocumentCollectionCreator + FaissIndexer + DiskPersister within engine module."""
-    # Use REAL engine components (no mocking within module)
-    # Mock only external dependencies (connectors, file system)
-
-# tests/integration/indexed-connectors/test_connector_module_integration.py
-def test_connector_reader_converter_integration():
-    """Test Connector + Reader + Converter work together within connector module."""
-    # Test complete connector module flow
-```
-
-**Key Rules:**
-- ✅ Test multiple classes/functions within the same module
-- ✅ Use real components (no internal mocking)
-- ✅ Mock only external dependencies (APIs, file system)
-- ❌ DO NOT test across modules (that's system tests)
-- ❌ DO NOT test single components in isolation (that's unit tests)
-
-### System Tests (`tests/system/`)
-**Scope:** Complete workflows **across multiple modules**.
-
-**Purpose:** Verify end-to-end workflows spanning CLI → Service → Engine → Storage layers.
-
-**Structure:**
-- One test file per workflow scenario
-- Test complete user-facing workflows
-- Use real components across all modules (minimal mocking)
-- Mock only external services (Jira API, Confluence API)
-
-**Examples:**
-```python
-# tests/system/test_indexing_pipeline.py
-def test_cli_create_command_full_pipeline():
-    """Test CLI command → Service → Engine → Storage complete flow."""
-    # Test across CLI, Service, Engine, Storage modules
-
-# tests/system/test_collection_lifecycle.py
-def test_create_search_update_remove_lifecycle():
-    """Test complete collection lifecycle across all modules."""
-    # Test multi-module workflow
-```
-
-**Key Rules:**
-- ✅ Test workflows across multiple modules
-- ✅ Test complete user-facing scenarios
-- ✅ Use real components (minimal mocking)
-- ❌ DO NOT test within a single module (that's integration tests)
+Single `indexed` package (`src/indexed/`) — tests mirror it under `tests/unit/indexed/`.
+There is no separate `tests/integration/` directory; unit vs. integration vs. other
+test kinds are distinguished by **pytest markers**, not by directory, except for
+`tests/system/` and `tests/characterization/`, which are their own top-level dirs.
 
 ## Directory Structure
 
-```
+```text
 tests/
-├── unit/                    # Single component tests
-│   ├── indexed/
-│   ├── indexed_core/
-│   ├── indexed_connectors/
-│   └── indexed_config/
-├── integration/             # Multi-class within single module
-│   ├── indexed-core/
-│   │   ├── engine/          # Engine module integration tests
-│   │   └── services/        # Service module integration tests
-│   └── indexed-connectors/ # Connector module integration tests
-├── system/                  # Multi-module workflow tests
-│   ├── test_indexing_pipeline.py
-│   ├── test_search_pipeline.py
-│   └── test_collection_lifecycle.py
-└── benchmarks/              # Performance tests
+├── unit/                 # tests/unit/indexed/{package}/{module}/test_{component}.py
+│                          # mirrors src/indexed/ — most tests live here, marker-classified
+├── system/                # CLI-driven, multi-module workflow tests (real components,
+│                          # mocked external services only)
+├── characterization/      # smoke tests against a real on-disk collection, built through
+│                          # the real engine — regression-guard behavior, not unit isolation
+├── benchmarks/             # performance tests (pytest-benchmark)
+└── fixtures/               # shared test fixtures/data
 ```
 
-## Test File Naming
+## Test Type Definitions
 
-- **Unit tests:** `test_{component}.py` (e.g., `test_faiss_indexer.py`)
-- **Integration tests:** `test_{module}_integration.py` (e.g., `test_engine_indexing_integration.py`)
-- **System tests:** `test_{workflow}.py` (e.g., `test_indexing_pipeline.py`)
+### Unit tests (`tests/unit/`, `@pytest.mark.unit`)
+**Scope:** a single class/function in isolation, all dependencies mocked, fast
+(target < 100ms/test).
 
-## Fixture Usage
+### Integration tests (`tests/unit/`, `@pytest.mark.integration`)
+**Scope:** multiple real components exercised together (e.g. real FAISS index +
+real embeddings), still discovered under `tests/unit/` but marked so they can be
+excluded from a fast-only run (`pytest -m unit`) and skip gracefully when a
+dependency they need (e.g. a cached embedding model) isn't available.
 
-### Session-Scoped Fixtures (Integration/System Tests)
-Use for expensive operations shared across tests:
-```python
-@pytest.fixture(scope="session")
-def indexed_collection(temp_workspace):
-    """Create real indexed collection once - shared across tests."""
-    # Create real collection with real FAISS index
-    # No mocking needed!
-    yield collection_metadata
-```
+### System tests (`tests/system/`)
+**Scope:** complete user-facing workflows spanning CLI → service → engine →
+storage, real components throughout, mocking only external services (Jira/
+Confluence APIs).
 
-### Function-Scoped Fixtures (All Tests)
-Use for fresh state per test:
-```python
-@pytest.fixture
-def clean_config():
-    """Fresh ConfigService per test."""
-    # Reset and create new instance
-    yield config
-```
+### Characterization tests (`tests/characterization/`)
+**Scope:** smoke tests against a real, on-disk collection built through the real
+engine — regression guards for end-to-end behavior, not isolated unit coverage.
 
 ## Test Markers
 
-Use consistent markers:
-- `@pytest.mark.unit` - Unit tests
-- `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.system` - System tests
-- `@pytest.mark.slow` - Tests taking > 1 second
-- `@pytest.mark.api` - Tests using mocked API servers
+Registered in `pyproject.toml` (`[tool.pytest.ini_options] markers`) —
+`--strict-markers` rejects anything else:
+- `unit` — fast, fully mocked
+- `unit_api` — unit tests exercising a mocked API surface
+- `integration` — multiple real components, still under `tests/unit/`
+- `api` — tests exercising a connector API surface
+- `connectors` — connector functionality tests
+- `indexed` — main app integration tests
+- `benchmark` — performance tests
+- `slow` — tests taking noticeably longer than the fast-test norm
 
-## Decision Tree
-
-**What to test?**
-1. Single class/function in isolation? → **Unit Test**
-2. Multiple classes within same module? → **Integration Test**
-3. Workflow across multiple modules? → **System Test**
-
-**Where to place it?**
-- Mirror source structure in `tests/{type}/{package}/{module}/`
-- Keep test structure aligned with source structure
+**Convention:** a whole test FILE that's uniformly one kind gets a module-level
+`pytestmark = pytest.mark.unit` (see `tests/unit/indexed/config/test_cli.py`).
+A file that mixes fast unit tests with the occasional real-component test marks
+just that one test/function directly (see
+`tests/unit/indexed/core/test_engine_facade_v2.py`'s
+`@pytest.mark.integration` on its migration-order test).
 
 ## Anti-Patterns
 
-❌ **Integration test testing across modules** → Move to system tests
-❌ **Unit test with real dependencies** → Mock dependencies
-❌ **System test testing single module** → Move to integration tests
-❌ **Mocking components within the same module** → Use real components, mock only external dependencies
+❌ Real FAISS/embeddings/network in a test with no `integration`/`api`/`slow`
+   marker — it silently slows down `pytest -m unit` runs meant to stay fast.
+❌ A brand-new marker not registered in `pyproject.toml` — fails
+   `--strict-markers` immediately.
+❌ Mocking so much of a `characterization/` or `system/` test that it stops
+   exercising real behavior — that defeats their purpose as regression guards.

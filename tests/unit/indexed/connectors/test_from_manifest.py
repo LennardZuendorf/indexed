@@ -8,7 +8,6 @@ keys (R3 — never persisted), and the files change-tracking path. The
 needs live credentials).
 """
 
-import fnmatch
 import json
 import types
 
@@ -83,8 +82,9 @@ def test_files_from_manifest_propagates_non_default_reader_settings(tmp_path):
     from "defaulted". Here every asserted value differs from the connector's
     default (include ``["*"]``, ``failFast=False``, ``respectGitignore=True``).
     ``includePatterns`` is normalized by ``FileSystemConfig`` (``*.md`` is not
-    valid regex, so it becomes ``fnmatch.translate("*.md")``) — assert against
-    that same normalization so we test propagation, not the normalizer.
+    valid regex, so ``fnmatch.translate`` is used only to confirm it is a
+    parseable glob) — the original pattern text is what's stored, so we assert
+    against ``["*.md"]`` unchanged to test propagation, not the normalizer.
     """
     from indexed.connectors.files.connector import FileSystemConnector
     from indexed.connectors.files.files_document_reader import FilesDocumentReader
@@ -105,7 +105,7 @@ def test_files_from_manifest_propagates_non_default_reader_settings(tmp_path):
     )
 
     assert isinstance(run.reader, FilesDocumentReader)
-    assert run.reader.include_patterns == [fnmatch.translate("*.md")]
+    assert run.reader.include_patterns == ["*.md"]
     assert run.reader.include_patterns != ["*"]  # not the default
     assert run.reader.fail_fast is True
     assert run.reader._respect_gitignore is False

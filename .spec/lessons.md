@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-01
+updated: 2026-09-03
 ---
 
 # Lessons Learned
@@ -9,6 +9,73 @@ updated: 2026-09-01
 Accumulated mistakes and earned defaults. Read at session start.
 
 ---
+
+## Core v2 rendering fixes (issue #187, 2026-09-03)
+
+- **A `Text(...)` sink renders literally; a `console.print(msg, style=...)` sink
+  parses markup — swapping which sink an error message flows through
+  silently flips whether `rich.markup.escape()` is correct or actively
+  wrong.** `print_error()` (`cli/utils/components/alerts.py`) builds a
+  `Text(f"{icon} {message}")` and is markup-safe by construction — it never
+  needs `escape()`. Routing `app.py`'s top-level `IndexedError` handler
+  through it while *keeping* the pre-existing `escape()` call (correct for
+  the old, markup-parsed `console.print` sink it replaced) produced visible
+  `\[` in any message containing a bracket. Whenever a print call moves
+  between a `Text()`-based helper and a raw markup-parsed `console.print`,
+  re-derive whether `escape()` belongs there — don't carry it across
+  unchanged. No test caught this because every existing case used
+  bracket-free messages, making `escape()` a no-op; a markup-safety
+  regression test needs bracket-bearing input to be worth anything.
+- **A config-schema validator that eagerly transforms a value for internal
+  use (e.g. glob → compiled-regex string) destroys the human-legible
+  original if nothing else keeps it.** `FileSystemConfig.normalize_patterns`
+  translated `"*"` to `fnmatch.translate("*")` at parse time so a later
+  `_compile()` wouldn't need to; the translated string is what got persisted
+  to the manifest and displayed. If a downstream consumer (`_compile()`
+  here) can already re-derive the working form from raw text via the same
+  try/except-translate fallback, the validator should validate and pass the
+  original through unchanged — eager transformation for an internal
+  consumer's convenience is a display-layer landmine when the same value is
+  also user-facing.
+- **A fixed-width label column (`ratio=1` against a `ratio=2` value column,
+  or a flat `get_info_row_label_width()` constant) breaks two different ways
+  depending on which side is fixed and which grows** — a short label
+  (`"Engine"`) still eats disproportionate ratio-based width, starving a
+  long value; a label longer than a flat padding constant
+  (`"Included Patterns"` vs. the existing 10-char budget) jams straight
+  against its value with no separator. Both surfaced in this feature (R2,
+  R3) as two different instances of the same root problem: label/value
+  column sizing needs to be either min-width-and-auto-grow (label) or
+  terminal-derived-with-a-sane-cap (overall card), never a value picked to
+  fit one observed case.
+- **A helper-level unit test (asserts `get_detail_card_width()`'s return
+  value, or a substring appears in output) can pass while the actual
+  rendered scenario in `product.md` still fails.** R2's and R3's planned
+  test scenarios ("renders on one line at a wide terminal", "aligned
+  consistently with the rows around it") were never written as rendered-
+  output assertions — only the width helper and substring presence were
+  tested, which is exactly why CI stayed green while both requirements'
+  literal acceptance criteria failed. When a requirement describes a visual
+  outcome, the regression test must render the actual output and assert on
+  its shape, not proxy through a helper's return value.
+- **A full-suite run between units (not just each unit's scoped tests) is
+  load-bearing, not a formality.** Task 2's fix changed `include_patterns`'
+  persisted form; a sibling test in a file outside Task 2's stated scope
+  (`tests/unit/indexed/connectors/test_from_manifest.py`) asserted the old
+  form and only broke on the controller's own post-unit full run — every
+  task-scoped review and test pass had missed it by construction (it wasn't
+  in the brief's file list). Subagent-driven development's per-task reviews
+  are necessary but not sufficient; run the full gate between units, not
+  just at the very end.
+- **The final whole-branch review's value is specifically catching
+  requirement-vs-implementation gaps and cross-unit seams, not re-litigating
+  what per-task reviews already approved.** All 4 Important findings here
+  were things no single task's scoped diff could reveal: a fix that was
+  locally correct but interacted wrong with a sibling function the task
+  brief listed as "don't touch" (R2's width bump vs. R7's row layout, same
+  file, different functions); a written acceptance scenario nobody had
+  actually rendered end-to-end. Budget for this pass as mandatory, not
+  optional polish, on any multi-unit feature.
 
 ## Version-dispatching facade seam (core-v2/1, 2026-07-19)
 

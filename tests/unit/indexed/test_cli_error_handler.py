@@ -18,7 +18,6 @@ from indexed.cli.errors import (
     format_cli_error,
     mcp_error_envelope,
 )
-from indexed.cli.utils.components import get_error_style
 
 
 class TestErrorHelpers:
@@ -55,10 +54,10 @@ class TestMainErrorHandler:
 
     @patch("indexed.cli.app.app")
     @patch("indexed.cli.app.bootstrap_logging")
-    @patch("indexed.cli.app._shared_console")
+    @patch("indexed.cli.app.print_error")
     def test_main_maps_configuration_error_to_exit_code_2(
         self,
-        mock_console: MagicMock,
+        mock_print_error: MagicMock,
         mock_bootstrap: MagicMock,
         mock_app: MagicMock,
     ) -> None:
@@ -70,17 +69,14 @@ class TestMainErrorHandler:
             main()
 
         assert exc_info.value.code == 2
-        mock_console.print.assert_called_once_with(
-            "invalid connector",
-            style=get_error_style(),
-        )
+        mock_print_error.assert_called_once_with("invalid connector")
 
     @patch("indexed.cli.app.app")
     @patch("indexed.cli.app.bootstrap_logging")
-    @patch("indexed.cli.app._shared_console")
+    @patch("indexed.cli.app.print_error")
     def test_main_maps_storage_error_to_exit_code_3(
         self,
-        mock_console: MagicMock,
+        mock_print_error: MagicMock,
         mock_bootstrap: MagicMock,
         mock_app: MagicMock,
     ) -> None:
@@ -92,10 +88,7 @@ class TestMainErrorHandler:
             main()
 
         assert exc_info.value.code == 3
-        mock_console.print.assert_called_once_with(
-            "storage unavailable",
-            style=get_error_style(),
-        )
+        mock_print_error.assert_called_once_with("storage unavailable")
 
     @patch("indexed.cli.app.app")
     @patch("indexed.cli.app.bootstrap_logging")

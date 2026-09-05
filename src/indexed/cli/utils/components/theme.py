@@ -4,6 +4,8 @@ This module defines all color, style, and layout constants used throughout
 the CLI for consistent visual design.
 """
 
+from ..console import console
+
 # ============================================================================
 # Color Palette
 # ============================================================================
@@ -49,10 +51,21 @@ def get_info_row_label_width() -> int:
     return 10
 
 
-# Card widths
+# Card widths. The max is sized so a realistic v2 engine descriptor
+# ("v2 · huggingface · sentence-transformers/all-MiniLM-L6-v2 · faiss", 65
+# chars) still renders on one line beside its label on a wide terminal (R2).
+_DETAIL_CARD_MIN_WIDTH = 60
+_DETAIL_CARD_MAX_WIDTH = 120
+
+
 def get_detail_card_width() -> int:
-    """Get width for detail cards."""
-    return 60
+    """Get width for detail cards, sized to the terminal.
+
+    Derives from the shared console's live width so narrow terminals don't
+    wrap/overflow and wide terminals don't get an absurdly stretched card,
+    clamped to ``[_DETAIL_CARD_MIN_WIDTH, _DETAIL_CARD_MAX_WIDTH]``.
+    """
+    return max(_DETAIL_CARD_MIN_WIDTH, min(_DETAIL_CARD_MAX_WIDTH, console.width))
 
 
 def get_grid_card_min_width() -> int:

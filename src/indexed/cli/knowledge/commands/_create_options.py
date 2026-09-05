@@ -123,7 +123,7 @@ UseCacheFilesOpt = Annotated[
 RespectGitignoreOpt = Annotated[
     Optional[bool],
     typer.Option(
-        "--respect-gitignore/--no-respect-gitignore",
+        "--gitignore/--no-gitignore",
         help="Respect .gitignore files and skip noise directories (node_modules, .venv, etc.).",
     ),
 ]

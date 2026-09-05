@@ -219,8 +219,12 @@ def _group_names_by_engine(
       clear deletes them);
     - readable *unknown* marker → ``UnknownEngineVersionError`` (fail loud).
 
-    Group insertion order follows first appearance, so concatenated results keep
-    a stable order.
+    Group insertion order follows first appearance in ``collection_names`` — this
+    function's own dict order is NOT a stable/deterministic key (it depends on
+    caller-supplied order, e.g. alphabetical discovery). Callers that expose
+    grouped output to a user (``status``/``inspect``) MUST iterate
+    ``sorted(groups.items())`` themselves for a deterministic ascending-version
+    order (rendering-fixes/5 R8) — this function does not do that sorting.
     """
     base = _collections_base(collections_path)
     groups: "dict[EngineVersion, List[str]]" = {}
@@ -565,7 +569,7 @@ def search(
         return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
 
     merged: Dict[str, Any] = {}
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     return merged
 
@@ -601,7 +605,7 @@ def status(
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
     out: List[Any] = []
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         out.extend(_run(grp_version, grp_names))
     return out
 
@@ -637,7 +641,7 @@ def inspect(
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
     out: List[Any] = []
-    for grp_version, grp_names in groups.items():
+    for grp_version, grp_names in sorted(groups.items()):
         out.extend(_run(grp_version, grp_names))
     return out
 

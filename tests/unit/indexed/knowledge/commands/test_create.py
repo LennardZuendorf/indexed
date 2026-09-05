@@ -12,6 +12,8 @@ from indexed.cli.knowledge.commands.create import (
     create_confluence,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestIsCloud:
     """Test _is_cloud function."""
@@ -121,7 +123,7 @@ class TestCreateFiles:
     def test_create_files_omits_respect_gitignore_when_flag_unset(
         self, mock_config_service, mock_execute
     ):
-        """R9: when --respect-gitignore/--no-respect-gitignore is not passed
+        """R9: when --gitignore/--no-gitignore is not passed
         on the CLI, cli_overrides must not contain respect_gitignore at all —
         otherwise it always beats config.toml's sources.files.respect_gitignore."""
         mock_config = Mock()
@@ -201,7 +203,7 @@ class TestCreateFiles:
     def test_create_files_explicit_no_respect_gitignore_is_honored(
         self, mock_config_service, mock_execute
     ):
-        """R9: an explicit --no-respect-gitignore (False) is a legitimate
+        """R9: an explicit --no-gitignore (False) is a legitimate
         choice and must still reach cli_overrides — the guard must be
         `is not None`, not truthiness."""
         mock_config = Mock()
@@ -1680,3 +1682,54 @@ class TestCreateGroupEngineOption:
         assert result.exit_code != 0
         assert isinstance(result.exception, ConfigurationError)
         assert "Invalid engine 'v9'" in str(result.exception)
+
+
+class TestCreateFilesHelpRendering:
+    """Verify --help output renders correctly without truncation (R4)."""
+
+    def test_create_files_help_no_gitignore_flag_truncation_at_80_columns(self):
+        """rendering-fixes/3: `index create files --help` at 80 columns must
+        show full --gitignore/--no-gitignore flag text without ellipsis (…)
+        truncation.
+
+        Runs the real CLI as a subprocess (matching how this was manually
+        verified: ``COLUMNS=80 uv run indexed index create files --help``)
+        rather than through in-process ``typer.testing.CliRunner``. Typer's
+        own ``--help`` renderer determines its Console's width from process
+        state that a per-invocation ``CliRunner(env=...)`` override doesn't
+        reliably reach when the test runs under coverage instrumentation —
+        confirmed non-reproducible via the app's OWN width-aware code (which
+        reads ``console.width`` per-call, see ``test_inspect.py``'s
+        equivalent COLUMNS-driven tests), so this is a Typer/test-harness
+        interaction, not an application bug. A subprocess sidesteps it
+        entirely and exercises the actual user-facing entry point.
+        """
+        import os
+        import subprocess
+        import sys
+
+        env = {**os.environ, "COLUMNS": "80", "TERM": "dumb"}
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "indexed.cli.app",
+                "index",
+                "create",
+                "files",
+                "--help",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        # Verify the full flag text appears without truncation
+        assert "--gitignore" in result.stdout
+        assert "--no-gitignore" in result.stdout
+        # Ensure no mid-word truncation (the bug was "--no-respect-gitign…")
+        assert "--no-gitign…" not in result.stdout
+        # Verify help text is present
+        assert "Respect .gitignore files" in result.stdout

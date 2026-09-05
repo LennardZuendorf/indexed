@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List
@@ -256,6 +257,51 @@ def test_mixed_v1_v2_status_lists_both(
     statuses = facade.status(collections_path=str(cols))
     names = sorted(s.name for s in statuses)
     assert names == ["v1-coll", "v2-coll"]
+    # rendering-fixes/5 R8: the RAW (non-re-sorted) return order is also
+    # ascending engine version. "v1-coll" < "v2-coll" alphabetically already
+    # coincides with engine order here, so this alone can't prove the group
+    # order is engine-based rather than name-based — see the migration test
+    # below, which breaks that coincidence.
+    assert [s.name for s in statuses] == ["v1-coll", "v2-coll"]
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not model_available(), reason="Embedding model not cached (all-MiniLM-L6-v2)"
+)
+def test_mixed_v1_v2_status_order_survives_migration(
+    tmp_path: Path, files_corpus: Path, build_collection
+) -> None:
+    """rendering-fixes/5 R8 — the merged group order is by ascending engine
+    version, not by collection name or migration order. ``aaa-coll`` starts
+    as v1 (alphabetically BEFORE ``zzz-coll``) and is migrated to v2, so
+    on-disk discovery order (alphabetical) now disagrees with engine order:
+    the old dict-insertion-order bug would surface ``aaa-coll`` (now v2)
+    first, because ``_existing_collection_names`` visits it first; the fixed
+    ``sorted(groups.items())`` must still put the v1 group (``zzz-coll``)
+    first regardless."""
+    import indexed.core.engine as facade
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.core.versioning import detect_engine_version
+
+    cols = tmp_path / "cols"
+    cols.mkdir()
+    conn = FileSystemConnector(path=str(files_corpus))
+    # Both start as v1; "aaa-coll" sorts alphabetically before "zzz-coll".
+    build_collection(cols, "aaa-coll", conn.reader, conn.converter)
+    build_collection(cols, "zzz-coll", conn.reader, conn.converter)
+
+    # Migrate the alphabetically-early collection to v2 (offline — re-embeds
+    # its own stored chunks, no source access needed).
+    facade.migrate("aaa-coll", collections_path=str(cols))
+
+    assert detect_engine_version(cols / "aaa-coll") == "2"
+    assert detect_engine_version(cols / "zzz-coll") == "1"
+
+    statuses = facade.status(collections_path=str(cols))
+    # Ascending engine version ("1" before "2") — reverse of alphabetical
+    # order here — regardless of migration/creation order.
+    assert [s.name for s in statuses] == ["zzz-coll", "aaa-coll"]
 
 
 @pytest.mark.skipif(
@@ -295,3 +341,139 @@ def test_mixed_v1_v2_search_returns_both_under_their_keys(
         assert "error" not in res[name], res[name]
         assert res[name]["results"], f"{name} should have hits"
         assert res[name]["results"][0]["id"] == "needle.txt"
+
+
+# --- deterministic group order (rendering-fixes/5, R8) — no real model needed -
+
+
+def _write_manifest(cols: Path, name: str, version: str) -> None:
+    """A minimal on-disk collection: just enough for engine detection
+    (``detect_engine_version``/``_existing_collection_names`` only read
+    ``manifest.json``) — no real index/embeddings required."""
+    coll_dir = cols / name
+    coll_dir.mkdir(parents=True)
+    (coll_dir / "manifest.json").write_text(json.dumps({"version": version}))
+
+
+class _FakeEngineImpl:
+    """Stands in for ``_engine_impl(version)`` so status/inspect/search group
+    order can be exercised without real FAISS/embeddings — each group's
+    per-engine call is a plain lookup keyed by name."""
+
+    def __init__(self, version: str) -> None:
+        self.version = version
+
+    def status(self, *, collection_names, include_index_size, collections_path):
+        from indexed.core.v1.engine.services import CollectionStatus
+
+        names = collection_names or []
+        if self.version == "2":
+            # v2 shape: field-keyed dicts, coerced by the facade's
+            # ``_coerce_status`` into ``CollectionStatus``.
+            return [
+                {
+                    "name": n,
+                    "number_of_documents": 0,
+                    "number_of_chunks": 0,
+                    "updated_time": "",
+                    "last_modified_document_time": "",
+                    "indexers": [],
+                }
+                for n in names
+            ]
+        return [
+            CollectionStatus(
+                name=n,
+                number_of_documents=0,
+                number_of_chunks=0,
+                updated_time="",
+                last_modified_document_time="",
+                indexers=[],
+            )
+            for n in names
+        ]
+
+    def inspect(self, *, collection_names, include_index_size, collections_path):
+        from indexed.core.v1.engine.services import CollectionInfo
+
+        names = collection_names or []
+        if self.version == "2":
+            return [{"name": n} for n in names]
+        return [CollectionInfo(name=n) for n in names]
+
+    def search(
+        self,
+        query,
+        *,
+        configs,
+        max_chunks,
+        max_docs,
+        score_threshold,
+        include_full_text,
+        include_all_chunks,
+        include_matched_chunks,
+        collections_path,
+        **_rerank_kwargs,
+    ):
+        names = [getattr(cfg, "name", cfg) for cfg in (configs or [])]
+        return {n: {"engine": self.version} for n in names}
+
+
+def test_status_group_order_is_ascending_engine_not_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """rendering-fixes/5 R8 — ``aaa-coll`` (alphabetically first) is v2 and
+    ``zzz-coll`` (alphabetically last) is v1. Discovery visits ``aaa-coll``
+    first (``_existing_collection_names`` sorts by name), so the old
+    dict-insertion-order bug would emit the v2 group first; the fix must
+    still emit ascending engine order — v1 ("zzz-coll") before v2
+    ("aaa-coll")."""
+    import indexed.core.engine as facade
+
+    cols = tmp_path / "cols"
+    cols.mkdir()
+    _write_manifest(cols, "aaa-coll", "2")
+    _write_manifest(cols, "zzz-coll", "1")
+    monkeypatch.setattr(facade, "_engine_impl", _FakeEngineImpl)
+
+    statuses = facade.status(collections_path=str(cols))
+
+    assert [s.name for s in statuses] == ["zzz-coll", "aaa-coll"]
+
+
+def test_inspect_group_order_is_ascending_engine_not_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same discriminating layout as the ``status`` case above, for
+    ``inspect`` (rendering-fixes/5 R8)."""
+    import indexed.core.engine as facade
+
+    cols = tmp_path / "cols"
+    cols.mkdir()
+    _write_manifest(cols, "aaa-coll", "2")
+    _write_manifest(cols, "zzz-coll", "1")
+    monkeypatch.setattr(facade, "_engine_impl", _FakeEngineImpl)
+
+    infos = facade.inspect(collections_path=str(cols))
+
+    assert [i.name for i in infos] == ["zzz-coll", "aaa-coll"]
+
+
+def test_search_group_order_is_ascending_engine_not_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same discriminating layout, for the ``search`` merge order
+    (rendering-fixes/5 R8) — dict insertion order backs ``dict.keys()``, so
+    the v1 group's keys must appear before the v2 group's regardless of
+    alphabetical/discovery order."""
+    import indexed.core.engine as facade
+
+    cols = tmp_path / "cols"
+    cols.mkdir()
+    _write_manifest(cols, "aaa-coll", "2")
+    _write_manifest(cols, "zzz-coll", "1")
+    monkeypatch.setattr(facade, "_engine_impl", _FakeEngineImpl)
+
+    res = facade.search("q", collections_path=str(cols))
+
+    assert list(res.keys()) == ["zzz-coll", "aaa-coll"]

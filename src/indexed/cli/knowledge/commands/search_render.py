@@ -91,11 +91,11 @@ def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
     (foundation/6 E10, CLI twin of the same bug).
     """
     for collection_name, error in failed:
-        # collection_name/error are content-derived — escape before entering
-        # markup (foundation/6c bug E2).
-        print_error(
-            f"Collection '{escape(str(collection_name))}' failed: {escape(str(error))}"
-        )
+        # No `escape()`: `print_error` renders through a `rich.text.Text` sink,
+        # which is literal by construction (never markup-parsed), so a
+        # bracket-bearing collection name or error string prints verbatim.
+        # Escaping first would leak the backslash into the output.
+        print_error(f"Collection '{collection_name!s}' failed: {error!s}")
 
 
 def format_search_results(
@@ -129,15 +129,25 @@ def format_search_results(
     # Per-collection score direction (v2's "scoreKind"; v1 has none, so it
     # defaults to the ascending/lower-is-better convention — R6 byte-stable).
     higher_is_better_by_collection: Dict[str, bool] = {}
+    # Raw scoreKind string per collection ("cosine"/"rerank"), threaded through
+    # so rendered scores can carry a scale label (R6) — v1 collections have no
+    # scoreKind key and stay absent from this dict (unlabeled, byte-stable).
+    score_kind_by_collection: Dict[str, str] = {}
 
     for collection_name, collection_results in results.items():
         if "error" in collection_results:
             failed_collections.append((collection_name, collection_results["error"]))
             continue
 
-        higher_is_better_by_collection[collection_name] = (
-            collection_results.get("scoreKind") in _HIGHER_IS_BETTER
-        )
+        # Restrict to the known kinds: an unrecognized string (a malformed or
+        # future-versioned manifest) must never be treated as higher-is-better
+        # nor rendered as a trustworthy scale label — it's dropped to the same
+        # "absent" state as a v1 collection instead.
+        raw_score_kind = collection_results.get("scoreKind")
+        is_known_score_kind = raw_score_kind in _HIGHER_IS_BETTER
+        higher_is_better_by_collection[collection_name] = is_known_score_kind
+        if is_known_score_kind:
+            score_kind_by_collection[collection_name] = raw_score_kind
 
         documents = collection_results.get("results", [])
         total_docs += len(documents)
@@ -201,12 +211,17 @@ def format_search_results(
     # queries it often out-scores real content, so surfacing it as the
     # highlighted excerpt is a useless first impression. Pick the
     # highest-ranked chunk with real content instead; fall back to
-    # all_chunks[0] if every candidate is content-free.
-    top = next((c for c in all_chunks if not _is_content_free(c)), all_chunks[0])
+    # all_chunks[0] if every candidate is content-free. Other Matches (below)
+    # draws from this SAME filtered pool (R5) — otherwise a content-free
+    # chunk skipped here survives unfiltered into Other Matches, ranked above
+    # wherever the promoted top actually landed.
+    non_free = [c for c in all_chunks if not _is_content_free(c)]
+    top = non_free[0] if non_free else all_chunks[0]
     _show_top_result_split_cards(
         top,
         show_relevance=any_v2,
         higher_is_better_by_collection=higher_is_better_by_collection,
+        score_kind_by_collection=score_kind_by_collection,
     )
 
     # Show next 4 results in compact format, excluding whichever chunk got
@@ -214,8 +229,11 @@ def format_search_results(
     # promoted object is skipped, not other chunks with an equal score
     # (review finding: a content-free #1 promotes some all_chunks[k], k>=1,
     # which the old positional all_chunks[1:5] slice could still include,
-    # duplicating it in both the highlight and the list).
-    others = [c for c in all_chunks if c is not top][:4]
+    # duplicating it in both the highlight and the list). Drawn from
+    # `non_free` (R5) so a content-free chunk never leaks into this list
+    # either; falls back to `all_chunks` only when every chunk is
+    # content-free (matching the fallback used for `top` above).
+    others = [c for c in (non_free or all_chunks) if c is not top][:4]
     if others:
         console.print()
         console.print(
@@ -228,6 +246,7 @@ def format_search_results(
                 chunk_info,
                 show_relevance=any_v2,
                 higher_is_better_by_collection=higher_is_better_by_collection,
+                score_kind_by_collection=score_kind_by_collection,
             )
 
     # Summary
@@ -244,6 +263,7 @@ def _show_top_result_split_cards(
     chunk_info: ChunkInfo,
     show_relevance: bool = False,
     higher_is_better_by_collection: Dict[str, bool] | None = None,
+    score_kind_by_collection: Dict[str, str] | None = None,
 ) -> None:
     """Show the top result chunk in two cards: Meta and Excerpt."""
 
@@ -263,6 +283,11 @@ def _show_top_result_split_cards(
         if isinstance(score, float)
         else (str(score) if score is not None else "N/A")
     )
+    # R6: label the score with its scale (cosine/rerank) when known, so a
+    # rerank score's unbounded range isn't mistaken for cosine's [0, 1].
+    score_kind = (score_kind_by_collection or {}).get(collection)
+    if score_kind:
+        score_str = f"{score_str} ({score_kind})"
     meta_rows.append(("Score", score_str))
 
     # Mixed v1+v2 view: surface one comparable relevance measure right after
@@ -318,6 +343,7 @@ def _show_compact_match(
     chunk_info: ChunkInfo,
     show_relevance: bool = False,
     higher_is_better_by_collection: Dict[str, bool] | None = None,
+    score_kind_by_collection: Dict[str, str] | None = None,
 ) -> None:
     """Show a compact single-line match."""
     collection = chunk_info["collection"]
@@ -329,6 +355,12 @@ def _show_compact_match(
         chunk_score = f"{score:.4f}"
     else:
         chunk_score = str(score)
+
+    # R6: same scale label as the top-result meta card, kept before the
+    # relevance suffix so both stay readable on one compact line.
+    score_kind = (score_kind_by_collection or {}).get(collection)
+    if score_kind:
+        chunk_score = f"{chunk_score} ({score_kind})"
 
     # Mixed v1+v2 view: append the same comparable relevance measure shown on
     # the top card (M2/R11) — v1-only view stays byte-identical (R6).
@@ -420,6 +452,16 @@ def format_search_results_compact(
 
         total_results += len(documents)
 
+        # R6: same scale label the meta card and `_show_compact_match` render.
+        # This loop is already scoped to one collection, so the per-collection
+        # lookup those functions do through `score_kind_by_collection` reduces
+        # to reading the collection's own raw `scoreKind` here. v1 collections
+        # carry no `scoreKind` key and stay unlabeled (byte-stable); an
+        # unrecognized kind (malformed/future manifest) is treated the same
+        # way — never rendered as a trustworthy label.
+        raw_score_kind = collection_results.get("scoreKind")
+        score_kind = raw_score_kind if raw_score_kind in _HIGHER_IS_BETTER else None
+
         # Collection header — collection_name/doc_id are content-derived, so
         # escape them before entering markup (foundation/6c bug E2).
         console.print(
@@ -432,9 +474,10 @@ def format_search_results_compact(
             score = doc.get("score")
 
             if score is not None:
-                score_str = (
-                    f" [{score:.4f}]" if isinstance(score, float) else f" [{score}]"
-                )
+                score_text = f"{score:.4f}" if isinstance(score, float) else str(score)
+                if score_kind:
+                    score_text = f"{score_text} ({score_kind})"
+                score_str = f" [{score_text}]"
                 console.print(
                     f"  {i}. {escape(str(doc_id))}[{get_dim_style()}]{score_str}[/{get_dim_style()}]"
                 )
