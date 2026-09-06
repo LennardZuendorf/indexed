@@ -8,7 +8,7 @@ class SourceConfig(BaseModel):
 
     name: str
     type: Literal[
-        "jira", "jiraCloud", "confluence", "confluenceCloud", "localFiles", "outline"
+        "jira", "jiraCloud", "confluence", "confluenceCloud", "localFiles", "outline", "github"
     ]
     base_url_or_path: str = Field(
         ..., description="baseUrl for remote sources OR basePath for files"
