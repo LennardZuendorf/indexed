@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-03
+updated: 2026-09-06
 ---
 
 # Lessons Learned
@@ -872,3 +872,38 @@ with `git add`/`git status`, since that's what CI actually runs.
   how often this recurs, treat it as an expected step in every dispatch's
   handling, not an anomaly: check for dormancy before assuming a "DONE" or a
   suspiciously terse completion message is real.
+
+## Core v2 engine routing fixes (issue #186, 2026-09-06)
+
+- **A resolver's bare `except Exception: return Default()` conflates two
+  failure modes that need opposite handling.** `resolve_engine_selector`
+  already established the split; `core/v2/_common.py`'s three config
+  resolvers (`resolve_embedding_config`/`resolve_search_config`/
+  `resolve_rerank_config`) did not — an out-of-range value that `config set`
+  accepts (it only warns, e.g. `core.v2.search.score_threshold = 5.0`) fails
+  `ConfigService.bind()`'s pydantic validation and surfaces as
+  `ConfigValidationError`, but the bare `except Exception` swallowed it and
+  silently returned the default on every search, with zero signal that the
+  configured value was never applied. Only a genuinely unregistered spec
+  (`Provider.get()`'s plain `KeyError`, a legitimate case for direct/test
+  callers that never called `register_app_config`) should degrade to the
+  default. Fix: catch `ConfigValidationError` first and `raise`, keep the
+  broad `except Exception: return Default()` beneath it for the true
+  "can't read" case. Any resolver shaped `try: ... except Exception: return
+  Default()` is a candidate for this same split — read fine but invalid
+  must fail loud; can't read/unregistered may still degrade.
+- **A verbatim-duplicated helper is best fixed by extraction, not by
+  patching one copy.** `_unified_relevance`/`_HIGHER_IS_BETTER` existed
+  identically in both `mcp/formatting.py` and
+  `cli/knowledge/commands/search_render.py`. By the time the actual bug
+  (an unbounded rerank logit bypassing the `[0,1]` cosine scale) was found,
+  the two copies' docstrings had already drifted apart independently —
+  different comment style, one citing a PR review the other didn't — even
+  though the arithmetic itself was still byte-identical, proof a duplicated
+  pair starts drifting before anyone notices, not only after. Since the
+  logic was pure arithmetic with no `core.v1`/`core.v2` dependency, the fix
+  extracted it to a new leaf module (`utils/relevance.py`) that both `cli`
+  and `mcp` import, rather than fixing the bug in one copy and leaving the
+  other to diverge further. When duplicated logic has no layer-specific
+  dependency, prefer extraction to a shared leaf module over a matched pair
+  of edits.

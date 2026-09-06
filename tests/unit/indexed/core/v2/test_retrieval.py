@@ -537,7 +537,9 @@ def test_rerank_never_writes_to_stdout(
 
     with mock_embedding(embed_dim=8):
         with contextlib.redirect_stdout(captured):
-            retrieval.search("penguin", configs=[_cfg("c1")], collections_path=str(cols))
+            retrieval.search(
+                "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+            )
 
     assert captured.getvalue() == ""
 
