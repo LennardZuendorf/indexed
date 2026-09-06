@@ -59,7 +59,13 @@ async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
     cli_context = resolve_cli_context(None)
     mcp_config = _get_config(MCPConfig)
     search_config = _get_config(CoreV1SearchConfig)
-    engine = resolve_engine_selector(None, config_service)
+    try:
+        engine = resolve_engine_selector(None, config_service)
+    except Exception:
+        # Same tolerance as _get_config above: a malformed/unreadable
+        # config.toml (or an invalid [core] engine value) must not crash
+        # server startup — this field has no consumer yet (issue #186).
+        engine = "1"
     yield {
         "mcp_config": mcp_config,
         "search_config": search_config,

@@ -644,6 +644,32 @@ class TestLifespan:
         assert "cli_context" in result
         assert result["cli_context"].mode == "global"
 
+    def test_lifespan_survives_bad_core_engine_value(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """issue #186: an unguarded resolve_engine_selector(None, ...) call in
+        lifespan() crashes MCP startup on a syntactically-valid config.toml
+        whose [core] engine value is invalid — unlike every sibling config
+        read in lifespan(), which is wrapped via _get_config for exactly this
+        reason. A bad value must degrade the same way, not crash the server."""
+        from indexed.config import reload as reload_config
+
+        fake_home = tmp_path / "home"
+        global_root = fake_home / ".indexed"
+        global_root.mkdir(parents=True)
+        (global_root / "config.toml").write_text('[core]\nengine = "v9"\n')
+
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        reload_config()
+
+        async def run_lifespan():
+            async with lifespan(mcp) as state:
+                return state
+
+        result = run_async(run_lifespan())
+
+        assert result["engine"] == "1"
+
 
 class TestContextHandling:
     """Tests for context handling in tools and resources."""
