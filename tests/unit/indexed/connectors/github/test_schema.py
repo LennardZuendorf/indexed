@@ -4,6 +4,10 @@ from pydantic import ValidationError
 from indexed.connectors.github.schema import GITHUB_CLOUD_HOST, GitHubConfig
 
 
+def test_github_cloud_host_constant():
+    assert GITHUB_CLOUD_HOST == "github.com"
+
+
 def test_defaults():
     cfg = GitHubConfig(repos=["octo/hello"])
     assert cfg.host == "github.com"
@@ -36,14 +40,19 @@ def test_resolve_graphql_url_ghes():
 
 def test_resolve_graphql_url_explicit_override_wins():
     cfg = GitHubConfig(
-        repos=["octo/hello"], host="github.example.com", graphql_url="https://custom/graphql"
+        repos=["octo/hello"],
+        host="github.example.com",
+        graphql_url="https://custom/graphql",
     )
     assert cfg.resolve_graphql_url() == "https://custom/graphql"
 
 
 def test_is_cloud():
     assert GitHubConfig(repos=["octo/hello"]).is_cloud() is True
-    assert GitHubConfig(repos=["octo/hello"], host="github.example.com").is_cloud() is False
+    assert (
+        GitHubConfig(repos=["octo/hello"], host="github.example.com").is_cloud()
+        is False
+    )
 
 
 def test_parsed_repos():

@@ -1,4 +1,5 @@
 """Pydantic config for the GitHub connector."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -70,7 +71,9 @@ class GitHubConfig(BaseModel):
         for entry in self.repos:
             owner, _, name = entry.partition("/")
             if not owner or not name:
-                raise ValueError(f"Invalid repo selector {entry!r}; expected 'owner/repo'")
+                raise ValueError(
+                    f"Invalid repo selector {entry!r}; expected 'owner/repo'"
+                )
             result.append((owner, name))
         return result
 
