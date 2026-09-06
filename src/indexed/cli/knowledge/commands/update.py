@@ -160,6 +160,7 @@ def update(
         collection=collection,
         collections_path=collections_path,
         simple=simple,
+        engine=engine_flag,
     )
     if collections_to_update is None:
         return
