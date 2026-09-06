@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import inspect
+from typing import Any, Awaitable, Callable
 
 
 class FakeResponse:
@@ -27,10 +28,14 @@ class FakeResponse:
 
 class FakeAsyncClient:
     """Stands in for `httpx.AsyncClient`. `router` maps a GraphQL request body
-    (parsed `{"query": ..., "variables": ...}`) to a `FakeResponse`."""
+    (parsed `{"query": ..., "variables": ...}`) to a `FakeResponse` — either
+    directly, or via a coroutine function (`async def router(body): ...`) for
+    tests that need to observe/control concurrent in-flight requests."""
 
     def __init__(
-        self, router: Callable[[dict[str, Any]], FakeResponse], **kwargs: Any
+        self,
+        router: Callable[[dict[str, Any]], FakeResponse | Awaitable[FakeResponse]],
+        **kwargs: Any,
     ) -> None:
         self._router = router
 
@@ -41,4 +46,7 @@ class FakeAsyncClient:
         return False
 
     async def post(self, url: str, **kwargs: Any) -> FakeResponse:
-        return self._router(kwargs.get("json", {}))
+        result = self._router(kwargs.get("json", {}))
+        if inspect.isawaitable(result):
+            return await result
+        return result

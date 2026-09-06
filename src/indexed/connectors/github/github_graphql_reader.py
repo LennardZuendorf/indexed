@@ -80,6 +80,7 @@ class GitHubGraphQLReader:
         self._modified_since = modified_since
         self._number_of_retries = number_of_retries
         self._retry_delay = retry_delay
+        self._cached_documents: list[dict] | None = None
         if not verify_ssl:
             logger.warning(
                 "GitHub: TLS certificate verification is DISABLED (verify_ssl=False). "
@@ -92,17 +93,24 @@ class GitHubGraphQLReader:
     # ------------------------------------------------------------------
 
     def get_number_of_documents(self) -> int:
-        return len(list(self.read_all_documents()))
+        return len(self._fetch_documents())
 
     def read_all_documents(self) -> Iterator[dict]:
         """Yield raw issue documents across all configured repos, deduplicated by id."""
-        documents = asyncio.run(self._read_all_async())
         seen: set[str] = set()
-        for doc in documents:
+        for doc in self._fetch_documents():
             if doc["id"] in seen:
                 continue
             seen.add(doc["id"])
             yield doc
+
+    def _fetch_documents(self) -> list[dict]:
+        """Run the GraphQL crawl once and cache it — `get_number_of_documents()`
+        and `read_all_documents()` both call through here so the engine's
+        count-then-read calling pattern doesn't crawl GitHub's API twice."""
+        if self._cached_documents is None:
+            self._cached_documents = asyncio.run(self._read_all_async())
+        return self._cached_documents
 
     def get_reader_details(self) -> dict:
         return {
@@ -228,7 +236,7 @@ class GitHubGraphQLReader:
                 response = await client.post(
                     self._graphql_url, json={"query": query, "variables": variables}
                 )
-                if response.status_code in (403, 429):
+                if response.status_code == 429 or self._is_rate_limited_403(response):
                     last_error = GitHubGraphQLError(
                         response.status_code, "rate limited"
                     )
@@ -238,6 +246,16 @@ class GitHubGraphQLReader:
                     )
                     await self._backoff(response, attempt)
                     continue
+                if response.status_code == 403:
+                    # A 403 without rate-limit headers is a permission/auth
+                    # problem (insufficient token scope, SAML enforcement,
+                    # repo access denied) — retrying it wastes attempts and
+                    # would otherwise surface as a misleading "rate limited".
+                    raise GitHubGraphQLError(
+                        403,
+                        "permission denied (insufficient token scope, SAML "
+                        "enforcement, or repo access denied) — not a rate limit",
+                    )
                 response.raise_for_status()
                 payload = response.json()
                 errors = payload.get("errors")
@@ -257,6 +275,17 @@ class GitHubGraphQLReader:
             raise last_error or GitHubGraphQLError(
                 0, "GraphQL request failed after retries"
             )
+
+    @staticmethod
+    def _is_rate_limited_403(response: httpx.Response) -> bool:
+        """A 403 is a genuine rate limit only when GitHub's rate-limit
+        headers say so — otherwise it's a permission/auth error (insufficient
+        scope, SAML enforcement, repo access denied) that retrying can't fix."""
+        if response.status_code != 403:
+            return False
+        if response.headers.get("X-RateLimit-Remaining") == "0":
+            return True
+        return bool(response.headers.get("Retry-After"))
 
     async def _backoff(self, response: httpx.Response, attempt: int) -> None:
         reset_header = response.headers.get("X-RateLimit-Reset")

@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -162,3 +163,116 @@ def test_get_reader_details_shape():
     assert details["state"] == "all"
     assert details["labels"] == ["bug"]
     assert details["includePullRequests"] is False
+
+
+def test_concurrency_bounded_by_semaphore():
+    """With more repos than max_concurrent_requests, peak in-flight requests
+    must never exceed the semaphore's bound — deleting `async with semaphore`
+    from `_post_graphql` should make this test fail."""
+    repos = [("octo", f"repo{i}") for i in range(6)]
+    max_concurrent = 2
+    state = {"active": 0, "peak": 0}
+
+    async def router(body):
+        state["active"] += 1
+        state["peak"] = max(state["peak"], state["active"])
+        await asyncio.sleep(0.01)
+        state["active"] -= 1
+        return FakeResponse(200, _issues_page([], has_next=False, end_cursor=None))
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        list(
+            _reader(
+                repos=repos, max_concurrent_requests=max_concurrent
+            ).read_all_documents()
+        )
+
+    assert state["peak"] > 1, "expected genuine overlap between requests"
+    assert state["peak"] <= max_concurrent
+
+
+def test_http_429_status_retries_then_succeeds():
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    attempts = {"n": 0}
+
+    def router(body):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return FakeResponse(429, {}, headers={})
+        return FakeResponse(200, page)
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        docs = list(_reader().read_all_documents())
+
+    assert attempts["n"] == 3
+    assert len(docs) == 1
+
+
+def test_http_403_with_rate_limit_headers_retries_then_succeeds():
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    attempts = {"n": 0}
+
+    def router(body):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return FakeResponse(403, {}, headers={"X-RateLimit-Remaining": "0"})
+        return FakeResponse(200, page)
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        docs = list(_reader().read_all_documents())
+
+    assert attempts["n"] == 3
+    assert len(docs) == 1
+
+
+def test_http_403_without_rate_limit_headers_raises_immediately():
+    """A plain 403 (bad scope, SAML enforcement, repo access denied) must not
+    be retried and must not be reported as a rate limit."""
+    attempts = {"n": 0}
+
+    def router(body):
+        attempts["n"] += 1
+        return FakeResponse(403, {}, headers={})
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        with pytest.raises(GitHubGraphQLError) as exc_info:
+            list(_reader(number_of_retries=3).read_all_documents())
+
+    assert attempts["n"] == 1
+    assert exc_info.value.status_code == 403
+    assert "permission" in exc_info.value.message.lower()
+
+
+def test_documents_fetched_once_and_cached():
+    """get_number_of_documents() followed by read_all_documents() must not
+    crawl GitHub's API twice."""
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    calls = {"n": 0}
+
+    def router(body):
+        calls["n"] += 1
+        return FakeResponse(200, page)
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        reader = _reader()
+        count = reader.get_number_of_documents()
+        docs = list(reader.read_all_documents())
+
+    assert count == 1
+    assert len(docs) == 1
+    assert calls["n"] == 1
