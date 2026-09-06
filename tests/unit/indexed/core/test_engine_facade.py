@@ -249,18 +249,40 @@ def test_update_engine_two_on_unmarked_raises_mismatch(tmp_path: Path) -> None:
 # --- default path (engine=None) is manifest-authoritative ---------------------
 
 
-def test_status_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
-    """A default-path op on a readable ``version:"3"`` collection fails loud
-    (never a silent v1 fallback), leaving the collection untouched."""
+def test_status_omits_unknown_marker_but_returns_the_rest(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """issue #186: one collection with an unrecognized manifest version must
+    not break status()/inspect() for every OTHER collection in the batch —
+    it should be omitted (like every other unreadable-collection case in this
+    module), not fail the whole call."""
     import indexed.core.engine as facade
-    from indexed.core.errors import UnknownEngineVersionError
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+    sentinel = object()
+    monkeypatch.setattr(
+        v1_services, "status", lambda collection_names=None, **kw: [sentinel]
+    )
+
+    result = facade.status(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert result == [sentinel]
+
+
+def test_status_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> None:
+    """issue #186: a solo readable ``version:"3"`` collection is omitted from
+    the result (never a silent v1 fallback), leaving the collection untouched
+    on disk — it no longer aborts the whole call."""
+    import indexed.core.engine as facade
 
     coll = _make_collection(tmp_path, "future", {"version": "3"})
     before = (coll / "manifest.json").read_bytes()
 
-    with pytest.raises(UnknownEngineVersionError):
-        facade.status(["future"], collections_path=str(tmp_path))
+    result = facade.status(["future"], collections_path=str(tmp_path))
 
+    assert result == []
     assert (coll / "manifest.json").read_bytes() == before
 
 
@@ -278,15 +300,17 @@ def test_clear_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
     assert coll.is_dir()
 
 
-def test_search_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
+def test_search_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> None:
+    """issue #186: a solo readable ``version:"3"`` collection is omitted from
+    the result instead of aborting the whole search."""
     import indexed.core.engine as facade
-    from indexed.core.errors import UnknownEngineVersionError
 
     _make_collection(tmp_path, "future", {"version": "3"})
     cfg = facade.SourceConfig(name="future", type="localFiles", base_url_or_path="")
 
-    with pytest.raises(UnknownEngineVersionError):
-        facade.search("q", configs=[cfg], collections_path=str(tmp_path))
+    result = facade.search("q", configs=[cfg], collections_path=str(tmp_path))
+
+    assert result == {}
 
 
 def test_status_without_engine_on_v1_marker_routes_to_v1(

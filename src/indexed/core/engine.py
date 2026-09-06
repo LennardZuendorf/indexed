@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from loguru import logger
+
 from indexed.config.errors import ConfigurationError
 from indexed.core.errors import (
     EngineMismatchError,
@@ -217,7 +219,9 @@ def _group_names_by_engine(
     - missing/corrupt/unreadable manifest → the DEFAULT engine's group (so v1's
       own not-found/corrupt handling still applies — status/inspect omit them,
       clear deletes them);
-    - readable *unknown* marker → ``UnknownEngineVersionError`` (fail loud).
+    - readable *unknown* marker → OMITTED from every group, with a warning
+      logged — matches ``engine_descriptors()``'s omission pattern rather than
+      aborting the whole batch (issue #186).
 
     Group insertion order follows first appearance in ``collection_names`` — this
     function's own dict order is NOT a stable/deterministic key (it depends on
@@ -236,7 +240,11 @@ def _group_names_by_engine(
             try:
                 version = detect_engine_version(collection_path)
             except UnknownEngineVersionError:
-                raise
+                logger.warning(
+                    f"Collection '{name}' has an unrecognized manifest "
+                    "version; omitting it from this batch."
+                )
+                continue
             except ValueError:
                 version = _DEFAULT_ENGINE
         groups.setdefault(version, []).append(name)
@@ -565,6 +573,10 @@ def search(
         return _run(_resolve_existing_engine(engine, names, collections_path), configs)
 
     groups = _group_names_by_engine(names, collections_path)
+    if not groups:
+        # All names omitted — the <=1 shortcut below forwards the original
+        # configs, which would leak an omitted name straight to v1.
+        return {}
     if len(groups) <= 1:
         return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
 
@@ -601,6 +613,10 @@ def status(
         )
 
     groups = _group_names_by_engine(resolved, collections_path)
+    if not groups:
+        # All names omitted — the <=1 shortcut below forwards the original
+        # collection_names, which would leak an omitted name straight to v1.
+        return []
     if len(groups) <= 1:
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
@@ -637,6 +653,10 @@ def inspect(
         )
 
     groups = _group_names_by_engine(resolved, collections_path)
+    if not groups:
+        # All names omitted — the <=1 shortcut below forwards the original
+        # collection_names, which would leak an omitted name straight to v1.
+        return []
     if len(groups) <= 1:
         return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
 
