@@ -72,7 +72,7 @@ def test_default_is_one(monkeypatch) -> None:
 def test_core_engine_config_rejects_bad_value() -> None:
     from pydantic import ValidationError
 
-    from indexed.core.v1.config_models import CoreEngineConfig
+    from indexed.core.facade_config import CoreEngineConfig
 
     with pytest.raises(ValidationError):
         CoreEngineConfig(engine="9")
@@ -89,14 +89,14 @@ def test_core_engine_config_rejects_bad_value() -> None:
     [("1", "1"), ("2", "2"), ("v1", "1"), ("v2", "2"), ("V2", "2")],
 )
 def test_engine_selector_normalizes(raw: str, expected: str) -> None:
-    from indexed.core.v1.config_models import CoreEngineConfig
+    from indexed.core.facade_config import CoreEngineConfig
 
     assert CoreEngineConfig(engine=raw).engine == expected
 
 
 @pytest.mark.unit
 def test_engine_selector_rejects_garbage() -> None:
-    from indexed.core.v1.config_models import CoreEngineConfig
+    from indexed.core.facade_config import CoreEngineConfig
 
     with pytest.raises(ValueError, match="v1"):
         CoreEngineConfig(engine="v3")
@@ -172,6 +172,14 @@ def test_config_toml_no_core_section_falls_back_to_default(
 # --- OQ-T1 probe: real ConfigService with core + core.v1.* + core.v2.* --------
 
 
+def test_core_engine_config_lives_in_facade_config_not_v1() -> None:
+    """issue #186: CoreEngineConfig is facade-level [core] engine selection,
+    not v1 engine internals — it must not live inside the frozen v1 package."""
+    from indexed.core.facade_config import CoreEngineConfig
+
+    assert CoreEngineConfig().engine == "1"
+
+
 def test_core_engine_registration_coexists_with_v1_v2(tmp_path: Path) -> None:
     """Registering a scalar model at path ``core`` alongside ``core.v1.*`` /
     ``core.v2.*`` subtables binds cleanly and reads ``engine`` (extra='ignore')."""
@@ -179,7 +187,7 @@ def test_core_engine_registration_coexists_with_v1_v2(tmp_path: Path) -> None:
 
     from indexed.config.service import ConfigService
     from indexed.cli.composition import register_app_config
-    from indexed.core.v1.config_models import CoreEngineConfig
+    from indexed.core.facade_config import CoreEngineConfig
 
     workspace = tmp_path
     local_config = workspace / ".indexed" / "config.toml"

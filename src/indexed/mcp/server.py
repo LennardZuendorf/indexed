@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator, Type, TypedDict
 
 from fastmcp import FastMCP
 
-from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
+from indexed.core.facade_config import CoreV1SearchConfig, MCPConfig
 from indexed.config import get_config
 
 from indexed.cli.composition import register_app_config

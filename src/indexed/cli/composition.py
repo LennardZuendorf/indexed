@@ -29,8 +29,8 @@ from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 
 def register_app_config(config_service: ConfigService) -> None:
     """Register all config specs — idempotent, raises on failure."""
+    from indexed.core.facade_config import CoreEngineConfig
     from indexed.core.v1.config_models import (
-        CoreEngineConfig,
         CoreV1EmbeddingConfig,
         CoreV1IndexingConfig,
         CoreV1SearchConfig,

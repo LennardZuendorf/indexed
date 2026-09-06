@@ -97,3 +97,43 @@ def test_core_v2_importing_protocols_and_core_errors_is_allowed(tmp_path: Path) 
 
     violations = checker.check(src)
     assert violations == [], f"legal v2 imports were flagged: {violations}"
+
+
+def test_cli_composition_root_is_exempt_from_core_v1_v2_purity(tmp_path: Path) -> None:
+    """issue #186: the app composition root legitimately wires concrete v1/v2
+    config classes by construction — it must stay exempt from the generic
+    core.v1/core.v2 purity rule the way config/cli.py already is."""
+    checker = _load_checker()
+    assert checker._is_exempt(Path("cli") / "composition.py")
+
+
+def test_mcp_importing_core_v1_directly_is_a_violation(tmp_path: Path) -> None:
+    """issue #186: cli/mcp may import the facade (core.engine/.errors/
+    .versioning/.facade_config) but never core.v1/core.v2 internals directly."""
+    checker = _load_checker()
+    src = tmp_path / "src" / "indexed"
+    mcp_dir = src / "mcp"
+    mcp_dir.mkdir(parents=True)
+    (mcp_dir / "server.py").write_text(
+        "from indexed.core.v1.config_models import MCPConfig\n"
+    )
+
+    violations = checker.check(src)
+    assert violations, "expected a violation for mcp -> core.v1, got none"
+    assert any("must not import indexed.core.v1" in v for v in violations)
+
+
+def test_cli_importing_core_facade_is_not_a_violation(tmp_path: Path) -> None:
+    """The facade itself (core.engine, core.facade_config, ...) stays legal —
+    only core.v1.*/core.v2.* internals are forbidden from cli/mcp."""
+    checker = _load_checker()
+    src = tmp_path / "src" / "indexed"
+    cli_dir = src / "cli"
+    cli_dir.mkdir(parents=True)
+    (cli_dir / "app.py").write_text(
+        "from indexed.core.engine import search\n"
+        "from indexed.core.facade_config import MCPConfig\n"
+    )
+
+    violations = checker.check(src)
+    assert violations == []
