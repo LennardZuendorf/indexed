@@ -17,6 +17,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from indexed.core.engine import _existing_collection_names
 from indexed.core.v2._common import discover_v2_collections
 
@@ -48,6 +50,52 @@ def test_digit_leading_and_pid_prefixed_staging_dirs_excluded_both_sites(
 
     assert discover_v2_collections(base) == ["mydocs"]
     assert _existing_collection_names(str(base)) == ["mydocs"]
+
+
+class TestResolverValidationFailsLoud:
+    """issue #186: an out-of-range value like core.v2.search.score_threshold=5.0
+    (accepted by `config set`, which only warns) must not be silently discarded
+    on every search — unlike resolve_engine_selector, which already fails loud
+    on a bad value, these 3 resolvers caught bare Exception and returned a
+    default with zero signal. Only an UNREGISTERED spec (KeyError) should
+    still degrade to the default."""
+
+    def test_resolve_search_config_reraises_validation_error(self) -> None:
+        from pathlib import Path
+
+        from indexed.cli.composition import register_app_config
+        from indexed.config import get_config, reload as reload_config
+        from indexed.config.errors import ConfigValidationError
+        from indexed.core.v2 import _common
+
+        # Writes to the shared sandboxed global config.toml (session-scoped
+        # fixture, not reset per test) to exercise the real `config set`
+        # path end to end — snapshot + restore so this test doesn't leak an
+        # invalid score_threshold into later tests in the same run.
+        config_path = Path.home() / ".indexed" / "config.toml"
+        original = config_path.read_text()
+        try:
+            config_path.write_text("[core.v2.search]\nscore_threshold = 5.0\n")
+            reload_config()
+            register_app_config(get_config())
+
+            with pytest.raises(ConfigValidationError):
+                _common.resolve_search_config()
+        finally:
+            config_path.write_text(original)
+
+    def test_resolve_search_config_still_defaults_when_unregistered(self) -> None:
+        """No register_app_config() call → Provider.get() raises KeyError →
+        must still degrade to the default (unchanged prior behavior)."""
+        from indexed.config import reload as reload_config
+        from indexed.core.v2 import _common
+        from indexed.core.v2.config_models import CoreV2SearchConfig
+
+        reload_config()  # fresh ConfigService, nothing registered
+
+        result = _common.resolve_search_config()
+
+        assert result == CoreV2SearchConfig()
 
 
 def test_v1_backup_dirs_excluded_both_sites(tmp_path: Path) -> None:
