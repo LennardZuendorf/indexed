@@ -255,20 +255,84 @@ def test_status_omits_unknown_marker_but_returns_the_rest(
     """issue #186: one collection with an unrecognized manifest version must
     not break status()/inspect() for every OTHER collection in the batch —
     it should be omitted (like every other unreadable-collection case in this
-    module), not fail the whole call."""
+    module), not fail the whole call.
+
+    The spy records what ``collection_names`` v1 actually received — a mock
+    that ignores its argument (as an earlier version of this test did) cannot
+    tell a real omission from a leak-through: post-review fix for issue #186,
+    the ``len(groups) <= 1`` shortcut used to forward the caller's original,
+    unfiltered name list straight to v1 instead of the survivor group's own
+    names, so "future" reached v1 anyway despite being "omitted" upstream."""
     import indexed.core.engine as facade
     import indexed.core.v1.engine.services as v1_services
 
     _make_collection(tmp_path, "legacy", {"version": "1"})
     _make_collection(tmp_path, "future", {"version": "3"})
     sentinel = object()
-    monkeypatch.setattr(
-        v1_services, "status", lambda collection_names=None, **kw: [sentinel]
-    )
+    captured: dict = {}
+
+    def fake_status(collection_names=None, **kw):
+        captured["collection_names"] = collection_names
+        return [sentinel]
+
+    monkeypatch.setattr(v1_services, "status", fake_status)
 
     result = facade.status(["legacy", "future"], collections_path=str(tmp_path))
 
     assert result == [sentinel]
+    # The proof: v1 never sees "future" — only the survivor group's own names.
+    assert captured["collection_names"] == ["legacy"]
+
+
+def test_status_two_collections_one_unknown_omits_only_the_bad_one(
+    tmp_path: Path,
+) -> None:
+    """Real end-to-end repro (no mocks): a batch with one good v1 collection
+    and one unknown-version collection must return status for ONLY the good
+    one — the unknown one must not leak through with fabricated v1 data."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+
+    result = facade.status(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert [s.name for s in result] == ["legacy"]
+
+
+def test_search_two_collections_one_unknown_omits_only_the_bad_one(
+    tmp_path: Path,
+) -> None:
+    """Real end-to-end repro (no mocks): searching a good v1 collection plus
+    an unknown-version one must return a result keyed by ONLY the good one."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+    cfgs = [
+        facade.SourceConfig(name="legacy", type="localFiles", base_url_or_path=""),
+        facade.SourceConfig(name="future", type="localFiles", base_url_or_path=""),
+    ]
+
+    result = facade.search("q", configs=cfgs, collections_path=str(tmp_path))
+
+    assert "future" not in result
+    assert "legacy" in result
+
+
+def test_inspect_two_collections_one_unknown_omits_only_the_bad_one(
+    tmp_path: Path,
+) -> None:
+    """Real end-to-end repro (no mocks): inspecting a good v1 collection plus
+    an unknown-version one must return info for ONLY the good one."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+
+    result = facade.inspect(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert [info.name for info in result] == ["legacy"]
 
 
 def test_status_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> None:

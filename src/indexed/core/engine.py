@@ -239,10 +239,10 @@ def _group_names_by_engine(
         else:
             try:
                 version = detect_engine_version(collection_path)
-            except UnknownEngineVersionError:
+            except UnknownEngineVersionError as exc:
                 logger.warning(
                     f"Collection '{name}' has an unrecognized manifest "
-                    "version; omitting it from this batch."
+                    f"version {exc.found!r}; omitting it from this batch."
                 )
                 continue
             except ValueError:
@@ -573,12 +573,11 @@ def search(
         return _run(_resolve_existing_engine(engine, names, collections_path), configs)
 
     groups = _group_names_by_engine(names, collections_path)
-    if not groups:
-        # All names omitted — the <=1 shortcut below forwards the original
-        # configs, which would leak an omitted name straight to v1.
-        return {}
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `configs`/`names`) — an omitted name must never reach v1 this way.
+        version, grp_names = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        return _run(version, _configs_for_group(configs, grp_names))
 
     merged: Dict[str, Any] = {}
     for grp_version, grp_names in sorted(groups.items()):
@@ -613,12 +612,11 @@ def status(
         )
 
     groups = _group_names_by_engine(resolved, collections_path)
-    if not groups:
-        # All names omitted — the <=1 shortcut below forwards the original
-        # collection_names, which would leak an omitted name straight to v1.
-        return []
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `collection_names`) — an omitted name must never reach v1 this way.
+        version, names_for_group = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        return _run(version, names_for_group)
 
     out: List[Any] = []
     for grp_version, grp_names in sorted(groups.items()):
@@ -653,12 +651,11 @@ def inspect(
         )
 
     groups = _group_names_by_engine(resolved, collections_path)
-    if not groups:
-        # All names omitted — the <=1 shortcut below forwards the original
-        # collection_names, which would leak an omitted name straight to v1.
-        return []
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `collection_names`) — an omitted name must never reach v1 this way.
+        version, names_for_group = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        return _run(version, names_for_group)
 
     out: List[Any] = []
     for grp_version, grp_names in sorted(groups.items()):
