@@ -81,6 +81,18 @@ def _imported_subpackages(tree: ast.AST) -> list[tuple[int, str]]:
     return out
 
 
+def _is_module_or_submodule(mod: str, prefix: str) -> bool:
+    """True if ``mod`` IS ``prefix`` or a dotted sub-module of it.
+
+    A segment-boundary check, not a bare substring/prefix match: matching on
+    ``mod.startswith(prefix)`` alone would wrongly catch ``indexed.core.v10``
+    or ``indexed.core.v1_migration`` against prefix ``indexed.core.v1`` — a
+    real module name that merely starts with the same characters is not a
+    sub-module of it. The trailing ``"."`` is what makes it a dotted child.
+    """
+    return mod == prefix or mod.startswith(prefix + ".")
+
+
 def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
     """Yield (lineno, module) for imports of ``indexed.core.v1`` — forbidden from
     ``core/v2`` (v2 is a self-contained engine that may use only
@@ -89,7 +101,7 @@ def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
     cannot see the v1/v2 split; this deeper edge is checked explicitly."""
     hits: list[tuple[int, str]] = []
     for lineno, mod in _imported_modules(tree):
-        if mod == "indexed.core.v1" or mod.startswith("indexed.core.v1."):
+        if _is_module_or_submodule(mod, "indexed.core.v1"):
             hits.append((lineno, mod))
     return hits
 
@@ -100,11 +112,15 @@ def _app_layer_imports_core_v1_v2(tree: ast.AST) -> list[tuple[int, str]]:
     code above the facade may import core.v1.*/core.v2.* directly"). The
     facade itself (core.engine, core.errors, core.versioning,
     core.facade_config) stays legal — only the v1/v2-internals dotted prefix
-    is checked, mirroring _v2_imports_v1's shape for the same reason: the
-    generic single-level FORBIDDEN dict can't see the v1/v2 split."""
+    is checked, using the same segment-boundary helper as _v2_imports_v1 (a
+    bare substring/prefix match would wrongly catch a future ``core.v10`` or
+    ``core.v1_migration`` module) for the same reason: the generic
+    single-level FORBIDDEN dict can't see the v1/v2 split."""
     hits: list[tuple[int, str]] = []
     for lineno, mod in _imported_modules(tree):
-        if mod.startswith("indexed.core.v1") or mod.startswith("indexed.core.v2"):
+        if _is_module_or_submodule(mod, "indexed.core.v1") or _is_module_or_submodule(
+            mod, "indexed.core.v2"
+        ):
             hits.append((lineno, mod))
     return hits
 
@@ -208,7 +224,7 @@ def _self_test() -> int:
         return 1
     print(
         f"self-test OK: forbidden edges detected for 'core' -> {sorted(caught)}; "
-        "v2 ↛ core.v1 enforced"
+        "v2 ↛ core.v1 enforced; cli/mcp ↛ core.v1/core.v2 enforced"
     )
     return 0
 

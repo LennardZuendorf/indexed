@@ -180,6 +180,45 @@ def test_core_engine_config_lives_in_facade_config_not_v1() -> None:
     assert CoreEngineConfig().engine == "1"
 
 
+def test_facade_config_lazy_reexports_resolve_each_symbol() -> None:
+    """Every declared re-export resolves via __getattr__ to the real v1
+    object (straight pass-through, nothing renamed/wrapped in transit)."""
+    from indexed.core import facade_config
+    from indexed.core.v1.config_models import CoreV1SearchConfig, MCPConfig
+    from indexed.core.v1.constants import DEFAULT_INDEXER
+    from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+        DEFAULT_MODEL,
+        ensure_model,
+        get_cache_info,
+        is_model_cached,
+    )
+
+    assert facade_config.CoreV1SearchConfig is CoreV1SearchConfig
+    assert facade_config.MCPConfig is MCPConfig
+    assert facade_config.DEFAULT_INDEXER == DEFAULT_INDEXER
+    assert facade_config.DEFAULT_MODEL == DEFAULT_MODEL
+    assert facade_config.ensure_model is ensure_model
+    assert facade_config.get_cache_info is get_cache_info
+    assert facade_config.is_model_cached is is_model_cached
+
+
+def test_facade_config_getattr_rejects_unknown_name() -> None:
+    from indexed.core import facade_config
+
+    with pytest.raises(AttributeError, match="no attribute 'nonexistent'"):
+        facade_config.nonexistent  # noqa: B018
+
+
+def test_facade_config_dir_lists_class_and_reexports() -> None:
+    from indexed.core import facade_config
+
+    listing = dir(facade_config)
+    assert "CoreEngineConfig" in listing
+    assert "MCPConfig" in listing
+    assert "DEFAULT_MODEL" in listing
+    assert listing == sorted(listing)
+
+
 def test_core_engine_registration_coexists_with_v1_v2(tmp_path: Path) -> None:
     """Registering a scalar model at path ``core`` alongside ``core.v1.*`` /
     ``core.v2.*`` subtables binds cleanly and reads ``engine`` (extra='ignore')."""

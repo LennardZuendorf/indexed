@@ -137,3 +137,49 @@ def test_cli_importing_core_facade_is_not_a_violation(tmp_path: Path) -> None:
 
     violations = checker.check(src)
     assert violations == []
+
+
+def test_app_layer_v1_v2_matcher_requires_segment_boundary() -> None:
+    """Regression: a bare substring/prefix match on 'indexed.core.v1' would
+    wrongly catch a future module whose name merely starts with the same
+    characters (e.g. core.v10, core.v1_migration) — must require a dotted
+    segment boundary, exactly like the sibling _v2_imports_v1 check does."""
+    import ast
+
+    checker = _load_checker()
+
+    assert (
+        checker._app_layer_imports_core_v1_v2(
+            ast.parse("import indexed.core.v10.something\n")
+        )
+        == []
+    )
+    assert (
+        checker._app_layer_imports_core_v1_v2(
+            ast.parse("from indexed.core.v1_migration import helper\n")
+        )
+        == []
+    )
+    assert (
+        checker._app_layer_imports_core_v1_v2(
+            ast.parse("import indexed.core.v20.other\n")
+        )
+        == []
+    )
+    assert (
+        checker._app_layer_imports_core_v1_v2(
+            ast.parse("from indexed.core.v2beta import thing\n")
+        )
+        == []
+    )
+    # Real v1/v2 imports (exact module and dotted sub-modules) must still be
+    # caught — the fix must not over-correct into false negatives.
+    real_hits = checker._app_layer_imports_core_v1_v2(
+        ast.parse(
+            "from indexed.core.v1.config_models import MCPConfig\n"
+            "import indexed.core.v1\n"
+            "from indexed.core.v2.migration import migrate\n"
+            "import indexed.core.v2\n"
+        )
+    )
+    assert len(real_hits) == 4
