@@ -83,7 +83,7 @@ def _resolve_url(
     Cloud vs Server); Outline defaults to Cloud on Enter. Returns
     ``(resolved_url, url_was_prompted)``.
     """
-    resolved = url_arg or config.get(f"{spec.namespace}.url")
+    resolved = url_arg or config.get(f"{spec.namespace}.{spec.source_path_key}")
     prompted = False
     if not resolved:
         if not _is_pre_setup_verbose(verbose, log_level):

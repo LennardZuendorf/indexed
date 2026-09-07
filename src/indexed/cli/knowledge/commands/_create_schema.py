@@ -22,8 +22,6 @@ from urllib.parse import urlsplit
 
 from loguru import logger
 
-from indexed.connectors.github.schema import GITHUB_CLOUD_HOST
-
 from ...utils.console import console
 
 if TYPE_CHECKING:
@@ -127,6 +125,10 @@ def _outline_cloud_url() -> str:
 
 def _github_config() -> Type[BaseModel]:
     return _load_config("indexed.connectors.github.schema", "GitHubConfig")
+
+
+def _github_cloud_host() -> str:
+    return str(_load("indexed.connectors.github.schema", "GITHUB_CLOUD_HOST"))
 
 
 # --------------------------------------------------------------------------- #
@@ -369,7 +371,7 @@ SOURCE_SPECS: Dict[str, SourceSpec] = {
         default_config=_github_config,
         has_url=True,
         url_label="GitHub host",
-        url_default_fn=lambda: GITHUB_CLOUD_HOST,
+        url_default_fn=_github_cloud_host,
         verbose_log=_github_verbose_log,
         progress_uses_url=True,
     ),

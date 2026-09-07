@@ -1535,6 +1535,73 @@ class TestCreateGithub:
         call_kwargs = mock_execute.call_args.kwargs
         assert "include_pull_requests" not in call_kwargs["cli_overrides"]
 
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_host_from_config_not_prompted(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """task-8 review finding 2 regression: a configured
+        [sources.github] host must be read via source_path_key ("host"), not
+        a hardcoded "url" key — else it's silently dropped, the CLI falls
+        through to a prompt, and pressing Enter overwrites it with
+        github.com."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.side_effect = lambda key: (
+            "github.mycompany.com" if key == "sources.github.host" else None
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(**self._default_kwargs)  # host=None on the CLI
+
+        mock_console.input.assert_not_called()
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["host"] == "github.mycompany.com"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_token_reaches_credential_env_var(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute, monkeypatch
+    ):
+        """task-8 review finding 1 regression: --token must reach GITHUB_TOKEN
+        via apply_cli_credential_overrides. execute_create_command is mocked
+        out here (as in the rest of this class), so drive the real
+        credential-override seam it would otherwise call, proving --token
+        does not get silently discarded before GitHubConnector sees it."""
+        import os
+
+        from indexed.cli.knowledge.commands._create_commands import create_github
+        from indexed.cli.utils.credentials import apply_cli_credential_overrides
+
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{
+                **self._default_kwargs,
+                "host": "github.com",
+                "token": "ghp_test",
+            }
+        )
+
+        mock_execute.assert_called_once()
+        cli_overrides = mock_execute.call_args.kwargs["cli_overrides"]
+        assert cli_overrides["token"] == "ghp_test"
+
+        apply_cli_credential_overrides("github", cli_overrides)
+        assert os.environ["GITHUB_TOKEN"] == "ghp_test"
+
 
 @pytest.mark.unit
 class TestPromptMissingOutlineFields:
