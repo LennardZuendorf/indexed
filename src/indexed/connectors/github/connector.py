@@ -18,10 +18,14 @@ from .schema import GitHubConfig
 _OPTIONAL_OVERLAYS = (
     ("repos", "repos"),
     ("project", "project"),
+    ("host", "host"),
+    ("graphqlUrl", "graphql_url"),
     ("state", "state"),
     ("labels", "labels"),
     ("includePullRequests", "include_pull_requests"),
     ("includeComments", "include_comments"),
+    ("pageSize", "page_size"),
+    ("maxConcurrentRequests", "max_concurrent_requests"),
     ("verifySsl", "verify_ssl"),
 )
 
@@ -60,6 +64,7 @@ class GitHubConnector:
         self._reader = GitHubGraphQLReader(
             graphql_url=config.resolve_graphql_url(),
             token=token,
+            host=config.host,
             repos=config.parsed_repos(),
             project=config.parsed_project(),
             state=config.state,

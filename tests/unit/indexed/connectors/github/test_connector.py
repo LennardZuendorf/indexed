@@ -9,6 +9,8 @@ from indexed.connectors.github.github_document_converter import GitHubDocumentCo
 from indexed.connectors.github.github_graphql_reader import GitHubGraphQLReader
 from indexed.protocols import ConnectorRun
 
+pytestmark = pytest.mark.unit
+
 
 def test_connector_type():
     connector = GitHubConnector(GitHubConfig(repos=["octo/hello"], token="ghp_x"))
@@ -125,3 +127,46 @@ def test_from_manifest_no_prior_modified_time_skips_overlay():
 
     called_keys = [c.args[0] for c in config_service.set_overlay.call_args_list]
     assert "sources.github.modified_since" not in called_keys
+
+
+def test_from_manifest_carries_endpoint_and_paging_settings():
+    """A GHES/ghe.com collection must rebuild against its stored endpoint, not
+    whatever `sources.github.*` happens to hold at update time."""
+    manifest = _FakeManifest(
+        {
+            "repos": ["octo/hello"],
+            "host": "github.acme.internal",
+            "graphqlUrl": "https://github.acme.internal/api/graphql",
+            "pageSize": 25,
+            "maxConcurrentRequests": 2,
+        },
+        None,
+    )
+    config_service = _config_service_stub(
+        GitHubConfig(repos=["octo/hello"], token="ghp_x", host="github.acme.internal")
+    )
+
+    GitHubConnector.from_manifest(manifest, config_service, storage_path="/tmp/x")
+
+    calls = {c.args[0]: c.args[1] for c in config_service.set_overlay.call_args_list}
+    assert calls["sources.github.host"] == "github.acme.internal"
+    assert (
+        calls["sources.github.graphql_url"]
+        == "https://github.acme.internal/api/graphql"
+    )
+    assert calls["sources.github.page_size"] == 25
+    assert calls["sources.github.max_concurrent_requests"] == 2
+
+
+def test_reader_details_round_trip_through_optional_overlays():
+    """Every reader-details key that maps to a GitHubConfig field must have an
+    overlay entry — otherwise it silently reverts to the default on update."""
+    from indexed.connectors.github.connector import _OPTIONAL_OVERLAYS
+
+    connector = GitHubConnector(
+        GitHubConfig(repos=["octo/hello"], token="ghp_x", host="github.acme.internal")
+    )
+    details = connector.reader.get_reader_details()
+    overlaid = {manifest_key for manifest_key, _ in _OPTIONAL_OVERLAYS}
+
+    assert set(details) - overlaid == {"type"}

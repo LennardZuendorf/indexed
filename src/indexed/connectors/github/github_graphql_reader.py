@@ -15,10 +15,29 @@ from . import queries
 class GitHubGraphQLError(Exception):
     """Raised when the GitHub GraphQL API returns an error response."""
 
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self, status_code: int, message: str, errors: list[dict] | None = None
+    ) -> None:
         super().__init__(f"GitHub GraphQL error ({status_code}): {message}")
         self.status_code = status_code
         self.message = message
+        # Raw GraphQL `errors` entries, so callers can branch on their `type`/
+        # `path` (see `_is_organization_not_found`) instead of parsing `message`.
+        self.errors = errors
+
+
+def _is_organization_not_found(error: GitHubGraphQLError) -> bool:
+    """True when GitHub answered an org probe with "no such organization".
+
+    A user-owned Projects v2 board answers the `organization(login:)` probe with
+    BOTH `data.organization: null` AND a NOT_FOUND error, so the null alone is
+    never reached — this recognizes that shape as "not an org, try the user
+    query" rather than a hard failure.
+    """
+    return any(
+        entry.get("type") == "NOT_FOUND" and entry.get("path") == ["organization"]
+        for entry in (error.errors or [])
+    )
 
 
 class GitHubGraphQLReader:
@@ -32,6 +51,8 @@ class GitHubGraphQLReader:
     Args:
         graphql_url: GraphQL endpoint (Cloud or Enterprise).
         token: Bearer token for authentication.
+        host: Configured GitHub host, persisted so an incremental update
+            rebuilds against the same deployment.
         repos: (owner, name) tuples to read issues from.
         project: (owner, number) Projects v2 board selector, or None.
         state: Issue state filter — "open", "closed", or "all".
@@ -50,6 +71,7 @@ class GitHubGraphQLReader:
         self,
         graphql_url: str,
         token: str,
+        host: str,
         repos: list[tuple[str, str]],
         project: tuple[str, int] | None,
         state: str,
@@ -68,6 +90,7 @@ class GitHubGraphQLReader:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
         }
+        self._host = host
         self._repos = repos
         self._project = project
         self._state = state
@@ -93,16 +116,21 @@ class GitHubGraphQLReader:
     # ------------------------------------------------------------------
 
     def get_number_of_documents(self) -> int:
-        return len(self._fetch_documents())
+        # Counts the deduplicated set, so it matches what read_all_documents()
+        # yields when repos and a project board overlap.
+        return len(self._deduplicated_documents())
 
     def read_all_documents(self) -> Iterator[dict]:
-        """Yield raw issue documents across all configured repos, deduplicated by id.
+        yield from self._deduplicated_documents()
+
+    def _deduplicated_documents(self) -> list[dict]:
+        """Raw issue documents across all configured repos, deduplicated by id.
 
         A document reachable via more than one source (e.g. a repo scan and a
-        project board) is emitted once, carrying the union of every copy's
+        project board) is kept once, carrying the union of every copy's
         project_fields — non-empty values win, and later copies take
         precedence on overlapping field names — so a project-sourced
-        duplicate is never re-emitted but never loses its board fields.
+        duplicate is never repeated but never loses its board fields.
         """
         order: list[str] = []
         kept: dict[str, dict] = {}
@@ -116,8 +144,7 @@ class GitHubGraphQLReader:
             if new_fields:
                 merged = {**(kept[doc_id].get("project_fields") or {}), **new_fields}
                 kept[doc_id] = {**kept[doc_id], "project_fields": merged}
-        for doc_id in order:
-            yield kept[doc_id]
+        return [kept[doc_id] for doc_id in order]
 
     def _fetch_documents(self) -> list[dict]:
         """Run the GraphQL crawl once and cache it — `get_number_of_documents()`
@@ -131,6 +158,7 @@ class GitHubGraphQLReader:
         return {
             "type": "github",
             "graphqlUrl": self._graphql_url,
+            "host": self._host,
             "repos": [f"{owner}/{name}" for owner, name in self._repos],
             "project": f"{self._project[0]}/{self._project[1]}"
             if self._project
@@ -289,12 +317,17 @@ class GitHubGraphQLReader:
         assert self._project is not None
         login, number = self._project
 
-        probe = await self._post_graphql(
-            client,
-            semaphore,
-            queries.PROJECT_ITEMS_QUERY,
-            {"login": login, "number": number, "first": 1, "after": None},
-        )
+        try:
+            probe = await self._post_graphql(
+                client,
+                semaphore,
+                queries.PROJECT_ITEMS_QUERY,
+                {"login": login, "number": number, "first": 1, "after": None},
+            )
+        except GitHubGraphQLError as exc:
+            if not _is_organization_not_found(exc):
+                raise
+            probe = {"organization": None}
         is_org = probe.get("organization") is not None
         query = (
             queries.PROJECT_ITEMS_QUERY if is_org else queries.PROJECT_ITEMS_QUERY_USER
@@ -417,7 +450,9 @@ class GitHubGraphQLReader:
                         )
                         await self._backoff(response, attempt)
                         continue
-                    raise GitHubGraphQLError(response.status_code, str(errors))
+                    raise GitHubGraphQLError(
+                        response.status_code, str(errors), errors=errors
+                    )
                 return payload["data"]
             raise last_error or GitHubGraphQLError(
                 0, "GraphQL request failed after retries"
@@ -435,6 +470,10 @@ class GitHubGraphQLReader:
         return bool(response.headers.get("Retry-After"))
 
     async def _backoff(self, response: httpx.Response, attempt: int) -> None:
+        # The final attempt raises regardless, so sleeping first (up to 60s)
+        # only adds latency.
+        if attempt >= self._number_of_retries - 1:
+            return
         reset_header = response.headers.get("X-RateLimit-Reset")
         delay = self._retry_delay * (2**attempt)
         if reset_header:

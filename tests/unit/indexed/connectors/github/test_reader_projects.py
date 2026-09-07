@@ -1,13 +1,21 @@
 from unittest.mock import patch
 
-from indexed.connectors.github.github_graphql_reader import GitHubGraphQLReader
+import pytest
+
+from indexed.connectors.github.github_graphql_reader import (
+    GitHubGraphQLError,
+    GitHubGraphQLReader,
+)
 from ._fakes import FakeAsyncClient, FakeResponse
+
+pytestmark = pytest.mark.unit
 
 
 def _reader(**overrides) -> GitHubGraphQLReader:
     kwargs = dict(
         graphql_url="https://api.github.com/graphql",
         token="ghp_test",
+        host="github.com",
         repos=[],
         project=("octo", 12),
         state="all",
@@ -411,6 +419,10 @@ def test_dedup_keeps_project_fields_from_project_sourced_duplicate():
 
 
 def test_user_owned_project_uses_user_query():
+    """The org probe for a user-owned board gets GitHub's REAL response shape:
+    `data.organization: null` AND a NOT_FOUND `errors` array. The reader must
+    treat that pair as "not an org" and retry under `user(login:)` instead of
+    raising."""
     issue_node = {
         "__typename": "Issue",
         "id": "I_3",
@@ -431,7 +443,22 @@ def test_user_owned_project_uses_user_query():
     def router(body):
         variables = body["variables"]
         if variables.get("first") == 1:
-            return FakeResponse(200, {"data": {"organization": None}})
+            return FakeResponse(
+                200,
+                {
+                    "data": {"organization": None},
+                    "errors": [
+                        {
+                            "type": "NOT_FOUND",
+                            "path": ["organization"],
+                            "message": (
+                                "Could not resolve to an Organization with the "
+                                "login of 'octocat'."
+                            ),
+                        }
+                    ],
+                },
+            )
         if "user(login" in body["query"]:
             return FakeResponse(
                 200,
@@ -465,6 +492,33 @@ def test_user_owned_project_uses_user_query():
 
     assert len(docs) == 1
     assert docs[0]["id"] == "octo/web#3"
+
+
+def test_probe_error_other_than_org_not_found_still_raises():
+    """Only a NOT_FOUND on `organization` means "try the user query" — any
+    other probe error (e.g. a forbidden board) must still fail loud."""
+
+    def router(body):
+        if body["variables"].get("first") == 1:
+            return FakeResponse(
+                200,
+                {
+                    "data": {"organization": None},
+                    "errors": [{"type": "FORBIDDEN", "path": ["organization"]}],
+                },
+            )
+        return FakeResponse(200, _issues_empty_page())
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        with pytest.raises(GitHubGraphQLError):
+            list(
+                _reader(
+                    repos=[], project=("octocat", 7), include_pull_requests=False
+                ).read_all_documents()
+            )
 
 
 def test_project_item_with_null_content_is_skipped():
@@ -506,3 +560,83 @@ def test_project_item_with_null_content_is_skipped():
         )
 
     assert docs == []
+
+
+def test_document_count_matches_yielded_documents_on_overlap():
+    """A doc reachable from both a repo scan and the project board is counted
+    once — `get_number_of_documents()` must agree with what
+    `read_all_documents()` yields, or the collection creator logs a false
+    "expected N, got M" error and mis-sizes its progress bar."""
+    shared_issue = {
+        "id": "I_9",
+        "number": 9,
+        "title": "Spans repo and board",
+        "body": "b",
+        "state": "OPEN",
+        "url": "https://github.com/octo/web/issues/9",
+        "updatedAt": "2026-06-20T10:00:00Z",
+        "createdAt": "2026-06-19T10:00:00Z",
+        "author": {"login": "octocat"},
+        "labels": {"nodes": []},
+        "comments": {"nodes": []},
+    }
+    board_content = {
+        **shared_issue,
+        "__typename": "Issue",
+        "repository": {"owner": {"login": "octo"}, "name": "web"},
+    }
+    item_node = {
+        "id": "PVTI_9",
+        "fieldValues": {"nodes": [{"name": "Done", "field": {"name": "Status"}}]},
+        "content": board_content,
+    }
+
+    def router(body):
+        variables = body["variables"]
+        if "organization" in body["query"] and variables.get("first") == 1:
+            return FakeResponse(200, _project_probe_org())
+        if "organization" in body["query"]:
+            return FakeResponse(
+                200,
+                {
+                    "data": {
+                        "organization": {
+                            "projectV2": {
+                                "items": {
+                                    "nodes": [item_node],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        return FakeResponse(
+            200,
+            {
+                "data": {
+                    "repository": {
+                        "issues": {
+                            "nodes": [shared_issue],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            },
+        )
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        reader = _reader(
+            repos=[("octo", "web")], project=("octo", 12), include_pull_requests=False
+        )
+        count = reader.get_number_of_documents()
+        docs = list(reader.read_all_documents())
+
+    assert count == len(docs) == 1
+    assert docs[0]["project_fields"] == {"Status": "Done"}

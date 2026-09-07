@@ -9,6 +9,8 @@ from indexed.connectors.github.github_graphql_reader import (
 )
 from ._fakes import FakeAsyncClient, FakeResponse
 
+pytestmark = pytest.mark.unit
+
 
 def _issue_node(number: int, title: str) -> dict:
     return {
@@ -51,6 +53,7 @@ def _reader(**overrides) -> GitHubGraphQLReader:
     kwargs = dict(
         graphql_url="https://api.github.com/graphql",
         token="ghp_test",
+        host="github.com",
         repos=[("octo", "hello")],
         project=None,
         state="all",
@@ -159,6 +162,10 @@ def test_labels_and_state_filter_passed_as_variables():
 def test_get_reader_details_shape():
     details = _reader(labels=["bug"]).get_reader_details()
     assert details["type"] == "github"
+    assert details["host"] == "github.com"
+    assert details["graphqlUrl"] == "https://api.github.com/graphql"
+    assert details["pageSize"] == 2
+    assert details["maxConcurrentRequests"] == 2
     assert details["repos"] == ["octo/hello"]
     assert details["state"] == "all"
     assert details["labels"] == ["bug"]
@@ -320,3 +327,63 @@ def test_documents_fetched_once_and_cached():
     assert count == 1
     assert len(docs) == 1
     assert calls["n"] == 1
+
+
+def test_no_backoff_sleep_on_final_attempt():
+    """The last attempt raises whatever happens, so it must not sleep first."""
+
+    def router(body):
+        return FakeResponse(200, {"errors": [{"type": "RATE_LIMITED"}]}, headers={})
+
+    slept = []
+
+    async def fake_sleep(delay):
+        slept.append(delay)
+
+    with (
+        patch(
+            "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+            new=lambda **kw: FakeAsyncClient(router, **kw),
+        ),
+        patch(
+            "indexed.connectors.github.github_graphql_reader.asyncio.sleep",
+            new=fake_sleep,
+        ),
+    ):
+        with pytest.raises(GitHubGraphQLError):
+            list(_reader(number_of_retries=1, retry_delay=5.0).read_all_documents())
+
+    assert slept == []
+
+
+def test_backoff_still_sleeps_before_a_remaining_attempt():
+    """Guards the fix above from over-reaching: retries that still have budget
+    left must keep backing off."""
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    attempts = {"n": 0}
+
+    def router(body):
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            return FakeResponse(200, {"errors": [{"type": "RATE_LIMITED"}]}, headers={})
+        return FakeResponse(200, page)
+
+    slept = []
+
+    async def fake_sleep(delay):
+        slept.append(delay)
+
+    with (
+        patch(
+            "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+            new=lambda **kw: FakeAsyncClient(router, **kw),
+        ),
+        patch(
+            "indexed.connectors.github.github_graphql_reader.asyncio.sleep",
+            new=fake_sleep,
+        ),
+    ):
+        docs = list(_reader(number_of_retries=2, retry_delay=5.0).read_all_documents())
+
+    assert len(docs) == 1
+    assert slept == [5.0]
