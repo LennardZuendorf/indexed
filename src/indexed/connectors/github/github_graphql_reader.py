@@ -96,13 +96,28 @@ class GitHubGraphQLReader:
         return len(self._fetch_documents())
 
     def read_all_documents(self) -> Iterator[dict]:
-        """Yield raw issue documents across all configured repos, deduplicated by id."""
-        seen: set[str] = set()
+        """Yield raw issue documents across all configured repos, deduplicated by id.
+
+        A document reachable via more than one source (e.g. a repo scan and a
+        project board) is emitted once, carrying the union of every copy's
+        project_fields — non-empty values win, and later copies take
+        precedence on overlapping field names — so a project-sourced
+        duplicate is never re-emitted but never loses its board fields.
+        """
+        order: list[str] = []
+        kept: dict[str, dict] = {}
         for doc in self._fetch_documents():
-            if doc["id"] in seen:
+            doc_id = doc["id"]
+            if doc_id not in kept:
+                kept[doc_id] = doc
+                order.append(doc_id)
                 continue
-            seen.add(doc["id"])
-            yield doc
+            new_fields = doc.get("project_fields")
+            if new_fields:
+                merged = {**(kept[doc_id].get("project_fields") or {}), **new_fields}
+                kept[doc_id] = {**kept[doc_id], "project_fields": merged}
+        for doc_id in order:
+            yield kept[doc_id]
 
     def _fetch_documents(self) -> list[dict]:
         """Run the GraphQL crawl once and cache it — `get_number_of_documents()`

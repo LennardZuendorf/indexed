@@ -334,6 +334,82 @@ def test_issue_in_both_repos_and_project_deduped():
     assert docs[0]["id"] == "octo/web#9"
 
 
+def test_dedup_keeps_project_fields_from_project_sourced_duplicate():
+    issue_node = {
+        "__typename": "Issue",
+        "id": "I_9",
+        "number": 9,
+        "title": "Board issue",
+        "body": "b",
+        "state": "OPEN",
+        "url": "https://github.com/octo/web/issues/9",
+        "updatedAt": "2026-06-20T10:00:00Z",
+        "createdAt": "2026-06-19T10:00:00Z",
+        "author": {"login": "octocat"},
+        "repository": {"owner": {"login": "octo"}, "name": "web"},
+        "labels": {"nodes": []},
+        "comments": {"nodes": []},
+    }
+    item_node = {
+        "id": "PVTI_1",
+        "fieldValues": {
+            "nodes": [{"name": "In Progress", "field": {"name": "Status"}}]
+        },
+        "content": issue_node,
+    }
+    repo_issue_page = {
+        "data": {
+            "repository": {
+                "issues": {
+                    "nodes": [issue_node],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
+    }
+
+    def router(body):
+        variables = body["variables"]
+        if "organization" in body["query"] and variables.get("first") == 1:
+            return FakeResponse(200, _project_probe_org())
+        if "organization" in body["query"]:
+            return FakeResponse(
+                200,
+                {
+                    "data": {
+                        "organization": {
+                            "projectV2": {
+                                "items": {
+                                    "nodes": [item_node],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        return FakeResponse(200, repo_issue_page)
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        docs = list(
+            _reader(
+                repos=[("octo", "web")],
+                project=("octo", 12),
+                include_pull_requests=False,
+            ).read_all_documents()
+        )
+
+    assert len(docs) == 1
+    assert docs[0]["id"] == "octo/web#9"
+    assert docs[0]["project_fields"] == {"Status": "In Progress"}
+
+
 def test_user_owned_project_uses_user_query():
     issue_node = {
         "__typename": "Issue",
