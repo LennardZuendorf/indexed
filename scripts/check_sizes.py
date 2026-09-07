@@ -17,7 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 26_450
+SRC_LOC_MAX = 27_800
+# Raised from 26_450 by github-connector (PR #164): the GitHub Projects/Issues
+# connector — `connectors/github/` (GraphQL reader, converter, schema, auth,
+# queries, connector wiring), the `index create github` subcommand, and the
+# registry/composition path-key wiring — genuine new-feature surface, not
+# stealth growth; ceiling = measured (27_610) + headroom.
 # Raised from 26_100 by core-v2-discoverability/issue #188 (#191): group-level
 # `--engine` on `index create` (`_create_options.py`/`_create_commands.py`/
 # `_create_helpers.py`, plus `create.py`/`search.py`/`cli.py`/
@@ -60,7 +65,15 @@ SRC_LOC_MAX = 26_450
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 40_600
+TEST_LOC_MAX = 42_800
+# Raised from 40_600 by github-connector (PR #164)'s tests: the six-file
+# `tests/unit/indexed/connectors/github/` suite (schema/auth/reader/projects/
+# converter/connector), the `TestCreateGithub` CLI coverage, the github rows in
+# the connector-registry characterization and lifecycle nets, and the final
+# whole-branch-review fix wave's regression tests (manifest endpoint carry-over,
+# real-API org/user probe shape, dedup count parity, final-attempt backoff,
+# GHES `gh --hostname`, registry path keys) — genuine new-feature and
+# defect-guarding coverage; ceiling = measured (42_561) + headroom.
 # Raised from 39_600 by core-v2-rendering-fixes/issue #187's tests: red->green
 # regression coverage for all 8 issue #187 findings (error-panel rendering,
 # terminal-derived detail-card width, Included-Patterns display, the
