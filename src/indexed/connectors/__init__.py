@@ -14,8 +14,10 @@ from .github.connector import GitHubConnector
 from .registry import (
     CONNECTOR_REGISTRY,
     NAMESPACE_REGISTRY,
+    PATH_KEY_REGISTRY,
     get_connector_class,
     get_config_namespace,
+    get_source_path_key,
 )
 
 __all__ = [
@@ -30,6 +32,8 @@ __all__ = [
     # Registry
     "CONNECTOR_REGISTRY",
     "NAMESPACE_REGISTRY",
+    "PATH_KEY_REGISTRY",
     "get_connector_class",
     "get_config_namespace",
+    "get_source_path_key",
 ]

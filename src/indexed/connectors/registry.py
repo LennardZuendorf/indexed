@@ -43,6 +43,20 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
     "github": "sources.github",
 }
 
+# Registry mapping connector_type strings to the config key their
+# ``SourceConfig.base_url_or_path`` writes to. Most sources call it "url";
+# files stores a filesystem "path" and GitHub a "host", so the composition
+# root must look this up instead of assuming "url".
+PATH_KEY_REGISTRY: Dict[str, str] = {
+    "localFiles": "path",
+    "jira": "url",
+    "jiraCloud": "url",
+    "confluence": "url",
+    "confluenceCloud": "url",
+    "outline": "url",
+    "github": "host",
+}
+
 
 def get_connector_class(connector_type: str) -> Type[Any]:
     """Get connector class by type identifier.
@@ -86,3 +100,23 @@ def get_config_namespace(connector_type: str) -> str:
             f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return NAMESPACE_REGISTRY[connector_type]
+
+
+def get_source_path_key(connector_type: str) -> str:
+    """Get the config key a source's base_url_or_path writes to.
+
+    Args:
+        connector_type: Connector type string
+
+    Returns:
+        Config key name (e.g., "url", "path", "host")
+
+    Raises:
+        ValueError: If connector_type is not registered
+    """
+    if connector_type not in PATH_KEY_REGISTRY:
+        available = ", ".join(PATH_KEY_REGISTRY.keys())
+        raise ValueError(
+            f"Unknown connector type: '{connector_type}'. Available types: {available}"
+        )
+    return PATH_KEY_REGISTRY[connector_type]
