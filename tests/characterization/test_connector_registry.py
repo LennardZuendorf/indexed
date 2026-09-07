@@ -34,6 +34,10 @@ EXPECTED = {
         "indexed.connectors.outline.connector:OutlineConnector",
         "sources.outline",
     ),
+    "github": (
+        "indexed.connectors.github.connector:GitHubConnector",
+        "sources.github",
+    ),
 }
 
 
