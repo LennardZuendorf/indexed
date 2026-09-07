@@ -101,9 +101,7 @@ class TestResolverValidationFailsLoud:
         from indexed.config.errors import ConfigValidationError
         from indexed.core.v2 import _common
 
-        original = self._write_and_reload(
-            "[core.v2.embedding]\nbatch_size = -1\n"
-        )
+        original = self._write_and_reload("[core.v2.embedding]\nbatch_size = -1\n")
         try:
             with pytest.raises(ConfigValidationError):
                 _common.resolve_embedding_config()
