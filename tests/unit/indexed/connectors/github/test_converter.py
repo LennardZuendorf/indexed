@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from indexed.connectors.github.github_document_converter import GitHubDocumentConverter
+
+pytestmark = pytest.mark.unit
 
 
 def _document(**overrides) -> dict:

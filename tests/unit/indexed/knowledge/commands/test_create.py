@@ -1247,6 +1247,7 @@ class TestCreateOutline:
         assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
+@pytest.mark.unit
 class TestCreateGithub:
     """Test create_github command."""
 
@@ -1568,7 +1569,7 @@ class TestCreateGithub:
     @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
     @patch("indexed.cli.knowledge.commands.create.console")
     def test_create_github_token_reaches_credential_env_var(
-        self, mock_console, mock_verbose, mock_config_service, mock_execute, monkeypatch
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
     ):
         """task-8 review finding 1 regression: --token must reach GITHUB_TOKEN
         via apply_cli_credential_overrides. execute_create_command is mocked
@@ -1579,8 +1580,6 @@ class TestCreateGithub:
 
         from indexed.cli.knowledge.commands._create_commands import create_github
         from indexed.cli.utils.credentials import apply_cli_credential_overrides
-
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -1599,8 +1598,12 @@ class TestCreateGithub:
         cli_overrides = mock_execute.call_args.kwargs["cli_overrides"]
         assert cli_overrides["token"] == "ghp_test"
 
-        apply_cli_credential_overrides("github", cli_overrides)
-        assert os.environ["GITHUB_TOKEN"] == "ghp_test"
+        # patch.dict restores os.environ exactly on exit, so the token written
+        # below cannot leak into later tests in this process.
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GITHUB_TOKEN", None)
+            apply_cli_credential_overrides("github", cli_overrides)
+            assert os.environ["GITHUB_TOKEN"] == "ghp_test"
 
 
 @pytest.mark.unit
