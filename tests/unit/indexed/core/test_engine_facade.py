@@ -300,11 +300,14 @@ def test_status_two_collections_one_unknown_omits_only_the_bad_one(
     assert [s.name for s in result] == ["legacy"]
 
 
-def test_search_two_collections_one_unknown_omits_only_the_bad_one(
+def test_search_two_collections_one_unknown_surfaces_error_entry(
     tmp_path: Path,
 ) -> None:
-    """Real end-to-end repro (no mocks): searching a good v1 collection plus
-    an unknown-version one must return a result keyed by ONLY the good one."""
+    """Final-review Finding #2: search() CAN carry a per-collection error (its
+    return type is a dict keyed by collection name, unlike status()/inspect()'s
+    plain lists) — so an unrecognized-version collection in a batch comes back
+    as an ``{"error": ...}`` entry, not a missing key. The other collection's
+    real result is unaffected."""
     import indexed.core.engine as facade
 
     _make_collection(tmp_path, "legacy", {"version": "1"})
@@ -316,8 +319,10 @@ def test_search_two_collections_one_unknown_omits_only_the_bad_one(
 
     result = facade.search("q", configs=cfgs, collections_path=str(tmp_path))
 
-    assert "future" not in result
     assert "legacy" in result
+    assert "future" in result
+    assert set(result["future"]) == {"error"}
+    assert "3" in result["future"]["error"]
 
 
 def test_inspect_two_collections_one_unknown_omits_only_the_bad_one(
@@ -364,9 +369,13 @@ def test_clear_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
     assert coll.is_dir()
 
 
-def test_search_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> None:
-    """issue #186: a solo readable ``version:"3"`` collection is omitted from
-    the result instead of aborting the whole search."""
+def test_search_without_engine_on_unknown_marker_surfaces_error_entry(
+    tmp_path: Path,
+) -> None:
+    """issue #186 + final-review Finding #2: a solo readable ``version:"3"``
+    collection no longer aborts the whole search, and — since search()'s dict
+    return type can carry a per-collection error — it comes back as an
+    ``{"error": ...}`` entry rather than vanishing with no key at all."""
     import indexed.core.engine as facade
 
     _make_collection(tmp_path, "future", {"version": "3"})
@@ -374,7 +383,8 @@ def test_search_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> N
 
     result = facade.search("q", configs=[cfg], collections_path=str(tmp_path))
 
-    assert result == {}
+    assert set(result) == {"future"}
+    assert set(result["future"]) == {"error"}
 
 
 def test_status_without_engine_on_v1_marker_routes_to_v1(
