@@ -7,11 +7,16 @@ The lazy re-exports below (mirroring core.engine's own __getattr__ pattern)
 let cli/mcp reference v1 config-model types and small utility
 constants/functions without importing core.v1.*/core.v2.* directly anywhere
 in their own files — satisfying .spec/tech.md's "no code above the facade
-may import core.v1.*/core.v2.* directly" contract in FULL, not just for
-CoreEngineConfig. Each is a straight v1 pass-through (v1 is the only engine
-with these today, e.g. the embedding model-cache manager); nothing is
-imported until first accessed, so a consumer that only needs CoreEngineConfig
-never pays for the model-manager import chain, and vice versa.
+may import core.v1.*/core.v2.* directly" contract for every cli/mcp file the
+check_imports.py rule covers, not just for CoreEngineConfig. (config/commands/
+is a separate, pre-existing exemption in check_imports.py's _EXEMPT_DIRS, for
+the same composition-adjacent rationale as config/cli.py — a file there, e.g.
+config/commands/_helpers.py, importing core.v1.* directly is expected and out
+of scope for this module.) Each re-export is a straight v1 pass-through (v1
+is the only engine with these today, e.g. the embedding model-cache manager);
+nothing is imported until first accessed, so a consumer that only needs
+CoreEngineConfig never pays for the model-manager import chain, and vice
+versa.
 """
 
 from __future__ import annotations

@@ -907,3 +907,39 @@ with `git add`/`git status`, since that's what CI actually runs.
   other to diverge further. When duplicated logic has no layer-specific
   dependency, prefer extraction to a shared leaf module over a matched pair
   of edits.
+
+## Final-review fix pass on issue #186 (2026-09-07)
+
+- **"Fail loud" and "re-raise on `ConfigValidationError`" are not the same
+  contract — a re-raise needs its own scope check too.** The 2026-09-06 fix
+  above (catch `ConfigValidationError` first and `raise`) was itself too
+  broad: `ConfigService.bind()` validates the WHOLE registered config in one
+  pass, so a bad `[mcp]` value made all three `core/v2/_common.py` resolvers
+  raise even though none of them touch `[mcp]`. The narrower fix checks
+  `exc.path` against the resolver's OWN registered path (`"core.v2.
+  embedding"`/`"core.v2.search"`/`"core.v2.rerank"`) before re-raising, and
+  falls through to the default for anyone else's section — matching the
+  existing `config get`-on-a-single-key precedent
+  (`config/commands/get.py`). The lesson generalizes: whenever a re-raise is
+  keyed off an exception TYPE alone but the underlying validator can fail for
+  reasons unrelated to the caller's own concern, key the re-raise off the
+  exception's own identifying field too, not just its type.
+- **The old "an unknown version always fails loud" contract (2026-07-19
+  entry above) has SPLIT, not been overturned.** `create`/`update`/`clear`
+  (via `_resolve_existing_engine`) still fail loud on an unrecognized
+  manifest `version` — that guidance still applies to them unchanged. But
+  `search`/`status`/`inspect` (via `_group_names_by_engine`, added
+  2026-09-06 for this same issue) now OMIT an unrecognized-version
+  collection from its batch instead of aborting the call. Read-path
+  batch ops and mutating single/multi-collection ops earned different
+  contracts here — check which family an op belongs to before assuming
+  "fails loud" still holds branch-wide.
+- **A dict-returning batch op should surface a per-item failure as data, a
+  list-returning one can't.** `search()` returns `Dict[str, Any]` keyed by
+  collection name, so an omitted collection is now merged back in as
+  `{"error": <message>}` — the same convention already used by
+  `core/v2/retrieval.py` and v1's `search_service.py` for a per-collection
+  failure inside a batch. `status()`/`inspect()` return plain `List[...]`
+  with no per-item slot to carry that in, so they still purely omit (logged
+  warning only) — this is a real, deliberate asymmetry the return type
+  forces, not oversight.
