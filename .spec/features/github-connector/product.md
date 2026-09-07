@@ -3,7 +3,7 @@ type: feature-product
 feature: github-connector
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-06-24
+updated: 2026-09-07
 ---
 
 # Feature: GitHub Projects & Issues Connector — Product
@@ -31,7 +31,7 @@ Resolves [issue #90](https://github.com/LennardZuendorf/indexed/issues/90).
 
 | | |
 |---|---|
-| **Owns** | `packages/indexed-connectors/src/connectors/github/` (connector, GraphQL reader, converter, schema, auth resolver); registry rows for `github`; config namespace `sources.github`; update-factory branch for the `github` type; `.spec/features/github-connector/`; tests under `tests/unit/indexed_connectors/github/`. |
+| **Owns** | `src/indexed/connectors/github/` (connector, GraphQL reader, converter, schema, auth resolver); rows for `github` in `src/indexed/connectors/registry.py` (`CONNECTOR_REGISTRY`/`NAMESPACE_REGISTRY`/`PATH_KEY_REGISTRY`); config namespace `sources.github`; the `create github` CLI subcommand in `src/indexed/cli/knowledge/commands/`; `.spec/features/github-connector/`; tests under `tests/unit/indexed/connectors/github/`. |
 | **Does not own** | Engine/FAISS/persistence (core), the `ParsingModule` itself (parsing), `ConfigService` internals (config), CLI command files beyond wiring the new source type, the Jira/Confluence/Outline connectors. |
 
 ---
@@ -42,19 +42,26 @@ Resolves [issue #90](https://github.com/LennardZuendorf/indexed/issues/90).
 
 The system SHALL index GitHub issues — and, when enabled, pull-request threads —
 from each configured `owner/repo`, capturing title, body, author, state, labels,
-assignees, milestone, timestamps, URL, and comments as indexable text.
+timestamps, URL, and conversation comments as indexable text.
+
+> **Amendment (2026-09-07):** the original requirement text also promised
+> `assignees`, `milestone`, and — for pull requests — review/review-comment
+> threads. None of those are fetched by the shipped GraphQL queries (only
+> title/body/author/state/labels/timestamps/URL/conversation comments; PR
+> comments are conversation comments, not review comments). This is a known,
+> deliberate v1 gap for a follow-up, not a bug — see tech.md § Deferred.
 
 #### Scenario: Index open and closed issues from a repo
 
 - **Given** a collection configured with `repos = ["octo/hello"]` and `state = "all"`
-- **When** the user runs `indexed index create gh-issues --source github`
-- **Then** every open and closed issue in `octo/hello` is indexed as one document with its comments included in the chunked text, and its `html_url` is searchable as the document URL.
+- **When** the user runs `indexed index create github --repo octo/hello`
+- **Then** every open and closed issue in `octo/hello` is indexed as one document with its comments included in the chunked text, and its `url` is searchable as the document URL.
 
 #### Scenario: Pull requests included only when enabled
 
-- **Given** `include_pull_requests = false`
+- **Given** `--no-include-pull-requests` (the default)
 - **When** the collection is built
-- **Then** only issues are indexed and no pull-request documents appear; setting it `true` adds PR descriptions and review/comment threads as documents.
+- **Then** only issues are indexed and no pull-request documents appear; passing `--include-pull-requests` adds PR descriptions and conversation comments as documents (not review/review-comment threads — see the amendment above).
 
 ### Requirement: Index GitHub Projects v2 boards
 
@@ -147,9 +154,16 @@ The system SHALL support filtering indexed content by issue `state`
 ### Requirement: Smart incremental update
 
 The system SHALL update a GitHub collection incrementally by fetching only items
-changed since the last run (server-side `since` cutoff derived from the manifest),
-and SHALL skip re-embedding chunks whose content hash is unchanged, re-embedding
-only chunks whose content actually differs.
+changed since the last run (server-side `since` cutoff derived from the manifest).
+
+> **Amendment (2026-09-07):** the original requirement text also promised
+> skipping re-embedding of chunks whose content hash is unchanged
+> ("chunk-hash reuse"). That half is **descoped from this feature** — see
+> plan.md unit 6 and tech.md § Deferred. It needs a new on-disk schema field
+> shared by every connector type (not GitHub-specific) and has no Core v2
+> story yet; it is a known, deliberate gap tracked for a follow-up plan, not
+> an implemented guarantee. Today, a re-fetched GitHub document has ALL its
+> chunks re-embedded, same as every other connector.
 
 #### Scenario: Only changed issues re-fetched
 
@@ -157,11 +171,11 @@ only chunks whose content actually differs.
 - **When** the user runs `indexed index update <collection>`
 - **Then** only issues updated at/after the cutoff are fetched, and the unchanged issues are left untouched in the index.
 
-#### Scenario: Unchanged chunks not re-embedded
+#### Scenario: Unchanged chunks not re-embedded (DESCOPED — not implemented)
 
 - **Given** an issue that was re-fetched because a new comment was added
 - **When** the document is re-indexed
-- **Then** chunks whose content hash matches the previously indexed chunk are reused, and only the new/changed chunks are embedded and written.
+- **Then** chunks whose content hash matches the previously indexed chunk would be reused, embedding only the new/changed chunks — this scenario describes chunk-hash reuse, which was **not built** in this feature (see amendment above). Today all of the re-fetched document's chunks are re-embedded.
 
 ### Requirement: Parse via the shared parsing module
 
@@ -196,10 +210,16 @@ include_comments = true             # include issue/PR comments (default true)
 ```
 
 ```bash
-indexed index create gh --source github
-indexed index search "flaky retry logic" --collection gh
-indexed index update gh        # incremental: only changed issues, only changed chunks
+indexed index create github --repo octo/api --repo octo/web --project octo/12
+indexed index search "flaky retry logic" --collection github
+indexed index update github    # incremental: only changed issues, all their chunks re-embedded
 ```
+
+`create github` is a dedicated Typer subcommand (like `create files`/`jira`/
+`confluence`/`outline`) — the CLI has no generic `--source <type>` flag. CLI
+flags mirror the config keys above: `--repo` (repeatable), `--project`,
+`--host`, `--token`, `--state`, `--label` (repeatable),
+`--include-pull-requests`/`--no-include-pull-requests`.
 
 ---
 
