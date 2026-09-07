@@ -3,6 +3,8 @@ from pydantic import ValidationError
 
 from indexed.connectors.github.schema import GITHUB_CLOUD_HOST, GitHubConfig
 
+pytestmark = pytest.mark.unit
+
 
 def test_github_cloud_host_constant():
     assert GITHUB_CLOUD_HOST == "github.com"
@@ -92,3 +94,37 @@ def test_max_chunk_tokens_bounds():
         GitHubConfig(repos=["octo/hello"], max_chunk_tokens=1)
     with pytest.raises(ValidationError):
         GitHubConfig(repos=["octo/hello"], max_chunk_tokens=99999)
+
+
+def test_get_token_scopes_gh_cli_to_configured_host(monkeypatch):
+    import subprocess
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ghes-token\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    cfg = GitHubConfig(repos=["octo/hello"], host="github.acme.internal")
+
+    assert cfg.get_token() == "ghes-token"
+    assert captured["cmd"][-2:] == ["--hostname", "github.acme.internal"]
+
+
+def test_get_token_omits_hostname_for_cloud(monkeypatch):
+    import subprocess
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="cloud-token\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    cfg = GitHubConfig(repos=["octo/hello"])
+
+    assert cfg.get_token() == "cloud-token"
+    assert "--hostname" not in captured["cmd"]

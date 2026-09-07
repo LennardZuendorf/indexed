@@ -7,8 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from . import auth
-
-GITHUB_CLOUD_HOST = "github.com"
+from .auth import GITHUB_CLOUD_HOST
 
 
 class GitHubConfig(BaseModel):
@@ -38,7 +37,7 @@ class GitHubConfig(BaseModel):
 
     def get_token(self) -> str:
         """Get the GitHub token from config or environment."""
-        return auth.resolve_token(self.token)
+        return auth.resolve_token(self.token, host=self.host)
 
     def resolve_graphql_url(self) -> str:
         """Resolve the GraphQL endpoint URL based on host.
