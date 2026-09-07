@@ -14,6 +14,7 @@ from .files.connector import FileSystemConnector
 from .jira.connector import JiraConnector, JiraCloudConnector
 from .confluence.connector import ConfluenceConnector, ConfluenceCloudConnector
 from .outline.connector import OutlineConnector
+from .github.connector import GitHubConnector
 
 
 # Registry mapping connector_type strings to connector classes
@@ -25,6 +26,7 @@ CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
     "confluence": ConfluenceConnector,
     "confluenceCloud": ConfluenceCloudConnector,
     "outline": OutlineConnector,
+    "github": GitHubConnector,
 }
 
 # Registry mapping connector_type strings to their config namespace paths
@@ -38,6 +40,7 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
     "confluence": "sources.confluence",
     "confluenceCloud": "sources.confluence",  # Unified with confluence
     "outline": "sources.outline",
+    "github": "sources.github",
 }
 
 

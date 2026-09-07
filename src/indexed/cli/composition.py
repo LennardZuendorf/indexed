@@ -46,6 +46,7 @@ def register_app_config(config_service: ConfigService) -> None:
     from indexed.connectors.files.schema import FileSystemConfig
     from indexed.connectors.jira.schema import JiraCloudConfig
     from indexed.connectors.outline.schema import OutlineConfig
+    from indexed.connectors.github.schema import GitHubConfig
 
     # ``[core] engine`` — default engine for NEW collections (R3). Registered at
     # path ``core``; the model ignores the ``core.v1.*``/``core.v2.*`` extras.
@@ -62,6 +63,7 @@ def register_app_config(config_service: ConfigService) -> None:
     config_service.register(JiraCloudConfig, path="sources.jira")
     config_service.register(ConfluenceCloudConfig, path="sources.confluence")
     config_service.register(OutlineConfig, path="sources.outline")
+    config_service.register(GitHubConfig, path="sources.github")
 
 
 # --- engine selection (R3) ----------------------------------------------------

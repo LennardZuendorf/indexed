@@ -23,6 +23,8 @@ from indexed.connectors.jira.unified_jira_document_reader import (
     JiraAuthType,
     UnifiedJiraDocumentReader,
 )
+from indexed.connectors.github.connector import GitHubConnector
+from indexed.connectors.github.schema import GitHubConfig
 
 pytestmark = pytest.mark.connectors
 
@@ -188,6 +190,102 @@ def _make_confluence_page(
 
 
 # ---------------------------------------------------------------------------
+# Helpers: Fake GitHub GraphQL
+# ---------------------------------------------------------------------------
+
+
+class _FakeGitHubResponse:
+    """Minimal httpx.Response stand-in."""
+
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+        self.headers: dict[str, str] = {}
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+class _FakeGitHubAsyncClient:
+    """Stands in for httpx.AsyncClient; routes each GraphQL POST body to a
+    canned response via `router`."""
+
+    def __init__(self, router: Any, **kwargs: Any) -> None:
+        self._router = router
+
+    async def __aenter__(self) -> "_FakeGitHubAsyncClient":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+    async def post(self, url: str, **kwargs: Any) -> _FakeGitHubResponse:
+        return self._router(kwargs.get("json", {}))
+
+
+_EMPTY_PAGE_INFO = {"hasNextPage": False, "endCursor": None}
+
+
+def _make_github_router(
+    issues_page: dict[str, Any] | None = None,
+    pr_page: dict[str, Any] | None = None,
+):
+    """Route a GraphQL request body to a canned issues or pull-requests page,
+    based on the operation name in the query string."""
+    empty_issues = {
+        "repository": {"issues": {"nodes": [], "pageInfo": _EMPTY_PAGE_INFO}}
+    }
+    empty_prs = {
+        "repository": {"pullRequests": {"nodes": [], "pageInfo": _EMPTY_PAGE_INFO}}
+    }
+
+    def router(body: dict[str, Any]) -> _FakeGitHubResponse:
+        query = body.get("query", "")
+        if "query PullRequests" in query:
+            return _FakeGitHubResponse({"data": pr_page or empty_prs})
+        return _FakeGitHubResponse({"data": issues_page or empty_issues})
+
+    return router
+
+
+def _github_issue_node(
+    number: int,
+    title: str,
+    body: str = "",
+    labels: list[str] | None = None,
+    comment_nodes: list[dict[str, Any]] | None = None,
+    state: str = "OPEN",
+) -> dict[str, Any]:
+    """Build a realistic GitHub issue/PR GraphQL node."""
+    return {
+        "id": f"I_{number}",
+        "number": number,
+        "title": title,
+        "body": body,
+        "state": state,
+        "url": f"https://github.com/octo/hello/issues/{number}",
+        "updatedAt": "2026-06-20T10:00:00Z",
+        "createdAt": "2026-06-19T10:00:00Z",
+        "author": {"login": "octocat"},
+        "labels": {"nodes": [{"name": name} for name in (labels or [])]},
+        "comments": {"nodes": comment_nodes or []},
+    }
+
+
+def _github_issues_page(nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"repository": {"issues": {"nodes": nodes, "pageInfo": _EMPTY_PAGE_INFO}}}
+
+
+def _github_pull_requests_page(nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "repository": {"pullRequests": {"nodes": nodes, "pageInfo": _EMPTY_PAGE_INFO}}
+    }
+
+
+# ---------------------------------------------------------------------------
 # Pipeline helpers
 # ---------------------------------------------------------------------------
 
@@ -202,6 +300,13 @@ def _run_confluence_pipeline(documents: list[dict[str, Any]]) -> list[dict[str, 
     """Convert raw reader output through the Confluence converter."""
     converter = UnifiedConfluenceDocumentConverter(is_cloud=False)
     return [converter.convert(doc)[0] for doc in documents]
+
+
+def _run_github_pipeline(
+    documents: list[dict[str, Any]], converter: Any
+) -> list[dict[str, Any]]:
+    """Convert raw GitHub documents through the given converter."""
+    return [next(converter.convert(doc)) for doc in documents]
 
 
 # ===========================================================================
@@ -696,6 +801,121 @@ class TestConfluenceConnectorE2E:
             read_all_comments=False,
         )
         docs = _run_confluence_pipeline(reader.read_all_documents())
+
+        assert len(docs) == 1
+        doc = docs[0]
+        assert set(doc.keys()) == {"id", "url", "modifiedTime", "text", "chunks"}
+        assert isinstance(doc["id"], str)
+        assert isinstance(doc["url"], str)
+        assert doc["url"].startswith("https://")
+        assert isinstance(doc["modifiedTime"], str)
+        assert isinstance(doc["text"], str)
+        assert isinstance(doc["chunks"], list)
+        assert len(doc["chunks"]) > 0
+        for chunk in doc["chunks"]:
+            assert "indexedData" in chunk
+            assert isinstance(chunk["indexedData"], str)
+
+
+# ===========================================================================
+# GitHub Connector E2E Tests
+# ===========================================================================
+
+
+class TestGitHubConnectorE2E:
+    """Full pipeline tests: mock GraphQL transport -> GitHubConnector's real
+    reader -> real converter -> v1 output."""
+
+    def test_full_pipeline_issue_with_comments(self, monkeypatch):
+        """Issue with labels and a comment produces valid v1 output via the
+        connector's own reader + converter wiring."""
+        import indexed.connectors.github.github_graphql_reader as mod
+
+        node = _github_issue_node(
+            7,
+            "Search should handle unicode queries",
+            body="Queries containing emoji or CJK characters currently 500.",
+            labels=["bug", "search"],
+            comment_nodes=[
+                {
+                    "author": {"login": "maintainer"},
+                    "body": "Confirmed, working on a fix.",
+                }
+            ],
+        )
+        router = _make_github_router(issues_page=_github_issues_page([node]))
+        monkeypatch.setattr(
+            mod.httpx, "AsyncClient", lambda **kw: _FakeGitHubAsyncClient(router, **kw)
+        )
+
+        connector = GitHubConnector(
+            GitHubConfig(repos=["octo/hello"], token="ghp_x", state="all")
+        )
+        docs = _run_github_pipeline(
+            list(connector.reader.read_all_documents()), connector.converter
+        )
+
+        assert len(docs) == 1
+        doc = docs[0]
+        assert doc["id"] == "octo/hello#7"
+        assert doc["url"] == "https://github.com/octo/hello/issues/7"
+        assert doc["modifiedTime"] == "2026-06-20T10:00:00Z"
+        assert (
+            "Queries containing emoji or CJK characters currently 500." in doc["text"]
+        )
+        header = doc["chunks"][0]["indexedData"]
+        assert "# Search should handle unicode queries" in header
+        assert "State: OPEN" in header
+        assert "bug, search" in header
+        comment_chunk = doc["chunks"][-1]
+        assert "Comment by maintainer:" in comment_chunk["indexedData"]
+        assert "Confirmed, working on a fix." in comment_chunk["indexedData"]
+
+    def test_pull_requests_included_when_configured(self, monkeypatch):
+        """`include_pull_requests=True` reaches the reader and PR docs carry
+        `kind: pull_request` through to converted chunk metadata."""
+        import indexed.connectors.github.github_graphql_reader as mod
+
+        issue_node = _github_issue_node(1, "An issue")
+        pr_node = _github_issue_node(2, "A pull request", body="Fixes the bug.")
+        router = _make_github_router(
+            issues_page=_github_issues_page([issue_node]),
+            pr_page=_github_pull_requests_page([pr_node]),
+        )
+        monkeypatch.setattr(
+            mod.httpx, "AsyncClient", lambda **kw: _FakeGitHubAsyncClient(router, **kw)
+        )
+
+        connector = GitHubConnector(
+            GitHubConfig(
+                repos=["octo/hello"],
+                token="ghp_x",
+                include_pull_requests=True,
+            )
+        )
+        docs = _run_github_pipeline(
+            list(connector.reader.read_all_documents()), connector.converter
+        )
+
+        assert {d["id"] for d in docs} == {"octo/hello#1", "octo/hello#2"}
+        kinds = {d["id"]: d["chunks"][0]["metadata"]["kind"] for d in docs}
+        assert kinds["octo/hello#1"] == "issue"
+        assert kinds["octo/hello#2"] == "pull_request"
+
+    def test_output_structure(self, monkeypatch):
+        """Converted output has correct keys and value types."""
+        import indexed.connectors.github.github_graphql_reader as mod
+
+        node = _github_issue_node(3, "Structure test", body="Some text")
+        router = _make_github_router(issues_page=_github_issues_page([node]))
+        monkeypatch.setattr(
+            mod.httpx, "AsyncClient", lambda **kw: _FakeGitHubAsyncClient(router, **kw)
+        )
+
+        connector = GitHubConnector(GitHubConfig(repos=["octo/hello"], token="ghp_x"))
+        docs = _run_github_pipeline(
+            list(connector.reader.read_all_documents()), connector.converter
+        )
 
         assert len(docs) == 1
         doc = docs[0]
