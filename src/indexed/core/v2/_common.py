@@ -60,8 +60,10 @@ def resolve_embedding_config() -> "CoreV2EmbeddingConfig":
         from indexed.config import get_config
 
         return get_config().bind().get(CoreV2EmbeddingConfig)
-    except ConfigValidationError:
-        raise
+    except ConfigValidationError as exc:
+        if exc.path == "core.v2.embedding":
+            raise
+        return CoreV2EmbeddingConfig()
     except Exception:
         return CoreV2EmbeddingConfig()
 
@@ -74,8 +76,10 @@ def resolve_search_config() -> "CoreV2SearchConfig":
         from indexed.config import get_config
 
         return get_config().bind().get(CoreV2SearchConfig)
-    except ConfigValidationError:
-        raise
+    except ConfigValidationError as exc:
+        if exc.path == "core.v2.search":
+            raise
+        return CoreV2SearchConfig()
     except Exception:
         return CoreV2SearchConfig()
 
@@ -92,8 +96,10 @@ def resolve_rerank_config() -> "CoreV2RerankConfig":
         from indexed.config import get_config
 
         return get_config().bind().get(CoreV2RerankConfig)
-    except ConfigValidationError:
-        raise
+    except ConfigValidationError as exc:
+        if exc.path == "core.v2.rerank":
+            raise
+        return CoreV2RerankConfig()
     except Exception:
         return CoreV2RerankConfig()
 

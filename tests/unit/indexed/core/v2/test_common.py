@@ -58,31 +58,68 @@ class TestResolverValidationFailsLoud:
     on every search — unlike resolve_engine_selector, which already fails loud
     on a bad value, these 3 resolvers caught bare Exception and returned a
     default with zero signal. Only an UNREGISTERED spec (KeyError) should
-    still degrade to the default."""
+    still degrade to the default.
 
-    def test_resolve_search_config_reraises_validation_error(self) -> None:
-        from pathlib import Path
+    Final-review Finding #1: ``ConfigService.bind()`` validates the WHOLE
+    registered config, not just the section a resolver asks for — so each
+    resolver must re-raise ONLY its own section's ``ConfigValidationError``
+    (matched by ``.path``) and fall through to its default for anyone else's
+    bad section, exactly like ``config get`` on a single unset key
+    (``config/commands/get.py``).
+    """
 
+    @staticmethod
+    def _write_and_reload(toml_body: str) -> str:
+        """Snapshot+overwrite the shared sandboxed global config.toml, reload,
+        and register — returns the original content so callers can restore it."""
         from indexed.cli.composition import register_app_config
         from indexed.config import get_config, reload as reload_config
+
+        config_path = Path.home() / ".indexed" / "config.toml"
+        original = config_path.read_text()
+        config_path.write_text(toml_body)
+        reload_config()
+        register_app_config(get_config())
+        return original
+
+    @staticmethod
+    def _restore(original: str) -> None:
+        (Path.home() / ".indexed" / "config.toml").write_text(original)
+
+    def test_resolve_search_config_reraises_validation_error(self) -> None:
         from indexed.config.errors import ConfigValidationError
         from indexed.core.v2 import _common
 
-        # Writes to the shared sandboxed global config.toml (session-scoped
-        # fixture, not reset per test) to exercise the real `config set`
-        # path end to end — snapshot + restore so this test doesn't leak an
-        # invalid score_threshold into later tests in the same run.
-        config_path = Path.home() / ".indexed" / "config.toml"
-        original = config_path.read_text()
+        original = self._write_and_reload("[core.v2.search]\nscore_threshold = 5.0\n")
         try:
-            config_path.write_text("[core.v2.search]\nscore_threshold = 5.0\n")
-            reload_config()
-            register_app_config(get_config())
-
             with pytest.raises(ConfigValidationError):
                 _common.resolve_search_config()
         finally:
-            config_path.write_text(original)
+            self._restore(original)
+
+    def test_resolve_embedding_config_reraises_validation_error(self) -> None:
+        from indexed.config.errors import ConfigValidationError
+        from indexed.core.v2 import _common
+
+        original = self._write_and_reload(
+            "[core.v2.embedding]\nbatch_size = -1\n"
+        )
+        try:
+            with pytest.raises(ConfigValidationError):
+                _common.resolve_embedding_config()
+        finally:
+            self._restore(original)
+
+    def test_resolve_rerank_config_reraises_validation_error(self) -> None:
+        from indexed.config.errors import ConfigValidationError
+        from indexed.core.v2 import _common
+
+        original = self._write_and_reload("[core.v2.rerank]\ntop_n = -1\n")
+        try:
+            with pytest.raises(ConfigValidationError):
+                _common.resolve_rerank_config()
+        finally:
+            self._restore(original)
 
     def test_resolve_search_config_still_defaults_when_unregistered(self) -> None:
         """No register_app_config() call → Provider.get() raises KeyError →
@@ -96,6 +133,27 @@ class TestResolverValidationFailsLoud:
         result = _common.resolve_search_config()
 
         assert result == CoreV2SearchConfig()
+
+    def test_unrelated_section_error_does_not_propagate_through_any_resolver(
+        self,
+    ) -> None:
+        """A validation error from an unrelated section (``[mcp]``) must not
+        propagate through any of the 3 v2 resolvers — each still returns its
+        own default, exactly as it did before this batch's fail-loud fix."""
+        from indexed.core.v2 import _common
+        from indexed.core.v2.config_models import (
+            CoreV2EmbeddingConfig,
+            CoreV2RerankConfig,
+            CoreV2SearchConfig,
+        )
+
+        original = self._write_and_reload("[mcp]\nport = 999999\n")
+        try:
+            assert _common.resolve_embedding_config() == CoreV2EmbeddingConfig()
+            assert _common.resolve_search_config() == CoreV2SearchConfig()
+            assert _common.resolve_rerank_config() == CoreV2RerankConfig()
+        finally:
+            self._restore(original)
 
 
 def test_v1_backup_dirs_excluded_both_sites(tmp_path: Path) -> None:
