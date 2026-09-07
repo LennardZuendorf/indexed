@@ -218,3 +218,54 @@ def create_outline(
         local=local,
         engine=engine,
     )
+
+
+@app.command(
+    "github",
+    help="Create a new collection from GitHub issues, pull requests, and/or a Projects v2 board.",
+)
+def create_github(
+    collection: _opt.CollectionGithubOpt = "github",
+    host: _opt.GithubHostOpt = None,
+    repo: _opt.GithubRepoOpt = None,
+    project: _opt.GithubProjectOpt = None,
+    token: _opt.GithubTokenOpt = None,
+    state: _opt.GithubStateOpt = None,
+    label: _opt.GithubLabelOpt = None,
+    include_pull_requests: _opt.GithubIncludePullRequestsOpt = None,
+    use_cache: _opt.UseCacheOutlineOpt = True,
+    force: _opt.ForceOpt = False,
+    verbose: _opt.VerboseOpt = False,
+    json_logs: _opt.JsonLogsOpt = False,
+    log_level: _opt.LogLevelOpt = None,
+    local: _opt.LocalOpt = False,
+    engine: _opt.EngineOpt = None,
+) -> None:
+    """Create a GitHub collection from repos and/or a Projects v2 board."""
+    cli_overrides: Dict[str, Any] = {}
+    if repo:
+        cli_overrides["repos"] = list(repo)
+    if project:
+        cli_overrides["project"] = project
+    if token:
+        cli_overrides["token"] = token
+    if state:
+        cli_overrides["state"] = state
+    if label:
+        cli_overrides["labels"] = list(label)
+    if include_pull_requests is not None:
+        cli_overrides["include_pull_requests"] = include_pull_requests
+
+    _create(
+        "github",
+        collection=collection,
+        url=host,
+        cli_overrides=cli_overrides,
+        use_cache=use_cache,
+        force=force,
+        verbose=verbose,
+        json_logs=json_logs,
+        log_level=log_level,
+        local=local,
+        engine=engine,
+    )

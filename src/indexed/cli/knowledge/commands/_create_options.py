@@ -270,3 +270,64 @@ UseCacheOutlineOpt = Annotated[
         help="Enable on-disk cache for faster reindexing of unchanged documents.",
     ),
 ]
+
+# GitHub ---------------------------------------------------------------------- #
+CollectionGithubOpt = Annotated[
+    str,
+    typer.Option(
+        "--collection",
+        "-c",
+        help="Name of the collection (default: github).",
+    ),
+]
+GithubHostOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--host",
+        help="GitHub host: github.com (default), SUBDOMAIN.ghe.com, or a GHES hostname.",
+    ),
+]
+GithubRepoOpt = Annotated[
+    Optional[List[str]],
+    typer.Option(
+        "--repo",
+        help="owner/repo to index (can be specified multiple times).",
+        show_default=False,
+    ),
+]
+GithubProjectOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--project",
+        help="owner/number Projects v2 board to index across its linked repos.",
+    ),
+]
+GithubTokenOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--token",
+        help="GitHub access token (overrides env GITHUB_TOKEN and `gh auth token`).",
+    ),
+]
+GithubStateOpt = Annotated[
+    Optional[str],
+    typer.Option(
+        "--state",
+        help="Issue/PR state filter: open, closed, or all (default: all).",
+    ),
+]
+GithubLabelOpt = Annotated[
+    Optional[List[str]],
+    typer.Option(
+        "--label",
+        help="Restrict to issues/PRs carrying this label (can be specified multiple times).",
+        show_default=False,
+    ),
+]
+GithubIncludePullRequestsOpt = Annotated[
+    Optional[bool],
+    typer.Option(
+        "--include-pull-requests/--no-include-pull-requests",
+        help="Include pull request threads in addition to issues.",
+    ),
+]

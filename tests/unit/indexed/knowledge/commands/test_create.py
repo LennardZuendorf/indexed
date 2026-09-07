@@ -1247,6 +1247,295 @@ class TestCreateOutline:
         assert mock_execute.call_args.kwargs["engine"] == "v2"
 
 
+class TestCreateGithub:
+    """Test create_github command."""
+
+    _default_kwargs = dict(
+        collection="github",
+        host=None,
+        repo=None,
+        project=None,
+        token=None,
+        state=None,
+        label=None,
+        include_pull_requests=None,
+        use_cache=True,
+        force=False,
+        verbose=False,
+        json_logs=False,
+        log_level=None,
+        local=False,
+    )
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_with_explicit_host(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should call execute_create_command with github source type."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(**{**self._default_kwargs, "host": "github.example.com"})
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["source_type"] == "github"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_single_repo_passed_through(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should convert single --repo into a one-item list in cli_overrides."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{
+                **self._default_kwargs,
+                "host": "github.com",
+                "repo": ["octo/hello"],
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["repos"] == ["octo/hello"]
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_multiple_repos_passed_through(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should convert repeated --repo into a list in cli_overrides."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{
+                **self._default_kwargs,
+                "host": "github.com",
+                "repo": ["octo/hello", "octo/world"],
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["repos"] == ["octo/hello", "octo/world"]
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_project_passed_through(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should include project in cli_overrides when provided."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{**self._default_kwargs, "host": "github.com", "project": "octo/12"}
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["project"] == "octo/12"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_token_passed_through(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should include token in cli_overrides when provided."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{**self._default_kwargs, "host": "github.com", "token": "ghp_test"}
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["token"] == "ghp_test"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_default_host_is_github_com(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should prompt for host and default to github.com if Enter is pressed."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_console.input.return_value = (
+            ""  # User presses Enter -> use default github.com host
+        )
+
+        create_github(**self._default_kwargs)
+
+        mock_console.input.assert_called()
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["host"] == "github.com"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_explicit_host_used_without_prompting(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should use an explicit self-hosted/GHE host without prompting."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(**{**self._default_kwargs, "host": "github.mycompany.com"})
+
+        mock_console.input.assert_not_called()
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["host"] == "github.mycompany.com"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_state_override(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should include state in cli_overrides when provided."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{**self._default_kwargs, "host": "github.com", "state": "closed"}
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["state"] == "closed"
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_label_override(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should convert repeated --label into a list in cli_overrides."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{
+                **self._default_kwargs,
+                "host": "github.com",
+                "label": ["bug", "urgent"],
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["labels"] == ["bug", "urgent"]
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_include_pull_requests_override(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """Should include include_pull_requests in cli_overrides when explicitly set."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(
+            **{
+                **self._default_kwargs,
+                "host": "github.com",
+                "include_pull_requests": True,
+            }
+        )
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert call_kwargs["cli_overrides"]["include_pull_requests"] is True
+
+    @patch("indexed.cli.knowledge.commands.create.execute_create_command")
+    @patch("indexed.cli.knowledge.commands.create.get_config")
+    @patch("indexed.cli.knowledge.commands.create.is_verbose_mode")
+    @patch("indexed.cli.knowledge.commands.create.console")
+    def test_create_github_omits_include_pull_requests_when_unset(
+        self, mock_console, mock_verbose, mock_config_service, mock_execute
+    ):
+        """When --include-pull-requests/--no-include-pull-requests is not passed,
+        cli_overrides must not contain include_pull_requests — otherwise it
+        always beats config.toml's sources.github value."""
+        from indexed.cli.knowledge.commands._create_commands import create_github
+
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+
+        create_github(**{**self._default_kwargs, "host": "github.com"})
+
+        mock_execute.assert_called_once()
+        call_kwargs = mock_execute.call_args.kwargs
+        assert "include_pull_requests" not in call_kwargs["cli_overrides"]
+
+
 @pytest.mark.unit
 class TestPromptMissingOutlineFields:
     """Test the prompt_missing_outline_fields callback captured from create_outline."""

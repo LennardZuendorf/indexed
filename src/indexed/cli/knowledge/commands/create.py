@@ -207,7 +207,7 @@ def _create(
         resolved_url, url_was_prompted = _resolve_url(
             spec, url, config, verbose, log_level
         )
-        cli_overrides = {**cli_overrides, "url": resolved_url}
+        cli_overrides = {**cli_overrides, spec.source_path_key: resolved_url}
 
     source_type, config_class = resolve_source(spec, resolved_url)
 
