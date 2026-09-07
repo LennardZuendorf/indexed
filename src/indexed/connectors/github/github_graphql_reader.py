@@ -22,21 +22,21 @@ class GitHubGraphQLError(Exception):
 
 
 class GitHubGraphQLReader:
-    """Reads issues (and, in later tasks, pull requests and Projects v2 boards)
-    from GitHub via the GraphQL v4 API.
+    """Reads issues, pull requests, and Projects v2 boards from GitHub via the
+    GraphQL v4 API.
 
-    Pages each repo's issues sequentially via cursor pagination, with requests
-    bounded by a semaphore and retried with backoff on rate limiting.
+    Pages each repo's issues and pull requests sequentially via cursor
+    pagination, with requests bounded by a semaphore and retried with backoff
+    on rate limiting.
 
     Args:
         graphql_url: GraphQL endpoint (Cloud or Enterprise).
         token: Bearer token for authentication.
         repos: (owner, name) tuples to read issues from.
-        project: (owner, number) Projects v2 board selector, or None. Unused
-            until Task 4 adds Projects v2 board support.
+        project: (owner, number) Projects v2 board selector, or None.
         state: Issue state filter — "open", "closed", or "all".
         labels: Restrict to issues carrying any of these labels. None = all.
-        include_pull_requests: Also read pull requests. Unused until Task 4.
+        include_pull_requests: Also read pull requests.
         include_comments: Fetch and attach issue comments.
         page_size: Nodes per GraphQL page request.
         max_concurrent_requests: Max concurrent in-flight GraphQL requests.
@@ -144,10 +144,15 @@ class GitHubGraphQLReader:
             ),
         ) as client:
             semaphore = asyncio.Semaphore(self._max_concurrent_requests)
-            tasks = [
-                self._fetch_issues(client, semaphore, owner, name)
-                for owner, name in self._repos
-            ]
+            tasks = []
+            for owner, name in self._repos:
+                tasks.append(self._fetch_issues(client, semaphore, owner, name))
+                if self._include_pull_requests:
+                    tasks.append(
+                        self._fetch_pull_requests(client, semaphore, owner, name)
+                    )
+            if self._project is not None:
+                tasks.append(self._fetch_project_items(client, semaphore))
             results = await asyncio.gather(*tasks)
             documents: list[dict] = []
             for batch in results:
@@ -188,7 +193,9 @@ class GitHubGraphQLReader:
             after = page_info["endCursor"]
         return documents
 
-    def _issue_to_document(self, owner: str, name: str, node: dict) -> dict:
+    def _issue_to_document(
+        self, owner: str, name: str, node: dict, kind: str = "issue"
+    ) -> dict:
         comments = []
         if self._include_comments:
             comments = [
@@ -209,7 +216,7 @@ class GitHubGraphQLReader:
                 label["name"] for label in node.get("labels", {}).get("nodes", [])
             ],
             "author": node["author"]["login"] if node.get("author") else None,
-            "kind": "issue",
+            "kind": kind,
             "comments": comments,
             "project_fields": {},
         }
@@ -218,6 +225,131 @@ class GitHubGraphQLReader:
         if self._state == "all":
             return None
         return [self._state.upper()]
+
+    async def _fetch_pull_requests(
+        self,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+        owner: str,
+        name: str,
+    ) -> list[dict]:
+        documents: list[dict] = []
+        after: str | None = None
+        states = self._graphql_pr_states()
+        while True:
+            data = await self._post_graphql(
+                client,
+                semaphore,
+                queries.PULL_REQUESTS_QUERY,
+                {
+                    "owner": owner,
+                    "name": name,
+                    "first": self._page_size,
+                    "after": after,
+                    "states": states,
+                    "labels": self._labels,
+                },
+            )
+            prs = data["repository"]["pullRequests"]
+            for node in prs["nodes"]:
+                documents.append(
+                    self._issue_to_document(owner, name, node, kind="pull_request")
+                )
+            page_info = prs["pageInfo"]
+            if not page_info["hasNextPage"]:
+                break
+            after = page_info["endCursor"]
+        return documents
+
+    def _graphql_pr_states(self) -> list[str] | None:
+        if self._state == "all":
+            return None
+        if self._state == "open":
+            return ["OPEN"]
+        return ["CLOSED", "MERGED"]
+
+    async def _fetch_project_items(
+        self, client: httpx.AsyncClient, semaphore: asyncio.Semaphore
+    ) -> list[dict]:
+        assert self._project is not None
+        login, number = self._project
+
+        probe = await self._post_graphql(
+            client,
+            semaphore,
+            queries.PROJECT_ITEMS_QUERY,
+            {"login": login, "number": number, "first": 1, "after": None},
+        )
+        is_org = probe.get("organization") is not None
+        query = (
+            queries.PROJECT_ITEMS_QUERY if is_org else queries.PROJECT_ITEMS_QUERY_USER
+        )
+        root_key = "organization" if is_org else "user"
+
+        documents: list[dict] = []
+        after: str | None = None
+        while True:
+            data = await self._post_graphql(
+                client,
+                semaphore,
+                query,
+                {
+                    "login": login,
+                    "number": number,
+                    "first": self._page_size,
+                    "after": after,
+                },
+            )
+            items = data[root_key]["projectV2"]["items"]
+            for node in items["nodes"]:
+                doc = self._project_item_to_document(node)
+                if doc is not None:
+                    documents.append(doc)
+            page_info = items["pageInfo"]
+            if not page_info["hasNextPage"]:
+                break
+            after = page_info["endCursor"]
+        return documents
+
+    def _project_item_to_document(self, node: dict) -> dict | None:
+        content = node.get("content")
+        if content is None:
+            return None
+        field_values = self._extract_field_values(node)
+        typename = content.get("__typename")
+
+        if typename == "DraftIssue":
+            return {
+                "id": f"project:{node['id']}",
+                "url": "",
+                "modifiedTime": content.get("updatedAt") or content.get("createdAt"),
+                "title": content.get("title") or "",
+                "body": content.get("body") or "",
+                "state": "DRAFT",
+                "labels": [],
+                "author": None,
+                "kind": "draft",
+                "comments": [],
+                "project_fields": field_values,
+            }
+
+        owner = content["repository"]["owner"]["login"]
+        name = content["repository"]["name"]
+        kind = "pull_request" if typename == "PullRequest" else "issue"
+        document = self._issue_to_document(owner, name, content, kind=kind)
+        document["project_fields"] = field_values
+        return document
+
+    def _extract_field_values(self, node: dict) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for fv in node.get("fieldValues", {}).get("nodes", []):
+            name = fv.get("field", {}).get("name")
+            if not name:
+                continue
+            value = fv.get("name") if fv.get("name") is not None else fv.get("text")
+            if value is not None:
+                values[name] = value
+        return values
 
     # ------------------------------------------------------------------
     # GraphQL transport: retry + rate-limit backoff
