@@ -255,6 +255,50 @@ def test_http_403_without_rate_limit_headers_raises_immediately():
     assert "permission" in exc_info.value.message.lower()
 
 
+def test_backoff_uses_rate_limit_reset_header_not_exponential():
+    """When `X-RateLimit-Reset` is present, the retry delay must be
+    `reset_timestamp - now`, not the plain exponential-backoff value —
+    asserts on the exact arithmetic in `_backoff`, not just that a retry
+    happens (the existing 403/429 tests never send this header)."""
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    attempts = {"n": 0}
+    fixed_now = 1_700_000_000.0
+    reset_at = fixed_now + 42.0
+
+    def router(body):
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            return FakeResponse(429, {}, headers={"X-RateLimit-Reset": str(reset_at)})
+        return FakeResponse(200, page)
+
+    captured_delays = []
+
+    async def fake_sleep(delay):
+        captured_delays.append(delay)
+
+    with (
+        patch(
+            "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+            new=lambda **kw: FakeAsyncClient(router, **kw),
+        ),
+        patch(
+            "indexed.connectors.github.github_graphql_reader.time.time",
+            return_value=fixed_now,
+        ),
+        patch(
+            "indexed.connectors.github.github_graphql_reader.asyncio.sleep",
+            new=fake_sleep,
+        ),
+    ):
+        docs = list(_reader(retry_delay=1.0).read_all_documents())
+
+    assert attempts["n"] == 2
+    assert len(docs) == 1
+    assert captured_delays == [pytest.approx(42.0, abs=0.01)]
+    # Exponential backoff at attempt=0 with retry_delay=1.0 would be 1.0 —
+    # far from 42.0, so this also rules out silently ignoring the header.
+
+
 def test_documents_fetched_once_and_cached():
     """get_number_of_documents() followed by read_all_documents() must not
     crawl GitHub's API twice."""
