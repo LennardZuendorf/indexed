@@ -5,7 +5,7 @@ with retry logic for individual items.
 """
 
 import pytest
-from utils.batch import read_items_in_batches
+from indexed.utils.batch import read_items_in_batches
 
 
 class TestReadItemsInBatches:
@@ -153,3 +153,71 @@ class TestReadItemsInBatches:
         assert (6, 1) in calls
         assert (7, 1) in calls
         assert (8, 1) in calls
+
+    def test_empty_page_mid_sequence_terminates(self):
+        """R12.5 regression: an empty, non-raising page returned mid-sequence
+        (``total > start_at``) never advances ``start_at``
+        (``start_at = start_at + len(items)``), so
+        ``are_there_more_items_to_read`` stays True forever and the loop
+        spins indefinitely re-reading the same position.
+
+        ``max_skipped_items_in_row`` doesn't help here — that guard only
+        fires on exceptions, and an empty page is not an exception.
+
+        ``read_items_in_batches`` is consumed in production by
+        ``UnifiedJiraDocumentReader`` and ``ConfluenceDocumentReader``, none
+        of which catch exceptions from this generator — so the fix must
+        terminate GRACEFULLY (stop the generator, don't raise) rather than
+        crash the whole indexing job on what may be a benign empty page
+        (permission filtering, eventual consistency, a stale ``total``). A
+        call-count cap inside the mock (raising a ``BaseException``
+        subclass that bypasses the SUT's own ``except Exception`` retry
+        machinery) ensures this test fails fast instead of hanging the
+        suite if the RED (pre-fix, infinite-loop) behavior regresses.
+        """
+        max_calls = 50
+        calls = {"count": 0}
+
+        class _CallCapExceeded(BaseException):
+            """Escapes the SUT's `except Exception` so the cap can't be
+            mistaken for a per-item read error by the retry/skip logic
+            under test."""
+
+        def read_batch(start, size, cursor=None):
+            calls["count"] += 1
+            if calls["count"] > max_calls:
+                raise _CallCapExceeded(
+                    f"read_items_in_batches exceeded {max_calls} calls "
+                    f"without terminating (stuck re-reading position "
+                    f"{start}) — R12.5 regression: an empty page never "
+                    "advances start_at"
+                )
+            if start == 5:
+                # Empty, non-raising page mid-sequence.
+                return {"items": [], "total": 10}
+            return {
+                "items": list(range(start, min(start + size, 10))),
+                "total": 10,
+            }
+
+        try:
+            result = list(
+                read_items_in_batches(
+                    read_batch,
+                    lambda r: r["items"],
+                    lambda r: r["total"],
+                    batch_size=5,
+                )
+            )
+        except _CallCapExceeded:
+            pytest.fail(
+                f"read_items_in_batches exceeded {max_calls} calls without "
+                "terminating on an empty mid-sequence page (R12.5 regression)"
+            )
+
+        # Graceful termination: the generator stops right after the empty
+        # page at start_at=5 and yields exactly the 5 items collected
+        # beforehand (0-4) — it must NOT raise (production readers don't
+        # catch RuntimeError from this generator).
+        assert result == list(range(5))
+        assert calls["count"] <= max_calls

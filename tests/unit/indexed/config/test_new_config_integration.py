@@ -1,7 +1,7 @@
 """Integration tests for new config system migration."""
 
 import pytest
-from indexed_config import ConfigService
+from indexed.config import ConfigService, reload
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def isolated_config(tmp_path, monkeypatch):
     This prevents tests from polluting the real .indexed/config.toml.
     """
     # Reset singleton before each test
-    ConfigService.reset()
+    reload()
 
     # Create the config in temp directory
     config_dir = tmp_path / ".indexed"
@@ -24,7 +24,7 @@ def isolated_config(tmp_path, monkeypatch):
     yield config
 
     # Reset singleton after test
-    ConfigService.reset()
+    reload()
 
 
 def test_config_service_crud_operations(isolated_config):
@@ -56,7 +56,7 @@ def test_config_service_crud_operations(isolated_config):
 
 def test_connector_direct_instantiation(tmp_path):
     """Test that connectors can be instantiated directly with constructor args."""
-    from connectors.files import FileSystemConnector
+    from indexed.connectors.files import FileSystemConnector
 
     # Create a temporary test directory
     test_dir = tmp_path / "test"
@@ -77,7 +77,7 @@ def test_connector_direct_instantiation(tmp_path):
 
 def test_jira_connector_direct_instantiation():
     """Test Jira connector instantiation directly."""
-    from connectors.jira import JiraCloudConnector
+    from indexed.connectors.jira import JiraCloudConnector
 
     # Create connector directly with all required args
     connector = JiraCloudConnector(
@@ -95,10 +95,10 @@ def test_jira_connector_direct_instantiation():
 
 def test_config_service_validate(tmp_path, monkeypatch):
     """Test config validation with registered specs."""
-    from connectors.files.schema import LocalFilesConfig
+    from indexed.connectors.files.schema import LocalFilesConfig
 
     # Reset and create isolated config
-    ConfigService.reset()
+    reload()
     monkeypatch.chdir(tmp_path)
 
     # Create a temporary test directory
@@ -117,12 +117,12 @@ def test_config_service_validate(tmp_path, monkeypatch):
     errors = config.validate()
     assert len(errors) == 0
 
-    ConfigService.reset()
+    reload()
 
 
 def test_config_merging_priority(tmp_path, monkeypatch):
     """Test that config sources are merged correctly."""
-    ConfigService.reset()
+    reload()
     monkeypatch.chdir(tmp_path)
 
     config = ConfigService(workspace=tmp_path)
@@ -135,12 +135,12 @@ def test_config_merging_priority(tmp_path, monkeypatch):
     # Workspace should override defaults
     assert raw["sources"]["files"]["path"] == "./workspace"
 
-    ConfigService.reset()
+    reload()
 
 
 def test_collection_service_with_config():
     """Test that collection service works with new config system."""
-    from core.v1.engine.services import SourceConfig
+    from indexed.core.v1.engine.services import SourceConfig
 
     # Create a source config to verify API compatibility
     source_cfg = SourceConfig(

@@ -1,0 +1,999 @@
+---
+type: lessons
+scope: project
+updated: 2026-09-08
+---
+
+# Lessons Learned
+
+Accumulated mistakes and earned defaults. Read at session start.
+
+---
+
+## Core v2 rendering fixes (issue #187, 2026-09-03)
+
+- **A `Text(...)` sink renders literally; a `console.print(msg, style=...)` sink
+  parses markup — swapping which sink an error message flows through
+  silently flips whether `rich.markup.escape()` is correct or actively
+  wrong.** `print_error()` (`cli/utils/components/alerts.py`) builds a
+  `Text(f"{icon} {message}")` and is markup-safe by construction — it never
+  needs `escape()`. Routing `app.py`'s top-level `IndexedError` handler
+  through it while *keeping* the pre-existing `escape()` call (correct for
+  the old, markup-parsed `console.print` sink it replaced) produced visible
+  `\[` in any message containing a bracket. Whenever a print call moves
+  between a `Text()`-based helper and a raw markup-parsed `console.print`,
+  re-derive whether `escape()` belongs there — don't carry it across
+  unchanged. No test caught this because every existing case used
+  bracket-free messages, making `escape()` a no-op; a markup-safety
+  regression test needs bracket-bearing input to be worth anything.
+- **A config-schema validator that eagerly transforms a value for internal
+  use (e.g. glob → compiled-regex string) destroys the human-legible
+  original if nothing else keeps it.** `FileSystemConfig.normalize_patterns`
+  translated `"*"` to `fnmatch.translate("*")` at parse time so a later
+  `_compile()` wouldn't need to; the translated string is what got persisted
+  to the manifest and displayed. If a downstream consumer (`_compile()`
+  here) can already re-derive the working form from raw text via the same
+  try/except-translate fallback, the validator should validate and pass the
+  original through unchanged — eager transformation for an internal
+  consumer's convenience is a display-layer landmine when the same value is
+  also user-facing.
+- **A fixed-width label column (`ratio=1` against a `ratio=2` value column,
+  or a flat `get_info_row_label_width()` constant) breaks two different ways
+  depending on which side is fixed and which grows** — a short label
+  (`"Engine"`) still eats disproportionate ratio-based width, starving a
+  long value; a label longer than a flat padding constant
+  (`"Included Patterns"` vs. the existing 10-char budget) jams straight
+  against its value with no separator. Both surfaced in this feature (R2,
+  R3) as two different instances of the same root problem: label/value
+  column sizing needs to be either min-width-and-auto-grow (label) or
+  terminal-derived-with-a-sane-cap (overall card), never a value picked to
+  fit one observed case.
+- **A helper-level unit test (asserts `get_detail_card_width()`'s return
+  value, or a substring appears in output) can pass while the actual
+  rendered scenario in `product.md` still fails.** R2's and R3's planned
+  test scenarios ("renders on one line at a wide terminal", "aligned
+  consistently with the rows around it") were never written as rendered-
+  output assertions — only the width helper and substring presence were
+  tested, which is exactly why CI stayed green while both requirements'
+  literal acceptance criteria failed. When a requirement describes a visual
+  outcome, the regression test must render the actual output and assert on
+  its shape, not proxy through a helper's return value.
+- **A full-suite run between units (not just each unit's scoped tests) is
+  load-bearing, not a formality.** Task 2's fix changed `include_patterns`'
+  persisted form; a sibling test in a file outside Task 2's stated scope
+  (`tests/unit/indexed/connectors/test_from_manifest.py`) asserted the old
+  form and only broke on the controller's own post-unit full run — every
+  task-scoped review and test pass had missed it by construction (it wasn't
+  in the brief's file list). Subagent-driven development's per-task reviews
+  are necessary but not sufficient; run the full gate between units, not
+  just at the very end.
+- **The final whole-branch review's value is specifically catching
+  requirement-vs-implementation gaps and cross-unit seams, not re-litigating
+  what per-task reviews already approved.** All 4 Important findings here
+  were things no single task's scoped diff could reveal: a fix that was
+  locally correct but interacted wrong with a sibling function the task
+  brief listed as "don't touch" (R2's width bump vs. R7's row layout, same
+  file, different functions); a written acceptance scenario nobody had
+  actually rendered end-to-end. Budget for this pass as mandatory, not
+  optional polish, on any multi-unit feature.
+
+## Version-dispatching facade seam (core-v2/1, 2026-07-19)
+
+- **The default (`engine=None`) path IS manifest-authoritative — it detects, but
+  tolerates corrupt/missing manifests.** Existing-collection ops (`update/clear/
+  search/status/inspect`) call `detect_engine_version` on BOTH the default and
+  the explicit path. `_resolve_existing_engine` wraps detection so that a
+  readable manifest with an *unknown* marker raises `UnknownEngineVersionError`
+  (fail loud, R1 — never a silent v1 fallback on either path), while a
+  missing/corrupt/unreadable manifest is *swallowed* (`ValueError` → `continue`),
+  falling through to the default engine so v1's own corrupt-collection handling
+  is preserved byte-for-byte (status/inspect omit them; remove deletes them —
+  the R6 concern, handled without sacrificing R1). This was the review fix: the
+  first cut skipped detection when `engine is None`, which silently routed a
+  `version:"3"` collection to v1. `status`/`inspect`/`search` enumerate on-disk
+  collections when no names/configs are given so list-all is authoritative too.
+- **`collection_exists` is the ONE exception — it stays engine-agnostic.** A
+  filesystem existence probe is answered identically by either engine, so
+  `engine=None` routes straight to the default WITHOUT detection: it must never
+  fail loud (a corrupt or future-versioned collection still "exists"), or the
+  create-gate/remove-fallback existence checks would break.
+- **Retarget EVERY app-layer engine seam to the facade, not just the obvious
+  ones.** The `update` command's lazy `__getattr__` still resolved
+  `update_service`/`svc_status`/`inspect` from `core.v1.engine`; since the loop
+  injects `engine=` into `update_wiring`, `update --engine` crashed with
+  `TypeError` (v1's `update()` has no `engine` param). Grep every
+  `from indexed.core.v1.engine import` above the facade when adding a selector.
+- **Engine-routing errors must SURFACE, not be collapsed.** `run_update_loop`
+  swallows per-collection failures (foundation/6 E8) — but `CoreError` subtypes
+  (`EngineMismatchError`/`UnknownEngineVersionError`) are precondition failures
+  whose messages carry the migrate remedy, so re-raise `CoreError` past the
+  generic `except` to reach the CLI top-level handler (mirrors search/inspect).
+- **A bad `[core] engine` value must fail loud, like the env path.**
+  `resolve_engine_selector`'s `except Exception → default` silently downgraded a
+  `[core] engine = "9"` typo to `"1"`. Narrow it: re-raise `ConfigValidationError`
+  whose `.path == "core"`; keep the default fallback only for the genuinely
+  absent/unregistered case (provider `KeyError`).
+- **Route every op through one `_engine_impl(version)` indirection.** v1 returns
+  `core.v1.engine.services`; v2 becomes a one-line import there. Keep it lazy
+  (no heavy/LlamaIndex import at facade module top; facade import ≈ 0.17s).
+- **CLI passes `engine=` only when the flag is set** (`**{"engine": flag} if
+  flag else {}`). Existing command tests use fixed-signature fakes (e.g.
+  `fake_svc_search`) that don't accept `engine=`; passing `engine=None`
+  unconditionally would `TypeError` them. `engine=None` == not passing.
+- **OQ-T1 resolved:** a scalar model (`CoreEngineConfig`, `engine: str`)
+  registered at parent path `core` coexists with `core.v1.*`/`core.v2.*`
+  subtables with no registry change — the flat `ConfigRegistry` + pydantic
+  default `extra="ignore"` drops the sibling tables. Never set `extra="forbid"`
+  on a parent-path model. Validate the value with a `field_validator`, not a
+  `Literal` (a `Literal` field is fine too, but the extras must still be
+  ignored at the model level).
+- **Routing a lazy facade turns re-exported types into `Any` for ty.** After
+  `mcp/tools.py` imported `SourceConfig` from `indexed.core.engine` (module
+  `__getattr__ -> Any`), a previously-needed `# ty: ignore[invalid-argument-type]`
+  became *unused* — remove such stale ignores to keep ty at 0 diagnostics.
+
+---
+
+## Architecture audit (2026-07-03)
+
+- **Graph before polish.** Fix `core→connectors` and extract `indexed-protocols`
+  before refactoring services or splitting command files. v2 depends on this.
+- **App is the composition root.** Config registration, logging, connector wiring
+  belong in `bootstrap.py` + `runtime.py`, never at library import time.
+- **`resolve_collections_context()` is the only storage API.** Do not revive
+  heuristics like “prefer local if non-empty collections dir”.
+- **Singleton `mode_override` must rebuild.** `ConfigService.instance()` recreates
+  when `mode_override` changes on a subsequent call; use `reset=True` in tests.
+- **Migrate before delete.** Jira Server must use `UnifiedJiraDocumentReader`
+  before removing deprecated wrapper modules in `/8`.
+- **Registry lookup uses `cfg.type` verbatim.** Do not normalize `jiraCloud` → `jira`
+  when resolving connector class — cloud and server connectors differ.
+- **`localFiles` sets `sources.files.path`, not `.url`.** in `build_connector()`.
+- **Lazy imports after `/5`.** Config classes live in `connectors.*.schema`; package
+  `__init__.py` no longer re-exports them — update `create.py` `__getattr__` paths.
+- **Empty dict is falsy for registry injection.** `build_connector(..., registry={})`
+  falls back to full registry — pass a partial dict with a dummy entry to test unknown types.
+
+---
+
+## Audit remediation (2026-07-05)
+
+- **Verify a gate actually runs.** The documented `uv run mypy src/` never
+  executed (no root `src/`), so a branch's mypy debt shipped unguarded — including
+  2 real bugs. Gate is `uv run mypy apps/indexed/src packages/*/src`; scope success
+  to **0-new on touched files**, never tree-wide green (mypy isn't strict; ~230
+  pre-existing untyped-def errors). Baseline the count before editing.
+- **One `missing_wiring_error(component)` for DI gaps** (`indexed_config.errors`) →
+  `"<component> must be injected by the app layer; see indexed.bootstrap"`. Never
+  hand-roll the string; it was copied across 4 core sites + a dead app copy.
+- **Factory type aliases live in leaf `factories/_types.py`** (imports only
+  `DiskPersister` + protocols — downward). In `services/models` they'd re-introduce
+  a services↔factories cycle. Real reader/converter element types (not `Any`)
+  cleared 15 mypy errors for free.
+- **Keep `update_collection_factory` lazy in `_update_one`.** `collection_service`
+  ← `create_collection_factory` ← `documents_collection_creator` ← `services/__init__`
+  is a cold-import cycle; hoisting the factory to module load re-enters it. "Trim
+  the stale comment" meant fix the comment, keep the lazy import.
+- **A public API whose only callers are its mocks is dead.** `core.v1.Index.update()`
+  raised on every real call (DI made its factories required, never injected); its
+  one prod caller discarded the result. Removed from `__all__`.
+- **Assert behaviour, not existence.** `__name__ == 'X'`, `hasattr`, `assert x is
+  not None`, `assert mock.set.called`, CWD-relative paths prove nothing. Use `is`,
+  `isinstance` vs `@runtime_checkable` protocols, `assert_called_once_with`, and
+  anchor test roots to `Path(__file__).resolve().parents[N]` + a zero-files guard.
+- **A CI guardrail needs a negative test.** The import-graph gate's `FORBIDDEN`
+  omitted `indexed` (so `core→indexed` passed silently) and `_package_for_path`
+  ignored its `root` (inert under fixtures). Test that a synthetic bad edge IS caught.
+
+---
+
+## General (from AGENTS.md)
+
+- Lazy-load heavy ML imports inside functions, never at module top level.
+- Coverage is measured on installed packages — run `uv run pytest -q --cov=src`
+  from project root.
+- Spec drift is the main failure mode — update `.spec/` in the same cycle as code.
+
+---
+
+## `is_verbose_mode()` is unreliable at command-function top
+
+**Context:** `create.py` connector commands hoisted the storage indicator to the top
+of each function. The original check (`if not is_verbose_mode():`) always returned
+`False` there because `setup_root_logger` (which sets the global log level) only runs
+inside `execute_create_command`, later in the flow.
+
+**Lesson:** At command-function top, check `verbose` and `log_level` params directly.
+`is_verbose_mode()` is only reliable after `setup_root_logger` runs. Tests that mock
+`is_verbose_mode` directly pass regardless of timing — they don't expose this bug.
+
+**Fix pattern:** Extract one predicate over the params and reuse it for *every*
+pre-setup gate — the storage indicator *and* the connector-heading guards — so they
+stay consistent (an `--log-level=INFO` run must suppress both, or neither):
+```python
+def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
+    return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
+
+# indicator + `if not _is_pre_setup_verbose(verbose, log_level):` heading guards
+```
+Pre-setup `logger.info(...)` lines stay gated on `is_verbose_mode()` — they genuinely
+cannot fire before `setup_root_logger`, so that check is correct, not a bug.
+
+---
+
+## Share credential-guard helpers, never duplicate them
+
+**Context:** The origin guard block (`is_same_origin` + warning + `return None`) was
+added identically to 3 separate reader methods. Any future change to the warning
+string or return contract requires touching all three in sync.
+
+**Lesson:** Extract a `warn_if_off_origin(url, base_url) -> bool` helper in the
+shared module (`_url_guard.py`). Call sites reduce to a single-line guard:
+```python
+if not warn_if_off_origin(url, self.base_url):
+    return None
+```
+
+---
+
+## Loguru module-level import is fine; the lazy-import rule is ML-only
+
+**Context:** Review flagged that loguru was imported at module level in some files
+and lazily in others, questioning consistency.
+
+**Lesson:** CLAUDE.md's lazy-import rule targets `sentence-transformers`/`torch` only
+(500ms+ penalty). Loguru is a lightweight logger — module-level import is correct and
+consistent with `apps/indexed` usage. Lazy-import loguru only inside isolated
+connector methods where the import itself is fine either way (no performance cost).
+
+---
+
+## Jira Cloud attachment URLs are intentionally off-origin
+
+**Context:** Applying the origin guard to `AsyncJiraCloudDocumentReader` silently
+dropped all Cloud attachments. Jira Cloud serves `att["content"]` from
+`api.media.atlassian.com` — off-origin relative to `*.atlassian.net` base URLs.
+
+**Lesson:** When applying a credential-guard to a family of readers, audit each for
+CDN/proxy patterns. Cloud APIs often serve content from off-origin CDNs; the threat
+model there is different (URLs come from the API, not user-controlled). Exclude
+deliberately and document why.
+
+---
+
+## Same-origin checks must compare port, not just scheme + host
+
+**Context:** `is_same_origin` originally ignored the port entirely, so
+`https://host:8443/...` matched a `https://host` base and credentials would still be
+sent to a different service on the same host. The permissive behavior was justified as
+"base URLs rarely store a port."
+
+**Lesson:** Compare the **effective** port — normalize a missing port to the scheme
+default (443/80) — instead of dropping it. That keeps `https://host` ≡ `https://host:443`
+(the reason ports were skipped) while correctly rejecting non-default ports. A different
+port is a different origin for credential purposes; fail closed.
+
+---
+
+## Behavior-net harness (foundation/1, 2026-07-07)
+
+- **Warm the engine via `import core.v1.engine.services` first.** The engine has a
+  cold-import cycle (`documents_collection_creator` imports `services.models` →
+  `services/__init__` → `collection_service` → `create_collection_factory` → back to
+  the creator). In a fresh process, importing a factory / creator / searcher
+  **directly** fails cold; importing the `services` **package** first resolves it.
+  Any test that touches the engine outside the CLI must warm that import first
+  (`tests/characterization/test_lifecycle_cloud.py`, `test_known_bugs.py`). This is
+  the same cycle foundation/7 removes by breaking the engine→services upward import.
+- **Stub HTTP at the `read_documents` boundary; run FAISS + embeddings for real.**
+  The cloud lifecycle nets build the real reader+converter and patch only the HTTP
+  client (`jira…Jira`, `confluence…requests.get`, `outline…requests.post` +
+  `httpx.AsyncClient`). Drive create via `create_collection_creator`, update via
+  `create_collection_updater(manifest_connector_factory=…)`, inspect via
+  `InspectService.status`, remove via `collection_service.clear`. A shared mutable
+  doc-list backs the stub so `add_update()` grows the source for the update leg.
+- **Known-hit, not "no error".** Assert a *specific* document is the top hit and that
+  a *different* query ranks a *different* document first. That is what proves recall
+  and is exactly what the pruned mechanism tests could not assert.
+- **Config isolation patches `Path.home()`**, so the HF model cache can miss on the
+  first model-using test of a session and re-download once into the sandbox. Harmless
+  where the network is available; gate model-dependent specs on `model_available()`.
+- **Verify red bug-specs fail for the RIGHT reason.** Run them with
+  `pytest --runxfail --tb=line` and confirm each fails on a genuine assertion about
+  the desired behavior (or the bug's own exception) — never a spurious
+  `AttributeError`/`ImportError`. A spec that xfails on a typo never flips to xpass
+  when the bug is fixed, so it silently stops guarding.
+- **Prune only net-covered mechanism tests; promote when unsure.** Registry-membership
+  `test_init.py` clones were replaced by one behavior-focused
+  `test_connector_registry.py` (public `get_connector_class`/`list_connector_types`)
+  before deleting them — "promote into the net, then delete", never delete-first.
+
+---
+
+## Search recall fixes (foundation/2, 2026-07-07)
+
+- **A cross-package layering rule can be honored without duplicating the model.**
+  `indexed-parsing` must not import `indexed-core` (its own `CLAUDE.md`), but the
+  chunkers still need the embedder's real token window. Resolution: the embedder
+  (`SentenceEmbedder.max_seq_length`) stays the single **dynamic** source of truth
+  (reads `self.model.max_seq_length` live); `indexed-parsing` gets its own
+  `_model_window.py` with a **documented, hardcoded** `DEFAULT_MODEL_MAX_SEQ_LENGTH
+  = 256` that must track the embedder's default model. It loads a `transformers`
+  tokenizer directly (a third-party ML lib, not "core engine") for real token
+  counting/splitting — lazy-loaded exactly like the existing Docling/tree-sitter
+  imports in that package. Two numbers, one documented link between them, no
+  forbidden import.
+- **`HybridChunker` was already the right token-aware chunker** — the
+  `DoclingParser` docstring claimed it, the code used `HierarchicalChunker`
+  (heading-only, no size bound) instead. Docling's default tokenizer for
+  `HybridChunker`/`get_default_tokenizer()` is `sentence-transformers/all-MiniLM-L6-v2`
+  itself, so it lines up with this project's default embedding model out of the
+  box — build a `HuggingFaceTokenizer(tokenizer=..., max_tokens=...)` explicitly
+  with `local_files_only=True` rather than relying on the library default, which
+  calls `hf_hub_download`/`AutoTokenizer.from_pretrained` without it (an
+  unnecessary network attempt even when cached). Needs the `docling-core[chunking]`
+  extra (`transformers` + `semchunk`) — add it to the owning package's
+  `pyproject.toml` even if the workspace venv already has it transitively.
+- **Real token-bounded splitting beats char-per-token heuristics.** A
+  `chars ≈ tokens * 4` estimate is not a safe upper bound for punctuation/number-
+  heavy text (logs, code, CSV) — it can undercount tokens and still emit an
+  oversize chunk. Split (paragraphs → lines → words → hard char slices) using the
+  real tokenizer's count at each level; only fall back to a char-based slice for a
+  single unsplittable run with no whitespace at all.
+- **FAISS `IndexFlatL2` over-fetching is nearly free.** Its search cost is
+  dominated by the O(N·d) distance computation against every vector; asking for
+  `k=N` instead of `k=15` barely changes wall time (confirmed against a 10k-vector
+  benchmark fixture). This makes "over-fetch the whole index, group, then cap" a
+  cheap and robust fix for top-k starvation — no tuning a multiplier constant, no
+  risk of an unlucky corpus defeating it — at the documented <100k-doc scale;
+  bound it with a ceiling constant for the pathological large-index case.
+- **Filter-before-truncate needs the truncation moved, not just reordered.** The
+  searcher enforces `max_docs` internally (needed to fix starvation); to let
+  `_filter_by_score` backfill filtered-out slots, the caller must ask the searcher
+  for `max_docs * OVERFETCH_FACTOR` candidates when a threshold is active, filter
+  that wider set, THEN slice to the real `max_docs` — truncating to the final
+  count before filtering discards the very candidates that would have backfilled.
+
+## MCP freshness/errors & dead config sections (foundation/6d, 2026-07-07)
+
+- **`resolve_collections_context(mode_override=...)` used to silently wipe
+  registered config specs — now fixed at the root.** It calls
+  `ConfigService.instance(mode_override=..., reset=mode_override is not None)`
+  — `reset=True` unconditionally replaces the singleton (fresh, empty
+  `ConfigRegistry`) any time a non-None override is passed, even when the
+  override is identical to what's already active. Every knowledge command
+  calls this *after* the app callback's `register_app_config`, so a bare
+  reset silently dropped every registered spec for the rest of that command —
+  including `FaissIndexer._resolve_embedding_batch_size()`, which fell back to
+  its hardcoded 128 default in `--local` mode (the mode create/update/tests
+  actually use) instead of honoring `core.v1.embedding.batch_size`.
+  **Root-cause fix (this task):** `resolve_collections_context` now calls
+  `register_app_config(config_service)` itself, right after obtaining/resetting
+  the singleton and before returning the `CliContext` — `register_app_config`
+  is idempotent (plain dict registration), so this is free for the already-hot
+  path and restores the specs for **every** caller (create/update/search/
+  inspect/remove/MCP) in one place instead of leaving each caller to guess it
+  needs a defensive re-register. `search.py::_load_search_config`'s per-call
+  `register_app_config` re-register (the original 6d workaround) has been
+  removed as redundant — it now just binds directly, relying on the runtime
+  fix. **Do not reintroduce the per-caller defensive re-register pattern**
+  for callers that go through `resolve_collections_context`; only call sites
+  that build their own `ConfigService.instance()` *without* going through
+  `resolve_collections_context` (e.g. `mcp/cli.py::run_impl`, which resolves
+  config before any storage-mode override) still need their own explicit
+  `register_app_config` call. The remaining "is this settable-but-unread
+  knob truly dead" audit for `core.v1.indexing` / the rest of
+  `core.v1.embedding` is unchanged — still deferred to foundation/7-9.
+- **Two console-output test patterns coexist in `search.py` and don't compose.**
+  Some tests monkeypatch `search_cmd.console` (a module-local rebinding) and
+  capture via a fake `.print`; but `print_error`/`print_warning` (from
+  `utils.components.alerts`) hold their own reference to the *real* shared
+  console, so patching `search_cmd.console` never captures their output. To
+  assert on `print_error`/`print_warning` calls, patch the name in the calling
+  module's namespace instead — `patch.object(search_cmd, "print_error")` — not
+  the console object.
+- **A settable-but-unread config knob isn't automatically "dead" everywhere.**
+  E12 named three sections (`core.v1.indexing`, `core.v1.embedding`,
+  `core.v1.storage`) as registered-but-unread. Only `embedding.batch_size` was
+  wired into the engine (`FaissIndexer.index_texts`, replacing the hardcoded
+  64) because the brief scoped it explicitly and it's a single, low-risk read.
+  `core.v1.indexing` (chunk_size/chunk_overlap) and the rest of
+  `core.v1.embedding` (model_name/provider/dimension/device) remain registered
+  but unread by design — wiring chunk_size risks colliding with foundation/2's
+  token-window chunking (which now sizes off the model directly, not this
+  config), and wiring model_name is a bigger factory-selection change outside
+  this unit's remit. Left as a known residual for whoever does the
+  config-architecture pass (foundation/7-9): delete or wire them then, backed
+  by the full picture rather than a narrow bugfix task.
+- **`ConfigService.set_overlay()` is the right tool for config-dependent unit
+  tests.** It's in-memory only (never touches disk), so a test can register a
+  spec and set a value without a `tmp_path`/`monkeypatch.chdir` dance — just
+  `svc.register(Model, path=...)` then `svc.set_overlay("path.key", value)`.
+
+## Foundation bug-batch closeout (2026-07-07)
+
+- **Additive manifest keys keep old collections loadable (F2).** To add
+  `createdTime` without breaking byte-compat: write the new key ONLY in the
+  brand-new-collection branch of `__create_manifest_content`; the update branch
+  spreads `**existing_manifest` first, so an old manifest without the key
+  round-trips untouched and readers use `manifest.get("createdTime")` → `None`.
+  Never add a key on the update path (it would rewrite every existing manifest).
+- **Guard zero-padded / non-finite words before numeric coercion (F5).**
+  `_coerce_value` must not mangle string-typed config values: reject leading-zero
+  runs (`^[+-]?0\d`) and non-finite words (`nan`/`inf`) BEFORE `json.loads`/
+  `float()`, so `"001"`→`"001"` and `"nan"`→`"nan"` while genuine numerics still
+  coerce. Report the real index FILE byte size via `os.path.getsize()` (not the
+  FAISS `ntotal` vector count) and compute `avg_doc_size` from the `documents/`
+  folder only, excluding the index (F1/F3).
+- **Loguru config leaks across CliRunner invocations in one test process.** The
+  CLI configures loguru once per process (guarded by `_LOGGING_CONFIGURED`); in a
+  test process many `CliRunner` invokes share it, so a command that installs a
+  stdout log sink (`create`) leaks it into a later command whose diagnostic logs
+  then corrupt stdout (an inspect-error line prepended to `--simple-output`
+  JSON), making output assertions order-dependent. Production runs one process
+  per command, so it only bites tests. Fix: an autouse conftest fixture that
+  `loguru.remove()`s sinks and resets `utils.logger._LOGGING_CONFIGURED = False`
+  after each test. Same class of leak as the `simple_output` module global —
+  reset both.
+- **`url.endswith(".domain")` on a full URL is incomplete-substring sanitization
+  (CodeQL `py/incomplete-url-substring-sanitization`, HIGH).** The Atlassian
+  Cloud discriminators in the Jira/Confluence readers did
+  `base_url.endswith(".atlassian.net")` on the raw URL, so
+  `https://evil.com/x.atlassian.net` was misclassified as Cloud (would route
+  credentialed requests off-host). Fix: a shared `is_cloud_host(url)` in
+  `connectors/_url_guard.py` that extracts the host via the existing
+  `_client_host` (the urllib3-accurate authority parse) BEFORE the `.endswith`
+  check, with a scheme-less bare-host fallback for back-compat. Always parse the
+  host first — the parsed-host form is both correct and what the scanner
+  recognizes as sanitized; a bare-string `endswith`/`in` on a URL is not. Mirrors
+  `create.py::_is_cloud`. Editing a line CodeQL already (heuristically) flags
+  re-fingerprints it as a *new* PR alert even when the edit makes it safer —
+  expect the "1 new alert" to be the line you just touched.
+
+---
+
+## Typed data contracts live in the `protocols` leaf, not `core` (foundation/7, 2026-07-08)
+
+- **The typed models (`Manifest`/`ConvertedDocument`/`Chunk`/`CollectionSearchResult`/…)
+  belong in `packages/indexed-protocols/src/protocols/models.py`, NOT
+  `core/v1/models.py`.** The feature spec's overview (tech.md §1) originally
+  placed them under `core.v1`, but that contradicts its own edge list (§5):
+  `connectors`/`config`/`protocols` may not import `core`, yet
+  `protocols/connectors.py` must reference `ConvertedDocument`/`Manifest` (the
+  converter returns `ConvertedDocument`) and readers/converters live in
+  `connectors`. `scripts/check_import_graph.py` encodes exactly this
+  (`"protocols": {"core", "connectors", "indexed"}` forbidden). The leaf is the
+  ONLY import-legal home. `SourceConfig` already lived there — fold the rest in.
+  Spec corrected in the same cycle (tech.md §1, tech-core.md).
+- **Byte-stability = declare fields in on-disk key order + `by_alias=True`.**
+  Pydantic `model_dump(by_alias=True)` emits declared fields in definition order,
+  then `extra="allow"` extras in insertion order. Match the writer's key order
+  field-for-field and the re-serialized JSON is byte-identical. Assert it with
+  `json.dumps(model.to_disk()) == json.dumps(raw)` (order-sensitive), not just
+  dict `==`.
+- **Optional-key round-trip: pop, don't `exclude_none`.** The manifest's
+  `createdTime` is CREATE-only (absent on older collections). A global
+  `exclude_none=True` would also drop a legitimately-null *reader* field and
+  break byte-stability. Instead dump normally and `pop("createdTime")` only when
+  it's `None`. (For `Chunk.metadata`, where no null-valued sibling exists,
+  `exclude_none=True` is safe and keeps chunk 0 metadata-free.)
+- **Corrected protocols make a mismatch a mypy error.** `DocumentReader` now
+  declares `get_number_of_documents`/`read_all_documents`/`get_reader_details`
+  (what the creator actually calls) instead of the fictional `read_documents`
+  (zero callers). Verify the property with `MYPYPATH=packages/indexed-protocols/src`
+  — a standalone `mypy` run on a file outside the configured path silently treats
+  `protocols` as `Any` and reports a false "Success".
+- **Break the engine→services cycle at the import, not with a lazy import.**
+  `documents_collection_creator.py` imported progress types upward from
+  `core.v1.engine.services.models`; point it straight at `protocols` (the leaf)
+  instead. That removes the cycle the old lazy imports worked around.
+
+---
+
+## Facade + composition switchover (foundation/8, 2026-07-08)
+
+- **One `from_manifest` per connector kills core's per-type branches.** The
+  update path was two injected factories + an `if connector_type == "localFiles"`
+  branch in core + a 180-line app-layer `_populate_*`/`os.environ` apparatus. It
+  collapses to a single `ManifestFactory = Callable[[Manifest, str], ConnectorRun]`
+  that dispatches to `registry[m.reader.type].from_manifest(...)`. Core calls it
+  once for every source. The empty-query R6.5 fix and the Outline cutoff (an
+  in-memory overlay now, not an `os.environ` side-channel) live inside each
+  connector's `from_manifest`.
+- **The core facade at `core/v1/engine/__init__.py` uses lazy `__getattr__`, not
+  eager re-exports.** Eager `from .services import ...` in the package `__init__`
+  would fire the full services import on ANY `core.v1.engine.*` submodule import
+  and can reintroduce cold-import cycles. A `__getattr__` that imports `services`
+  on first attribute access keeps submodule imports cheap and warms in the right
+  order. The app imports core ONLY through `core.v1.engine` (never
+  `services`/`factories`/`core`), so a v2 engine is a drop-in behind the same
+  names over the same disk format (R2).
+- **`composition.py` is the single wiring site** — it folds in the old
+  `bootstrap.py` + `runtime.py` + `connector_wiring.py` and hands the facade two
+  REQUIRED callables (`connector_factory` create-time, `manifest_factory`
+  update-time). No `Callable | None` + `missing_wiring_error` on the happy path;
+  omission is a `TypeError` at the call site. Keep connector/core imports lazy in
+  it for <1s startup.
+- **Mocking `sys.modules["core.v1.engine.services"]` no longer intercepts app
+  imports that go through the facade.** `from core.v1.engine import X` resolves
+  via the engine package's `services` attribute (set once the real module is
+  imported), so a sys.modules patch is order-dependent and false-passes in
+  isolation. Patch the facade attribute instead:
+  `patch.object(core.v1.engine, "X", mock, create=True)`.
+
+---
+
+## Read-mostly config was already achieved; verify before refactoring (foundation/9, 2026-07-08)
+
+- **R3 (config.toml is user-owned) was already true before foundation/9 started.**
+  The overlay work in foundation/4/6/8 (`set_overlay` for create-time CLI args,
+  `from_manifest` for update-time queries) means create/update/search issue ZERO
+  runtime `config_service.set()`/`save_raw()` calls — grep confirms it. ASSESS
+  before refactoring: the win here was locking the behavior in with a regression
+  test (`tests/system/test_read_mostly_config.py`: `sha256(config.toml)` byte-
+  stable across the update seam), not new code.
+- **The two functional-wrapper singletons (`search_service`/`inspect_service`
+  `_default_service`) re-created on every `collections_path`-bearing call**, so
+  the CLI/MCP never reused them anyway. Removing them and building a per-call
+  `SearchService`/`InspectService` is behavior-preserving (the real cache is
+  per-instance searcher reuse; a long-lived server holds its own instance). Tests
+  that `@patch(..._default_service)` become `@patch(...SearchService)` +
+  `mock_cls.return_value`.
+- **Scoped, not skipped: the `ConfigService.instance()` → `get_config()/reload()`
+  rename + path/mode resolver consolidation were deferred.** The self-replacing
+  singleton's actual harm (dropping registered specs on `reset`) was already
+  fixed at the root in foundation/6d; what remains is a cosmetic API rename across
+  ~86 call sites (63 in tests) and structural resolver de-duplication. An 86-site
+  refactor with no behavioral payoff is the wrong thing to attempt unattended as
+  the last unit — R3's requirement is met without it. Documented as a follow-up.
+
+## Simplify (Feature 14, 2026-07-10)
+
+- **Mask secrets on the returned VALUE, not just the queried key.** `config get
+  --simple-output <section>` leaked nested `api_token` in cleartext because masking
+  checked `_is_sensitive_key(key)` on the queried dot-path (a section like
+  `sources.jira` isn't itself "sensitive") and then dumped the whole dict. A
+  machine-readable dump must recurse into nested dicts and mask each sensitive leaf
+  (`_mask_sensitive_raw`), exactly as `config list` does — reuse the recursive masker,
+  never a flat leaf-key check, for any command that can emit a subtree.
+- **Verify a symbol is actually dead before deleting; "phantom generality" premises
+  go stale.** The audit's simplify/2 DELETE-LIST called the indexer registry/factory
+  phantom generality, but post-Foundation `get_indexer_config`/`indexer_factory` are
+  the live path that resolves the embedding model (3 supported models) from the
+  persisted indexer name, and `manifest.indexers[]` is a byte-stable on-disk contract.
+  Deleting the factory would inline duplicated construction at four call sites (an
+  anti-simplification) and risk collection-load compat. Recon each delete-list item
+  against the CURRENT tree; defer with a documented rationale when the premise is wrong.
+- **Aspirational LOC targets can be unreachable under a feature's own non-goals;
+  extraction ≠ deletion.** Simplify's "~6k src / ~8k tests" clashed with its
+  "no v2 rewrite, no functionality removal" non-goals — the app/connector/config
+  layers are real functionality, and most of the CLI shrink was extraction into
+  services (better structure, same total LOC). Gate on the real measured baseline
+  (`check_sizes.py`: src ≤23k, tests ≤29k) to prevent regrowth, and report the gap
+  honestly rather than assert a number only a rewrite could hit.
+- **Collapsing to one package surfaces namespace collisions.** The app's CLI
+  `config/` command and the `indexed_config` package both wanted `indexed.config`;
+  resolved by merging them (config package modules + `config/cli.py` coexist under
+  `indexed.config`, with the CLI file exempted from the config-package purity edge).
+
+## mypy → ty migration (2026-07-12)
+
+- **A stricter type checker earns its keep by finding real bugs, not just noise.**
+  Full replacement (mypy → `ty`, pinned exact version, no baseline-carry) surfaced
+  47 diagnostics; most were genuine — `List[str] = None` on a dataclass field,
+  `.get()` on an `atlassian.Jira.jql()` call whose own stub declares `Optional[dict]`,
+  `isinstance(result, Exception)` after `asyncio.gather(return_exceptions=True)`
+  missing `BaseException` subclasses like `CancelledError`, and `typer.get_current_context`
+  — a function that doesn't exist on the installed typer version, silently swallowed
+  by a bare `except Exception: pass` at both call sites (should have been `click.get_current_context`).
+- **Protocol structural conformance needs positional-only params when implementations
+  rename them.** `DocumentConverter.convert(self, doc: Any)` failed to match every real
+  converter (which use `document`) until `doc` was marked positional-only (`/`) —
+  without it, structural matching requires the parameter name to match too.
+- **Don't fight an intentionally dynamic pattern with a static duplicate.** `mcp/tools.py`
+  derives its source-type whitelist from `SourceConfig`'s own Literal via `get_args()`
+  specifically so it can't drift from the model; a static checker can't see through
+  that indirection. Suppressed with `# ty: ignore[...]` and a comment, not a second
+  hardcoded literal list that could itself drift.
+- **A stub declaring a name doesn't mean the runtime module exports it.** `loguru`'s
+  `.pyi` declares `Message`, but `loguru/__init__.py`'s `__all__` is just `["logger"]`
+  — importing `Message` at runtime raises `ImportError`. Stub-only names must be
+  imported under `TYPE_CHECKING` (safe here because the file already has
+  `from __future__ import annotations`), never at module top level.
+- **ty has no baseline/diff mode** — every touched *and* untouched file must pass,
+  unlike mypy's 0-new-on-touched-files/~206-baseline policy this project used before.
+  Third-party SWIG/no-stub gaps (faiss, docling's `format_options` dict key, requests
+  needing a `types-requests` dev dependency it never had under mypy) still need
+  per-line judgment: fix the real ones, suppress the library-stub ones with a reason.
+
+## Release versioning is tag-driven (2026-07-12)
+
+**Lesson:** The GitHub Release **tag** is the version. Nothing is pre-bumped in a
+PR. `pyproject.toml` carries `dynamic = ["version"]` + `[tool.hatch.version]
+source = "vcs"`, so hatch-vcs reads the tag at build time and the repo stores no
+version string at all. There is no `sync_version.py` and no "tag == pyproject
+version" guard — the tag is the only source of truth.
+
+**Why:** The maintainer doesn't know at PR-merge time whether a merge will be
+released, so pre-bumping the version in the PR (Model A) is impractical.
+
+**Superseded (2026-08-13):** the original design tagged at release time and then
+*backmerged* the bump — a job that ran `uv version --no-sync <tag>` on a fresh
+`main` checkout and pushed `chore: release <tag> [skip ci]` straight to `main`.
+It never worked once. Its first execution (v0.0.7, run 11) was rejected with
+`GH013: - Changes must be made through a pull request` — the `main` ruleset
+forbids direct pushes, and `secrets.GITHUB_TOKEN` is not a bypass actor and
+cannot be made one by any `permissions:` block. `main` sat at `0.0.5` while PyPI
+served `0.0.7`.
+
+**Rule:** *don't write state back to a protected branch from CI.* Derive it
+instead. Every workaround (PR-per-release + auto-merge, App-token ruleset bypass)
+adds a secret or a hole in branch protection to maintain a value that a build can
+compute from the tag it already has. If CI wants to push to `main`, that is the
+signal the value shouldn't live in `main`.
+
+**Corollary — a derived version needs the git history it derives from.** Any job
+that builds or installs the package checks out at `fetch-depth: 0`. Measured on a
+depth-1 tagless checkout: hatch-vcs resolves to `0.0.0.postN+g<sha>` with only a
+`UserWarning: … is shallow`, and both `validate_wheel.py` and
+`twine check --strict` still pass. A wrong version that goes green is worse than
+a build that breaks, so the release job also asserts the built dist filenames
+carry the tag version. A tree with no `.git` at all is a separate case: it raises
+`LookupError` and needs an explicit `fallback_version`, or building from GitHub's
+source tarball breaks.
+
+**And a measured figure is only true for the config it was measured under.** The
+number above was first recorded as `0.1.dev1+g<sha>` — correct under the default
+`guess-next-dev`, stale the moment the scheme changed to `post-release` one
+commit later. Re-measure before restating, and treat "Measured:" in this file as
+a claim that has to survive the next config change, not a fact that ages well.
+
+**Scheme:** `version_scheme = "post-release"`, so off-tag builds read
+`0.0.7.post4+g5d98c95` — anchored on the last tag. The setuptools-scm default
+(`guess-next-dev`) invents `0.0.8.devN`, which lies whenever the next release
+isn't a patch bump — and since the version is chosen at release time here, it
+cannot know. Don't let the version scheme predict a decision the maintainer
+hasn't made yet.
+
+---
+
+## `test_e2e_search_collection` is order-dependent, not deterministic
+
+**Context:** Full-suite run (`pytest -q --cov=src`) failed this test with
+`IndexError('list index out of range')` inside a CLI search call; the same test passed
+standalone. Deleting unrelated `.benchmarks/*.py` scripts was ruled out as the cause
+(no import references, files never on the `--cov=src` path).
+
+**Lesson:** `tests/benchmarks/test_e2e_performance.py::test_e2e_search_collection` leaks
+shared state from an earlier test in the full run (likely collection/FAISS index state).
+Treat a full-suite-only failure here as this known flake before assuming a real
+regression — but still confirm by running the test standalone before shrugging it off.
+
+---
+
+## `!dir/` doesn't un-ignore files inside it — need `!dir/**`
+
+**Context:** `.benchmarks/.gitignore` had `*.json` / `!baselines/`, meant to keep
+`.benchmarks/baselines/*.json` trackable. Once the benchmark action started staging
+a baseline commit on the PR branch itself (see tech.md § CI Benchmarking), every run
+failed to stage it: `git add` errored "paths are ignored by one of your .gitignore
+files" — the job still passed (push failures are non-fatal) but baselines silently
+never updated.
+
+**Lesson:** Negating a directory (`!baselines/`) only un-ignores the directory entry;
+files inside are still matched by an earlier broad pattern (`*.json`) unless the
+negation also covers them (`!baselines/**`). `git check-ignore -v <path>` shows the
+matching rule for untracked paths and catches this directly; still confirm end-to-end
+with `git add`/`git status`, since that's what CI actually runs.
+
+## Core V2 build via subagent-driven development (2026-07-19)
+
+- **One agent per task — never re-dispatch a "dead" agent without confirming death.** Transcript
+  file size/mtime is NOT a liveness signal (three agents showed a frozen 118-byte transcript while
+  two were actively editing 250k+ tokens of work). Reliable liveness = `SendMessage` result:
+  "Message queued … at its next tool round" = ALIVE; "had no active task; resumed from transcript"
+  = was DORMANT (now revived). Or watch the working-tree diff hash over ~70s (changed = editing;
+  but a pure *reading* phase changes neither tree nor runs a build, so a tree-diff "stall" can be a
+  false positive — confirm with SendMessage). A false-death re-dispatch put 3 agents on one tree; the
+  cooperative agents self-detected and stood down, and the full gate arbitrated a clean merge — but
+  it cost ~1.5h. Stand down / kill the prior dispatch BEFORE re-dispatching.
+- **Subagents that launch the verify gate with `run_in_background` and end their turn go DORMANT** —
+  work committed-or-not, report unwritten, no auto-resume. Brief every implementer: "run the gate in
+  the FOREGROUND; do NOT end your turn until you have committed AND written the report." Revive a
+  dormant one with `SendMessage`.
+- **The CI benchmark action pushes baseline commits (`chore(benchmark): update baseline … [skip ci]`)
+  onto the PR branch itself**, so the next push is a non-fast-forward. `git fetch && git rebase
+  origin/<branch>` before each push (the baseline JSON touches disjoint files — clean rebase).
+- **The whole-branch review catches cross-UNIT gaps no per-unit review can.** Migration created the
+  `<name>.v1-backup` convention (unit 4) but collection-discovery lives in units 1/2, so the default
+  `migrate` left the backup as a discoverable + searchable phantom v1 collection (duplicate hits)
+  until `--purge-backup`. Lesson: the discovery-exclusion regex must exclude EVERY reserved sibling
+  dir, not just `.tmp`/`.trash` — it is now `\.(?:tmp|trash)-\d+|\.v1-backup$` at BOTH sites
+  (`core/engine.py`, `core/v2/_common.py`). Keep the two sites byte-identical.
+- **Manifest-authoritative routing must detect on the DEFAULT (no-`--engine`) path too**, or an
+  unknown `version` marker silently falls back to v1 (R1 violation). Detect per collection; let
+  `UnknownEngineVersionError` propagate (fail loud), but catch the collection-level `ValueError`
+  (corrupt/missing manifest) and fall through to the default engine so v1's own omit/handle behavior
+  is byte-preserved.
+- **Build-aside staging dirs must be named pid-FIRST** (`<name>.tmp-<pid>-<hex>`), not bare-uuid-hex —
+  the `\.(?:tmp|trash)-\d+` discovery-exclusion needs a DIGIT right after `-`; a hex prefix starting
+  with a–f (≈37.5%) escapes it, so a create/update killed mid-build could leave a phantom collection.
+- **v2 incremental update must embed with the collection's RECORDED model** (`manifest.engine.
+  embedding.model`), never the configured default — else new vectors land in a different embedding
+  space than the existing index. `create` uses the configured model (new collection); `update`/
+  `migrate` reuse the recorded one.
+- **LlamaIndex `TextNode.ref_doc_id` is read-only** — set the upsert/delete linkage via
+  `node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=doc_id)`; `delete_ref_doc`
+  keys on the SOURCE relationship (proven by a real `SimpleDocumentStore` round-trip). Docstore
+  per-doc content-hash upsert (skip unchanged, delete+re-embed changed) gives R5 incrementality.
+- **Native `HuggingFaceEmbedding` was ADOPTED** (not an own BaseEmbedding adapter): same
+  SentenceTransformer + HF cache as v1 → 1:1 relevance, zero re-download. Import it FUNCTION-LOCALLY
+  (the integration imports torch at module top). For zero-network-when-cached, pass `cache_folder` +
+  `local_files_only=True` when the model is cached (no `HF_HUB_OFFLINE` env mutation).
+- **R6 for formatters**: gate the cross-engine cosine unification (`sim = 1 − d²/2` for v1) on "a v2
+  collection is present" — v1 results carry no `scoreKind` key, so a v1-only search's output stays
+  byte-identical (no new `relevance` field, unchanged ascending sort). Cross-engine value comparison
+  only kicks in for mixed views.
+- **MCP v2 e2e must run OUT-OF-PROCESS** (spawn the server as a real stdio subprocess) — the in-process
+  FastMCP client + llama-index + torch segfaults (exit 139).
+- **The repo's `spec` skill (`validate.sh`) is a private-repo skill unavailable in an unauthorized
+  session** — a `spec_check.py` frontmatter+link proxy was used; the real validator must be run by
+  the maintainer in an authorized env. Commit signing is also impossible here (no key) → the stop-hook
+  "Unverified" nag is cosmetic; authorship is already `Claude <noreply@anthropic.com>`.
+
+## Core-v2 e2e testing (2026-07-19)
+
+- **LlamaIndex embeds `node.get_content(metadata_mode=EMBED)`, which PREPENDS all
+  `node.metadata` to the text before embedding.** The v2 adapter set engine-owned
+  metadata (`source_id`, the full file `url`, `modified_time`, `chunk_number`,
+  `collection`) but never `excluded_embed_metadata_keys`, so every v2 vector was
+  the embedding of `"source_id: …\nurl: file:///…\n…\n\n<chunk text>"` — NOT the
+  chunk text. Measured: true cosine("authentication","auth.py")=0.5791 (v1 recovers
+  it exactly via `1−d²/2`), but v2 returned 0.2430 = cosine of the metadata-prefixed
+  text. This broke R8 (v2 relevance ≠ v1) and R11 (mixed ranking systematically
+  favored v1) while every unit test stayed GREEN and CodeRabbit approved the scoring
+  logic — only an end-to-end score comparison against ground truth caught it. Fix:
+  `node.excluded_embed_metadata_keys = list(node.metadata.keys())` in `adapter.to_nodes`
+  (metadata still available for retrieval; embed text = chunk content alone). Lesson:
+  any adapter that sets node metadata MUST exclude it from the embed text, and vector
+  quality needs an e2e relevance check, not just green unit tests.
+- **Normalize the engine selector (`1/2/v1/v2`) at EVERY entry point, not just the
+  CLI flag.** `--engine v2` worked, but `INDEXED__CORE__ENGINE=v2` and
+  `config set core.engine v2` both crashed create ("engine must be '1' or '2'") —
+  the `v1/v2→1/2` normalizer ran only on the flag path, while `CoreEngineConfig`'s
+  validator (which the env/config paths hit at construction) rejected the friendly
+  forms. Fix: normalize inside `CoreEngineConfig._check_engine_value` (accept
+  `1/2/v1/v2` case-insensitively, store canonical `"1"`/`"2"`), so flag, env, and
+  config all agree. Replicate the mapping inline (config must not import the CLI layer).
+- **`config set` writes values unvalidated** — `config set core.engine v2` persisted
+  `engine = "v2"` and then every later command crashed on load. Validate model-backed
+  keys at write time (`config/commands/` is import-exempt, so it can construct the
+  model to validate) so a bad value is rejected before it bricks the tool.
+- **`config get <key>` for a defaulted key should show the effective default, not
+  "Key not found"** — but resolve it WITHOUT `ConfigService.bind()`, which validates
+  the ENTIRE config and would make a single-key read fail on any unrelated bad section.
+  Read the model's field default directly (`CoreEngineConfig().engine`).
+
+## `create` skipped the existing-engine check the other routed ops share (#185, 2026-08-29)
+
+- `core.engine.create()` validated only the *requested* selector
+  (`_validate_engine(engine or _DEFAULT_ENGINE)`) instead of resolving against the
+  target's on-disk manifest like `update`/`clear` do via `_resolve_existing_engine`.
+  Re-running `create` on an existing collection with no (or a conflicting) `--engine`
+  silently dispatched to the default/requested engine, build-aside-and-swapped the
+  whole collection directory, and destroyed the other engine's index — no error, no
+  warning beyond a generic "already exists, overwrite?" prompt that never mentions
+  engines. `.spec/tech.md` already documented the correct contract ("an explicit
+  selector may only confirm [the manifest] or fail with `EngineMismatchError`");
+  the code just didn't implement it for `create`, and no test exercised `create`
+  against an *existing* collection with a conflicting/absent engine to catch it.
+  Fix: `create` now extracts names from `configs` and calls the same
+  `_resolve_existing_engine(engine, names, collections_path)` the other routed ops
+  use — manifest wins for existing names, selector still picks the engine for
+  genuinely new ones. Lesson: every routed op in a version-dispatching facade needs
+  its own existing-collection regression test, even when the pattern is "obviously"
+  shared — a facade with N routed callables needs N call sites verified, not just
+  the ones that happen to already have tests.
+
+## Consolidated 8 Dependabot/pre-commit dependency PRs (2026-08-30)
+
+- **`.pre-commit-config.yaml`'s `ty` hook rev had already drifted from the
+  `ty==` pin in `pyproject.toml`** (config at `v0.0.58`, pyproject pinned
+  `0.0.69`) before any of this round's bumps — the "keep this rev in step"
+  comment next to the hook was not enforced anywhere. When bumping an
+  exact-pinned dev tool, grep for every OTHER place that pins the same
+  version (pre-commit hook revs are the usual suspect) and update them
+  together; a comment asserting two files stay in sync is not a guarantee.
+- **`sentence-transformers` 6.0.0 renamed `get_sentence_embedding_dimension()`
+  to `get_embedding_dimension()`** (old name kept as a deprecated shim,
+  `FutureWarning` only — not a hard break). It doesn't fail tests, so a
+  green suite can still ship a newly-introduced deprecation warning from a
+  dependency bump. Grep test output for new warnings after any ML-library
+  bump, not just the pass/fail count.
+- Dependabot leaves range-constrained deps (`>=` floors) untouched in
+  `pyproject.toml` and bumps only `uv.lock`; it only touches `pyproject.toml`
+  for exact pins (here: `ty==`). Replicating N dependabot PRs by hand is
+  `uv lock --upgrade-package <name>` for each package plus the one exact-pin
+  edit — no floor bumps needed to reproduce the same resolution.
+
+## Core v2 discoverability, issue #188 (2026-09-01)
+
+- **Rich silently swallows bracketed `[...]` text inside a Typer `help=`
+  string.** `--rerank`'s help text named its config key as `[core.v2.rerank]`;
+  Rich's console markup parser treats `[core.v2.rerank]` as a style tag and
+  drops it from rendered `--help` output entirely — no warning, no error, the
+  text just vanishes. The codebase already defends against this on the
+  *print* side (`rich.markup.escape` calls in `app.py`, `search_render.py`,
+  `inspect.py`), but the *option-declaration* side (`typer.Option(help=...)`
+  strings) had no equivalent guard, and no existing test asserted the
+  rendered text contained the config key — only that the flag name did. A
+  neighboring option (`--limit`) had already worked around this by writing
+  its config key unbracketed (`core.v1.search.max_docs`); that's the
+  established convention now. **Rule: never write a bracketed
+  `[dotted.config.key]` inside a `typer.Option(help=...)` string — either
+  drop the brackets or escape them (`\[...]`), and any test for a `--help`
+  string that names a config key should assert the key text itself appears
+  in rendered output, not just the flag name.**
+- **Click gives a child `Context` its parent's `ctx.obj` by identity, not a
+  copy** — confirmed empirically, not just by reading Click's source.
+  Adding a `--engine` option to a Typer *group* callback (`index create`,
+  sitting between the root app and its 4 leaf subcommands) and having it do
+  `ctx.ensure_object(dict); ctx.obj["engine"] = normalize_engine_selector(v)`
+  writes into the exact same dict the root app's own `--engine` callback
+  populates — so a downstream reader that already does
+  `get_context_value("engine")` picks up the group-level write with **zero**
+  other code changes. This makes "add a flag at an intermediate level of a
+  Typer app tree" cheap: mirror the root callback's write pattern exactly
+  (guard on `isinstance(value, str)` so an unset flag never clobbers a value
+  set at an outer level with `None`), and the existing read-side plumbing
+  just works. Don't invent a new resolution tier or thread a new parameter
+  through every intermediate function — the shared `ctx.obj` slot is already
+  the mechanism.
+- **A CONFIRMed unit's tech.md fix shape can under-cover its own product.md
+  requirement's literal text.** R1's binding requirement prose said
+  `--engine` MUST show in *both* `index create --help` (the group) and
+  `index create files --help` (the leaf); the unit's Given/When/Then
+  scenarios only spelled out the leaf case, and the CONFIRMed tech.md fix
+  shape implemented only the leaf. Five per-unit reviews (each correctly
+  checking the diff against its own brief) couldn't catch this — the gap
+  only showed up at the final whole-branch review, reading product.md's
+  requirement prose directly rather than the narrower scenario blocks.
+  Lesson: a final whole-branch review should re-check implementation against
+  the *requirement text*, not just re-verify each unit's own scenario
+  blocks — a scenario can under-specify its own MUST statement.
+- **Subagents repeatedly backgrounded the full `pytest` run and ended their
+  turn instead of waiting for it, despite explicit instructions not to.**
+  3 of 5 unit implementers and once during the final fix wave did this in
+  this session, even with the dormancy lesson already documented below
+  (Core V2 build, 2026-07-19) and repeated explicitly in every dispatch
+  prompt. Detecting it is cheap (`git status` for uncommitted work + a
+  missing report file), and `SendMessage` to the same agent ID reliably
+  resumes it with full context — no work was lost across 4 revivals. Given
+  how often this recurs, treat it as an expected step in every dispatch's
+  handling, not an anomaly: check for dormancy before assuming a "DONE" or a
+  suspiciously terse completion message is real.
+
+## GitHub connector build via subagent-driven development (2026-09-05/07)
+
+- **A spec written before a package-layout collapse drifts in specific,
+  checkable ways — verify each claim against the real tree instead of
+  trusting the file list.** `.spec/features/github-connector/{plan,tech}.md`
+  (authored pre-Simplify, 2026-06-24) still pointed at
+  `packages/indexed-connectors/...`/`packages/indexed-core/...` (single
+  package `src/indexed/` since Feature 14), instructed adding `github` to a
+  `CONFIG_REGISTRY` that Feature 14 deleted, and told implementers to add
+  `github` branches to `collection_service.py`/`update_collection_factory.py`
+  — neither file has ever had per-connector branches for **any** source; both
+  are fully registry/protocol-driven (`CONNECTOR_REGISTRY`/`NAMESPACE_REGISTRY`
+  + each connector's own `from_manifest`). Two research passes against the
+  real tree caught this before implementation started, corrected it in the
+  plan document's own "Corrections to the spec" table, and this task (Task 9)
+  propagated the fix back into `.spec/` itself — a spec correction is only
+  real once it lands in `.spec/`, not just in a superseding plan file.
+- **The same "path-key defaults to `url`" assumption was hardcoded in three
+  separate places, and got caught one site at a time instead of all at
+  once.** `create.py:210` (the CLI's config-override write) was the only site
+  this plan's own brief flagged going in; task-level review (Task 8) found a
+  second, independent hardcoded `"url"` lookup at `create.py:86` (reading a
+  configured host back out of `config.toml`) that the brief never mentioned;
+  the final whole-branch review found a third at
+  `composition.py::build_connector` (writing `sources.github.url`
+  unconditionally, "currently inert" but the same bug class). All three
+  existed because every other connector's `base_url_or_path` really does
+  write to a `.url` config key — GitHub is the first connector to break that
+  pattern (it writes `.host`) and files already had (`.path`), so the
+  assumption was baked in three times over before anything forced a second
+  connector-family review. Fixed generically: one `PATH_KEY_REGISTRY: dict[str,
+  str]` in `connectors/registry.py` (`get_source_path_key(connector_type)`),
+  read at all three sites instead of the string literal. Lesson: when a
+  hardcoded assumption is found and fixed at one call site, grep for the same
+  literal (`"url"` string writes/reads keyed by connector type) across the
+  whole layer before calling the bug closed — the brief itself only caught
+  one of three.
+- **Subagent dormancy recurred in a new shape: an implementer that correctly
+  ran the full gate in the foreground still went dormant afterward.** During
+  Task 6 (registry/composition wiring — the highest-blast-radius task in this
+  plan), the implementer finished its verification run and ended its turn
+  saying it would "wait for a Monitor notification" before reporting done —
+  but no Monitor notification is ever delivered to a subagent in this
+  environment, so it never resumed on its own. This is the same dormancy
+  pattern already documented above (Core V2 build, 2026-07-19) — an agent
+  ending its turn expecting an event that only a top-level session receives —
+  just triggered by a different rationalization (an unfulfillable
+  wait-on-notification instead of a backgrounded pytest run). Detected and
+  resolved the same way: `SendMessage` to the same agent resumed it with full
+  context, no work lost, one revival. Reinforces the existing lesson rather
+  than adding a new mechanism — check for dormancy on ANY subagent that ends
+  its turn expecting to be woken by something this environment doesn't
+  deliver to subagents, not just the backgrounded-pytest case already named.
+
+## Core v2 engine routing fixes (issue #186, 2026-09-06)
+
+- **A resolver's bare `except Exception: return Default()` conflates two
+  failure modes that need opposite handling.** `resolve_engine_selector`
+  already established the split; `core/v2/_common.py`'s three config
+  resolvers (`resolve_embedding_config`/`resolve_search_config`/
+  `resolve_rerank_config`) did not — an out-of-range value that `config set`
+  accepts (it only warns, e.g. `core.v2.search.score_threshold = 5.0`) fails
+  `ConfigService.bind()`'s pydantic validation and surfaces as
+  `ConfigValidationError`, but the bare `except Exception` swallowed it and
+  silently returned the default on every search, with zero signal that the
+  configured value was never applied. Only a genuinely unregistered spec
+  (`Provider.get()`'s plain `KeyError`, a legitimate case for direct/test
+  callers that never called `register_app_config`) should degrade to the
+  default. Fix: catch `ConfigValidationError` first and `raise`, keep the
+  broad `except Exception: return Default()` beneath it for the true
+  "can't read" case. Any resolver shaped `try: ... except Exception: return
+  Default()` is a candidate for this same split — read fine but invalid
+  must fail loud; can't read/unregistered may still degrade.
+- **A verbatim-duplicated helper is best fixed by extraction, not by
+  patching one copy.** `_unified_relevance`/`_HIGHER_IS_BETTER` existed
+  identically in both `mcp/formatting.py` and
+  `cli/knowledge/commands/search_render.py`. By the time the actual bug
+  (an unbounded rerank logit bypassing the `[0,1]` cosine scale) was found,
+  the two copies' docstrings had already drifted apart independently —
+  different comment style, one citing a PR review the other didn't — even
+  though the arithmetic itself was still byte-identical, proof a duplicated
+  pair starts drifting before anyone notices, not only after. Since the
+  logic was pure arithmetic with no `core.v1`/`core.v2` dependency, the fix
+  extracted it to a new leaf module (`utils/relevance.py`) that both `cli`
+  and `mcp` import, rather than fixing the bug in one copy and leaving the
+  other to diverge further. When duplicated logic has no layer-specific
+  dependency, prefer extraction to a shared leaf module over a matched pair
+  of edits.
+
+## Final-review fix pass on issue #186 (2026-09-07)
+
+- **"Fail loud" and "re-raise on `ConfigValidationError`" are not the same
+  contract — a re-raise needs its own scope check too.** The 2026-09-06 fix
+  above (catch `ConfigValidationError` first and `raise`) was itself too
+  broad: `ConfigService.bind()` validates the WHOLE registered config in one
+  pass, so a bad `[mcp]` value made all three `core/v2/_common.py` resolvers
+  raise even though none of them touch `[mcp]`. The narrower fix checks
+  `exc.path` against the resolver's OWN registered path (`"core.v2.
+  embedding"`/`"core.v2.search"`/`"core.v2.rerank"`) before re-raising, and
+  falls through to the default for anyone else's section — matching the
+  existing `config get`-on-a-single-key precedent
+  (`config/commands/get.py`). The lesson generalizes: whenever a re-raise is
+  keyed off an exception TYPE alone but the underlying validator can fail for
+  reasons unrelated to the caller's own concern, key the re-raise off the
+  exception's own identifying field too, not just its type.
+- **The old "an unknown version always fails loud" contract (2026-07-19
+  entry above) has SPLIT, not been overturned.** `create`/`update`/`clear`
+  (via `_resolve_existing_engine`) still fail loud on an unrecognized
+  manifest `version` — that guidance still applies to them unchanged. But
+  `search`/`status`/`inspect` (via `_group_names_by_engine`, added
+  2026-09-06 for this same issue) now OMIT an unrecognized-version
+  collection from its batch instead of aborting the call. Read-path
+  batch ops and mutating single/multi-collection ops earned different
+  contracts here — check which family an op belongs to before assuming
+  "fails loud" still holds branch-wide.
+- **A dict-returning batch op should surface a per-item failure as data, a
+  list-returning one can't.** `search()` returns `Dict[str, Any]` keyed by
+  collection name, so an omitted collection is now merged back in as
+  `{"error": <message>}` — the same convention already used by
+  `core/v2/retrieval.py` and v1's `search_service.py` for a per-collection
+  failure inside a batch. `status()`/`inspect()` return plain `List[...]`
+  with no per-item slot to carry that in, so they still purely omit (logged
+  warning only) — this is a real, deliberate asymmetry the return type
+  forces, not oversight.

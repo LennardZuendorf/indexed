@@ -9,7 +9,7 @@ runner = CliRunner()
 
 
 def _get_app():
-    from indexed.app import app
+    from indexed.cli.app import app
 
     return app
 
@@ -35,11 +35,11 @@ class TestInitCommand:
 
     def test_skips_download_when_cached(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=True,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/tmp/hf/m"}],
@@ -52,15 +52,15 @@ class TestInitCommand:
 
     def test_downloads_when_not_cached(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=False,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.ensure_model"
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
             ) as mock_dl:
                 mock_dl.return_value = "/tmp/hf/snapshot"
                 with patch(
-                    "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                    "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                     return_value={
                         "cache_dir": "/tmp/hf",
                         "models": [],
@@ -73,15 +73,15 @@ class TestInitCommand:
 
     def test_force_redownloads(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=True,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.ensure_model"
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
             ) as mock_dl:
                 mock_dl.return_value = "/tmp/hf/snapshot"
                 with patch(
-                    "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                    "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                     return_value={
                         "cache_dir": "/tmp/hf",
                         "models": [],
@@ -94,10 +94,10 @@ class TestInitCommand:
 
     def test_skip_model(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.ensure_model"
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
         ) as mock_dl:
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [],
@@ -110,15 +110,15 @@ class TestInitCommand:
 
     def test_custom_model(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=False,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.ensure_model"
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model"
             ) as mock_dl:
                 mock_dl.return_value = "/tmp/hf/snap"
                 with patch(
-                    "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                    "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                     return_value={
                         "cache_dir": "/tmp/hf",
                         "models": [],
@@ -133,11 +133,11 @@ class TestInitCommand:
 
     def test_idempotent(self):
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=True,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/p"}],
@@ -153,11 +153,11 @@ class TestInitCommand:
     def test_setup_complete_message_shown(self):
         """The success panel 'Setup complete!' should always appear."""
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
             return_value=True,
         ):
             with patch(
-                "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
                 return_value={
                     "cache_dir": "/tmp/hf",
                     "models": [{"name": "st/m", "size_mb": 80, "path": "/tmp/hf/m"}],
@@ -171,7 +171,7 @@ class TestInitCommand:
     def test_skip_model_shows_skipped_message(self):
         """When --skip-model is used, 'skipped' should appear in output."""
         with patch(
-            "core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.get_cache_info",
             return_value={
                 "cache_dir": "/tmp/hf",
                 "models": [],

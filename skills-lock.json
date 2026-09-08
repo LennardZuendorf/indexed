@@ -39,9 +39,10 @@
     },
     "spec": {
       "source": "LennardZuendorf/vibe",
+      "ref": "main",
       "sourceType": "github",
-      "skillPath": ".agents/skills/spec/SKILL.md",
-      "computedHash": "aec3d17dddebe23302d4292813dfa3ad809ecd29c2fff9e8c6244d43f30c7b1e"
+      "skillPath": "spec/SKILL.md",
+      "computedHash": "e4ba16d3f448048c201f785a8a026e1eb177e821ea4445db5330334c2b2194d8"
     },
     "subagent-driven-development": {
       "source": "obra/superpowers",

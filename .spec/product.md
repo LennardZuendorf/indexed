@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-06-09
+updated: 2026-09-02
 ---
 
 # Product Spec: indexed
@@ -52,9 +52,10 @@ What indexed is **not**:
 | **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
 | **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
 | **Single Collection** | ✅ Shipped | Target specific collection for focused results |
-| **Relevance Scoring** | ✅ Shipped | FAISS L2 distance ranking (lower = closer match) |
+| **Relevance Scoring** | ✅ Shipped | FAISS squared-L2 ranking (lower = closer match) |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
+| **Reranking (v2)** | ✅ Shipped | `--rerank`/`--no-rerank` — cross-encoder rerank, v2 collections only |
 | Filters | 📋 Planned | Filter by date, source type, metadata |
 | Boolean Operators | 📋 Planned | AND, OR, NOT query composition |
 | Phrase Search | 📋 Planned | Exact phrase matching |
@@ -83,6 +84,8 @@ What indexed is **not**:
 | **Remove** | ✅ Shipped | `indexed index remove` |
 | **Config Management** | ✅ Shipped | `get`, `set`, `validate` commands |
 | **System Info** | ✅ Shipped | `indexed info` |
+| **Engine Selection** | ✅ Shipped | `--engine v1/v2` on `index create` (root, group, and leaf flags) — new collections only |
+| **Migrate to v2** | ✅ Shipped | `indexed index migrate` — dry-run/backup/rollback-safe v1→v2 conversion |
 | Interactive TUI | 📋 Planned | Full-screen interactive mode |
 | Progress Indicators | ⚠️ Partial | Spinners exist, bars planned |
 
@@ -109,12 +112,6 @@ What indexed is **not**:
 **What:** Run indexed on developer workstation
 **Why:** Privacy, offline access, zero ops overhead
 **Storage:** `~/.indexed/` (global) or `./.indexed/` (local)
-
-### Docker
-
-**What:** Containerized deployment
-**Why:** Isolated environment, reproducible builds
-**Status:** ✅ Shipped (Dockerfile + compose)
 
 ### Server (Future)
 

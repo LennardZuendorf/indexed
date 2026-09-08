@@ -3,7 +3,7 @@ type: feature-tech
 feature: github-connector
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-06-24
+updated: 2026-09-07
 ---
 
 # Feature: GitHub Projects & Issues Connector — Architecture
@@ -14,9 +14,10 @@ self-hosted Enterprise Server — which differ only in how the GraphQL endpoint 
 derived from the configured `host`. Follows the **Outline** template: an async `httpx`
 reader against the **GraphQL v4** API, a converter that delegates chunking to the
 shared `ParsingModule`, a Pydantic `GitHubConfig` with secret getters, and
-`config_spec()` / `from_config()`. It registers in the three connector registries
-under type `github` and namespace `sources.github`, and gets a branch in the
-update factory for `since`-based incremental fetch plus chunk-hash reuse.
+`config_spec()` / `from_config()`. It registers under type `"github"` and
+namespace `"sources.github"` in the two generic connector registries; there is no
+per-connector branch anywhere in core — `since`-based incremental fetch and
+endpoint/host carry-forward both live entirely inside `GitHubConnector.from_manifest`.
 
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
@@ -28,31 +29,36 @@ update factory for `since`-based incremental fetch plus chunk-hash reuse.
 ## Files
 
 ```
-packages/indexed-connectors/src/connectors/github/
-  __init__.py                       # exports GitHubConnector                       ~10 LOC
-  connector.py                      # GitHubConnector: reader+converter, config_spec/from_config  ~140 LOC
-  schema.py                         # GitHubConfig (+ get_token, repo/project parsing)  ~150 LOC
-  auth.py                           # resolve_token(): config/env → `gh auth token` → error  ~70 LOC
-  github_graphql_reader.py          # async httpx GraphQL reader (issues/PRs/project), pagination + rate limit  ~320 LOC
-  github_document_converter.py      # raw item dict → indexed dict via ParsingModule  ~180 LOC
-  queries.py                        # GraphQL query strings (issues, pull requests, project items)  ~120 LOC
+src/indexed/connectors/github/
+  __init__.py                       # exports GitHubConnector
+  connector.py                      # GitHubConnector: reader+converter, config_spec/from_config/from_manifest
+  schema.py                         # GitHubConfig (+ get_token, resolve_graphql_url, repo/project parsing)
+  auth.py                           # resolve_token(): explicit/env -> `gh auth token` -> error; GITHUB_CLOUD_HOST
+  github_graphql_reader.py          # async httpx GraphQL reader (issues/PRs/project), pagination + rate limit + dedup
+  github_document_converter.py      # raw item dict -> indexed dict via ParsingModule
+  queries.py                        # GraphQL query strings (issues, pull requests, project items, org+user variants)
 
-packages/indexed-connectors/src/connectors/registry.py   # add github → GitHubConnector / GitHubConfig / sources.github
-packages/indexed-core/src/core/v1/engine/services/collection_service.py  # add "github" dispatch in _build_connector_from_config
-packages/indexed-core/src/core/v1/engine/factories/update_collection_factory.py  # add github branch: since cutoff
-packages/indexed-core/src/core/v1/engine/core/documents_collection_creator.py    # chunk-hash reuse on UPDATE (cross-connector)
+src/indexed/connectors/registry.py            # github row in CONNECTOR_REGISTRY + NAMESPACE_REGISTRY (+ PATH_KEY_REGISTRY: "host")
+src/indexed/protocols/models.py               # SourceConfig.type Literal includes "github"
+src/indexed/cli/composition.py                # register_app_config registers GitHubConfig at "sources.github"
+src/indexed/cli/knowledge/commands/{_create_schema,_create_commands,_create_options,create}.py  # `create github` subcommand
 
-tests/unit/indexed_connectors/github/                    # reader (mocked GraphQL), converter, auth, schema
+tests/unit/indexed/connectors/github/         # reader (mocked GraphQL), reader_projects, converter, connector, auth, schema
+tests/unit/indexed/knowledge/commands/test_create.py  # TestCreateGithub class (shared file with the other 4 connectors)
 ```
+
+`collection_service.py` and `update_collection_factory.py` needed **zero**
+changes — see § Dynamic creation below for why the original spec's per-connector
+branches were never real.
 
 ---
 
 ## Contract / API
 
 Implements `BaseConnector` (`core/v1/connectors/base.py`): `reader`, `converter`,
-`connector_type` (`"github"`), `config_spec()`, `from_config()`. Reader exposes
-`get_number_of_documents()` and `read_all_documents() -> Iterator[dict]`;
-converter exposes `convert(document: dict) -> list[dict]`.
+`connector_type` (`"github"`), `config_spec()`, `from_config()`, `from_manifest()`.
+Reader exposes `get_number_of_documents()` and `read_all_documents() ->
+Iterator[dict]`; converter exposes `convert(document: dict) -> list[dict]`.
 
 ```python
 # schema.py
@@ -70,14 +76,20 @@ class GitHubConfig(BaseModel):
     max_chunk_tokens: int = 512
     page_size: int = 100                                  # GraphQL max
     max_concurrent_requests: int = 5
-    modified_since: str | None = None                     # internal: set by update factory (ISO)
+    modified_since: str | None = None                     # internal: set by from_manifest overlay (ISO)
 
-    def get_token(self) -> str: ...                       # delegates to auth.resolve_token(self.token)
-    def resolve_graphql_url(self) -> str: ...             # see § Endpoint resolution; graphql_url override wins
+    def get_token(self) -> str: ...                       # delegates to auth.resolve_token(self.token, host=self.host)
+    def resolve_graphql_url(self) -> str: ...              # see § Endpoint resolution; graphql_url override wins
+    def is_cloud(self) -> bool: ...
+    def parsed_repos(self) -> list[tuple[str, str]]: ...
+    def parsed_project(self) -> tuple[str, int] | None: ...
 
 # auth.py
-def resolve_token(explicit: str | None) -> str:
-    """explicit/env → `gh auth token` (subprocess) → raise ConfigurationError."""
+GITHUB_CLOUD_HOST = "github.com"   # defined here, not schema.py — schema imports auth, so a
+                                    # back-import would be circular; schema re-exports the name.
+
+def resolve_token(explicit: str | None, host: str | None = None) -> str:
+    """explicit/GITHUB_TOKEN env -> `gh auth token --hostname <host>` (Enterprise) -> raise ConfigurationError."""
 ```
 
 **Reader raw-document shape** (one per issue / PR / draft item), consumed by the
@@ -95,6 +107,9 @@ converter:
 }
 ```
 
+Not fetched: `assignees`, `milestone`, PR reviews/review-comment threads — see
+product.md R1's amendment and § Deferred below.
+
 ---
 
 ## Implementation Detail
@@ -102,11 +117,13 @@ converter:
 ### Auth resolution (R3)
 
 `resolve_token()` mirrors `ChangeTracker`'s `auto` strategy: prefer the explicit
-value (config field, then `GITHUB_TOKEN`/`INDEXED__sources__github__token` via the
-config chain); else shell out to `gh auth token` (`subprocess.run`, short timeout,
-`text=True`), using its stdout if exit 0; else raise `ConfigurationError` naming
-both remedies. `gh` is **optional** — never required, never invoked when an
-explicit token exists. No network or `gh` call happens at import time.
+value (config field, then plain `GITHUB_TOKEN` env var); else shell out to
+`gh auth token` (`subprocess.run`, 5s timeout, `text=True`), passing
+`--hostname <host>` whenever `host != "github.com"` so an Enterprise
+collection's `gh`-CLI fallback resolves that host's token instead of
+github.com's; else raise `ConfigurationError` naming both remedies. `gh` is
+**optional** — never required, never invoked when an explicit token exists. No
+network or `gh` call happens at import time.
 
 ### Endpoint resolution (R-deploy)
 
@@ -124,12 +141,11 @@ always wins (escape hatch). The host normalizes by stripping any scheme/path.
 def resolve_graphql_url(self) -> str:
     if self.graphql_url:
         return self.graphql_url
-    h = self.host.removeprefix("https://").removeprefix("http://").strip("/")
-    if h == "github.com":
+    if self.host == GITHUB_CLOUD_HOST:
         return "https://api.github.com/graphql"
-    if h.endswith(".ghe.com"):                 # data residency: api.<sub>.ghe.com
-        return f"https://api.{h}/graphql"
-    return f"https://{h}/api/graphql"          # GHES: path-based
+    if self.host.endswith(".ghe.com"):
+        return f"https://api.{self.host}/graphql"
+    return f"https://{self.host}/api/graphql"
 ```
 
 The distinction that makes a single field sufficient: `github.com` and `*.ghe.com`
@@ -137,20 +153,26 @@ use an **`api.` host prefix** + `/graphql`, whereas GHES uses the **`/api/graphq
 path** on the same host. Web URLs (`html_url`) come straight from the GraphQL
 response, so no per-deployment URL construction is needed. `verify_ssl` is passed
 to the `httpx` client for self-signed GHES CAs (same pattern as Outline).
+`GitHubConnector.from_manifest` overlays `host`/`graphqlUrl` from the manifest
+(alongside the query-shaping fields) so `indexed index update` on a GHES/
+`*.ghe.com` collection rebuilds against the same endpoint it was created with,
+rather than falling back to the config default.
 
 ### GraphQL reader (R1, R2, R4)
 
 Async `httpx.AsyncClient` posting to `config.resolve_graphql_url()`,
 Bearer-authenticated. Three query families in `queries.py`:
 
-- **Issues** — `repository(owner,name){ issues(first:$n, after:$cur, filterBy:{since:$since, labels:$labels, states:$states}) { nodes { ...IssueFields comments(first:100){nodes{...}} } pageInfo{hasNextPage endCursor} } }`. One query returns issue + labels + comments; cursor-paginate on `pageInfo`.
-- **Pull requests** — analogous `pullRequests(...)` selection when `include_pull_requests`.
-- **Project v2** — `node(id) / organization.projectV2 / user.projectV2 { items(first,after){ nodes { content{ ... on Issue {...} ... on PullRequest {...} ... on DraftIssue {title body} } fieldValues(...) } } }`; map `fieldValues` → `project_fields`. Project items resolve their backing `repository` so they index as repo documents; the reader **dedupes** by `id` so a project item also matched via `repos` is emitted once (R2 dedupe scenario).
+- **Issues** — `repository(owner,name){ issues(first:$n, after:$cur, filterBy:{since:$since}, states:$states, labels:$labels) { nodes { ...IssueFields comments(first:100){nodes{...}} } pageInfo{hasNextPage endCursor} } }`. One query returns issue + labels + comments; cursor-paginate on `pageInfo`.
+- **Pull requests** — analogous `pullRequests(...)` selection when `include_pull_requests`; conversation comments only (not review comments/review threads — see § Deferred).
+- **Project v2** — `organization(login:).projectV2(number:) { items(first,after){ nodes { content{ ... on Issue {...} ... on PullRequest {...} ... on DraftIssue {title body} } fieldValues(...) } } }`, with an identical `user(login:)` variant (`PROJECT_ITEMS_QUERY_USER`) tried when the organization probe fails. GitHub answers a user-owned project's `organization(login:)` probe with both `data.organization: null` AND a `NOT_FOUND` GraphQL error on `path=["organization"]`; `_is_organization_not_found()` recognizes that exact shape as "not an org, try the user query" rather than a hard failure — a naive `organization is None` check never reaches this branch because the reader's own error-array check raises first. `fieldValues` maps to `project_fields`. Project items resolve their backing `repository` so they index as repo documents; the reader **dedupes** by `id`, merging `project_fields` from whichever copy has them into the surviving document rather than pure first-wins, so a project item also matched via `repos` is emitted once with its board fields intact (R2 dedupe scenario). `get_number_of_documents()` and `read_all_documents()` both read from one cached, shared crawl (`_deduplicated_documents()`), so counting never re-runs the GraphQL fetch.
 
 Rate limiting: on HTTP 403/429 or a GraphQL `RATE_LIMITED` error, back off using
 `utils.retry` and the `X-RateLimit-Reset` hint; concurrency bounded by
-`max_concurrent_requests` (same windowed pattern as the Outline reader). Heavy
-imports (`httpx`) are function/property-local, not module-level.
+`max_concurrent_requests` (same windowed pattern as the Outline reader). A 403
+with no rate-limit signal (a real permission/scope error) is not misclassified as
+rate-limiting. Heavy imports (`httpx`) are function/property-local, not
+module-level.
 
 ### Converter via ParsingModule (R7)
 
@@ -162,50 +184,100 @@ First chunk is the main item header (id/title/state/labels). `project_fields`
 and item metadata are attached to chunk metadata. Output is the v1 indexed dict
 (`id`, `url`, `modifiedTime`, `text`, `chunks`).
 
-### Dynamic creation (R-config)
+### Dynamic creation (R-cfg)
 
-- `registry.py`: add `"github"` to `CONNECTOR_REGISTRY`, `CONFIG_REGISTRY`, and `NAMESPACE_REGISTRY` (`"sources.github"`).
-- `collection_service._build_connector_from_config`: add a `"github"` branch calling `GitHubConnector.from_config(config_service)` (which registers `GitHubConfig` at `sources.github`, binds, and constructs).
+No `CONFIG_REGISTRY` and no per-connector core branches exist for **any**
+connector type (Feature 14 deleted `CONFIG_REGISTRY`; core dispatch was never
+per-type to begin with). The real wiring is two dicts plus one registration call:
+
+- `connectors/registry.py`: `CONNECTOR_REGISTRY["github"] = GitHubConnector`,
+  `NAMESPACE_REGISTRY["github"] = "sources.github"`, and
+  `PATH_KEY_REGISTRY["github"] = "host"` (most connectors write their
+  `base_url_or_path` override to a `.url` config key; GitHub writes to `.host`,
+  files to `.path` — `PATH_KEY_REGISTRY` generalizes this across all five
+  connector types, replacing what used to be three separate hardcoded `"url"`
+  sites: `cli/knowledge/commands/create.py:86`, `create.py:210`, and
+  `cli/composition.py::build_connector`).
+- `cli/composition.py::register_app_config` calls
+  `config_service.register(GitHubConfig, path="sources.github")` — the actual
+  `ConfigService.register()` call site for every source's schema, run once at
+  app startup.
+- `GitHubConnector.from_config(config_service)` binds and constructs; `cli/
+  composition.py::build_connector` resolves the connector class generically via
+  `CONNECTOR_REGISTRY[cfg.type]` — there is no `if cfg.type == "github"` branch
+  anywhere in `composition.py`, `collection_service.py`, or
+  `update_collection_factory.py`.
+
+CLI reachability: `indexed index create github --repo octo/hello --project
+octo/12 --host github.example.com` is a dedicated Typer subcommand
+(`cli/knowledge/commands/_create_commands.py`), driven by a `SourceSpec` entry
+in `_create_schema.py` — the CLI has no generic `--source <type>` flag; each
+connector gets its own subcommand, matching `create files`/`jira`/`confluence`/
+`outline` exactly.
 
 <!-- merge -->
-### Smart incremental update (R6)
+### Incremental update (R6 — `since` cutoff shipped; chunk-hash reuse descoped)
 
-Two layers, generalizing the existing update machinery:
+**Shipped: server-side `since` cutoff.** `GitHubConnector.from_manifest` reads
+`manifest.last_modified_document_time`, subtracts a 60-second safety buffer, and
+sets it as an in-memory `modified_since` config overlay (mirroring Outline's
+overlay pattern — no `os.environ` side-channel). It also overlays every other
+reader-shaping field stored on the manifest (`repos`, `project`, `host`,
+`graphqlUrl`, `state`, `labels`, `includePullRequests`, `includeComments`,
+`pageSize`, `maxConcurrentRequests`, `verifySsl`) so an update rebuilds an
+identical reader to the one that created the collection. The reader injects
+`since` into the issues query's `filterBy:{since}`; only items updated at/after
+the cutoff are fetched. Deletions are implicit (unmatched items are simply not
+re-fetched), consistent with other network connectors.
 
-1. **Server-side `since`** — the update factory (`update_collection_factory.py`)
-   reads `manifest.lastModifiedDocumentTime`, subtracts a small safety buffer, and
-   passes it to the reader as `modified_since` (transient, like Outline's env
-   handoff). The reader injects it into GraphQL `filterBy:{since}` so only items
-   updated at/after the cutoff are fetched. Deletions are implicit (unmatched items
-   are simply not re-fetched), consistent with other network connectors.
-
-2. **Chunk-hash reuse** — on UPDATE, `documents_collection_creator` currently
-   removes *all* chunks of a re-read document and re-embeds them. This feature adds
-   content-hash reuse: for a re-read document, compare each new chunk's
-   `ParsedChunk.content_hash` (xxhash, already computed in parsing) against the
-   previously persisted chunk hashes; reuse existing FAISS vectors for unchanged
-   chunks and embed only changed/new ones. This closes the known
-   "chunks always re-embedded" gap and benefits every connector, not just GitHub.
+**Descoped: chunk-hash reuse.** `documents_collection_creator` currently removes
+*all* chunks of a re-read document and re-embeds them on UPDATE — true for
+every connector, not GitHub-specific. Reusing FAISS vectors for chunks whose
+content hash is unchanged would need a new on-disk field
+(`index_document_mapping.json` doesn't persist a chunk hash today), a migration
+story for every existing collection across all connector types, and has no
+Core v2 equivalent (v2 only has document-level hash-skip). Research during
+implementation confirmed this is a cross-cutting engine change, not part of
+"making the GitHub connector work" — moved out of this plan entirely (see
+plan.md unit 6 and
+[docs/superpowers/plans/2026-09-05-github-connector.md § Out of scope](../../../docs/superpowers/plans/2026-09-05-github-connector.md)).
+Needs its own follow-up plan.
 <!-- /merge -->
 
 ---
 
 ## Performance Budget
 
-- CLI startup unaffected (<1s) — no `httpx`/parsing import at module load (lazy).
+- CLI startup unaffected (<1s) — no `httpx`/parsing/connector import at module
+  load (lazy; `_create_schema.py`'s `GITHUB_CLOUD_HOST` lookup goes through the
+  same lazy `_load()` helper every other connector's cloud-URL default uses,
+  not a top-level import).
 - A 1k-issue repo indexes within the existing connector envelope; GraphQL batching
   keeps it to ~`ceil(issues/100)` primary requests plus comment pagination only for
   issues exceeding 100 comments.
 
 ---
 
-## Open Questions
+## Deferred
 
-1. **Chunk-hash reuse location** — implement generically in
-   `documents_collection_creator` (benefits all connectors, larger blast radius) vs.
-   GitHub-only first. Recommendation: generic, since the persisted index already
-   keys chunks by document and the hash is free from parsing — but gate it behind
-   thorough update tests before promoting to root tech.
-2. **Endpoint derivation** — the three-way `host` rule (§ Endpoint resolution) is
-   covered by unit tests; verify once against a live GHES and a `ghe.com` tenant
-   during impl, since we have no such instances in CI.
+- **Chunk-hash reuse** (R6's second half) — see § Incremental update above and
+  plan.md unit 6. Cross-cutting, needs its own plan.
+- **`assignees`/`milestone` on issues; PR review/review-thread comments** — R1's
+  original requirement text promised these; the shipped GraphQL queries never
+  request them (only title/body/author/state/labels/timestamps/URL/conversation
+  comments). Deliberate v1 gap, not a bug — product.md R1 has been amended to
+  match what's shipped, with this noted as a known follow-up. Adding them is a
+  `queries.py` field-selection change plus converter/test updates, not a
+  redesign.
+- **`comments(first:100)` fetched unconditionally**, even when
+  `include_comments=False`, with no truncation detection past 100 comments (an
+  issue/PR with a 101st comment silently loses it). Flagged during the final
+  whole-branch review (finding I3) and explicitly parked as a follow-up — needs
+  a real query variant (skip the `comments` selection entirely) plus a
+  `hasNextPage`-aware truncation warning, scoped better as focused iteration
+  than a bundled fix.
+- **Endpoint derivation** — the three-way `host` rule (§ Endpoint resolution) is
+  covered by unit tests; verify once against a live GHES and a `ghe.com` tenant,
+  since none exist in CI.
+- **GitHub App auth** — see product.md § Open Questions; token + `gh` CLI covers
+  the local-first use case for now.

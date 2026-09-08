@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from indexed.utils.credentials import (
+from indexed.cli.utils.credentials import (
     apply_cli_credential_overrides,
     ensure_credentials_for_source,
     ensure_atlassian_cloud_credentials,
@@ -150,7 +150,7 @@ class TestEnsureOutlineCredentials:
 
     def test_uses_existing_token_from_environment(self):
         """Should use existing OUTLINE_API_TOKEN without prompting."""
-        from indexed.utils.credentials import ensure_outline_credentials
+        from indexed.cli.utils.credentials import ensure_outline_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -160,14 +160,14 @@ class TestEnsureOutlineCredentials:
 
         assert result["api_token"] == "existing-token"
 
-    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.console")
     def test_saves_prompted_token_to_env(
         self, mock_console, mock_prompt, _mock_verbose
     ):
         """Should save prompted token to .env and set os.environ."""
-        from indexed.utils.credentials import ensure_outline_credentials
+        from indexed.cli.utils.credentials import ensure_outline_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -184,14 +184,14 @@ class TestEnsureOutlineCredentials:
             field_info={"sensitive": True, "env_var": "OUTLINE_API_TOKEN"},
         )
 
-    @patch("indexed.utils.credentials.is_verbose_mode", return_value=False)
-    @patch("indexed.utils.credentials.Prompt.ask", return_value="token")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.is_verbose_mode", return_value=False)
+    @patch("indexed.cli.utils.credentials.Prompt.ask", return_value="token")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompt_shows_token_access_guidance(
         self, mock_console, _mock_prompt, _mock_verbose
     ):
         """Should show API key scope guidance between headline and token prompt."""
-        from indexed.utils.credentials import ensure_outline_credentials
+        from indexed.cli.utils.credentials import ensure_outline_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -237,7 +237,7 @@ class TestEnsureAtlassianCloudCredentials:
 
         assert result["email"] == "env@example.com"
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompts_for_missing_email(self, mock_console):
         """Should prompt user for missing email."""
         mock_config = Mock()
@@ -252,8 +252,8 @@ class TestEnsureAtlassianCloudCredentials:
         mock_console.input.assert_called()
         assert result["email"] == "prompted@example.com"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompts_for_missing_token(self, mock_console, mock_prompt):
         """Should prompt user for missing API token."""
         mock_config = Mock()
@@ -268,8 +268,8 @@ class TestEnsureAtlassianCloudCredentials:
         mock_prompt.assert_called()
         assert result["api_token"] == "prompted_token"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.console")
     def test_saves_prompted_credentials(self, mock_console, mock_prompt):
         """Should save prompted credentials to config."""
         mock_config = Mock()
@@ -293,7 +293,7 @@ class TestEnsureAtlassianCloudCredentials:
             field_info={"sensitive": True, "env_var": "ATLASSIAN_TOKEN"},
         )
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_exits_when_user_declines_to_provide(self, mock_console):
         """Should exit when user chooses not to provide credentials."""
         mock_config = Mock()
@@ -350,8 +350,8 @@ class TestEnsureServerCredentials:
         assert result["login"] == "user"
         assert result["password"] == "pass"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompts_for_auth_method_when_missing(self, mock_console, mock_prompt):
         """Should prompt for auth method when no credentials exist."""
         mock_config = Mock()
@@ -360,7 +360,7 @@ class TestEnsureServerCredentials:
 
         with patch.dict(os.environ, {}, clear=True):
             with patch(
-                "indexed.utils.credentials.typer.confirm", return_value=True
+                "indexed.cli.utils.credentials.typer.confirm", return_value=True
             ):  # Choose token
                 result = ensure_server_credentials(
                     mock_config,
@@ -373,8 +373,8 @@ class TestEnsureServerCredentials:
 
         assert "token" in result or "login" in result
 
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.console")
     def test_reads_from_config_namespace(self, mock_console, mock_prompt):
         """Should read existing credentials from config namespace."""
         mock_config = Mock()
@@ -404,7 +404,7 @@ class TestEnsureServerCredentials:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_empty_email_not_accepted(self, mock_console):
         """Should not accept empty email address."""
         mock_config = Mock()
@@ -455,13 +455,13 @@ class TestEdgeCases:
 class TestPromptCredentialField:
     """Test prompt_credential_field function."""
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompts_for_email(self, mock_console):
         """Should prompt for email field."""
         mock_config = Mock()
         mock_console.input.return_value = "test@example.com"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "email",
@@ -474,13 +474,13 @@ class TestPromptCredentialField:
         assert result == "test@example.com"
         mock_config.set_value.assert_called_once()
 
-    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
     def test_prompts_for_api_token(self, mock_prompt):
         """Should prompt for API token with password input."""
         mock_config = Mock()
         mock_prompt.return_value = "secret_token"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "api_token",
@@ -495,13 +495,13 @@ class TestPromptCredentialField:
         # Should set ATLASSIAN_TOKEN env var
         assert os.getenv("ATLASSIAN_TOKEN") == "secret_token"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
     def test_prompts_for_jira_token(self, mock_prompt):
         """Should prompt for Jira server token."""
         mock_config = Mock()
         mock_prompt.return_value = "jira_token"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "token",
@@ -514,13 +514,13 @@ class TestPromptCredentialField:
         assert result == "jira_token"
         assert os.getenv("JIRA_TOKEN") == "jira_token"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
     def test_prompts_for_confluence_token(self, mock_prompt):
         """Should prompt for Confluence server token."""
         mock_config = Mock()
         mock_prompt.return_value = "conf_token"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "token",
@@ -533,13 +533,13 @@ class TestPromptCredentialField:
         assert result == "conf_token"
         assert os.getenv("CONF_TOKEN") == "conf_token"
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_prompts_for_login(self, mock_console):
         """Should prompt for login/username."""
         mock_config = Mock()
         mock_console.input.return_value = "testuser"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "login",
@@ -552,13 +552,13 @@ class TestPromptCredentialField:
         assert result == "testuser"
         assert os.getenv("JIRA_LOGIN") == "testuser"
 
-    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
     def test_prompts_for_password(self, mock_prompt):
         """Should prompt for password with password input."""
         mock_config = Mock()
         mock_prompt.return_value = "secretpass"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "password",
@@ -571,14 +571,14 @@ class TestPromptCredentialField:
         assert result == "secretpass"
         assert os.getenv("JIRA_PASSWORD") == "secretpass"
 
-    @patch("indexed.utils.credentials.console")
-    @patch("indexed.utils.credentials.print_error")
+    @patch("indexed.cli.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.print_error")
     def test_exits_on_empty_email(self, mock_print_error, mock_console):
         """Should exit when email is empty."""
         mock_config = Mock()
         mock_console.input.return_value = ""
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         with pytest.raises(typer.Exit):
             prompt_credential_field(
@@ -591,14 +591,14 @@ class TestPromptCredentialField:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.utils.credentials.Prompt.ask")
-    @patch("indexed.utils.credentials.print_error")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.print_error")
     def test_exits_on_empty_token(self, mock_print_error, mock_prompt):
         """Should exit when token is empty."""
         mock_config = Mock()
         mock_prompt.return_value = ""
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         with pytest.raises(typer.Exit):
             prompt_credential_field(
@@ -611,13 +611,13 @@ class TestPromptCredentialField:
 
         mock_print_error.assert_called()
 
-    @patch("indexed.utils.credentials.Prompt.ask")
+    @patch("indexed.cli.utils.credentials.Prompt.ask")
     def test_handles_unknown_field_sensitive(self, mock_prompt):
         """Should handle unknown sensitive fields."""
         mock_config = Mock()
         mock_prompt.return_value = "secret"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "unknown_field",
@@ -630,13 +630,13 @@ class TestPromptCredentialField:
         assert result == "secret"
         mock_prompt.assert_called_once()
 
-    @patch("indexed.utils.credentials.console")
+    @patch("indexed.cli.utils.credentials.console")
     def test_handles_unknown_field_non_sensitive(self, mock_console):
         """Should handle unknown non-sensitive fields."""
         mock_config = Mock()
         mock_console.input.return_value = "value"
 
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         result = prompt_credential_field(
             "unknown_field",
@@ -655,7 +655,7 @@ class TestIsCredentialField:
 
     def test_recognizes_credential_fields(self):
         """Should recognize standard credential field names."""
-        from indexed.utils.credentials import is_credential_field
+        from indexed.cli.utils.credentials import is_credential_field
 
         assert is_credential_field("email") is True
         assert is_credential_field("api_token") is True
@@ -665,7 +665,7 @@ class TestIsCredentialField:
 
     def test_rejects_non_credential_fields(self):
         """Should return False for non-credential fields."""
-        from indexed.utils.credentials import is_credential_field
+        from indexed.cli.utils.credentials import is_credential_field
 
         assert is_credential_field("url") is False
         assert is_credential_field("query") is False
@@ -679,7 +679,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_true_when_token_present(self):
         """Should return True when token is in validation_present."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         result = check_server_auth_present(
             {"token": "test_token"},
@@ -692,7 +692,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_true_when_token_in_env(self):
         """Should return True when token is in environment."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         with patch.dict(os.environ, {"JIRA_TOKEN": "env_token"}):
             result = check_server_auth_present(
@@ -706,7 +706,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_true_when_login_password_present(self):
         """Should return True when login and password are present."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         result = check_server_auth_present(
             {"login": "user", "password": "pass"},
@@ -719,7 +719,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_true_when_login_password_in_env(self):
         """Should return True when login and password are in environment."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         with patch.dict(os.environ, {"JIRA_LOGIN": "user", "JIRA_PASSWORD": "pass"}):
             result = check_server_auth_present(
@@ -733,7 +733,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_false_when_no_auth_present(self):
         """Should return False when no auth credentials are present."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         with patch.dict(os.environ, {}, clear=True):
             result = check_server_auth_present(
@@ -747,7 +747,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_false_when_only_login_present(self):
         """Should return False when only login (without password) is present."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         result = check_server_auth_present(
             {"login": "user"},
@@ -760,7 +760,7 @@ class TestCheckServerAuthPresent:
 
     def test_returns_false_when_only_password_present(self):
         """Should return False when only password (without login) is present."""
-        from indexed.utils.credentials import check_server_auth_present
+        from indexed.cli.utils.credentials import check_server_auth_present
 
         result = check_server_auth_present(
             {"password": "pass"},
@@ -777,7 +777,7 @@ class TestEnsureAtlassianCloudCredentialsExitPaths:
 
     def test_exits_when_empty_api_token_entered(self):
         """Should raise typer.Exit(1) when user enters empty API token."""
-        from indexed.utils.credentials import ensure_atlassian_cloud_credentials
+        from indexed.cli.utils.credentials import ensure_atlassian_cloud_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -786,7 +786,7 @@ class TestEnsureAtlassianCloudCredentialsExitPaths:
             os.environ, {"ATLASSIAN_EMAIL": "user@example.com"}, clear=False
         ):
             os.environ.pop("ATLASSIAN_TOKEN", None)
-            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
                 mock_prompt.ask.return_value = ""
                 with pytest.raises(typer.Exit):
                     ensure_atlassian_cloud_credentials(
@@ -801,7 +801,7 @@ class TestEnsureServerCredentialsExitPaths:
 
     def test_exits_when_empty_token_entered_and_no_login_password(self):
         """Should raise typer.Exit when empty token and empty login entered."""
-        from indexed.utils.credentials import ensure_server_credentials
+        from indexed.cli.utils.credentials import ensure_server_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -810,8 +810,8 @@ class TestEnsureServerCredentialsExitPaths:
             os.environ.pop("JIRA_TOKEN", None)
             os.environ.pop("JIRA_LOGIN", None)
             os.environ.pop("JIRA_PASSWORD", None)
-            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
-                with patch("indexed.utils.credentials.console") as mock_console:
+            with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
+                with patch("indexed.cli.utils.credentials.console") as mock_console:
                     mock_prompt.ask.return_value = ""  # Empty token
                     mock_console.input.return_value = ""  # Empty login → Exit
                     with pytest.raises(typer.Exit):
@@ -826,7 +826,7 @@ class TestEnsureServerCredentialsExitPaths:
 
     def test_exits_when_empty_password_entered(self):
         """Should raise typer.Exit when user enters empty password."""
-        from indexed.utils.credentials import ensure_server_credentials
+        from indexed.cli.utils.credentials import ensure_server_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
@@ -835,8 +835,8 @@ class TestEnsureServerCredentialsExitPaths:
             os.environ.pop("JIRA_TOKEN", None)
             os.environ.pop("JIRA_LOGIN", None)
             os.environ.pop("JIRA_PASSWORD", None)
-            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
-                with patch("indexed.utils.credentials.console") as mock_console:
+            with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
+                with patch("indexed.cli.utils.credentials.console") as mock_console:
                     mock_prompt.ask.side_effect = [
                         "",
                         "",
@@ -858,13 +858,13 @@ class TestEnsureOutlineCredentialsExitPaths:
 
     def test_exits_when_empty_api_token_entered(self):
         """Should raise typer.Exit(1) when user enters empty Outline API token."""
-        from indexed.utils.credentials import ensure_outline_credentials
+        from indexed.cli.utils.credentials import ensure_outline_credentials
 
         mock_config = Mock()
         mock_config.get.return_value = None
 
         with patch.dict(os.environ, {}, clear=True):
-            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
                 mock_prompt.ask.return_value = ""
                 with pytest.raises(typer.Exit):
                     ensure_outline_credentials(mock_config, "sources.outline")
@@ -875,13 +875,13 @@ class TestPromptCredentialFieldOutlineBranch:
 
     def test_outline_api_token_sets_outline_env_var(self):
         """Should set OUTLINE_API_TOKEN when source_type is outline."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("OUTLINE_API_TOKEN", None)
-            with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+            with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
                 mock_prompt.ask.return_value = "ol_my_secret"
                 result = prompt_credential_field(
                     "api_token",
@@ -896,55 +896,55 @@ class TestPromptCredentialFieldOutlineBranch:
 
     def test_empty_email_raises_exit(self):
         """Should raise typer.Exit when empty email entered."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.console") as mock_console:
+        with patch("indexed.cli.utils.credentials.console") as mock_console:
             mock_console.input.return_value = ""
             with pytest.raises(typer.Exit):
                 prompt_credential_field("email", {}, mock_config, "sources.jira")
 
     def test_empty_api_token_raises_exit(self):
         """Should raise typer.Exit when empty api_token entered."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+        with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
             mock_prompt.ask.return_value = ""
             with pytest.raises(typer.Exit):
                 prompt_credential_field("api_token", {}, mock_config, "sources.jira")
 
     def test_empty_login_raises_exit(self):
         """Should raise typer.Exit when empty login entered."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.console") as mock_console:
+        with patch("indexed.cli.utils.credentials.console") as mock_console:
             mock_console.input.return_value = ""
             with pytest.raises(typer.Exit):
                 prompt_credential_field("login", {}, mock_config, "sources.jira")
 
     def test_empty_password_raises_exit(self):
         """Should raise typer.Exit when empty password entered."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+        with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
             mock_prompt.ask.return_value = ""
             with pytest.raises(typer.Exit):
                 prompt_credential_field("password", {}, mock_config, "sources.jira")
 
     def test_password_unknown_source_type_marks_sensitive(self):
         """Should mark password as sensitive for unknown source types."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+        with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
             mock_prompt.ask.return_value = "secret"
             result = prompt_credential_field(
                 "password",
@@ -960,11 +960,11 @@ class TestPromptCredentialFieldOutlineBranch:
 
     def test_unknown_sensitive_field_uses_password_prompt(self):
         """Should use Prompt.ask for unknown sensitive fields."""
-        from indexed.utils.credentials import prompt_credential_field
+        from indexed.cli.utils.credentials import prompt_credential_field
 
         mock_config = Mock()
 
-        with patch("indexed.utils.credentials.Prompt") as mock_prompt:
+        with patch("indexed.cli.utils.credentials.Prompt") as mock_prompt:
             mock_prompt.ask.return_value = "secret-value"
             result = prompt_credential_field(
                 "secret_key",

@@ -5,8 +5,10 @@ repos:
     hooks:
       - id: trailing-whitespace
         stages: [pre-commit]
+        exclude: ^\.benchmarks/baselines/
       - id: end-of-file-fixer
         stages: [pre-commit]
+        exclude: ^\.benchmarks/baselines/
       - id: check-yaml
         stages: [pre-commit]
       - id: check-toml
@@ -24,8 +26,9 @@ repos:
         stages: [pre-commit]
 
   # Ruff for linting and formatting
+  # Keep this rev in step with the `ruff` dev dependency in pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.16
+    rev: v0.16.4
     hooks:
       # Run the linter on pre-commit (with auto-fix) and pre-push
       - id: ruff
@@ -36,6 +39,14 @@ repos:
       - id: ruff-format
         name: ruff (format)
         stages: [pre-commit, pre-push]
+
+  # ty for type checking (pinned to match the `ty` dev dependency in pyproject.toml)
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.75
+    hooks:
+      - id: ty
+        name: ty (type check)
+        stages: [pre-push]
 
   # Local hooks (run on pre-push)
   - repo: local
@@ -50,7 +61,7 @@ repos:
 
       - id: build-check
         name: build wheel (verify buildable)
-        entry: bash -c 'HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed'
+        entry: bash -c 'uv build --wheel --out-dir dist'
         language: system
         stages: [pre-push]
         pass_filenames: false

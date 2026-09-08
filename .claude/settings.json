@@ -12,6 +12,10 @@
       }
     ]
   },
+  "enabledPlugins": {
+    "feature-dev@claude-code-plugins": true,
+    "superpowers@claude-plugins-official": true
+  },
   "extraKnownMarketplaces": {
     "claude-code-plugins": {
       "source": {
@@ -19,8 +23,5 @@
         "repo": "anthropics/claude-code"
       }
     }
-  },
-  "enabledPlugins": {
-    "feature-dev@claude-code-plugins": true
   }
 }

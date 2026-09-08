@@ -1,34 +1,50 @@
 name: Release — Build + Publish to PyPI
 
-# Trigger: publish a GitHub Release in the GitHub UI (manual)
-# Flow: build wheel from main → validate → publish to PyPI → attach to release
+# Trigger: publish a GitHub Release (UI) with a semver tag (vX.Y.Z or X.Y.Z).
+# The tag IS the release version — chosen at release time, not pre-bumped.
 #
-# Wheels are NEVER committed to git. They are built fresh in CI on every
-# release, validated against PyPI's exact archive validator (tools/validate_wheel.py),
-# uploaded to PyPI via OIDC trusted publishing, and attached to the GitHub Release
-# as the durable archive.
+# Flow:
+#   build      — checkout the tag (full history, for hatch-vcs), build wheel +
+#                sdist, validate (archive + twine metadata)
+#   publish    — OIDC trusted-publish to PyPI, attach dists to the Release
+#
+# Versioning: pyproject declares `dynamic = ["version"]` and hatch-vcs reads
+# the version straight from the git tag at build time. Nothing is pre-bumped,
+# nothing is written back — main carries no version string to drift, so there
+# is no backmerge job. (The old one pushed to main directly and was rejected
+# by the "changes must be made through a pull request" ruleset; the fix is to
+# not need the push at all.)
 on:
   release:
     types: [published]
-  workflow_dispatch:
+  workflow_dispatch:   # build-only smoke test (no tag, no publish)
+
+# Read-only default; the publish job opts into the writes it needs (OIDC token
+# + attaching dists to the Release). A job-level block replaces this one wholly.
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  # ── 1. Build the wheel from main and validate it ────────────────────────────
+  # ── 1. Build wheel + sdist from the tag and validate ────────────────────────
   build:
     name: Build Distribution
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
-    - name: Checkout main
-      uses: actions/checkout@v4
+    - name: Checkout tagged commit
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        ref: main
+        # hatch-vcs derives the version from `git describe`, so the build needs
+        # the tags and enough history to reach them — not a depth-1 checkout.
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: "3.13"
 
@@ -38,53 +54,100 @@ jobs:
     - name: Install dependencies
       run: uv sync
 
-    - name: Sync version with release tag
+    - name: Validate release tag
+      # The tag IS the release version — hatch-vcs reads it directly, so
+      # nothing is written here. Fail fast on a malformed tag before building.
+      # Skipped on workflow_dispatch (no tag).
+      if: github.event_name == 'release'
       env:
         REF_NAME: ${{ github.ref_name }}
-      run: uv run python tools/sync_version.py "$REF_NAME"
+      run: |
+        ver="${REF_NAME#v}"
+        # Leading zeros are rejected here rather than downstream: PEP 440
+        # normalizes 1.02.3 to 1.2.3, so the dist filenames would not match and
+        # the failure would surface at the assert as a confusing version
+        # mismatch instead of "your tag is malformed".
+        if ! printf '%s' "$ver" \
+           | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+          echo "::error::release tag '$REF_NAME' is not a X.Y.Z semver version"
+          exit 1
+        fi
+        echo "releasing $ver"
 
-    - name: Build distributable wheel
-      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+    - name: Build wheel + sdist
+      run: uv build --out-dir dist
+
+    - name: Verify built version matches the release tag
+      # Guard rail for the dynamic version. A dirty tree, a shallow checkout, or
+      # a missing .git each make hatch-vcs resolve to something other than the
+      # tag (`X.Y.Z.postN+g<sha>`, `0.0.0.postN+g<sha>`, or a bare `0.0.0`) —
+      # and neither validate_wheel.py nor `twine check --strict` rejects any of
+      # them. This step is the only thing between that and PyPI, so it runs
+      # before both. The count check matters because the publish step uploads
+      # everything in dist/, not just the two files named here.
+      if: github.event_name == 'release'
+      env:
+        REF_NAME: ${{ github.ref_name }}
+      run: |
+        ver="${REF_NAME#v}"
+        if [ ! -f "dist/indexed_sh-${ver}-py3-none-any.whl" ] \
+           || [ ! -f "dist/indexed_sh-${ver}.tar.gz" ]; then
+          echo "::error::built dists do not carry version $ver (tag $REF_NAME)"
+          ls -1 dist
+          exit 1
+        fi
+        if [ "$(ls -1 dist | wc -l)" -ne 2 ]; then
+          echo "::error::dist/ holds artifacts beyond the expected wheel + sdist"
+          ls -1 dist
+          exit 1
+        fi
+        echo "built dists carry $ver"
 
     - name: Validate wheel with PyPI's archive validator
-      # Same checks PyPI's warehouse runs on upload. Failing here means PyPI
-      # would reject — fail fast with the exact error message instead.
-      run: uv run python tools/validate_wheel.py dist/*.whl
+      # Same checks PyPI's warehouse runs on upload. Wheel-only: this is a ZIP
+      # validator and cannot read the .tar.gz sdist (twine check covers both).
+      run: uv run python scripts/validate_wheel.py dist/*.whl
 
-    - name: Upload wheel artifact
-      uses: actions/upload-artifact@v4
+    - name: Check distribution metadata (twine)
+      # Archive validator (above) checks the zip bytes; twine check --strict
+      # validates that the long_description renders on PyPI (render warnings
+      # fail). Full metadata acceptance is enforced by the OIDC publish itself.
+      run: uv run --with twine twine check --strict dist/*
+
+    - name: Upload distribution artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: python-package-distributions
         path: dist/
         if-no-files-found: error
-        # Wheels are already compressed; don't waste CI time recompressing.
+        # Distributions are already compressed; don't recompress.
         compression-level: 0
 
   # ── 2. Publish to PyPI via OIDC trusted publisher ───────────────────────────
   publish-to-pypi:
     name: Publish to PyPI
     needs: build
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/indexed-sh
     permissions:
       id-token: write   # OIDC trusted publishing
-      contents: write   # attach wheel to GitHub Release
-
+      contents: write   # attach distributions to the Release
     steps:
-    - name: Download wheel artifact
-      uses: actions/download-artifact@v4
+    - name: Download distribution artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: python-package-distributions
         path: dist/
 
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
       # Default packages-dir: dist/ — no override needed.
 
-    - name: Attach wheel to GitHub Release
-      if: always() && github.event_name == 'release'
-      uses: softprops/action-gh-release@v2
+    - name: Attach distributions to GitHub Release
+      if: always()
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
       with:
         files: dist/*

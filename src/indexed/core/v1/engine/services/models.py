@@ -1,0 +1,89 @@
+from dataclasses import dataclass
+from typing import List, Optional
+
+from indexed.protocols.models import (
+    PhasedProgressCallback,
+    SourceConfig,
+)
+
+
+@dataclass
+class CollectionStatus:
+    """Status information for a collection."""
+
+    name: str
+    number_of_documents: int
+    number_of_chunks: int
+    updated_time: str
+    last_modified_document_time: str
+    indexers: List[str]
+    index_size: Optional[int] = None
+    # Newly added optional metadata
+    source_type: Optional[str] = None
+    relative_path: Optional[str] = None
+    disk_size_bytes: Optional[int] = None
+
+
+@dataclass
+class CollectionInfo:
+    """Detailed inspection information for a collection.
+
+    This model contains comprehensive metadata about a collection including
+    document counts, storage information, timestamps, and computed statistics.
+    It's designed to be presentation-layer agnostic and can be formatted for
+    different output types (CLI, JSON, etc.).
+    """
+
+    # Basic identity
+    name: str
+    source_type: Optional[str] = None
+
+    # Counts
+    number_of_documents: int = 0
+    number_of_chunks: int = 0
+
+    # Storage
+    relative_path: Optional[str] = None
+    disk_size_bytes: Optional[int] = None
+    index_size_bytes: Optional[int] = None
+
+    # Timestamps
+    created_time: Optional[str] = None
+    updated_time: Optional[str] = None
+    last_modified_document_time: Optional[str] = None
+
+    # Index info
+    indexers: Optional[List[str]] = None
+
+    # Computed statistics (calculated from other fields)
+    avg_chunks_per_doc: Optional[float] = None
+    avg_doc_size_bytes: Optional[float] = None
+
+    def __post_init__(self):
+        """Calculate derived statistics after initialization."""
+        if self.indexers is None:
+            self.indexers = []
+
+        # Calculate averages
+        if self.number_of_documents > 0:
+            if self.avg_chunks_per_doc is None:
+                self.avg_chunks_per_doc = (
+                    self.number_of_chunks / self.number_of_documents
+                )
+
+            # F3: only fall back to the disk-size-inclusive estimate when the
+            # caller didn't already pass a (document-bytes-only) value — the
+            # inspect service now computes this itself, excluding the index.
+            if self.avg_doc_size_bytes is None and self.disk_size_bytes:
+                self.avg_doc_size_bytes = (
+                    self.disk_size_bytes / self.number_of_documents
+                )
+
+
+# Re-export progress types from protocols during transition window.
+__all__ = [
+    "CollectionInfo",
+    "CollectionStatus",
+    "PhasedProgressCallback",
+    "SourceConfig",
+]

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-06-09
+updated: 2026-09-07
 ---
 
 # Tech Spec: indexed
@@ -16,18 +16,20 @@ Component internals live in the branch docs below.
 
 ## Component Specs
 
-One tech branch doc per monorepo component:
+One tech branch doc per `src/indexed/` subpackage:
 
-| Component | Branch doc | Covers |
+| Subpackage | Branch doc | Covers |
 |-----------|-----------|--------|
-| `apps/indexed` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
-| `packages/indexed-core` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
-| `packages/indexed-config` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
-| `packages/indexed-connectors` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
-| `packages/indexed-parsing` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
+| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+| `src/indexed/core/` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
+| `src/indexed/config/` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
+| `src/indexed/connectors/` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
+| `src/indexed/parsing/` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
 
-`packages/utils` (logging, retry, batching) is a thin shared foundation — no separate
-doc; helpers are imported by every layer.
+`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
+separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
+contracts + connector protocols, the leaf) has no separate doc either — covered
+inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
 
 ---
 
@@ -80,33 +82,37 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | Library | Version | Purpose |
 |---------|---------|---------|
 | **Python** | 3.11+ | Language runtime |
-| **uv** | 0.5+ | Package manager (workspace support) |
+| **uv** | 0.5+ | Package manager |
 | **FAISS** | latest | Vector similarity search |
 | **sentence-transformers** | latest | Embedding generation |
-| **Typer** | 0.15.1 | CLI framework |
-| **Rich** | 13.0+ | Terminal UI |
-| **FastMCP** | latest | MCP server |
-| **Pydantic** | 2.10+ | Validation |
+| **Typer** | 0.26+ | CLI framework |
+| **Rich** | 15.0+ | Terminal UI |
+| **FastMCP** | 3.4+, <4 | MCP server |
+| **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.9.1 | Linter + formatter |
-| **mypy** | 1.14+ | Type checker |
-| **pytest** | 8.3.4 | Testing |
+| **ruff** | 0.16.2 | Linter + formatter |
+| **ty** | 0.0.58 | Type checker |
+| **pytest** | 9.1+ | Testing |
 
-### Monorepo Structure
+### Package Structure
+
+Single package, one wheel (`indexed-sh`); no workspace, no `una`:
 
 ```text
 indexed/
-├── apps/indexed/              # Main CLI & MCP server
-├── packages/
-│   ├── indexed-core/         # Indexing & search engine
-│   ├── indexed-config/       # Config management
-│   ├── indexed-connectors/   # Source connectors
-│   ├── indexed-parsing/      # Shared parsing module (Docling, tree-sitter)
-│   └── utils/                # Shared utilities (logging, retry, batching)
-└── tests/                    # Test suite
+├── src/indexed/
+│   ├── cli/                  # Typer app; composition.py is the single wiring site
+│   ├── mcp/                  # FastMCP server
+│   ├── core/                 # Indexing & search engine; facade in core/__init__.py
+│   ├── connectors/           # Source connectors (files/jira/confluence/outline)
+│   ├── config/                # Config management (ConfigService singleton)
+│   ├── parsing/               # Shared parsing module (Docling, tree-sitter)
+│   ├── protocols/             # Typed contracts + connector protocols — the leaf
+│   └── utils/                 # Shared utilities (logging, retry, batching)
+└── tests/                     # Test suite
 ```
 
-**Build system:** `una` bundles the workspace into a single wheel.
+**Build system:** a single `hatchling` build produces one wheel.
 
 ---
 
@@ -123,7 +129,7 @@ Source API → Reader → Converter → Chunker → Embedder → Indexer → Per
 
 1. **Reader** fetches documents from source (Jira API, file system, etc.)
 2. **Converter** transforms to standardized `Document` objects
-3. **Chunker** splits into searchable chunks (512 tokens, 50 overlap)
+3. **Chunker** splits into token-window chunks (≤ embedder `max_seq_length`, 256 for the default model — never silently truncated; see [tech-parsing.md](tech-parsing.md))
 4. **Embedder** generates vectors (384-dim via `all-MiniLM-L6-v2`)
 5. **Indexer** builds FAISS index (`IndexFlatL2` default)
 6. **Persister** saves to disk atomically
@@ -135,7 +141,7 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 ```
 
 1. **Embedder** converts query text to vector (same model as indexing)
-2. **FAISS Search** finds K nearest neighbors (L2 distance)
+2. **FAISS Search** finds K nearest neighbors (squared L2 distance in [0, 4]; lower = closer)
 3. **Result Mapper** looks up chunks, documents, metadata
 4. **Formatter** outputs as card/table/compact/JSON
 
@@ -143,50 +149,134 @@ Query → Embedder → FAISS Search → Result Mapper → Formatter
 
 ## Testing Strategy
 
-**Target:** >85% coverage, measured on installed packages (`indexed`, `core`,
-`connectors`, `indexed_config`, `utils`).
+**Target:** >85% coverage on `core`/`connectors`/`config`/`parsing`/`protocols`/
+`utils`. `cli`/`mcp` (UI chrome) are exempt from the gate — see § Post-Simplify
+Structural Rules and `[tool.coverage.run]` in `pyproject.toml`.
 
 ```text
 tests/
-├── unit/          # package-specific (indexed, indexed_core, indexed_connectors, indexed_config)
-├── system/        # integration tests
-└── benchmarks/    # performance tests
+├── unit/              # tests/unit/{indexed,utils,scripts}/ — indexed/ mirrors src/indexed/'s subpackages
+├── system/            # integration tests
+├── characterization/  # behavior-net harness (regression-guards fixed bugs)
+└── benchmarks/        # performance tests
 ```
 
 ```bash
-uv run pytest -q                          # all
-uv run pytest tests/unit/indexed_core/ -q # one package
-uv run pytest -q --cov=src --cov-report=html
+uv run pytest -q                              # all
+uv run pytest tests/unit/indexed/core/ -q     # one subpackage
+uv run pytest -q --cov=src/indexed --cov-report=html
 ```
+
+### CI Benchmarking
+
+Performance regressions are caught in CI, not via local scripts. The former
+`.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
+diff logic) were deleted and replaced by the GitHub Marketplace action
+[`pytest Benchmark Baseline Check`](https://github.com/marketplace/actions/pytest-benchmark-baseline-check)
+(`lennardzuendorf/pytest-bench-action`), wired in
+`.github/workflows/python-benchmark.yml`.
+
+The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
+compares against a per-branch JSON baseline committed under
+`.benchmarks/baselines/` (the general `.benchmarks/*.json` ignore carries a
+`!baselines/**` exception — negating just the dir, not `**`, leaves files
+inside still matched by `*.json` and silently un-stageable), posts one PR
+comment per run (deletes any prior bot
+comment matching the report header before posting, so re-runs don't spam the
+thread), and fails the job on a tolerance-exceeding regression. Trigger is
+`pull_request` only (no `push` trigger) — the action checks out the PR's own
+head branch, and when drift exceeds `update-tolerance` it stages a baseline
+commit directly on the PR branch (`[skip ci]`, same-repo PRs only), which
+lands on the target branch automatically when the PR merges. A `concurrency`
+group (keyed on PR number, `cancel-in-progress: true`) prevents overlapping
+runs from racing to push that staged commit.
+
+Configured in this repo via `cross-branch-tolerance: 20`, `update-tolerance: 5`,
+and a per-test `threshold-map` (max seconds per benchmark name substring). A
+regression can be waived per-PR via the `benchmark-override` label
+(`override-label`, explicitly set here) — the regression still shows in the
+PR comment but doesn't fail the job; the repo-wide tolerance is untouched.
+
+Pinned to an exact release tag (`@v1.0.2`), not the floating `@v1` major tag —
+the floating tag raced with upstream's own release-automation retagging and
+briefly 404'd mid-release (`unable to find version v1`). Bump the pin by hand
+on new releases instead.
+
+**Resolved (v1.0.0):** comparability used to key on the runner hostname
+(`machine_info.node`), which GitHub-hosted runners randomize per job, so
+cross-run comparisons false-positived as regressions. `v1.0.0` gates on a
+CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
+so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
+hardware mismatch now skips with `comparison-skipped` (or hard-fails if
+`enforce-same-node: "true"`, unset here) instead of hard-failing by default.
+Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
 
 ---
 
 ## Build & Distribution
 
-### Monorepo bundling
+### Wheel
 
-`una` bundles all workspace packages into a single wheel.
-
-```bash
-# Build wheel (HATCH_BUILD_HOOKS_ENABLE=1 required to bundle workspace packages)
-HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
-# → dist/indexed-0.1.0-py3-none-any.whl  (indexed + core + connectors + parsing + config + utils)
-```
-
-### Docker
-
-```dockerfile
-FROM python:3.11-slim
-COPY dist/*.whl /tmp/
-RUN pip install /tmp/*.whl
-ENTRYPOINT ["indexed"]
-```
+A single `hatchling` build packages `src/indexed/` into one wheel — no bundling
+step, no per-package builds.
 
 ```bash
-docker build -t indexed .
-docker run -i -v ~/.indexed:/root/.indexed indexed                                  # stdio
-docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport http --host 0.0.0.0
+uv build --out-dir dist
+# → dist/indexed_sh-<version>-py3-none-any.whl   (wheel)
+# → dist/indexed_sh-<version>.tar.gz             (sdist)
+uv run python scripts/validate_wheel.py dist/*.whl   # PyPI archive validator (wheel only), also in CI
+uv run --with twine twine check --strict dist/*      # metadata render check (wheel + sdist), also in CI
 ```
+
+### Release
+
+The GitHub Release **tag** is the version, decided at release time — no manual
+pre-bump in a PR. `pyproject.toml` declares `dynamic = ["version"]` and
+**hatch-vcs** resolves the version from `git describe` at build time, so no
+version string is stored in the repo at all. On `release: published`, the build
+job checks out the tag at `fetch-depth: 0` (hatch-vcs needs the tags), builds,
+asserts the built dists carry the tag version, validates (validate_wheel +
+`twine check --strict`), and publishes wheel + sdist to PyPI via OIDC trusted
+publishing (no token). There is **no backmerge job**: `main` has no version to
+drift, so nothing has to be written back. Still no `sync_version.py`.
+
+`uv.lock`'s root-package entry simply omits the `version` field (uv reports the
+change as `indexed-sh v0.0.5 -> (dynamic)`; no such token is written to the
+file), so the lock does not churn per commit.
+
+Off-tag builds use the `post-release` scheme (`raw-options` in
+`[tool.hatch.version]`), yielding `<last-tag>.post<N>+g<sha>` — e.g.
+`0.0.7.post4+g5d98c95` for four commits past `v0.0.7`, plus a `.dYYYYMMDD`
+suffix when the tree is dirty. It anchors on the **last** tag rather than
+guessing the next one; the default `guess-next-dev` would claim `0.0.8.devN`,
+which is wrong whenever the next release isn't a patch bump. The `+g<sha>`
+local segment is also a tripwire: PyPI rejects local versions, and the release
+job's assert catches the mismatch before upload.
+
+`python-ci.yml`, `python-cov.yml`, and `python-release-ci.yml` check out at
+`fetch-depth: 0`. On a shallow tagless checkout hatch-vcs resolves to
+`0.0.0.postN+g<sha>` with only a `UserWarning`, and `validate_wheel.py` and
+`twine check --strict` both still pass — a wrong version that goes green.
+`python-benchmark.yml` is the exception: `pytest-bench-action` checks out at a
+hardcoded `fetch-depth: 2` that no input overrides, so its install carries a
+non-tag version. Nothing in the benchmark suite reads the version, so this is
+tolerated rather than fixed.
+
+Building from a tree with **no** `.git` (GitHub's auto-generated source tarball,
+a vendored copy) resolves to the `fallback_version` of `0.0.0`. Without that
+fallback hatch-vcs raises `LookupError` and the build dies — a regression
+against the old static version. The fallback also supplies the base when git is
+readable but no tag is reachable, which is why a shallow checkout reads
+`0.0.0.postN+g<sha>` rather than `0.0.postN+g<sha>` — but it never yields a bare
+`0.0.0` there, so the release assert still catches it. Measured with the current
+config:
+
+| checkout | built version |
+| --- | --- |
+| `HEAD` == tag, clean | exact tag version |
+| tags reachable, off-tag | `0.0.7.post3+g21083d3d9` |
+| shallow, tagless, clean | `0.0.0.post2+ga0347642e` |
+| no `.git` | `0.0.0` |
 
 ---
 
@@ -194,22 +284,48 @@ docker run -p 8000:8000 -v ~/.indexed:/root/.indexed indexed mcp --transport htt
 
 Hard constraints across all code — v2 core, new connectors, surviving infrastructure.
 
+### Post-Simplify Structural Rules
+
+Promoted from the retired Feature 14 (Simplify) tech spec as of simplify/6 —
+normative root rules from here on,
+independent of Feature 14's own DONE/PLANNED status ([plan.md](plan.md) §
+Feature Sequence). The single-package collapse, `check_imports.py` gate,
+scoped coverage config, and one `AGENTS.md` are already live in the tree; the
+remaining Simplify units (residual dead-code/test cleanup) converge the rest
+of the codebase toward these same rules rather than establishing new ones.
+
+- **One package, four module edges** (`cli`/`mcp` → `core`|`connectors`|`config`;
+  `core ↛ connectors`; `connectors ↛ core`; `config`/`utils`/`parsing`/`protocols`
+  never import up), enforced by `scripts/check_imports.py`. One `pyproject.toml`,
+  one wheel (`indexed-sh`), no `una`, no per-package builds, no `sync_version.py`.
+- **No phantom generality.** No abstraction (registry/factory/multi-impl loop)
+  over a single implementation. One indexer, one progress protocol, no dead DTOs
+  or re-export shims.
+- **Behavior-only tests.** Keep behavior/system/benchmark tests + the
+  characterization harness; no mechanism tests (registry membership, shims,
+  protocol stubs, Rich markup, migration). **Coverage gate is scoped to
+  `core`/`connectors`/`config`/`parsing`/`protocols`/`utils`; UI chrome
+  (`cli`/`mcp`) is exempt** (see `[tool.coverage.run]` in `pyproject.toml`).
+- **One root `AGENTS.md`** (≤100 lines); agent skills install from
+  `skills-lock.json`, never vendored.
+
 ### Dependency Direction
 
 ```text
 ┌──────────────────────────────────────────────────────┐
-│  CLI / MCP (apps/indexed/)                           │  ← UI only, thin commands
-│  May import: services, core, config, utils           │
+│  CLI / MCP (src/indexed/cli/, src/indexed/mcp/)      │  ← UI only, thin commands
+│  May import: core (facade), connectors.registry,     │
+│  config, protocols, utils                            │
 └──────────────────────┬───────────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────────┐
-│  Core Engine (packages/indexed-core/)                │  ← Business logic
+│  Core Engine (src/indexed/core/)                     │  ← Business logic
 │  May import: protocols, config, utils                │
 │  MUST NOT import: CLI, MCP, concrete connectors      │
 └──────────────────────┬───────────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────────┐
-│  Connectors / Plugins                                │  ← Data source adapters
+│  Connectors (src/indexed/connectors/)                │  ← Data source adapters
 │  May import: protocols, config, utils, parsing       │
 │  MUST NOT import: core engine, CLI, MCP              │
 └──────────────────────┬───────────────────────────────┘
@@ -266,6 +382,13 @@ IndexedError
 - CLI layer catches `IndexedError` subtypes → user-friendly message + exit code
 - MCP layer catches `IndexedError` subtypes → structured error dict
 - Unexpected exceptions propagate with full traceback
+- Missing/corrupt collections **fail loud**: they raise `IndexedError` and are
+  **omitted from status** (never zero-filled into a fake-healthy placeholder); the
+  CLI exits **non-zero** (via `exit_code_for`) with a clean message — never a raw
+  traceback, never a success exit on failure
+- The MCP boundary **envelopes every exception** (not only `IndexedError`) and
+  surfaces per-collection failures in the result envelope — never a silent
+  "0 matches" — and must not serve **stale** cached results after a re-index
 
 ### No Dual Code Paths
 
@@ -286,6 +409,112 @@ Command (parse args + format output) → Service (orchestrate) → Engine (execu
 
 A command file branching on business rules is a sign logic needs extraction.
 
+### Protocols Subpackage (`indexed.protocols`)
+
+Shared connector contracts, **typed data models**, and cross-layer DTOs live in the
+**leaf** subpackage `src/indexed/protocols/` (import `indexed.protocols`) — the only
+import-legal home, since `core`/`connectors`/`config` may not import one another but all
+may import `protocols`. Engine-only DTOs stay in core.
+
+- **Typed data contracts** (`protocols/models.py`): `Manifest`, `ConvertedDocument`,
+  `Chunk`, `CollectionSearchResult` (+ `DocumentMatch`/`MatchedChunk`) and `SourceConfig`.
+  They round-trip today's on-disk **camelCase JSON byte-stable** (fields declared in
+  on-disk key order, dumped `by_alias=True`, `exclude_none=True`) — the on-disk v1 format
+  is the **compatibility boundary**, so a v2 engine reads the same collections. The engine
+  reads/writes these models, never `dict["stringKey"]`; a field mismatch is a ty error,
+  not a runtime `KeyError`.
+- **Corrected connector protocols** (`protocols/connectors.py`): `DocumentReader` declares
+  exactly what the engine calls — `get_number_of_documents` / `read_all_documents` /
+  `get_reader_details`; `DocumentConverter` declares `convert`. A connector missing one is
+  a ty error, not a runtime `AttributeError`. `BaseConnector` also declares
+  `from_manifest(manifest, config, *, storage_path) -> ConnectorRun` — each connector owns
+  its manifest keys and incremental cutoff, so **core's update path has no per-source /
+  `localFiles` branches**.
+- `SourceConfig`, `ProgressUpdate`, `ProgressCallback`, `PhasedProgressCallback` (the
+  progress callbacks are today's dual system; Feature 14 collapses them to one `Progress`
+  protocol).
+
+`core` and `connectors` both depend on `protocols`; neither imports the other's
+concrete types for wiring.
+
+### Core Facade & App Composition Root
+
+**Core is consumed only through the version-dispatching facade `indexed.core.engine`**
+— `create` / `update` / `search` / `inspect` / `status` / `clear` / `collection_exists`
+(+ the shared models): 13 names, the same surface as the former `core.v1.engine`, plus an
+`engine=` selector. The facade (lazy `__getattr__`) routes every call to the v1 or v2
+engine. For existing collections the on-disk manifest `version` marker is **authoritative**
+— an explicit selector may only confirm it or fail with `EngineMismatchError`; selectors
+(flag > env > config > default) choose the engine for **new** collections only. A collection
+with no `version` key is v1. The unrecognized-version contract now SPLITS by op, per the
+final review of issue #186:
+
+- `create` / `update` / `clear` (via `_resolve_existing_engine`) still **fail loud** —
+  `UnknownEngineVersionError`, never a silent v1 fallback, collection untouched.
+- `search` / `status` / `inspect` (via `_group_names_by_engine`) instead **omit** the
+  unrecognized-version collection from its batch (a warning is logged) rather than
+  aborting the whole call. `search()`'s return type is a dict keyed by collection name, so
+  it CAN and does carry the omission back as a per-collection `{"error": <message>}` entry
+  (the same convention `core/v2/retrieval.py` and v1's `search_service.py` already use for
+  a per-collection failure inside a batch); `status()`/`inspect()` return plain lists with
+  no per-item error slot, so they purely omit it with a logged warning — unchanged.
+
+No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
+facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
+`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+convention. `src/indexed/core/facade_config.py` is part of this facade surface: it holds
+`CoreEngineConfig` ([core] engine, the default-engine selector for NEW collections) plus 7
+lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+`core.v1.*`/`core.v2.*` for those either. `config/commands/` is a separate, pre-existing
+exemption in `check_imports.py` (`_EXEMPT_DIRS`) — same composition-adjacent rationale as
+`config/cli.py` and `cli/composition.py` — so a file there (e.g. `config/commands/
+_helpers.py`) importing `core.v1.config_models` directly is expected, not a facade gap.
+(v2 ships over a **new version-marked on-disk format**, not v1's — the earlier "same
+format" swap premise was superseded by core-v2 ADR-1; v1's format stays frozen.)
+
+**`src/indexed/cli/composition.py` is the single wiring site** — it folds in the
+removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
+
+- builds the connector registry and hands the facade **two REQUIRED callables** —
+  `connector_factory` (create-time) and `manifest_factory` (update-time). No
+  `Callable | None` + `missing_wiring_error` on the happy path; a missing wiring is a
+  `TypeError`/ty error at the call site, not a runtime guard.
+- owns `resolve_collections_context(mode_override)` — the **single** storage-path resolver
+  for CLI and MCP — and calls `register_app_config` itself, so registered config specs
+  survive the singleton reset a non-None `mode_override` forces. Do not revive heuristics
+  like "prefer local if non-empty collections dir", and do not add a per-caller defensive
+  re-register for callers that go through it.
+
+Each connector's `from_manifest` owns its manifest keys, so core carries no per-type
+branches; `composition.manifest_factory` is a one-line registry dispatch.
+
+### Import-Graph CI
+
+`scripts/check_imports.py` (also run in CI, alongside `scripts/check_sizes.py`)
+AST-walks `src/indexed` and fails on forbidden edges — the four rules above,
+expanded:
+
+| From | Must NOT import |
+|------|-----------------|
+| `core` | `connectors`, `cli`, `mcp` |
+| `connectors` | `core`, `cli`, `mcp` |
+| `config`, `parsing`, `utils`, `protocols` | `core`, `connectors`, `cli`, `mcp` |
+
+`cli`/`mcp` sit at the top of the stack and may import any subpackage — they have
+no forbidden edge of their own. Run `python scripts/check_imports.py --self-test`
+to verify a synthetic forbidden edge is still caught.
+
+### HTTP Retry Policy
+
+Transient HTTP statuses are centralized in `utils/retry.py`:
+
+```python
+TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
+```
+
+`execute_with_retry` re-raises immediately on non-transient HTTP errors (e.g. 404).
+Connector readers use this helper — do not duplicate status-code tuples.
+
 ---
 
 ## Open Technical Questions
@@ -296,3 +525,7 @@ A command file branching on business rules is a sign logic needs extraction.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
+7. **CI benchmark runner stability** — resolved by `pytest-bench-action`'s
+   CPU-fingerprint gate (see tech.md § CI Benchmarking). `override-label` now
+   configured. Still open: adopt `enforce-same-node: "true"`, or stay on the
+   skip-not-fail default (hosted runners only)?

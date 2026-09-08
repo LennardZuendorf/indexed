@@ -12,6 +12,20 @@ on:
   push:
     branches: [ "main", "building" ]
 
+# Least privilege by default: every job here only reads the repo. Any job that
+# needs more must opt in explicitly at the job level.
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same ref — a force-push or a quick follow-up
+# commit shouldn't leave the previous matrix burning runners. Keyed by event so
+# a manual dispatch doesn't cancel the push run for the same ref. Cancellation
+# is PR-only: on main, every commit keeps its own result rather than being
+# superseded by the next merge.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-system-tests:
     if: github.event_name == 'push' || github.event.pull_request.draft != true
@@ -23,9 +37,20 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The version is derived from git tags (hatch-vcs), so the wheel built
+        # below needs them. On a depth-1 tagless checkout hatch-vcs silently
+        # resolves to 0.0.0.postN+g<sha> and every gate here still passes — a
+        # wrong version that goes green. Full history prevents that.
+        fetch-depth: 0
+        # Nothing here pushes; don't leave GITHUB_TOKEN in .git/config for the
+        # test/build steps that follow.
+        persist-credentials: false
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -34,12 +59,25 @@ jobs:
         python -m pip install uv
         python -m uv sync
 
+    - name: Check import graph
+      run: uv run python scripts/check_imports.py
+
+    - name: Check size gates
+      run: uv run python scripts/check_sizes.py
+
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short
 
-    - name: Build Distributable Wheel (apps/indexed with bundled packages)
-      run: HATCH_BUILD_HOOKS_ENABLE=1 uvx --from build pyproject-build --installer=uv --outdir=dist --wheel apps/indexed
+    - name: Build Distributable Wheel
+      run: uv build --wheel --out-dir dist
 
     - name: Validate wheel with PyPI's archive validator
-      run: uv run python tools/validate_wheel.py dist/*.whl
+      run: uv run python scripts/validate_wheel.py dist/*.whl
+
+    - name: Check distribution metadata (twine)
+      # validate_wheel.py (above) checks the archive/zip bytes; twine check
+      # validates the METADATA long_description renders on PyPI. --strict makes
+      # render warnings fail. (Classifier/version validity is enforced by PyPI
+      # warehouse at upload, not here — this is an early-fail convenience.)
+      run: uv run --with twine twine check --strict dist/*

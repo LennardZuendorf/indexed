@@ -3,10 +3,10 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-06-09
+updated: 2026-07-12
 ---
 
-# Tech Branch: Core Engine (`indexed-core`)
+# Tech Branch: Core Engine (`src/indexed/core/`)
 
 Indexing & search engine. Receives connectors via dependency injection; never
 imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectural Rules).
@@ -27,6 +27,19 @@ imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectura
 
 ---
 
+## Typed Data Contracts
+
+The three on-disk shapes the engine moves — the collection **manifest**, each
+**converted document + chunk**, and each per-collection **search result** — are typed
+Pydantic models in the `protocols` leaf (`protocols/models.py`: `Manifest`,
+`ConvertedDocument`, `Chunk`, `CollectionSearchResult`). The engine reads and writes them
+by model, never by `dict["stringKey"]`, so a field rename is a ty error rather than a
+runtime `KeyError`. `model_dump(by_alias=True, exclude_none=True)` reproduces today's
+camelCase JSON **byte-stable** — the on-disk v1 format is the compatibility boundary for
+the v2 core swap. Full contract: [tech.md](tech.md) § Protocols Package.
+
+---
+
 ## Embedding Strategy
 
 **Default:** `all-MiniLM-L6-v2` — 384-dim, ~22MB, fast, good general quality.
@@ -34,7 +47,7 @@ imports concrete connectors, CLI, or MCP (see [tech.md](tech.md) § Architectura
 
 ### Lazy loading
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/embeddings/sentence_embeder.py`
+**File:** `src/indexed/core/v1/engine/indexes/embeddings/sentence_embeder.py`
 
 `SentenceEmbedder` exposes the model via a lazy `@property` — the heavy model is
 loaded (and cached) on first access, not at import:
@@ -49,6 +62,13 @@ def model(self):
 ### Batching
 
 `embed_batch` defaults to `DEFAULT_EMBEDDING_BATCH_SIZE = 128` (configurable per call).
+
+### Chunk-size invariant
+
+Every chunk must tokenize to **≤ the embedder's `max_seq_length`** (256 for the
+default `all-MiniLM-L6-v2`), read live from the embedder — never a hardcoded 512.
+Oversized text is split down to the token window (see [tech-parsing.md](tech-parsing.md))
+so no content is silently truncated at embed time.
 
 ---
 
@@ -66,7 +86,7 @@ def model(self):
 
 ### Creation
 
-**File:** `packages/indexed-core/src/core/v1/engine/indexes/faiss_indexer.py`
+**File:** `src/indexed/core/v1/engine/indexes/indexers/faiss_indexer.py`
 
 ```python
 import faiss, numpy as np
@@ -77,10 +97,11 @@ distances, indices = index.search(query_vec, k=10)
 
 ### Similarity scoring
 
-FAISS returns L2 distances. The raw distance is used directly as the result
-`score` — **lower means more similar** (it is not normalized to 0–1). Threshold
-filtering (`min_score` / `score_threshold`) keeps chunks whose score (distance)
-is **≤** the threshold.
+Embeddings are unit-normalized, so `IndexFlatL2` returns **squared** L2 distance
+in **[0, 4]** — used directly as the result `score`, **lower means more similar**
+(monotonic with cosine; not normalized to 0–1). Threshold filtering
+(`min_score` / `score_threshold`) keeps chunks whose score is **≤** the threshold;
+the configurable range is **[0, 4]** (a sane cutoff is >1.0), not [0, 1].
 
 ---
 
@@ -89,7 +110,15 @@ is **≤** the threshold.
 `DiskPersister` atomic writes: write temp file → `fsync()` → rename (atomic on POSIX).
 Prevents corruption from process/system crashes and disk-full errors.
 
-On-disk layout (dirs owned by `indexed-config`): [tech-config.md](tech-config.md) § Storage Directory Structure.
+**Durability invariants:**
+- The FAISS index is persisted on **every** mutating path — create, add,
+  remove-then-add, deletions-only, and explicit-deletions — so on-disk vectors
+  never outlive their mapping keys (no orphaned ids / `KeyError` on later search).
+- A failed `create` **builds aside and rename-swaps** into place, so an error
+  mid-run never destroys the prior collection of the same name.
+- A zero-chunk batch (e.g. an empty-body document) is a **no-op**, not a crash.
+
+On-disk layout (dirs owned by `src/indexed/config/`): [tech-config.md](tech-config.md) § Storage Directory Structure.
 
 ---
 

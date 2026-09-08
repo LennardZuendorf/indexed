@@ -40,3 +40,29 @@ indexed index inspect $ARGUMENTS
 ## When to Recreate Instead
 
 If the source configuration itself has changed (different path, include/exclude patterns, etc.), recreate with `/index-create` and `--force` rather than updating.
+
+## Migrating a v1 Collection to the v2 Engine
+
+Collections created before the v2 engine run on v1 (FAISS). Convert one to v2 on
+explicit request with `migrate` — it is safe by design (build-aside, validate,
+backup, rollback) and never touches the v1 data until the new collection is
+durably written and validated:
+
+```bash
+indexed index migrate <collection> --dry-run   # preview: doc/chunk counts + target model/store, changes nothing
+indexed index migrate <collection>             # migrate offline; keeps <collection>.v1-backup
+indexed index migrate <collection> --purge-backup   # migrate (or clean up) and remove the backup
+```
+
+- **Offline by default**: re-embeds from the collection's stored content — no
+  source access or credentials needed, no network. Use `--from-source` to
+  re-read the live source instead.
+- **Backup + rollback**: the original v1 collection is preserved as
+  `<collection>.v1-backup` until you run `--purge-backup`. A failed migration
+  leaves v1 fully intact (no partial v2 collection). If the final swap fails the
+  original is restored byte-identical.
+- **Validation**: before swapping, migration checks the document/chunk counts and
+  runs a probe search against the new v2 collection.
+
+Verify afterward with `indexed index inspect <collection>` (it should report
+engine `2` with the embedding model and `simple` vector store) and a search.
