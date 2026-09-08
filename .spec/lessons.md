@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-06
+updated: 2026-09-08
 ---
 
 # Lessons Learned
@@ -872,6 +872,60 @@ with `git add`/`git status`, since that's what CI actually runs.
   how often this recurs, treat it as an expected step in every dispatch's
   handling, not an anomaly: check for dormancy before assuming a "DONE" or a
   suspiciously terse completion message is real.
+
+## GitHub connector build via subagent-driven development (2026-09-05/07)
+
+- **A spec written before a package-layout collapse drifts in specific,
+  checkable ways — verify each claim against the real tree instead of
+  trusting the file list.** `.spec/features/github-connector/{plan,tech}.md`
+  (authored pre-Simplify, 2026-06-24) still pointed at
+  `packages/indexed-connectors/...`/`packages/indexed-core/...` (single
+  package `src/indexed/` since Feature 14), instructed adding `github` to a
+  `CONFIG_REGISTRY` that Feature 14 deleted, and told implementers to add
+  `github` branches to `collection_service.py`/`update_collection_factory.py`
+  — neither file has ever had per-connector branches for **any** source; both
+  are fully registry/protocol-driven (`CONNECTOR_REGISTRY`/`NAMESPACE_REGISTRY`
+  + each connector's own `from_manifest`). Two research passes against the
+  real tree caught this before implementation started, corrected it in the
+  plan document's own "Corrections to the spec" table, and this task (Task 9)
+  propagated the fix back into `.spec/` itself — a spec correction is only
+  real once it lands in `.spec/`, not just in a superseding plan file.
+- **The same "path-key defaults to `url`" assumption was hardcoded in three
+  separate places, and got caught one site at a time instead of all at
+  once.** `create.py:210` (the CLI's config-override write) was the only site
+  this plan's own brief flagged going in; task-level review (Task 8) found a
+  second, independent hardcoded `"url"` lookup at `create.py:86` (reading a
+  configured host back out of `config.toml`) that the brief never mentioned;
+  the final whole-branch review found a third at
+  `composition.py::build_connector` (writing `sources.github.url`
+  unconditionally, "currently inert" but the same bug class). All three
+  existed because every other connector's `base_url_or_path` really does
+  write to a `.url` config key — GitHub is the first connector to break that
+  pattern (it writes `.host`) and files already had (`.path`), so the
+  assumption was baked in three times over before anything forced a second
+  connector-family review. Fixed generically: one `PATH_KEY_REGISTRY: dict[str,
+  str]` in `connectors/registry.py` (`get_source_path_key(connector_type)`),
+  read at all three sites instead of the string literal. Lesson: when a
+  hardcoded assumption is found and fixed at one call site, grep for the same
+  literal (`"url"` string writes/reads keyed by connector type) across the
+  whole layer before calling the bug closed — the brief itself only caught
+  one of three.
+- **Subagent dormancy recurred in a new shape: an implementer that correctly
+  ran the full gate in the foreground still went dormant afterward.** During
+  Task 6 (registry/composition wiring — the highest-blast-radius task in this
+  plan), the implementer finished its verification run and ended its turn
+  saying it would "wait for a Monitor notification" before reporting done —
+  but no Monitor notification is ever delivered to a subagent in this
+  environment, so it never resumed on its own. This is the same dormancy
+  pattern already documented above (Core V2 build, 2026-07-19) — an agent
+  ending its turn expecting an event that only a top-level session receives —
+  just triggered by a different rationalization (an unfulfillable
+  wait-on-notification instead of a backgrounded pytest run). Detected and
+  resolved the same way: `SendMessage` to the same agent resumed it with full
+  context, no work lost, one revival. Reinforces the existing lesson rather
+  than adding a new mechanism — check for dormancy on ANY subagent that ends
+  its turn expecting to be woken by something this environment doesn't
+  deliver to subagents, not just the backgrounded-pytest case already named.
 
 ## Core v2 engine routing fixes (issue #186, 2026-09-06)
 

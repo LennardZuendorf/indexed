@@ -123,6 +123,14 @@ def _outline_cloud_url() -> str:
     return str(_load("indexed.connectors.outline.schema", "OUTLINE_CLOUD_URL"))
 
 
+def _github_config() -> Type[BaseModel]:
+    return _load_config("indexed.connectors.github.schema", "GitHubConfig")
+
+
+def _github_cloud_host() -> str:
+    return str(_load("indexed.connectors.github.schema", "GITHUB_CLOUD_HOST"))
+
+
 # --------------------------------------------------------------------------- #
 # Field prompt specs (per-field: prompt text + pure parser)                    #
 # --------------------------------------------------------------------------- #
@@ -223,6 +231,22 @@ def _outline_verbose_log(present: Dict[str, Any]) -> None:
     url = present["url"]
     deployment = "Cloud" if url == _outline_cloud_url() else "self-hosted"
     logger.info("Connecting to Outline at %s (%s)...", url, deployment)
+
+
+def _github_reader_opts(present: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "repos": present.get("repos", []),
+        "project": present.get("project"),
+        "state": present.get("state", "all"),
+        "labels": present.get("labels"),
+        "includePullRequests": present.get("include_pull_requests", False),
+        "includeComments": present.get("include_comments", True),
+        "verifySsl": present.get("verify_ssl", True),
+    }
+
+
+def _github_verbose_log(present: Dict[str, Any]) -> None:
+    logger.info("Connecting to GitHub host %s...", present.get("host", "github.com"))
 
 
 # --------------------------------------------------------------------------- #
@@ -333,6 +357,22 @@ SOURCE_SPECS: Dict[str, SourceSpec] = {
         url_label="Outline URL",
         url_default_fn=_outline_cloud_url,
         verbose_log=_outline_verbose_log,
+        progress_uses_url=True,
+    ),
+    "github": SourceSpec(
+        key="github",
+        namespace="sources.github",
+        display_name="GitHub",
+        success_suffix="from GitHub",
+        source_path_key="host",
+        fields_by_name={},
+        reader_opts=_github_reader_opts,
+        default_source_type="github",
+        default_config=_github_config,
+        has_url=True,
+        url_label="GitHub host",
+        url_default_fn=_github_cloud_host,
+        verbose_log=_github_verbose_log,
         progress_uses_url=True,
     ),
 }

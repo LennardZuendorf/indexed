@@ -21,6 +21,9 @@ SOURCE_CREDENTIAL_ENV_VARS: Dict[str, Dict[str, str]] = {
     "outline": {
         "api_token": "OUTLINE_API_TOKEN",
     },
+    "github": {
+        "token": "GITHUB_TOKEN",
+    },
     "jiraCloud": {
         "api_token": "ATLASSIAN_TOKEN",
         "email": "ATLASSIAN_EMAIL",

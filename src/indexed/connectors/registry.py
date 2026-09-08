@@ -14,6 +14,7 @@ from .files.connector import FileSystemConnector
 from .jira.connector import JiraConnector, JiraCloudConnector
 from .confluence.connector import ConfluenceConnector, ConfluenceCloudConnector
 from .outline.connector import OutlineConnector
+from .github.connector import GitHubConnector
 
 
 # Registry mapping connector_type strings to connector classes
@@ -25,6 +26,7 @@ CONNECTOR_REGISTRY: Dict[str, Type[Any]] = {
     "confluence": ConfluenceConnector,
     "confluenceCloud": ConfluenceCloudConnector,
     "outline": OutlineConnector,
+    "github": GitHubConnector,
 }
 
 # Registry mapping connector_type strings to their config namespace paths
@@ -38,6 +40,21 @@ NAMESPACE_REGISTRY: Dict[str, str] = {
     "confluence": "sources.confluence",
     "confluenceCloud": "sources.confluence",  # Unified with confluence
     "outline": "sources.outline",
+    "github": "sources.github",
+}
+
+# Registry mapping connector_type strings to the config key their
+# ``SourceConfig.base_url_or_path`` writes to. Most sources call it "url";
+# files stores a filesystem "path" and GitHub a "host", so the composition
+# root must look this up instead of assuming "url".
+PATH_KEY_REGISTRY: Dict[str, str] = {
+    "localFiles": "path",
+    "jira": "url",
+    "jiraCloud": "url",
+    "confluence": "url",
+    "confluenceCloud": "url",
+    "outline": "url",
+    "github": "host",
 }
 
 
@@ -83,3 +100,23 @@ def get_config_namespace(connector_type: str) -> str:
             f"Unknown connector type: '{connector_type}'. Available types: {available}"
         )
     return NAMESPACE_REGISTRY[connector_type]
+
+
+def get_source_path_key(connector_type: str) -> str:
+    """Get the config key a source's base_url_or_path writes to.
+
+    Args:
+        connector_type: Connector type string
+
+    Returns:
+        Config key name (e.g., "url", "path", "host")
+
+    Raises:
+        ValueError: If connector_type is not registered
+    """
+    if connector_type not in PATH_KEY_REGISTRY:
+        available = ", ".join(PATH_KEY_REGISTRY.keys())
+        raise ValueError(
+            f"Unknown connector type: '{connector_type}'. Available types: {available}"
+        )
+    return PATH_KEY_REGISTRY[connector_type]

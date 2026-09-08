@@ -46,6 +46,7 @@ def register_app_config(config_service: ConfigService) -> None:
     from indexed.connectors.files.schema import FileSystemConfig
     from indexed.connectors.jira.schema import JiraCloudConfig
     from indexed.connectors.outline.schema import OutlineConfig
+    from indexed.connectors.github.schema import GitHubConfig
 
     # ``[core] engine`` — default engine for NEW collections (R3). Registered at
     # path ``core``; the model ignores the ``core.v1.*``/``core.v2.*`` extras.
@@ -62,6 +63,7 @@ def register_app_config(config_service: ConfigService) -> None:
     config_service.register(JiraCloudConfig, path="sources.jira")
     config_service.register(ConfluenceCloudConfig, path="sources.confluence")
     config_service.register(OutlineConfig, path="sources.outline")
+    config_service.register(GitHubConfig, path="sources.github")
 
 
 # --- engine selection (R3) ----------------------------------------------------
@@ -134,7 +136,7 @@ def build_connector(
     config_service: ConfigService,
     registry: dict[str, Type[Any]] | None = None,
 ) -> BaseConnector:
-    from indexed.connectors.registry import get_config_namespace
+    from indexed.connectors.registry import get_config_namespace, get_source_path_key
 
     registry = registry or build_connector_registry()
     cls = registry.get(cfg.type)
@@ -148,10 +150,8 @@ def build_connector(
     # In-memory overlay only (R3): a failed create must not leave the override
     # on disk (foundation/6b bug E4).
     if cfg.base_url_or_path:
-        if cfg.type == "localFiles":
-            config_service.set_overlay(f"{namespace}.path", cfg.base_url_or_path)
-        else:
-            config_service.set_overlay(f"{namespace}.url", cfg.base_url_or_path)
+        path_key = get_source_path_key(cfg.type)
+        config_service.set_overlay(f"{namespace}.{path_key}", cfg.base_url_or_path)
     if cfg.query:
         config_service.set_overlay(f"{namespace}.query", cfg.query)
 
