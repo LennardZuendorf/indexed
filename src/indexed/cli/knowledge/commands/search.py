@@ -41,7 +41,7 @@ def _load_search_config():
     guaranteed to be present by the time this binds (foundation/6d root-cause
     fix — see ``runtime.py``).
     """
-    from indexed.core.v1.config_models import CoreV1SearchConfig
+    from indexed.core.facade_config import CoreV1SearchConfig
     from indexed.config import get_config
 
     try:

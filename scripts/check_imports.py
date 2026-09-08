@@ -13,6 +13,7 @@ Rules (top may import down; nothing imports up into cli/mcp):
   - utils       ↛ core, connectors, cli, mcp
   - protocols   ↛ core, connectors, cli, mcp
   - core/v2     ↛ core.v1   (v2 is self-contained: protocols/config/utils + 3rd-party only)
+  - cli/mcp     ↛ core.v1, core.v2   (app layer uses only the core facade)
 
 Run with ``--self-test`` to verify synthetic forbidden edges are caught.
 """
@@ -33,8 +34,14 @@ _UP = frozenset({"cli", "mcp"})
 # `indexed.config` command namespace, see simplify/3 & simplify/4). These are
 # CLI-layer files — they may import core models and cli utils — so they are
 # exempt from the config *package* purity rule. The config package modules
-# themselves stay pure.
-EXEMPT = frozenset({Path("config") / "cli.py"})
+# themselves stay pure. `cli/composition.py` is the app's composition root —
+# its entire, sole purpose (per its own module docstring) is to wire every
+# concrete v1/v2 config/connector type together by construction, so it is
+# exempt from the cli/mcp -> core.v1/core.v2 facade-only rule below the same
+# way config/cli.py is exempt from the config purity rule. Every OTHER
+# cli/mcp file must go through the facade (core.engine/.errors/.versioning/
+# .facade_config) — that's what the new deep rule now actually enforces.
+EXEMPT = frozenset({Path("config") / "cli.py", Path("cli") / "composition.py"})
 _EXEMPT_DIRS = frozenset({Path("config") / "commands"})
 
 
@@ -74,6 +81,18 @@ def _imported_subpackages(tree: ast.AST) -> list[tuple[int, str]]:
     return out
 
 
+def _is_module_or_submodule(mod: str, prefix: str) -> bool:
+    """True if ``mod`` IS ``prefix`` or a dotted sub-module of it.
+
+    A segment-boundary check, not a bare substring/prefix match: matching on
+    ``mod.startswith(prefix)`` alone would wrongly catch ``indexed.core.v10``
+    or ``indexed.core.v1_migration`` against prefix ``indexed.core.v1`` — a
+    real module name that merely starts with the same characters is not a
+    sub-module of it. The trailing ``"."`` is what makes it a dotted child.
+    """
+    return mod == prefix or mod.startswith(prefix + ".")
+
+
 def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
     """Yield (lineno, module) for imports of ``indexed.core.v1`` — forbidden from
     ``core/v2`` (v2 is a self-contained engine that may use only
@@ -82,7 +101,26 @@ def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
     cannot see the v1/v2 split; this deeper edge is checked explicitly."""
     hits: list[tuple[int, str]] = []
     for lineno, mod in _imported_modules(tree):
-        if mod == "indexed.core.v1" or mod.startswith("indexed.core.v1."):
+        if _is_module_or_submodule(mod, "indexed.core.v1"):
+            hits.append((lineno, mod))
+    return hits
+
+
+def _app_layer_imports_core_v1_v2(tree: ast.AST) -> list[tuple[int, str]]:
+    """Yield (lineno, module) for a cli/mcp file importing indexed.core.v1.*
+    or indexed.core.v2.* directly — forbidden (issue #186; .spec/tech.md "no
+    code above the facade may import core.v1.*/core.v2.* directly"). The
+    facade itself (core.engine, core.errors, core.versioning,
+    core.facade_config) stays legal — only the v1/v2-internals dotted prefix
+    is checked, using the same segment-boundary helper as _v2_imports_v1 (a
+    bare substring/prefix match would wrongly catch a future ``core.v10`` or
+    ``core.v1_migration`` module) for the same reason: the generic
+    single-level FORBIDDEN dict can't see the v1/v2 split."""
+    hits: list[tuple[int, str]] = []
+    for lineno, mod in _imported_modules(tree):
+        if _is_module_or_submodule(mod, "indexed.core.v1") or _is_module_or_submodule(
+            mod, "indexed.core.v2"
+        ):
             hits.append((lineno, mod))
     return hits
 
@@ -98,25 +136,34 @@ def check(src: Path = SRC) -> list[str]:
         if _is_exempt(rel):  # merged CLI command living inside a package dir
             continue
         source_sub = rel.parts[0]
-        forbidden = FORBIDDEN.get(source_sub)
-        if not forbidden:
-            continue
         try:
             display = path.relative_to(ROOT)
         except ValueError:  # src outside the repo (e.g. a tmp tree in tests)
             display = path.relative_to(src)
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for lineno, target in _imported_subpackages(tree):
-            if target in forbidden:
-                violations.append(
-                    f"{display}:{lineno}: {source_sub} must not import {target}"
-                )
-        # Deeper edge: core/v2 must not import core.v1 (the generic 'core' bucket
-        # rule above can't see the v1/v2 split).
+
+        forbidden = FORBIDDEN.get(source_sub)
+        if forbidden:
+            for lineno, target in _imported_subpackages(tree):
+                if target in forbidden:
+                    violations.append(
+                        f"{display}:{lineno}: {source_sub} must not import {target}"
+                    )
+
+        # Deeper edge: core/v2 must not import core.v1 (the generic 'core'
+        # bucket rule above can't see the v1/v2 split).
         if source_sub == "core" and rel.parts[1] == "v2":
             for lineno, mod in _v2_imports_v1(tree):
                 violations.append(
                     f"{display}:{lineno}: core/v2 must not import {mod} (v2 ↛ core.v1)"
+                )
+
+        # Deeper edge: cli/mcp must not import core.v1/core.v2 directly —
+        # only the facade (core.engine/.errors/.versioning/.facade_config).
+        if source_sub in _UP:
+            for lineno, mod in _app_layer_imports_core_v1_v2(tree):
+                violations.append(
+                    f"{display}:{lineno}: {source_sub} must not import {mod} directly (use the core facade)"
                 )
     return violations
 
@@ -154,9 +201,30 @@ def _self_test() -> int:
             file=sys.stderr,
         )
         return 1
+    # cli/mcp ↛ core.v1/core.v2: a synthetic mcp file importing core.v1 IS caught...
+    app_bad = ast.parse("from indexed.core.v1.config_models import MCPConfig\n")
+    if len(_app_layer_imports_core_v1_v2(app_bad)) != 1:
+        print(
+            f"SELF-TEST FAILED: mcp->core.v1 caught "
+            f"{_app_layer_imports_core_v1_v2(app_bad)}, expected 1",
+            file=sys.stderr,
+        )
+        return 1
+    # ...while importing the facade itself is NOT flagged.
+    app_ok = ast.parse(
+        "from indexed.core.engine import search\n"
+        "from indexed.core.facade_config import MCPConfig\n"
+    )
+    if _app_layer_imports_core_v1_v2(app_ok):
+        print(
+            f"SELF-TEST FAILED: legal facade import flagged: "
+            f"{_app_layer_imports_core_v1_v2(app_ok)}",
+            file=sys.stderr,
+        )
+        return 1
     print(
         f"self-test OK: forbidden edges detected for 'core' -> {sorted(caught)}; "
-        "v2 ↛ core.v1 enforced"
+        "v2 ↛ core.v1 enforced; cli/mcp ↛ core.v1/core.v2 enforced"
     )
     return 0
 

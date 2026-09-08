@@ -249,18 +249,109 @@ def test_update_engine_two_on_unmarked_raises_mismatch(tmp_path: Path) -> None:
 # --- default path (engine=None) is manifest-authoritative ---------------------
 
 
-def test_status_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
-    """A default-path op on a readable ``version:"3"`` collection fails loud
-    (never a silent v1 fallback), leaving the collection untouched."""
+def test_status_omits_unknown_marker_but_returns_the_rest(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """issue #186: one collection with an unrecognized manifest version must
+    not break status()/inspect() for every OTHER collection in the batch —
+    it should be omitted (like every other unreadable-collection case in this
+    module), not fail the whole call.
+
+    The spy records what ``collection_names`` v1 actually received — a mock
+    that ignores its argument (as an earlier version of this test did) cannot
+    tell a real omission from a leak-through: post-review fix for issue #186,
+    the ``len(groups) <= 1`` shortcut used to forward the caller's original,
+    unfiltered name list straight to v1 instead of the survivor group's own
+    names, so "future" reached v1 anyway despite being "omitted" upstream."""
     import indexed.core.engine as facade
-    from indexed.core.errors import UnknownEngineVersionError
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+    sentinel = object()
+    captured: dict = {}
+
+    def fake_status(collection_names=None, **kw):
+        captured["collection_names"] = collection_names
+        return [sentinel]
+
+    monkeypatch.setattr(v1_services, "status", fake_status)
+
+    result = facade.status(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert result == [sentinel]
+    # The proof: v1 never sees "future" — only the survivor group's own names.
+    assert captured["collection_names"] == ["legacy"]
+
+
+def test_status_two_collections_one_unknown_omits_only_the_bad_one(
+    tmp_path: Path,
+) -> None:
+    """Real end-to-end repro (no mocks): a batch with one good v1 collection
+    and one unknown-version collection must return status for ONLY the good
+    one — the unknown one must not leak through with fabricated v1 data."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+
+    result = facade.status(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert [s.name for s in result] == ["legacy"]
+
+
+def test_search_two_collections_one_unknown_surfaces_error_entry(
+    tmp_path: Path,
+) -> None:
+    """Final-review Finding #2: search() CAN carry a per-collection error (its
+    return type is a dict keyed by collection name, unlike status()/inspect()'s
+    plain lists) — so an unrecognized-version collection in a batch comes back
+    as an ``{"error": ...}`` entry, not a missing key. The other collection's
+    real result is unaffected."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+    cfgs = [
+        facade.SourceConfig(name="legacy", type="localFiles", base_url_or_path=""),
+        facade.SourceConfig(name="future", type="localFiles", base_url_or_path=""),
+    ]
+
+    result = facade.search("q", configs=cfgs, collections_path=str(tmp_path))
+
+    assert "legacy" in result
+    assert "future" in result
+    assert set(result["future"]) == {"error"}
+    assert "3" in result["future"]["error"]
+
+
+def test_inspect_two_collections_one_unknown_omits_only_the_bad_one(
+    tmp_path: Path,
+) -> None:
+    """Real end-to-end repro (no mocks): inspecting a good v1 collection plus
+    an unknown-version one must return info for ONLY the good one."""
+    import indexed.core.engine as facade
+
+    _make_collection(tmp_path, "legacy", {"version": "1"})
+    _make_collection(tmp_path, "future", {"version": "3"})
+
+    result = facade.inspect(["legacy", "future"], collections_path=str(tmp_path))
+
+    assert [info.name for info in result] == ["legacy"]
+
+
+def test_status_without_engine_on_unknown_marker_is_omitted(tmp_path: Path) -> None:
+    """issue #186: a solo readable ``version:"3"`` collection is omitted from
+    the result (never a silent v1 fallback), leaving the collection untouched
+    on disk — it no longer aborts the whole call."""
+    import indexed.core.engine as facade
 
     coll = _make_collection(tmp_path, "future", {"version": "3"})
     before = (coll / "manifest.json").read_bytes()
 
-    with pytest.raises(UnknownEngineVersionError):
-        facade.status(["future"], collections_path=str(tmp_path))
+    result = facade.status(["future"], collections_path=str(tmp_path))
 
+    assert result == []
     assert (coll / "manifest.json").read_bytes() == before
 
 
@@ -278,15 +369,22 @@ def test_clear_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
     assert coll.is_dir()
 
 
-def test_search_without_engine_on_unknown_marker_raises(tmp_path: Path) -> None:
+def test_search_without_engine_on_unknown_marker_surfaces_error_entry(
+    tmp_path: Path,
+) -> None:
+    """issue #186 + final-review Finding #2: a solo readable ``version:"3"``
+    collection no longer aborts the whole search, and — since search()'s dict
+    return type can carry a per-collection error — it comes back as an
+    ``{"error": ...}`` entry rather than vanishing with no key at all."""
     import indexed.core.engine as facade
-    from indexed.core.errors import UnknownEngineVersionError
 
     _make_collection(tmp_path, "future", {"version": "3"})
     cfg = facade.SourceConfig(name="future", type="localFiles", base_url_or_path="")
 
-    with pytest.raises(UnknownEngineVersionError):
-        facade.search("q", configs=[cfg], collections_path=str(tmp_path))
+    result = facade.search("q", configs=[cfg], collections_path=str(tmp_path))
+
+    assert set(result) == {"future"}
+    assert set(result["future"]) == {"error"}
 
 
 def test_status_without_engine_on_v1_marker_routes_to_v1(

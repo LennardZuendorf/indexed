@@ -2,6 +2,7 @@
 
 import contextlib
 import fnmatch
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
 
@@ -17,6 +18,65 @@ from indexed.cli.knowledge.commands.update import (
 from tests.unit.indexed.conftest import make_cli_context
 
 runner = CliRunner()
+
+
+def test_resolve_collections_to_update_filters_by_requested_engine(tmp_path):
+    """issue #186: `indexed update --engine v2` over a mixed v1/v2 set must
+    exclude v1 collections from the candidate list up front — not attempt
+    them and hard-abort the whole batch on the first EngineMismatchError."""
+    from indexed.cli.knowledge.commands import update_service as svc
+
+    v1_coll = tmp_path / "v1-coll"
+    v1_coll.mkdir()
+    (v1_coll / "manifest.json").write_text(
+        json.dumps({"collectionName": "v1-coll", "indexers": [{"name": "default"}]}),
+        encoding="utf-8",
+    )
+
+    v2_coll = tmp_path / "v2-coll"
+    v2_coll.mkdir()
+    (v2_coll / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "2",
+                "collectionName": "v2-coll",
+                "updatedTime": "t",
+                "lastModifiedDocumentTime": "t",
+                "numberOfDocuments": 1,
+                "numberOfChunks": 2,
+                "reader": {"type": "localFiles"},
+                "engine": {
+                    "embedding": {
+                        "provider": "local",
+                        "model": "sentence-transformers/all-MiniLM-L6-v2",
+                        "dimension": 384,
+                    },
+                    "vectorStore": "simple",
+                    "scoreKind": "cosine",
+                    "llamaIndexCoreVersion": "0.14.23",
+                    "indexedVersion": "0.0.5",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status_v1 = SimpleNamespace(
+        name="v1-coll", source_type="localFiles", indexers=["default"]
+    )
+    status_v2 = SimpleNamespace(
+        name="v2-coll", source_type="localFiles", indexers=["default"]
+    )
+    cmd = SimpleNamespace(
+        svc_status=lambda names=None, **kw: [status_v1, status_v2],
+        console=SimpleNamespace(print=lambda *a, **kw: None),
+    )
+
+    result = svc.resolve_collections_to_update(
+        cmd, collection=None, collections_path=str(tmp_path), simple=True, engine="2"
+    )
+
+    assert result == ["v2-coll"]
 
 
 class TestUpdateEngineRouting:

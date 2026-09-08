@@ -81,7 +81,7 @@ def get_config(
     # can discover it. Every other key keeps the plain not-found path.
     is_default = False
     if value is None and key == "core.engine":
-        from indexed.core.v1.config_models import CoreEngineConfig
+        from indexed.core.facade_config import CoreEngineConfig
 
         # Built-in field default ("1") — no bind(), no whole-config
         # validation. `config get` on a single unset key must not fail just

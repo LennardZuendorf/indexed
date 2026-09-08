@@ -250,7 +250,7 @@ def __getattr__(name: str) -> Any:
 
         return getattr(_create_commands, name)
     if name == "DEFAULT_INDEXER":
-        from indexed.core.v1.constants import DEFAULT_INDEXER
+        from indexed.core.facade_config import DEFAULT_INDEXER
 
         return DEFAULT_INDEXER
     if name == "SourceConfig":

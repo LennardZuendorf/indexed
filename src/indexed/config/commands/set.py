@@ -59,6 +59,22 @@ def set_config(
     config = get_config()
     coerced = _coerce_value(value)
 
+    if key == "core.engine":
+        # R3: validate/normalize through the exact same normalizer the
+        # engine-selector resolution path (--engine/env) uses, so all three
+        # surfaces report a byte-identical clean message on a bad value
+        # instead of a raw multi-line pydantic dump. Runs BEFORE --dry-run
+        # (issue #186) so a preview of an invalid value is rejected too.
+        from indexed.cli import composition
+        from indexed.config.errors import ConfigurationError
+
+        try:
+            coerced = composition.normalize_engine_selector(str(value))
+        except ConfigurationError as exc:
+            console.print()
+            print_error(str(exc))
+            raise typer.Exit(1)
+
     # Get old value if exists
     try:
         old_raw = config.load_raw() or {}
@@ -89,21 +105,6 @@ def set_config(
         )
         console.print()
         return
-
-    if key == "core.engine":
-        # R3: validate/normalize through the exact same normalizer the
-        # engine-selector resolution path (--engine/env) uses, so all three
-        # surfaces report a byte-identical clean message on a bad value
-        # instead of a raw multi-line pydantic dump.
-        from indexed.cli import composition
-        from indexed.config.errors import ConfigurationError
-
-        try:
-            coerced = composition.normalize_engine_selector(str(value))
-        except ConfigurationError as exc:
-            console.print()
-            print_error(str(exc))
-            raise typer.Exit(1)
 
     is_secret = _is_sensitive_key(key)
     # Secrets are written to .env as-typed (no type coercion, e.g. a purely

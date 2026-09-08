@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Lessons Learned
@@ -926,3 +926,74 @@ with `git add`/`git status`, since that's what CI actually runs.
   than adding a new mechanism — check for dormancy on ANY subagent that ends
   its turn expecting to be woken by something this environment doesn't
   deliver to subagents, not just the backgrounded-pytest case already named.
+
+## Core v2 engine routing fixes (issue #186, 2026-09-06)
+
+- **A resolver's bare `except Exception: return Default()` conflates two
+  failure modes that need opposite handling.** `resolve_engine_selector`
+  already established the split; `core/v2/_common.py`'s three config
+  resolvers (`resolve_embedding_config`/`resolve_search_config`/
+  `resolve_rerank_config`) did not — an out-of-range value that `config set`
+  accepts (it only warns, e.g. `core.v2.search.score_threshold = 5.0`) fails
+  `ConfigService.bind()`'s pydantic validation and surfaces as
+  `ConfigValidationError`, but the bare `except Exception` swallowed it and
+  silently returned the default on every search, with zero signal that the
+  configured value was never applied. Only a genuinely unregistered spec
+  (`Provider.get()`'s plain `KeyError`, a legitimate case for direct/test
+  callers that never called `register_app_config`) should degrade to the
+  default. Fix: catch `ConfigValidationError` first and `raise`, keep the
+  broad `except Exception: return Default()` beneath it for the true
+  "can't read" case. Any resolver shaped `try: ... except Exception: return
+  Default()` is a candidate for this same split — read fine but invalid
+  must fail loud; can't read/unregistered may still degrade.
+- **A verbatim-duplicated helper is best fixed by extraction, not by
+  patching one copy.** `_unified_relevance`/`_HIGHER_IS_BETTER` existed
+  identically in both `mcp/formatting.py` and
+  `cli/knowledge/commands/search_render.py`. By the time the actual bug
+  (an unbounded rerank logit bypassing the `[0,1]` cosine scale) was found,
+  the two copies' docstrings had already drifted apart independently —
+  different comment style, one citing a PR review the other didn't — even
+  though the arithmetic itself was still byte-identical, proof a duplicated
+  pair starts drifting before anyone notices, not only after. Since the
+  logic was pure arithmetic with no `core.v1`/`core.v2` dependency, the fix
+  extracted it to a new leaf module (`utils/relevance.py`) that both `cli`
+  and `mcp` import, rather than fixing the bug in one copy and leaving the
+  other to diverge further. When duplicated logic has no layer-specific
+  dependency, prefer extraction to a shared leaf module over a matched pair
+  of edits.
+
+## Final-review fix pass on issue #186 (2026-09-07)
+
+- **"Fail loud" and "re-raise on `ConfigValidationError`" are not the same
+  contract — a re-raise needs its own scope check too.** The 2026-09-06 fix
+  above (catch `ConfigValidationError` first and `raise`) was itself too
+  broad: `ConfigService.bind()` validates the WHOLE registered config in one
+  pass, so a bad `[mcp]` value made all three `core/v2/_common.py` resolvers
+  raise even though none of them touch `[mcp]`. The narrower fix checks
+  `exc.path` against the resolver's OWN registered path (`"core.v2.
+  embedding"`/`"core.v2.search"`/`"core.v2.rerank"`) before re-raising, and
+  falls through to the default for anyone else's section — matching the
+  existing `config get`-on-a-single-key precedent
+  (`config/commands/get.py`). The lesson generalizes: whenever a re-raise is
+  keyed off an exception TYPE alone but the underlying validator can fail for
+  reasons unrelated to the caller's own concern, key the re-raise off the
+  exception's own identifying field too, not just its type.
+- **The old "an unknown version always fails loud" contract (2026-07-19
+  entry above) has SPLIT, not been overturned.** `create`/`update`/`clear`
+  (via `_resolve_existing_engine`) still fail loud on an unrecognized
+  manifest `version` — that guidance still applies to them unchanged. But
+  `search`/`status`/`inspect` (via `_group_names_by_engine`, added
+  2026-09-06 for this same issue) now OMIT an unrecognized-version
+  collection from its batch instead of aborting the call. Read-path
+  batch ops and mutating single/multi-collection ops earned different
+  contracts here — check which family an op belongs to before assuming
+  "fails loud" still holds branch-wide.
+- **A dict-returning batch op should surface a per-item failure as data, a
+  list-returning one can't.** `search()` returns `Dict[str, Any]` keyed by
+  collection name, so an omitted collection is now merged back in as
+  `{"error": <message>}` — the same convention already used by
+  `core/v2/retrieval.py` and v1's `search_service.py` for a per-collection
+  failure inside a batch. `status()`/`inspect()` return plain `List[...]`
+  with no per-item slot to carry that in, so they still purely omit (logged
+  warning only) — this is a real, deliberate asymmetry the return type
+  forces, not oversight.

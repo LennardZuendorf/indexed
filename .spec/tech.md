@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-08-13
+updated: 2026-09-07
 ---
 
 # Tech Spec: indexed
@@ -446,11 +446,31 @@ concrete types for wiring.
 engine. For existing collections the on-disk manifest `version` marker is **authoritative**
 — an explicit selector may only confirm it or fail with `EngineMismatchError`; selectors
 (flag > env > config > default) choose the engine for **new** collections only. A collection
-with no `version` key is v1; an unknown version fails loud (never a silent v1 fallback). No
-code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
-facade-resolved symbol in tests, patch the facade attribute). (v2 ships over a **new
-version-marked on-disk format**, not v1's — the earlier "same format" swap premise was
-superseded by core-v2 ADR-1; v1's format stays frozen.)
+with no `version` key is v1. The unrecognized-version contract now SPLITS by op, per the
+final review of issue #186:
+
+- `create` / `update` / `clear` (via `_resolve_existing_engine`) still **fail loud** —
+  `UnknownEngineVersionError`, never a silent v1 fallback, collection untouched.
+- `search` / `status` / `inspect` (via `_group_names_by_engine`) instead **omit** the
+  unrecognized-version collection from its batch (a warning is logged) rather than
+  aborting the whole call. `search()`'s return type is a dict keyed by collection name, so
+  it CAN and does carry the omission back as a per-collection `{"error": <message>}` entry
+  (the same convention `core/v2/retrieval.py` and v1's `search_service.py` already use for
+  a per-collection failure inside a batch); `status()`/`inspect()` return plain lists with
+  no per-item error slot, so they purely omit it with a logged warning — unchanged.
+
+No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
+facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
+`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+convention. `src/indexed/core/facade_config.py` is part of this facade surface: it holds
+`CoreEngineConfig` ([core] engine, the default-engine selector for NEW collections) plus 7
+lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+`core.v1.*`/`core.v2.*` for those either. `config/commands/` is a separate, pre-existing
+exemption in `check_imports.py` (`_EXEMPT_DIRS`) — same composition-adjacent rationale as
+`config/cli.py` and `cli/composition.py` — so a file there (e.g. `config/commands/
+_helpers.py`) importing `core.v1.config_models` directly is expected, not a facade gap.
+(v2 ships over a **new version-marked on-disk format**, not v1's — the earlier "same
+format" swap premise was superseded by core-v2 ADR-1; v1's format stays frozen.)
 
 **`src/indexed/cli/composition.py` is the single wiring site** — it folds in the
 removed `bootstrap.py` + `runtime.py` + `connector_wiring.py`. It:
