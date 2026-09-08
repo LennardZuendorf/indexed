@@ -65,7 +65,15 @@ SRC_LOC_MAX = 27_800
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 42_800
+TEST_LOC_MAX = 43_400
+# Raised from 42_800 by merging main (core-v2-engine-routing-fixes, issue #186,
+# PR #199) into the github-connector branch (PR #164/#200): main's own test
+# growth (`tests/unit/indexed/utils/test_relevance.py` + coverage for the
+# `_common.py` resolver re-raise scoping and the search/status/inspect
+# unknown-version-omission split) stayed under main's own ceiling in
+# isolation, but combined with this branch's already-bumped total it exceeds
+# it — neither branch is stealth regrowth on its own, the merge just sums two
+# legitimate deltas; ceiling = measured (43_183) + headroom.
 # Raised from 40_600 by github-connector (PR #164)'s tests: the six-file
 # `tests/unit/indexed/connectors/github/` suite (schema/auth/reader/projects/
 # converter/connector), the `TestCreateGithub` CLI coverage, the github rows in
