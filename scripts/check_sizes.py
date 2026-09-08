@@ -17,7 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 27_800
+SRC_LOC_MAX = 28_100
+# Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
+# no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
+# skips fetching comment text, 5xx retry handling, an actionable error on a
+# missing Projects v2 board, and repo-selector/graphql_url validation —
+# genuine correctness/security fixes from CodeRabbit review, not stealth
+# growth; ceiling = measured (27_897) + headroom.
 # Raised from 26_450 by github-connector (PR #164): the GitHub Projects/Issues
 # connector — `connectors/github/` (GraphQL reader, converter, schema, auth,
 # queries, connector wiring), the `index create github` subcommand, and the
