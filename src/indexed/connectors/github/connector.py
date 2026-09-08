@@ -30,7 +30,9 @@ _OPTIONAL_OVERLAYS = (
 )
 
 
-def _with_safety_buffer(modified_since: str | None, buffer_seconds: int = 60) -> str | None:
+def _with_safety_buffer(
+    modified_since: str | None, buffer_seconds: int = 60
+) -> str | None:
     """Shift a stored cutoff back by a safety buffer to avoid missing items
     updated mid-crawl (GitHub's updatedAt cursor ordering can otherwise skip
     an item modified during the fetch window)."""

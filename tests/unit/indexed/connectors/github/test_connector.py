@@ -92,7 +92,9 @@ def _config_service_stub(config: GitHubConfig) -> MagicMock:
 
 def test_from_manifest_overlays_repos_and_builds_connector():
     manifest = _FakeManifest({"repos": ["octo/hello"], "state": "open"}, None)
-    config_service = _config_service_stub(GitHubConfig(repos=["octo/hello"], token="ghp_x", state="open"))
+    config_service = _config_service_stub(
+        GitHubConfig(repos=["octo/hello"], token="ghp_x", state="open")
+    )
 
     run = GitHubConnector.from_manifest(manifest, config_service, storage_path="/tmp/x")
 
@@ -111,7 +113,9 @@ def test_from_manifest_missing_repos_and_project_raises():
 
 def test_from_manifest_applies_modified_since_with_safety_buffer():
     manifest = _FakeManifest({"repos": ["octo/hello"]}, "2026-06-20T10:01:00Z")
-    config_service = _config_service_stub(GitHubConfig(repos=["octo/hello"], token="ghp_x"))
+    config_service = _config_service_stub(
+        GitHubConfig(repos=["octo/hello"], token="ghp_x")
+    )
 
     GitHubConnector.from_manifest(manifest, config_service, storage_path="/tmp/x")
 
@@ -121,7 +125,9 @@ def test_from_manifest_applies_modified_since_with_safety_buffer():
 
 def test_from_manifest_no_prior_modified_time_skips_overlay():
     manifest = _FakeManifest({"repos": ["octo/hello"]}, None)
-    config_service = _config_service_stub(GitHubConfig(repos=["octo/hello"], token="ghp_x"))
+    config_service = _config_service_stub(
+        GitHubConfig(repos=["octo/hello"], token="ghp_x")
+    )
 
     GitHubConnector.from_manifest(manifest, config_service, storage_path="/tmp/x")
 

@@ -37,7 +37,13 @@ def test_yields_one_document_with_header_and_body_chunks():
     fake_parsed = MagicMock()
     fake_parsed.chunks = [_fake_parsed_chunk("The retry loop sometimes doubles up.")]
 
-    with patch.object(GitHubDocumentConverter, "_parser", new_callable=lambda: property(lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed)))):
+    with patch.object(
+        GitHubDocumentConverter,
+        "_parser",
+        new_callable=lambda: property(
+            lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed))
+        ),
+    ):
         (result,) = list(converter.convert(_document()))
 
     assert result["id"] == "octo/hello#7"
@@ -53,7 +59,13 @@ def test_comment_chunks_include_author():
     fake_parsed = MagicMock()
     fake_parsed.chunks = [_fake_parsed_chunk("body text")]
 
-    with patch.object(GitHubDocumentConverter, "_parser", new_callable=lambda: property(lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed)))):
+    with patch.object(
+        GitHubDocumentConverter,
+        "_parser",
+        new_callable=lambda: property(
+            lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed))
+        ),
+    ):
         (result,) = list(converter.convert(_document()))
 
     comment_chunk = result["chunks"][-1]
@@ -68,7 +80,13 @@ def test_project_fields_attached_to_metadata():
     fake_parsed.chunks = [_fake_parsed_chunk("body text")]
 
     doc = _document(project_fields={"Status": "In Progress"})
-    with patch.object(GitHubDocumentConverter, "_parser", new_callable=lambda: property(lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed)))):
+    with patch.object(
+        GitHubDocumentConverter,
+        "_parser",
+        new_callable=lambda: property(
+            lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed))
+        ),
+    ):
         (result,) = list(converter.convert(doc))
 
     assert result["chunks"][0]["metadata"]["projectFields"] == {"Status": "In Progress"}
@@ -77,7 +95,15 @@ def test_project_fields_attached_to_metadata():
 def test_parse_failure_falls_back_to_raw_body():
     converter = GitHubDocumentConverter()
 
-    with patch.object(GitHubDocumentConverter, "_parser", new_callable=lambda: property(lambda self: MagicMock(parse_bytes=MagicMock(side_effect=RuntimeError("boom"))))):
+    with patch.object(
+        GitHubDocumentConverter,
+        "_parser",
+        new_callable=lambda: property(
+            lambda self: MagicMock(
+                parse_bytes=MagicMock(side_effect=RuntimeError("boom"))
+            )
+        ),
+    ):
         (result,) = list(converter.convert(_document()))
 
     assert any("doubles up" in c["indexedData"] for c in result["chunks"])
@@ -95,8 +121,16 @@ def test_draft_item_without_url_still_converts():
     fake_parsed = MagicMock()
     fake_parsed.chunks = [_fake_parsed_chunk("draft body")]
 
-    doc = _document(id="project:PVTI_2", url="", kind="draft", state="DRAFT", comments=[])
-    with patch.object(GitHubDocumentConverter, "_parser", new_callable=lambda: property(lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed)))):
+    doc = _document(
+        id="project:PVTI_2", url="", kind="draft", state="DRAFT", comments=[]
+    )
+    with patch.object(
+        GitHubDocumentConverter,
+        "_parser",
+        new_callable=lambda: property(
+            lambda self: MagicMock(parse_bytes=MagicMock(return_value=fake_parsed))
+        ),
+    ):
         (result,) = list(converter.convert(doc))
 
     assert result["url"] == ""
