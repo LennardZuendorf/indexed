@@ -212,11 +212,16 @@ class GitHubGraphQLReader:
         documents: list[dict] = []
         after: str | None = None
         states = self._graphql_states()
+        query = (
+            queries.ISSUES_QUERY
+            if self._include_comments
+            else queries.ISSUES_QUERY_NO_COMMENTS
+        )
         while True:
             data = await self._post_graphql(
                 client,
                 semaphore,
-                queries.ISSUES_QUERY,
+                query,
                 {
                     "owner": owner,
                     "name": name,
@@ -279,11 +284,16 @@ class GitHubGraphQLReader:
         documents: list[dict] = []
         after: str | None = None
         states = self._graphql_pr_states()
+        query = (
+            queries.PULL_REQUESTS_QUERY
+            if self._include_comments
+            else queries.PULL_REQUESTS_QUERY_NO_COMMENTS
+        )
         while True:
             data = await self._post_graphql(
                 client,
                 semaphore,
-                queries.PULL_REQUESTS_QUERY,
+                query,
                 {
                     "owner": owner,
                     "name": name,
@@ -329,9 +339,18 @@ class GitHubGraphQLReader:
                 raise
             probe = {"organization": None}
         is_org = probe.get("organization") is not None
-        query = (
-            queries.PROJECT_ITEMS_QUERY if is_org else queries.PROJECT_ITEMS_QUERY_USER
-        )
+        if self._include_comments:
+            query = (
+                queries.PROJECT_ITEMS_QUERY
+                if is_org
+                else queries.PROJECT_ITEMS_QUERY_USER
+            )
+        else:
+            query = (
+                queries.PROJECT_ITEMS_QUERY_NO_COMMENTS
+                if is_org
+                else queries.PROJECT_ITEMS_QUERY_USER_NO_COMMENTS
+            )
         root_key = "organization" if is_org else "user"
 
         documents: list[dict] = []
@@ -348,7 +367,14 @@ class GitHubGraphQLReader:
                     "after": after,
                 },
             )
-            items = data[root_key]["projectV2"]["items"]
+            project_data = (data.get(root_key) or {}).get("projectV2")
+            if project_data is None:
+                raise GitHubGraphQLError(
+                    404,
+                    f"Projects v2 board {login}/{number} was not found or is not "
+                    "accessible with the configured token.",
+                )
+            items = project_data["items"]
             for node in items["nodes"]:
                 doc = self._project_item_to_document(node)
                 if doc is not None:
@@ -436,6 +462,18 @@ class GitHubGraphQLReader:
                         "permission denied (insufficient token scope, SAML "
                         "enforcement, or repo access denied) — not a rate limit",
                     )
+                if response.status_code >= 500:
+                    # A transient upstream error shouldn't abort the whole
+                    # crawl — retry it the same way as a rate limit.
+                    last_error = GitHubGraphQLError(
+                        response.status_code, "server error"
+                    )
+                    logger.warning(
+                        f"GitHub GraphQL server error (HTTP {response.status_code}), "
+                        f"retrying (attempt {attempt + 1}/{self._number_of_retries})"
+                    )
+                    await self._backoff(response, attempt)
+                    continue
                 response.raise_for_status()
                 payload = response.json()
                 errors = payload.get("errors")

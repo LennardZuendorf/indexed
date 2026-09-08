@@ -142,6 +142,70 @@ def test_rate_limit_exhausts_retries_and_raises():
             list(_reader(number_of_retries=2).read_all_documents())
 
 
+def test_server_error_retries_then_succeeds():
+    page = _issues_page([_issue_node(1, "First")], has_next=False, end_cursor=None)
+    attempts = {"n": 0}
+
+    def router(body):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return FakeResponse(503, {}, headers={})
+        return FakeResponse(200, page)
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        docs = list(_reader().read_all_documents())
+
+    assert attempts["n"] == 3
+    assert len(docs) == 1
+
+
+def test_server_error_exhausts_retries_and_raises_github_error():
+    def router(body):
+        return FakeResponse(502, {}, headers={})
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        with pytest.raises(GitHubGraphQLError):
+            list(_reader(number_of_retries=2).read_all_documents())
+
+
+def test_include_comments_false_uses_no_comments_query():
+    captured = {}
+
+    def router(body):
+        captured["query"] = body["query"]
+        return FakeResponse(200, _issues_page([], has_next=False, end_cursor=None))
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        list(_reader(include_comments=False).read_all_documents())
+
+    assert "comments" not in captured["query"]
+
+
+def test_include_comments_true_uses_comments_query():
+    captured = {}
+
+    def router(body):
+        captured["query"] = body["query"]
+        return FakeResponse(200, _issues_page([], has_next=False, end_cursor=None))
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        list(_reader(include_comments=True).read_all_documents())
+
+    assert "comments" in captured["query"]
+
+
 def test_labels_and_state_filter_passed_as_variables():
     captured = {}
 

@@ -49,6 +49,12 @@ def test_resolve_graphql_url_explicit_override_wins():
     assert cfg.resolve_graphql_url() == "https://custom/graphql"
 
 
+def test_resolve_graphql_url_rejects_non_https_override():
+    cfg = GitHubConfig(repos=["octo/hello"], graphql_url="http://insecure/graphql")
+    with pytest.raises(ValueError, match="HTTPS"):
+        cfg.resolve_graphql_url()
+
+
 def test_is_cloud():
     assert GitHubConfig(repos=["octo/hello"]).is_cloud() is True
     assert (
@@ -64,6 +70,12 @@ def test_parsed_repos():
 
 def test_parsed_repos_rejects_bad_selector():
     cfg = GitHubConfig(repos=["not-a-repo"])
+    with pytest.raises(ValueError, match="owner/repo"):
+        cfg.parsed_repos()
+
+
+def test_parsed_repos_rejects_extra_path_segments():
+    cfg = GitHubConfig(repos=["octo/hello/extra"])
     with pytest.raises(ValueError, match="owner/repo"):
         cfg.parsed_repos()
 

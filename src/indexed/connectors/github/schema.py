@@ -47,8 +47,17 @@ class GitHubConfig(BaseModel):
             - api.github.com/graphql for github.com
             - api.<host>/graphql for .ghe.com data residency
             - <host>/api/graphql for GitHub Enterprise Server
+
+        Raises:
+            ValueError: If an explicit graphql_url is not HTTPS — the bearer
+                token would otherwise be sent in cleartext.
         """
         if self.graphql_url:
+            if not self.graphql_url.startswith("https://"):
+                raise ValueError(
+                    f"graphql_url must use HTTPS; got {self.graphql_url!r}. "
+                    "A non-HTTPS endpoint would send the access token in cleartext."
+                )
             return self.graphql_url
         if self.host == GITHUB_CLOUD_HOST:
             return "https://api.github.com/graphql"
@@ -68,8 +77,8 @@ class GitHubConfig(BaseModel):
         """
         result: list[tuple[str, str]] = []
         for entry in self.repos:
-            owner, _, name = entry.partition("/")
-            if not owner or not name:
+            owner, separator, name = entry.partition("/")
+            if separator != "/" or not owner or not name or "/" in name:
                 raise ValueError(
                     f"Invalid repo selector {entry!r}; expected 'owner/repo'"
                 )

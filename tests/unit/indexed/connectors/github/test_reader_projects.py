@@ -521,6 +521,24 @@ def test_probe_error_other_than_org_not_found_still_raises():
             )
 
 
+def test_missing_project_raises_actionable_error_not_typeerror():
+    """The org exists (probe succeeds) but the project number doesn't — GitHub
+    returns `projectV2: null` with no errors array. Must raise a clear
+    GitHubGraphQLError naming the selector, not a bare TypeError."""
+
+    def router(body):
+        if body["variables"].get("first") == 1:
+            return FakeResponse(200, _project_probe_org())
+        return FakeResponse(200, {"data": {"organization": {"projectV2": None}}})
+
+    with patch(
+        "indexed.connectors.github.github_graphql_reader.httpx.AsyncClient",
+        new=lambda **kw: FakeAsyncClient(router, **kw),
+    ):
+        with pytest.raises(GitHubGraphQLError, match="octo/12"):
+            list(_reader(repos=[], include_pull_requests=False).read_all_documents())
+
+
 def test_project_item_with_null_content_is_skipped():
     redacted_item = {"id": "PVTI_4", "fieldValues": {"nodes": []}, "content": None}
 
