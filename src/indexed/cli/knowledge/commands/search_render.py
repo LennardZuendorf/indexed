@@ -26,28 +26,7 @@ from ...utils.components import (
     print_warning,
 )
 from ...utils.components.theme import get_detail_card_width
-
-# Score kinds (v2's per-collection ``scoreKind`` field) for which a HIGHER
-# score is a BETTER match. v1 results carry no ``scoreKind`` key at all, so
-# ``dict.get`` defaults a v1 collection out of this set — its sort key stays
-# exactly the raw ascending score, byte-identical to before (R6). "rerank" is
-# a cross-encoder relevance (also higher-is-better) reported when
-# ``[core.v2.rerank] enabled=true`` replaces the cosine score (PR #158 review).
-_HIGHER_IS_BETTER = frozenset({"cosine", "rerank"})
-
-
-def _unified_relevance(raw_score: float, higher_is_better: bool) -> float:
-    """Map a raw per-engine score onto one comparable measure — cosine (R11).
-
-    v2 already reports cosine similarity (``higher_is_better``) so its raw score
-    IS the relevance; v1 reports a squared-L2 distance ``d²`` over
-    unit-normalized vectors, so ``sim = 1 - d²/2`` recovers the cosine exactly.
-    Pure arithmetic (mirrors ``mcp/formatting`` so CLI and MCP agree) — the
-    app-layer never imports ``core.v2`` for this.
-    """
-    if higher_is_better:
-        return raw_score
-    return 1.0 - raw_score / 2.0
+from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
 class ChunkInfo(TypedDict):
@@ -144,7 +123,7 @@ def format_search_results(
         # nor rendered as a trustworthy scale label — it's dropped to the same
         # "absent" state as a v1 collection instead.
         raw_score_kind = collection_results.get("scoreKind")
-        is_known_score_kind = raw_score_kind in _HIGHER_IS_BETTER
+        is_known_score_kind = raw_score_kind in HIGHER_IS_BETTER
         higher_is_better_by_collection[collection_name] = is_known_score_kind
         if is_known_score_kind:
             score_kind_by_collection[collection_name] = raw_score_kind
@@ -193,8 +172,8 @@ def format_search_results(
     if any_v2:
 
         def _sort_key(x: ChunkInfo) -> float:
-            hib = higher_is_better_by_collection.get(x["collection"], False)
-            return -_unified_relevance(x["chunk"].get("score", 999), hib)
+            score_kind = score_kind_by_collection.get(x["collection"], "")
+            return -unified_relevance(x["chunk"].get("score", 999), score_kind)
     else:
 
         def _sort_key(x: ChunkInfo) -> float:
@@ -220,7 +199,6 @@ def format_search_results(
     _show_top_result_split_cards(
         top,
         show_relevance=any_v2,
-        higher_is_better_by_collection=higher_is_better_by_collection,
         score_kind_by_collection=score_kind_by_collection,
     )
 
@@ -245,7 +223,6 @@ def format_search_results(
             _show_compact_match(
                 chunk_info,
                 show_relevance=any_v2,
-                higher_is_better_by_collection=higher_is_better_by_collection,
                 score_kind_by_collection=score_kind_by_collection,
             )
 
@@ -262,7 +239,6 @@ def format_search_results(
 def _show_top_result_split_cards(
     chunk_info: ChunkInfo,
     show_relevance: bool = False,
-    higher_is_better_by_collection: Dict[str, bool] | None = None,
     score_kind_by_collection: Dict[str, str] | None = None,
 ) -> None:
     """Show the top result chunk in two cards: Meta and Excerpt."""
@@ -295,8 +271,7 @@ def _show_top_result_split_cards(
     # (R6), since ``show_relevance`` is only True when a v2 collection is
     # present in the result set.
     if show_relevance and isinstance(score, (int, float)):
-        hib = (higher_is_better_by_collection or {}).get(collection, False)
-        rel = _unified_relevance(float(score), hib)
+        rel = unified_relevance(float(score), score_kind or "")
         meta_rows.append(("Relevance", f"{rel:.4f}"))
 
     meta_rows.append(("Chunk", str(chunk_index)))
@@ -342,7 +317,6 @@ def _show_top_result_split_cards(
 def _show_compact_match(
     chunk_info: ChunkInfo,
     show_relevance: bool = False,
-    higher_is_better_by_collection: Dict[str, bool] | None = None,
     score_kind_by_collection: Dict[str, str] | None = None,
 ) -> None:
     """Show a compact single-line match."""
@@ -366,8 +340,7 @@ def _show_compact_match(
     # the top card (M2/R11) — v1-only view stays byte-identical (R6).
     rel_suffix = ""
     if show_relevance and isinstance(score, (int, float)):
-        hib = (higher_is_better_by_collection or {}).get(collection, False)
-        rel = _unified_relevance(float(score), hib)
+        rel = unified_relevance(float(score), score_kind or "")
         rel_suffix = f" / rel {rel:.4f}"
 
     # Format: collection / document / part / match_id
@@ -460,7 +433,7 @@ def format_search_results_compact(
         # unrecognized kind (malformed/future manifest) is treated the same
         # way — never rendered as a trustworthy label.
         raw_score_kind = collection_results.get("scoreKind")
-        score_kind = raw_score_kind if raw_score_kind in _HIGHER_IS_BETTER else None
+        score_kind = raw_score_kind if raw_score_kind in HIGHER_IS_BETTER else None
 
         # Collection header — collection_name/doc_id are content-derived, so
         # escape them before entering markup (foundation/6c bug E2).

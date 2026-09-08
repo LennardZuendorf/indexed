@@ -243,7 +243,12 @@ class UpdateOutcome:
 
 
 def resolve_collections_to_update(
-    cmd: Any, *, collection: str | None, collections_path: str, simple: bool
+    cmd: Any,
+    *,
+    collection: str | None,
+    collections_path: str,
+    simple: bool,
+    engine: str | None = None,
 ) -> list[str] | None:
     """Resolve which collections to update.
 
@@ -251,6 +256,14 @@ def resolve_collections_to_update(
     do (the "no collections" message was already emitted — the command should
     return cleanly). Raises ``typer.Exit(1)`` when a *named* collection does not
     exist.
+
+    An explicit ``engine`` (bulk path only, i.e. ``collection is None``)
+    filters the candidate list down to that engine's collections BEFORE the
+    update loop runs, so a mismatched collection is silently out of scope
+    instead of hard-aborting the whole batch (issue #186). A named single
+    ``collection`` keeps today's behavior — an explicit mismatch still raises
+    ``EngineMismatchError`` from inside the loop, which is the more
+    informative outcome for a single targeted request.
     """
     if collection is None:
         all_statuses = cmd.svc_status(collections_path=collections_path)
@@ -267,6 +280,26 @@ def resolve_collections_to_update(
             return None
 
         collections = [s.name for s in all_statuses]
+
+        if engine is not None:
+            from indexed.core.engine import engine_descriptors
+
+            versions = {
+                d.name: d.engine_version
+                for d in engine_descriptors(
+                    collections, collections_path=collections_path
+                )
+            }
+            collections = [n for n in collections if versions.get(n) == engine]
+            if not collections:
+                if simple:
+                    print_json({"error": f"No engine {engine!r} collections found"})
+                    return None
+                cmd.console.print(
+                    f"\n[{get_dim_style()}]No engine {engine!r} collections to update[/{get_dim_style()}]"
+                )
+                return None
+
         if not simple and len(collections) > 1:
             # Collection names are user-controlled — escape the assembled
             # display string before it enters this markup f-string.

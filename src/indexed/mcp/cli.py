@@ -155,7 +155,7 @@ def run_impl(
     show_banner: bool = True,
 ) -> None:
     """Run the MCP server using FastMCP Python API directly."""
-    from indexed.core.v1.config_models import MCPConfig
+    from indexed.core.facade_config import MCPConfig
     from indexed.cli.composition import register_app_config
     from indexed.config import get_config
 

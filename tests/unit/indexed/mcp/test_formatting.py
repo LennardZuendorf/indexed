@@ -145,6 +145,42 @@ def test_mixed_v1_v2_ranks_on_one_comparable_relevance() -> None:
     assert by_id["v2-strong"]["score_kind"] == "cosine"
 
 
+def test_reranked_collection_reports_real_score_kind_not_cosine() -> None:
+    """issue #186: score_kind was derived from higher_is_better (a bool),
+    collapsing "rerank" into "cosine" — an LLM consumer needs the real kind
+    to interpret the score correctly."""
+    raw = {
+        "v2-coll": {
+            "collectionName": "v2-coll",
+            "scoreKind": "rerank",
+            "results": [_chunk("d1", 6.27)],
+        }
+    }
+    out = format_search_results_for_llm(raw, "q")
+    assert out["results"][0]["score_kind"] == "rerank"
+
+
+def test_rerank_score_does_not_bypass_cosine_bounds_in_mixed_sort() -> None:
+    """issue #186: an unbounded rerank logit must not sit outside the [0,1]
+    range a cosine/l2_squared relevance occupies once mixed together."""
+    raw = {
+        "v2-cosine": {
+            "collectionName": "v2-cosine",
+            "scoreKind": "cosine",
+            "results": [_chunk("strong-cosine", 0.9)],
+        },
+        "v2-rerank": {
+            "collectionName": "v2-rerank",
+            "scoreKind": "rerank",
+            "results": [_chunk("rerank-hit", 6.27)],
+        },
+    }
+    out = format_search_results_for_llm(raw, "q")
+    by_id = {r["document_id"]: r for r in out["results"]}
+    assert 0.0 < by_id["rerank-hit"]["relevance"] < 1.0
+    assert by_id["strong-cosine"]["relevance"] == 0.9
+
+
 def test_v1_only_output_is_byte_identical_to_pre_feature() -> None:
     """R6 guard: a v1-only view (no scoreKind anywhere) must produce the EXACT
     pre-feature output — ascending raw-score order, ranks 1..N, and NO

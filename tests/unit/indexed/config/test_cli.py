@@ -746,6 +746,23 @@ class TestSetConfig:
         assert "Invalid engine 'v3'; expected one of: 1, 2, v1, v2" in result.stdout
         mock_config.set_value.assert_not_called()
 
+    @patch("indexed.config.commands.set.get_config")
+    def test_set_config_engine_rejects_bad_value_even_with_dry_run(
+        self, mock_config_service
+    ):
+        """issue #186: `config set core.engine v3 --dry-run` must reject the
+        value up front — today the CoreEngineConfig check sits after the
+        dry-run early-return, so an invalid preview looks accepted."""
+        mock_config = Mock()
+        mock_config.load_raw.return_value = {}
+        mock_config_service.return_value = mock_config
+
+        from indexed.cli.app import app
+
+        result = runner.invoke(app, ["config", "set", "core.engine", "v3", "--dry-run"])
+        assert result.exit_code == 1
+        assert "Preview" not in result.stdout
+
 
 class TestValidate:
     """Test validate command."""

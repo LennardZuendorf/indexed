@@ -504,6 +504,46 @@ def test_rerank_false_overrides_enabled_config(
     assert res["c1"]["scoreKind"] != "rerank"
 
 
+def test_rerank_never_writes_to_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """issue #186: enabling rerank must never write to stdout — it corrupts
+    --simple-output JSON parsing even with stderr separately redirected."""
+    import io
+
+    cols = tmp_path / "cols"
+    _build(cols, "c1", [make_doc("d1", ["penguin migration"])])
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="x", top_n=3),
+    )
+
+    class _NoisyRerank:
+        def __init__(self, *, model: str, top_n: int) -> None:
+            print("a third-party library writes a warning directly to stdout")
+            self._top_n = top_n
+
+        def postprocess_nodes(self, nodes, *, query_str=None, query_bundle=None):
+            return nodes[: self._top_n]
+
+    import llama_index.core.postprocessor as pp
+
+    monkeypatch.setattr(pp, "SentenceTransformerRerank", _NoisyRerank)
+
+    captured = io.StringIO()
+    import contextlib
+
+    with mock_embedding(embed_dim=8):
+        with contextlib.redirect_stdout(captured):
+            retrieval.search(
+                "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+            )
+
+    assert captured.getvalue() == ""
+
+
 def test_rerank_none_defers_to_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

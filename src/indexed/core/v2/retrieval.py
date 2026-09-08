@@ -23,7 +23,9 @@ every chunk of the matched document (not only the matched ones), each in v1's
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -137,12 +139,17 @@ def _apply_rerank(
     disabled search never imports ``SentenceTransformerRerank`` or the
     ``CrossEncoder`` it loads (zero cost, proven by a lazy-import probe). The
     postprocessor is passed the query and nodes EXPLICITLY — ``Settings`` is
-    never touched (retriever-only contract).
+    never touched (retriever-only contract). Construction and inference are
+    wrapped so a raw HF-Hub/transformers stdout write (issue #186) can't
+    corrupt ``--simple-output`` JSON — it lands on stderr instead.
     """
     from llama_index.core.postprocessor import SentenceTransformerRerank
 
-    reranker = SentenceTransformerRerank(model=rerank_cfg.model, top_n=rerank_cfg.top_n)
-    return reranker.postprocess_nodes(nodes_with_scores, query_str=query)
+    with contextlib.redirect_stdout(sys.stderr):
+        reranker = SentenceTransformerRerank(
+            model=rerank_cfg.model, top_n=rerank_cfg.top_n
+        )
+        return reranker.postprocess_nodes(nodes_with_scores, query_str=query)
 
 
 def _search_one(

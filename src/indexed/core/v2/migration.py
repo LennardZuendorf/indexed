@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
+from loguru import logger
+
 from indexed.core.errors import CoreV2Error
 from indexed.core.v2._common import collections_base, resolve_embedding_config
 from indexed.core.v2.ingestion import (
@@ -45,6 +47,21 @@ from indexed.core.v2.ingestion import (
     _latest_modified_time,
     _read_documents,
 )
+
+
+def _purge_backup_dir(backup_dir: Path) -> bool:
+    """Best-effort rmtree; return whether the backup is actually gone.
+
+    Mirrors persist.replace_dir's post-rmtree check — ignore_errors=True can
+    leave residual files (e.g. a locked handle) behind silently (issue #186).
+    """
+    shutil.rmtree(backup_dir, ignore_errors=True)
+    purged = not backup_dir.exists()
+    if not purged:
+        logger.warning(
+            f"migration: residual backup directory left behind at {str(backup_dir)!r}"
+        )
+    return purged
 
 
 @dataclass(frozen=True)
@@ -111,7 +128,7 @@ def migrate(
                 # prior run — drop its retained v1 backup (this is the only path
                 # that can purge a backup once <name> itself is v2). Best-effort
                 # rmtree, consistent with the post-migrate purge below.
-                shutil.rmtree(backup_dir, ignore_errors=True)
+                backup_purged = _purge_backup_dir(backup_dir)
                 return MigrationResult(
                     name=name,
                     action="purge-backup",
@@ -122,7 +139,7 @@ def migrate(
                     embedding_model=resolve_embedding_config().model_name,
                     vector_store="simple",
                     backup_path=None,
-                    backup_purged=True,
+                    backup_purged=backup_purged,
                     validated=False,
                 )
             # --purge-backup on an already-v2 collection with NO backup: a
@@ -236,8 +253,7 @@ def migrate(
     backup_purged = False
     backup_path: Optional[str] = str(backup_dir)
     if purge_backup:
-        shutil.rmtree(backup_dir, ignore_errors=True)
-        backup_purged = True
+        backup_purged = _purge_backup_dir(backup_dir)
         backup_path = None
 
     return MigrationResult(

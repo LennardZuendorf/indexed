@@ -251,6 +251,40 @@ def test_purge_backup_standalone_on_migrated_collection(tmp_path: Path) -> None:
     assert not (base / "c1.v1-backup").exists()
 
 
+def test_purge_backup_standalone_reports_false_when_residual_files_remain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """issue #186: rmtree(ignore_errors=True) can silently leave the backup
+    dir behind (e.g. a locked handle) — backup_purged must reflect that, not
+    be hardcoded True, mirroring persist.replace_dir's post-check."""
+    base = tmp_path / "cols"
+    _write_v1_collection(base, "c1", _corpus())
+    with mock_embedding(embed_dim=8):
+        migration.migrate("c1", collections_path=str(base))  # keeps backup
+    assert (base / "c1.v1-backup").is_dir()
+
+    monkeypatch.setattr(migration.shutil, "rmtree", lambda *a, **kw: None)
+    result = migration.migrate("c1", collections_path=str(base), purge_backup=True)
+
+    assert result.action == "purge-backup"
+    assert result.backup_purged is False
+    assert (base / "c1.v1-backup").is_dir()
+
+
+def test_migrate_with_purge_reports_false_when_residual_files_remain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "cols"
+    _write_v1_collection(base, "c1", _corpus())
+
+    monkeypatch.setattr(migration.shutil, "rmtree", lambda *a, **kw: None)
+    with mock_embedding(embed_dim=8):
+        result = migration.migrate("c1", collections_path=str(base), purge_backup=True)
+
+    assert result.backup_purged is False
+    assert (base / "c1.v1-backup").is_dir()
+
+
 def test_purge_backup_without_backup_gives_dedicated_error(tmp_path: Path) -> None:
     base = tmp_path / "cols"
     _write_v1_collection(base, "c1", _corpus())

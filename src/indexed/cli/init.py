@@ -54,7 +54,7 @@ def init(
         indexed init --force                      # Re-download model
         indexed init --skip-model                 # Directories only
     """
-    from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+    from indexed.core.facade_config import (
         DEFAULT_MODEL,
         ensure_model,
         get_cache_info,

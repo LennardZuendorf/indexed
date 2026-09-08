@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from loguru import logger
+
 from indexed.config.errors import ConfigurationError
 from indexed.core.errors import (
     EngineMismatchError,
@@ -207,7 +209,7 @@ def _resolve_existing_engine(
 def _group_names_by_engine(
     collection_names: List[str],
     collections_path: Optional[str],
-) -> "dict[EngineVersion, List[str]]":
+) -> "tuple[dict[EngineVersion, List[str]], dict[str, str]]":
     """Split requested names by their on-disk engine, preserving request order.
 
     Same per-name detection semantics as ``_resolve_existing_engine`` on the
@@ -217,7 +219,14 @@ def _group_names_by_engine(
     - missing/corrupt/unreadable manifest → the DEFAULT engine's group (so v1's
       own not-found/corrupt handling still applies — status/inspect omit them,
       clear deletes them);
-    - readable *unknown* marker → ``UnknownEngineVersionError`` (fail loud).
+    - readable *unknown* marker → OMITTED from every group, with a warning
+      logged — matches ``engine_descriptors()``'s omission pattern rather than
+      aborting the whole batch (issue #186). The name and the error's message
+      are also returned in ``omitted`` so a caller that CAN surface a
+      per-collection error (``search()``, which returns a dict keyed by
+      collection name) does so instead of the name silently vanishing;
+      ``status()``/``inspect()`` return plain lists with no per-item error slot,
+      so they still just omit — they discard the ``omitted`` half.
 
     Group insertion order follows first appearance in ``collection_names`` — this
     function's own dict order is NOT a stable/deterministic key (it depends on
@@ -225,9 +234,14 @@ def _group_names_by_engine(
     grouped output to a user (``status``/``inspect``) MUST iterate
     ``sorted(groups.items())`` themselves for a deterministic ascending-version
     order (rendering-fixes/5 R8) — this function does not do that sorting.
+
+    Returns:
+        ``(groups, omitted)`` — ``omitted`` maps collection name to the
+        ``UnknownEngineVersionError`` message for every name skipped above.
     """
     base = _collections_base(collections_path)
     groups: "dict[EngineVersion, List[str]]" = {}
+    omitted: dict[str, str] = {}
     for name in collection_names:
         collection_path = base / name
         if not (collection_path / "manifest.json").exists():
@@ -235,12 +249,17 @@ def _group_names_by_engine(
         else:
             try:
                 version = detect_engine_version(collection_path)
-            except UnknownEngineVersionError:
-                raise
+            except UnknownEngineVersionError as exc:
+                logger.warning(
+                    f"Collection '{name}' has an unrecognized manifest "
+                    f"version {exc.found!r}; omitting it from this batch."
+                )
+                omitted[name] = str(exc)
+                continue
             except ValueError:
                 version = _DEFAULT_ENGINE
         groups.setdefault(version, []).append(name)
-    return groups
+    return groups, omitted
 
 
 def _coerce_status(version: EngineVersion, raw: Any) -> Any:
@@ -536,6 +555,14 @@ def search(
     raises ``EngineMismatchError`` before any I/O. ``rerank`` overrides
     ``[core.v2.rerank] enabled`` for this call; it is forwarded only when
     routing to the v2 impl — v1 has no rerank concept and no such param.
+
+    A collection with an unrecognized manifest ``version`` marker is dropped
+    from ``_group_names_by_engine``'s per-engine groups (a warning is logged),
+    but unlike ``status()``/``inspect()`` — which return plain lists with no
+    per-item error slot and so purely omit it — this function's return type is
+    a dict keyed by collection name, so it surfaces the collection back as a
+    ``{"error": <message>}`` entry instead of letting it vanish with no key at
+    all.
     """
 
     def _run(version: EngineVersion, cfgs: Optional[List[Any]]) -> Dict[str, Any]:
@@ -564,13 +591,19 @@ def search(
     if engine is not None:
         return _run(_resolve_existing_engine(engine, names, collections_path), configs)
 
-    groups = _group_names_by_engine(names, collections_path)
+    groups, omitted = _group_names_by_engine(names, collections_path)
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), configs)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `configs`/`names`) — an omitted name must never reach v1 this way.
+        version, grp_names = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        result = _run(version, _configs_for_group(configs, grp_names))
+        result.update({name: {"error": msg} for name, msg in omitted.items()})
+        return result
 
     merged: Dict[str, Any] = {}
     for grp_version, grp_names in sorted(groups.items()):
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
+    merged.update({name: {"error": msg} for name, msg in omitted.items()})
     return merged
 
 
@@ -600,9 +633,12 @@ def status(
             collection_names,
         )
 
-    groups = _group_names_by_engine(resolved, collections_path)
+    groups, _omitted = _group_names_by_engine(resolved, collections_path)
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `collection_names`) — an omitted name must never reach v1 this way.
+        version, names_for_group = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        return _run(version, names_for_group)
 
     out: List[Any] = []
     for grp_version, grp_names in sorted(groups.items()):
@@ -636,9 +672,12 @@ def inspect(
             collection_names,
         )
 
-    groups = _group_names_by_engine(resolved, collections_path)
+    groups, _omitted = _group_names_by_engine(resolved, collections_path)
     if len(groups) <= 1:
-        return _run(next(iter(groups), _DEFAULT_ENGINE), collection_names)
+        # Use the survivor group's OWN names (defaulting to [], not the raw
+        # `collection_names`) — an omitted name must never reach v1 this way.
+        version, names_for_group = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
+        return _run(version, names_for_group)
 
     out: List[Any] = []
     for grp_version, grp_names in sorted(groups.items()):
