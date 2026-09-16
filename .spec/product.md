@@ -2,16 +2,42 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-09-02
+updated: 2026-09-09
 ---
 
 # Product Spec: indexed
 
-**indexed** is a privacy-first semantic search tool that indexes institutional knowledge (Jira, Confluence, local files) and makes it accessible to AI agents via MCP (Model Context Protocol).
+**indexed** builds a local, privacy-first knowledge base per project — pulling code,
+docs, issues, and wikis into searchable collections, indexed with a LlamaIndex-powered
+engine and exposed to AI agents via MCP (Model Context Protocol).
 
 **Core principle:** All processing happens locally. No data sent to third parties.
 
 **Status:** v0.1.0 Alpha
+
+---
+
+## Vision
+
+A single semantic index over one source is easy — every RAG toolkit does that. What's
+hard, and what indexed is *for*, is that no one source has all the answers. Code alone
+doesn't explain why a decision was made; a Jira ticket alone doesn't show what shipped;
+git history alone doesn't say whether it's still true today.
+
+**Shipped today:** indexed connects to files, Jira, Confluence, Outline, and GitHub, and
+indexes each as its own searchable collection (§ Features below) — parallel semantic
+indexes, queried together or one at a time.
+
+**Where this is going:** one merged knowledge graph per project — repo, docs, issues, git
+history, connected codebases, and accumulated lessons/memory tied together as one
+structure, not five indexes you have to query separately. Structural relationships
+first (a PR closing an issue, a file importing another file, a commit touching a path),
+graph-aware retrieval on top (follow a hit to what it's linked to, not just its nearest
+neighbors), then optional local-model-driven merging across sources. This generalizes
+past code — the same graph shape works for a second brain, a documentation set, or any
+knowledge base that's really several sources pretending to be one. See
+[plan.md](plan.md) Decision Log (2026-07-18) for the seam this was designed against
+(Core v2's pluggable store) and § Features below for what's shipped vs. planned.
 
 ---
 
@@ -40,10 +66,21 @@ What indexed is **not**:
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
-| GitHub Repos | 📋 Planned | Index code repositories and issues |
+| **GitHub Issues/PRs/Projects** | ◑ Mostly shipped | Index issues, PR threads, and Projects v2 boards ([plan.md](plan.md) Feature 19 — chunk-hash reuse follow-up not yet planned) |
 | Google Drive | 📋 Planned | Index Google Docs, Sheets, Slides |
 | Notion | 📋 Planned | Index Notion pages and databases |
 | Slack | 📋 Planned | Index Slack messages and threads |
+
+### Knowledge Graph
+
+Direction, not yet shipped — see § Vision above.
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Structural graph edges | 📋 Planned | Relationships derived from existing source structure — no LLM required (doc→chunk hierarchy, code imports, issue/PR links, commit→file) |
+| Graph-aware retrieval | 📋 Planned | Follow a search hit to its linked nodes, alongside vector search — not a replacement for it |
+| Cross-source merge | 📋 Planned | Unify multiple collections (code, docs, issues, git history, connected repos, lessons) into one graph per project |
+| Local-model-driven merging | 📋 Planned | Optional richer entity/relation extraction via a local model (e.g. Ollama) — additive on top of the structural graph, never required |
 
 ### Search
 
