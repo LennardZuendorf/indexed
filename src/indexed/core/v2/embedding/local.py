@@ -77,6 +77,12 @@ def _is_model_cached(model_name: str) -> bool:
     snapshots = model_dir / "snapshots"
     if not snapshots.is_dir():
         return False
+    # Hub resolves the default revision via refs/main: only that snapshot
+    # decides, so a stale complete snapshot cannot mask the active one.
+    refs_main = model_dir / "refs" / "main"
+    if refs_main.exists():
+        active = snapshots / refs_main.read_text().strip()
+        return any((active / w).exists() for w in _WEIGHT_FILES)
     for snapshot in snapshots.iterdir():
         if not snapshot.is_dir():
             continue
@@ -117,8 +123,8 @@ def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
         raise CoreV2Error(
             f"Embedding model '{config.model_name}' could not be loaded: "
             f"the local HF cache at {_hf_hub_cache_dir()} is incomplete or "
-            f"the Hub was unreachable. Run 'indexed init' to (re)download "
-            f"the model, then retry."
+            f"the Hub was unreachable. Run 'indexed init --model "
+            f"{config.model_name}' to (re)download the model, then retry."
         ) from exc
 
 

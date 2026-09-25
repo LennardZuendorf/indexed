@@ -85,6 +85,13 @@ def is_model_cached(model_name: str = DEFAULT_MODEL) -> bool:
     if not snapshots_dir.exists():
         return False
 
+    # Hub resolves the default revision via refs/main: only that snapshot
+    # decides, so a stale complete snapshot cannot mask the active one.
+    refs_main = model_dir / "refs" / "main"
+    if refs_main.exists():
+        active = snapshots_dir / refs_main.read_text().strip()
+        return any((active / w).exists() for w in _WEIGHT_FILES)
+
     for snapshot in snapshots_dir.iterdir():
         if not snapshot.is_dir():
             continue

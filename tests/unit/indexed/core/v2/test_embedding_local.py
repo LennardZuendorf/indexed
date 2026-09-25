@@ -153,6 +153,7 @@ def test_build_model_failure_is_actionable(
     assert MODEL in message  # which model
     assert str(tmp_path) in message  # which cache dir is at fault
     assert "indexed init" in message  # the remedy
+    assert "--model" in message  # the remedy names the model
 
 
 def test_is_model_cached_requires_weights(
@@ -192,6 +193,34 @@ def test_is_model_cached_requires_weights(
 
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
     assert local._is_model_cached(MODEL) is False
+
+
+def test_is_model_cached_uses_active_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """refs/main names the active revision; a stale complete snapshot must not
+    satisfy the check when the active one is config-only (offline load would
+    then fail on the missing weights of the active revision)."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    model_dir = tmp_path / "models--sentence-transformers--all-MiniLM-L6-v2"
+    (model_dir / "snapshots" / "rev-a").mkdir(parents=True)
+    (model_dir / "snapshots" / "rev-a" / "model.safetensors").write_bytes(b"\x00" * 8)
+    (model_dir / "snapshots" / "rev-b").mkdir(parents=True)
+    (model_dir / "snapshots" / "rev-b" / "config.json").write_text("{}")
+    refs_dir = model_dir / "refs"
+    refs_dir.mkdir(parents=True)
+    (refs_dir / "main").write_text("rev-b\n")
+
+    # Active revision rev-b is config-only → not cached (stale rev-a ignored).
+    assert local._is_model_cached(MODEL) is False
+
+    # Active revision rev-a holds weights → cached.
+    (refs_dir / "main").write_text("rev-a")
+    assert local._is_model_cached(MODEL) is True
+
+    # No refs/main → fall back to any snapshot with weights → cached.
+    (refs_dir / "main").unlink()
+    assert local._is_model_cached(MODEL) is True
 
 
 # --------------------------------------------------------------------------
