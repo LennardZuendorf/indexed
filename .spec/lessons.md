@@ -1028,3 +1028,31 @@ with `git add`/`git status`, since that's what CI actually runs.
   with actionable context (model name, cache dir, `indexed init` remedy) —
   v2's `build_embed_model` now wraps OSError/ValueError into `CoreV2Error`
   for exactly this reason.
+
+## Env-fragile unit tests behind the pre-push gate (2026-09-25)
+
+- **FORCE_COLOR in the environment flips Rich recording consoles into
+  forced-terminal mode, which auto-detects width and DISCARDS an explicit
+  `width=` — pin `force_terminal=False` on any width-pinned recording
+  console.** Rich's `Console` reads `FORCE_COLOR` (rich/console.py:964;
+  WaveTerm sets it) and treats the console as a forced terminal; a forced
+  terminal auto-detects its size and the explicit `width=` never applies, so
+  `RichConsole(record=True, width=100)` rendered at 80 on captured stdout
+  and the card's engine descriptor wrapped to a second line.
+  `TestDetailCardDescriptorFitsOnOneLine` failed exactly this way locally
+  while passing on CI (no FORCE_COLOR) — 22/22 pass with
+  `env -u FORCE_COLOR`. Width-sensitive tests must pass
+  `force_terminal=False`; content-only tests that already pass
+  `force_terminal=True` are unaffected (width detection doesn't change what
+  text renders).
+- **`ConfigService` resolves its workspace from `Path.cwd()`, so any test
+  that writes the session-sandboxed HOME config must also chdir to a clean
+  cwd — a repo-root `./.indexed/config.toml` otherwise flips storage mode
+  to LOCAL and shadows it.** `load_raw()` reads exactly ONE config.toml for
+  the resolved mode, and the conftest sandbox only patches `Path.home()`,
+  not the cwd; with a real gitignored `./.indexed/config.toml` in the repo
+  root, `TestResolverValidationFailsLoud`'s invalid TOML in the sandboxed
+  HOME config was never read (no raise) — passing on CI (no local config)
+  and failing on any machine that has one. `monkeypatch.chdir(tmp_path)`
+  (an autouse class fixture) is the hermetic pattern; the local-config-wins
+  behavior itself is the correct config priority chain, not a bug.
