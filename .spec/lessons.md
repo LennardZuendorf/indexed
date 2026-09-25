@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-08
+updated: 2026-09-25
 ---
 
 # Lessons Learned
@@ -997,3 +997,34 @@ with `git add`/`git status`, since that's what CI actually runs.
   with no per-item slot to carry that in, so they still purely omit (logged
   warning only) — this is a real, deliberate asymmetry the return type
   forces, not oversight.
+
+## Weights-blind model-cache check bricked embedding (2026-09-25)
+
+- **A "model is cached" check that counts any file in a snapshot dir as
+  cached bricks every embedding op after ONE interrupted download — the
+  check must require the weights file.** HuggingFace hub only symlinks a
+  snapshot file once its blob completes, so an interrupted download leaves
+  config/tokenizer files in the snapshot with NO
+  `model.safetensors`/`pytorch_model.bin` (the weights sit in `blobs/` as
+  `.incomplete` forever). The old `is_model_cached`/`_is_model_cached`
+  ("any snapshot dir with any entry") read that residue as cached, pinned
+  `local_files_only=True`, and the offline load then died on the missing
+  weights — reproduced deterministically against a fixture cache
+  (`fix/embedding-cache-check`). Both engines' checks now require an
+  existing `model.safetensors`/`pytorch_model.bin` in a snapshot (v1
+  `model_manager.is_model_cached`, v2 `embedding/local._is_model_cached`;
+  the parity test keeps them in lockstep), so a partial cache now goes
+  online and hub resumes the download instead.
+- **transformers' "does not appear to have a file named
+  pytorch_model.bin or model.safetensors" is a lie about the cause — never
+  surface it raw or debug from it literally.** `modeling_utils` raises it
+  whenever `cached_file` returns None with
+  `_raise_exceptions_for_missing_entries=False` — which happens for
+  offline mode, an unreachable hub, a gated repo, OR a genuinely absent
+  file; the message always says "no file named". In the 2026-09-25 incident
+  the network was fine and the repo had the weights — the hub lookup was
+  swallowed during a tool-reinstall window and the message sent the debug
+  hunt in the wrong direction. Wrap model-load failures at the boundary
+  with actionable context (model name, cache dir, `indexed init` remedy) —
+  v2's `build_embed_model` now wraps OSError/ValueError into `CoreV2Error`
+  for exactly this reason.
