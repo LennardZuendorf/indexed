@@ -68,6 +68,11 @@ class TestResolverValidationFailsLoud:
     (``config/commands/get.py``).
     """
 
+    @pytest.fixture(autouse=True)
+    def _hermetic_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # a repo-root ./.indexed/config.toml otherwise resolves storage mode to LOCAL and shadows the sandboxed HOME config this class writes
+        monkeypatch.chdir(tmp_path)
+
     @staticmethod
     def _write_and_reload(toml_body: str) -> str:
         """Snapshot+overwrite the shared sandboxed global config.toml, reload,
