@@ -136,6 +136,25 @@ class TestIsModelCached:
         ):
             assert is_model_cached("all-MiniLM-L6-v2") is True
 
+    def test_false_when_snapshot_has_only_config(self, tmp_path):
+        """A config-only snapshot is interrupted-download residue, not a cache.
+
+        Hub only symlinks a snapshot file once its blob completes, so
+        "cached" must mean the weights are present — otherwise the offline
+        load fails on the missing weights instead of re-downloading.
+        """
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
+
+        repo = _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
+        (repo / "snapshots" / "abc123deadbeef" / "model.safetensors").unlink()
+        with patch(
+            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+            return_value=tmp_path,
+        ):
+            assert is_model_cached("all-MiniLM-L6-v2") is False
+
     def test_handles_custom_org_model(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import (
             is_model_cached,
@@ -145,6 +164,7 @@ class TestIsModelCached:
         snap = model_dir / "snapshots" / "abc123"
         snap.mkdir(parents=True)
         (snap / "config.json").write_text("{}")
+        (snap / "model.safetensors").write_bytes(b"\x00" * 8)
         with patch(
             "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
             return_value=tmp_path,
