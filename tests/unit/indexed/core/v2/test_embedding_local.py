@@ -102,14 +102,93 @@ def test_build_local_files_only_tracks_cache_state(
     assert captured2["local_files_only"] is False
 
 
-def test_is_model_cached_matches_hub_layout(
+def test_build_goes_online_when_cache_partial(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """An interrupted download must not pin the load offline.
+
+    A config-only snapshot is download residue, not a cache: the load has to
+    stay online (``local_files_only=False``) so hub resumes and completes the
+    download instead of failing offline on the missing weights.
+    """
+    captured = _patch_fake(monkeypatch)
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
-    snap = tmp_path / "models--sentence-transformers--all-MiniLM-L6-v2" / "snapshots"
-    (snap / "deadbeef").mkdir(parents=True)
-    (snap / "deadbeef" / "config.json").write_text("{}")
+    snap = (
+        tmp_path
+        / "models--sentence-transformers--all-MiniLM-L6-v2"
+        / "snapshots"
+        / "deadbeef"
+    )
+    snap.mkdir(parents=True)
+    (snap / "config.json").write_text("{}")
+
+    local.build_embed_model(CoreV2EmbeddingConfig())
+
+    assert captured["local_files_only"] is False
+    assert captured["cache_folder"] == str(tmp_path)
+
+
+def test_build_model_failure_is_actionable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A failed model load surfaces a remedy, not transformers internals."""
+    import llama_index.embeddings.huggingface as hf
+
+    from indexed.core.errors import CoreV2Error
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+
+    def broken(**kwargs: object) -> None:
+        raise OSError(
+            f"{MODEL} does not appear to have a file named "
+            "pytorch_model.bin or model.safetensors."
+        )
+
+    monkeypatch.setattr(hf, "HuggingFaceEmbedding", broken)
+
+    with pytest.raises(CoreV2Error) as excinfo:
+        local.build_embed_model(CoreV2EmbeddingConfig())
+
+    message = str(excinfo.value)
+    assert MODEL in message  # which model
+    assert str(tmp_path) in message  # which cache dir is at fault
+    assert "indexed init" in message  # the remedy
+
+
+def test_is_model_cached_requires_weights(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """ "Cached" means a snapshot holds weight files — not just any file.
+
+    Hub symlinks a snapshot file only once its blob completes, so an
+    interrupted download leaves config/tokenizer files but no weights.
+    Treating that as cached pins ``local_files_only=True`` and the offline
+    load then dies on the missing weights (the interrupted-download bug).
+    """
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    snap = (
+        tmp_path
+        / "models--sentence-transformers--all-MiniLM-L6-v2"
+        / "snapshots"
+        / "deadbeef"
+    )
+    snap.mkdir(parents=True)
+
+    # Empty snapshot dir → not cached.
+    assert local._is_model_cached(MODEL) is False
+
+    # Config-only snapshot (interrupted-download residue) → not cached.
+    (snap / "config.json").write_text("{}")
+    assert local._is_model_cached(MODEL) is False
+
+    # Weights landed → cached.
+    (snap / "model.safetensors").write_bytes(b"\x00" * 8)
     assert local._is_model_cached(MODEL) is True
+
+    # Dangling weights symlink (blob never completed) → not cached.
+    (snap / "model.safetensors").unlink()
+    (snap / "model.safetensors").symlink_to("../../blobs/never-completed")
+    assert local._is_model_cached(MODEL) is False
 
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
     assert local._is_model_cached(MODEL) is False
