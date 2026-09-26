@@ -397,7 +397,13 @@ class TestDetailCardDescriptorFitsOnOneLine:
                     ("Documents", "13"),
                 ],
             )
-            rec = RichConsole(record=True, width=terminal_width, no_color=True)
+            # FORCE_COLOR flips consoles into forced-terminal mode, which discards an explicit width
+            rec = RichConsole(
+                record=True,
+                width=terminal_width,
+                no_color=True,
+                force_terminal=False,
+            )
             rec.print(card)
             return rec.export_text()
         finally:

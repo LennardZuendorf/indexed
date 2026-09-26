@@ -33,6 +33,11 @@ SUPPORTED_MODELS = [
 
 _ST_ORG = "sentence-transformers"
 
+# A snapshot counts as cached only when a weight file is present: hub
+# symlinks a snapshot file once its blob completes, so an interrupted
+# download leaves config/tokenizer files without weights.
+_WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
+
 
 def _get_hf_cache_dir() -> Path:
     """Resolve the active HuggingFace Hub cache directory.
@@ -64,9 +69,13 @@ def _hf_cache_model_dir(model_name: str) -> Path:
 
 
 def is_model_cached(model_name: str = DEFAULT_MODEL) -> bool:
-    """Check if a model exists in the HuggingFace Hub cache.
+    """True when a snapshot holds model weights (pure path checks).
 
-    This does NOT import any heavy libraries — it's pure path checks.
+    This does NOT import any heavy libraries. Weights must be present — an
+    interrupted download leaves config files without weights, and a
+    weights-blind "any file" check would pin the load offline to fail on
+    the missing weights instead of re-downloading. Mirrored by core.v2's
+    ``_is_model_cached``.
     """
     model_dir = _hf_cache_model_dir(model_name)
     if not model_dir.exists():
@@ -76,8 +85,17 @@ def is_model_cached(model_name: str = DEFAULT_MODEL) -> bool:
     if not snapshots_dir.exists():
         return False
 
+    # Hub resolves the default revision via refs/main: only that snapshot
+    # decides, so a stale complete snapshot cannot mask the active one.
+    refs_main = model_dir / "refs" / "main"
+    if refs_main.exists():
+        active = snapshots_dir / refs_main.read_text().strip()
+        return any((active / w).exists() for w in _WEIGHT_FILES)
+
     for snapshot in snapshots_dir.iterdir():
-        if snapshot.is_dir() and any(snapshot.iterdir()):
+        if not snapshot.is_dir():
+            continue
+        if any((snapshot / w).exists() for w in _WEIGHT_FILES):
             return True
 
     return False

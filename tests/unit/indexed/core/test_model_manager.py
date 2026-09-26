@@ -136,6 +136,45 @@ class TestIsModelCached:
         ):
             assert is_model_cached("all-MiniLM-L6-v2") is True
 
+    def test_false_when_snapshot_has_only_config(self, tmp_path):
+        """A config-only snapshot is interrupted-download residue, not a cache."""
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
+
+        repo = _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
+        (repo / "snapshots" / "abc123deadbeef" / "model.safetensors").unlink()
+        with patch(
+            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+            return_value=tmp_path,
+        ):
+            assert is_model_cached("all-MiniLM-L6-v2") is False
+
+    def test_true_only_when_active_revision_has_weights(self, tmp_path):
+        """refs/main names the active revision; a config-only active one is not cached."""
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            is_model_cached,
+        )
+
+        repo = _make_hf_cache_structure(tmp_path, "all-MiniLM-L6-v2")
+        (repo / "snapshots" / "rev-b").mkdir()
+        (repo / "snapshots" / "rev-b" / "config.json").write_text("{}")
+        with patch(
+            "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+            return_value=tmp_path,
+        ):
+            # Active revision rev-b is config-only → not cached (stale ignored).
+            (repo / "refs" / "main").write_text("rev-b\n")
+            assert is_model_cached("all-MiniLM-L6-v2") is False
+
+            # Active revision holds weights → cached.
+            (repo / "refs" / "main").write_text("abc123deadbeef")
+            assert is_model_cached("all-MiniLM-L6-v2") is True
+
+            # No refs/main → fall back to any snapshot with weights → cached.
+            (repo / "refs" / "main").unlink()
+            assert is_model_cached("all-MiniLM-L6-v2") is True
+
     def test_handles_custom_org_model(self, tmp_path):
         from indexed.core.v1.engine.indexes.embeddings.model_manager import (
             is_model_cached,
@@ -145,6 +184,7 @@ class TestIsModelCached:
         snap = model_dir / "snapshots" / "abc123"
         snap.mkdir(parents=True)
         (snap / "config.json").write_text("{}")
+        (snap / "model.safetensors").write_bytes(b"\x00" * 8)
         with patch(
             "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
             return_value=tmp_path,

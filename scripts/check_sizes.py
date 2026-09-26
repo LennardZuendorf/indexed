@@ -71,7 +71,15 @@ SRC_LOC_MAX = 28_100
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 43_400
+TEST_LOC_MAX = 43_450
+# Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
+# model-cache regression tests: the v1/v2 `is_model_cached` cases for
+# config-only residue, dangling weight symlinks, and active-revision
+# (`refs/main`) semantics, plus the v2 offline/online cache-state wiring —
+# after trimming their docstrings, extracting a shared `_hub_snapshot` helper,
+# and inlining scenario comments; genuine defect-guarding coverage (the check
+# bricked embedding on an interrupted download), not stealth regrowth;
+# ceiling = measured (43_402) + headroom.
 # Raised from 42_800 by merging main (core-v2-engine-routing-fixes, issue #186,
 # PR #199) into the github-connector branch (PR #164/#200): main's own test
 # growth (`tests/unit/indexed/utils/test_relevance.py` + coverage for the

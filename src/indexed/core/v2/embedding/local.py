@@ -28,6 +28,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from indexed.core.errors import CoreV2Error
+
 if TYPE_CHECKING:
     from llama_index.core.base.embeddings.base import BaseEmbedding
 
@@ -54,19 +56,39 @@ def _hf_hub_cache_dir() -> Path:
     return Path(hf_home) / "hub"
 
 
+# A snapshot counts as cached only when a weight file is present: hub
+# symlinks a snapshot file once its blob completes, so an interrupted
+# download leaves config/tokenizer files without weights.
+_WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
+
+
 def _is_model_cached(model_name: str) -> bool:
-    """True when ``model_name`` is already in the HF hub cache (pure path check).
+    """True when a snapshot holds model weights (pure path check).
 
     Mirrors ``model_manager.is_model_cached`` exactly (so it agrees with the
-    suite's ``model_available`` gate) without importing ``core.v1`` or any heavy
-    library.
+    suite's ``model_available`` gate) without importing ``core.v1`` or any
+    heavy library. Weights must be present: an interrupted download leaves
+    config files without weights, and a weights-blind "any file" check would
+    pin ``local_files_only`` on that residue to fail offline on the missing
+    weights instead of going online to resume the download.
     """
     repo_id = model_name if "/" in model_name else f"{_ST_ORG}/{model_name}"
     model_dir = _hf_hub_cache_dir() / f"models--{repo_id.replace('/', '--')}"
     snapshots = model_dir / "snapshots"
     if not snapshots.is_dir():
         return False
-    return any(s.is_dir() and any(s.iterdir()) for s in snapshots.iterdir())
+    # Hub resolves the default revision via refs/main: only that snapshot
+    # decides, so a stale complete snapshot cannot mask the active one.
+    refs_main = model_dir / "refs" / "main"
+    if refs_main.exists():
+        active = snapshots / refs_main.read_text().strip()
+        return any((active / w).exists() for w in _WEIGHT_FILES)
+    for snapshot in snapshots.iterdir():
+        if not snapshot.is_dir():
+            continue
+        if any((snapshot / w).exists() for w in _WEIGHT_FILES):
+            return True
+    return False
 
 
 def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
@@ -86,13 +108,24 @@ def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
     # probe (offline, R8/R12). Not cached → ``False`` (the default) lets a first
     # run download into the shared cache. Passing the bool unconditionally is
     # equivalent to conditionally omitting it and keeps ty's kwargs check clean.
-    return HuggingFaceEmbedding(
-        model_name=config.model_name,
-        embed_batch_size=config.batch_size,
-        normalize=True,
-        cache_folder=str(_hf_hub_cache_dir()),
-        local_files_only=_is_model_cached(config.model_name),
-    )
+    try:
+        return HuggingFaceEmbedding(
+            model_name=config.model_name,
+            embed_batch_size=config.batch_size,
+            normalize=True,
+            cache_folder=str(_hf_hub_cache_dir()),
+            local_files_only=_is_model_cached(config.model_name),
+        )
+    except (OSError, ValueError) as exc:
+        # The integration's file-availability signals (missing weights in an
+        # incomplete cache, an unreachable Hub) — surface the remedy instead
+        # of transformers' misleading "no file named pytorch_model.bin" text.
+        raise CoreV2Error(
+            f"Embedding model '{config.model_name}' could not be loaded: "
+            f"the local HF cache at {_hf_hub_cache_dir()} is incomplete or "
+            f"the Hub was unreachable. Run 'indexed init --model "
+            f"{config.model_name}' to (re)download the model, then retry."
+        ) from exc
 
 
 def probe_dimension(embed_model: "BaseEmbedding") -> int:
