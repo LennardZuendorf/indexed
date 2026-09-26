@@ -137,12 +137,7 @@ class TestIsModelCached:
             assert is_model_cached("all-MiniLM-L6-v2") is True
 
     def test_false_when_snapshot_has_only_config(self, tmp_path):
-        """A config-only snapshot is interrupted-download residue, not a cache.
-
-        Hub only symlinks a snapshot file once its blob completes, so
-        "cached" must mean the weights are present — otherwise the offline
-        load fails on the missing weights instead of re-downloading.
-        """
+        """A config-only snapshot is interrupted-download residue, not a cache."""
         from indexed.core.v1.engine.indexes.embeddings.model_manager import (
             is_model_cached,
         )
@@ -156,8 +151,7 @@ class TestIsModelCached:
             assert is_model_cached("all-MiniLM-L6-v2") is False
 
     def test_true_only_when_active_revision_has_weights(self, tmp_path):
-        """refs/main names the active revision; a stale complete snapshot must
-        not satisfy the check when the active one is config-only."""
+        """refs/main names the active revision; a config-only active one is not cached."""
         from indexed.core.v1.engine.indexes.embeddings.model_manager import (
             is_model_cached,
         )

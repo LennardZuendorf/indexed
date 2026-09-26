@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
 # Lessons Learned
@@ -1056,3 +1056,19 @@ with `git add`/`git status`, since that's what CI actually runs.
   and failing on any machine that has one. `monkeypatch.chdir(tmp_path)`
   (an autouse class fixture) is the hermetic pattern; the local-config-wins
   behavior itself is the correct config priority chain, not a bug.
+
+## CI-only gates are not in the pre-push hooks (2026-09-26)
+
+- **`scripts/check_imports.py` and `scripts/check_sizes.py` run only in CI —
+  they are absent from `.pre-commit-config.yaml` and the pre-push hooks, so a
+  branch can pass every local gate the hooks run and still open a red PR.**
+  The pre-push gate runs pytest + ty + ruff + wheel build; the size gate
+  (`TEST_LOC_MAX`/`SRC_LOC_MAX` in `check_sizes.py`) and the import-graph gate
+  are separate CI steps, so a test-heavy branch silently breaches a LOC
+  ceiling and only learns it from the PR's "Check size gates" step. Run BOTH
+  scripts explicitly in every local gate matrix (and every dispatched task
+  brief) alongside the hook-covered gates; a "green locally" claim that omits
+  them is not evidence the PR is green. The fix shape when a ceiling is
+  breached is trim boilerplate first (one-line docstrings, a shared layout
+  helper, inlined scenario comments — never weaken an assertion or drop a
+  scenario), then bump with a precedent comment last.
