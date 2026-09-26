@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +26,13 @@ from indexed.core.v2.embedding import local
 from tests.conftest import model_available
 
 MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def _hub_snapshot(cache: Path, revision: str) -> Path:
+    """HF-hub snapshot dir for MODEL at ``revision``; creates it if absent."""
+    snap = cache / f"models--{MODEL.replace('/', '--')}" / "snapshots" / revision
+    snap.mkdir(parents=True)
+    return snap
 
 
 class _FakeEmbed:
@@ -105,22 +113,10 @@ def test_build_local_files_only_tracks_cache_state(
 def test_build_goes_online_when_cache_partial(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """An interrupted download must not pin the load offline.
-
-    A config-only snapshot is download residue, not a cache: the load has to
-    stay online (``local_files_only=False``) so hub resumes and completes the
-    download instead of failing offline on the missing weights.
-    """
+    """Download residue (config-only) must stay online so hub can resume it."""
     captured = _patch_fake(monkeypatch)
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
-    snap = (
-        tmp_path
-        / "models--sentence-transformers--all-MiniLM-L6-v2"
-        / "snapshots"
-        / "deadbeef"
-    )
-    snap.mkdir(parents=True)
-    (snap / "config.json").write_text("{}")
+    (_hub_snapshot(tmp_path, "deadbeef") / "config.json").write_text("{}")
 
     local.build_embed_model(CoreV2EmbeddingConfig())
 
@@ -139,10 +135,7 @@ def test_build_model_failure_is_actionable(
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
 
     def broken(**kwargs: object) -> None:
-        raise OSError(
-            f"{MODEL} does not appear to have a file named "
-            "pytorch_model.bin or model.safetensors."
-        )
+        raise OSError(f"{MODEL}: no pytorch_model.bin or model.safetensors")
 
     monkeypatch.setattr(hf, "HuggingFaceEmbedding", broken)
 
@@ -159,37 +152,18 @@ def test_build_model_failure_is_actionable(
 def test_is_model_cached_requires_weights(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """ "Cached" means a snapshot holds weight files — not just any file.
-
-    Hub symlinks a snapshot file only once its blob completes, so an
-    interrupted download leaves config/tokenizer files but no weights.
-    Treating that as cached pins ``local_files_only=True`` and the offline
-    load then dies on the missing weights (the interrupted-download bug).
-    """
+    """Cached means the snapshot holds weight files, not just any file."""
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
-    snap = (
-        tmp_path
-        / "models--sentence-transformers--all-MiniLM-L6-v2"
-        / "snapshots"
-        / "deadbeef"
-    )
-    snap.mkdir(parents=True)
+    snap = _hub_snapshot(tmp_path, "deadbeef")
 
-    # Empty snapshot dir → not cached.
-    assert local._is_model_cached(MODEL) is False
-
-    # Config-only snapshot (interrupted-download residue) → not cached.
+    assert local._is_model_cached(MODEL) is False  # empty snapshot dir
     (snap / "config.json").write_text("{}")
-    assert local._is_model_cached(MODEL) is False
-
-    # Weights landed → cached.
+    assert local._is_model_cached(MODEL) is False  # config-only residue
     (snap / "model.safetensors").write_bytes(b"\x00" * 8)
-    assert local._is_model_cached(MODEL) is True
-
-    # Dangling weights symlink (blob never completed) → not cached.
+    assert local._is_model_cached(MODEL) is True  # weights landed
     (snap / "model.safetensors").unlink()
     (snap / "model.safetensors").symlink_to("../../blobs/never-completed")
-    assert local._is_model_cached(MODEL) is False
+    assert local._is_model_cached(MODEL) is False  # dangling symlink
 
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
     assert local._is_model_cached(MODEL) is False
@@ -198,29 +172,21 @@ def test_is_model_cached_requires_weights(
 def test_is_model_cached_uses_active_revision(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """refs/main names the active revision; a stale complete snapshot must not
-    satisfy the check when the active one is config-only (offline load would
-    then fail on the missing weights of the active revision)."""
+    """refs/main names the active revision; a config-only active one is not cached."""
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
-    model_dir = tmp_path / "models--sentence-transformers--all-MiniLM-L6-v2"
-    (model_dir / "snapshots" / "rev-a").mkdir(parents=True)
-    (model_dir / "snapshots" / "rev-a" / "model.safetensors").write_bytes(b"\x00" * 8)
-    (model_dir / "snapshots" / "rev-b").mkdir(parents=True)
-    (model_dir / "snapshots" / "rev-b" / "config.json").write_text("{}")
-    refs_dir = model_dir / "refs"
+    rev_a = _hub_snapshot(tmp_path, "rev-a")
+    rev_b = _hub_snapshot(tmp_path, "rev-b")
+    (rev_a / "model.safetensors").write_bytes(b"\x00" * 8)
+    (rev_b / "config.json").write_text("{}")
+    refs_dir = rev_a.parent.parent / "refs"
     refs_dir.mkdir(parents=True)
     (refs_dir / "main").write_text("rev-b\n")
 
-    # Active revision rev-b is config-only → not cached (stale rev-a ignored).
-    assert local._is_model_cached(MODEL) is False
-
-    # Active revision rev-a holds weights → cached.
+    assert local._is_model_cached(MODEL) is False  # active rev-b config-only
     (refs_dir / "main").write_text("rev-a")
-    assert local._is_model_cached(MODEL) is True
-
-    # No refs/main → fall back to any snapshot with weights → cached.
+    assert local._is_model_cached(MODEL) is True  # active rev-a has weights
     (refs_dir / "main").unlink()
-    assert local._is_model_cached(MODEL) is True
+    assert local._is_model_cached(MODEL) is True  # no ref → any weighted snap
 
 
 # --------------------------------------------------------------------------
