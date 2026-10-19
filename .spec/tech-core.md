@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-07-12
+updated: 2026-09-25
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -58,6 +58,26 @@ def model(self):
     """Lazy-load the embedding model on first access."""
     return get_embedding_model(self.model_name)
 ```
+
+### Model cache contract
+
+**Files:** `src/indexed/core/v1/engine/indexes/embeddings/model_manager.py`,
+`src/indexed/core/v2/embedding/local.py`
+
+The embedding model lives in the shared HF hub cache (`HF_HUB_CACHE` >
+`HF_HOME/hub` > `~/.cache/huggingface/hub`, `models--<org>--<name>/snapshots/<rev>/`).
+A model counts as **cached** only when a snapshot holds a real weights file
+(`model.safetensors` / `pytorch_model.bin`, resolving to a completed blob) — hub
+symlinks a snapshot file only once its blob completes, so an interrupted download
+leaves config/tokenizer files WITHOUT weights, and a weights-blind "any file"
+check would pin the load offline (`local_files_only=True`) and then fail on the
+missing weights — one interrupted download bricks every embedding op until a
+manual re-download. v1 (`is_model_cached`) and core.v2 (`_is_model_cached`)
+carry identical semantics (a parity test keeps them in lockstep); v2 wraps a
+failed load into an actionable `CoreV2Error` (model, cache dir, `indexed init`
+remedy) — transformers' "does not appear to have a file named
+pytorch_model.bin or model.safetensors" fires for ANY swallowed lookup (offline
+or unreachable hub), so it must never surface raw.
 
 ### Batching
 

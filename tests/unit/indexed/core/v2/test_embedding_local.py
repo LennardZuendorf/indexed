@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +26,13 @@ from indexed.core.v2.embedding import local
 from tests.conftest import model_available
 
 MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def _hub_snapshot(cache: Path, revision: str) -> Path:
+    """HF-hub snapshot dir for MODEL at ``revision``; creates it if absent."""
+    snap = cache / f"models--{MODEL.replace('/', '--')}" / "snapshots" / revision
+    snap.mkdir(parents=True)
+    return snap
 
 
 class _FakeEmbed:
@@ -102,17 +110,83 @@ def test_build_local_files_only_tracks_cache_state(
     assert captured2["local_files_only"] is False
 
 
-def test_is_model_cached_matches_hub_layout(
+def test_build_goes_online_when_cache_partial(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """Download residue (config-only) must stay online so hub can resume it."""
+    captured = _patch_fake(monkeypatch)
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
-    snap = tmp_path / "models--sentence-transformers--all-MiniLM-L6-v2" / "snapshots"
-    (snap / "deadbeef").mkdir(parents=True)
-    (snap / "deadbeef" / "config.json").write_text("{}")
-    assert local._is_model_cached(MODEL) is True
+    (_hub_snapshot(tmp_path, "deadbeef") / "config.json").write_text("{}")
+
+    local.build_embed_model(CoreV2EmbeddingConfig())
+
+    assert captured["local_files_only"] is False
+    assert captured["cache_folder"] == str(tmp_path)
+
+
+def test_build_model_failure_is_actionable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A failed model load surfaces a remedy, not transformers internals."""
+    import llama_index.embeddings.huggingface as hf
+
+    from indexed.core.errors import CoreV2Error
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+
+    def broken(**kwargs: object) -> None:
+        raise OSError(f"{MODEL}: no pytorch_model.bin or model.safetensors")
+
+    monkeypatch.setattr(hf, "HuggingFaceEmbedding", broken)
+
+    with pytest.raises(CoreV2Error) as excinfo:
+        local.build_embed_model(CoreV2EmbeddingConfig())
+
+    message = str(excinfo.value)
+    assert MODEL in message  # which model
+    assert str(tmp_path) in message  # which cache dir is at fault
+    assert "indexed init" in message  # the remedy
+    assert "--model" in message  # the remedy names the model
+
+
+def test_is_model_cached_requires_weights(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Cached means the snapshot holds weight files, not just any file."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    snap = _hub_snapshot(tmp_path, "deadbeef")
+
+    assert local._is_model_cached(MODEL) is False  # empty snapshot dir
+    (snap / "config.json").write_text("{}")
+    assert local._is_model_cached(MODEL) is False  # config-only residue
+    (snap / "model.safetensors").write_bytes(b"\x00" * 8)
+    assert local._is_model_cached(MODEL) is True  # weights landed
+    (snap / "model.safetensors").unlink()
+    (snap / "model.safetensors").symlink_to("../../blobs/never-completed")
+    assert local._is_model_cached(MODEL) is False  # dangling symlink
 
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
     assert local._is_model_cached(MODEL) is False
+
+
+def test_is_model_cached_uses_active_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """refs/main names the active revision; a config-only active one is not cached."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    rev_a = _hub_snapshot(tmp_path, "rev-a")
+    rev_b = _hub_snapshot(tmp_path, "rev-b")
+    (rev_a / "model.safetensors").write_bytes(b"\x00" * 8)
+    (rev_b / "config.json").write_text("{}")
+    refs_dir = rev_a.parent.parent / "refs"
+    refs_dir.mkdir(parents=True)
+    (refs_dir / "main").write_text("rev-b\n")
+
+    assert local._is_model_cached(MODEL) is False  # active rev-b config-only
+    (refs_dir / "main").write_text("rev-a")
+    assert local._is_model_cached(MODEL) is True  # active rev-a has weights
+    (refs_dir / "main").unlink()
+    assert local._is_model_cached(MODEL) is True  # no ref → any weighted snap
 
 
 # --------------------------------------------------------------------------
