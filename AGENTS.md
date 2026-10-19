@@ -68,7 +68,10 @@ consumed only through the `core.v1.engine` facade, with `composition.py` the sin
 site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
 spec in the same cycle; a comment is one line of *why*, never an essay; Rich silently drops
 a bracketed `[dotted.key]` from any `typer.Option(help=...)` string (parsed as a markup
-tag, not printed) — write config keys unbracketed in help text. KISS wins.
+tag, not printed) — write config keys unbracketed in help text. Dependency
+lock reconciliation can leave metadata stale after temporary resolver
+constraints are removed; run `uv lock` against the final `pyproject.toml`.
+KISS wins.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

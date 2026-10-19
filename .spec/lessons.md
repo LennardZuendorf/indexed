@@ -1,12 +1,24 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-26
+updated: 2026-10-19
 ---
 
 # Lessons Learned
 
 Accumulated mistakes and earned defaults. Read at session start.
+
+## Dependency lock reconciliation (2026-10-19)
+
+- **Removing temporary resolver constraints can leave `uv.lock` metadata
+  stale even when every selected package version is still valid.** After
+  resolving with temporary entries in `tool.uv.constraint-dependencies`, run
+  `uv lock` against the final `pyproject.toml` before `uv lock --check` or
+  `uv sync`; the check correctly failed until that regeneration.
+- **Use the repository's declared Python launcher for lockfile inspection.**
+  A bare `python` is not available in this environment, and workspace lock
+  entries have no `version` field; use `uv run python` and handle editable
+  workspace packages explicitly.
 
 ---
 
