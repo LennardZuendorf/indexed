@@ -129,7 +129,12 @@ class TestCreateFunction:
                     mock_create.assert_called_once()
                     assert mock_create.call_args.kwargs["connector_factory"] is factory
 
-    def test_create_with_force_and_existing_collection(self):
+    def test_create_with_force_preserves_existing_collection(self):
+        """``--force`` must not delete the prior collection up front.
+
+        The creator builds aside and rename-swaps only on success, so a failed
+        run (e.g. model acquisition) leaves the previous usable index intact.
+        """
         from indexed.core.v1.engine.services.collection_service import create
 
         cfg = _source_config("test-col")
@@ -144,10 +149,11 @@ class TestCreateFunction:
                 ) as mock_clear_col:
                     with patch(
                         "indexed.core.v1.engine.services.collection_service._create_one"
-                    ):
+                    ) as mock_create_one:
                         create([cfg], force=True, connector_factory=Mock())
 
-                        mock_clear_col.assert_called_once()
+                        mock_clear_col.assert_not_called()
+                        mock_create_one.assert_called_once()
 
 
 class TestUpdateFunction:

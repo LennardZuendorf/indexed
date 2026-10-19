@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-09-25
+updated: 2026-10-19
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -62,7 +62,7 @@ def model(self):
 ### Model cache contract
 
 **Files:** `src/indexed/core/v1/engine/indexes/embeddings/model_manager.py`,
-`src/indexed/core/v2/embedding/local.py`
+`src/indexed/core/v2/embedding/local.py`, `src/indexed/core/model_acquisition.py`
 
 The embedding model lives in the shared HF hub cache (`HF_HUB_CACHE` >
 `HF_HOME/hub` > `~/.cache/huggingface/hub`, `models--<org>--<name>/snapshots/<rev>/`).
@@ -73,11 +73,39 @@ leaves config/tokenizer files WITHOUT weights, and a weights-blind "any file"
 check would pin the load offline (`local_files_only=True`) and then fail on the
 missing weights — one interrupted download bricks every embedding op until a
 manual re-download. v1 (`is_model_cached`) and core.v2 (`_is_model_cached`)
-carry identical semantics (a parity test keeps them in lockstep); v2 wraps a
-failed load into an actionable `CoreV2Error` (model, cache dir, `indexed init`
-remedy) — transformers' "does not appear to have a file named
-pytorch_model.bin or model.safetensors" fires for ANY swallowed lookup (offline
-or unreachable hub), so it must never surface raw.
+carry identical semantics (a parity test keeps them in lockstep).
+
+**Predicate and loader are one selection.** v1's `_select_cached_snapshot` is the
+single source for both `is_model_cached` and `_resolve_snapshot_path`, and
+`load_model` loads THAT snapshot path (not the repo id) with
+`local_files_only=True` — so "cached" always means "loadable offline" and a
+config-only residue can never be reported as a false cached success. refs/main
+names the active revision; with none, the first weights-bearing snapshot wins.
+
+### Acquisition failure surface (issue #210)
+
+**File:** `src/indexed/core/model_acquisition.py`
+
+Acquisition (download/load) is bounded and categorized so an impossible
+acquisition fails predictably instead of leaking dependency retry chatter:
+
+- `acquire_with_retry` retries only transient failures (network / HTTP 429) up
+  to `MAX_ATTEMPTS = 3` with exponential backoff; permanent failures (missing
+  repo, 401/403/gated) raise immediately. Every retry logs at DEBUG, so
+  `--debug` keeps the timeline while the default surface shows one line.
+- The final failure is wrapped in `ModelAcquisitionError` (an `IndexedError`) —
+  model name, cache dir + state, failure category, and a category-specific
+  remedy (`indexed init --model …` / `--force` / network / auth). Token-shaped
+  secrets are redacted from any cause text.
+- `huggingface_hub`'s per-retry WARNINGs are floored at ERROR in
+  `utils/logger.py`; `--debug` lowers them back to DEBUG. transformers' "does
+  not appear to have a file named pytorch_model.bin or model.safetensors" fires
+  for ANY swallowed lookup (offline, unreachable hub, gated, or genuinely
+  absent) and must never surface raw.
+- `ensure_model` verifies the download left weights; a "successful" weightless
+  call raises rather than reporting a cached success. `--force` create no longer
+  clears the existing collection up front — the build-aside/rename-swap keeps a
+  failed acquisition from clobbering a healthy index.
 
 ### Batching
 

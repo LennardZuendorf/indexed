@@ -18,6 +18,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from indexed.core.errors import ModelAcquisitionError
+from indexed.core.model_acquisition import (
+    acquire_with_retry,
+    local_load_error,
+)
+
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
@@ -37,6 +43,15 @@ _ST_ORG = "sentence-transformers"
 # symlinks a snapshot file once its blob completes, so an interrupted
 # download leaves config/tokenizer files without weights.
 _WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
+
+
+def _snapshot_has_weights(snapshot: Path) -> bool:
+    """True when ``snapshot`` holds a real weights file.
+
+    ``Path.exists()`` follows symlinks, so a dangling weight link (hub has not
+    completed the blob) counts as absent — never as a loadable snapshot.
+    """
+    return any((snapshot / w).exists() for w in _WEIGHT_FILES)
 
 
 def _get_hf_cache_dir() -> Path:
@@ -68,6 +83,30 @@ def _hf_cache_model_dir(model_name: str) -> Path:
     return _get_hf_cache_dir() / folder_name
 
 
+def _select_cached_snapshot(model_name: str) -> Path | None:
+    """The weights-bearing snapshot the cache predicate resolves, or ``None``.
+
+    Single source of truth for both ``is_model_cached`` and
+    ``_resolve_snapshot_path``, so "cached" and "the snapshot we load" can
+    never disagree. Hub resolves the default revision via refs/main: only that
+    snapshot decides, so a stale complete snapshot cannot mask the active one.
+    With no refs/main, the first weights-bearing snapshot wins.
+    """
+    snapshots_dir = _hf_cache_model_dir(model_name) / "snapshots"
+    if not snapshots_dir.is_dir():
+        return None
+
+    refs_main = _hf_cache_model_dir(model_name) / "refs" / "main"
+    if refs_main.exists():
+        active = snapshots_dir / refs_main.read_text().strip()
+        return active if _snapshot_has_weights(active) else None
+
+    for snapshot in sorted(snapshots_dir.iterdir()):
+        if snapshot.is_dir() and _snapshot_has_weights(snapshot):
+            return snapshot
+    return None
+
+
 def is_model_cached(model_name: str = DEFAULT_MODEL) -> bool:
     """True when a snapshot holds model weights (pure path checks).
 
@@ -77,28 +116,16 @@ def is_model_cached(model_name: str = DEFAULT_MODEL) -> bool:
     the missing weights instead of re-downloading. Mirrored by core.v2's
     ``_is_model_cached``.
     """
-    model_dir = _hf_cache_model_dir(model_name)
-    if not model_dir.exists():
-        return False
+    return _select_cached_snapshot(model_name) is not None
 
-    snapshots_dir = model_dir / "snapshots"
-    if not snapshots_dir.exists():
-        return False
 
-    # Hub resolves the default revision via refs/main: only that snapshot
-    # decides, so a stale complete snapshot cannot mask the active one.
-    refs_main = model_dir / "refs" / "main"
-    if refs_main.exists():
-        active = snapshots_dir / refs_main.read_text().strip()
-        return any((active / w).exists() for w in _WEIGHT_FILES)
-
-    for snapshot in snapshots_dir.iterdir():
-        if not snapshot.is_dir():
-            continue
-        if any((snapshot / w).exists() for w in _WEIGHT_FILES):
-            return True
-
-    return False
+def describe_cache_state(model_name: str = DEFAULT_MODEL) -> str:
+    """Human-readable cache state for diagnostics (pure path checks)."""
+    if is_model_cached(model_name):
+        return "cached, weights present"
+    if not _hf_cache_model_dir(model_name).exists():
+        return "not cached"
+    return "incomplete, weights missing"
 
 
 def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
@@ -119,32 +146,48 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
     from huggingface_hub import snapshot_download
 
     repo_id = _model_repo_id(model_name)
-    path = snapshot_download(repo_id=repo_id)
+    cache_dir = _get_hf_cache_dir()
+    path = acquire_with_retry(
+        lambda: snapshot_download(repo_id=repo_id),
+        model_name=model_name,
+        action="download",
+        cache_dir=cache_dir,
+        cache_state=lambda: describe_cache_state(model_name),
+    )
+
+    # A "successful" call that left no weights is an honest failure, never a
+    # false cached success (the download can finish with an empty/partial
+    # snapshot on a flaky connection).
+    snapshot = Path(path) if path else None
+    if snapshot is None or not _snapshot_has_weights(snapshot):
+        raise ModelAcquisitionError(
+            model_name,
+            action="download",
+            category="corrupt",
+            cache_dir=cache_dir,
+            cache_state=describe_cache_state(model_name),
+            cause="download completed without model weights",
+        )
+
     logger.info(f"Model cached at: {path}")
     return path
 
 
 def _resolve_snapshot_path(model_name: str) -> str:
-    """Resolve the path to the latest snapshot for a cached model."""
-    model_dir = _hf_cache_model_dir(model_name)
-    refs_main = model_dir / "refs" / "main"
+    """Resolve the weights-bearing snapshot that ``is_model_cached`` validated.
 
-    if refs_main.exists():
-        commit_hash = refs_main.read_text().strip()
-        snapshot_path = model_dir / "snapshots" / commit_hash
-        if snapshot_path.exists():
-            return str(snapshot_path)
-
-    # Fallback: return the first snapshot directory found
-    snapshots_dir = model_dir / "snapshots"
-    for snapshot in sorted(snapshots_dir.iterdir()):
-        if snapshot.is_dir() and any(snapshot.iterdir()):
-            return str(snapshot)
-
-    raise FileNotFoundError(
-        f"Model '{model_name}' appears cached but no valid snapshot found. "
-        f"Run 'indexed init --force' to re-download."
-    )
+    Delegates to ``_select_cached_snapshot`` so the loader's snapshot is
+    exactly the one the predicate approved — the old fallback could return the
+    first non-empty snapshot (config-only residue) and report a false cached
+    success.
+    """
+    snapshot = _select_cached_snapshot(model_name)
+    if snapshot is None:
+        raise FileNotFoundError(
+            f"Model '{model_name}' appears cached but no valid snapshot found. "
+            f"Run 'indexed init --force' to re-download."
+        )
+    return str(snapshot)
 
 
 def _has_onnx_model(model_name: str) -> bool:
@@ -179,35 +222,60 @@ def load_model(model_name: str = DEFAULT_MODEL) -> SentenceTransformer:
 
     repo_id = _model_repo_id(model_name)
     cached = is_model_cached(model_name)
+    cache_dir = _get_hf_cache_dir()
 
     # Try ONNX backend for faster inference (avoids heavy PyTorch overhead)
     if cached:
+        # Load the exact snapshot the cache predicate validated (not the repo
+        # id) so "cached" and "loaded" can never diverge, and so an offline
+        # load never depends on the Hub resolving refs/main again.
+        snapshot = _resolve_snapshot_path(model_name)
         logger.debug(f"Loading '{model_name}' from HuggingFace cache (offline).")
         try:
-            model = SentenceTransformer(
-                repo_id,
-                local_files_only=True,
-                backend="onnx",
-            )
-            logger.debug(f"Loaded '{model_name}' with ONNX backend.")
-            return model
-        except Exception as e:
-            logger.debug(
-                f"ONNX backend unavailable for '{model_name}' ({e}), "
-                f"falling back to default backend."
-            )
-            return SentenceTransformer(repo_id, local_files_only=True)
+            try:
+                model = SentenceTransformer(
+                    snapshot,
+                    local_files_only=True,
+                    backend="onnx",
+                )
+                logger.debug(f"Loaded '{model_name}' with ONNX backend.")
+                return model
+            except Exception as e:
+                logger.debug(
+                    f"ONNX backend unavailable for '{model_name}' ({e}), "
+                    f"falling back to default backend."
+                )
+                return SentenceTransformer(snapshot, local_files_only=True)
+        except Exception as exc:
+            # Cache predicate said "cached" and the offline load still failed:
+            # a corrupt/incomplete snapshot, never a network problem.
+            raise local_load_error(
+                exc,
+                model_name=model_name,
+                cache_dir=cache_dir,
+                cache_state=describe_cache_state(model_name),
+            ) from exc
 
     logger.warning(
         f"Model '{model_name}' not found in cache. "
         f"Downloading now (run 'indexed init' to pre-download models)."
     )
-    try:
-        model = SentenceTransformer(repo_id, backend="onnx")
-        logger.debug(f"Downloaded and loaded '{model_name}' with ONNX backend.")
-        return model
-    except Exception:
-        return SentenceTransformer(repo_id)
+
+    def _download_and_load() -> SentenceTransformer:
+        try:
+            model = SentenceTransformer(repo_id, backend="onnx")
+            logger.debug(f"Downloaded and loaded '{model_name}' with ONNX backend.")
+            return model
+        except Exception:
+            return SentenceTransformer(repo_id)
+
+    return acquire_with_retry(
+        _download_and_load,
+        model_name=model_name,
+        action="download",
+        cache_dir=cache_dir,
+        cache_state=lambda: describe_cache_state(model_name),
+    )
 
 
 def get_cache_info() -> dict:

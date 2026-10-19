@@ -127,26 +127,56 @@ def test_build_goes_online_when_cache_partial(
 def test_build_model_failure_is_actionable(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """A failed model load surfaces a remedy, not transformers internals."""
+    """A failed uncached download is bounded and surfaces one remedy."""
     import llama_index.embeddings.huggingface as hf
 
-    from indexed.core.errors import CoreV2Error
+    from indexed.core.errors import ModelAcquisitionError
+    from indexed.core import model_acquisition as ma
 
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setattr(ma, "_sleep", lambda seconds: None)
+    calls: list[int] = []
 
     def broken(**kwargs: object) -> None:
+        calls.append(1)
         raise OSError(f"{MODEL}: no pytorch_model.bin or model.safetensors")
 
     monkeypatch.setattr(hf, "HuggingFaceEmbedding", broken)
 
-    with pytest.raises(CoreV2Error) as excinfo:
+    with pytest.raises(ModelAcquisitionError) as excinfo:
         local.build_embed_model(CoreV2EmbeddingConfig())
 
-    message = str(excinfo.value)
+    assert len(calls) == ma.MAX_ATTEMPTS  # bounded retry budget
+    err = excinfo.value
+    assert err.attempts == ma.MAX_ATTEMPTS
+    message = str(err)
     assert MODEL in message  # which model
     assert str(tmp_path) in message  # which cache dir is at fault
     assert "indexed init" in message  # the remedy
     assert "--model" in message  # the remedy names the model
+
+
+def test_build_cached_but_unloadable_is_corrupt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Cached yet unloadable must blame the snapshot, not the network."""
+    import llama_index.embeddings.huggingface as hf
+
+    from indexed.core.errors import ModelAcquisitionError
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    (_hub_snapshot(tmp_path, "deadbeef") / "model.safetensors").write_bytes(b"\x00" * 8)
+
+    def broken(**kwargs: object) -> None:
+        raise OSError("broken weights")
+
+    monkeypatch.setattr(hf, "HuggingFaceEmbedding", broken)
+
+    with pytest.raises(ModelAcquisitionError) as excinfo:
+        local.build_embed_model(CoreV2EmbeddingConfig())
+
+    assert excinfo.value.category == "corrupt"
+    assert "indexed init --force" in str(excinfo.value)
 
 
 def test_is_model_cached_requires_weights(

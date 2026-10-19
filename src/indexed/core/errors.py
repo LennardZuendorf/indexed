@@ -70,6 +70,82 @@ class CoreV2Error(CoreError):
     """
 
 
+# Failure categories for embedding-model acquisition, each with its own
+# honest remedy. Kept next to the error so the message stays self-contained.
+_ACQUISITION_LABEL: dict[str, str] = {
+    "network": "network failure",
+    "rate_limit": "rate limited",
+    "auth": "authentication required",
+    "missing": "model not found",
+    "corrupt": "corrupt or incomplete local model",
+    "unknown": "unexpected error",
+}
+
+_ACQUISITION_REMEDY: dict[str, str] = {
+    "network": (
+        "Check your network, proxy, or VPN and retry; once online, run "
+        "'indexed init --model {model}' to download it."
+    ),
+    "rate_limit": (
+        "The Hugging Face Hub is rate-limiting requests; wait a moment and "
+        "retry, or authenticate to raise the limit."
+    ),
+    "auth": (
+        "The model repository may be gated: accept its license on "
+        "huggingface.co and authenticate (for example with 'hf auth login'), "
+        "then retry."
+    ),
+    "missing": "Verify the model name, then run 'indexed init --model {model}'.",
+    "corrupt": (
+        "Run 'indexed init --force --model {model}' to re-download the model, "
+        "then retry."
+    ),
+    "unknown": (
+        "Run 'indexed init --model {model}' to (re)download the model, then retry."
+    ),
+}
+
+
+class ModelAcquisitionError(CoreError):
+    """An embedding model could not be acquired (downloaded or loaded).
+
+    The single actionable diagnostic every surface shows instead of dependency
+    retry chatter: it names the model, the local HuggingFace cache and its
+    state, the failure category, and a category-specific remedy. Raised at the
+    acquisition seam in ``core.v1``'s ``model_manager`` and ``core.v2``'s
+    ``embedding.local``; inherits ``IndexedError`` so the CLI exit code and MCP
+    error envelope keep working unchanged.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        action: str,
+        category: str,
+        cache_dir: object,
+        cache_state: str,
+        attempts: int = 1,
+        cause: str | None = None,
+    ) -> None:
+        self.model = model
+        self.action = action
+        self.category = category
+        self.cache_dir = cache_dir
+        self.cache_state = cache_state
+        self.attempts = attempts
+        label = _ACQUISITION_LABEL.get(category, category)
+        attempt_note = f" after {attempts} attempts" if attempts > 1 else ""
+        cause_note = f": {cause}" if cause else ""
+        remedy = _ACQUISITION_REMEDY.get(
+            category, _ACQUISITION_REMEDY["unknown"]
+        ).format(model=model)
+        super().__init__(
+            f"Embedding model '{model}' could not be {action}ed{attempt_note} "
+            f"({label}{cause_note}). Cache: {cache_dir} ({cache_state}). {remedy}"
+        )
+
+
 class UnknownVectorStoreError(CoreError):
     """A v2 collection records a vector store this installation can't load.
 
@@ -94,6 +170,7 @@ __all__ = [
     "CoreError",
     "CoreV2Error",
     "EngineMismatchError",
+    "ModelAcquisitionError",
     "UnknownEngineVersionError",
     "UnknownVectorStoreError",
 ]

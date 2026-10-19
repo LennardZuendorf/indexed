@@ -168,6 +168,32 @@ class TestInitCommand:
                 assert result.exit_code == 0
                 assert "Setup complete" in result.output
 
+    def test_failure_exits_nonzero_without_setup_complete(self):
+        """An acquisition failure must not print success or exit 0."""
+        from indexed.core.errors import ModelAcquisitionError
+
+        err = ModelAcquisitionError(
+            "all-MiniLM-L6-v2",
+            action="download",
+            category="network",
+            cache_dir="/tmp/hf",
+            cache_state="not cached",
+            attempts=3,
+            cause="unreachable",
+        )
+        with patch(
+            "indexed.core.v1.engine.indexes.embeddings.model_manager.is_model_cached",
+            return_value=False,
+        ):
+            with patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager.ensure_model",
+                side_effect=err,
+            ):
+                result = runner.invoke(_get_app(), ["init"])
+                assert result.exit_code == 1
+                assert "Setup complete" not in result.output
+                assert result.exception is err
+
     def test_skip_model_shows_skipped_message(self):
         """When --skip-model is used, 'skipped' should appear in output."""
         with patch(

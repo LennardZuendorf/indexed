@@ -58,7 +58,12 @@ THIRD_PARTY_LOGGERS: dict[str, str] = {
     "transformers": "ERROR",
     "sentence_transformers": "WARNING",
     "urllib3": "WARNING",
-    "huggingface_hub": "WARNING",
+    # huggingface_hub logs one WARNING per internal retry ("Retrying in Xs
+    # [Retry n/5]"); at default verbosity that is retry spam, and the
+    # acquisition seam already surfaces ONE actionable diagnostic. Floor at
+    # ERROR here; --debug lowers it back to DEBUG so the retry timeline is
+    # retained for diagnosis.
+    "huggingface_hub": "ERROR",
     "filelock": "WARNING",
     # Python's `warnings` module is bridged into logging via
     # `logging.captureWarnings(True)` in bootstrap_logging — records arrive

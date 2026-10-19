@@ -162,8 +162,11 @@ def create(
         _clear_caches(resolved_caches)
 
     for cfg in configs:
-        if force and _collection_exists(cfg.name, resolved_collections):
-            clear([cfg.name], collections_path=resolved_collections)
+        # ``force`` must NOT delete the existing collection up front: the
+        # creator builds aside and rename-swaps only on success, so a failed
+        # run (e.g. model acquisition) preserves the prior usable index. An
+        # explicit clear here would destroy it before the new build is known
+        # to succeed.
         _create_one(
             cfg,
             use_cache,
