@@ -23,6 +23,7 @@ from indexed.core.model_acquisition import (
     acquire_with_retry,
     local_load_error,
 )
+from indexed.utils.logger import enforce_third_party_policy
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -145,6 +146,10 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
 
     from huggingface_hub import snapshot_download
 
+    # HF reconfigures its own logger at import (StreamHandler + WARNING) —
+    # re-assert the policy or the Hub notice prints twice (#211).
+    enforce_third_party_policy("huggingface_hub")
+
     repo_id = _model_repo_id(model_name)
     cache_dir = _get_hf_cache_dir()
     path = acquire_with_retry(
@@ -220,6 +225,10 @@ def load_model(model_name: str = DEFAULT_MODEL) -> SentenceTransformer:
     """
     from sentence_transformers import SentenceTransformer
 
+    # SentenceTransformers pulls huggingface_hub in, which reconfigures its own
+    # logger at import — re-assert the policy before it can log (#211).
+    enforce_third_party_policy("huggingface_hub")
+
     repo_id = _model_repo_id(model_name)
     cached = is_model_cached(model_name)
     cache_dir = _get_hf_cache_dir()
@@ -289,6 +298,8 @@ def get_cache_info() -> dict:
 
     try:
         from huggingface_hub import scan_cache_dir
+
+        enforce_third_party_policy("huggingface_hub")
 
         cache_info = scan_cache_dir(cache_dir)
         models = []

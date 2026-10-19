@@ -58,12 +58,13 @@ THIRD_PARTY_LOGGERS: dict[str, str] = {
     "transformers": "ERROR",
     "sentence_transformers": "WARNING",
     "urllib3": "WARNING",
-    # huggingface_hub logs one WARNING per internal retry ("Retrying in Xs
-    # [Retry n/5]"); at default verbosity that is retry spam, and the
-    # acquisition seam already surfaces ONE actionable diagnostic. Floor at
-    # ERROR here; --debug lowers it back to DEBUG so the retry timeline is
-    # retained for diagnosis.
-    "huggingface_hub": "ERROR",
+    # The Hub's one-time notice ("Warning: You are sending unauthenticated
+    # requests ...", delivered via the X-HF-Warning header) is a WARNING, so the
+    # floor has to be WARNING for it to reach the user at all; its own handler
+    # is stripped by ``_apply_policy`` so it renders exactly once, through
+    # Loguru. File-download retries log at INFO (below this floor). --debug
+    # lowers it back to DEBUG for the full timeline.
+    "huggingface_hub": "WARNING",
     "filelock": "WARNING",
     # Python's `warnings` module is bridged into logging via
     # `logging.captureWarnings(True)` in bootstrap_logging — records arrive
@@ -89,6 +90,7 @@ raw stderr leaks.
 _LOGGING_CONFIGURED = False
 _CURRENT_LOG_LEVEL = "WARNING"
 _QUIET = False
+_DEBUG = False
 
 # Status subscribers — opaque tokens map to callbacks
 _status_subscribers: dict[int, Callable[[str], None]] = {}
@@ -116,8 +118,23 @@ class InterceptHandler(logging.Handler):
             depth += 1
 
         logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
+            level, _drop_redundant_level_prefix(record.getMessage(), record.levelname)
         )
+
+
+def _drop_redundant_level_prefix(message: str, level_name: str) -> str:
+    """Strip a leading ``"<LEVEL>: "`` the library already baked into ``message``.
+
+    The Hub's notice arrives as ``"Warning: You are sending ..."`` — the server
+    prefixes the header value itself. The console sink renders the level, so
+    keeping it would print ``WARNING  | Warning: ...``. Only the record's OWN
+    level is stripped, so text that merely starts with a level word (an ERROR
+    whose message begins with "Warning:") is left untouched.
+    """
+    prefix = f"{level_name}:"
+    if message[: len(prefix)].lower() == prefix.lower():
+        return message[len(prefix) :].lstrip()
+    return message
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +238,45 @@ def _make_status_sink() -> Callable[[Message], None]:
 # ---------------------------------------------------------------------------
 
 
+def _apply_policy(name: str) -> None:
+    """Attach the NullHandler defense and the effective level for one library."""
+    lib_logger = logging.getLogger(name)
+    # Drop whatever the library attached to itself: a plain StreamHandler writes
+    # unformatted lines straight to stderr, bypassing verbosity gating entirely.
+    for handler in list(lib_logger.handlers):
+        if not isinstance(handler, logging.NullHandler):
+            lib_logger.removeHandler(handler)
+    if not any(isinstance(h, logging.NullHandler) for h in lib_logger.handlers):
+        lib_logger.addHandler(logging.NullHandler())
+    lib_logger.setLevel(
+        logging.DEBUG if _DEBUG else getattr(logging, THIRD_PARTY_LOGGERS[name])
+    )
+    # Keep propagate=True so InterceptHandler at root still receives it.
+    lib_logger.propagate = True
+
+
+def enforce_third_party_policy(*names: str) -> None:
+    """Re-assert ``THIRD_PARTY_LOGGERS`` after a library reconfigures itself.
+
+    Some dependencies configure their own logger at import time:
+    ``huggingface_hub.utils.logging`` attaches a bare ``StreamHandler`` and sets
+    its root logger to WARNING. Every ML import in indexed is lazy, so that runs
+    *after* ``bootstrap_logging`` and silently undoes both the policy level and
+    the single-sink guarantee — the library's handler prints the record raw AND
+    the record still propagates into Loguru (the #211 duplicate notice).
+
+    Call this immediately after such an import; that import is the only moment
+    the clobber is observable. Idempotent, and a no-op until
+    ``bootstrap_logging`` has run, so a library import in a bare test/library
+    context never installs the CLI's sinks.
+    """
+    if not _LOGGING_CONFIGURED:
+        return
+    for name in names:
+        if name in THIRD_PARTY_LOGGERS:
+            _apply_policy(name)
+
+
 def bootstrap_logging(
     level: str = "WARNING",
     *,
@@ -257,11 +313,12 @@ def bootstrap_logging(
             missing. Ignored unless ``debug=True``.
         json_mode: Reserved. Currently a no-op — see plan U3 deferred question.
     """
-    global _LOGGING_CONFIGURED, _CURRENT_LOG_LEVEL, _QUIET
+    global _LOGGING_CONFIGURED, _CURRENT_LOG_LEVEL, _QUIET, _DEBUG
 
     effective_level = (level or "WARNING").upper()
     _CURRENT_LOG_LEVEL = effective_level
     _QUIET = quiet
+    _DEBUG = debug
     styles = theme_styles if theme_styles is not None else _DEFAULT_THEME_STYLES
 
     # 1. Wipe loguru handlers — we own them all.
@@ -282,17 +339,11 @@ def bootstrap_logging(
     # Records arrive under the `py.warnings` logger (gated in step 4).
     logging.captureWarnings(True)
 
-    # 4. Per-library policy: NullHandler defense + level.
-    for name, default_level in THIRD_PARTY_LOGGERS.items():
-        lib_logger = logging.getLogger(name)
-        # Set effective level: DEBUG when --debug, else policy default.
-        target_level = "DEBUG" if debug else default_level
-        lib_logger.setLevel(getattr(logging, target_level))
-        # Attach NullHandler if not already present (idempotent).
-        if not any(isinstance(h, logging.NullHandler) for h in lib_logger.handlers):
-            lib_logger.addHandler(logging.NullHandler())
-        # Keep propagate=True so InterceptHandler at root still receives it.
-        lib_logger.propagate = True
+    # 4. Per-library policy: NullHandler defense + level. Re-runnable — a
+    # library that configures itself on a lazy import is repaired by
+    # enforce_third_party_policy() at that import site.
+    for name in THIRD_PARTY_LOGGERS:
+        _apply_policy(name)
 
     # 5. Console sink (always; level-gated).
     show_details = effective_level in ("DEBUG", "INFO")
@@ -402,6 +453,7 @@ __all__ = [
     "InterceptHandler",
     "bootstrap_logging",
     "emit_status",
+    "enforce_third_party_policy",
     "subscribe_status",
     "unsubscribe_status",
     "is_verbose_mode",

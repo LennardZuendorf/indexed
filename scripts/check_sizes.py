@@ -84,7 +84,15 @@ SRC_LOC_MAX = 28_600
 # typed-error propagation case — genuine defect-guarding coverage for the
 # reproduced gaps (false cached success, retry spam, force-clobber), not
 # stealth regrowth; ceiling = measured (43_883) + headroom.
-TEST_LOC_MAX = 44_100
+# Raised from 44_100 by issue #211's duplicate-Hub-notice regression tests:
+# `tests/system/test_hf_notice_dedup.py` asserts the rendered notice COUNT (one
+# at default WARNING, zero at --quiet, zero when cached) through the real lazy
+# `huggingface_hub` import ordering, and `tests/unit/utils/test_logger.py` gains
+# the `enforce_third_party_policy` (re-attach/re-level/no-op-before-bootstrap/
+# idempotent) and `_drop_redundant_level_prefix` units — genuine
+# defect-guarding coverage for a reproduced double render, not stealth
+# regrowth; ceiling = measured (44_271) + headroom.
+TEST_LOC_MAX = 44_450
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

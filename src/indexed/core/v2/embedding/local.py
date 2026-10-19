@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from indexed.core.model_acquisition import acquire_with_retry, local_load_error
+from indexed.utils.logger import enforce_third_party_policy
 
 if TYPE_CHECKING:
     from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -113,6 +114,10 @@ def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
     # Function-local: importing the integration pulls torch +
     # sentence-transformers in at module top (tech.md laziness contract).
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+    # That import pulls transformers + huggingface_hub, which reconfigure their
+    # own loggers at import time — re-assert the policy before any request (#211).
+    enforce_third_party_policy("huggingface_hub")
 
     cache_dir = _hf_hub_cache_dir()
     cached = _is_model_cached(config.model_name)

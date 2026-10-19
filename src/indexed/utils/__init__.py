@@ -10,6 +10,7 @@ from .logger import (
     THIRD_PARTY_LOGGERS,
     bootstrap_logging,
     emit_status,
+    enforce_third_party_policy,
     get_current_log_level,
     is_verbose_mode,
     setup_root_logger,  # deprecated shim
@@ -24,6 +25,7 @@ __all__ = [
     # Logging
     "bootstrap_logging",
     "emit_status",
+    "enforce_third_party_policy",
     "subscribe_status",
     "unsubscribe_status",
     "is_verbose_mode",
