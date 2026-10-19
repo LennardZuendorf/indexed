@@ -13,10 +13,13 @@ from pathlib import Path
 import pytest
 from loguru import logger as loguru_logger
 
+from indexed.utils import logger as logger_module
 from indexed.utils.logger import (
     THIRD_PARTY_LOGGERS,
+    _drop_redundant_level_prefix,
     bootstrap_logging,
     emit_status,
+    enforce_third_party_policy,
     get_current_log_level,
     is_verbose_mode,
     subscribe_status,
@@ -272,3 +275,113 @@ class TestThemeStylesInjection:
         loguru_logger.warning("themed")
         captured = capsys.readouterr()
         assert "themed" in (captured.out + captured.err)
+
+
+class TestEnforceThirdPartyPolicy:
+    """Re-establishing the policy after a library configured itself (#211).
+
+    ``huggingface_hub.utils.logging`` runs ``_configure_library_root_logger()``
+    at import: it attaches a bare ``StreamHandler`` and sets the library root
+    logger to WARNING. Because every ML import here is lazy, that lands *after*
+    ``bootstrap_logging`` and silently undoes both the level floor and the
+    single-sink guarantee.
+    """
+
+    def test_reattaches_nullhandler_and_restores_level(self):
+        bootstrap_logging("WARNING")
+        lib = logging.getLogger("huggingface_hub")
+        # Exactly the post-import state of huggingface_hub 1.12.2.
+        lib.addHandler(logging.StreamHandler())
+        lib.setLevel(logging.DEBUG)
+
+        enforce_third_party_policy("huggingface_hub")
+
+        assert not any(
+            isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.NullHandler)
+            for h in lib.handlers
+        ), "library's raw stderr handler must be gone"
+        assert any(isinstance(h, logging.NullHandler) for h in lib.handlers)
+        assert lib.level == logging.WARNING
+        assert lib.propagate is True
+
+    def test_level_follows_policy_table(self):
+        bootstrap_logging("WARNING")
+        enforce_third_party_policy("transformers")
+        assert logging.getLogger("transformers").level == logging.ERROR
+
+    def test_debug_lowers_floor_to_debug(self):
+        bootstrap_logging("DEBUG", debug=True)
+        enforce_third_party_policy("huggingface_hub")
+        assert logging.getLogger("huggingface_hub").level == logging.DEBUG
+
+    def test_noop_before_bootstrap(self, monkeypatch):
+        """A bare library import must not install the CLI's logging setup."""
+        monkeypatch.setattr(logger_module, "_LOGGING_CONFIGURED", False)
+        lib = logging.getLogger("huggingface_hub")
+        lib.handlers.clear()
+        lib.setLevel(logging.NOTSET)
+
+        enforce_third_party_policy("huggingface_hub")
+
+        assert lib.handlers == []
+        assert lib.level == logging.NOTSET
+
+    def test_idempotent(self):
+        bootstrap_logging("WARNING")
+        for _ in range(3):
+            enforce_third_party_policy("huggingface_hub")
+        lib = logging.getLogger("huggingface_hub")
+        assert sum(isinstance(h, logging.NullHandler) for h in lib.handlers) == 1
+        assert lib.level == logging.WARNING
+
+    def test_unknown_logger_name_is_ignored(self):
+        bootstrap_logging("WARNING")
+        lib = logging.getLogger("not_in_policy_table")
+        lib.handlers.clear()
+        enforce_third_party_policy("not_in_policy_table")
+        assert lib.handlers == []
+
+
+class TestDropRedundantLevelPrefix:
+    """The Hub bakes its own ``"Warning: "`` into the message.
+
+    Rendering that through a sink that already prints the level produced
+    ``WARNING  | Warning: ...`` — the "badly formatted" half of #211.
+    """
+
+    def test_strips_own_level_prefix(self):
+        assert (
+            _drop_redundant_level_prefix("Warning: You are sending", "WARNING")
+            == "You are sending"
+        )
+
+    def test_case_insensitive(self):
+        assert _drop_redundant_level_prefix("warning: boom", "WARNING") == "boom"
+
+    def test_leaves_prefix_of_a_different_level(self):
+        """An ERROR whose text starts with "Warning:" is not the Hub's notice."""
+        assert (
+            _drop_redundant_level_prefix("Warning: disk 90% full", "ERROR")
+            == "Warning: disk 90% full"
+        )
+
+    def test_leaves_message_without_prefix(self):
+        assert (
+            _drop_redundant_level_prefix("plain message", "WARNING") == "plain message"
+        )
+
+    def test_strips_only_one_prefix(self):
+        assert (
+            _drop_redundant_level_prefix("WARNING: WARNING: dup", "WARNING")
+            == "WARNING: dup"
+        )
+
+    def test_intercept_handler_keeps_mismatched_prefix(self, capsys):
+        """The strip runs in emit(), so assert the rendered line, not the helper."""
+        bootstrap_logging("WARNING")
+        logging.getLogger("huggingface_hub.utils._http").error(
+            "Warning: not the hub notice"
+        )
+        err = capsys.readouterr().err
+        assert "Warning: not the hub notice" in err
