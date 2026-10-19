@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-09-08
+updated: 2026-09-26
 ---
 
 # Lessons Learned
@@ -997,3 +997,78 @@ with `git add`/`git status`, since that's what CI actually runs.
   with no per-item slot to carry that in, so they still purely omit (logged
   warning only) — this is a real, deliberate asymmetry the return type
   forces, not oversight.
+
+## Weights-blind model-cache check bricked embedding (2026-09-25)
+
+- **A "model is cached" check that counts any file in a snapshot dir as
+  cached bricks every embedding op after ONE interrupted download — the
+  check must require the weights file.** HuggingFace hub only symlinks a
+  snapshot file once its blob completes, so an interrupted download leaves
+  config/tokenizer files in the snapshot with NO
+  `model.safetensors`/`pytorch_model.bin` (the weights sit in `blobs/` as
+  `.incomplete` forever). The old `is_model_cached`/`_is_model_cached`
+  ("any snapshot dir with any entry") read that residue as cached, pinned
+  `local_files_only=True`, and the offline load then died on the missing
+  weights — reproduced deterministically against a fixture cache
+  (`fix/embedding-cache-check`). Both engines' checks now require an
+  existing `model.safetensors`/`pytorch_model.bin` in a snapshot (v1
+  `model_manager.is_model_cached`, v2 `embedding/local._is_model_cached`;
+  the parity test keeps them in lockstep), so a partial cache now goes
+  online and hub resumes the download instead.
+- **transformers' "does not appear to have a file named
+  pytorch_model.bin or model.safetensors" is a lie about the cause — never
+  surface it raw or debug from it literally.** `modeling_utils` raises it
+  whenever `cached_file` returns None with
+  `_raise_exceptions_for_missing_entries=False` — which happens for
+  offline mode, an unreachable hub, a gated repo, OR a genuinely absent
+  file; the message always says "no file named". In the 2026-09-25 incident
+  the network was fine and the repo had the weights — the hub lookup was
+  swallowed during a tool-reinstall window and the message sent the debug
+  hunt in the wrong direction. Wrap model-load failures at the boundary
+  with actionable context (model name, cache dir, `indexed init` remedy) —
+  v2's `build_embed_model` now wraps OSError/ValueError into `CoreV2Error`
+  for exactly this reason.
+
+## Env-fragile unit tests behind the pre-push gate (2026-09-25)
+
+- **FORCE_COLOR in the environment flips Rich recording consoles into
+  forced-terminal mode, which auto-detects width and DISCARDS an explicit
+  `width=` — pin `force_terminal=False` on any width-pinned recording
+  console.** Rich's `Console` reads `FORCE_COLOR` (rich/console.py:964;
+  WaveTerm sets it) and treats the console as a forced terminal; a forced
+  terminal auto-detects its size and the explicit `width=` never applies, so
+  `RichConsole(record=True, width=100)` rendered at 80 on captured stdout
+  and the card's engine descriptor wrapped to a second line.
+  `TestDetailCardDescriptorFitsOnOneLine` failed exactly this way locally
+  while passing on CI (no FORCE_COLOR) — 22/22 pass with
+  `env -u FORCE_COLOR`. Width-sensitive tests must pass
+  `force_terminal=False`; content-only tests that already pass
+  `force_terminal=True` are unaffected (width detection doesn't change what
+  text renders).
+- **`ConfigService` resolves its workspace from `Path.cwd()`, so any test
+  that writes the session-sandboxed HOME config must also chdir to a clean
+  cwd — a repo-root `./.indexed/config.toml` otherwise flips storage mode
+  to LOCAL and shadows it.** `load_raw()` reads exactly ONE config.toml for
+  the resolved mode, and the conftest sandbox only patches `Path.home()`,
+  not the cwd; with a real gitignored `./.indexed/config.toml` in the repo
+  root, `TestResolverValidationFailsLoud`'s invalid TOML in the sandboxed
+  HOME config was never read (no raise) — passing on CI (no local config)
+  and failing on any machine that has one. `monkeypatch.chdir(tmp_path)`
+  (an autouse class fixture) is the hermetic pattern; the local-config-wins
+  behavior itself is the correct config priority chain, not a bug.
+
+## CI-only gates are not in the pre-push hooks (2026-09-26)
+
+- **`scripts/check_imports.py` and `scripts/check_sizes.py` run only in CI —
+  they are absent from `.pre-commit-config.yaml` and the pre-push hooks, so a
+  branch can pass every local gate the hooks run and still open a red PR.**
+  The pre-push gate runs pytest + ty + ruff + wheel build; the size gate
+  (`TEST_LOC_MAX`/`SRC_LOC_MAX` in `check_sizes.py`) and the import-graph gate
+  are separate CI steps, so a test-heavy branch silently breaches a LOC
+  ceiling and only learns it from the PR's "Check size gates" step. Run BOTH
+  scripts explicitly in every local gate matrix (and every dispatched task
+  brief) alongside the hook-covered gates; a "green locally" claim that omits
+  them is not evidence the PR is green. The fix shape when a ceiling is
+  breached is trim boilerplate first (one-line docstrings, a shared layout
+  helper, inlined scenario comments — never weaken an assertion or drop a
+  scenario), then bump with a precedent comment last.
