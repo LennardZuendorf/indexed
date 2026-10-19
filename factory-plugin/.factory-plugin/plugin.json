@@ -1,0 +1,9 @@
+{
+  "name": "vibe",
+  "description": "Spec-first workflow harness: the spec + vibe skills and the native /flow command for Factory Droid.",
+  "author": { "name": "Lennard Zuendorf", "url": "https://github.com/LennardZuendorf" },
+  "homepage": "https://github.com/LennardZuendorf/vibe",
+  "repository": "https://github.com/LennardZuendorf/vibe",
+  "license": "MIT",
+  "keywords": ["spec", "workflow", "vibe", "flow"]
+}

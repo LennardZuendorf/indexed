@@ -63,3 +63,15 @@ tmp/
 docs/superpowers/
 docs/plans/
 docs/brainstorms/
+
+# vibe mutable flow cursor (runtime; version state-machine.json, not this)
+.agents/skills/vibe/state.json
+
+# vibe evidence receipts (runtime verification output, not memory)
+.agents/skills/vibe/evidence/
+
+# vibe warnings relay (runtime warn-first channel; surfaced then truncated)
+.agents/skills/vibe/warnings.log
+
+# vibe inject edge-detection marker (runtime; records the cursor the last inject saw)
+.vibe/last-inject

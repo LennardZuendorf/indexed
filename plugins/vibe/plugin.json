@@ -1,0 +1,5 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "vibe",
+  "description": "Spec-first workflow harness: the spec + vibe skills, packaged for repo-scoped Codex discovery. Identity and metadata only — no version field, so there is no second source of truth beside package.json."
+}

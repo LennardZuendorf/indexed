@@ -1,0 +1,8 @@
+{
+  "name": "vibe",
+  "description": "vibe — spec-first workflow harness (spec + vibe skills, native /flow command).",
+  "owner": { "name": "Lennard Zuendorf", "url": "https://github.com/LennardZuendorf" },
+  "plugins": [
+    { "name": "vibe", "description": "Spec + vibe skills and the native /flow command.", "source": "./factory-plugin" }
+  ]
+}

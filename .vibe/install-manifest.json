@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "comment": "vibe install manifest - artifacts this install created, per host. Written by install.sh; read by --uninstall. Do not edit by hand.",
+  "actions": [
+    {"host": "claude", "kind": "file", "path": ".claude/commands/flow.md"},
+    {"host": "claude", "kind": "file", "path": ".claude/hooks/_engine-hook.sh"},
+    {"host": "claude", "kind": "file", "path": ".claude/hooks/pre-tool-use-guard.sh"},
+    {"host": "claude", "kind": "file", "path": ".claude/hooks/session-start-doctrine.sh"},
+    {"host": "claude", "kind": "file", "path": ".claude/hooks/stop-gate.sh"},
+    {"host": "claude", "kind": "file", "path": ".claude/hooks/user-prompt-submit-inject.sh"},
+    {"host": "claude", "kind": "merge", "path": ".claude/settings.json"},
+    {"host": "claude", "kind": "symlink", "path": ".claude/skills/spec", "target": "../../.agents/skills/spec"},
+    {"host": "claude", "kind": "symlink", "path": ".claude/skills/vibe", "target": "../../.agents/skills/vibe"},
+    {"host": "codex", "kind": "file", "path": ".agents/plugins/marketplace.json"},
+    {"host": "codex", "kind": "file", "path": "plugins/vibe/plugin.json"},
+    {"host": "codex", "kind": "symlink", "path": "plugins/vibe/skills/spec", "target": "../../../.agents/skills/spec"},
+    {"host": "codex", "kind": "symlink", "path": "plugins/vibe/skills/vibe", "target": "../../../.agents/skills/vibe"},
+    {"host": "droid", "kind": "file", "path": ".factory-plugin/marketplace.json"},
+    {"host": "droid", "kind": "file", "path": "factory-plugin/.factory-plugin/plugin.json"},
+    {"host": "droid", "kind": "file", "path": "factory-plugin/commands/flow.md"},
+    {"host": "droid", "kind": "symlink", "path": "factory-plugin/skills/spec", "target": "../../.agents/skills/spec"},
+    {"host": "droid", "kind": "symlink", "path": "factory-plugin/skills/vibe", "target": "../../.agents/skills/vibe"},
+    {"host": "opencode", "kind": "file", "path": ".opencode/commands/flow.md"}
+  ]
+}
