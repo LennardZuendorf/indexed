@@ -23,7 +23,7 @@ from indexed.config.errors import IndexedError  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.theme import Theme  # noqa: E402
 
-from indexed.utils import bootstrap_logging  # noqa: E402
+from indexed.utils import bootstrap_logging, get_current_log_level  # noqa: E402
 
 from .utils.banner import print_indexed_banner  # noqa: E402
 from .utils.components.alerts import print_error  # noqa: E402
@@ -241,6 +241,13 @@ def main() -> None:
         app()
     except IndexedError as exc:
         from .errors import exit_code_for, format_cli_error
+
+        # Debug retains the full cause chain; the default surface shows only
+        # the single actionable diagnostic below.
+        if get_current_log_level() == "DEBUG":
+            from loguru import logger as _logger
+
+            _logger.opt(exception=exc).debug("Command failed")
 
         # No `escape()` here: `print_error` renders through a `rich.text.Text`
         # sink, which is literal by construction (never markup-parsed), so a

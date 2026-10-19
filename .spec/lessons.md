@@ -8,6 +8,35 @@ updated: 2026-10-19
 
 Accumulated mistakes and earned defaults. Read at session start.
 
+## Model-acquisition failure surface (issue #210, 2026-10-19)
+
+- **A failed model download must produce ONE typed diagnostic, never the
+  dependency's own retry chatter.** `huggingface_hub` logs a WARNING per
+  internal retry ("Retrying in Xs [Retry n/5]") and transformers' "does not
+  appear to have a file named pytorch_model.bin" fires for ANY swallowed lookup
+  (offline, unreachable hub, gated, or genuinely absent) — both are noise that
+  misdirects the user. The fix is two-sided: floor `huggingface_hub` at ERROR in
+  `utils/logger.py` (so default output is clean, `--debug` restores the
+  timeline), and run our OWN bounded retry (`core/model_acquisition.py`,
+  `MAX_ATTEMPTS = 3`) around the acquisition seam, wrapping the final failure in
+  `ModelAcquisitionError` naming model, cache state, and a category-specific
+  remedy. Retry only transient categories (network, 429); 401/403/gated and 404
+  raise immediately — retrying an auth failure just delays the honest answer.
+- **"Cached" must mean "loadable", so the cache predicate and the path the
+  loader uses must be ONE function.** A weights-aware predicate
+  (`is_model_cached`) that agreed with `_is_model_cached` still wasn't enough:
+  `_resolve_snapshot_path` returned the FIRST non-empty snapshot, so a
+  config-only residue (alphabetically first) was reported as a cached success
+  while the weights lived in a later snapshot. `_select_cached_snapshot` is now
+  the single source for both, and `load_model` loads that exact snapshot path
+  offline. Test snapshot SELECTION, not just predicate parity.
+- **`--force` must not delete the prior collection up front.** The v1 creator
+  already builds aside and rename-swaps only on success, so the extra
+  `clear([name])` in the force path destroyed a healthy index before the new
+  build was known to succeed — a failed acquisition (or any failure) then lost
+  the previously usable collection. Removed; the swap alone gives force its
+  overwrite semantics atomically.
+
 ## Dependency lock reconciliation (2026-10-19)
 
 - **Removing temporary resolver constraints can leave `uv.lock` metadata

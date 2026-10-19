@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from indexed.core.engine import SourceConfig
 
 from indexed.config import ConfigService, StorageMode, ValidationResult
+from indexed.config.errors import IndexedError
 
 from ...utils.logging import is_verbose_mode, setup_root_logger
 from ...utils.console import console
@@ -353,9 +354,14 @@ def execute_create_command(
 
         # If creation failed, show error and exit
         if creation_error:
-            print_error(f"Failed to create collection: {str(creation_error)}")
             if is_verbose_mode():
-                logger.exception("Full error details:")
+                logger.opt(exception=creation_error).error("Full error details:")
+            if isinstance(creation_error, IndexedError):
+                # Typed project errors (e.g. model acquisition) carry their own
+                # single actionable diagnostic; let the top-level handler print
+                # it verbatim and map the exit code.
+                raise creation_error
+            print_error(f"Failed to create collection: {str(creation_error)}")
             raise typer.Exit(1)
 
         # Phase 3: Verify collection was created by checking if manifest exists

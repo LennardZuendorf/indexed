@@ -899,3 +899,73 @@ class TestExecuteCreateCommandEngineOverride:
             )
 
         mock_create.assert_not_called()
+
+
+class TestExecuteCreateCommandTypedErrors:
+    """A typed project error must propagate, never become success-shaped output."""
+
+    @patch("indexed.cli.knowledge.commands._create_helpers.setup_root_logger")
+    @patch("indexed.config.get_config")
+    @patch("indexed.cli.knowledge.commands._create_helpers.is_verbose_mode")
+    @patch("indexed.core.engine.collection_exists")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_create")
+    @patch("indexed.cli.knowledge.commands._create_helpers.svc_status")
+    @patch("indexed.cli.knowledge.commands._create_helpers.print_success")
+    def test_model_acquisition_error_propagates_without_success(
+        self,
+        mock_print_success,
+        mock_status,
+        mock_create,
+        mock_exists,
+        mock_verbose,
+        mock_config_service,
+        mock_setup_logger,
+    ):
+        from indexed.core.errors import ModelAcquisitionError
+
+        err = ModelAcquisitionError(
+            "all-MiniLM-L6-v2",
+            action="download",
+            category="network",
+            cache_dir="/tmp/hf",
+            cache_state="not cached",
+            attempts=3,
+            cause="unreachable",
+        )
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config.validate_requirements.return_value = ValidationResult(
+            present={"path": "/test"}, missing=[], field_info={}
+        )
+        mock_config_service.return_value = mock_config
+        mock_verbose.return_value = False
+        mock_exists.return_value = False
+        mock_create.side_effect = err
+
+        def build_source_config(present, coll_name):
+            return SourceConfig(
+                name=coll_name,
+                type="localFiles",
+                base_url_or_path=present["path"],
+                indexer="default",
+            )
+
+        with pytest.raises(ModelAcquisitionError):
+            execute_create_command(
+                collection="new-collection",
+                source_type="localFiles",
+                config_class=Mock,
+                namespace="sources.files",
+                cli_overrides={},
+                prompt_missing_fields=lambda v, c, n: None,
+                build_source_config=build_source_config,
+                success_message_suffix="from files",
+                verbose=False,
+                json_logs=False,
+                log_level=None,
+                use_cache=True,
+                force=False,
+            )
+
+        mock_print_success.assert_not_called()
+        mock_status.assert_not_called()

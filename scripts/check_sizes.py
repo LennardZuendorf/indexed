@@ -17,7 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SRC_LOC_MAX = 28_100
+# Raised from 28_100 by issue #210's model-acquisition failure surface: the
+# shared `core/model_acquisition.py` (bounded retry + failure categorization +
+# secret redaction), the `ModelAcquisitionError` diagnostic, and the v1/v2/CLI
+# wiring that turns an unreachable Hub into ONE actionable error — genuine
+# correctness surface (init/create/search used to leak raw retry spam), not
+# stealth regrowth; ceiling = measured (28_397) + headroom.
+SRC_LOC_MAX = 28_600
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -71,7 +77,14 @@ SRC_LOC_MAX = 28_100
 # Raised from 29_000 after the review-remediation feature added ~90 red->green
 # regression tests (one per confirmed PR #155 defect). That is legitimate
 # defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-TEST_LOC_MAX = 43_450
+# Raised from 43_450 by issue #210's regression tests: the acquisition seam
+# unit suite (categorization, bounded retry, Retry-After, redaction), the v1
+# ensure_model/load_model failure + snapshot-consistency cases, the v2
+# cached-unloadable case, the CLI init nonzero-exit case, and the create
+# typed-error propagation case — genuine defect-guarding coverage for the
+# reproduced gaps (false cached success, retry spam, force-clobber), not
+# stealth regrowth; ceiling = measured (43_883) + headroom.
+TEST_LOC_MAX = 44_100
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

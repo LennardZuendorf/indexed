@@ -28,7 +28,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from indexed.core.errors import CoreV2Error
+from indexed.core.model_acquisition import acquire_with_retry, local_load_error
 
 if TYPE_CHECKING:
     from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -91,6 +91,17 @@ def _is_model_cached(model_name: str) -> bool:
     return False
 
 
+def _cache_state(model_name: str) -> str:
+    """Human-readable cache state for diagnostics (pure path checks)."""
+    if _is_model_cached(model_name):
+        return "cached, weights present"
+    repo_id = model_name if "/" in model_name else f"{_ST_ORG}/{model_name}"
+    model_dir = _hf_hub_cache_dir() / f"models--{repo_id.replace('/', '--')}"
+    if not model_dir.exists():
+        return "not cached"
+    return "incomplete, weights missing"
+
+
 def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
     """Build the native embedding for ``config`` (v1's model, 1:1 vectors).
 
@@ -103,29 +114,46 @@ def build_embed_model(config: "CoreV2EmbeddingConfig") -> "BaseEmbedding":
     # sentence-transformers in at module top (tech.md laziness contract).
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
+    cache_dir = _hf_hub_cache_dir()
+    cached = _is_model_cached(config.model_name)
+
     # ``local_files_only`` is forwarded (via the integration's ``**model_kwargs``)
     # to SentenceTransformer. Cached → ``True`` forbids the etag/revision network
     # probe (offline, R8/R12). Not cached → ``False`` (the default) lets a first
     # run download into the shared cache. Passing the bool unconditionally is
     # equivalent to conditionally omitting it and keeps ty's kwargs check clean.
-    try:
+    def _build() -> "BaseEmbedding":
         return HuggingFaceEmbedding(
             model_name=config.model_name,
             embed_batch_size=config.batch_size,
             normalize=True,
-            cache_folder=str(_hf_hub_cache_dir()),
-            local_files_only=_is_model_cached(config.model_name),
+            cache_folder=str(cache_dir),
+            local_files_only=cached,
         )
-    except (OSError, ValueError) as exc:
-        # The integration's file-availability signals (missing weights in an
-        # incomplete cache, an unreachable Hub) — surface the remedy instead
-        # of transformers' misleading "no file named pytorch_model.bin" text.
-        raise CoreV2Error(
-            f"Embedding model '{config.model_name}' could not be loaded: "
-            f"the local HF cache at {_hf_hub_cache_dir()} is incomplete or "
-            f"the Hub was unreachable. Run 'indexed init --model "
-            f"{config.model_name}' to (re)download the model, then retry."
-        ) from exc
+
+    if cached:
+        try:
+            return _build()
+        except (OSError, ValueError) as exc:
+            # Cached yet unloadable is a corrupt/incomplete snapshot, not a
+            # connectivity problem — remedy is a forced re-download.
+            raise local_load_error(
+                exc,
+                model_name=config.model_name,
+                cache_dir=cache_dir,
+                cache_state=_cache_state(config.model_name),
+            ) from exc
+
+    # Not cached: a first run downloads, bounded + categorized so an
+    # unreachable Hub or a gated/missing repo yields ONE actionable error
+    # instead of transformers' misleading "no file named pytorch_model.bin".
+    return acquire_with_retry(
+        _build,
+        model_name=config.model_name,
+        action="download",
+        cache_dir=cache_dir,
+        cache_state=lambda: _cache_state(config.model_name),
+    )
 
 
 def probe_dimension(embed_model: "BaseEmbedding") -> int:

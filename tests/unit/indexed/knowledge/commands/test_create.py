@@ -2092,3 +2092,53 @@ class TestCreateFilesHelpRendering:
         assert "--no-gitign…" not in result.stdout
         # Verify help text is present
         assert "Respect .gitignore files" in result.stdout
+
+
+class TestCreateCliAcquisitionFailure:
+    """A model-acquisition failure exits nonzero with no success output."""
+
+    def test_create_files_failure_exits_nonzero_without_success(
+        self, tmp_path, monkeypatch
+    ):
+        from typer.testing import CliRunner
+
+        import indexed.core.engine as engine
+        from indexed.cli.app import app
+        from indexed.core.errors import ModelAcquisitionError
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "doc.txt").write_text("semantic search content")
+
+        err = ModelAcquisitionError(
+            "all-MiniLM-L6-v2",
+            action="download",
+            category="network",
+            cache_dir="/tmp/hf",
+            cache_state="not cached",
+            attempts=3,
+            cause="unreachable",
+        )
+
+        def _fail(*args, **kwargs):
+            raise err
+
+        monkeypatch.setattr(engine, "create", _fail)
+
+        result = CliRunner().invoke(
+            app,
+            [
+                "index",
+                "create",
+                "files",
+                "--collection",
+                "c1",
+                "--path",
+                str(src),
+                "--local",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "created with" not in result.output.lower()
+        assert result.exception is err
