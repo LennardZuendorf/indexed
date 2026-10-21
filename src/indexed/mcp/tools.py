@@ -7,7 +7,6 @@ from loguru import logger
 
 from indexed.core.engine import (
     SourceConfig,
-    collection_exists as svc_collection_exists,
     search as svc_search,
     status as svc_status,
 )
@@ -15,6 +14,7 @@ from indexed.core.engine import (
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from .collection_errors import unresolvable_collection_error
 from .config import resolve_cli_context, resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
@@ -54,23 +54,12 @@ def _run_search(
 def _unresolvable_collection_envelope(
     collection: str, collections_path: str
 ) -> Dict[str, Any]:
-    """Error for a collection ``status()`` could not resolve.
-
-    ``status()`` omits collections whose manifest is unreadable, so an empty
-    status is ambiguous: the name may be genuinely unknown OR the collection may
-    be present but unusable. Reporting the second case as "not found" tells an
-    agent to check its spelling when the index is what needs rebuilding (#112),
-    so probe the disk before choosing the message.
-    """
-    if svc_collection_exists(collection, collections_path=collections_path):
-        return mcp_error_envelope(
-            MCPError(
-                f"Collection '{collection}' exists on disk but has no usable "
-                "index: its manifest is unreadable, or it has no indexers yet. "
-                "Re-create it with --force, or re-run indexing for it, then retry."
-            )
-        )
-    return {"error": f"Collection '{collection}' not found or has no indexers"}
+    """``search_collection``'s unknown-vs-unusable answer (see ``collection_errors``)."""
+    return unresolvable_collection_error(
+        collection,
+        collections_path,
+        f"Collection '{collection}' not found or has no indexers",
+    )
 
 
 def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
