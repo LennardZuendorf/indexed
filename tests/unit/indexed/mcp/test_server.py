@@ -590,6 +590,28 @@ class TestResourceDispatch:
         assert "beta" in result.contents[0].content
         assert "number_of_documents" in result.contents[0].content
 
+    @patch("indexed.mcp.collection_errors.svc_collection_exists")
+    @patch.object(resources_module, "svc_status", return_value=[])
+    @patch.object(server_module, "_get_config")
+    def test_unreadable_collection_resource_is_not_called_missing(
+        self,
+        mock_get_config: MagicMock,
+        _mock_status: MagicMock,
+        mock_exists: MagicMock,
+    ) -> None:
+        """#112: the single-collection resource must not blame the caller's spelling."""
+        from indexed.core.v1.config_models import MCPConfig
+
+        mock_get_config.return_value = MCPConfig()
+
+        mock_exists.return_value = True
+        result = _read_resource("resource://collection/broken")
+        assert "has no usable index" in str(result.contents[0].content)
+
+        mock_exists.return_value = False
+        result = _read_resource("resource://collection/ghost")
+        assert "not found" in str(result.contents[0].content)
+
 
 class TestLifespan:
     """Tests for server lifespan context manager."""

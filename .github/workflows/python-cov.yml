@@ -31,6 +31,13 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     name: Full Test Suite with Coverage
+    # Dependabot and fork PRs are handed a read-only GITHUB_TOKEN and receive
+    # no repository secrets, so the Codecov upload below cannot authenticate.
+    # Publishing the token into the job env makes that visible to a step-level
+    # `if`, which can skip the upload instead of failing a job whose tests
+    # passed. Real upload breakage still fails the job (fail_ci_if_error).
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -78,9 +85,12 @@ jobs:
           uv run pytest tests/unit/ --cov=indexed --cov-branch --cov-report=xml --cov-report=term-missing --cov-fail-under=85 -v
 
       - name: Upload coverage reports to Codecov
+        # Skipped only when no token reached the runner (Dependabot / fork PRs).
+        # Same-repo PRs and main always upload, and a broken upload still fails.
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           files: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
