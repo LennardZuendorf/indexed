@@ -22,6 +22,7 @@ from indexed.core.engine import status as svc_status
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from .collection_errors import unresolvable_collection_error
 from .config import resolve_cli_context, resolve_config as _resolve_config
 
 
@@ -92,7 +93,9 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
                 collections_path=collections_path,
             )
             if not statuses:
-                return {"error": f"Collection '{name}' not found"}
+                return unresolvable_collection_error(
+                    name, collections_path, f"Collection '{name}' not found"
+                )
             return _format_status(statuses[0])
         except IndexedError as e:
             return mcp_error_envelope(e)

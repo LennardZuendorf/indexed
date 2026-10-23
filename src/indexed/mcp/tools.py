@@ -14,6 +14,7 @@ from indexed.core.engine import (
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from .collection_errors import unresolvable_collection_error
 from .config import resolve_cli_context, resolve_config as _resolve_config
 from .formatting import format_search_results_for_llm
 
@@ -48,6 +49,17 @@ def _run_search(
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
         logger.exception("Unexpected error while executing MCP search")
         return mcp_error_envelope(MCPError(f"Internal error: {e}"))
+
+
+def _unresolvable_collection_envelope(
+    collection: str, collections_path: str
+) -> Dict[str, Any]:
+    """``search_collection``'s unknown-vs-unusable answer (see ``collection_errors``)."""
+    return unresolvable_collection_error(
+        collection,
+        collections_path,
+        f"Collection '{collection}' not found or has no indexers",
+    )
 
 
 def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
@@ -108,7 +120,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             return mcp_error_envelope(MCPError(f"Internal error: {e}"))
 
         if not statuses or not statuses[0].indexers:
-            return {"error": f"Collection '{collection}' not found or has no indexers"}
+            return _unresolvable_collection_envelope(collection, collections_path)
         coll_status = statuses[0]
         default_indexer = coll_status.indexers[0]
 
