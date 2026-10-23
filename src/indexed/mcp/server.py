@@ -10,7 +10,7 @@ a re-index (foundation/6 E9).
 """
 
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Type, TypedDict
+from typing import Any, AsyncGenerator, Type, TypedDict
 
 from fastmcp import FastMCP
 
@@ -48,7 +48,7 @@ def _get_config(model_cls: Type[Any]) -> Any:
 
 
 @asynccontextmanager
-async def lifespan(server: FastMCP) -> AsyncIterator[LifespanState]:
+async def lifespan(server: FastMCP) -> AsyncGenerator[LifespanState, None]:
     """Server lifespan context manager for configuration initialization."""
     config_service = get_config()
     register_app_config(config_service)
