@@ -22,7 +22,7 @@ import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 from loguru import logger
 
@@ -34,7 +34,7 @@ from indexed.core.v2._common import collections_base, discover_v2_collections
 
 
 @contextmanager
-def _wrap(operation: str) -> Iterator[None]:
+def _wrap(operation: str) -> Generator[None]:
     """Re-raise any upstream (LlamaIndex) failure as a ``CoreV2Error``.
 
     Project errors (``IndexedError`` subtypes — e.g. ``UnknownVectorStoreError``)

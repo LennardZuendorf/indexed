@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -96,13 +96,16 @@ def _get_language(lang_name: str, grammar_name: str | None = None) -> Any:
 
     # Some packages expose language() directly, others use language_<name>()
     # (e.g., tree_sitter_typescript exposes language_typescript / language_tsx)
+    # tree-sitter >=0.26 deprecated the int overload of Language(); the parsers
+    # hand us a PyCapsule, so annotate it as object to pick the supported one.
+    capsule: object
     if hasattr(mod, "language"):
         capsule = mod.language()
     else:
         fn_name = f"language_{grammar_name}"
         capsule = getattr(mod, fn_name)()
 
-    return tree_sitter.Language(capsule)
+    return tree_sitter.Language(cast(object, capsule))
 
 
 # ---------------------------------------------------------------------------
