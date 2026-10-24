@@ -92,7 +92,13 @@ SRC_LOC_MAX = 28_600
 # idempotent) and `_drop_redundant_level_prefix` units — genuine
 # defect-guarding coverage for a reproduced double render, not stealth
 # regrowth; ceiling = measured (44_271) + headroom.
-TEST_LOC_MAX = 44_450
+# Raised from 44_450 by issue #112's MCP lifecycle regression suite
+# (`tests/system/test_mcp_lifecycle_freshness.py` drives ONE out-of-process stdio
+# server through an external rebuild and then a corrupt manifest; the unit test
+# pins "unknown" vs "present but unusable") — it consumed the previous headroom
+# exactly, so this restores it rather than adding slack; ceiling = measured
+# (44_450) + headroom.
+TEST_LOC_MAX = 44_650
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
