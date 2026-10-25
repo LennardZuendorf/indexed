@@ -23,7 +23,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # wiring that turns an unreachable Hub into ONE actionable error — genuine
 # correctness surface (init/create/search used to leak raw retry spam), not
 # stealth regrowth; ceiling = measured (28_397) + headroom.
-SRC_LOC_MAX = 28_600
+# Raised from 28_600 by issue #126's collection-recovery surface: the new
+# `core/recovery.py` (stranded-generation detection, PID-liveness guard,
+# manifest/storage completeness checks, restore-or-quarantine) plus the
+# `engine.py`/`_common.py` open-time wiring and a dedicated error type. This is
+# the recovery path for a crash between the two renames, where a collection
+# currently vanishes while both generations sit in `.trash-*`/`.tmp-*`; genuine
+# data-loss-prevention surface, not stealth regrowth; ceiling = measured
+# (29_050) + headroom.
+SRC_LOC_MAX = 29_300
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -98,7 +106,11 @@ SRC_LOC_MAX = 28_600
 # pins "unknown" vs "present but unusable") — it consumed the previous headroom
 # exactly, so this restores it rather than adding slack; ceiling = measured
 # (44_450) + headroom.
-TEST_LOC_MAX = 44_650
+# Raised from 44_650 by issue #126's failure-injection coverage: crash-between-
+# renames, rename1 failure, rollback failure, trash-cleanup failure and partial
+# staging each get a real filesystem fixture, so the recovery path is proven
+# rather than asserted; ceiling = measured (45_297) + headroom.
+TEST_LOC_MAX = 45_550
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
