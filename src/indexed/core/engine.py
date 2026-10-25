@@ -29,6 +29,7 @@ from loguru import logger
 
 from indexed.config.errors import ConfigurationError
 from indexed.core.errors import (
+    CollectionRecoveryError,
     EngineMismatchError,
     UnknownEngineVersionError,
 )
@@ -119,6 +120,46 @@ def _collections_base(collections_path: Optional[str]) -> Path:
     return Path(get_default_collections_path())
 
 
+def _recover(
+    base: Path,
+    names: Optional[List[str]] = None,
+    *,
+    strict: bool = False,
+) -> None:
+    """Resolve generations stranded by an interrupted swap, before listing/opening.
+
+    ``core.recovery`` restores a complete collection whose canonical directory a
+    crashed ``replace_dir`` left missing (both generations sit in ``.tmp-``/
+    ``.trash-`` dirs discovery skips) or quarantines what it cannot prove.
+    Called from every collection *list* and *open* gate below, so a crash
+    between the swap's two renames is healed on the next read instead of
+    leaving the collection permanently invisible.
+
+    ``strict`` (an explicitly requested collection) raises
+    :class:`~indexed.core.errors.CollectionRecoveryError` when the name could
+    not be restored — a silent omission would read as "no such collection" and
+    hide the preserved data. Sweeps never raise: housekeeping must not break a
+    read.
+    """
+    try:
+        from indexed.core.recovery import QUARANTINE_DIRNAME, recover_stranded
+
+        outcome = recover_stranded(base, names=names)
+    except Exception as exc:  # housekeeping must never mask the real operation
+        logger.warning(f"collection recovery skipped: {exc}")
+        return
+    if not strict or not names:
+        return
+    for name in names:
+        reason = outcome.reason_for(name)
+        if reason is not None:
+            raise CollectionRecoveryError(
+                name,
+                reason=reason,
+                quarantine_path=base / QUARANTINE_DIRNAME / name,
+            )
+
+
 def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
     """List existing collection names for engine detection.
 
@@ -131,6 +172,7 @@ def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
     consolidation, not a new cross-layer dependency.
     """
     base = _collections_base(collections_path)
+    _recover(base)
     if not base.is_dir():
         return []
     names: List[str] = []
@@ -173,6 +215,7 @@ def _resolve_existing_engine(
         _validate_engine(engine) if engine is not None else None
     )
     base = _collections_base(collections_path)
+    _recover(base, collection_names)
     detected_versions: set[EngineVersion] = set()
     for name in collection_names:
         collection_path = base / name
@@ -240,6 +283,7 @@ def _group_names_by_engine(
         ``UnknownEngineVersionError`` message for every name skipped above.
     """
     base = _collections_base(collections_path)
+    _recover(base, collection_names)
     groups: "dict[EngineVersion, List[str]]" = {}
     omitted: dict[str, str] = {}
     for name in collection_names:
@@ -588,6 +632,10 @@ def search(
         if configs
         else _existing_collection_names(collections_path)
     )
+    if configs:
+        # An explicitly requested collection that could not be recovered must
+        # fail loud rather than come back as a bare "not found".
+        _recover(_collections_base(collections_path), names, strict=True)
     if engine is not None:
         return _run(_resolve_existing_engine(engine, names, collections_path), configs)
 
@@ -626,6 +674,8 @@ def status(
             ),
         )
 
+    if collection_names:
+        _recover(_collections_base(collections_path), collection_names, strict=True)
     resolved = collection_names or _existing_collection_names(collections_path)
     if engine is not None:
         return _run(
@@ -665,6 +715,8 @@ def inspect(
             ),
         )
 
+    if collection_names:
+        _recover(_collections_base(collections_path), collection_names, strict=True)
     resolved = collection_names or _existing_collection_names(collections_path)
     if engine is not None:
         return _run(

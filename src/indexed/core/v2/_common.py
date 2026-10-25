@@ -117,9 +117,18 @@ def is_v2_collection(collection_dir: Path) -> bool:
 
 
 def discover_v2_collections(base: Path) -> list[str]:
-    """Names of on-disk v2 collections under ``base`` (sorted, tmp/trash excluded)."""
+    """Names of on-disk v2 collections under ``base`` (sorted, tmp/trash excluded).
+
+    Also the v2 engine's recovery gate: generations stranded by an interrupted
+    swap are resolved first (:mod:`indexed.core.recovery`), so a collection
+    whose canonical directory a crash left missing is restored — and therefore
+    discoverable — instead of staying invisible forever.
+    """
     if not base.is_dir():
         return []
+    from indexed.core.recovery import recover_stranded
+
+    recover_stranded(base)
     names: list[str] = []
     for child in sorted(base.iterdir()):
         if not child.is_dir():
