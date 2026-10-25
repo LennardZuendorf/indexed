@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-19
+updated: 2026-10-25
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -106,6 +106,40 @@ acquisition fails predictably instead of leaking dependency retry chatter:
   call raises rather than reporting a cached success. `--force` create no longer
   clears the existing collection up front — the build-aside/rename-swap keeps a
   failed acquisition from clobbering a healthy index.
+
+### Collection replace + interrupted-swap recovery (#126)
+
+**Files:** `src/indexed/core/v2/persist.py` (`replace_dir`),
+`src/indexed/core/v2/ingestion.py` (create/update call sites),
+`src/indexed/core/recovery.py`, `src/indexed/core/engine.py` (`_recover` gates).
+
+A collection is never mutated in place: the new generation is built beside the
+live directory and swapped in with two renames — `rename(dest -> dest.trash-<pid>)`
+then `rename(<name>.tmp-<pid>-<hex> -> dest)` — after which the trash is removed.
+A failure of the second rename renames the original back and re-raises.
+
+The remaining window is a CRASH between those two renames: the canonical path is
+missing while both generations sit in directories discovery excludes
+(`\.(?:tmp|trash)-\d+`). `core.recovery.recover_stranded` therefore runs inside
+every list/open gate (`_existing_collection_names`, `_resolve_existing_engine`,
+`_group_names_by_engine`, `discover_v2_collections`) and:
+
+- restores the newest COMPLETE generation (readable `version: "2"` manifest plus
+  all three `storage/*.json` files) to the canonical name when a `.trash-`
+  sibling proves the swap was in flight;
+- never promotes a `.tmp-`-only strand (an interrupted new build was never
+  published) and never mixes two generations;
+- quarantines anything it cannot prove restorable into `<collections>/.recovery/<name>/`
+  — moved, never deleted — with a `recovery.log` for the operator;
+- removes a `.trash-` sibling only when the canonical directory is already
+  complete (finishing the interrupted cleanup);
+- skips a strand whose pid is still alive (a concurrent builder);
+- raises `CollectionRecoveryError` for an EXPLICITLY requested collection that
+  could not be restored, so it never reads as "no such collection".
+
+**Contract:** recoverable after a process crash between the renames. NOT
+power-loss safe — there is no `fsync` in the rename chain, so unflushed pages
+after a power cut are outside this guarantee.
 
 ### Batching
 
