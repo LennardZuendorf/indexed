@@ -120,6 +120,27 @@ def _collections_base(collections_path: Optional[str]) -> Path:
     return Path(get_default_collections_path())
 
 
+def _preserved(base: Path, names: Optional[List[str]] = None) -> Dict[str, str]:
+    """Collections whose data sits under ``.recovery/``, and why (durable).
+
+    Read back from the marker ``core.recovery`` writes beside the preserved
+    data, because the quarantining pass is one-shot: after the move nothing is
+    left to detect, so a marker is the only thing that keeps a read from
+    reporting a bare "not found" for data that is still on disk.
+    """
+    try:
+        from indexed.core.recovery import quarantine_reasons
+
+        reasons = quarantine_reasons(base)
+    except Exception as exc:  # housekeeping must never mask the real operation
+        logger.warning(f"collection recovery: unreadable quarantine markers: {exc}")
+        return {}
+    if names is None:
+        return reasons
+    wanted = set(names)
+    return {name: reason for name, reason in reasons.items() if name in wanted}
+
+
 def _recover(
     base: Path,
     names: Optional[List[str]] = None,
@@ -138,26 +159,47 @@ def _recover(
     ``strict`` (an explicitly requested collection) raises
     :class:`~indexed.core.errors.CollectionRecoveryError` when the name could
     not be restored — a silent omission would read as "no such collection" and
-    hide the preserved data. Sweeps never raise: housekeeping must not break a
-    read.
+    hide the preserved data.
+
+    A sweep never raises: housekeeping must not break a read. It does not fall
+    silent either — the durable quarantine marker is re-read on EVERY read path,
+    so a collection whose data was preserved keeps explaining itself on later
+    reads instead of vanishing into "no results found".
     """
     try:
         from indexed.core.recovery import QUARANTINE_DIRNAME, recover_stranded
-
-        outcome = recover_stranded(base, names=names)
-    except Exception as exc:  # housekeeping must never mask the real operation
+    except Exception as exc:  # pragma: no cover - recovery is best effort
         logger.warning(f"collection recovery skipped: {exc}")
         return
-    if not strict or not names:
+
+    fresh: Dict[str, str] = {}
+    try:
+        fresh = dict(recover_stranded(base, names=names).unrecoverable)
+    except Exception as exc:  # housekeeping must never mask the real operation
+        logger.warning(f"collection recovery skipped: {exc}")
+
+    preserved = _preserved(base, names)
+    preserved.update(fresh)
+    if not preserved:
         return
-    for name in names:
-        reason = outcome.reason_for(name)
-        if reason is not None:
-            raise CollectionRecoveryError(
-                name,
-                reason=reason,
-                quarantine_path=base / QUARANTINE_DIRNAME / name,
-            )
+    if strict and names:
+        for name in names:
+            reason = preserved.get(name)
+            if reason is not None:
+                raise CollectionRecoveryError(
+                    name,
+                    reason=reason,
+                    quarantine_path=base / QUARANTINE_DIRNAME / name,
+                )
+        return
+    for name, reason in preserved.items():
+        if name in fresh:
+            continue  # the pass itself already logged this incident
+        logger.warning(
+            f"collection '{name}' is not readable: {reason}. Its data is preserved "
+            f"under {str(base / QUARANTINE_DIRNAME / name)!r} — inspect that "
+            f"directory and move it back by hand, or rebuild the collection."
+        )
 
 
 def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
@@ -576,6 +618,33 @@ def collection_exists(
     return result
 
 
+def _surface_preserved(
+    base: Path, result: Dict[str, Any], names: Optional[List[str]] = None
+) -> None:
+    """Add an ``{"error": ...}`` entry for every collection data was preserved for.
+
+    ``search``'s return type is a dict keyed by collection name, so a
+    quarantined collection CAN explain itself here (the CLI renders an ``error``
+    entry as a failed collection) instead of the whole read reporting
+    "no results found" while its data sits under ``.recovery/``. Same shape as
+    the unknown-manifest-version entry above.
+    """
+    from indexed.core.recovery import QUARANTINE_DIRNAME
+
+    for name, reason in _preserved(base, list(names) if names else None).items():
+        if name in result:
+            continue  # a readable copy answered for this name
+        result[name] = {
+            "error": str(
+                CollectionRecoveryError(
+                    name,
+                    reason=reason,
+                    quarantine_path=base / QUARANTINE_DIRNAME / name,
+                )
+            )
+        }
+
+
 def search(
     query: str,
     configs: Optional[List[Any]] = None,
@@ -636,8 +705,15 @@ def search(
         # An explicitly requested collection that could not be recovered must
         # fail loud rather than come back as a bare "not found".
         _recover(_collections_base(collections_path), names, strict=True)
+    # An unfiltered read reports every quarantined collection; an explicit one
+    # only explains the names it was asked for.
+    preserved_scope = names if configs else None
     if engine is not None:
-        return _run(_resolve_existing_engine(engine, names, collections_path), configs)
+        result = _run(
+            _resolve_existing_engine(engine, names, collections_path), configs
+        )
+        _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        return result
 
     groups, omitted = _group_names_by_engine(names, collections_path)
     if len(groups) <= 1:
@@ -646,12 +722,14 @@ def search(
         version, grp_names = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
         result = _run(version, _configs_for_group(configs, grp_names))
         result.update({name: {"error": msg} for name, msg in omitted.items()})
+        _surface_preserved(_collections_base(collections_path), result, preserved_scope)
         return result
 
     merged: Dict[str, Any] = {}
     for grp_version, grp_names in sorted(groups.items()):
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     merged.update({name: {"error": msg} for name, msg in omitted.items()})
+    _surface_preserved(_collections_base(collections_path), merged, preserved_scope)
     return merged
 
 

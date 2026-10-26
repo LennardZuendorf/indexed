@@ -29,9 +29,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # `engine.py`/`_common.py` open-time wiring and a dedicated error type. This is
 # the recovery path for a crash between the two renames, where a collection
 # currently vanishes while both generations sit in `.trash-*`/`.tmp-*`; genuine
-# data-loss-prevention surface, not stealth regrowth; ceiling = measured
-# (29_050) + headroom.
-SRC_LOC_MAX = 29_300
+# data-loss-prevention surface, not stealth regrowth.
+# Raised again by the same issue's review pass: the liveness enum, the durable
+# `quarantine.json` marker and the read-path surfacing in `engine.py` (the
+# Windows/own-pid/recycled-pid/one-shot-marker defects) landed after the bump
+# above and left only 3 lines of headroom — measured 29_297; ceiling = measured
+# + headroom.
+SRC_LOC_MAX = 29_500
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a

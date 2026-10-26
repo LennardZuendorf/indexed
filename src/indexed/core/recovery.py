@@ -35,9 +35,19 @@ Policy — never guess, never silently delete:
 Quarantine lives under ``<base>/.recovery/``, which no discovery site treats as
 a collection (it holds no ``manifest.json`` of its own) — so quarantining keeps
 the data AND keeps discovery clean. Every step is a rename, so recovery is
-cheap and idempotent: a second call finds nothing to do. Siblings whose
-recorded pid is still alive are skipped, so a concurrent builder's staging
-directory is never hijacked (one writer is still assumed overall).
+cheap and idempotent: a second call finds nothing to do.
+
+**A strand is only touched when its writer is PROVEN finished** — the pid in the
+name is the only ownership record: our own pid is an in-flight build of ours (a
+long-lived MCP server searches while it creates), so it is never swept and never
+reported; a live pid is left alone — the builder mid-swap, or a recycled pid that
+will never finish — and the hold is RECORDED when it hides the collection, so it
+reads as an explained failure rather than "not found"; on non-POSIX liveness is
+unknowable (``os.kill`` is ``TerminateProcess`` on Windows), so nothing is swept.
+
+The pass is one-shot, so every name it cannot restore also gets a durable
+``.recovery/<name>/quarantine.json`` marker that read paths re-read, until the
+collection is readable at its canonical name again.
 
 This is NOT power-loss durability: the rename chain has no ``fsync``, so a
 process crash is covered, a power cut with unflushed pages is not.
@@ -50,6 +60,8 @@ import os
 import re
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -67,6 +79,13 @@ _STRANDED_DIR_RE = re.compile(
 # reads it as a collection, and it carries no manifest.json of its own).
 QUARANTINE_DIRNAME = ".recovery"
 
+# The durable "why" written beside preserved data, re-read by every read path.
+QUARANTINE_MARKER = "quarantine.json"
+
+# ``os.kill(pid, 0)`` is a signal-0 probe on POSIX only: on Windows ``os.kill``
+# is ``TerminateProcess``, so probing there would KILL the recorded process.
+_POSIX = os.name == "posix"
+
 # Files ``StorageContext.persist`` writes for the only shipped vector store
 # (``simple``). All three must exist for a generation to be loadable.
 _V2_REQUIRED_STORAGE = (
@@ -77,6 +96,15 @@ _V2_REQUIRED_STORAGE = (
 
 _REASON_IN_FLIGHT = "an interrupted swap between the two renames left it aside"
 _REASON_UNPUBLISHED = "an interrupted build was never swapped in"
+
+
+class _Liveness(Enum):
+    """What a strand's recorded pid says about the writer that left it."""
+
+    FINISHED = "finished"  # provably exited: recovery may touch the strand
+    THIS_PROCESS = "this"  # our own in-flight build (never sweep)
+    RUNNING = "running"  # a live process holds it (possibly a recycled pid)
+    UNKNOWN = "unknown"  # liveness cannot be probed on this platform
 
 
 @dataclass(frozen=True)
@@ -138,10 +166,13 @@ def recover_stranded(
 
     wanted = set(names) if names is not None else None
     acc = _Accumulator()
-    for name, generations in sorted(_stranded_generations(base).items()):
+    for name, generations in sorted(_stranded_generations(base, acc).items()):
         if wanted is not None and name not in wanted:
             continue
         _recover_collection(base, name, generations, acc)
+    acc.publish(base)
+    for name, _canonical in acc.restored:
+        _clear_marker(base, name)
 
     return RecoveryOutcome(
         restored=tuple(acc.restored),
@@ -217,6 +248,42 @@ class _Accumulator:
             f"collection recovery: '{name}' could not be restored ({reason}); "
             f"its data is preserved under {str(QUARANTINE_DIRNAME)!r}"
         )
+
+    def hold(self, name: str, reason: str) -> None:
+        """Record a live-but-unfinished writer's name (nothing is moved)."""
+        self.unrecoverable.append((name, reason))
+        logger.warning(f"collection recovery: leaving '{name}' untouched ({reason})")
+
+    def publish(self, base: Path) -> None:
+        """Write the one-shot pass's reasons beside the preserved data.
+
+        After the move nothing is left to detect, so the marker is the only
+        thing that keeps the next read from reporting a bare "not found".
+        """
+        for name, reason in self.unrecoverable:
+            root = base / QUARANTINE_DIRNAME / name
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+                marker = {
+                    "collection": name,
+                    "reason": reason,
+                    "preserved": sorted(
+                        child.name
+                        for child in root.iterdir()
+                        if child.name != QUARANTINE_MARKER
+                    ),
+                    "writtenAt": datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                }
+                (root / QUARANTINE_MARKER).write_text(
+                    json.dumps(marker, indent=2) + "\n", encoding="utf-8"
+                )
+            except OSError as exc:
+                self._fail(
+                    f"could not write the quarantine marker for '{name}': {exc}; "
+                    f"its data is preserved under {str(root)!r}"
+                )
 
     def _fail(self, message: str) -> None:
         self.failures.append(message)
@@ -333,8 +400,15 @@ def _newest_first(gen: StrandedGeneration) -> tuple[float, int]:
     return (built, 1 if gen.kind == "tmp" else 0)
 
 
-def _stranded_generations(base: Path) -> dict[str, list[StrandedGeneration]]:
-    """Group the ``.tmp-``/``.trash-`` siblings under ``base`` by collection name."""
+def _stranded_generations(
+    base: Path, acc: _Accumulator
+) -> dict[str, list[StrandedGeneration]]:
+    """Group the ``.tmp-``/``.trash-`` siblings under ``base`` by collection name.
+
+    Only strands whose writer is PROVEN finished are grouped (i.e. swept);
+    every other ownership state is left untouched, and recorded on ``acc`` when
+    that leaves the collection invisible.
+    """
     groups: dict[str, list[StrandedGeneration]] = {}
     try:
         children = sorted(base.iterdir())
@@ -345,12 +419,9 @@ def _stranded_generations(base: Path) -> dict[str, list[StrandedGeneration]]:
         if match is None or not child.is_dir():
             continue
         pid = int(match.group("pid"))
-        if _pid_alive(pid):
-            # A live writer owns this staging/trash dir right now — hands off.
-            logger.debug(
-                f"collection recovery: skipping {str(child)!r}, its writer "
-                f"(pid {pid}) is still running"
-            )
+        owner = _pid_liveness(pid)
+        if owner is not _Liveness.FINISHED:
+            _note_held(base, child, match.group("name"), pid, owner, acc)
             continue
         manifest = _manifest(child)
         is_v2 = manifest is not None and manifest.get("version") == "2"
@@ -367,28 +438,124 @@ def _stranded_generations(base: Path) -> dict[str, list[StrandedGeneration]]:
     return groups
 
 
-def _pid_alive(pid: int) -> bool:
-    """Best-effort liveness probe for the pid embedded in a strand's name."""
+def _note_held(
+    base: Path,
+    child: Path,
+    name: str,
+    pid: int,
+    owner: _Liveness,
+    acc: _Accumulator,
+) -> None:
+    """Leave a strand alone, and say why when that hides the collection.
+
+    A live pid is either the builder mid-swap (nothing to report) or a recycled
+    pid that will never finish: indistinguishable, so the hold is reported only
+    when the canonical directory is absent — where silence reads as "not found".
+    """
+    if owner is _Liveness.THIS_PROCESS:
+        # Our own in-flight create/update: the swap completes (or dies with us).
+        logger.debug(
+            f"collection recovery: {str(child)!r} belongs to this process's "
+            f"in-flight write; leaving it alone"
+        )
+        return
+    if (base / name).is_dir():
+        logger.debug(
+            f"collection recovery: leaving {str(child)!r} alone, its writer "
+            f"(pid {pid}) is still running"
+        )
+        return
+    if owner is _Liveness.UNKNOWN:
+        reason = (
+            "its generation is stranded and process liveness cannot be probed on "
+            f"this platform, so pid {pid} may still be writing it"
+        )
+    else:
+        reason = (
+            f"its generation is held by running process pid {pid}; if that pid "
+            "was recycled the build it belonged to never finished"
+        )
+    acc.hold(name, reason)
+
+
+def _pid_liveness(pid: int) -> _Liveness:
+    """What a strand's recorded pid says about its writer (best effort).
+
+    Only PROVEN-finished makes a strand recoverable: sweeping a live process's
+    staging directory would hijack (or destroy) its build.
+    """
+    if not _POSIX:
+        # No signal-0 probe exists here — on Windows ``os.kill`` is
+        # ``TerminateProcess``, so probing would kill the recorded process.
+        return _Liveness.UNKNOWN
     if pid == os.getpid():
-        # Our own pid cannot own a strand we are about to sweep: it is a
-        # recycled pid from a dead process.
-        return False
+        # Our own pid can only be an in-flight build of OURS (a process that
+        # died no longer has it): the long-lived MCP server must never
+        # quarantine the staging directory its own create/update is filling.
+        return _Liveness.THIS_PROCESS
     try:
         os.kill(pid, 0)
     except (ProcessLookupError, OverflowError):
-        return False
+        return _Liveness.FINISHED
     except OSError:
-        return True
-    return True
+        return _Liveness.RUNNING  # e.g. EPERM: it exists, it just is not ours
+    return _Liveness.RUNNING
 
 
 def _manifest(directory: Path) -> Optional[dict]:
     """The parsed manifest of a generation, or ``None`` when unreadable."""
+    return _read_json(directory / "manifest.json")
+
+
+def _read_json(path: Path) -> Optional[dict]:
+    """The parsed JSON object at ``path``, or ``None`` when unreadable."""
     try:
-        raw = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return raw if isinstance(raw, dict) else None
+
+
+def quarantine_reasons(base: Path) -> dict[str, str]:
+    """Collections whose data is preserved under ``.recovery/``, and why.
+
+    Reads the durable marker each quarantined name carries, so the explanation
+    survives the one-shot recovery pass that produced it: after the strands are
+    moved there is nothing left to detect, and a read would otherwise report a
+    bare "not found" for data that is still on disk. A marker is ignored once
+    the collection is readable at its canonical name again — rebuilt, restored
+    by hand, or published after an in-flight build finished.
+    """
+    base = Path(base)
+    reasons: dict[str, str] = {}
+    try:
+        children = sorted((base / QUARANTINE_DIRNAME).iterdir())
+    except OSError:
+        return reasons
+    for child in children:
+        if not child.is_dir():
+            continue
+        raw = _read_json(child / QUARANTINE_MARKER)
+        if raw is None:
+            continue
+        name = raw.get("collection")
+        reason = raw.get("reason")
+        if not isinstance(name, str) or not isinstance(reason, str) or not reason:
+            continue
+        if _is_complete(base / name):
+            continue  # readable again: the marker is history, not a warning
+        reasons[name] = reason
+    return reasons
+
+
+def _clear_marker(base: Path, name: str) -> None:
+    """Drop the quarantine marker once the collection is readable again."""
+    try:
+        (Path(base) / QUARANTINE_DIRNAME / name / QUARANTINE_MARKER).unlink(
+            missing_ok=True
+        )
+    except OSError:  # pragma: no cover - diagnostics must never break recovery
+        pass
 
 
 def _storage_complete(directory: Path) -> bool:
@@ -435,7 +602,9 @@ def _note(root: Path, line: str) -> None:
 
 __all__ = [
     "QUARANTINE_DIRNAME",
+    "QUARANTINE_MARKER",
     "RecoveryOutcome",
     "StrandedGeneration",
+    "quarantine_reasons",
     "recover_stranded",
 ]

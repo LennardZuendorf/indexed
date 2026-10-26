@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-19
+updated: 2026-10-26
 ---
 
 # Lessons Learned
@@ -1113,3 +1113,26 @@ with `git add`/`git status`, since that's what CI actually runs.
   breached is trim boilerplate first (one-line docstrings, a shared layout
   helper, inlined scenario comments — never weaken an assertion or drop a
   scenario), then bump with a precedent comment last.
+
+## A pid in a name records a writer, never its death (2026-10-26)
+
+- **Only a POSIX signal-0 probe that raises `ProcessLookupError` proves a
+  strand's writer FINISHED; every other ownership state is "unknown, hands
+  off".** `os.kill(pid, 0)` is `TerminateProcess` on Windows — probing there
+  KILLS the recorded process, and a raised `OSError` was then read as "alive",
+  so recovery never ran; a pid equal to `os.getpid()` is an in-flight build of
+  OURS (a long-lived MCP server searches while it creates), so treating it as a
+  corpse quarantines our own staging directory mid-swap. Recovery sweeps only
+  what it can prove, and is a no-op on non-POSIX platforms.
+- **A one-shot repair must persist its reason beside the preserved data.** Once
+  the strand is moved nothing is left to detect, so without a durable marker
+  (`.recovery/<name>/quarantine.json`, re-read by every read path) the next
+  unfiltered search answers "no results found" for data that is still on disk —
+  and a strand merely SKIPPED (live or recycled pid) surfaced as a bare
+  "not found" with no `CollectionRecoveryError` at all. A per-name error entry
+  in `search`'s result dict is the shape that works; `status`/`inspect` return
+  plain lists, so there the marker is logged.
+- **An in-process crash test leaves strands carrying the TEST's own pid** —
+  re-brand them onto a finished pid (`subprocess` that exits) before the
+  recovery read, or the test silently proves the own-pid skip instead of the
+  restore it claims to.

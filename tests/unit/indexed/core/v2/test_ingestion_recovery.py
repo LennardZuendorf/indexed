@@ -8,7 +8,10 @@ discovery/search — and an interrupted *new* collection must never appear.
 
 The in-process case is driven through the real ``ingestion.create`` swap; the
 subprocess case is a real hard kill (``os._exit``) inside ``replace_dir``, so no
-``finally``/rollback/cleanup runs.
+``finally``/rollback/cleanup runs. An in-process interruption leaves strands
+carrying the *test's own* pid, which recovery correctly refuses to touch as an
+in-flight write — so those cases re-brand the strands onto a finished pid before
+the recovery read (see ``_rebrand_as_finished``).
 """
 
 from __future__ import annotations
@@ -55,6 +58,29 @@ def _docstore_text(cols: Path, name: str) -> str:
     return (cols / name / "storage" / "docstore.json").read_text(encoding="utf-8")
 
 
+def _finished_pid() -> int:
+    """A pid that belonged to a process which has exited."""
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait(timeout=30)
+    return finished.pid
+
+
+def _rebrand_as_finished(cols: Path, name: str) -> None:
+    """Re-point an IN-PROCESS crash's strands at a finished pid.
+
+    The ``KeyboardInterrupt`` above is raised in this process, so the stranded
+    directories carry OUR pid — which recovery must treat as an in-flight write
+    of its own (the long-lived MCP server case) and never sweep. A real
+    ``SIGKILL`` kills the writer, so the next read runs under a DIFFERENT pid;
+    re-branding the strands with a finished pid reproduces exactly that.
+    """
+    pid = _finished_pid()
+    ours = (f"{name}.tmp-{os.getpid()}", f"{name}.trash-{os.getpid()}")
+    for child in list(cols.iterdir()):
+        if child.name.startswith(ours):
+            child.rename(cols / child.name.replace(str(os.getpid()), str(pid), 1))
+
+
 def test_kill_between_renames_is_recovered_on_next_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -92,6 +118,7 @@ def test_kill_between_renames_is_recovered_on_next_read(
     assert any(name.startswith("docs.trash-") for name in stranded), stranded
     assert any(name.startswith("docs.tmp-") for name in stranded), stranded
 
+    _rebrand_as_finished(cols, "docs")
     # Recovery runs inside discovery, before any collection is opened.
     assert discover_v2_collections(cols) == ["docs"]
 
@@ -134,6 +161,7 @@ def test_recovered_collection_is_searchable(tmp_path: Path) -> None:
         os.rename = real_rename
 
     assert not (cols / "docs").exists()
+    _rebrand_as_finished(cols, "docs")
     with mock_embedding(embed_dim=8):
         results = retrieval.search("unicorn caldera", collections_path=str(cols))
 
@@ -211,6 +239,7 @@ def test_interrupted_new_collection_never_becomes_visible(
         _create(cols, "docs", [make_doc("new", [_NEW_DOC])])
     monkeypatch.undo()
 
+    _rebrand_as_finished(cols, "docs")
     assert discover_v2_collections(cols) == []
     # Preserved, not published and not deleted.
     quarantined = list((cols / ".recovery" / "docs").rglob("manifest.json"))

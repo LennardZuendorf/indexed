@@ -17,6 +17,7 @@ that could not be restored fails loud with
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -365,3 +366,118 @@ def test_sweep_never_raises_for_a_quarantined_collection(tmp_path: Path) -> None
     assert _existing_collection_names(str(base)) == ["healthy"]
     # No raise: the unrecoverable strand is quarantined, the listing survives.
     assert isinstance(facade.status(collections_path=str(base)), list)
+
+
+# --- review fixes on #244: liveness is weaker than it looks -------------------
+
+
+def test_non_posix_liveness_is_never_probed_and_never_swept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows has no signal-0 probe: ``os.kill`` there is ``TerminateProcess``.
+
+    Recovery must treat liveness as unknowable on a non-POSIX platform — never
+    probe (which would KILL the recorded process) and never sweep — and still
+    explain the strand instead of hiding it behind "not found".
+    """
+    import indexed.core.recovery as recovery_module
+
+    base = tmp_path / "cols"
+    base.mkdir()
+    pid = dead_pid()
+    strand = make_generation(base / f"docs.tmp-{pid}-abcdef12", payload="new")
+
+    probed: list[int] = []
+    monkeypatch.setattr(recovery_module, "_POSIX", False)
+    monkeypatch.setattr(
+        recovery_module.os, "kill", lambda probed_pid, _sig: probed.append(probed_pid)
+    )
+
+    outcome = recover_stranded(base)
+
+    assert probed == []  # os.kill would have terminated the recorded process
+    assert strand.is_dir()
+    assert outcome.changed is False
+    reason = outcome.reason_for("docs")
+    assert reason is not None and "cannot be probed" in reason
+
+
+def test_own_pid_strand_is_an_in_flight_build_not_a_corpse(tmp_path: Path) -> None:
+    """A concurrent read must not quarantine this process's own staging dir.
+
+    In the long-lived MCP server a strand carries OUR pid while a create/update
+    is in flight; sweeping it would destroy the build mid-swap.
+    """
+    base = tmp_path / "cols"
+    base.mkdir()
+    pid = os.getpid()
+    staging = make_generation(base / f"docs.tmp-{pid}-abcdef12", payload="new")
+    trash = make_generation(base / f"docs.trash-{pid}", payload="old")
+
+    outcome = recover_stranded(base)
+
+    assert staging.is_dir() and trash.is_dir()
+    assert outcome.changed is False
+    assert not (base / QUARANTINE_DIRNAME / "docs").exists()
+    # In-flight is expected, not a failure: nothing to explain to the operator.
+    assert outcome.reason_for("docs") is None
+
+
+def test_strand_held_by_a_live_pid_reports_a_reason(tmp_path: Path) -> None:
+    """A recycled pid is alive but will never finish: record why, never sweep."""
+    import indexed.core.engine as facade
+
+    base = tmp_path / "cols"
+    base.mkdir()
+    writer = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        strand = make_generation(
+            base / f"docs.tmp-{writer.pid}-abcdef12", payload="new"
+        )
+
+        outcome = recover_stranded(base)
+
+        assert strand.is_dir()
+        assert outcome.changed is False
+        reason = outcome.reason_for("docs")
+        assert reason is not None and f"pid {writer.pid}" in reason
+        # The hold is recorded durably, so an explicit open explains itself
+        # instead of returning a bare "not found".
+        with pytest.raises(CollectionRecoveryError) as excinfo:
+            facade.status(collection_names=["docs"], collections_path=str(base))
+        assert "recycled" in str(excinfo.value)
+    finally:
+        writer.terminate()
+        writer.wait(timeout=10)
+
+
+def test_unfiltered_search_explains_a_quarantined_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The durable marker outlives the one-shot pass that quarantined the data.
+
+    After the strands are moved there is nothing left to detect, so only the
+    marker can keep an unfiltered read from answering "no results found" for
+    data sitting under ``.recovery/``.
+    """
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    base = tmp_path / "cols"
+    base.mkdir()
+    make_generation(base / "healthy", payload="live", version=None, complete=False)
+    make_generation(base / f"docs.tmp-{dead_pid()}-abcdef12", payload="new")
+    monkeypatch.setattr(
+        v1_services, "search", lambda query, **kwargs: {"healthy": {"documents": []}}
+    )
+
+    first = facade.search("q", collections_path=str(base))
+    marker = base / QUARANTINE_DIRNAME / "docs" / "quarantine.json"
+    assert marker.is_file()
+    assert "error" in first["docs"]
+
+    # Second read: the strand is gone, only the marker remains — and it is
+    # still re-read, so the explanation does not depend on the first pass.
+    second = facade.search("q", collections_path=str(base))
+    assert "healthy" in second
+    assert str(base / QUARANTINE_DIRNAME / "docs") in second["docs"]["error"]
