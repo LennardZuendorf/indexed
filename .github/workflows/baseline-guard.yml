@@ -1,0 +1,54 @@
+name: Benchmark Baseline Guard
+
+# `pytest-bench-action` stages a rewritten `.benchmarks/baselines/main.json` on
+# the PR branch and pushes it with `[skip ci]`. That leaves the PR head as an
+# untested SHA and makes the slower numbers the reference the next run compares
+# against. A `pull_request`-only guard never sees that commit — `[skip ci]`
+# suppresses `synchronize` — so a submitted review re-checks whatever head
+# exists at that moment. See .spec/tech.md § CI Benchmarking.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+
+# Read-only: this job compares blob ids and writes nothing.
+permissions:
+  contents: read
+
+concurrency:
+  group: baseline-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-guard:
+    name: baseline-guard
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The head SHA, not the merge ref: the drift commit is what must be
+        # inspected, and on a fork PR the head lives in another repository.
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+        # `git rev-parse origin/main:<path>` needs main's refs and objects.
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Blob-id comparison: no JSON parse, no benchmark install, no model download.
+    - name: Committed baseline must equal main's
+      run: |
+        git fetch --no-tags origin main
+        file=.benchmarks/baselines/main.json
+        head_blob=$(git rev-parse "HEAD:$file" 2>/dev/null || echo absent)
+        main_blob=$(git rev-parse "origin/main:$file" 2>/dev/null || echo absent)
+        if [ "$head_blob" = "$main_blob" ]; then
+          echo "$file matches main ($head_blob)"
+          exit 0
+        fi
+        msg="$file differs from main (PR $head_blob, main $main_blob). A PR may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git checkout origin/main -- $file, commit, then re-run the benchmark job."
+        echo "::error file=$file,line=1::$msg"
+        echo "$msg"
+        exit 1
