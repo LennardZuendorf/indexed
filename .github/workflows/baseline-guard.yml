@@ -33,22 +33,25 @@ jobs:
         # inspected, and on a fork PR the head lives in another repository.
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-        # `git rev-parse origin/main:<path>` needs main's refs and objects.
+        # merge-base and `git rev-parse origin/main:<path>` need full history.
         fetch-depth: 0
         persist-credentials: false
 
     # Blob-id comparison: no JSON parse, no benchmark install, no model download.
-    - name: Committed baseline must equal main's
+    # Against the MERGE BASE, not main's tip: a branch merely behind main must
+    # not fail for inheriting an older (main-authored) baseline.
+    - name: This PR must not move main's baseline
       run: |
         git fetch --no-tags origin main
         file=.benchmarks/baselines/main.json
+        base=$(git merge-base HEAD origin/main)
         head_blob=$(git rev-parse "HEAD:$file" 2>/dev/null || echo absent)
-        main_blob=$(git rev-parse "origin/main:$file" 2>/dev/null || echo absent)
-        if [ "$head_blob" = "$main_blob" ]; then
-          echo "$file matches main ($head_blob)"
+        base_blob=$(git rev-parse "$base:$file" 2>/dev/null || echo absent)
+        if [ "$head_blob" = "$base_blob" ]; then
+          echo "$file unchanged by this PR ($head_blob)"
           exit 0
         fi
-        msg="$file differs from main (PR $head_blob, main $main_blob). A PR may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git checkout origin/main -- $file, commit, then re-run the benchmark job."
+        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $(git rev-parse "origin/main:$file")). A PR may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git checkout origin/main -- $file, commit, then re-run the benchmark job."
         echo "::error file=$file,line=1::$msg"
         echo "$msg"
         exit 1
