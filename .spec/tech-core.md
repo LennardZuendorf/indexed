@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -130,12 +130,24 @@ every list/open gate (`_existing_collection_names`, `_resolve_existing_engine`,
 - never promotes a `.tmp-`-only strand (an interrupted new build was never
   published) and never mixes two generations;
 - quarantines anything it cannot prove restorable into `<collections>/.recovery/<name>/`
-  — moved, never deleted — with a `recovery.log` for the operator;
+  — moved, never deleted — with a `recovery.log` and a durable
+  `quarantine.json` marker for the operator;
 - removes a `.trash-` sibling only when the canonical directory is already
   complete (finishing the interrupted cleanup);
-- skips a strand whose pid is still alive (a concurrent builder);
+- touches a strand ONLY when its writer is proven finished, because the pid in
+  the name is the only ownership record: a strand carrying the CURRENT process's
+  pid is an in-flight write of ours (a long-lived MCP server runs searches while
+  it creates/updates) and is never swept; a pid that is alive is left alone and,
+  when the collection has no readable directory, the hold is RECORDED so it does
+  not read as "no such collection" (a recycled pid never finishes); on non-POSIX
+  platforms liveness is unknowable (`os.kill` is `TerminateProcess` on Windows,
+  so probing would kill the recorded process) and nothing is swept;
 - raises `CollectionRecoveryError` for an EXPLICITLY requested collection that
-  could not be restored, so it never reads as "no such collection".
+  could not be restored, and keeps the explanation ALIVE across reads: the
+  quarantining pass is one-shot, so the reason is also read back from the
+  `quarantine.json` marker on every read path — an unfiltered search returns a
+  per-collection `{"error": …}` entry (never a bare "No results found") and a
+  sweep logs it — until the collection is readable at its canonical name again.
 
 **Contract:** recoverable after a process crash between the renames. NOT
 power-loss safe — there is no `fsync` in the rename chain, so unflushed pages
