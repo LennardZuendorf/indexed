@@ -98,7 +98,15 @@ SRC_LOC_MAX = 28_600
 # pins "unknown" vs "present but unusable") — it consumed the previous headroom
 # exactly, so this restores it rather than adding slack; ceiling = measured
 # (44_450) + headroom.
-TEST_LOC_MAX = 44_650
+# Raised from 44_650 by issue #112 criterion 4 ("CLI and MCP use the same
+# configured storage root in global/local modes, including mixed v1/v2
+# collections"): `tests/system/test_mcp_storage_parity.py` grows from a
+# 27-line local-path assertion into a two-mode regression that builds a real
+# mixed v1/v2 store and drives one live out-of-process stdio server next to the
+# CLI (root identity, collection set/counts, per-engine search provenance) — the
+# last uncovered criterion of the freshness bug, not stealth regrowth; ceiling =
+# measured (44_892) + headroom.
+TEST_LOC_MAX = 45_100
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
