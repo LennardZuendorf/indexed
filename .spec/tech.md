@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-09-07
+updated: 2026-10-27
 ---
 
 # Tech Spec: indexed
@@ -183,19 +183,58 @@ compares against a per-branch JSON baseline committed under
 inside still matched by `*.json` and silently un-stageable), posts one PR
 comment per run (deletes any prior bot
 comment matching the report header before posting, so re-runs don't spam the
-thread), and fails the job on a tolerance-exceeding regression. Trigger is
-`pull_request` only (no `push` trigger) — the action checks out the PR's own
-head branch, and when drift exceeds `update-tolerance` it stages a baseline
-commit directly on the PR branch (`[skip ci]`, same-repo PRs only), which
-lands on the target branch automatically when the PR merges. A `concurrency`
-group (keyed on PR number, `cancel-in-progress: true`) prevents overlapping
-runs from racing to push that staged commit.
+thread), and fails the job on a tolerance-exceeding regression.
 
-Configured in this repo via `cross-branch-tolerance: 20`, `update-tolerance: 5`,
-and a per-test `threshold-map` (max seconds per benchmark name substring). A
-regression can be waived per-PR via the `benchmark-override` label
-(`override-label`, explicitly set here) — the regression still shows in the
-PR comment but doesn't fail the job; the repo-wide tolerance is untouched.
+**Contract: a PR run measures and gates, it never writes.** The pull_request
+job holds `contents: read` and `pull-requests: write` — nothing else. The
+action's own update path is still there upstream: when a run drifts past
+`update-tolerance`, when the comparison is skipped for a hardware mismatch
+(exit 3) or when the base branch has no baseline at all, it stages
+`.benchmarks/baselines/main.json` and pushes a `[skip ci]` commit onto the PR
+head. With no write scope that push cannot succeed (`continue-on-error` turns
+it into a warning), so the PR head is the SHA that was measured — the
+untested-head defect of issue #253 cannot recur. `update-tolerance: 1000`
+additionally keeps ordinary drift from even staging the commit, for clean logs;
+it is not the guarantee, because no tolerance value covers the exit-3 and
+no-baseline cases — the read-only token does.
+
+**Only a baseline-only PR may move main's baseline.** A PR that changes code
+must not touch that file: its gate would otherwise compare against numbers the
+PR itself wrote, so a regression would land as the new reference instead of
+failing. `.github/workflows/baseline-guard.yml` enforces both halves — it fails
+a code-changing PR that rewrites the file, and passes a PR that changes nothing
+but the file. Because the benchmark job can no longer add a `[skip ci]` commit,
+the guard's remedy ("restore the file, re-run the benchmark job") now
+converges; a re-run cannot re-add it.
+
+**Refresh lane.** `.github/workflows/python-benchmark.yml` is also
+`workflow_dispatch`-able, and its `refresh-baseline` job runs only when
+dispatched on `main` (that job alone opts into `contents: write` +
+`pull-requests: write`). It re-measures through the same pinned action and the
+same `&benchmark-inputs` inputs as the gate; since the action's update path is
+pull_request-only, its "Save baseline" step only rewrites the file in the
+workspace. If that differs from `main`'s copy, the job force-pushes it to
+`chore/benchmark-baseline-refresh` and opens (or updates) one PR changing
+nothing but the baseline. A >20% slowdown against `main`'s previous numbers
+fails the run before that step — adopt numbers only once a slowdown is
+understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
+per merge would be noise, so moving the baseline stays a deliberate maintainer
+action.
+
+Configured in this repo via `cross-branch-tolerance: 20`, the inert
+`update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per
+benchmark name substring). A regression can be waived per-PR via the
+`benchmark-override` label (`override-label`, explicitly set here) — the
+regression still shows in the PR comment but doesn't fail the job; the
+repo-wide tolerance is untouched.
+
+A `concurrency` group (keyed on PR number, else ref; `cancel-in-progress: true`)
+prevents overlapping runs from racing each other.
+
+**Known upstream gap:** the action exposes no `update-baseline: false` switch,
+which is why this repo scopes write permission instead of switching the path
+off. If a release adds one, prefer it over `update-tolerance: 1000` and drop
+that value.
 
 Pinned to an exact release tag (`@v1.0.2`), not the floating `@v1` major tag —
 the floating tag raced with upstream's own release-automation retagging and

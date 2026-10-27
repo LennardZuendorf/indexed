@@ -1,11 +1,20 @@
 name: Benchmark Baseline Guard
 
-# `pytest-bench-action` stages a rewritten `.benchmarks/baselines/main.json` on
-# the PR branch and pushes it with `[skip ci]`. That leaves the PR head as an
-# untested SHA and makes the slower numbers the reference the next run compares
-# against. A `pull_request`-only guard never sees that commit — `[skip ci]`
-# suppresses `synchronize` — so a submitted review re-checks whatever head
-# exists at that moment. See .spec/tech.md § CI Benchmarking.
+# Benchmark jobs may measure, but only a baseline-only PR may move main's
+# baseline. Two rules are enforced here:
+#
+# 1. A PR that changes code may not touch .benchmarks/baselines/main.json. It
+#    would then be gated against numbers it wrote itself, so a regression lands
+#    as the new reference instead of failing. (.github/workflows/python-benchmark.yml
+#    runs PR jobs with `contents: read` so the benchmark action cannot create
+#    such a commit at all — this job is the backstop if that ever regresses.)
+# 2. A PR that changes nothing but the baseline is allowed: that is the
+#    sanctioned refresh lane (dispatch `python-benchmark.yml` on main and it
+#    opens one), where no gate decision depends on the numbers being written.
+#
+# A `pull_request`-only guard would miss a bot commit pushed with `[skip ci]`,
+# because that suppresses `synchronize` — hence the `pull_request_review` and
+# `workflow_dispatch` triggers below. See .spec/tech.md § CI Benchmarking.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -58,7 +67,16 @@ jobs:
           echo "$file unchanged by this PR ($head_blob)"
           exit 0
         fi
-        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $(git rev-parse "$main:$file")). A PR may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, commit, then re-run the benchmark job."
+        # Everything else this PR touches. Empty = a baseline-only PR, the one
+        # shape allowed to move the file: no code change, so nothing here is
+        # gated against the numbers it writes, and it shows up as its own
+        # reviewable diff instead of riding along with a fix.
+        others=$(git diff --name-only "$base" HEAD -- . ":(exclude)$file")
+        if [ -z "$others" ]; then
+          echo "::notice::$file moved by a baseline-only PR — the sanctioned refresh lane."
+          exit 0
+        fi
+        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $(git rev-parse "$main:$file")). A PR that changes code may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, commit, then re-run the benchmark job — the benchmark job has no write scope, so it will not re-add the file on that re-run. To move the baseline on purpose, dispatch the benchmark workflow on main instead."
         echo "::error file=$file,line=1::$msg"
         echo "$msg"
         exit 1
