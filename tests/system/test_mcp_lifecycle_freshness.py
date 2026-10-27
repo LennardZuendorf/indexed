@@ -102,8 +102,13 @@ def _status(payload: dict, name: str) -> dict | None:
     return next((c for c in payload["collections"] if c["name"] == name), None)
 
 
+def _hits(payload: dict) -> list[dict]:
+    """All hits of a payload, flattened across its documents (``indexed.search/1``)."""
+    return [hit for doc in payload.get("documents") or [] for hit in doc["hits"]]
+
+
 def _texts(payload: dict) -> str:
-    return " ".join(r["text"].lower() for r in payload.get("results") or [])
+    return " ".join(hit["text"].lower() for hit in _hits(payload))
 
 
 async def _lifecycle(
@@ -227,10 +232,10 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
     payload = asyncio.run(_lifecycle(ws, *corpora))
 
     # 1. freshness: the same process answers from the rebuilt index.
-    assert payload["before"]["results"], f"initial search empty: {payload!r}"
-    assert "penguin" in payload["before"]["results"][0]["text"].lower()
-    texts = " ".join(r["text"].lower() for r in payload["after"].get("results") or [])
-    assert payload["after"]["results"], f"post-rebuild search empty: {payload!r}"
+    assert _hits(payload["before"]), f"initial search empty: {payload!r}"
+    assert "penguin" in payload["before"]["documents"][0]["hits"][0]["text"].lower()
+    texts = _texts(payload["after"])
+    assert _hits(payload["after"]), f"post-rebuild search empty: {payload!r}"
     assert "walrus" in texts, f"same process served a stale index: {payload!r}"
     assert "penguin" not in texts, f"served pre-rebuild content: {payload!r}"
 
@@ -247,7 +252,7 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
     assert NEW_COLLECTION not in payload["gone_list"]["collections"], payload
     assert _status(payload["gone_status"], NEW_COLLECTION) is None, payload
     assert "error" in payload["gone_search"], payload
-    assert "results" not in payload["gone_search"], payload
+    assert "documents" not in payload["gone_search"], payload
     assert "not found" in payload["gone_search"]["error"].lower(), payload
 
     # 4. re-creation serves the new content, not the removed content.
@@ -267,7 +272,7 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
     assert any(e.get("collection") == COLLECTION for e in errors), payload
     # partial success: the healthy sibling's hits survive the corrupt collection,
     # and nothing claims to come from the collection that could not be opened.
-    assert payload["every"]["results"], payload
-    assert {r["collection"] for r in payload["every"]["results"]} == {NEW_COLLECTION}, (
+    assert _hits(payload["every"]), payload
+    assert {d["collection"] for d in payload["every"]["documents"]} == {NEW_COLLECTION}, (
         payload
     )

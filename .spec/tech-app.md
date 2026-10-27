@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-09-02
+updated: 2026-10-26
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -189,6 +189,72 @@ def collection_status(name: str) -> dict:
 | **sse** | Server-Sent Events | SSE streaming |
 
 `src/indexed/mcp/cli.py` handles transport selection.
+
+---
+
+## Search result contract (`indexed.search/1`)
+
+**Source of truth for every machine consumer:** `indexed search --json` and the MCP
+tools `search` / `search_collection`. One typed contract
+(`src/indexed/protocols/results.py`), one builder
+(`indexed.mcp.formatting.build_search_payload`), so the two surfaces cannot drift into
+lookalikes (issues #108/#109). Downstream consumers — the eval harness (#204), the
+`index-use` skill text (#222), the CLI hover payload (#241) — branch on `schema`, never
+on the presence of a key.
+
+```json
+{
+  "schema": "indexed.search/1",
+  "query": "how is relevance unified",
+  "counts": {"documents": 2, "hits": 3},
+  "collections": ["indexed-src", "notes-v2"],
+  "collection_errors": [{"collection": "jira", "error": "…"}],
+  "documents": [
+    {
+      "collection": "indexed-src",
+      "source_type": "localFiles",
+      "id": "src/indexed/utils/relevance.py",
+      "path": "/repo/src/indexed/utils/relevance.py",
+      "url": "https://…",
+      "score_kind": "l2_squared",
+      "hits": [
+        {
+          "relevance": 0.625,
+          "score": 0.75,
+          "locator": {"kind": "line_span", "start_line": 18, "end_line": 19},
+          "text": "HIGHER_IS_BETTER = frozenset({\"cosine\", \"rerank\"})"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Rules the shape encodes — each one exists because the old flat payload got it wrong:
+
+- **Document-level facts are stated once.** `collection`, `source_type`, `id`, `path`,
+  `url` and `score_kind` belong to the document; only `relevance`, `score`, `locator`
+  and `text` repeat per hit. Repeating `collection`/`document_id`/`document_url` on
+  every chunk was most of the old payload's token cost.
+- **A locator is honest.** `kind` is `line_span` (1-based inclusive lines — what
+  `grep -n` prints — plus the file when the document states no `path`), `page`
+  (paginated PDF/DOCX), `headings` (prose: Markdown/Jira/Confluence/Outline) or
+  `document` (position genuinely unknown). A range is never invented to fill the field.
+- **`relevance` is comparable, `score` is not.** `relevance` is 0–1, higher-is-better,
+  unified across engines (`indexed.utils.relevance.unified_relevance`); `score` is the
+  raw engine number, only comparable within one `score_kind` (`l2_squared` = v1,
+  `cosine`/`rerank` = v2).
+- **Ranking is document-first.** A document's position reflects its best hit; ties keep
+  discovery order (stable sort).
+- **`source_type` is a collection fact**, taken from `manifest.reader.type`; omitted
+  rather than guessed when the manifest does not say.
+- **No boilerplate to strip.** `--json` stdout is the JSON document and nothing else
+  (logs go to stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
+  is removed because `locator.path` already carries the path.
+- **Failures never read as emptiness.** `collection_errors` is always present; a failed
+  collection appears there, not as a silent zero.
+
+Versioning: bump `SEARCH_SCHEMA` on any incompatible change.
 
 ---
 

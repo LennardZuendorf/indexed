@@ -110,7 +110,8 @@ def test_cli_search_smoke(smoke_workspace: Path) -> None:
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
+    assert payload["schema"] == "indexed.search/1"
     assert payload["query"] == "semantic search"
-    assert payload["total_collections_searched"] >= 1
-    assert isinstance(payload["results"], list)
-    assert len(payload["results"]) >= 1
+    assert len(payload["collections"]) >= 1
+    assert payload["counts"]["hits"] >= 1
+    assert len(payload["documents"]) >= 1

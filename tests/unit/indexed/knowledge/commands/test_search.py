@@ -1502,12 +1502,11 @@ class TestSearchCommandExecution:
             assert result.exit_code == 0
             parsed = json.loads(result.stdout)
             assert parsed["query"] == "my-query"
-            assert parsed["total_collections_searched"] == 1
-            assert parsed["total_documents_found"] == 1
-            assert len(parsed["results"]) == 1
-            assert parsed["results"][0]["text"] == "relevant text"
-            assert parsed["results"][0]["collection"] == "col1"
-            assert parsed["results"][0]["rank"] == 1
+            assert parsed["schema"] == "indexed.search/1"
+            assert parsed["counts"] == {"documents": 1, "hits": 1}
+            doc = parsed["documents"][0]
+            assert doc["collection"] == "col1"
+            assert doc["hits"][0]["text"] == "relevant text"
         finally:
             reset_simple_output()
 
