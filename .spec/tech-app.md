@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -240,6 +240,10 @@ Rules the shape encodes — each one exists because the old flat payload got it 
   `grep -n` prints — plus the file when the document states no `path`), `page`
   (paginated PDF/DOCX), `headings` (prose: Markdown/Jira/Confluence/Outline) or
   `document` (position genuinely unknown). A range is never invented to fill the field.
+  `headings` is never empty: the converters emit `headings: [""]` for whole-file
+  chunks, so headings are trimmed and blank ones dropped before the kind is chosen —
+  a chunk left with no headings gets `document`, not `{"kind": "headings",
+  "headings": []}`.
 - **`relevance` is comparable, `score` is not.** `relevance` is 0–1, higher-is-better,
   unified across engines (`indexed.utils.relevance.unified_relevance`); `score` is the
   raw engine number, only comparable within one `score_kind` (`l2_squared` = v1,
@@ -252,7 +256,39 @@ Rules the shape encodes — each one exists because the old flat payload got it 
   (logs go to stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
   is removed because `locator.path` already carries the path.
 - **Failures never read as emptiness.** `collection_errors` is always present; a failed
-  collection appears there, not as a silent zero.
+  collection appears there, not as a silent zero. A request that fails as a whole
+  returns the failure envelope below instead of a payload with empty `documents`.
+- **`include_matched_chunks = false` degrades the payload to counts only** —
+  `documents: []` / `counts.hits: 0` while `collections` still lists what was searched.
+  The provenance lives in the chunks, so there is nothing to locate without them.
+- **`--json` ignores `--compact` / `--no-content`** (they shape the human view only;
+  `--simple-output`/`--json` wins). The machine payload is fixed, never flag-shaped.
+
+### The two bodies: success and failure
+
+A payload either carries `schema: "indexed.search/1"` or it does not, and that is the
+first thing a consumer reads:
+
+- **`schema` present** → the success shape documented above.
+- **`schema` absent** → a failure/empty envelope, `error` holding the message. Never a
+  success payload with empty `documents`: a failed request must not read as "nothing
+  matched".
+
+| Surface | Body | Exit |
+|---|---|---|
+| `indexed search --json` — named collection missing/corrupt | `{"error": "Collection 'x' not found"}` | `1` |
+| `indexed search --json` — nothing to search (no collections exist, or none searchable while searching all) | `{"error": "No collections found"}` / `{"error": "No searchable collections available"}` | `0` (empty store, not a failed request) |
+| MCP `search` / `search_collection` | `{"error": "…", "type": "MCPError"}` | n/a (tool result) |
+
+`type` is the exception class (`MCPError`, `ConfigurationError`, …): an agent branches
+on it rather than on English prose.
+
+**Errors that escape the command** (`ConfigurationError`, `StorageError`, … raised
+before a payload exists) go to the CLI's top-level handler: the message is printed to
+**stderr** as prose and the process exits with the mapped code (`1`, `2` for config,
+`3` for storage) — stdout stays empty. So the machine contract is: *non-zero exit or an
+`error` body means failure; never trust stdout without checking the exit code.* All
+bodies above are pinned by `tests/unit/indexed/mcp/test_search_payload_golden.py`.
 
 Versioning: bump `SEARCH_SCHEMA` on any incompatible change.
 
