@@ -1294,3 +1294,25 @@ with `git add`/`git status`, since that's what CI actually runs.
   contract needs a field, check that every engine still CARRIES it before the
   formatter is written, and assert an honest `kind: "document"` fallback rather
   than an invented range.
+- **Never trust a converter's field for truthiness: clean before you branch.** The
+  Markdown converter emits `headings: [""]` for whole-file chunks, so `if headings:`
+  chose `kind: "headings"` and then emitted `{"kind": "headings", "headings": []}` —
+  9 of 351 chunks on a real collection. A non-empty INPUT is not a non-empty OUTPUT:
+  trim, drop blanks, and decide the kind from the cleaned list, with unit tests for
+  the degenerate inputs (`[""]`, `["", " Real "]`), not just the happy path.
+- **Document-level facts go on the document.** Grouping hits under their source
+  document and stating collection/type/id/url/score semantics once cuts per-hit
+  keys from seven to four, none of which a consumer must strip. Do not sell it as
+  a token win though: measured on a 16-document/62-hit code corpus the payload
+  went 57_132 B -> 57_526 B (+0.7%), because stripping the `# <path>\n` chunk
+  prefix (-2_363 B) and dropping the repeated `collection`/`document_id`/
+  `document_url` per hit is offset by the per-hit `locator` and the second
+  (raw) score. The value is provenance and actionability; claim size only after
+  measuring, and state the corpus.
+- **A doc that says "branch on `schema`" must document the bodies that lack it.**
+  The contract named `schema` as the key consumers branch on, while the failure
+  body the CLI actually printed (`{"error": …}`) and the escape path (prose on
+  stderr, exit 1/2/3, empty stdout) were undocumented, so a harness had to guess.
+  Write the failure side of every contract in the same section as the success
+  shape, pin each body with a test, and state what the exit code means — including
+  which empty states are exits 0 because an empty store is not a failure.
