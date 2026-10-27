@@ -359,6 +359,13 @@ def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
         "kind": "headings",
         "headings": ["Real"],
     }
+    # Non-strings are dropped, not stringified: ``{"headings": [None]}`` must not
+    # become a locator claiming the chunk sits under a heading called "None".
+    assert build_locator({"headings": [None]}, "") == {"kind": "document"}
+    assert build_locator({"headings": [0, " Real "]}, "") == {
+        "kind": "headings",
+        "headings": ["Real"],
+    }
 
 
 def test_chunk_without_any_position_says_document_not_a_fake_range() -> None:
