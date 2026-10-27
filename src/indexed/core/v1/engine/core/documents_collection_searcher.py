@@ -17,6 +17,9 @@ except ImportError:
 # at the supported scale (<100k chunks) — this just bounds the worst case.
 _OVERFETCH_CEILING = 10_000
 
+#: Sentinel for "not looked up yet" (a real source type is always a string).
+_UNSET = object()
+
 
 class DocumentCollectionSearcher:
     def __init__(self, collection_name, indexer, persister):
@@ -25,6 +28,7 @@ class DocumentCollectionSearcher:
         self.persister = persister
         self._index_document_mapping = None
         self._document_cache = {}
+        self._source_type = _UNSET
 
     def _get_mapping(self):
         """Lazy-load and cache the index-document mapping."""
@@ -67,11 +71,40 @@ class DocumentCollectionSearcher:
             max_chunks=max_number_of_chunks,
         )
 
+        source_type = self._get_source_type()
+
         return {
             "collectionName": self.collection_name,
             "indexerName": self.indexer.get_name(),
+            # The collection's reader type ("localFiles"/"jira"/…), the only
+            # true per-hit source discriminator there is (issue #108/#109).
+            # Absent rather than guessed when the manifest can't be read.
+            **({"sourceType": source_type} if source_type else {}),
             "results": results,
         }
+
+    def _get_source_type(self):
+        """Reader type from the collection manifest, or None.
+
+        Cached like ``_get_mapping``: one extra small read per searcher
+        instance, not per query. A collection whose manifest is missing or
+        unreadable simply reports no source type.
+        """
+        if self._source_type is _UNSET:
+            source_type = None
+            try:
+                manifest = _json_loads(
+                    self.persister.read_text_file(
+                        f"{self.collection_name}/manifest.json"
+                    )
+                )
+                reader = manifest.get("reader") or {}
+                candidate = reader.get("type")
+                source_type = candidate if isinstance(candidate, str) else None
+            except Exception:  # noqa: BLE001 - absence is the honest answer
+                source_type = None
+            self._source_type = source_type
+        return self._source_type
 
     def __build_results(
         self,

@@ -23,7 +23,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # wiring that turns an unreachable Hub into ONE actionable error — genuine
 # correctness surface (init/create/search used to leak raw retry spam), not
 # stealth regrowth; ceiling = measured (28_397) + headroom.
-SRC_LOC_MAX = 28_600
+# Raised from 28_600 by issues #108/#109 (one documented result shape for the
+# CLI machine mode and the MCP envelope): `protocols/results.py` types the
+# contract, `mcp/formatting.py` rebuilds the payload from ONE builder, and the
+# per-hit provenance is plumbed where it was dropped — `sourceType` from
+# `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
+# `metadata` so a v2 hit can say where it sits — genuine contract surface, not
+# stealth regrowth; ceiling = measured (28_804) + headroom.
+SRC_LOC_MAX = 29_050
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -106,7 +113,15 @@ SRC_LOC_MAX = 28_600
 # CLI (root identity, collection set/counts, per-engine search provenance) — the
 # last uncovered criterion of the freshness bug, not stealth regrowth; ceiling =
 # measured (44_892) + headroom.
-TEST_LOC_MAX = 45_100
+# Raised from 45_100 by issues #108/#109: the golden-output suite
+# (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
+# search_payload.json`) pins ONE hand-written payload across the builder, the
+# MCP tool and `search --json`, and `test_formatting.py` grows the locator/
+# ranking units (line span, page, headings, honest `document` fallback,
+# unified cross-engine relevance) — genuine defect-guarding coverage for a
+# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
+# (45_124) + headroom.
+TEST_LOC_MAX = 45_400
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
