@@ -252,3 +252,61 @@ def test_cli_json_stdout_is_parseable_with_no_human_chrome(monkeypatch) -> None:
     assert result.stdout.strip().startswith("{")
     assert result.stdout.rstrip().endswith("}")
     assert "indexed.search/1" in result.stdout
+
+
+# --- surface 4: the failure envelope -----------------------------------------
+#
+# A failed request is NOT the success payload with empty lists — a consumer must
+# be able to tell the two apart without guessing. Both surfaces document their
+# failure body (``.spec/tech-app.md`` § Search result contract): the CLI prints
+# ``{"error": str}`` and exits non-zero; MCP returns ``{"error": str, "type": str}``
+# so an agent can branch on the class (e.g. ``MCPError``) rather than the prose.
+
+
+def test_cli_json_failure_is_an_error_envelope_and_a_nonzero_exit(monkeypatch) -> None:
+    _patch_search_command(monkeypatch)
+    monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
+
+    result = runner.invoke(search_cmd.app, [QUERY, "--json", "-c", "no-such"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert list(payload) == ["error"]
+    assert "no-such" in payload["error"]
+
+
+def test_cli_json_empty_store_reports_an_error_body_but_exits_zero(monkeypatch) -> None:
+    """An empty store is not a failed request: the body says why there is nothing
+    (`error`, no `schema`) and the exit code stays 0 — that pair is the documented
+    contract, so a consumer reads `schema`/`error` rather than a status code."""
+    _patch_search_command(monkeypatch)
+    monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [])
+
+    result = runner.invoke(search_cmd.app, [QUERY, "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload == {"error": "No collections found"}
+
+
+def test_mcp_search_failure_is_an_error_envelope_with_a_type() -> None:
+    from indexed.cli.errors import MCPError
+
+    search_cfg = MagicMock()
+    search_cfg.max_docs = 10
+    search_cfg.max_chunks = 30
+    search_cfg.score_threshold = None
+    search_cfg.include_full_text = False
+    search_cfg.include_all_chunks = False
+    search_cfg.include_matched_chunks = True
+
+    with (
+        patch.object(
+            tools_module, "svc_search", side_effect=MCPError("collection exploded")
+        ),
+        patch.object(server_module, "_get_config", return_value=search_cfg),
+    ):
+        payload = _mcp_search_tool().fn(QUERY)
+
+    assert list(payload) == ["error", "type"]
+    assert payload == {"error": "collection exploded", "type": "MCPError"}
