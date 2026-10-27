@@ -24,7 +24,7 @@ jobs:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required to push baseline commit onto PR branch
+      contents: read  # The gate must never push: main's baseline is not a PR's to move
       pull-requests: write  # Required to comment on PRs
     strategy:
       fail-fast: false
@@ -61,6 +61,13 @@ jobs:
           --benchmark-json=benchmark-results.json
           -v
         cross-branch-tolerance: 20
-        update-tolerance: 5
+        # Effectively never. v1.0.2 has no "don't touch the baseline" switch, and
+        # any drift past the tolerance makes the action commit a rewritten
+        # `.benchmarks/baselines/main.json` onto the PR branch — which
+        # baseline-guard.yml rejects ("This PR must not move main's baseline"),
+        # leaving an untested `[skip ci]` head that re-drifts on every re-run
+        # (#253). The job-level `contents: read` below is the hard stop; this
+        # value keeps the action from even trying.
+        update-tolerance: 100000
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-09-07
+updated: 2026-10-27
 ---
 
 # Tech Spec: indexed
@@ -185,14 +185,23 @@ comment per run (deletes any prior bot
 comment matching the report header before posting, so re-runs don't spam the
 thread), and fails the job on a tolerance-exceeding regression. Trigger is
 `pull_request` only (no `push` trigger) — the action checks out the PR's own
-head branch, and when drift exceeds `update-tolerance` it stages a baseline
-commit directly on the PR branch (`[skip ci]`, same-repo PRs only), which
-lands on the target branch automatically when the PR merges. A `concurrency`
-group (keyed on PR number, `cancel-in-progress: true`) prevents overlapping
-runs from racing to push that staged commit.
+head branch.
 
-Configured in this repo via `cross-branch-tolerance: 20`, `update-tolerance: 5`,
-and a per-test `threshold-map` (max seconds per benchmark name substring). A
+**A PR never writes the baseline.** The action ships no "read-only" switch, and
+its `update-tolerance` behaviour (commit the fresh measurements over
+`.benchmarks/baselines/<base-branch>.json` on the PR branch, `[skip ci]`) is
+incompatible with `baseline-guard.yml` ("This PR must not move main's
+baseline"): the drift commit is both an untested head and a reference the PR
+wrote itself. `python-benchmark.yml` therefore runs the gate with
+`contents: read` (the hard stop — the push cannot authenticate) and
+`update-tolerance: 100000` (so the action never even stages one). Consequence:
+**main's baseline only moves through a commit made on `main`**, never through a
+PR; a deliberate re-baseline is a `main` commit, not a gate output. The
+`benchmark-override` label remains the per-PR escape for a regression that is
+accepted without re-baselining. See #253.
+
+Configured in this repo via `cross-branch-tolerance: 20` and a per-test
+`threshold-map` (max seconds per benchmark name substring). A
 regression can be waived per-PR via the `benchmark-override` label
 (`override-label`, explicitly set here) — the regression still shows in the
 PR comment but doesn't fail the job; the repo-wide tolerance is untouched.
