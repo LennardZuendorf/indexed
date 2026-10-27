@@ -7,7 +7,7 @@ escaping (foundation/6c bug E2) and per-collection failure surfacing
 (foundation/6 E10, CLI twin of the MCP formatting bug).
 """
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
@@ -27,6 +27,12 @@ from ...utils.components import (
 )
 from ...utils.components.theme import get_detail_card_width
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
+from indexed.utils.search_results import (
+    chunk_locator,
+    chunk_metadata,
+    document_path,
+    document_url,
+)
 
 
 class ChunkInfo(TypedDict):
@@ -35,6 +41,13 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
+    #: Best actionable identity for the matched document (path, URL, then the
+    #: engine id) — the same order the machine envelope uses, so the human and
+    #: machine views agree on what a hit IS (#109).
+    label: NotRequired[str]
+    #: Locator as display text (``L11-42``, ``A > B``, ``p. 4``), absent when
+    #: the chunk metadata cannot place the evidence.
+    location: NotRequired[str]
 
 
 def _is_content_free(chunk_info: ChunkInfo) -> bool:
@@ -62,10 +75,43 @@ def _is_content_free(chunk_info: ChunkInfo) -> bool:
     return content in ("", doc, base)
 
 
+def _location_text(locator: Dict[str, Any] | None) -> str:
+    """Human display text for a ``SearchLocator`` dict (``""`` when absent)."""
+    if not locator:
+        return ""
+    lines = locator.get("lines")
+    if isinstance(lines, list) and len(lines) == 2:
+        return f"L{lines[0]}-{lines[1]}"
+    headings = locator.get("headings")
+    if isinstance(headings, list) and headings:
+        return " > ".join(str(h) for h in headings)
+    page = locator.get("page")
+    if isinstance(page, int) and not isinstance(page, bool):
+        return f"p. {page}"
+    return ""
+
+
+def _document_label(
+    document: Dict[str, Any], metadata: Dict[str, Any], source_type: str | None = None
+) -> str:
+    """Best actionable name for a matched document (#109), else its engine id.
+
+    Path first (a file), then an absolute URL (a remote document), then the
+    engine's own id — never a fabricated location for a source that has none.
+    """
+    path = document_path(document, metadata)
+    if path:
+        return path
+    url = document_url(document, path, source_type)
+    if url:
+        return url
+    return str(document.get("id") or "Unknown")
+
+
 def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
     """Surface a per-collection search failure instead of silently skipping it.
 
-    Mirrors the MCP-side fix (``mcp/formatting.py``): a failed collection must
+    Mirrors the MCP-side fix (``utils/search_results.py``): a failed collection must
     reach the user as "index failed", not vanish via a bare ``continue``
     (foundation/6 E10, CLI twin of the same bug).
     """
@@ -139,6 +185,7 @@ def format_search_results(
             )
 
             for i, chunk in enumerate(matched_chunks):
+                metadata = chunk_metadata(chunk)
                 all_chunks.append(
                     ChunkInfo(
                         collection=collection_name,
@@ -146,6 +193,8 @@ def format_search_results(
                         path=path,
                         chunk=chunk,
                         chunk_index=i + 1,  # 1-indexed for display
+                        label=_document_label(doc, metadata),
+                        location=_location_text(chunk_locator(metadata)),
                     )
                 )
 
@@ -247,11 +296,15 @@ def _show_top_result_split_cards(
     doc_id = chunk_info["doc_id"]
     chunk = chunk_info["chunk"]
     chunk_index = chunk_info["chunk_index"]
+    label = chunk_info.get("label") or str(doc_id)
+    location = chunk_info.get("location") or ""
 
     # --- METADATA CARD ---
     meta_rows = []
     meta_rows.append(("Collection", collection))
-    meta_rows.append(("Document", doc_id))
+    meta_rows.append(("Document", label))
+    if location:
+        meta_rows.append(("Location", location))
 
     score = chunk.get("score")
     score_str = (
@@ -343,13 +396,21 @@ def _show_compact_match(
         rel = unified_relevance(float(score), score_kind or "")
         rel_suffix = f" / rel {rel:.4f}"
 
-    # Format: collection / document / part / match_id
-    # collection/doc_id/chunk_score are user/content-derived (collection name,
-    # document path or URL, indexed data) — escape before entering this markup
-    # string; the surrounding style tags are ours (foundation/6c bug E2).
+    # Format: collection / document / location / chunk / score
+    # collection/label/location/chunk_score are user/content-derived (collection
+    # name, document path or URL, indexed data) — escape before entering this
+    # markup string; the surrounding style tags are ours (foundation/6c bug E2).
+    label = chunk_info.get("label") or str(doc_id)
+    location = chunk_info.get("location") or ""
+    location_part = (
+        f"[{get_dim_style()}]{escape(location)}[/{get_dim_style()}] / "
+        if location
+        else ""
+    )
     console.print(
         f"  • [{get_accent_style()}]{escape(collection)}[/{get_accent_style()}] / "
-        f"{escape(str(doc_id))} / "
+        f"{escape(str(label))} / "
+        f"{location_part}"
         f"[{get_dim_style()}]Chunk {chunk_index}[/{get_dim_style()}] / "
         f"[{get_dim_style()}]{escape(chunk_score)}[/{get_dim_style()}]{rel_suffix}"
     )

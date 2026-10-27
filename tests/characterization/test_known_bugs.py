@@ -796,9 +796,9 @@ def test_bug_e10_mcp_surfaces_per_collection_failure() -> None:
     """E10: a per-collection search failure must be surfaced to the LLM, not
     ``continue``d past (an agent sees "0 matches" instead of "index failed"
     today)."""
-    from indexed.mcp.formatting import format_search_results_for_llm
+    from indexed.utils.search_results import build_search_envelope
 
-    out = format_search_results_for_llm(
+    out = build_search_envelope(
         {
             "broken": {"error": "index failed"},
             "good": {"collectionName": "good", "results": []},

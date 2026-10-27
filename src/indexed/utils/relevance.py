@@ -1,5 +1,7 @@
 """Shared cross-engine relevance scoring (issue #186 — was duplicated
-verbatim between mcp/formatting.py and cli/knowledge/commands/search_render.py).
+verbatim between the machine search projection
+(``indexed/utils/search_results.py``) and
+``cli/knowledge/commands/search_render.py``).
 
 Pure arithmetic, engine-agnostic: no core.v1/core.v2 import, so both the CLI
 and MCP formatters (top-layer consumers) can import it directly.

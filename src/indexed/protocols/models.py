@@ -1,4 +1,4 @@
-from typing import Any, List, Literal, Optional, Protocol
+from typing import Any, Dict, List, Literal, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -144,6 +144,80 @@ class CollectionSearchResult(BaseModel):
     indexer_name: str = Field(alias="indexerName")
     results: List[DocumentMatch] = Field(default_factory=list)
     error: Optional[str] = None
+
+
+class CollectionError(BaseModel):
+    """One collection that failed to search inside a machine-readable envelope."""
+
+    collection: str
+    error: str
+
+
+#: Version marker of the machine-readable search output contract. Bump it when
+#: a field is renamed or removed; additive fields keep the version.
+#: CLI ``--simple-output search`` and both MCP search tools emit this shape.
+SEARCH_OUTPUT_SCHEMA = "indexed.search.v1"
+
+
+class SearchLocator(BaseModel):
+    """Where evidence sits inside its document.
+
+    Exactly one of the three keys is present, and it is the most precise
+    locator the chunk's own metadata supports. When none of them is known the
+    hit carries no locator at all — a document-level hit says so by omission
+    instead of inventing a line range.
+
+    - ``lines``: ``[start, end]``, 1-based and inclusive, for code chunks
+      (indexed records 0-based spans; the projection converts once, here).
+    - ``headings``: the heading path a prose chunk was cut from, outermost
+      first (Markdown, PDF, Confluence, Outline).
+    - ``page``: 1-based page number, for paged sources.
+    """
+
+    lines: Optional[List[int]] = None
+    headings: Optional[List[str]] = None
+    page: Optional[int] = None
+
+
+class SearchHit(BaseModel):
+    """One ranked piece of evidence with provenance an agent can act on.
+
+    ``collection`` + ``path``/``url`` + ``locator`` are the identity of a hit;
+    ``chunk``, ``score`` and the optional score qualifiers describe the match.
+    Unset fields are OMITTED from the emitted JSON (never emitted as null), so
+    a hit costs only what it knows.
+    """
+
+    collection: str
+    path: Optional[str] = None
+    url: Optional[str] = None
+    locator: Optional[SearchLocator] = None
+    chunk: int
+    score: float
+    score_kind: Optional[str] = None
+    relevance: Optional[float] = None
+    text: Optional[str] = None
+
+
+class SearchEnvelope(BaseModel):
+    """The documented machine-readable result of one search (``indexed.search.v1``).
+
+    Deliberately carries no per-hit boilerplate: ``rank`` is list position,
+    ``source_type`` is looked up once in ``collections``, and hit totals are
+    ``count``. ``collection_errors`` is always present (empty when nothing
+    failed) so "index failed" can never read as "0 matches".
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_version: str = Field(alias="schema")
+    query: str
+    count: int
+    #: collection name -> source type (``localFiles``, ``jira``, …). A
+    #: collection whose source type is unknown is absent rather than guessed.
+    collections: Dict[str, str] = Field(default_factory=dict)
+    collection_errors: List[CollectionError] = Field(default_factory=list)
+    results: List[SearchHit] = Field(default_factory=list)
 
 
 class PhasedProgressCallback(Protocol):

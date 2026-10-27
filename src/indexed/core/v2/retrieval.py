@@ -279,7 +279,7 @@ def _group_by_document(
             "score": float(nws.score) if nws.score is not None else 0.0,
         }
         if include_matched_chunks:
-            chunk["content"] = {"indexedData": node.get_content()}
+            chunk["content"] = _chunk_content(node)
 
         if source_id not in result:
             if len(result) >= max_docs:
@@ -328,17 +328,21 @@ def _attach_document_content(
     if include_full_text:
         entry["text"] = "\n".join(n.get_content() for n in nodes)
     if include_all_chunks:
-        entry["allChunks"] = [_chunk_dict(n) for n in nodes]
+        entry["allChunks"] = [_chunk_content(n) for n in nodes]
 
 
-def _chunk_dict(node: Any) -> Dict[str, Any]:
-    """One v1-shaped ``allChunks`` element from a docstore node.
+def _chunk_content(node: Any) -> Dict[str, Any]:
+    """One v1-shaped chunk dict from a docstore node (``indexedData`` + metadata).
 
-    v1's ``allChunks`` are the on-disk ConvertedDocument chunk dicts:
-    ``{"indexedData": <text>}`` plus a ``metadata`` key only when the chunk
-    carried its own metadata (``Chunk.to_disk`` drops ``None``). The adapter
-    merged that original per-chunk metadata INTO the node alongside the
-    engine-owned keys, so we recover it by stripping ``RESERVED_METADATA_KEYS``.
+    v1's on-disk chunks are ``{"indexedData": <text>}`` plus a ``metadata`` key
+    only when the chunk carried its own metadata (``Chunk.to_disk`` drops
+    ``None``). The v2 adapter merged that original per-chunk metadata INTO the
+    node alongside the engine-owned keys, so we recover it by stripping
+    ``RESERVED_METADATA_KEYS``.
+
+    Both the matched-chunk ``content`` and every ``allChunks`` element use this
+    one shape: provenance (``file_path``/``start_line``/``headings``/``page``)
+    has to survive into the result, or a v2 hit has no locator at all.
     """
     from indexed.core.v2.adapter import RESERVED_METADATA_KEYS
 

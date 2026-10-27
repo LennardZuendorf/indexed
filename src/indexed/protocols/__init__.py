@@ -6,7 +6,9 @@ from indexed.protocols.connectors import (
 )
 from indexed.protocols.metadata import ConnectorMetadata
 from indexed.protocols.models import (
+    SEARCH_OUTPUT_SCHEMA,
     Chunk,
+    CollectionError,
     CollectionSearchResult,
     ConvertedDocument,
     DocumentMatch,
@@ -15,12 +17,16 @@ from indexed.protocols.models import (
     MatchedChunk,
     PhasedProgressCallback,
     ReaderDetails,
+    SearchEnvelope,
+    SearchHit,
+    SearchLocator,
     SourceConfig,
 )
 
 __all__ = [
     "BaseConnector",
     "Chunk",
+    "CollectionError",
     "CollectionSearchResult",
     "ConnectorMetadata",
     "ConnectorRun",
@@ -33,5 +39,9 @@ __all__ = [
     "MatchedChunk",
     "PhasedProgressCallback",
     "ReaderDetails",
+    "SEARCH_OUTPUT_SCHEMA",
+    "SearchEnvelope",
+    "SearchHit",
+    "SearchLocator",
     "SourceConfig",
 ]

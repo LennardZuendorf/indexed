@@ -76,6 +76,18 @@ def reset_simple_output() -> None:
     _resolved_cache = None
 
 
-def print_json(data: Any) -> None:
-    """Print JSON to stdout for machine consumers."""
+def print_json(data: Any, *, compact: bool = False) -> None:
+    """Print JSON to stdout for machine consumers.
+
+    ``compact=True`` drops the indentation and the spaces after separators —
+    a search payload is read by a model, and pretty-printing it costs tokens
+    for nothing. Every other command keeps the readable default.
+    """
+    if compact:
+        separators = (",", ":")
+        print(
+            json.dumps(data, separators=separators, default=str),
+            file=sys.stdout,
+        )
+        return
     print(json.dumps(data, indent=2, default=str), file=sys.stdout)

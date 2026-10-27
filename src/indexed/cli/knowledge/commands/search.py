@@ -199,12 +199,14 @@ def search(
         s.name: s for s in (all_statuses if collection is None else statuses)
     }
     search_configs = {}
+    source_types = {}
     for coll_name in collections_to_search:
         coll_status = status_by_name.get(coll_name)
         if coll_status is None or not coll_status.indexers:
             print_error(f"Collection '{coll_name}' is unavailable, skipping")
             continue
         source_type = getattr(coll_status, "source_type", None) or "localFiles"
+        source_types[coll_name] = source_type
         search_configs[coll_name] = source_config_class(
             name=coll_name,
             type=source_type,
@@ -315,9 +317,12 @@ def search(
 
     # Format and display results
     if simple:
-        from indexed.mcp.formatting import format_search_results_for_llm
+        from indexed.utils.search_results import build_search_envelope
 
-        print_json(format_search_results_for_llm(results, query))
+        print_json(
+            build_search_envelope(results, query, source_types=source_types),
+            compact=True,
+        )
     elif compact:
         format_search_results_compact(query, results, limit=display_limit)
     else:
