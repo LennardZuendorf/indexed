@@ -273,6 +273,6 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
     # partial success: the healthy sibling's hits survive the corrupt collection,
     # and nothing claims to come from the collection that could not be opened.
     assert _hits(payload["every"]), payload
-    assert {d["collection"] for d in payload["every"]["documents"]} == {NEW_COLLECTION}, (
-        payload
-    )
+    assert {d["collection"] for d in payload["every"]["documents"]} == {
+        NEW_COLLECTION
+    }, payload

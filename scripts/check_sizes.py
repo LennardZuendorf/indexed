@@ -140,8 +140,8 @@ SRC_LOC_MAX = 31_600
 # MCP tool and `search --json`, and `test_formatting.py` grows the locator/
 # ranking units (line span, page, headings, honest `document` fallback,
 # unified cross-engine relevance) — genuine defect-guarding coverage for a
-# reproduced two-shapes drift, not stealth regrowth; ceiling = measured +
-# headroom.
+# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
+# (45_420 incl. #112's parity suite on the pre-#265 tree) + headroom.
 TEST_LOC_MAX = 48_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
