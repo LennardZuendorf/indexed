@@ -208,7 +208,7 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
     assert json.loads(purged.stdout)["status"] == "purge-backup"
     assert not backup.exists()
     # The migrated collection still works after the backup is gone.
-    assert _search(NEEDLE_QUERY, collection)["results"][0]["document_id"].endswith(
+    assert _search(NEEDLE_QUERY, collection)["documents"][0]["id"].endswith(
         "needle.txt"
     )
 
