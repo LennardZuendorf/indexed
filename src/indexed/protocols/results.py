@@ -68,7 +68,7 @@ class DocumentResult(TypedDict):
     """One matched document and the chunks of it that matched."""
 
     collection: str
-    source_type: str
+    source_type: NotRequired[str]
     """The collection's reader type (``localFiles``, ``jira``, …); a
     collection-level fact, because a collection is fed by exactly one
     reader. Omitted when the collection's manifest does not say."""
