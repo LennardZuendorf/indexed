@@ -310,3 +310,53 @@ def test_mcp_search_failure_is_an_error_envelope_with_a_type() -> None:
 
     assert list(payload) == ["error", "type"]
     assert payload == {"error": "collection exploded", "type": "MCPError"}
+
+
+def _search_config() -> MagicMock:
+    search_cfg = MagicMock()
+    search_cfg.max_docs = 10
+    search_cfg.max_chunks = 30
+    search_cfg.score_threshold = None
+    search_cfg.include_full_text = False
+    search_cfg.include_all_chunks = False
+    search_cfg.include_matched_chunks = True
+    return search_cfg
+
+
+def test_mcp_empty_store_is_the_success_shape_with_no_collections() -> None:
+    """An empty store is NOT an error envelope on MCP (the CLI reports one): the
+    tool returns the success payload with `collections: []`, which is how a
+    consumer tells "nothing was searched" from "searched, nothing matched"
+    (.spec/tech-app.md § The two bodies)."""
+    with (
+        patch.object(tools_module, "svc_search", return_value={}),
+        patch.object(server_module, "_get_config", return_value=_search_config()),
+    ):
+        payload = _mcp_search_tool().fn(QUERY)
+
+    assert payload == {
+        "schema": "indexed.search/1",
+        "query": QUERY,
+        "counts": {"documents": 0, "hits": 0},
+        "collections": [],
+        "collection_errors": [],
+        "documents": [],
+    }
+
+
+def test_mcp_search_collection_unknown_is_a_bare_error_body() -> None:
+    """`search_collection` answers an unknown name with `{"error"}` and no `type`
+    — the other MCP failure body. Pinned so the documented asymmetry cannot drift
+    back into a single lookalike envelope (collection_errors.py)."""
+    tool = asyncio.run(server_module.mcp.get_tool("search_collection"))
+
+    with (
+        patch.object(tools_module, "svc_status", return_value=[]),
+        patch(
+            "indexed.mcp.collection_errors.svc_collection_exists", return_value=False
+        ),
+        patch.object(server_module, "_get_config", return_value=_search_config()),
+    ):
+        payload = tool.fn("ghost", QUERY)
+
+    assert payload == {"error": "Collection 'ghost' not found or has no indexers"}
