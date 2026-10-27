@@ -346,6 +346,19 @@ def test_prose_document_gets_a_heading_path() -> None:
     assert locator == {"kind": "headings", "headings": ["Search", "Output shape"]}
 
 
+def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
+    """Prose converters emit ``headings: [""]`` for whole-file chunks. A
+    ``headings`` locator with no headings would claim a precision the chunk does
+    not have, so it must fall through to ``document``; genuine headings survive
+    the cleaning, and blank ones are dropped rather than kept."""
+    assert build_locator({"headings": [""]}, "file:///docs/a.md") == {"kind": "document"}
+    assert build_locator({"headings": ["", "   "]}, "") == {"kind": "document"}
+    assert build_locator({"headings": ["", " Real "]}, "") == {
+        "kind": "headings",
+        "headings": ["Real"],
+    }
+
+
 def test_chunk_without_any_position_says_document_not_a_fake_range() -> None:
     """The honesty constraint: Markdown/Jira/Confluence chunks that carry no
     line span and no headings must NOT invent a range."""
