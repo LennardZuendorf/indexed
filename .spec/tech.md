@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-09-07
+updated: 2026-10-27
 ---
 
 # Tech Spec: indexed
