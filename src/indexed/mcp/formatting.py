@@ -3,8 +3,9 @@
 This is the ONE result shape for machine consumers: the MCP ``search`` /
 ``search_collection`` tools return it, and the CLI prints it byte-for-byte
 under ``indexed search --json`` (``--simple-output`` is the legacy alias).
-The contract is typed in ``indexed.protocols.results`` and documented for
-users in ``.spec/tech-app.md`` § Search result contract (issues #108/#109).
+The contract is typed in ``indexed.protocols.results`` and documented for users
+in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
+contract stays the design record (issues #108/#109).
 
 Shape, in one breath: documents grouped, each stating its collection, source
 type, id, url and score semantics ONCE; each hit carrying only its

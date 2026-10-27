@@ -42,8 +42,8 @@ indexed index search "your query" --json
 ```
 
 `--json` prints one object with a `schema` id, documents grouped, and a locator
-per hit — excerpt from a real collection, one document and one hit shown
-(`url` omitted):
+per hit — excerpt from a real collection, values verbatim; the second hit (the
+whole-document chunk) is elided here, which is why `counts.hits` says 2:
 
 ```json
 {
@@ -57,6 +57,7 @@ per hit — excerpt from a real collection, one document and one hit shown
       "collection": "docs-quick",
       "source_type": "localFiles",
       "id": "retry.md",
+      "url": "file:///tmp/indexed-docs-quick/retry.md",
       "score_kind": "l2_squared",
       "hits": [
         {
