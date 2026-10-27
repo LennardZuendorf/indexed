@@ -186,8 +186,14 @@ def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
         return locator
 
     headings = meta.get("headings")
-    if isinstance(headings, list) and headings:
-        return {"kind": "headings", "headings": [str(h) for h in headings if h]}
+    if isinstance(headings, list):
+        # Decide the kind AFTER cleaning: the Markdown/Jira converters emit
+        # ``headings: [""]`` for whole-file chunks, and a ``headings`` locator
+        # declaring an empty path would claim a precision the chunk does not
+        # have. An empty cleaning means "position unknown" -> ``document``.
+        cleaned = [str(h).strip() for h in headings if str(h).strip()]
+        if cleaned:
+            return {"kind": "headings", "headings": cleaned}
 
     return {"kind": "document"}
 
