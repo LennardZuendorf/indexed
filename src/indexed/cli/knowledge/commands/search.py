@@ -87,7 +87,8 @@ def search(
         "--json",
         help=(
             "Print the documented machine payload (schema indexed.search/1) "
-            "instead of the human view; same shape as the MCP tools."
+            "instead of the human view; same shape as the MCP tools. "
+            "Ignores --compact/--no-content."
         ),
     ),
     no_content: bool = typer.Option(
