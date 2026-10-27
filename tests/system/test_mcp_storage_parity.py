@@ -23,9 +23,9 @@ v2-engine collection, in global mode and in ``--local`` mode, asserting that
    per-collection provenance intact, and the two surfaces' envelopes agree.
 
 Both surfaces render search through
-``indexed.mcp.formatting.format_search_results_for_llm`` (the CLI's
+``indexed.mcp.formatting.build_search_payload`` (the CLI's ``--json`` /
 ``--simple-output`` path imports it directly), so their envelopes are directly
-comparable — the parity claim is about one shared formatter fed by two
+comparable — the parity claim is about one shared builder fed by two
 independently resolved roots, not two unrelated renderers.
 
 Out-of-process is mandatory, not stylistic: an in-process FastMCP client plus
@@ -223,9 +223,14 @@ async def _drive_mcp(cwd: Path, query: str) -> dict:
 
 
 def _hits(envelope: dict) -> set[tuple[str, str]]:
+    """(collection, document basename) pairs — one per document, not per chunk.
+
+    The payload groups a document's matched chunks under it
+    (``indexed.search/1``), so the per-surface comparison is over documents.
+    """
     return {
-        (r["collection"], Path(r["document_id"]).name)
-        for r in envelope.get("results") or []
+        (doc["collection"], Path(doc["id"]).name)
+        for doc in envelope.get("documents") or []
     }
 
 
@@ -303,11 +308,18 @@ def test_cli_and_mcp_agree_over_mixed_v1_v2_store(
     )
     for envelope in (payload["search"], cli_search):
         assert not envelope["collection_errors"]
-        assert envelope["total_chunks_found"] == len(envelope["results"]) > 0
-    assert payload["search"]["total_chunks_found"] == cli_search["total_chunks_found"]
+        assert envelope["schema"] == "indexed.search/1"
+        assert (
+            envelope["counts"]["hits"]
+            == sum(len(doc["hits"]) for doc in envelope["documents"])
+            > 0
+        )
+    assert payload["search"]["counts"]["hits"] == cli_search["counts"]["hits"]
     # Mixed set → the cross-engine relevance path ran, tagging each hit with the
     # REAL score kind (v1 has no scoreKind, so it reports l2_squared).
-    kinds = {(r["collection"], r["score_kind"]) for r in payload["search"]["results"]}
+    kinds = {
+        (doc["collection"], doc["score_kind"]) for doc in payload["search"]["documents"]
+    }
     assert kinds == {(V1, "l2_squared"), (V2, "cosine")}
 
     # 3. The MCP per-collection tool routes by manifest, so the v1 collection is
