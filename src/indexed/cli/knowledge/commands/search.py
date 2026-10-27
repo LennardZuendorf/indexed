@@ -82,6 +82,14 @@ def search(
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help=(
+            "Print the documented machine payload (schema indexed.search/1) "
+            "instead of the human view; same shape as the MCP tools."
+        ),
+    ),
     no_content: bool = typer.Option(
         False, "--no-content", help="Hide content previews"
     ),
@@ -112,6 +120,7 @@ def search(
         indexed search "bug fix" -c jira              # Search specific collection
         indexed search "API docs" --compact           # Compact list view
         indexed search "error handling" --no-content  # Hide content previews
+        indexed search "rerank" --json                # Machine payload (indexed.search/1)
     """
     # Use module-level lazy-loaded services (supports mocking in tests)
     from . import search as this_module
@@ -125,7 +134,10 @@ def search(
     effective_level = log_level or ("INFO" if verbose else None)
     setup_root_logger_svc(level_str=effective_level, json_mode=json_logs)
 
-    simple = is_simple_output()
+    # --json is the documented machine mode; the global --simple-output flag
+    # (INDEXED_SIMPLE_OUTPUT) stays supported as its legacy alias. Both emit
+    # the SAME payload as the MCP tools (schema indexed.search/1).
+    simple = is_simple_output() or json_output
 
     from indexed.cli.composition import resolve_collections_context
 
@@ -315,9 +327,9 @@ def search(
 
     # Format and display results
     if simple:
-        from indexed.mcp.formatting import format_search_results_for_llm
+        from indexed.mcp.formatting import build_search_payload
 
-        print_json(format_search_results_for_llm(results, query))
+        print_json(build_search_payload(results, query))
     elif compact:
         format_search_results_compact(query, results, limit=display_limit)
     else:

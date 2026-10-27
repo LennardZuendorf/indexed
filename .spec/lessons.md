@@ -1276,3 +1276,21 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [reporting] Budget comment size after Markdown escaping; character entities
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
+
+## One builder for both surfaces (2026-10-26)
+
+- **A payload the CLI and the MCP server both emit must be built by ONE function,
+  typed by ONE contract module, and pinned by ONE hand-written golden file.**
+  #108/#109 had two lookalike shapes (`format_search_results_for_llm` fed both,
+  but the CLI's human view and MCP's dict had already drifted, and v2 dropped
+  chunk `metadata` so a v2 hit could not say where it sits at all). Three
+  surfaces → one test file (`tests/unit/indexed/mcp/test_search_payload_golden.py`)
+  that asserts the builder, the MCP tool and `search --json` all equal the same
+  golden JSON, key order included. Hand-write the golden: a generated fixture
+  cannot disagree with the implementation, which is the only reason to have one.
+- **Provenance is a payload job, not a formatting afterthought.** Locators come
+  from chunk `metadata`; a shape that omits it (v2's `{indexedData}`-only chunk
+  content) silently degrades every hit to "somewhere in this document". When a
+  contract needs a field, check that every engine still CARRIES it before the
+  formatter is written, and assert an honest `kind: "document"` fallback rather
+  than an invented range.

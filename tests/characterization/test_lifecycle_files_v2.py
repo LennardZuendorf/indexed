@@ -111,13 +111,14 @@ def test_v2_files_lifecycle_create_search_update_delete_inspect_remove(
 
     # --- search: a KNOWN document is the top hit --------------------------
     payload = _search("penguin migration survey along the Antarctic coastline")
-    assert payload["results"], "expected at least one search hit"
-    assert payload["results"][0]["document_id"].endswith("needle.txt")
-    assert "penguin" in payload["results"][0]["text"].lower()
+    assert payload["documents"], "expected at least one search hit"
+    assert payload["documents"][0]["id"].endswith("needle.txt")
+    assert "penguin" in payload["documents"][0]["hits"][0]["text"].lower()
+    assert payload["documents"][0]["source_type"] == "localFiles"
 
     # A different query ranks a different document first (known-hit).
     other = _search("vector indexing embeddings retrieval")
-    assert other["results"][0]["document_id"].endswith("beta.txt")
+    assert other["documents"][0]["id"].endswith("beta.txt")
 
     # Snapshot the unchanged docs' node ids + content hashes before the update.
     ds_before = _docstore(ws.collections_dir)
@@ -140,15 +141,15 @@ def test_v2_files_lifecycle_create_search_update_delete_inspect_remove(
 
     # New doc is searchable.
     post = _search("volcanic soil sulfur concentrations caldera")
-    assert any(r["document_id"].endswith("gamma.txt") for r in post["results"]), (
+    assert any(d["id"].endswith("gamma.txt") for d in post["documents"]), (
         "newly indexed document should be searchable after update"
     )
 
     # Deleted doc is unfindable (never returned for its own distinctive phrase).
     alpha_hit = _search("semantic search finds documents by meaning keywords")
-    assert not any(
-        r["document_id"].endswith("alpha.txt") for r in alpha_hit["results"]
-    ), "deleted document must not be findable after update"
+    assert not any(d["id"].endswith("alpha.txt") for d in alpha_hit["documents"]), (
+        "deleted document must not be findable after update"
+    )
 
     # INCREMENTAL proof: the unchanged docs kept their exact node ids AND their
     # content hash (they were skipped, not re-embedded); the deleted doc's nodes
