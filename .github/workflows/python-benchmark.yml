@@ -61,13 +61,11 @@ jobs:
           --benchmark-json=benchmark-results.json
           -v
         cross-branch-tolerance: 20
-        # Effectively never. v1.0.2 has no "don't touch the baseline" switch, and
-        # any drift past the tolerance makes the action commit a rewritten
-        # `.benchmarks/baselines/main.json` onto the PR branch — which
-        # baseline-guard.yml rejects ("This PR must not move main's baseline"),
-        # leaving an untested `[skip ci]` head that re-drifts on every re-run
-        # (#253). The job-level `contents: read` below is the hard stop; this
-        # value keeps the action from even trying.
-        update-tolerance: 100000
+        # Matches PR #254's value: this PR job holds `contents: read`, so it
+        # measures, comments and gates but can never write the baseline — the
+        # real guarantee. `baseline-guard.yml` owns `main`'s file, and a drift
+        # the gate would have blessed is reported in the PR comment instead
+        # (#253). Aligned with #254 so the two changes merge cleanly.
+        update-tolerance: 1000
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
