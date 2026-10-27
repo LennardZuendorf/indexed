@@ -3,7 +3,8 @@
 ONE contract for every machine consumer: the CLI's ``indexed search --json``
 and the MCP tools ``search`` / ``search_collection`` both emit exactly this,
 built by one function (``indexed.mcp.formatting.build_search_payload``).
-The user-facing description lives in ``.spec/tech-app.md`` § Search result contract.
+The user-facing field reference lives in ``docs/reference/search-output.md``;
+the design record in ``.spec/tech-app.md`` § Search result contract.
 
 Design rules (issue #108/#109):
 
