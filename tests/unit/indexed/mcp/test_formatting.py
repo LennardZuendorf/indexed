@@ -351,7 +351,9 @@ def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
     ``headings`` locator with no headings would claim a precision the chunk does
     not have, so it must fall through to ``document``; genuine headings survive
     the cleaning, and blank ones are dropped rather than kept."""
-    assert build_locator({"headings": [""]}, "file:///docs/a.md") == {"kind": "document"}
+    assert build_locator({"headings": [""]}, "file:///docs/a.md") == {
+        "kind": "document"
+    }
     assert build_locator({"headings": ["", "   "]}, "") == {"kind": "document"}
     assert build_locator({"headings": ["", " Real "]}, "") == {
         "kind": "headings",
