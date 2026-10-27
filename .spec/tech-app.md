@@ -307,9 +307,10 @@ before a payload exists) go to the CLI's top-level handler: the message is print
 `3` for storage) — stdout stays empty. So the machine contract is: *a non-zero exit, an
 `error` body, or an empty `collections` list means "no results"; never trust stdout
 without checking the exit code.* Every body above is pinned:
-`tests/unit/indexed/mcp/test_search_payload_golden.py` (CLI and MCP envelopes) and
+`tests/unit/indexed/mcp/test_search_payload_golden.py` (CLI and MCP envelopes),
 `tests/unit/indexed/mcp/test_tools_collection_errors.py` (unknown vs unusable
-collection).
+collection) and `tests/unit/indexed/knowledge/commands/test_search.py` (the CLI
+`{"error": "No searchable collections available"}` rows, exit codes included).
 
 Versioning: bump `SEARCH_SCHEMA` on any incompatible change.
 
