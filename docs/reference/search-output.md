@@ -173,7 +173,9 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 
 `locator.kind` is load-bearing: read only the keys that kind declares. Precision
 order is `line_span` > `page` > `headings` > `document`; a chunk that has line
-data *and* headings gets `line_span`. A range is never invented to fill the field
+data *and* headings gets `line_span` — provided a path is resolvable too (from the
+chunk's `file_path` or its `file://` url), otherwise it falls through to `page`,
+`headings` or `document`. A range is never invented to fill the field
 — a source with no position known gets `document`.
 
 | `kind` | Keys | What it means |
