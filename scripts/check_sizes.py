@@ -120,8 +120,8 @@ SRC_LOC_MAX = 29_050
 # ranking units (line span, page, headings, honest `document` fallback,
 # unified cross-engine relevance) — genuine defect-guarding coverage for a
 # reproduced two-shapes drift, not stealth regrowth; ceiling = measured
-# (45_124) + headroom.
-TEST_LOC_MAX = 45_400
+# (45_420 incl. #112's parity suite) + headroom.
+TEST_LOC_MAX = 45_700
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
