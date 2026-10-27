@@ -253,7 +253,8 @@ Rules the shape encodes — each one exists because the old flat payload got it 
 - **`source_type` is a collection fact**, taken from `manifest.reader.type`; omitted
   rather than guessed when the manifest does not say.
 - **No boilerplate to strip.** `--json` stdout is the JSON document and nothing else
-  (logs go to stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
+  (logs and notices — a skipped unsearchable collection, a no-op `--rerank` — go to
+  stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
   is removed because `locator.path` already carries the path.
 - **Failures never read as emptiness.** `collection_errors` is always present; a failed
   collection appears there, not as a silent zero. A request that fails as a whole
@@ -269,26 +270,46 @@ Rules the shape encodes — each one exists because the old flat payload got it 
 A payload either carries `schema: "indexed.search/1"` or it does not, and that is the
 first thing a consumer reads:
 
-- **`schema` present** → the success shape documented above.
-- **`schema` absent** → a failure/empty envelope, `error` holding the message. Never a
-  success payload with empty `documents`: a failed request must not read as "nothing
-  matched".
+- **`schema` present** → the success shape documented above. Empty `documents` here
+  means *nothing matched*, and `collections` says what that judgement is about:
+  `collections: []` means **nothing was searched** (empty store — see the MCP row
+  below); a non-empty `collections` means those were searched and matched nothing.
+- **`schema` absent** → an error envelope, `error` holding the message. A request that
+  failed never reads as "nothing matched".
 
 | Surface | Body | Exit |
 |---|---|---|
-| `indexed search --json` — named collection missing/corrupt | `{"error": "Collection 'x' not found"}` | `1` |
-| `indexed search --json` — nothing to search (no collections exist, or none searchable while searching all) | `{"error": "No collections found"}` / `{"error": "No searchable collections available"}` | `0` (empty store, not a failed request) |
-| MCP `search` / `search_collection` | `{"error": "…", "type": "MCPError"}` | n/a (tool result) |
+| CLI `search --json -c <name>` — collection unknown | `{"error": "Collection 'x' not found"}` | `1` |
+| CLI `search --json -c <name>` — known but unsearchable (unreadable manifest / no indexers) | `{"error": "No searchable collections available"}` | `1` |
+| CLI `search --json` (all) — no collections exist | `{"error": "No collections found"}` | `0` |
+| CLI `search --json` (all) — collections exist, none searchable | `{"error": "No searchable collections available"}` | `0` |
+| MCP `search` — empty store / nothing searchable | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
+| MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors` | n/a |
+| MCP `search` / `search_collection` — `IndexedError` (corrupt index, …) or unexpected failure | `{"error": "…", "type": "MCPError"}` | n/a |
+| MCP `search_collection` — collection unknown on disk | `{"error": "Collection 'x' not found or has no indexers"}` — **no `type`** | n/a |
 
-`type` is the exception class (`MCPError`, `ConfigurationError`, …): an agent branches
-on it rather than on English prose.
+Two asymmetries are deliberate and must not surprise a harness:
+
+- **MCP has no exit code, and one of its bodies has no `type`.** `search_collection`
+  answers an unknown name with the bare `{"error"}` its clients already match on
+  (`mcp/collection_errors.py`) and reserves `type` for *present but unusable* — an
+  agent branching on `type` must treat its absence as "unknown collection", not as
+  success. Branch on `schema` first; `type` is a refinement.
+- **The empty store is a CLI envelope but an MCP success payload.** The CLI says
+  `{"error": "No collections found"}`, the MCP tool returns the success shape with
+  `collections: []`. On MCP the discriminator is `collections`, not the presence of
+  `error`: empty `collections` = nothing was searched (create/index a collection),
+  empty `documents` with non-empty `collections` = searched and nothing matched.
 
 **Errors that escape the command** (`ConfigurationError`, `StorageError`, … raised
 before a payload exists) go to the CLI's top-level handler: the message is printed to
 **stderr** as prose and the process exits with the mapped code (`1`, `2` for config,
-`3` for storage) — stdout stays empty. So the machine contract is: *non-zero exit or an
-`error` body means failure; never trust stdout without checking the exit code.* All
-bodies above are pinned by `tests/unit/indexed/mcp/test_search_payload_golden.py`.
+`3` for storage) — stdout stays empty. So the machine contract is: *a non-zero exit, an
+`error` body, or an empty `collections` list means "no results"; never trust stdout
+without checking the exit code.* Every body above is pinned:
+`tests/unit/indexed/mcp/test_search_payload_golden.py` (CLI and MCP envelopes) and
+`tests/unit/indexed/mcp/test_tools_collection_errors.py` (unknown vs unusable
+collection).
 
 Versioning: bump `SEARCH_SCHEMA` on any incompatible change.
 
