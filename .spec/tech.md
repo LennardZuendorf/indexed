@@ -202,10 +202,16 @@ no-baseline cases — the read-only token does.
 must not touch that file: its gate would otherwise compare against numbers the
 PR itself wrote, so a regression would land as the new reference instead of
 failing. `.github/workflows/baseline-guard.yml` enforces both halves — it fails
-a code-changing PR that rewrites the file, and passes a PR that changes nothing
-but the file. Because the benchmark job can no longer add a `[skip ci]` commit,
-the guard's remedy ("restore the file, re-run the benchmark job") now
-converges; a re-run cannot re-add it.
+a code-changing PR that rewrites the file, and passes a PR whose only change is
+a baseline *rewrite*. The door is deliberately not "nothing but that file": a
+PR that deletes it also changes nothing else, yet removing main's baseline
+leaves the next run logging "No baseline found for base branch 'main' —
+skipping cross-branch comparison" and passing green, so the performance gate
+silently stops gating (the same class of damage as an untested head). The guard
+therefore requires the file to be present at HEAD before it opens the door, and
+fails a deletion with an explicit message. Because the benchmark job can no
+longer add a `[skip ci]` commit, the guard's remedy ("restore the file, re-run
+the benchmark job") now converges; a re-run cannot re-add it.
 
 **Refresh lane.** `.github/workflows/python-benchmark.yml` is also
 `workflow_dispatch`-able, and its `refresh-baseline` job runs only when

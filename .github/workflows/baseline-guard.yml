@@ -8,9 +8,12 @@ name: Benchmark Baseline Guard
 #    as the new reference instead of failing. (.github/workflows/python-benchmark.yml
 #    runs PR jobs with `contents: read` so the benchmark action cannot create
 #    such a commit at all — this job is the backstop if that ever regresses.)
-# 2. A PR that changes nothing but the baseline is allowed: that is the
-#    sanctioned refresh lane (dispatch `python-benchmark.yml` on main and it
-#    opens one), where no gate decision depends on the numbers being written.
+# 2. A PR that changes nothing but the baseline is allowed, provided it still
+#    HAS the file: that is the sanctioned refresh lane (dispatch
+#    `python-benchmark.yml` on main and it opens one), where no gate decision
+#    depends on the numbers being written. A removal is not that shape —
+#    deleting main's baseline leaves the next run with nothing to compare
+#    against, so the performance gate would pass green and stop gating.
 #
 # A `pull_request`-only guard would miss a bot commit pushed with `[skip ci]`,
 # because that suppresses `synchronize` — hence the `pull_request_review` and
@@ -61,8 +64,9 @@ jobs:
           echo "::error file=$file::No common ancestor between this PR and $base_repo main; baseline drift cannot be checked."
           exit 1
         }
-        head_blob=$(git rev-parse "HEAD:$file" 2>/dev/null || echo absent)
-        base_blob=$(git rev-parse "$base:$file" 2>/dev/null || echo absent)
+        head_blob=$(git rev-parse --verify -q "HEAD:$file" || echo absent)
+        base_blob=$(git rev-parse --verify -q "$base:$file" || echo absent)
+        main_blob=$(git rev-parse --verify -q "$main:$file" || echo absent)
         if [ "$head_blob" = "$base_blob" ]; then
           echo "$file unchanged by this PR ($head_blob)"
           exit 0
@@ -70,13 +74,22 @@ jobs:
         # Everything else this PR touches. Empty = a baseline-only PR, the one
         # shape allowed to move the file: no code change, so nothing here is
         # gated against the numbers it writes, and it shows up as its own
-        # reviewable diff instead of riding along with a fix.
+        # reviewable diff instead of riding along with a fix. The door is a
+        # REWRITE, never a removal: a deleted baseline leaves main with none,
+        # the next run logs "No baseline found ... skipping cross-branch
+        # comparison" and passes green — the gate disarmed with nothing to show.
         others=$(git diff --name-only "$base" HEAD -- . ":(exclude)$file")
         if [ -z "$others" ]; then
-          echo "::notice::$file moved by a baseline-only PR — the sanctioned refresh lane."
+          if [ "$head_blob" = "absent" ]; then
+            msg="$file was deleted by this PR. The sanctioned refresh lane rewrites the baseline; removing it leaves main with no baseline, so the next benchmark run skips the cross-branch comparison and the performance gate silently stops gating. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, then commit."
+            echo "::error file=$file,line=1::$msg"
+            echo "$msg"
+            exit 1
+          fi
+          echo "::notice::$file rewritten by a baseline-only PR — the sanctioned refresh lane."
           exit 0
         fi
-        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $(git rev-parse "$main:$file")). A PR that changes code may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, commit, then re-run the benchmark job — the benchmark job has no write scope, so it will not re-add the file on that re-run. To move the baseline on purpose, dispatch the benchmark workflow on main instead."
+        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $main_blob). A PR that changes code may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, commit, then re-run the benchmark job — the benchmark job has no write scope, so it will not re-add the file on that re-run. To move the baseline on purpose, dispatch the benchmark workflow on main instead."
         echo "::error file=$file,line=1::$msg"
         echo "$msg"
         exit 1

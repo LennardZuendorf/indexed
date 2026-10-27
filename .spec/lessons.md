@@ -1173,4 +1173,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   nothing but that file": the invariant worth keeping is that no gate decision
   is made against numbers the same PR writes, and a baseline-only PR cannot
   violate it. Keep the door narrow (paths other than the one file still fail)
-  and say in the message which door is sanctioned.
+  and say in the message which door is sanctioned. Then close the second hole a
+  "nothing but that file" rule leaves open: a DELETION also changes nothing
+  else, passes the empty-`others` test, and lands main with no baseline — after
+  which every run logs "No baseline found ... skipping cross-branch comparison"
+  and passes, so the gate is disarmed while all its checks are green. Require
+  the file to exist at HEAD before opening the door; a refresh *rewrites*, it
+  never removes.
