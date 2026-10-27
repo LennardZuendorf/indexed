@@ -215,7 +215,14 @@ def search(
     for coll_name in collections_to_search:
         coll_status = status_by_name.get(coll_name)
         if coll_status is None or not coll_status.indexers:
-            print_error(f"Collection '{coll_name}' is unavailable, skipping")
+            # Machine mode owns stdout: the notice is still reported, but on
+            # stderr, so `--json`'s stdout stays parseable (same rule as the
+            # --rerank notice below).
+            notice = f"Collection '{coll_name}' is unavailable, skipping"
+            if simple:
+                typer.echo(notice, err=True)
+            else:
+                print_error(notice)
             continue
         source_type = getattr(coll_status, "source_type", None) or "localFiles"
         search_configs[coll_name] = source_config_class(

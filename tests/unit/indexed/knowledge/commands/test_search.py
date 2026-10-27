@@ -7,6 +7,7 @@ We focus on realistic behaviors:
 - formatter behavior for no results and mixed results
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List
@@ -1283,6 +1284,35 @@ class TestSearchCommandExecution:
             assert '"error": "No searchable collections available"' in result.stdout
         finally:
             reset_simple_output()
+
+    def test_search_simple_unsearchable_collection_keeps_stdout_parseable(
+        self, monkeypatch
+    ):
+        """The skip notice must not pollute machine stdout.
+
+        A named collection that is present but has no indexers used to print a
+        Rich panel to stdout *before* the JSON body, so `indexed search --json`
+        was not parseable in exactly the case an agent is most likely to hit.
+        The notice now goes to stderr, like the --rerank notice.
+        """
+        from unittest.mock import Mock
+
+        broken_status = Mock()
+        broken_status.name = "broken"
+        broken_status.indexers = []
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [broken_status])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        result = runner.invoke(
+            search_cmd.app, ["my-query", "--collection", "broken", "--json"]
+        )
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "error": "No searchable collections available"
+        }
+        assert "unavailable, skipping" in result.stderr
 
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
