@@ -191,7 +191,7 @@ def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
         # ``headings: [""]`` for whole-file chunks, and a ``headings`` locator
         # declaring an empty path would claim a precision the chunk does not
         # have. An empty cleaning means "position unknown" -> ``document``.
-        cleaned = [str(h).strip() for h in headings if str(h).strip()]
+        cleaned = [h.strip() for h in headings if isinstance(h, str) and h.strip()]
         if cleaned:
             return {"kind": "headings", "headings": cleaned}
 
