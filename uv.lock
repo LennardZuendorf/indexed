@@ -913,14 +913,14 @@ wheels = [
 
 [[package]]
 name = "docling"
-version = "2.142.0"
+version = "2.142.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docling-slim", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/44/d496e549128f802aa48ff1732068e6d09c8aff316e13d79191c8460dd804/docling-2.142.0.tar.gz", hash = "sha256:a733ab8539c944a310adb9df9edc1bdf3a0b60e9d3fb6a930a5c928d75256ee5", size = 9151, upload-time = "2026-10-22T14:31:10.8Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/7a/71edecf102ba26c3dc6bd7344c10373761359eaf59d563424e82b9dc2ec8/docling-2.142.1.tar.gz", hash = "sha256:da56c51989045b3109d0b4fde7ab4cd57b9db67d80a780cf5d5da5e1be33810f", size = 9146, upload-time = "2026-10-23T08:22:09.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/40/ebabf374d7fc77824fb3812e835581112cf16de9443c28d5199f25523238/docling-2.142.0-py3-none-any.whl", hash = "sha256:57dee8ce7324c6b905d01d01d8fd58783a3649180b5a4a3093b00d1003fdcf61", size = 5241, upload-time = "2026-10-22T14:31:09.466Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/9d/f68c418d11115ac593197a28b0f1e689876294035a1a5ea640be5e06218e/docling-2.142.1-py3-none-any.whl", hash = "sha256:72e52caeb95e36fcc3b2d90a6e77a8229432d20b22efdf17527b9ed5a08bd1b2", size = 5242, upload-time = "2026-10-23T08:22:08.356Z" },
 ]
 
 [[package]]
@@ -1018,7 +1018,7 @@ wheels = [
 
 [[package]]
 name = "docling-slim"
-version = "2.142.0"
+version = "2.142.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1031,9 +1031,9 @@ dependencies = [
     { name = "requests" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8c/74/f6f375c8eb7b51d72aee09067c33dcad85ee6ec92ab919c8483e91bca4e2/docling_slim-2.142.0.tar.gz", hash = "sha256:31dee3f967b2d3abd6631c1a961cea15a3e3c3c8e24ec336e25f079e6dc46110", size = 912661, upload-time = "2026-10-22T14:29:41.736Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/43/fa84e245dd80d8c48912f0495c3a31a333fb3804efb0295646f5f052e748/docling_slim-2.142.1.tar.gz", hash = "sha256:b6042f9b6c8f156f04d59a298188b33aa8f6317ca57073225453056c164af0f4", size = 922507, upload-time = "2026-10-23T08:20:49.57Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/45/c33d4c60f38a063a4ba2447a4d6b2b004e89fa4309380490f5a742614045/docling_slim-2.142.0-py3-none-any.whl", hash = "sha256:1841e4fe8fdbc1e37da544222a48b40b82c4ad64c875458ef16ed6a88098850e", size = 1105923, upload-time = "2026-10-22T14:29:39.567Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/5f/6ca181855e1cad1d9e8be1830fa660cf481bbb5e5da6caa21df491181e71/docling_slim-2.142.1-py3-none-any.whl", hash = "sha256:8013da3da0692b51406e6192c3b2aba4c241da92ff055af106dbe6b723b7f528", size = 1116839, upload-time = "2026-10-23T08:20:47.142Z" },
 ]
 
 [package.optional-dependencies]
@@ -4473,7 +4473,7 @@ wheels = [
 
 [[package]]
 name = "sentence-transformers"
-version = "6.1.0"
+version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -4486,9 +4486,9 @@ dependencies = [
     { name = "transformers" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/a1/53ae87971817e2d8370f8e79b843a881be33ab339502d71c5f82ac31f7af/sentence_transformers-6.1.0.tar.gz", hash = "sha256:299025df51550dc1a38f05be27a9b0bf881c4e5e70542b3b7757d05e00aa3868", size = 576566, upload-time = "2026-09-18T10:44:24.279Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/66/635443b9b1d7ea618c4699c8ad4c43b022ceac0c0a1dc4404b7597b38754/sentence_transformers-6.2.0.tar.gz", hash = "sha256:1e3cd8796ab7bcad4cfa2f51e2083d8b37b15d6b68e6fa6b91a147c67380574d", size = 600810, upload-time = "2026-10-21T12:26:50.404Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/6e/9115e19589c83172bd37ec793cfef7f7c719464053fa6a8882700c1f4488/sentence_transformers-6.1.0-py3-none-any.whl", hash = "sha256:eb8122f4d180f552eda26dc3d77e84e8c11dc2b1d456a406b9f24abb70ceeadd", size = 740560, upload-time = "2026-09-18T10:44:22.841Z" },
+    { url = "https://files.pythonhosted.org/packages/66/ae/aac4fcaf7aa27daee96aa15d74770b38bb5ff50b1d31ccf12becd68c6e8b/sentence_transformers-6.2.0-py3-none-any.whl", hash = "sha256:ffb51ccfef65427cfa61776d0eeeb257600b0099cf0c7533ae9a6856d31e4665", size = 760709, upload-time = "2026-10-21T12:26:49.022Z" },
 ]
 
 [[package]]
