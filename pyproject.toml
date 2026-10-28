@@ -136,6 +136,8 @@ dev = [
 # they ARE direct deps).
 [tool.uv]
 constraint-dependencies = [
+    "accelerate>=1.15.0",
+    "nltk>=3.10.4",
     "pillow>=13.0.0",
     "cryptography>=50.0.0",
     "soupsieve>=2.8.4",
