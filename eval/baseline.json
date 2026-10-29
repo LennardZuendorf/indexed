@@ -1,9 +1,9 @@
 {
   "schema": "indexed.eval.report.v1",
-  "generated_at": "2026-10-29T09:17:59+00:00",
+  "generated_at": "2026-10-29T10:20:44+00:00",
   "case_set": {
     "path": "eval/cases.json",
-    "sha256": "4b1a56606da0d0d86a11a47ce0bbc0b466eb025e0e9e31e9f6fa1e77adaf8f70",
+    "sha256": "b86697e9a94a2ddc10c75f5d4b1c87b442a921dc8d28435438afeb8f5872bda8",
     "description": "Pinned retrieval-eval case set for the indexed documentation corpus. Every query is a real GitHub issue title of LennardZuendorf/indexed, copied verbatim; nothing here is invented for the benchmark. Relevance is judged at document level against eval/corpus/ (see eval/corpus.json), with the anchor that justifies each judgement recorded per case. Four cases are deliberately unanswerable by this corpus: they exist so a confident wrong answer is visible rather than flattering the hit-rate.",
     "cases": 15
   },
@@ -136,7 +136,7 @@
       "provenance": "GitHub issue #205 title, verbatim",
       "rationale": "plan.md states hybrid retrieval is deferred to future features behind the shipped engine, which is exactly what a reader asking about hybrid search needs to know. lessons.md only mentions LlamaIndex's HybridChunker, a different concept, so it is a deliberate near-miss.",
       "answered_by": "plan.md:375",
-      "elapsed_ms": 547.261,
+      "elapsed_ms": 491.481,
       "ranking": [
         {
           "rank": 1,
@@ -253,7 +253,7 @@
       "provenance": "GitHub issue #112 title, verbatim",
       "rationale": "Two documents answer it: tech.md forbids serving stale cached results after a re-index, and tech-app.md documents the MCP collections/status resources a long-running server exposes. A multi-target case: either document in the top k counts as a hit.",
       "answered_by": "tech.md:391, tech-app.md:169-180",
-      "elapsed_ms": 414.532,
+      "elapsed_ms": 412.08,
       "ranking": [
         {
           "rank": 1,
@@ -367,8 +367,8 @@
       "status": "scored",
       "provenance": "GitHub issue #125 title, verbatim",
       "rationale": "lessons.md records the CoreV2Error error-boundary decision for v2, the exact symbol the issue names. tech.md's generic Error Handling section is the near-miss: it lists the IndexedError hierarchy but not the v2 boundary wrapping.",
-      "answered_by": "lessons.md:1070",
-      "elapsed_ms": 426.598,
+      "answered_by": "lessons.md:1097",
+      "elapsed_ms": 414.562,
       "ranking": [
         {
           "rank": 1,
@@ -482,8 +482,8 @@
       "status": "scored",
       "provenance": "GitHub issue #186 title, verbatim",
       "rationale": "lessons.md carries the earned rule that engine-routing errors must surface rather than be collapsed, which is the substance of the issue. tech.md describes the facade's routing, a near-miss because it documents the mechanism rather than the failure mode.",
-      "answered_by": "lessons.md:147",
-      "elapsed_ms": 420.446,
+      "answered_by": "lessons.md:174",
+      "elapsed_ms": 410.786,
       "ranking": [
         {
           "rank": 1,
@@ -599,7 +599,7 @@
       "provenance": "GitHub issue #123 title, verbatim",
       "rationale": "tech-connectors.md documents the same-origin guard every credentialed attachment fetcher must apply, including the default-port comparison the issue is about.",
       "answered_by": "tech-connectors.md:75-79",
-      "elapsed_ms": 416.943,
+      "elapsed_ms": 411.775,
       "ranking": [
         {
           "rank": 1,
@@ -717,7 +717,7 @@
       "provenance": "GitHub issue #61 title, verbatim",
       "rationale": "tech-parsing.md describes the FileRouter and DoclingParser split; README.md states which formats Docling handles. A multi-target case: both are legitimate answers at different levels of detail.",
       "answered_by": "tech-parsing.md:22-23, README.md:48",
-      "elapsed_ms": 418.955,
+      "elapsed_ms": 403.036,
       "ranking": [
         {
           "rank": 1,
@@ -832,8 +832,8 @@
       "status": "scored",
       "provenance": "GitHub issue #63 title, verbatim",
       "rationale": "lessons.md carries the earned rules about the HuggingFace model cache: Path.home() patching, local_files_only when cached, and the weights-file requirement for a cache hit.",
-      "answered_by": "lessons.md:339, 374, 773, 1046",
-      "elapsed_ms": 406.584,
+      "answered_by": "lessons.md:366, 400, 800, 1071-1073",
+      "elapsed_ms": 399.065,
       "ranking": [
         {
           "rank": 1,
@@ -949,7 +949,7 @@
       "provenance": "GitHub issue #211 title, verbatim",
       "rationale": "lessons.md records that huggingface_hub logs a WARNING per retry and how that chatter is handled during caching, which is the duplicate-warning behaviour the issue reports.",
       "answered_by": "lessons.md:14",
-      "elapsed_ms": 411.293,
+      "elapsed_ms": 403.682,
       "ranking": [
         {
           "rank": 1,
@@ -1065,7 +1065,7 @@
       "provenance": "GitHub issue #66 title, verbatim",
       "rationale": "plan.md is the document that says remote providers and additional stores were descoped, i.e. the current answer to 'can I plug in another embedding model'. tech-config.md and tech-core.md document the single shipped local model, which is why they read as relevant but do not answer the question.",
       "answered_by": "plan.md:374-378",
-      "elapsed_ms": 413.775,
+      "elapsed_ms": 412.123,
       "ranking": [
         {
           "rank": 1,
@@ -1181,7 +1181,7 @@
       "provenance": "GitHub issue #185 title, verbatim",
       "rationale": "tech.md states the on-disk manifest version marker is authoritative for existing collections, and tech-core.md documents the three on-disk shapes including that manifest. Multi-target: the storage contract is split across the two documents.",
       "answered_by": "tech.md:445-446, tech-core.md:32-35",
-      "elapsed_ms": 410.324,
+      "elapsed_ms": 420.269,
       "ranking": [
         {
           "rank": 1,
@@ -1296,7 +1296,7 @@
       "provenance": "GitHub issue #109 title, verbatim",
       "rationale": "tech-app.md is the app-layer document: it covers CLI presentation, status indicators and the MCP resources that expose search results, which is the surface the issue is about.",
       "answered_by": "tech-app.md:97, 169-180",
-      "elapsed_ms": 422.553,
+      "elapsed_ms": 415.488,
       "ranking": [
         {
           "rank": 1,
@@ -1410,7 +1410,7 @@
       "provenance": "GitHub issue #241 title, verbatim",
       "rationale": "Unanswerable by this corpus: no pinned document mentions the Language Server Protocol or an LSP command. The app-layer documents are the near-miss \u2014 they describe the CLI and MCP surfaces an LSP server would sit beside, not LSP itself.",
       "answered_by": "",
-      "elapsed_ms": 421.972,
+      "elapsed_ms": 409.622,
       "ranking": [
         {
           "rank": 1,
@@ -1524,7 +1524,7 @@
       "provenance": "GitHub issue #204 title, verbatim",
       "rationale": "Unanswerable by this corpus: hit-rate, MRR and the eval harness live in eval/README.md, which is deliberately not part of the pinned corpus (a benchmark that indexes its own documentation measures nothing). plan.md and lessons.md discuss retrieval work, which is why they look close.",
       "answered_by": "",
-      "elapsed_ms": 422.816,
+      "elapsed_ms": 422.12,
       "ranking": [
         {
           "rank": 1,
@@ -1638,7 +1638,7 @@
       "provenance": "GitHub issue #147 title, verbatim as returned by the GitHub API",
       "rationale": "Unanswerable by this corpus: no pinned document promises or rules out time-travel/ref-scoped search. plan.md and product.md list planned features generally, which makes them the near-miss.",
       "answered_by": "",
-      "elapsed_ms": 417.556,
+      "elapsed_ms": 410.171,
       "ranking": [
         {
           "rank": 1,
@@ -1751,7 +1751,7 @@
       "provenance": "GitHub issue #216 title, verbatim",
       "rationale": "Unanswerable by this corpus: the size gate lives in scripts/check_sizes.py and the CI workflow, neither of which is a pinned document. `agents-doc.md` is the near-miss because it carries the engineering rules that surround it.",
       "answered_by": "",
-      "elapsed_ms": 497.117,
+      "elapsed_ms": 412.182,
       "ranking": [
         {
           "rank": 1,

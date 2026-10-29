@@ -28,7 +28,7 @@
       "rationale": "lessons.md records the CoreV2Error error-boundary decision for v2, the exact symbol the issue names. tech.md's generic Error Handling section is the near-miss: it lists the IndexedError hierarchy but not the v2 boundary wrapping.",
       "relevant": ["lessons.md"],
       "distractors": ["tech.md"],
-      "answered_by": "lessons.md:1070"
+      "answered_by": "lessons.md:1097"
     },
     {
       "id": "issue-186-engine-routing-gaps",
@@ -37,7 +37,7 @@
       "rationale": "lessons.md carries the earned rule that engine-routing errors must surface rather than be collapsed, which is the substance of the issue. tech.md describes the facade's routing, a near-miss because it documents the mechanism rather than the failure mode.",
       "relevant": ["lessons.md"],
       "distractors": ["tech.md"],
-      "answered_by": "lessons.md:147"
+      "answered_by": "lessons.md:174"
     },
     {
       "id": "issue-123-jira-attachment-credentials",
@@ -64,7 +64,7 @@
       "rationale": "lessons.md carries the earned rules about the HuggingFace model cache: Path.home() patching, local_files_only when cached, and the weights-file requirement for a cache hit.",
       "relevant": ["lessons.md"],
       "distractors": ["tech-config.md", "tech-core.md"],
-      "answered_by": "lessons.md:339, 374, 773, 1046"
+      "answered_by": "lessons.md:366, 400, 800, 1071-1073"
     },
     {
       "id": "issue-211-huggingface-warning",
