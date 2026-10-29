@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-19
+updated: 2026-10-28
 ---
 
 # Lessons Learned
@@ -36,6 +36,33 @@ Accumulated mistakes and earned defaults. Read at session start.
   build was known to succeed — a failed acquisition (or any failure) then lost
   the previously usable collection. Removed; the swap alone gives force its
   overwrite semantics atomically.
+
+## Dependabot alert-cluster sweep (2026-10-26)
+
+- **Group alerts by whether the package reaches the wheel, not by the
+  `dependency.scope` GitHub reports.** Dependabot labelled `virtualenv`
+  `scope=runtime` on every one of its 19 alerts even though it is dev-only and
+  ships in no wheel; triaging by that field over-rates a dev tool above
+  `aiohttp`. Resolve the actual dependency class from `uv.lock`/`pyproject.toml`
+  before ranking by severity.
+- **A single lock refresh plus `[tool.uv] constraint-dependencies` floors closes
+  a whole cluster at once — and the floors are what stop it reopening.** One
+  `uv lock` resolution moved 20 alerting packages past their first-patched
+  versions; adding each floor alongside it means the next routine resolution
+  cannot silently walk back below the fix. Without the floor the bump is a
+  one-off that regresses on the next lock churn.
+- **`first_patched_version: null` is a snapshot of the advisory, not a verdict
+  on the range — re-check PyPI before writing accepted risk.** A null value means
+  "no patched release existed when the advisory was published". Read the
+  vulnerable range instead: if it is bounded above (`accelerate <=1.14.0`,
+  `nltk <=3.10.3`), any later release above the bound clears the alert — both
+  got one within days (1.15.0, 3.10.4) and resolved under the same constraints.
+  Only an advisory whose range stays open above every published release is a
+  genuine accepted-risk item, and that claim needs a version check, not a
+  memory of the earlier null.
+- **`pip-audit --vulnerability-service osv` is the cheap end-to-end proof that
+  the lock sweep worked**, independent of Dependabot's alert state (which
+  re-evaluates on its own schedule and can lag a merged fix by hours).
 
 ## Dependency lock reconciliation (2026-10-19)
 

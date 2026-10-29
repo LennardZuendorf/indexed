@@ -103,14 +103,23 @@ SRC_LOC_MAX = 30_200
 # pins "unknown" vs "present but unusable") — it consumed the previous headroom
 # exactly, so this restores it rather than adding slack; ceiling = measured
 # (44_450) + headroom.
-# Raised from 44_650 by issue #204's retrieval-eval harness tests: the metric
+# Raised from 44_650 by issue #112 criterion 4 ("CLI and MCP use the same
+# configured storage root in global/local modes, including mixed v1/v2
+# collections"): `tests/system/test_mcp_storage_parity.py` grows from a
+# 27-line local-path assertion into a two-mode regression that builds a real
+# mixed v1/v2 store and drives one live out-of-process stdio server next to the
+# CLI (root identity, collection set/counts, per-engine search provenance) — the
+# last uncovered criterion of the freshness bug, not stealth regrowth; ceiling =
+# measured (44_892) + headroom.
+# Raised again by issue #204's retrieval-eval harness tests: the metric
 # arithmetic, the case/corpus loaders' validation refusals, the adapter's
 # facade-dialect mapping, the compare verdicts (regression, config change,
-# incomparability), the CLI surfaces, and the gated test that re-runs the
-# harness and asserts the committed baseline reproduces byte-for-byte —
-# genuine defect-guarding coverage for a number other work will be judged
-# against, not stealth regrowth; ceiling = measured (45_195) + headroom.
-TEST_LOC_MAX = 45_800
+# incomparability, a leak increase), the CLI surfaces, and the gated test that
+# re-runs the harness and asserts the committed baseline reproduces byte-for-byte
+# — genuine defect-guarding coverage for a number other work will be judged
+# against, not stealth regrowth. Merged with #112's system-test growth in the
+# rebase, so the ceiling covers both; ceiling = measured (45_895) + headroom.
+TEST_LOC_MAX = 46_200
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

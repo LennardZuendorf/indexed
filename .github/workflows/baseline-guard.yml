@@ -1,0 +1,64 @@
+name: Benchmark Baseline Guard
+
+# `pytest-bench-action` stages a rewritten `.benchmarks/baselines/main.json` on
+# the PR branch and pushes it with `[skip ci]`. That leaves the PR head as an
+# untested SHA and makes the slower numbers the reference the next run compares
+# against. A `pull_request`-only guard never sees that commit — `[skip ci]`
+# suppresses `synchronize` — so a submitted review re-checks whatever head
+# exists at that moment. See .spec/tech.md § CI Benchmarking.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+
+# Read-only: this job compares blob ids and writes nothing.
+permissions:
+  contents: read
+
+concurrency:
+  group: baseline-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-guard:
+    name: baseline-guard
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The head SHA, not the merge ref: the drift commit is what must be
+        # inspected, and on a fork PR the head lives in another repository.
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+        # Finding the merge base with the base repo's main needs full history.
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Blob-id comparison: no JSON parse, no benchmark install, no model download.
+    # Against the MERGE BASE, not main's tip: a branch merely behind main must
+    # not fail for inheriting an older (main-authored) baseline.
+    - name: This PR must not move main's baseline
+      run: |
+        file=.benchmarks/baselines/main.json
+        # `origin` is whichever repository checkout was pointed at — for a fork
+        # PR that is the FORK, so fetch main from the base repo explicitly.
+        base_repo="https://github.com/${GITHUB_REPOSITORY}.git"
+        git fetch --no-tags "$base_repo" main
+        main=$(git rev-parse FETCH_HEAD)
+        base=$(git merge-base HEAD "$main") || {
+          echo "::error file=$file::No common ancestor between this PR and $base_repo main; baseline drift cannot be checked."
+          exit 1
+        }
+        head_blob=$(git rev-parse "HEAD:$file" 2>/dev/null || echo absent)
+        base_blob=$(git rev-parse "$base:$file" 2>/dev/null || echo absent)
+        if [ "$head_blob" = "$base_blob" ]; then
+          echo "$file unchanged by this PR ($head_blob)"
+          exit 0
+        fi
+        msg="$file was rewritten by this PR (head $head_blob, base $base_blob, main $(git rev-parse "$main:$file")). A PR may not move main's baseline: the benchmark gate would then compare against numbers the PR itself wrote, so a regression is recorded as the new reference instead of failing. Fix: git fetch --no-tags $base_repo main && git checkout FETCH_HEAD -- $file, commit, then re-run the benchmark job."
+        echo "::error file=$file,line=1::$msg"
+        echo "$msg"
+        exit 1
