@@ -37,6 +37,12 @@ def _by_id(report: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {record["id"]: record for record in report.get("queries") or []}
 
 
+def _environment_value(report: Dict[str, Any], key: str) -> Optional[str]:
+    """One environment field, or ``None`` when the report did not record it."""
+    value = (report.get("environment") or {}).get(key)
+    return None if value is None else str(value)
+
+
 def report_problems(report: Dict[str, Any], label: str) -> List[str]:
     """Why a report cannot be trusted as a measurement, if anything."""
     problems: List[str] = []
@@ -192,6 +198,19 @@ def compare_reports(
         else round(leak_after - leak_before, 6)
     )
 
+    # Same corpus, same cases, same config — but a different interpreter or CPU
+    # build still produces different embedding floats and therefore a different
+    # ranking. The baseline is a measurement of one environment; say so instead of
+    # letting a cross-environment diff read as a ranking change.
+    environment_changes = {
+        key: {
+            "baseline": _environment_value(baseline, key),
+            "candidate": _environment_value(candidate, key),
+        }
+        for key in ("python", "platform")
+        if _environment_value(baseline, key) != _environment_value(candidate, key)
+    }
+
     if reasons:
         verdict = VERDICT_INCOMPARABLE
     elif (
@@ -228,6 +247,7 @@ def compare_reports(
             "case_set": candidate_cases,
         },
         "config_changes": config_changes,
+        "environment_changes": environment_changes,
         "metrics": {
             "baseline": {
                 "hit_rate": hit_before,
@@ -276,6 +296,12 @@ def format_summary(result: Dict[str, Any]) -> str:
     if leak_before is not None and leak_after is not None:
         lines.append(
             f"  distractor_leak {leak_before:g} -> {leak_after:g} (lower is better)"
+        )
+    for key, values in result.get("environment_changes", {}).items():
+        lines.append(
+            f"  environment {key}: {values['baseline']} -> {values['candidate']} "
+            "(a different interpreter/build moves the numbers; the baseline is "
+            "one environment's measurement)"
         )
     for case in result["improved"]:
         lines.append(

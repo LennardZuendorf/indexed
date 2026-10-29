@@ -62,8 +62,10 @@ v2 dense, rerank off, `k=5`, `max_docs=10`:
 - both misses rank just outside the cut (rank 6 and rank 9), and both are
   questions answered by a roadmap/decision document that shares vocabulary with
   the technical reference docs — the case hybrid retrieval (#205) exists for
-- the four unanswerable cases all return a full top-5 of near-miss documents
-  (`distractor_leak` 4/4): dense retrieval never says "nothing here"
+- three of the four unanswerable cases return a full top-5 of near-miss
+  documents (`distractor_leak` 3/4): dense retrieval mostly never says
+  "nothing here", and the fourth case is the single piece of evidence that it
+  can sometimes rank a near-miss out of the cut
 
 ## Non-goals that look like goals
 

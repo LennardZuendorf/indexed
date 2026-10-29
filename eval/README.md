@@ -70,7 +70,7 @@ Defined once, in `src/indexed/eval/metrics.py`:
 
 ```
 corpus   134309132376 (11 documents, tree pinned)
-cases    11 answerable, 4 unanswerable, 0 errors
+cases    11 answerable, 4 unanswerable (3 leaked a near-miss), 0 errors
 hit@5    0.818      mrr 0.578
 model    sentence-transformers/all-MiniLM-L6-v2, cosine scores, rerank off
 engine   v2, max_docs 10, top_k 5
@@ -95,15 +95,17 @@ Per case (`rank` = rank of the first relevant document, `—` = outside `max_doc
 | #241 `indexed lsp` (unanswerable) | — | distractor leak |
 | #204 retrieval eval harness (unanswerable) | — | distractor leak |
 | #147 time-travel search (unanswerable) | — | distractor leak |
-| #216 LOC size gate (unanswerable) | — | distractor leak |
+| #216 LOC size gate (unanswerable) | — | no leak (top 3 avoided the near-miss) |
 
 Reading it honestly: dense retrieval finds the right document for 9 of 11
 answerable questions inside the top 5, and both misses sit just outside the cut
 (rank 6 and rank 9) rather than nowhere. Both misses are questions whose answer
 lives in a *roadmap/decision* document that shares vocabulary with the technical
 reference docs — the classic case for hybrid lexical matching (#205). And
-`distractor_leak` is 4/4: the retriever never returns "nothing found", it always
-fills the top 5, which is exactly what a benchmark needs to keep in view.
+`distractor_leak` is 3/4: three of the four unanswerable questions still get a
+confident top-5 of near-miss documents, which is exactly what a benchmark needs to
+keep in view. The fourth is the one piece of evidence that the retriever *can*
+rank a near-miss out of the cut on this corpus.
 
 ## Running it
 
@@ -132,6 +134,15 @@ Two consecutive runs over the same corpus and model produce identical rankings,
 scores and metrics — only `generated_at` and `elapsed_ms` differ. The gated test
 `tests/unit/indexed/eval/test_runner.py::test_the_committed_baseline_reproduces`
 asserts exactly that against `eval/baseline.json`.
+
+Reproducibility is **within one environment**. A different interpreter or CPU
+build produces different embedding floats and therefore a different ranking: the
+same pinned corpus on x86_64 CI measured hit@5 0.909 against this baseline's 0.818
+on arm64, with three cases moving down and five up. That is why the report records
+the environment and `compare` prints `environment_changes` next to the metric
+delta instead of quietly scoring the difference as a ranking change. Compare runs
+from the same machine (or a pinned runner), and read a cross-environment diff as a
+smoke test, not a verdict.
 
 A report is comparable to another only when the corpus tree hash **and** the case
 set hash **and** the retrieval configuration all match; anything else is reported

@@ -177,3 +177,18 @@ def test_a_leak_decrease_is_an_improvement() -> None:
     baseline = _report([_query("a", 1)], hit_rate=1.0, mrr=1.0, leaks=3)
     candidate = _report([_query("a", 1)], hit_rate=1.0, mrr=1.0, leaks=2)
     assert compare_reports(baseline, candidate)["verdict"] == VERDICT_IMPROVED
+
+
+def test_a_different_environment_is_reported_not_hidden() -> None:
+    """Same corpus/cases/config, different interpreter — say why the ranks moved."""
+    baseline = _report([_query("a", 1)], hit_rate=1.0, mrr=1.0)
+    baseline["environment"] = {"python": "3.13.5", "platform": "Linux-arm64"}
+    candidate = _report([_query("a", 1)], hit_rate=1.0, mrr=1.0)
+    candidate["environment"] = {"python": "3.13.17", "platform": "Linux-x86_64"}
+    result = compare_reports(baseline, candidate)
+    assert result["verdict"] == VERDICT_UNCHANGED
+    assert result["environment_changes"]["python"] == {
+        "baseline": "3.13.5",
+        "candidate": "3.13.17",
+    }
+    assert "environment platform: Linux-arm64 -> Linux-x86_64" in format_summary(result)
