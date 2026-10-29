@@ -1159,6 +1159,15 @@ with `git add`/`git status`, since that's what CI actually runs.
   "not found" with no `CollectionRecoveryError` at all. A per-name error entry
   in `search`'s result dict is the shape that works; `status`/`inspect` return
   plain lists, so there the marker is logged.
+- **A durable "its data is preserved under `<path>`" marker may only be written
+  by the pass that MOVED the data there.** Marking every unrecoverable name —
+  including a hold on a live writer and an incomplete canonical left in place —
+  made an empty `.recovery/<name>/` assert preservation, and the claim never
+  expired: a name that never had a collection became a permanent recovery
+  failure on every read, and an operator whose data never moved was sent to the
+  wrong directory. Write the marker only for names the pass quarantined, ignore
+  markers whose `preserved` list is empty, and when nothing was moved have the
+  error point at the canonical directory (or claim no path at all).
 - **An in-process crash test leaves strands carrying the TEST's own pid** —
   re-brand them onto a finished pid (`subprocess` that exits) before the
   recovery read, or the test silently proves the own-pid skip instead of the

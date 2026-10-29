@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-26
+updated: 2026-10-29
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -130,8 +130,11 @@ every list/open gate (`_existing_collection_names`, `_resolve_existing_engine`,
 - never promotes a `.tmp-`-only strand (an interrupted new build was never
   published) and never mixes two generations;
 - quarantines anything it cannot prove restorable into `<collections>/.recovery/<name>/`
-  — moved, never deleted — with a `recovery.log` and a durable
-  `quarantine.json` marker for the operator;
+  — moved, never deleted — with a `recovery.log`, and writes the durable
+  `quarantine.json` marker ONLY for a name whose data it actually moved there: a
+  hold on a live writer, or an incomplete canonical left in place, gets no marker
+  (an empty `.recovery/<name>/` must not claim preserved data) and its
+  `CollectionRecoveryError` names the canonical directory instead;
 - removes a `.trash-` sibling only when the canonical directory is already
   complete (finishing the interrupted cleanup);
 - touches a strand ONLY when its writer is proven finished, because the pid in

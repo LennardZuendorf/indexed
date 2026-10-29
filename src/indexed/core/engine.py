@@ -173,24 +173,41 @@ def _recover(
         return
 
     fresh: Dict[str, str] = {}
+    moved: set[str] = set()
     try:
-        fresh = dict(recover_stranded(base, names=names).unrecoverable)
+        outcome = recover_stranded(base, names=names)
     except Exception as exc:  # housekeeping must never mask the real operation
         logger.warning(f"collection recovery skipped: {exc}")
+    else:
+        fresh = dict(outcome.unrecoverable)
+        # Names whose data this pass actually moved under `.recovery/<name>/`.
+        moved = {name for name, _target in outcome.quarantined}
 
-    preserved = _preserved(base, names)
-    preserved.update(fresh)
+    durable = _preserved(base, names)
+    preserved: Dict[str, str] = {**durable, **fresh}
     if not preserved:
         return
+    # Only a name whose data really sits under `.recovery/<name>/` may claim it:
+    # a hold on a live writer, or an incomplete canonical left in place, must
+    # point the operator at the data instead of at an empty quarantine dir.
+    located = set(durable) | moved
     if strict and names:
         for name in names:
             reason = preserved.get(name)
-            if reason is not None:
+            if reason is None:
+                continue
+            if name in located:
                 raise CollectionRecoveryError(
                     name,
                     reason=reason,
                     quarantine_path=base / QUARANTINE_DIRNAME / name,
                 )
+            canonical = base / name
+            raise CollectionRecoveryError(
+                name,
+                reason=reason,
+                canonical_path=canonical if canonical.is_dir() else None,
+            )
         return
     for name, reason in preserved.items():
         if name in fresh:

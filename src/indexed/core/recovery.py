@@ -45,9 +45,10 @@ will never finish — and the hold is RECORDED when it hides the collection, so 
 reads as an explained failure rather than "not found"; on non-POSIX liveness is
 unknowable (``os.kill`` is ``TerminateProcess`` on Windows), so nothing is swept.
 
-The pass is one-shot, so every name it cannot restore also gets a durable
+The pass is one-shot, so every name whose data it MOVED aside also gets a durable
 ``.recovery/<name>/quarantine.json`` marker that read paths re-read, until the
-collection is readable at its canonical name again.
+collection is readable at its canonical name again. A name it moved nothing for
+is never marked: an empty ``.recovery/<name>/`` must not claim preserved data.
 
 This is NOT power-loss durability: the rename chain has no ``fsync``, so a
 process crash is covered, a power cut with unflushed pages is not.
@@ -242,11 +243,11 @@ class _Accumulator:
         )
 
     def block(self, name: str, reason: str) -> None:
-        """Record a name that could not be restored (its data is preserved)."""
+        """Record a name that could not be restored (nothing is deleted)."""
         self.unrecoverable.append((name, reason))
         logger.warning(
             f"collection recovery: '{name}' could not be restored ({reason}); "
-            f"its data is preserved under {str(QUARANTINE_DIRNAME)!r}"
+            f"nothing was moved or deleted"
         )
 
     def hold(self, name: str, reason: str) -> None:
@@ -255,12 +256,19 @@ class _Accumulator:
         logger.warning(f"collection recovery: leaving '{name}' untouched ({reason})")
 
     def publish(self, base: Path) -> None:
-        """Write the one-shot pass's reasons beside the preserved data.
+        """Write the one-shot pass's reasons beside the data it MOVED here.
 
         After the move nothing is left to detect, so the marker is the only
-        thing that keeps the next read from reporting a bare "not found".
+        thing that keeps the next read from reporting a bare "not found". A
+        pass that moved nothing for a name (a hold on a live writer, or an
+        incomplete canonical left in place) gets no marker: claiming preserved
+        data under an empty ``.recovery/<name>/`` would turn a name that simply
+        does not exist into a permanent recovery failure on every read.
         """
+        moved = {name for name, _target in self.quarantined}
         for name, reason in self.unrecoverable:
+            if name not in moved:
+                continue
             root = base / QUARANTINE_DIRNAME / name
             try:
                 root.mkdir(parents=True, exist_ok=True)
@@ -541,6 +549,12 @@ def quarantine_reasons(base: Path) -> dict[str, str]:
         name = raw.get("collection")
         reason = raw.get("reason")
         if not isinstance(name, str) or not isinstance(reason, str) or not reason:
+            continue
+        preserved = raw.get("preserved")
+        if not isinstance(preserved, list) or not preserved:
+            # Nothing was moved into `.recovery/<name>/` for this name: the
+            # marker records a hold or an in-place incomplete canonical, so
+            # claiming preserved data here would be a false promise.
             continue
         if _is_complete(base / name):
             continue  # readable again: the marker is history, not a warning

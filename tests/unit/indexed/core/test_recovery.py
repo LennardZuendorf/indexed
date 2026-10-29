@@ -481,3 +481,80 @@ def test_unfiltered_search_explains_a_quarantined_collection(
     second = facade.search("q", collections_path=str(base))
     assert "healthy" in second
     assert str(base / QUARANTINE_DIRNAME / "docs") in second["docs"]["error"]
+
+
+# --- review round 2 on #244: a marker must not claim what was never moved ----
+
+
+def test_hold_that_stops_being_stranded_leaves_no_marker(tmp_path: Path) -> None:
+    """A hold moves NOTHING, so it may not promise a preserved copy.
+
+    Two processes: one creating the collection, one reading. The reader's
+    marker used to outlive the creator's abort, turning a name that never
+    existed into a permanent recovery failure on every read.
+    """
+    import indexed.core.engine as facade
+    from indexed.core.recovery import quarantine_reasons
+
+    base = tmp_path / "cols"
+    base.mkdir()
+    writer = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        make_generation(base / f"docs.tmp-{writer.pid}-abcdef12", payload="new")
+        with pytest.raises(CollectionRecoveryError) as held:
+            facade.status(collection_names=["docs"], collections_path=str(base))
+        # The hold explains itself (finding 3) but claims no preserved copy.
+        assert f"pid {writer.pid}" in str(held.value)
+        assert held.value.quarantine_path is None
+        assert not (base / QUARANTINE_DIRNAME / "docs").exists()
+    finally:
+        writer.terminate()
+        writer.wait(timeout=10)
+
+    # The writer aborted and its staging directory is gone: nothing is stranded
+    # any more, so the name is simply absent — never a recovery failure.
+    for strand in base.glob("docs.tmp-*"):
+        strand.rename(tmp_path / "gone")
+    assert quarantine_reasons(base) == {}
+    assert facade.status(collection_names=["docs"], collections_path=str(base)) == []
+
+
+def test_incomplete_canonical_claims_no_quarantine_but_names_the_data(
+    tmp_path: Path,
+) -> None:
+    """Repro B: nothing moved, so the error points at the canonical directory."""
+    import indexed.core.engine as facade
+
+    base = tmp_path / "cols"
+    base.mkdir()
+    canonical = make_generation(base / "docs", payload="broken", complete=False)
+    make_generation(
+        base / f"docs.tmp-{dead_pid()}-abcdef12", payload="new", complete=False
+    )
+
+    with pytest.raises(CollectionRecoveryError) as excinfo:
+        facade.status(collection_names=["docs"], collections_path=str(base))
+
+    error = excinfo.value
+    assert error.quarantine_path is None
+    assert error.canonical_path == canonical
+    assert str(canonical) in str(error)
+    assert "incomplete" in str(error)
+    # The operator's data never left its place and nothing empty was invented.
+    assert canonical.is_dir()
+    assert not (base / QUARANTINE_DIRNAME / "docs").exists()
+
+
+def test_marker_with_nothing_preserved_is_ignored_on_read(tmp_path: Path) -> None:
+    """A marker written in the old, empty shape stops explaining anything."""
+    from indexed.core.recovery import quarantine_reasons
+
+    base = tmp_path / "cols"
+    root = base / QUARANTINE_DIRNAME / "docs"
+    root.mkdir(parents=True)
+    (root / "quarantine.json").write_text(
+        json.dumps({"collection": "docs", "reason": "held by pid 1", "preserved": []}),
+        encoding="utf-8",
+    )
+
+    assert quarantine_reasons(base) == {}
