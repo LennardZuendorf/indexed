@@ -52,7 +52,11 @@ ratifies an envelope, only that module changes.
 case carries `id, query, provenance, rationale, relevant[], distractors[],
 answered_by`. Validation is strict: an empty query, a duplicate id, a missing
 provenance or rationale, or a document listed as both relevant and distractor is
-refused before anything is measured.
+refused before anything is measured. `answered_by` is `file:line`,
+`file:first-last` or a comma-separated list (a bare number keeps the previous
+file); the loader cannot resolve it — it has no corpus path — so the test suite
+resolves every anchor against the pinned copy and fails on a line that is out of
+range, blank, or outside the case's relevant documents.
 
 `eval/corpus.json` — `{schema: indexed.eval.corpus.v1, corpus_id,
 source_repo_rev, tree_sha256, files[{path, source, sha256, bytes}]}`.
@@ -97,7 +101,10 @@ unanswerable cases are scored only on `distractor_leak`.
 
 - metric arithmetic and every edge case (multiple relevant targets, duplicates,
   empty results, errors, unanswerable, recomputation identity) — model-free;
-- case-set and corpus-manifest validation + drift refusal;
+- case-set and corpus-manifest validation + drift refusal, including every
+  `answered_by` anchor resolving in the pinned corpus (in range, non-blank, into a
+  document the case judges relevant) — a stale line reference fails the suite
+  instead of silently justifying nothing;
 - adapter flattening (fake payloads, `file://` ids, error payloads);
 - Comparison verdicts and exit codes: a metric drop, a per-case rank drop (even
   when a compensating case leaves the average flat), a newly errored case, or a

@@ -41,8 +41,12 @@ what the retriever returned.
 
 **Judgements** — each case lists the documents that genuinely answer it, the
 near-miss documents that do not, a rationale, and the anchor (`answered_by`) that
-justifies the call. Documents are matched by file name, so a judgement survives a
-corpus move.
+justifies the call. An anchor is `file:line`, `file:first-last`, or a
+comma-separated list where a bare number keeps the previous file; the committed
+anchors are *resolved* by `tests/unit/indexed/eval/test_cases.py` against the
+pinned corpus (in range, on prose, and into a document the case judges relevant),
+because a line reference that points at a blank line is not evidence. Documents
+are matched by file name, so a judgement survives a corpus move.
 
 Four cases are **deliberately unanswerable** — an LSP server, a time-travel
 search mode, the LOC size gate, and this harness itself. A benchmark made only of
@@ -172,8 +176,9 @@ The baseline moves only deliberately:
 Corpus changes are their own revision: `uv run python scripts/build_eval_corpus.py`
 (and `--check` in CI to catch accidental drift), then regenerate the baseline.
 Adding a case means a *real* query with a recorded origin, a rationale, and the
-anchor that justifies it — `eval/cases.json` is validated on every run, and a
-case without provenance or rationale is refused.
+anchor that justifies it — `eval/cases.json` is validated on every run, a case
+without provenance or rationale is refused, and the anchors are resolved by the
+test suite rather than trusted.
 
 ## Known limits
 
@@ -182,6 +187,13 @@ case without provenance or rationale is refused.
   benchmark.
 - Document-level judgement only: it does not measure whether the *chunk* handed
   to an agent is the useful one.
+- Document identity is the adapter's normalised basename, so two files with the
+  same name in one collection collapse into a single document and only the first
+  one can rank. The pinned corpus is flat, so this cannot bite here, but a corpus
+  with subdirectories needs an identity fix first.
+- The report's summary counts are aggregated from the per-query records but never
+  reconciled record-by-record, so read the per-query records when a count looks
+  wrong rather than trusting the header.
 - The corpus is documentation, not code. Code retrieval, and the GitHub
   issue/PR text the roadmap promises later, need their own pinned corpus and
   their own judgements.

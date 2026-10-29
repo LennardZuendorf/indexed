@@ -1127,6 +1127,22 @@ with `git add`/`git status`, since that's what CI actually runs.
   (an autouse class fixture) is the hermetic pattern; the local-config-wins
   behavior itself is the correct config priority chain, not a bug.
 
+## Evidence that is asserted, not checked (2026-10-29)
+
+- **A line reference in a judgement is not evidence until something resolves
+  it.** The eval case set records an `answered_by` anchor per judgement, but the
+  tests only asserted the field was non-empty, so six `lessons.md` references sat
+  +27 lines stale — pointing at blank lines and unrelated lessons — with every
+  gate green and a review selling them as the justification. Resolve the anchor
+  mechanically (file in the pinned corpus, line in range, line non-blank, file
+  one the case judges relevant); a parser in the test suite is cheaper than the
+  review that eventually finds it.
+- **A run knob with an `Optional` default of `None` is recorded as "unset", and
+  "unset" never compares equal to the explicit default.** One otherwise identical
+  run then reports `incomparable` against its own baseline. Pin the type to the
+  value it means (`bool`, not `Optional[bool]`) and assert the whole recorded
+  config in the reproduction test, not just the model name.
+
 ## CI-only gates are not in the pre-push hooks (2026-09-26)
 
 - **`scripts/check_imports.py` and `scripts/check_sizes.py` run only in CI —
