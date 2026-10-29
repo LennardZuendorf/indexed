@@ -56,7 +56,11 @@ class Hit(TypedDict):
     """One matched chunk."""
 
     relevance: float
-    """0-1, higher is better, comparable across collections and engines."""
+    """Higher is better, comparable across collections and engines.
+
+    Normally 0-1 but not clamped: an ``l2_squared`` hit beyond distance 2 goes
+    negative (see :func:`indexed.utils.relevance.unified_relevance`).
+    """
 
     score: float
     """The raw engine score; only comparable within one ``score_kind``."""

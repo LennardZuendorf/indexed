@@ -145,7 +145,7 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 | `counts.documents` | int | Number of entries in `documents`. |
 | `counts.hits` | int | Total hits across all documents. |
 | `collections` | string[] | Collections that were searched **successfully**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". |
-| `collection_errors` | object[] | Always present, `[]` when nothing failed. Each entry is `{"collection": "<name>", "error": "<message>"}`. A collection that failed appears here and is absent from `collections`; it never turns into a silent zero. |
+| `collection_errors` | object[] | Always present, `[]` when nothing failed. Each entry is `{"collection": "<name>", "error": "<message>"}`. A collection that reached the engine and failed appears here and is absent from `collections`; it never turns into a silent zero. Only collections that reached the engine are accounted for: on the CLI a collection whose manifest cannot be read is never searched and appears in neither array, while the MCP tools enumerate by manifest presence and report its failure here. |
 | `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; ties keep discovery order. |
 
 ## Document object
@@ -164,7 +164,7 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `relevance` | float | 0–1, higher is better, **comparable across collections and engines**. Derived from the raw score per `score_kind`: `1 - score/2` for `l2_squared`, the score itself for `cosine`, a sigmoid of the logit for `rerank`. Use this to rank hits from different collections against each other. |
+| `relevance` | float | Higher is better, **comparable across collections and engines**. Derived from the raw score per `score_kind`: `1 - score/2` for `l2_squared`, the score itself for `cosine`, a sigmoid of the logit for `rerank`. Normally 0–1, but it is not clamped: an `l2_squared` hit at a distance above 2 goes negative. Use this to rank hits from different collections against each other. |
 | `score` | float | The raw engine score, rounded to 4 decimals. Only comparable **within one `score_kind`**. |
 | `locator` | object | Where the hit sits. See below. |
 | `text` | string | The matched chunk's text as indexed, with the `# <path>` context prefix that code chunks carry removed (the path is already in the locator). For `kind: "document"` this is the whole-document chunk — typically just the title or file name. |
@@ -200,8 +200,10 @@ $ echo $?
 
 On the CLI, `--json` writes the payload to stdout and nothing else — log lines and
 notices (a skipped unsearchable collection, a no-op `--rerank`) go to stderr, and a
-non-zero exit means there is no payload to trust. Over MCP there is no exit code:
-branch on `schema` first, then on `collections` being empty.
+non-zero exit means there is no payload to trust. The converse does not hold: with no
+collection to search the CLI writes `{"error": "No collections found"}` and still
+exits 0, so branch on `schema`, never on the exit code alone. Over MCP there is no
+exit code: branch on `schema` first, then on `collections` being empty.
 
 `--json` ignores `--compact` / `--no-content`; those shape the human view only. The
 machine payload is fixed.

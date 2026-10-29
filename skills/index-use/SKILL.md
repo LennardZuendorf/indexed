@@ -46,8 +46,9 @@ their best hit:
   `collection_errors` — collections that failed (always present, `[]` when none)
 - `documents[]` — each states `collection`, `source_type`, `id`, optional `path` /
   `url` and `score_kind` once
-- `documents[].hits[]` — `relevance` (0–1, higher is better, comparable across
-  collections), `score` (raw engine number, only comparable within one `score_kind`),
+- `documents[].hits[]` — `relevance` (higher is better, comparable across
+  collections; normally 0–1 but not clamped, so `l2_squared` can go negative),
+  `score` (raw engine number, only comparable within one `score_kind`),
   `locator`, `text`
 - `locator` — where the hit sits; read only the keys its `kind` declares:
   `line_span` (`start_line`/`end_line`, 1-based inclusive — what `grep -n` prints),
