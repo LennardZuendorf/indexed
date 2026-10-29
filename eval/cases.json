@@ -1,0 +1,142 @@
+{
+  "schema": "indexed.eval.cases.v1",
+  "description": "Pinned retrieval-eval case set for the indexed documentation corpus. Every query is a real GitHub issue title of LennardZuendorf/indexed, copied verbatim; nothing here is invented for the benchmark. Relevance is judged at document level against eval/corpus/ (see eval/corpus.json), with the anchor that justifies each judgement recorded per case. Four cases are deliberately unanswerable by this corpus: they exist so a confident wrong answer is visible rather than flattering the hit-rate.",
+  "corpus_id": "indexed-docs",
+  "cases": [
+    {
+      "id": "issue-205-hybrid-search",
+      "query": "Hybrid search: BM25 + vector fusion (pre-ranking)",
+      "provenance": "GitHub issue #205 title, verbatim",
+      "rationale": "plan.md states hybrid retrieval is deferred to future features behind the shipped engine, which is exactly what a reader asking about hybrid search needs to know. lessons.md only mentions LlamaIndex's HybridChunker, a different concept, so it is a deliberate near-miss.",
+      "relevant": ["plan.md"],
+      "distractors": ["lessons.md"],
+      "answered_by": "plan.md:375"
+    },
+    {
+      "id": "issue-112-mcp-stale-collections",
+      "query": "MCP server serves stale collections; no refresh for long-running process",
+      "provenance": "GitHub issue #112 title, verbatim",
+      "rationale": "Two documents answer it: tech.md forbids serving stale cached results after a re-index, and tech-app.md documents the MCP collections/status resources a long-running server exposes. A multi-target case: either document in the top k counts as a hit.",
+      "relevant": ["tech.md", "tech-app.md"],
+      "distractors": ["agents-doc.md", "lessons.md"],
+      "answered_by": "tech.md:391, tech-app.md:169-180"
+    },
+    {
+      "id": "issue-125-coretov2error-boundary",
+      "query": "mcp(v2): wrap v2 search/status errors as CoreV2Error at the boundary",
+      "provenance": "GitHub issue #125 title, verbatim",
+      "rationale": "lessons.md records the CoreV2Error error-boundary decision for v2, the exact symbol the issue names. tech.md's generic Error Handling section is the near-miss: it lists the IndexedError hierarchy but not the v2 boundary wrapping.",
+      "relevant": ["lessons.md"],
+      "distractors": ["tech.md"],
+      "answered_by": "lessons.md:1070"
+    },
+    {
+      "id": "issue-186-engine-routing-gaps",
+      "query": "core(v2): engine-routing correctness gaps (batch abort, error swallowing, MCP crash, reranking)",
+      "provenance": "GitHub issue #186 title, verbatim",
+      "rationale": "lessons.md carries the earned rule that engine-routing errors must surface rather than be collapsed, which is the substance of the issue. tech.md describes the facade's routing, a near-miss because it documents the mechanism rather than the failure mode.",
+      "relevant": ["lessons.md"],
+      "distractors": ["tech.md"],
+      "answered_by": "lessons.md:147"
+    },
+    {
+      "id": "issue-123-jira-attachment-credentials",
+      "query": "security(jira): attachment download sends credentials to unvalidated API-supplied URL",
+      "provenance": "GitHub issue #123 title, verbatim",
+      "rationale": "tech-connectors.md documents the same-origin guard every credentialed attachment fetcher must apply, including the default-port comparison the issue is about.",
+      "relevant": ["tech-connectors.md"],
+      "distractors": ["plan.md", "product.md"],
+      "answered_by": "tech-connectors.md:75-79"
+    },
+    {
+      "id": "issue-61-docling-parsing",
+      "query": "feat(connectors): migrate FileSystemConnector parsing to Docling",
+      "provenance": "GitHub issue #61 title, verbatim",
+      "rationale": "tech-parsing.md describes the FileRouter and DoclingParser split; README.md states which formats Docling handles. A multi-target case: both are legitimate answers at different levels of detail.",
+      "relevant": ["tech-parsing.md", "README.md"],
+      "distractors": ["tech.md", "lessons.md", "agents-doc.md"],
+      "answered_by": "tech-parsing.md:22-23, README.md:48"
+    },
+    {
+      "id": "issue-63-model-caching",
+      "query": "feat(cli): smart model caching with HuggingFace Hub + indexed init",
+      "provenance": "GitHub issue #63 title, verbatim",
+      "rationale": "lessons.md carries the earned rules about the HuggingFace model cache: Path.home() patching, local_files_only when cached, and the weights-file requirement for a cache hit.",
+      "relevant": ["lessons.md"],
+      "distractors": ["tech-config.md", "tech-core.md"],
+      "answered_by": "lessons.md:339, 374, 773, 1046"
+    },
+    {
+      "id": "issue-211-huggingface-warning",
+      "query": "Badly formatted Duplicate Huggingface Warning",
+      "provenance": "GitHub issue #211 title, verbatim",
+      "rationale": "lessons.md records that huggingface_hub logs a WARNING per retry and how that chatter is handled during caching, which is the duplicate-warning behaviour the issue reports.",
+      "relevant": ["lessons.md"],
+      "distractors": ["tech-config.md", "tech-core.md"],
+      "answered_by": "lessons.md:14"
+    },
+    {
+      "id": "issue-66-pluggable-embedding-model",
+      "query": "Pluggable Embedding Model & Remote API Support",
+      "provenance": "GitHub issue #66 title, verbatim",
+      "rationale": "plan.md is the document that says remote providers and additional stores were descoped, i.e. the current answer to 'can I plug in another embedding model'. tech-config.md and tech-core.md document the single shipped local model, which is why they read as relevant but do not answer the question.",
+      "relevant": ["plan.md"],
+      "distractors": ["tech-config.md", "tech-core.md"],
+      "answered_by": "plan.md:374-378"
+    },
+    {
+      "id": "issue-185-engine-flip-data-loss",
+      "query": "core(v2): \"index create\" silently flips an existing collection's engine (data loss)",
+      "provenance": "GitHub issue #185 title, verbatim",
+      "rationale": "tech.md states the on-disk manifest version marker is authoritative for existing collections, and tech-core.md documents the three on-disk shapes including that manifest. Multi-target: the storage contract is split across the two documents.",
+      "relevant": ["tech.md", "tech-core.md"],
+      "distractors": ["tech-config.md"],
+      "answered_by": "tech.md:445-446, tech-core.md:32-35"
+    },
+    {
+      "id": "issue-109-cli-search-output",
+      "query": "Improve CLI search output for humans and agents",
+      "provenance": "GitHub issue #109 title, verbatim",
+      "rationale": "tech-app.md is the app-layer document: it covers CLI presentation, status indicators and the MCP resources that expose search results, which is the surface the issue is about.",
+      "relevant": ["tech-app.md"],
+      "distractors": ["README.md"],
+      "answered_by": "tech-app.md:97, 169-180"
+    },
+    {
+      "id": "issue-241-lsp-knowledge-server",
+      "query": "feat: `indexed lsp` — knowledge server over the Language Server Protocol",
+      "provenance": "GitHub issue #241 title, verbatim",
+      "rationale": "Unanswerable by this corpus: no pinned document mentions the Language Server Protocol or an LSP command. The app-layer documents are the near-miss — they describe the CLI and MCP surfaces an LSP server would sit beside, not LSP itself.",
+      "relevant": [],
+      "distractors": ["tech-app.md", "tech.md"],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-204-retrieval-eval-harness",
+      "query": "Retrieval evaluation harness (golden queries, hit-rate/MRR, faithfulness)",
+      "provenance": "GitHub issue #204 title, verbatim",
+      "rationale": "Unanswerable by this corpus: hit-rate, MRR and the eval harness live in eval/README.md, which is deliberately not part of the pinned corpus (a benchmark that indexes its own documentation measures nothing). plan.md and lessons.md discuss retrieval work, which is why they look close.",
+      "relevant": [],
+      "distractors": ["plan.md", "lessons.md"],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-147-time-travel-search",
+      "query": "Time-travel search (\"search as of &lt;ref&gt;\")",
+      "provenance": "GitHub issue #147 title, verbatim as returned by the GitHub API",
+      "rationale": "Unanswerable by this corpus: no pinned document promises or rules out time-travel/ref-scoped search. plan.md and product.md list planned features generally, which makes them the near-miss.",
+      "relevant": [],
+      "distractors": ["plan.md", "product.md"],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-216-loc-size-gate",
+      "query": "chore: LOC reduction pass — the size gate has ratcheted 23 times since Feature 14",
+      "provenance": "GitHub issue #216 title, verbatim",
+      "rationale": "Unanswerable by this corpus: the size gate lives in scripts/check_sizes.py and the CI workflow, neither of which is a pinned document. `agents-doc.md` is the near-miss because it carries the engineering rules that surround it.",
+      "relevant": [],
+      "distractors": ["agents-doc.md"],
+      "answered_by": ""
+    }
+  ]
+}

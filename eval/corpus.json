@@ -1,0 +1,74 @@
+{
+  "schema": "indexed.eval.corpus.v1",
+  "corpus_id": "indexed-docs",
+  "source_repo_rev": "89a6cb0a5589d5d20ea9ae0676fcd427cc40dbf1",
+  "tree_sha256": "1343091323763f5a18c9d5eb44d0461408d8718688ec5e8118ae26d7a2fca533",
+  "files": [
+    {
+      "path": "README.md",
+      "source": "README.md",
+      "sha256": "937f395fd105ba313fc2e3573a09b1d1ed2fa4829c1947775d1a6e45ae479c00",
+      "bytes": 8887
+    },
+    {
+      "path": "agents-doc.md",
+      "source": "AGENTS.md",
+      "sha256": "b23067faf84994655a114dd011215e54bbb9f3cbb4502c30ea4ec09397e25708",
+      "bytes": 4242
+    },
+    {
+      "path": "product.md",
+      "source": ".spec/product.md",
+      "sha256": "f73287a6bb35b7b2f7900f86e52d706ffda5ecbf97f21639afe4b81363dce09e",
+      "bytes": 10019
+    },
+    {
+      "path": "plan.md",
+      "source": ".spec/plan.md",
+      "sha256": "cafd89beffc599867353dd5b5fd57205a06e898dc279bdc2193479803a30cedd",
+      "bytes": 38669
+    },
+    {
+      "path": "tech.md",
+      "source": ".spec/tech.md",
+      "sha256": "3011bb7d3e537534783b0645b6b1c4c2eb14c9b0fa6a7f56f3718a5e2bd1d84d",
+      "bytes": 27940
+    },
+    {
+      "path": "tech-app.md",
+      "source": ".spec/tech-app.md",
+      "sha256": "6d637b85e28e22c3e1f4a6ddc11832315ac5d746d3fc505d286af4d693a52e2e",
+      "bytes": 8704
+    },
+    {
+      "path": "tech-config.md",
+      "source": ".spec/tech-config.md",
+      "sha256": "23638d6832b43ecd88d9b025272b6e3f959ba0233786847acf21e2246d6268e5",
+      "bytes": 5894
+    },
+    {
+      "path": "tech-connectors.md",
+      "source": ".spec/tech-connectors.md",
+      "sha256": "59eff7ac393b0df4dc5622c44c4a897ba7f8d78168831661ffae2fc0a0451b81",
+      "bytes": 5043
+    },
+    {
+      "path": "tech-core.md",
+      "source": ".spec/tech-core.md",
+      "sha256": "dd194d876943f3fbd99f4c0d50adbb3c40d23c53299ba28c80d909dfa401c31f",
+      "bytes": 7687
+    },
+    {
+      "path": "tech-parsing.md",
+      "source": ".spec/tech-parsing.md",
+      "sha256": "df29ee6f7e54fd52ec8d37fb330d4fd0ba30d4de2272e491028233de07e597d4",
+      "bytes": 1161
+    },
+    {
+      "path": "lessons.md",
+      "source": ".spec/lessons.md",
+      "sha256": "0fed9c3991da3093654db93b2f77e847141f45f165a219911d71370dcfaa6e27",
+      "bytes": 75798
+    }
+  ]
+}

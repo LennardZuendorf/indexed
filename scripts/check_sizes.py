@@ -35,7 +35,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # Windows/own-pid/recycled-pid/one-shot-marker defects) landed after the bump
 # above and left only 3 lines of headroom — measured 29_297; ceiling = measured
 # + headroom.
-SRC_LOC_MAX = 29_500
+# Issue #204 adds the eval harness alongside #126's recovery surface.
+# Keep both legitimate deltas when rebasing; final checks measure the repair.
+SRC_LOC_MAX = 31_000
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -121,7 +123,8 @@ SRC_LOC_MAX = 29_500
 # rename1 failure, rollback failure, trash-cleanup failure and partial staging
 # each get a real filesystem fixture, so the recovery path is proven rather than
 # asserted; ceiling = measured + headroom.
-TEST_LOC_MAX = 45_850
+# Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
+TEST_LOC_MAX = 47_000
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
