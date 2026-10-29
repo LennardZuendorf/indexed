@@ -23,7 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # wiring that turns an unreachable Hub into ONE actionable error — genuine
 # correctness surface (init/create/search used to leak raw retry spam), not
 # stealth regrowth; ceiling = measured (28_397) + headroom.
-SRC_LOC_MAX = 28_600
+# Raised from 28_600 by issue #204's retrieval-eval harness
+# (`src/indexed/eval/`: pinned case/corpus loaders with validation, the metric
+# definitions, the facade adapter, the runner, the comparer and the
+# `indexed-eval` CLI) — a new measurement surface, not stealth regrowth;
+# ceiling = measured (29_703) + headroom.
+SRC_LOC_MAX = 30_200
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -98,7 +103,14 @@ SRC_LOC_MAX = 28_600
 # pins "unknown" vs "present but unusable") — it consumed the previous headroom
 # exactly, so this restores it rather than adding slack; ceiling = measured
 # (44_450) + headroom.
-TEST_LOC_MAX = 44_650
+# Raised from 44_650 by issue #204's retrieval-eval harness tests: the metric
+# arithmetic, the case/corpus loaders' validation refusals, the adapter's
+# facade-dialect mapping, the compare verdicts (regression, config change,
+# incomparability), the CLI surfaces, and the gated test that re-runs the
+# harness and asserts the committed baseline reproduces byte-for-byte —
+# genuine defect-guarding coverage for a number other work will be judged
+# against, not stealth regrowth; ceiling = measured (45_195) + headroom.
+TEST_LOC_MAX = 45_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

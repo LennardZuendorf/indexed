@@ -81,6 +81,7 @@ Repository = "https://github.com/LennardZuendorf/indexed"
 [project.scripts]
 indexed = "indexed.cli.app:main"
 indexed-mcp = "indexed.mcp.cli:cli_main"
+indexed-eval = "indexed.eval.cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2", "hatch-vcs>=0.4,<1"]
