@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-19
+updated: 2026-10-28
 ---
 
 # Lessons Learned
@@ -36,6 +36,33 @@ Accumulated mistakes and earned defaults. Read at session start.
   build was known to succeed — a failed acquisition (or any failure) then lost
   the previously usable collection. Removed; the swap alone gives force its
   overwrite semantics atomically.
+
+## Dependabot alert-cluster sweep (2026-10-26)
+
+- **Group alerts by whether the package reaches the wheel, not by the
+  `dependency.scope` GitHub reports.** Dependabot labelled `virtualenv`
+  `scope=runtime` on every one of its 19 alerts even though it is dev-only and
+  ships in no wheel; triaging by that field over-rates a dev tool above
+  `aiohttp`. Resolve the actual dependency class from `uv.lock`/`pyproject.toml`
+  before ranking by severity.
+- **A single lock refresh plus `[tool.uv] constraint-dependencies` floors closes
+  a whole cluster at once — and the floors are what stop it reopening.** One
+  `uv lock` resolution moved 20 alerting packages past their first-patched
+  versions; adding each floor alongside it means the next routine resolution
+  cannot silently walk back below the fix. Without the floor the bump is a
+  one-off that regresses on the next lock churn.
+- **`first_patched_version: null` is a snapshot of the advisory, not a verdict
+  on the range — re-check PyPI before writing accepted risk.** A null value means
+  "no patched release existed when the advisory was published". Read the
+  vulnerable range instead: if it is bounded above (`accelerate <=1.14.0`,
+  `nltk <=3.10.3`), any later release above the bound clears the alert — both
+  got one within days (1.15.0, 3.10.4) and resolved under the same constraints.
+  Only an advisory whose range stays open above every published release is a
+  genuine accepted-risk item, and that claim needs a version check, not a
+  memory of the earlier null.
+- **`pip-audit --vulnerability-service osv` is the cheap end-to-end proof that
+  the lock sweep worked**, independent of Dependabot's alert state (which
+  re-evaluates on its own schedule and can lag a merged fix by hours).
 
 ## Dependency lock reconciliation (2026-10-19)
 
@@ -745,6 +772,8 @@ with `git add`/`git status`, since that's what CI actually runs.
 - **The CI benchmark action pushes baseline commits (`chore(benchmark): update baseline … [skip ci]`)
   onto the PR branch itself**, so the next push is a non-fast-forward. `git fetch && git rebase
   origin/<branch>` before each push (the baseline JSON touches disjoint files — clean rebase).
+  *(Superseded 2026-10-27: a PR benchmark run holds `contents: read` and cannot push at all — see
+  tech.md § CI Benchmarking. Local rebases are still needed for ordinary concurrent pushes.)*
 - **The whole-branch review catches cross-UNIT gaps no per-unit review can.** Migration created the
   `<name>.v1-backup` convention (unit 4) but collection-discovery lives in units 1/2, so the default
   `migrate` left the backup as a discoverable + searchable phantom v1 collection (duplicate hits)
@@ -1113,3 +1142,41 @@ with `git add`/`git status`, since that's what CI actually runs.
   breached is trim boilerplate first (one-line docstrings, a shared layout
   helper, inlined scenario comments — never weaken an assertion or drop a
   scenario), then bump with a precedent comment last.
+
+## Neutralise a bot's write with the token, not with its own knob (2026-10-27)
+
+- **Grant the CI job `contents: read` and a commit-pushing action simply cannot
+  move the file; every in-action switch that looks like a disable is only a
+  heuristic.** `pytest-bench-action` exposes `update-tolerance` (drift % that
+  triggers a baseline commit), but the same `should_update` path also fires when
+  the comparison is skipped for a hardware mismatch (exit 3) and when the base
+  branch has no baseline yet — cases no tolerance value reaches. Meanwhile the
+  push itself needed `contents: write`, so dropping that scope is the guarantee
+  and the tolerance is only log hygiene. Prefer the permission boundary over the
+  tool's own off-switch; state in the workflow comment which one is the
+  guarantee so nobody re-grants write "because the action needs it".
+- **A composite action owns the job's git checkout, so a later step inherits
+  whatever it left behind.** The benchmark action does its own `checkout` at a
+  hardcoded `fetch-depth: 2`; a step after it can still branch, commit and
+  force-push (`git checkout -B <branch>` works from its detached HEAD) but must
+  not assume tags or history. That also makes the action's non-PR "Save
+  baseline" step usable as a refresh primitive: on `workflow_dispatch` it
+  rewrites `baselines/main.json` in the workspace and (its update path being
+  `pull_request`-only) never pushes it — the following step just has to land
+  that one file through a reviewed PR, since a branch-protected `main` rejects a
+  bot push even for a bot's own commit.
+- **A guard that forbids a change outright needs one sanctioned door, or its
+  remedy cannot converge.** `baseline-guard` forbids a code PR from rewriting
+  `main.json`; once the benchmark job lost write scope, the guard's "restore the
+  file and re-run" advice became satisfiable for the first time — but the
+  baseline then had no way to move at all. The door is "a PR that changes
+  nothing but that file": the invariant worth keeping is that no gate decision
+  is made against numbers the same PR writes, and a baseline-only PR cannot
+  violate it. Keep the door narrow (paths other than the one file still fail)
+  and say in the message which door is sanctioned. Then close the second hole a
+  "nothing but that file" rule leaves open: a DELETION also changes nothing
+  else, passes the empty-`others` test, and lands main with no baseline — after
+  which every run logs "No baseline found ... skipping cross-branch comparison"
+  and passes, so the gate is disarmed while all its checks are green. Require
+  the file to exist at HEAD before opening the door; a refresh *rewrites*, it
+  never removes.
