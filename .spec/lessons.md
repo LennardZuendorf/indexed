@@ -1301,6 +1301,16 @@ with `git add`/`git status`, since that's what CI actually runs.
   PR body — an override nobody can see in review is just a quieter gate. Check
   too that the repair lane is not gated by the check it repairs: a baseline-only
   PR must trigger no benchmark run, or the fix deadlocks behind its own red.
+- **A gate must not read its own numbers back out of the workspace it graded.**
+  Reading the reference baseline with `git show HEAD:…` inside the benchmark job
+  looked immutable and was not: the action's update path ends in
+  `EndBug/add-and-commit`, which COMMITS its numbers locally even when the push
+  is denied by `contents: read`. By the time the guard ran, HEAD held this run's
+  measurement, the fingerprints matched by construction, and the gate went green
+  on a mismatched machine — the same self-referential defect as the original
+  one, one layer up. Read the base branch (`origin/<base_ref>`) instead, and
+  treat "the check agreed with itself" as the first hypothesis when a gate you
+  just wrote passes on a case you expected to fail.
 - **A benchmark delta is a measurement until you have checked what recorded it.**
   Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
   PR never touched) was not the diff, and not a CPU rotation either: same CPU
