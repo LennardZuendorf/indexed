@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-29
+updated: 2026-10-31
 ---
 
 # Lessons Learned
@@ -1215,6 +1215,15 @@ with `git add`/`git status`, since that's what CI actually runs.
   one, one layer up. Read the base branch (`origin/<base_ref>`) instead, and
   treat "the check agreed with itself" as the first hypothesis when a gate you
   just wrote passes on a case you expected to fail.
+- **A gate gated on an output that only exists on the happy path never runs.**
+  The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
+  but that output is written only inside the compare steps — when main has no
+  committed baseline the compare step is itself skipped, the flag stays `false`,
+  and the guard's own bootstrap branch was dead code while the spec and PR body
+  described it as live. Gate on the prerequisite that actually holds ("the
+  benchmark step succeeded"), let the guard's own inputs decide, and for every
+  branch in a guard ask which run can ever reach it — an unreachable `::error::`
+  reads exactly like a green check.
 - **A benchmark delta is a measurement until you have checked what recorded it.**
   Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
   PR never touched) was not the diff, and not a CPU rotation either: same CPU
