@@ -1,0 +1,126 @@
+name: Retrieval Evaluation
+
+# Measures the retrieval baseline (#204) and compares it against the committed
+# `eval/baseline.json`. Phase 1 is deliberately informative rather than a gate:
+# one baseline run cannot yet separate signal from noise, so the job reports the
+# verdict and the artifacts without blocking a merge. Tighten it into a gate
+# once a tolerance from observed run-to-run variance exists.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/indexed/core/**'
+      - 'src/indexed/eval/**'
+      - 'src/indexed/connectors/**'
+      - 'src/indexed/parsing/**'
+      - 'eval/**'
+      - 'scripts/build_eval_corpus.py'
+      - 'tests/unit/indexed/eval/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/scripts/**'
+      - '.github/workflows/python-eval.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  retrieval-baseline:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft != true
+    name: Retrieval Baseline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    # Informative in phase 1 — see the header comment.
+    continue-on-error: true
+    env:
+      # The report records this next to the numbers, so a CI artifact can name the
+      # code revision it measured (the runner reads GIT_COMMIT).
+      GIT_COMMIT: ${{ github.sha }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.13"
+
+    - name: Cache HuggingFace embedding model
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
+        key: hf-model-all-MiniLM-L6-v2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install uv
+        python -m uv sync --all-groups
+
+    - name: Unit tests for the PR report
+      run: uv run node --test .github/scripts/eval-comment.test.cjs
+
+    - name: Verify the pinned corpus has not drifted
+      id: corpus
+      run: uv run python scripts/build_eval_corpus.py --check
+
+    - name: Unit tests for the harness
+      id: harness
+      run: uv run pytest tests/unit/indexed/eval -q
+
+    - name: Measure the pinned case set
+      id: measure
+      if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+      run: uv run indexed-eval run --out eval-report.json
+
+    - name: Compare against the committed baseline
+      id: compare
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
+      # Informative on purpose: the runner is a different interpreter/CPU build
+      # from the machine the baseline was measured on, and that alone moves ranks
+      # (observed: hit@5 0.909 on x86_64 CI vs 0.818 on the baseline's arm64).
+      # The verdict and the per-case movement land in eval-compare.json; only a
+      # pinned runner plus an observed tolerance can turn this into a gate.
+      continue-on-error: true
+      run: |
+        uv run indexed-eval compare --report eval-report.json --json > eval-compare.json || true
+        uv run indexed-eval compare --report eval-report.json || true
+
+    - name: Upload eval artifacts
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: retrieval-eval
+        path: |
+          eval-report.json
+          eval-compare.json
+        if-no-files-found: warn
+
+    - name: Publish eval summary and PR comment
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        HARNESS_OUTCOME: ${{ steps.harness.outcome }}
+        MEASURE_OUTCOME: ${{ steps.measure.outcome }}
+        COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+      with:
+        script: |
+          await require('./.github/scripts/eval-comment.cjs').publishReport({
+            github, context, core,
+            outcomes: {
+              harness: process.env.HARNESS_OUTCOME,
+              measure: process.env.MEASURE_OUTCOME,
+              compare: process.env.COMPARE_OUTCOME,
+            },
+          });

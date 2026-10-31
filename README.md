@@ -216,6 +216,18 @@ Performance benchmarks (`tests/benchmarks/`, `tests/system/`) run in CI via
 uv run pytest tests/system tests/benchmarks --benchmark-only
 ```
 
+Retrieval quality has its own measurement: a pinned corpus and judged query set
+with hit-rate@k / MRR, so a ranking change can be compared instead of argued
+about. Reproduce the committed baseline and compare against it:
+
+```bash
+uv run indexed-eval run --out /tmp/report.json
+uv run indexed-eval compare --report /tmp/report.json
+```
+
+See [`eval/README.md`](eval/README.md) for provenance, the metric definitions and
+the measured baseline.
+
 See [`AGENTS.md`](AGENTS.md) and [`.spec/tech.md`](.spec/tech.md) for architecture details.
 
 ## License

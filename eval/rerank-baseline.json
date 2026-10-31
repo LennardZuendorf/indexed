@@ -1,0 +1,1785 @@
+{
+  "schema": "indexed.eval.report.v1",
+  "generated_at": "2026-10-30T21:14:50+00:00",
+  "case_set": {
+    "path": "eval/cases.json",
+    "sha256": "924efe7313ff2deadb6345f8daf49e165d14a799e8d861644c1a572fba1803ef",
+    "description": "Pinned 23-case local retrieval evaluation over documentation, three native Python code files and sanitized public issue/PR snapshots. Original probes use real issue titles; eight authored probes add exact identifiers/config keys and paraphrased implementation intent. Document-level judgments include rationale and resolvable anchors. Four deliberately unanswerable queries expose distractor leakage. Git and transformed-snapshot provenance are recorded separately in corpus.json.",
+    "cases": 23
+  },
+  "corpus": {
+    "corpus_id": "indexed-docs",
+    "source_repo_rev": "7066bef2b3b4adf09144a3df5089ec3f1ea165d7",
+    "tree_sha256": "8a52afa742267d52204241bb7dbe00f76ba9354b1b750bf641c73e45c1982eca",
+    "files": [
+      {
+        "path": "README.md",
+        "source": "README.md",
+        "source_kind": "git",
+        "sha256": "937f395fd105ba313fc2e3573a09b1d1ed2fa4829c1947775d1a6e45ae479c00",
+        "bytes": 8887
+      },
+      {
+        "path": "agents-doc.md",
+        "source": "AGENTS.md",
+        "source_kind": "git",
+        "sha256": "b23067faf84994655a114dd011215e54bbb9f3cbb4502c30ea4ec09397e25708",
+        "bytes": 4242
+      },
+      {
+        "path": "product.md",
+        "source": ".spec/product.md",
+        "source_kind": "git",
+        "sha256": "f73287a6bb35b7b2f7900f86e52d706ffda5ecbf97f21639afe4b81363dce09e",
+        "bytes": 10019
+      },
+      {
+        "path": "plan.md",
+        "source": ".spec/plan.md",
+        "source_kind": "git",
+        "sha256": "1ace902d04535b66c16a76866caa2fd3a1beb24411c57bd449e4ee2c9fcef994",
+        "bytes": 40076
+      },
+      {
+        "path": "tech.md",
+        "source": ".spec/tech.md",
+        "source_kind": "git",
+        "sha256": "28040f11fc5ade352919cbb4222628620d21e6bf80d9bfa2a6c81222be15ca59",
+        "bytes": 30743
+      },
+      {
+        "path": "tech-app.md",
+        "source": ".spec/tech-app.md",
+        "source_kind": "git",
+        "sha256": "6d637b85e28e22c3e1f4a6ddc11832315ac5d746d3fc505d286af4d693a52e2e",
+        "bytes": 8704
+      },
+      {
+        "path": "tech-config.md",
+        "source": ".spec/tech-config.md",
+        "source_kind": "git",
+        "sha256": "23638d6832b43ecd88d9b025272b6e3f959ba0233786847acf21e2246d6268e5",
+        "bytes": 5894
+      },
+      {
+        "path": "tech-connectors.md",
+        "source": ".spec/tech-connectors.md",
+        "source_kind": "git",
+        "sha256": "59eff7ac393b0df4dc5622c44c4a897ba7f8d78168831661ffae2fc0a0451b81",
+        "bytes": 5043
+      },
+      {
+        "path": "tech-core.md",
+        "source": ".spec/tech-core.md",
+        "source_kind": "git",
+        "sha256": "7add5175b937db99594549f76e79ae5dd0b254eef8dea49c213b172125f8d16d",
+        "bytes": 10855
+      },
+      {
+        "path": "tech-parsing.md",
+        "source": ".spec/tech-parsing.md",
+        "source_kind": "git",
+        "sha256": "df29ee6f7e54fd52ec8d37fb330d4fd0ba30d4de2272e491028233de07e597d4",
+        "bytes": 1161
+      },
+      {
+        "path": "lessons.md",
+        "source": ".spec/lessons.md",
+        "source_kind": "git",
+        "sha256": "05fdc9743d009ec8440074db611087f3b3f4a2bae98f176b21645ecc4f6ccb4e",
+        "bytes": 78695
+      },
+      {
+        "path": "recovery-code.py",
+        "source": "src/indexed/core/recovery.py",
+        "source_kind": "git",
+        "sha256": "e9f7ecf06733838b221f5a03b3881f0eef5778dd63c9f82b85b9bc4e1940101b",
+        "bytes": 24171
+      },
+      {
+        "path": "v2-config-code.py",
+        "source": "src/indexed/core/v2/config_models.py",
+        "source_kind": "git",
+        "sha256": "bdefec843853ea1d4350e7728e39c7b96c1cc04f32dc6167bb15af3626b575d5",
+        "bytes": 2286
+      },
+      {
+        "path": "v2-service-code.py",
+        "source": "src/indexed/core/v2/services/__init__.py",
+        "source_kind": "git",
+        "sha256": "367e8dd5386ffeb0e8e71508d6c39a7a11cc39d5c2f6efae329fdf40a35ba0fc",
+        "bytes": 10144
+      },
+      {
+        "path": "github-issue-126.md",
+        "source": "eval/sources/github-issue-126.md",
+        "upstream_url": "https://github.com/LennardZuendorf/indexed/issues/126",
+        "captured_revision": "updated_at:2026-10-30T19:44:59Z",
+        "captured_at": "2026-10-30T20:50:22Z",
+        "sanitization_notes": "Paraphrased public current PM refinement only; removed authors, execution instructions, acceptance checklist, historical command examples and unrelated links.",
+        "input_sha256": "21e77f15454d1bca2de4490b28c4c9fb52cefa8b68e327c8cf38c08669bb6ae6",
+        "source_kind": "local_snapshot",
+        "source_path": "eval/sources/github-issue-126.md",
+        "sha256": "21e77f15454d1bca2de4490b28c4c9fb52cefa8b68e327c8cf38c08669bb6ae6",
+        "bytes": 1406
+      },
+      {
+        "path": "github-pr-244.md",
+        "source": "eval/sources/github-pr-244.md",
+        "upstream_url": "https://github.com/LennardZuendorf/indexed/pull/244",
+        "captured_revision": "7d87e7cd6371761c67aaf9d9767e964184a4b6bd",
+        "captured_at": "2026-10-30T20:50:22Z",
+        "sanitization_notes": "Paraphrased merged PR behavior and rationale; removed identities, operational instructions, old CI reports, benchmark churn and review conversation.",
+        "input_sha256": "7d74e1021a3e13a5ef29321eae9c1bdedc5bc9b6d0896653e57a92a00834ce73",
+        "source_kind": "local_snapshot",
+        "source_path": "eval/sources/github-pr-244.md",
+        "sha256": "7d74e1021a3e13a5ef29321eae9c1bdedc5bc9b6d0896653e57a92a00834ce73",
+        "bytes": 1626
+      }
+    ]
+  },
+  "config": {
+    "collection": "eval-corpus",
+    "engine": "2",
+    "top_k": 5,
+    "max_docs": 10,
+    "rerank": true,
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_batch_size": 32,
+    "score_threshold": 0.0,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_top_n": 10,
+    "score_kind": "rerank"
+  },
+  "environment": {
+    "python": "3.13.11",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "indexed_version": "0.0.9.post29+g1ca4946ca",
+    "indexed_git_rev": "1ca4946ca2d6e098bee4b54dbc63ae7611268e1f",
+    "indexed_worktree_dirty": true,
+    "indexed_source_sha256": "7349f19c51410574ba8b2a86697d84fb9fefa1121854c31982fbb1edf0a4fc46",
+    "numerical_dependencies": {
+      "numpy": "2.4.0",
+      "torch": "2.13.0",
+      "transformers": "5.20.2",
+      "sentence-transformers": "6.2.0",
+      "llama-index-core": "0.14.25"
+    },
+    "embedding_model_cache": {
+      "cache_dir": "/tmp/indexed-pr265-hf/hub",
+      "present": true,
+      "weights": [
+        "model.safetensors"
+      ],
+      "selected_snapshot": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+      "snapshot_path": "/tmp/indexed-pr265-hf/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+    },
+    "reranker_model_cache": {
+      "cache_dir": "/tmp/indexed-pr265-hf/hub",
+      "present": true,
+      "weights": [
+        "model.safetensors",
+        "pytorch_model.bin"
+      ],
+      "selected_snapshot": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+      "snapshot_path": "/tmp/indexed-pr265-hf/hub/models--cross-encoder--ms-marco-MiniLM-L-6-v2/snapshots/233902d25c440f23af6f7d6e94d2946bac0bee0a"
+    }
+  },
+  "metrics": {
+    "k": 5,
+    "cases": 23,
+    "answerable": 19,
+    "unanswerable": 4,
+    "errors": 0,
+    "hit_rate": 1.0,
+    "hit_rate_at_5": 1.0,
+    "mrr": 0.828947,
+    "unanswerable_distractor_leaks": 3,
+    "failed_by_id": []
+  },
+  "failures": [],
+  "queries": [
+    {
+      "id": "issue-205-hybrid-search",
+      "query": "Hybrid search: BM25 + vector fusion (pre-ranking)",
+      "relevant": [
+        "plan.md"
+      ],
+      "distractors": [
+        "lessons.md"
+      ],
+      "ranked_docs": [
+        "lessons.md",
+        "readme.md",
+        "product.md",
+        "plan.md",
+        "tech.md",
+        "tech-config.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 4,
+      "reciprocal_rank": 0.25,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #205 title, verbatim",
+      "rationale": "plan.md states hybrid retrieval is deferred to future features behind the shipped engine, which is exactly what a reader asking about hybrid search needs to know. lessons.md only mentions LlamaIndex's HybridChunker, a different concept, so it is a deliberate near-miss.",
+      "answered_by": "plan.md:394-396",
+      "elapsed_ms": 7847.756,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 40,
+          "score": -8.126719,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 21,
+          "score": -8.630289,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "product.md",
+          "doc_id": "product.md",
+          "chunk": 8,
+          "score": -8.766951,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 47,
+          "score": -9.266675,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 7,
+          "score": -10.143044,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "tech-config.md",
+          "doc_id": "tech-config.md",
+          "chunk": 10,
+          "score": -10.225646,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-112-mcp-stale-collections",
+      "query": "MCP server serves stale collections; no refresh for long-running process",
+      "relevant": [
+        "tech.md",
+        "tech-app.md"
+      ],
+      "distractors": [
+        "agents-doc.md",
+        "lessons.md"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "lessons.md",
+        "tech-app.md",
+        "recovery-code.py",
+        "tech.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 3,
+      "reciprocal_rank": 0.333333,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #112 title, verbatim",
+      "rationale": "The technical and app references explicitly forbid stale responses after reindexing and document the no-response-cache/invalidation contract for long-lived MCP processes.",
+      "answered_by": "tech.md:436, tech-app.md:141-148",
+      "elapsed_ms": 7855.886,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 14,
+          "score": 3.384865,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 67,
+          "score": 2.05214,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 14,
+          "score": 1.736793,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 3,
+          "score": -0.177606,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 40,
+          "score": -3.989421,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-125-coretov2error-boundary",
+      "query": "mcp(v2): wrap v2 search/status errors as CoreV2Error at the boundary",
+      "relevant": [
+        "v2-service-code.py"
+      ],
+      "distractors": [
+        "tech.md"
+      ],
+      "ranked_docs": [
+        "v2-service-code.py",
+        "plan.md",
+        "lessons.md",
+        "tech-app.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #125 title, verbatim",
+      "rationale": "The pinned service source shows the current boundary directly: search runs inside _wrap and preserves project errors while wrapping other exceptions as CoreV2Error; unreadable status manifests are logged and omitted. Model-acquisition errors in lessons are a different boundary and do not justify this label.",
+      "answered_by": "v2-service-code.py:36-48, 96-108, 239-253",
+      "elapsed_ms": 10961.149,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 4,
+          "score": 3.237828,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 47,
+          "score": 1.720949,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 15,
+          "score": 0.866339,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 14,
+          "score": 0.783385,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-186-engine-routing-gaps",
+      "query": "core(v2): engine-routing correctness gaps (batch abort, error swallowing, MCP crash, reranking)",
+      "relevant": [
+        "lessons.md",
+        "tech.md",
+        "v2-service-code.py"
+      ],
+      "distractors": [],
+      "ranked_docs": [
+        "lessons.md",
+        "plan.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #186 title, verbatim",
+      "rationale": "The issue-specific lessons and facade contract describe the actual fixes: scoped validation failures, continued batch processing and per-collection search error envelopes, rather than only generic engine selection. The service source supplies partial direct code evidence for preserved typed-error boundaries and continuing status batches by omitting unreadable manifests.",
+      "answered_by": "lessons.md:1000-1018, 1051-1068, tech.md:491-505, v2-service-code.py:36-48, 164-178",
+      "elapsed_ms": 9943.974,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 117,
+          "score": 2.83183,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 48,
+          "score": 0.91162,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-123-jira-attachment-credentials",
+      "query": "security(jira): attachment download sends credentials to unvalidated API-supplied URL",
+      "relevant": [
+        "tech-connectors.md",
+        "lessons.md"
+      ],
+      "distractors": [
+        "plan.md",
+        "product.md"
+      ],
+      "ranked_docs": [
+        "tech-connectors.md",
+        "lessons.md",
+        "readme.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #123 title, verbatim",
+      "rationale": "The connector contract and threat-specific lesson require same-origin credentialed attachment fetches with effective-port comparison, including rejection of a non-default port.",
+      "answered_by": "tech-connectors.md:75-81, lessons.md:332-342",
+      "elapsed_ms": 7983.842,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-connectors.md",
+          "doc_id": "tech-connectors.md",
+          "chunk": 9,
+          "score": 2.653961,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 33,
+          "score": 1.098393,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 15,
+          "score": -6.131194,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-61-docling-parsing",
+      "query": "feat(connectors): migrate FileSystemConnector parsing to Docling",
+      "relevant": [
+        "tech-parsing.md",
+        "readme.md",
+        "lessons.md"
+      ],
+      "distractors": [
+        "tech.md",
+        "agents-doc.md"
+      ],
+      "ranked_docs": [
+        "tech-connectors.md",
+        "tech.md",
+        "tech-parsing.md",
+        "agents-doc.md",
+        "lessons.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 3,
+      "reciprocal_rank": 0.333333,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #61 title, verbatim",
+      "rationale": "The parser reference and README describe Docling routing and supported formats. The implementation lesson supplies the concrete parser/chunker choice, so it is partial implementation evidence rather than a distractor.",
+      "answered_by": "tech-parsing.md:22-23, README.md:48, lessons.md:394-404",
+      "elapsed_ms": 14691.475,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-connectors.md",
+          "doc_id": "tech-connectors.md",
+          "chunk": 5,
+          "score": -2.244764,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 4,
+          "score": -2.291917,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech-parsing.md",
+          "doc_id": "tech-parsing.md",
+          "chunk": 1,
+          "score": -3.245243,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "agents-doc.md",
+          "doc_id": "agents-doc.md",
+          "chunk": 3,
+          "score": -4.322506,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 76,
+          "score": -5.644781,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-63-model-caching",
+      "query": "feat(cli): smart model caching with HuggingFace Hub + indexed init",
+      "relevant": [
+        "lessons.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "lessons.md",
+        "plan.md",
+        "v2-config-code.py",
+        "tech.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #63 title, verbatim",
+      "rationale": "The lessons and core reference both explain usable weights-bearing HuggingFace snapshots, shared cache identity and offline cached loads; both directly answer smart model caching.",
+      "answered_by": "lessons.md:366, 400, 802, 1075-1078, tech-core.md:67-83",
+      "elapsed_ms": 18521.63,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 10,
+          "score": -0.33461,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 2,
+          "score": -1.360754,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 50,
+          "score": -2.362355,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "v2-config-code.py",
+          "doc_id": "v2-config-code.py",
+          "chunk": 2,
+          "score": -2.741613,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 9,
+          "score": -4.140583,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-211-huggingface-warning",
+      "query": "Badly formatted Duplicate Huggingface Warning",
+      "relevant": [
+        "lessons.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #211 title, verbatim",
+      "rationale": "The acquisition lesson records Hub retry chatter, and the core reference explicitly describes suppression of retry warnings and actionable errors instead of duplicate dependency messages.",
+      "answered_by": "lessons.md:14, tech-core.md:100-104",
+      "elapsed_ms": 10617.987,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 10,
+          "score": -1.45169,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 2,
+          "score": -1.826258,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 50,
+          "score": -7.534245,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-66-pluggable-embedding-model",
+      "query": "Pluggable Embedding Model & Remote API Support",
+      "relevant": [
+        "plan.md",
+        "tech-core.md",
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "v2-service-code.py",
+        "readme.md",
+        "lessons.md",
+        "tech.md",
+        "v2-config-code.py"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #66 title, verbatim",
+      "rationale": "The roadmap states the remote-provider limitation. The core reference and native config expose alternative local model identities, supplying partial answers to the local pluggability part of this broad issue title. Any document that supplies a substantive part of the current answer is relevant.",
+      "answered_by": "plan.md:391-399, tech-core.md:45-46, v2-config-code.py:16-22",
+      "elapsed_ms": 13161.935,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 7,
+          "score": -1.850339,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 20,
+          "score": -2.28573,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 7,
+          "score": -2.86834,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 124,
+          "score": -3.496987,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 57,
+          "score": -3.645525,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "v2-config-code.py",
+          "doc_id": "v2-config-code.py",
+          "chunk": 2,
+          "score": -4.165295,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-185-engine-flip-data-loss",
+      "query": "core(v2): \"index create\" silently flips an existing collection's engine (data loss)",
+      "relevant": [
+        "tech.md",
+        "lessons.md",
+        "tech-app.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "ranked_docs": [
+        "lessons.md",
+        "tech-app.md",
+        "tech.md",
+        "v2-service-code.py",
+        "plan.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #185 title, verbatim",
+      "rationale": "The facade contract, exact data-loss lesson and app engine-selection rule explain that an existing manifest remains authoritative and a conflicting selector fails. Typed on-disk DTO documentation alone is not evidence for that behavior.",
+      "answered_by": "tech.md:491-493, lessons.md:847-865, tech-app.md:58-60",
+      "elapsed_ms": 7934.568,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 98,
+          "score": 3.525014,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 5,
+          "score": 2.79551,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 50,
+          "score": 2.750963,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 1,
+          "score": 1.878663,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 35,
+          "score": 1.336144,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-109-cli-search-output",
+      "query": "Improve CLI search output for humans and agents",
+      "relevant": [
+        "tech-app.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "distractors": [
+        "readme.md"
+      ],
+      "ranked_docs": [
+        "agents-doc.md",
+        "tech-app.md",
+        "readme.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "GitHub issue #109 title, verbatim",
+      "rationale": "The app reference describes current human and agent output surfaces. The lessons and roadmap provide partial implemented output fixes; they do not establish that every part of the broad output-improvement issue is complete.",
+      "answered_by": "tech-app.md:94-98, 156-162, lessons.md:83-96, plan.md:111-113, 365-366",
+      "elapsed_ms": 10503.578,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "agents-doc.md",
+          "doc_id": "agents-doc.md",
+          "chunk": 1,
+          "score": -4.632604,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 13,
+          "score": -4.864122,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 3,
+          "score": -6.418854,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 67,
+          "score": -7.485692,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 15,
+          "score": -8.157068,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-241-lsp-knowledge-server",
+      "query": "feat: `indexed lsp` \u2014 knowledge server over the Language Server Protocol",
+      "relevant": [],
+      "distractors": [
+        "tech-app.md",
+        "tech.md"
+      ],
+      "ranked_docs": [
+        "tech.md",
+        "tech-app.md",
+        "agents-doc.md",
+        "plan.md",
+        "readme.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "hit_at_k": 0.0,
+      "distractor_leak": true,
+      "error": null,
+      "status": "unanswerable",
+      "provenance": "GitHub issue #241 title, verbatim",
+      "rationale": "Unanswerable by this corpus: no pinned document mentions the Language Server Protocol or an LSP command. The app-layer documents are the near-miss \u2014 they describe the CLI and MCP surfaces an LSP server would sit beside, not LSP itself.",
+      "answered_by": "",
+      "elapsed_ms": 9993.43,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 5,
+          "score": -1.847154,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 13,
+          "score": -2.343249,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "agents-doc.md",
+          "doc_id": "agents-doc.md",
+          "chunk": 6,
+          "score": -2.756199,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 11,
+          "score": -2.783013,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 9,
+          "score": -3.188731,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-204-retrieval-eval-harness",
+      "query": "Retrieval evaluation harness (golden queries, hit-rate/MRR, faithfulness)",
+      "relevant": [],
+      "distractors": [
+        "plan.md",
+        "lessons.md"
+      ],
+      "ranked_docs": [
+        "lessons.md",
+        "tech.md",
+        "readme.md",
+        "plan.md",
+        "product.md",
+        "v2-service-code.py",
+        "recovery-code.py"
+      ],
+      "k": 5,
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "hit_at_k": 0.0,
+      "distractor_leak": true,
+      "error": null,
+      "status": "unanswerable",
+      "provenance": "GitHub issue #204 title, verbatim",
+      "rationale": "Unanswerable by this corpus: hit-rate, MRR and the eval harness live in eval/README.md, which is deliberately not part of the pinned corpus (a benchmark that indexes its own documentation measures nothing). plan.md and lessons.md discuss retrieval work, which is why they look close.",
+      "answered_by": "",
+      "elapsed_ms": 10222.708,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 37,
+          "score": -10.421584,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 13,
+          "score": -10.617953,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 0,
+          "score": -10.618484,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 13,
+          "score": -10.644608,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "product.md",
+          "doc_id": "product.md",
+          "chunk": 0,
+          "score": -10.683544,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 5,
+          "score": -10.719283,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 7,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 0,
+          "score": -10.721755,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-147-time-travel-search",
+      "query": "Time-travel search (\"search as of &lt;ref&gt;\")",
+      "relevant": [],
+      "distractors": [
+        "plan.md",
+        "product.md"
+      ],
+      "ranked_docs": [
+        "tech-app.md",
+        "v2-service-code.py",
+        "tech.md",
+        "lessons.md",
+        "readme.md",
+        "product.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "hit_at_k": 0.0,
+      "distractor_leak": false,
+      "error": null,
+      "status": "unanswerable",
+      "provenance": "GitHub issue #147 title, verbatim as returned by the GitHub API",
+      "rationale": "Unanswerable by this corpus: no pinned document promises or rules out time-travel/ref-scoped search. plan.md and product.md list planned features generally, which makes them the near-miss.",
+      "answered_by": "",
+      "elapsed_ms": 10929.073,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 20,
+          "score": -8.444813,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 8,
+          "score": -8.798224,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 38,
+          "score": -8.805283,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 66,
+          "score": -9.094231,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 0,
+          "score": -9.325759,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "product.md",
+          "doc_id": "product.md",
+          "chunk": 0,
+          "score": -9.56144,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-216-loc-size-gate",
+      "query": "chore: LOC reduction pass \u2014 the size gate has ratcheted 23 times since Feature 14",
+      "relevant": [],
+      "distractors": [
+        "agents-doc.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "ranked_docs": [
+        "lessons.md",
+        "plan.md",
+        "tech.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "hit_at_k": 0.0,
+      "distractor_leak": true,
+      "error": null,
+      "status": "unanswerable",
+      "provenance": "GitHub issue #216 title, verbatim",
+      "rationale": "Unanswerable for the exact historical claim of 23 ratchets since Feature 14. The corpus does discuss size gates and LOC reduction in lessons and the roadmap, so those are genuine near misses; it does not substantiate that count/history.",
+      "answered_by": "",
+      "elapsed_ms": 10032.988,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 71,
+          "score": -1.110257,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 59,
+          "score": -2.879359,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 32,
+          "score": -5.981638,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "exact-recovery-symbol",
+      "query": "recover_stranded",
+      "relevant": [
+        "recovery-code.py",
+        "github-pr-244.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "ranked_docs": [
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Exact public symbol in pinned recovery implementation and sanitized PR #244.",
+      "answered_by": "recovery-code.py:148-161, github-pr-244.md:15-17, tech-core.md:121-125",
+      "elapsed_ms": 9495.52,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 3,
+          "score": 6.788256,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 14,
+          "score": 5.95072,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 12,
+          "score": 4.867738,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "exact-rerank-config-key",
+      "query": "core.v2.rerank.top_n",
+      "relevant": [
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "product.md"
+      ],
+      "ranked_docs": [
+        "v2-config-code.py",
+        "lessons.md",
+        "plan.md",
+        "v2-service-code.py"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The native config model defines the rerank namespace, the top_n field and its default of ten; the product overview only describes reranking generally.",
+      "answered_by": "v2-config-code.py:4, 57-58",
+      "elapsed_ms": 7485.985,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "v2-config-code.py",
+          "doc_id": "v2-config-code.py",
+          "chunk": 4,
+          "score": 6.408227,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 103,
+          "score": 4.877459,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 34,
+          "score": 4.865784,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 8,
+          "score": 4.270906,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "exact-recovery-error",
+      "query": "CollectionRecoveryError",
+      "relevant": [
+        "github-pr-244.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "github-pr-244.md",
+        "tech.md",
+        "lessons.md",
+        "tech-connectors.md",
+        "tech-app.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The sanitized PR states the explicit-open error identifier and its relation to preserved/quarantined data.",
+      "answered_by": "github-pr-244.md:26-30, tech-core.md:148-153",
+      "elapsed_ms": 11371.298,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 15,
+          "score": 4.137619,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 4,
+          "score": 3.310737,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "tech.md",
+          "doc_id": "tech.md",
+          "chunk": 50,
+          "score": -0.157485,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 15,
+          "score": -0.7291,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "tech-connectors.md",
+          "doc_id": "tech-connectors.md",
+          "chunk": 4,
+          "score": -3.541017,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 14,
+          "score": -3.745602,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "issue-and-pr-identity",
+      "query": "#126 #244 collection crash recovery",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "ranked_docs": [
+        "github-pr-244.md",
+        "tech-core.md",
+        "github-issue-126.md",
+        "recovery-code.py"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Both sanitized records identify the related issue/PR and explain why a collection can disappear between swap renames.",
+      "answered_by": "github-issue-126.md:1, 15-18, github-pr-244.md:1, 8-11, recovery-code.py:1-15, tech-core.md:110-125",
+      "elapsed_ms": 9998.516,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 5,
+          "score": 5.516207,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 12,
+          "score": 4.687005,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "github-issue-126.md",
+          "doc_id": "github-issue-126.md",
+          "chunk": 4,
+          "score": 3.763143,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 1,
+          "score": 2.92656,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "paraphrased-invisible-index",
+      "query": "After a crash my old index still exists but no longer shows in search. Why?",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "ranked_docs": [
+        "tech-app.md",
+        "readme.md",
+        "github-pr-244.md",
+        "tech-core.md",
+        "lessons.md",
+        "recovery-code.py",
+        "plan.md",
+        "product.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 3,
+      "reciprocal_rank": 0.333333,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Both records explain invisible preserved generations and recovery before discovery; code shows the implementation seam.",
+      "answered_by": "github-issue-126.md:15-18, github-pr-244.md:8-11, recovery-code.py:3-15, tech-core.md:121-125",
+      "elapsed_ms": 12619.321,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-app.md",
+          "doc_id": "tech-app.md",
+          "chunk": 14,
+          "score": -2.207851,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 6,
+          "score": -2.885132,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 4,
+          "score": -4.107578,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 21,
+          "score": -4.550987,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 121,
+          "score": -5.51259,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 4,
+          "score": -6.025015,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 7,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 31,
+          "score": -6.0314,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 8,
+          "doc": "product.md",
+          "doc_id": "product.md",
+          "chunk": 2,
+          "score": -6.346,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "windows-probe-rationale",
+      "query": "Why does collection recovery avoid probing Windows processes?",
+      "relevant": [
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "github-issue-126.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The PR gives the Windows termination rationale; the native implementation returns unknown without probing on non-POSIX.",
+      "answered_by": "github-pr-244.md:21-22, recovery-code.py:495-498, tech-core.md:145-147",
+      "elapsed_ms": 11209.373,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 14,
+          "score": 2.044228,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 3,
+          "score": 1.528107,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 6,
+          "score": -1.617781,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "github-issue-126.md",
+          "doc_id": "github-issue-126.md",
+          "chunk": 3,
+          "score": -1.677469,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "power-loss-constraint",
+      "query": "Does recovering an interrupted collection swap guarantee durability after a power cut?",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "ranked_docs": [
+        "tech-core.md",
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The issue and PR explicitly distinguish process-crash recovery from an unimplemented fsync/power-loss guarantee.",
+      "answered_by": "github-issue-126.md:27-29, github-pr-244.md:34-35, recovery-code.py:53-54, tech-core.md:155-157",
+      "elapsed_ms": 6645.824,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "tech-core.md",
+          "doc_id": "tech-core.md",
+          "chunk": 15,
+          "score": 6.672233,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "github-issue-126.md",
+          "doc_id": "github-issue-126.md",
+          "chunk": 4,
+          "score": 5.832809,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "github-pr-244.md",
+          "doc_id": "github-pr-244.md",
+          "chunk": 5,
+          "score": 2.866209,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "recovery-code.py",
+          "doc_id": "recovery-code.py",
+          "chunk": 4,
+          "score": 1.002182,
+          "score_kind": "rerank"
+        }
+      ]
+    },
+    {
+      "id": "rerank-default-model",
+      "query": "Which cross-encoder runs when v2 reranking is enabled, and how many results does it keep?",
+      "relevant": [
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "ranked_docs": [
+        "v2-config-code.py",
+        "readme.md",
+        "lessons.md",
+        "plan.md",
+        "v2-service-code.py",
+        "product.md"
+      ],
+      "k": 5,
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "hit_at_k": 1.0,
+      "distractor_leak": null,
+      "error": null,
+      "status": "scored",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The code names cross-encoder/ms-marco-MiniLM-L-6-v2 and top_n=10; an embedding model mention is a near-miss.",
+      "answered_by": "v2-config-code.py:53-58",
+      "elapsed_ms": 9765.261,
+      "ranking": [
+        {
+          "rank": 1,
+          "doc": "v2-config-code.py",
+          "doc_id": "v2-config-code.py",
+          "chunk": 4,
+          "score": 5.378688,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 2,
+          "doc": "readme.md",
+          "doc_id": "README.md",
+          "chunk": 3,
+          "score": -1.430458,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 3,
+          "doc": "lessons.md",
+          "doc_id": "lessons.md",
+          "chunk": 103,
+          "score": -2.481212,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 4,
+          "doc": "plan.md",
+          "doc_id": "plan.md",
+          "chunk": 34,
+          "score": -2.490297,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 5,
+          "doc": "v2-service-code.py",
+          "doc_id": "v2-service-code.py",
+          "chunk": 8,
+          "score": -2.914279,
+          "score_kind": "rerank"
+        },
+        {
+          "rank": 6,
+          "doc": "product.md",
+          "doc_id": "product.md",
+          "chunk": 8,
+          "score": -3.483129,
+          "score_kind": "rerank"
+        }
+      ]
+    }
+  ]
+}
