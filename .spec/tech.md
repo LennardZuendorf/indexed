@@ -232,24 +232,30 @@ action.
 (exit 3) logs a `::warning::` and reports `regression-detected=false`, so the job
 returned **green while comparing nothing** on every PR after GitHub rotated the
 `ubuntu-latest` CPU (EPYC 7763 → 9V74, 2026-10). The gate job therefore has a
-step keyed on the action's `comparison-skipped == 'true'` output that fails it,
-writes both CPU fingerprints (the committed baseline's and this run's) to the
-log and the job summary, and names the repair. `enforce-same-node: "true"` is
-deliberately not the fix: on a heterogeneous fleet it reds PRs at random with no
-remedy, which teaches everyone to ignore the check. The step reds exactly one
-honest case — *this machine cannot be compared, so there is no verdict* — plus
-the bootstrap case, main having no committed baseline at all, which the same
-step reports explicitly instead of dying on a `git show`. The reference it reads
-is `origin/<base branch>`, never `HEAD`: the action's update path ends in a
-`EndBug/add-and-commit` that commits its own numbers **locally** even when the
-push is denied by `contents: read`, so inside that job HEAD's baseline is the
-run's own measurement and a HEAD-based guard would compare the run with itself,
-agree, and return green (observed on PR #268's first run — the same
-self-referential defect as #253, one layer up). The step decides from
-the fingerprints rather than from the flag alone: the action's
+step that fails it, writes both CPU fingerprints (the committed baseline's and
+this run's) to the log and the job summary, and names the repair.
+`enforce-same-node: "true"` is deliberately not the fix: on a heterogeneous
+fleet it reds PRs at random with no remedy, which teaches everyone to ignore the
+check. The step reds exactly one honest case — *this machine cannot be compared,
+so there is no verdict*. It is **not** gated on the action's
+`comparison-skipped` output, because that output is only written by the compare
+steps: when main has no committed baseline at all, `compare-main` never runs,
+the flag stays `false`, and a flag-gated step is skipped — a green job with no
+cross-branch verdict, the very defect being fixed. It runs whenever the
+benchmark step itself succeeded, and the fingerprints plus the baseline fetch
+decide the rest; the bootstrap case is then reported explicitly ("no committed
+baseline on 'main', dispatch … to record one") instead of dying on a `git
+show`. The reference it reads is `origin/<base branch>`, never `HEAD`: the
+action's update path ends in a `EndBug/add-and-commit` that commits its own
+numbers **locally** even when the push is denied by `contents: read`, so inside
+that job HEAD's baseline is the run's own measurement and a HEAD-based guard
+would compare the run with itself, agree, and return green (observed on PR
+#268's first run — the same self-referential defect as #253, one layer up). The
+step decides from the fingerprints rather than from the flag alone: the action's
 `comparison-skipped` is also set by the *sequential* comparison, so it only
 fails when this run's machine differs from main's baseline — when they match,
-the cross-branch verdict stands and the job stays green.
+the cross-branch verdict stands and the job stays green (and the notice says
+which of the two comparisons was skipped, rather than claiming one was).
 
 **Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
 a fingerprint change by default, because adopting another machine's numbers
