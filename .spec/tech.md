@@ -257,10 +257,11 @@ fails when this run's machine differs from main's baseline — when they match,
 the cross-branch verdict stands and the job stays green (and the notice says
 which of the two comparisons was skipped, rather than claiming one was). A
 matching fingerprint is necessary but **not** sufficient for a valid verdict:
-two runs on different nodes of the same CPU model put
-`test_parse_large_markdown` at 690 ms, 922 ms and 943 ms, so per-node variance
-alone can red a clean diff — the guard cannot detect that, and the same-job A/B
-below is what removes it.
+three consecutive runs reported the same node and CPU model and still disagreed —
+`test_parse_large_markdown` at 690 ms, 762 ms and 943 ms and `test_cli_license`
+at 43 ms vs 82 ms, one green and two reds from an unchanged diff. Run-to-run
+tenancy variance alone can red a clean PR; the guard cannot see that, and the
+same-job A/B below is what removes it.
 
 **Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
 a fingerprint change by default, because adopting another machine's numbers
