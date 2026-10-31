@@ -1,0 +1,132 @@
+{
+  "schema": "indexed.eval.corpus.v1",
+  "corpus_id": "indexed-docs",
+  "source_repo_rev": "7066bef2b3b4adf09144a3df5089ec3f1ea165d7",
+  "tree_sha256": "8a52afa742267d52204241bb7dbe00f76ba9354b1b750bf641c73e45c1982eca",
+  "files": [
+    {
+      "path": "README.md",
+      "source": "README.md",
+      "source_kind": "git",
+      "sha256": "937f395fd105ba313fc2e3573a09b1d1ed2fa4829c1947775d1a6e45ae479c00",
+      "bytes": 8887
+    },
+    {
+      "path": "agents-doc.md",
+      "source": "AGENTS.md",
+      "source_kind": "git",
+      "sha256": "b23067faf84994655a114dd011215e54bbb9f3cbb4502c30ea4ec09397e25708",
+      "bytes": 4242
+    },
+    {
+      "path": "product.md",
+      "source": ".spec/product.md",
+      "source_kind": "git",
+      "sha256": "f73287a6bb35b7b2f7900f86e52d706ffda5ecbf97f21639afe4b81363dce09e",
+      "bytes": 10019
+    },
+    {
+      "path": "plan.md",
+      "source": ".spec/plan.md",
+      "source_kind": "git",
+      "sha256": "1ace902d04535b66c16a76866caa2fd3a1beb24411c57bd449e4ee2c9fcef994",
+      "bytes": 40076
+    },
+    {
+      "path": "tech.md",
+      "source": ".spec/tech.md",
+      "source_kind": "git",
+      "sha256": "28040f11fc5ade352919cbb4222628620d21e6bf80d9bfa2a6c81222be15ca59",
+      "bytes": 30743
+    },
+    {
+      "path": "tech-app.md",
+      "source": ".spec/tech-app.md",
+      "source_kind": "git",
+      "sha256": "6d637b85e28e22c3e1f4a6ddc11832315ac5d746d3fc505d286af4d693a52e2e",
+      "bytes": 8704
+    },
+    {
+      "path": "tech-config.md",
+      "source": ".spec/tech-config.md",
+      "source_kind": "git",
+      "sha256": "23638d6832b43ecd88d9b025272b6e3f959ba0233786847acf21e2246d6268e5",
+      "bytes": 5894
+    },
+    {
+      "path": "tech-connectors.md",
+      "source": ".spec/tech-connectors.md",
+      "source_kind": "git",
+      "sha256": "59eff7ac393b0df4dc5622c44c4a897ba7f8d78168831661ffae2fc0a0451b81",
+      "bytes": 5043
+    },
+    {
+      "path": "tech-core.md",
+      "source": ".spec/tech-core.md",
+      "source_kind": "git",
+      "sha256": "7add5175b937db99594549f76e79ae5dd0b254eef8dea49c213b172125f8d16d",
+      "bytes": 10855
+    },
+    {
+      "path": "tech-parsing.md",
+      "source": ".spec/tech-parsing.md",
+      "source_kind": "git",
+      "sha256": "df29ee6f7e54fd52ec8d37fb330d4fd0ba30d4de2272e491028233de07e597d4",
+      "bytes": 1161
+    },
+    {
+      "path": "lessons.md",
+      "source": ".spec/lessons.md",
+      "source_kind": "git",
+      "sha256": "05fdc9743d009ec8440074db611087f3b3f4a2bae98f176b21645ecc4f6ccb4e",
+      "bytes": 78695
+    },
+    {
+      "path": "recovery-code.py",
+      "source": "src/indexed/core/recovery.py",
+      "source_kind": "git",
+      "sha256": "e9f7ecf06733838b221f5a03b3881f0eef5778dd63c9f82b85b9bc4e1940101b",
+      "bytes": 24171
+    },
+    {
+      "path": "v2-config-code.py",
+      "source": "src/indexed/core/v2/config_models.py",
+      "source_kind": "git",
+      "sha256": "bdefec843853ea1d4350e7728e39c7b96c1cc04f32dc6167bb15af3626b575d5",
+      "bytes": 2286
+    },
+    {
+      "path": "v2-service-code.py",
+      "source": "src/indexed/core/v2/services/__init__.py",
+      "source_kind": "git",
+      "sha256": "367e8dd5386ffeb0e8e71508d6c39a7a11cc39d5c2f6efae329fdf40a35ba0fc",
+      "bytes": 10144
+    },
+    {
+      "path": "github-issue-126.md",
+      "source": "eval/sources/github-issue-126.md",
+      "upstream_url": "https://github.com/LennardZuendorf/indexed/issues/126",
+      "captured_revision": "updated_at:2026-10-30T19:44:59Z",
+      "captured_at": "2026-10-30T20:50:22Z",
+      "sanitization_notes": "Paraphrased public current PM refinement only; removed authors, execution instructions, acceptance checklist, historical command examples and unrelated links.",
+      "input_sha256": "21e77f15454d1bca2de4490b28c4c9fb52cefa8b68e327c8cf38c08669bb6ae6",
+      "source_kind": "local_snapshot",
+      "source_path": "eval/sources/github-issue-126.md",
+      "sha256": "21e77f15454d1bca2de4490b28c4c9fb52cefa8b68e327c8cf38c08669bb6ae6",
+      "bytes": 1406
+    },
+    {
+      "path": "github-pr-244.md",
+      "source": "eval/sources/github-pr-244.md",
+      "upstream_url": "https://github.com/LennardZuendorf/indexed/pull/244",
+      "captured_revision": "7d87e7cd6371761c67aaf9d9767e964184a4b6bd",
+      "captured_at": "2026-10-30T20:50:22Z",
+      "sanitization_notes": "Paraphrased merged PR behavior and rationale; removed identities, operational instructions, old CI reports, benchmark churn and review conversation.",
+      "input_sha256": "7d74e1021a3e13a5ef29321eae9c1bdedc5bc9b6d0896653e57a92a00834ce73",
+      "source_kind": "local_snapshot",
+      "source_path": "eval/sources/github-pr-244.md",
+      "sha256": "7d74e1021a3e13a5ef29321eae9c1bdedc5bc9b6d0896653e57a92a00834ce73",
+      "bytes": 1626
+    }
+  ]
+}

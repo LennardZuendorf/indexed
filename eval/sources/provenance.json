@@ -1,0 +1,16 @@
+{
+  "github-issue-126.md": {
+    "upstream_url": "https://github.com/LennardZuendorf/indexed/issues/126",
+    "captured_revision": "updated_at:2026-10-30T19:44:59Z",
+    "captured_at": "2026-10-30T20:50:22Z",
+    "sanitization_notes": "Paraphrased public current PM refinement only; removed authors, execution instructions, acceptance checklist, historical command examples and unrelated links.",
+    "input_sha256": "21e77f15454d1bca2de4490b28c4c9fb52cefa8b68e327c8cf38c08669bb6ae6"
+  },
+  "github-pr-244.md": {
+    "upstream_url": "https://github.com/LennardZuendorf/indexed/pull/244",
+    "captured_revision": "7d87e7cd6371761c67aaf9d9767e964184a4b6bd",
+    "captured_at": "2026-10-30T20:50:22Z",
+    "sanitization_notes": "Paraphrased merged PR behavior and rationale; removed identities, operational instructions, old CI reports, benchmark churn and review conversation.",
+    "input_sha256": "7d74e1021a3e13a5ef29321eae9c1bdedc5bc9b6d0896653e57a92a00834ce73"
+  }
+}

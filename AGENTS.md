@@ -64,7 +64,7 @@ being asked, and add a lesson after every correction. Load-bearing highlights: l
 imports keep startup <1s; ty must be fully clean tree-wide (0 diagnostics, no baseline);
 coverage is measured on installed packages (`--cov=src`); `ConfigService` is a singleton
 (respect the priority chain); connectors are Protocol-based with `from_manifest`; core is
-consumed only through the `core.v1.engine` facade, with `composition.py` the single wiring
+consumed only through the `indexed.core.engine` facade, with `composition.py` the single wiring
 site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
 spec in the same cycle; a comment is one line of *why*, never an essay; Rich silently drops
 a bracketed `[dotted.key]` from any `typer.Option(help=...)` string (parsed as a markup
@@ -72,6 +72,15 @@ tag, not printed) — write config keys unbracketed in help text. Dependency
 lock reconciliation can leave metadata stale after temporary resolver
 constraints are removed; run `uv lock` against the final `pyproject.toml`.
 KISS wins.
+Evaluation reports reconcile saved rankings, labels, counts and metrics. Capture
+one usable model cache before HOME isolation and use it for checks and loads.
+Scoped evaluation config restores prior overrides and excludes unrelated
+connector/MCP settings from validation.
+Check new fixture files for whitespace before freezing their hashes.
+Clear hook Git routing variables before temporary-repository tests.
+Refresh touched spec dates when publication crosses calendar days.
+Publish saved eval verdicts with environment notes; step success is not a verdict.
+Bound formatted comments after escaping and link omitted details to artifacts.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

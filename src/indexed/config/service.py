@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from copy import deepcopy
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
@@ -58,10 +61,7 @@ class ConfigService:
             self._store, self._resolver, self._workspace_path, mode_override
         )
         self._env_writer = EnvFileWriter(self._resolved_env_path)
-        # In-memory-only overrides (R3): merged on top of load_raw() but never
-        # written to disk. Lets create/update pass CLI overrides & prompted
-        # values through to from_config() reads without persisting them
-        # (foundation/6b, bug E4). Cleared per runtime flow via clear_overlay().
+        # Runtime overrides reach from_config() without persisting (R3).
         self._overlay: Dict[str, Any] = {}
 
     # ── Properties ───────────────────────────────────────────────────────
@@ -305,17 +305,25 @@ class ConfigService:
     def set_overlay(self, dot_path: str, value: Any) -> None:
         """Apply an in-memory-only override — never persisted to config.toml.
 
-        ``load_raw()`` (and therefore ``get()``/``bind()``/``validate()``)
-        merges this overlay on top of the on-disk + env config, so
-        ``from_config()`` reads see it, but ``set()``/``save_raw()`` never
-        do — a failed ``create`` (or a value only meant for this run) leaves
-        no trace on disk (R3; foundation/6b bug E4).
+        Reads merge this over disk and env config; persistence uses only disk
+        (R3; foundation/6b bug E4).
         """
         set_by_path(self._overlay, dot_path, value)
 
     def clear_overlay(self) -> None:
         """Clear all in-memory overrides — call at the start of a new runtime flow."""
         self._overlay = {}
+
+    @contextmanager
+    def temporary_overlay(self, values: Dict[str, Any]) -> Generator[None, None, None]:
+        """Apply dot-path overrides in memory and restore the caller's overlay."""
+        previous, self._overlay = self._overlay, deepcopy(self._overlay)
+        try:
+            for path, value in values.items():
+                self.set_overlay(path, value)
+            yield
+        finally:
+            self._overlay = previous
 
     def resolve_sensitive_env_var(self, dot_path: str) -> Optional[str]:
         """Resolve the connector-declared `.env` key for a sensitive dot-path.
