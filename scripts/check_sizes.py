@@ -35,7 +35,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Windows/own-pid/recycled-pid/one-shot-marker defects) landed after the bump
 # above and left only 3 lines of headroom — measured 29_297; ceiling = measured
 # + headroom.
-SRC_LOC_MAX = 29_500
+# Raised again by issues #108/#109 (one documented result shape for the CLI
+# machine mode and the MCP envelope): `protocols/results.py` types the
+# contract, `mcp/formatting.py` rebuilds the payload from ONE builder, and the
+# per-hit provenance is plumbed where it was dropped — `sourceType` from
+# `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
+# `metadata` so a v2 hit can say where it sits — genuine contract surface on
+# top of #126's recovery surface, not stealth regrowth; ceiling = measured
+# (29_646) + headroom.
+SRC_LOC_MAX = 29_950
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -120,8 +128,16 @@ SRC_LOC_MAX = 29_500
 # Raised again by issue #126's failure-injection coverage: crash-between-renames,
 # rename1 failure, rollback failure, trash-cleanup failure and partial staging
 # each get a real filesystem fixture, so the recovery path is proven rather than
-# asserted; ceiling = measured + headroom.
-TEST_LOC_MAX = 45_850
+# asserted.
+# Raised again by issues #108/#109: the golden-output suite
+# (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
+# search_payload.json`) pins ONE hand-written payload across the builder, the
+# MCP tool and `search --json`, and `test_formatting.py` grows the locator/
+# ranking units (line span, page, headings, honest `document` fallback,
+# unified cross-engine relevance) — genuine defect-guarding coverage for a
+# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
+# (46_522) + headroom.
+TEST_LOC_MAX = 46_850
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

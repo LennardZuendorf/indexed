@@ -81,10 +81,11 @@ def test_mcp_search_tool_returns_seeded_hit(
     )
 
     assert result["query"].startswith("penguin migration")
-    assert result["total_collections_searched"] >= 1
-    assert result["results"], "MCP search tool returned no results for a seeded hit"
-    top = result["results"][0]
-    assert top["document_id"].endswith("needle.txt"), (
-        f"expected needle.txt as top MCP hit, got {top['document_id']!r}"
+    assert result["schema"] == "indexed.search/1"
+    assert len(result["collections"]) >= 1
+    assert result["documents"], "MCP search tool returned no results for a seeded hit"
+    top = result["documents"][0]
+    assert top["id"].endswith("needle.txt"), (
+        f"expected needle.txt as top MCP hit, got {top['id']!r}"
     )
     assert top["collection"] == COLLECTION

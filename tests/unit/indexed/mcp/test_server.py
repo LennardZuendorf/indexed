@@ -197,13 +197,14 @@ class TestSearchToolFunction:
         result = search_tool.fn("test query")
 
         assert result["query"] == "test query"
-        assert result["total_collections_searched"] == 2
-        assert result["total_documents_found"] == 2
-        assert result["total_chunks_found"] == 2
-        assert len(result["results"]) == 2
-        collections_in_results = {r["collection"] for r in result["results"]}
-        assert "collection1" in collections_in_results
-        assert "collection2" in collections_in_results
+        assert result["schema"] == "indexed.search/1"
+        assert result["counts"] == {"documents": 2, "hits": 2}
+        assert result["collections"] == ["collection1", "collection2"]
+        assert result["collection_errors"] == []
+        assert {d["collection"] for d in result["documents"]} == {
+            "collection1",
+            "collection2",
+        }
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_search")
@@ -274,11 +275,8 @@ class TestSearchCollectionToolFunction:
         result = search_collection_tool.fn("my_collection", "test query")
 
         assert result["query"] == "test query"
-        assert result["total_collections_searched"] == 1
-        assert result["total_documents_found"] == 1
-        assert result["total_chunks_found"] == 1
-        assert len(result["results"]) == 1
-        assert result["results"][0]["collection"] == "my_collection"
+        assert result["counts"] == {"documents": 1, "hits": 1}
+        assert result["documents"][0]["collection"] == "my_collection"
         mock_search.assert_called_once()
 
     @patch.object(tools_module, "svc_status")
