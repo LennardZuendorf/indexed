@@ -146,6 +146,53 @@ class ModelAcquisitionError(CoreError):
         )
 
 
+class CollectionRecoveryError(CoreError):
+    """A collection's on-disk generations could not be proven restorable.
+
+    Raised when an EXPLICITLY requested collection was stranded by an
+    interrupted replace and recovery could not restore a complete generation.
+    Nothing is ever deleted: recovery either MOVED the data to
+    ``<collections>/.recovery/<name>/`` (``quarantine_path``) or left it where
+    it was (``canonical_path``), and the message says which. Fails loud because
+    silently omitting the collection would read as "no such collection" and the
+    preserved data would never be found.
+    """
+
+    def __init__(
+        self,
+        collection: str,
+        *,
+        reason: str,
+        quarantine_path: object | None = None,
+        canonical_path: object | None = None,
+    ) -> None:
+        self.collection = collection
+        self.reason = reason
+        self.quarantine_path = quarantine_path
+        self.canonical_path = canonical_path
+        if quarantine_path is not None:
+            where = (
+                f" Its data is preserved under '{quarantine_path}' — inspect that "
+                f"directory and move it back by hand, or rebuild the collection "
+                f"with 'indexed index create'."
+            )
+        elif canonical_path is not None:
+            where = (
+                f" Its data is still at '{canonical_path}' but no complete copy "
+                f"survives there — rebuild the collection with "
+                f"'indexed index create'."
+            )
+        else:
+            where = (
+                " Nothing was moved and nothing was deleted: retry once the "
+                "process writing it has finished, or rebuild the collection with "
+                "'indexed index create'."
+            )
+        super().__init__(
+            f"Collection '{collection}' could not be recovered: {reason}.{where}"
+        )
+
+
 class UnknownVectorStoreError(CoreError):
     """A v2 collection records a vector store this installation can't load.
 
@@ -167,6 +214,7 @@ class UnknownVectorStoreError(CoreError):
 
 
 __all__ = [
+    "CollectionRecoveryError",
     "CoreError",
     "CoreV2Error",
     "EngineMismatchError",

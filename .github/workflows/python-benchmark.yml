@@ -9,28 +9,34 @@ on:
       - '.github/workflows/python-benchmark.yml'
       - 'tests/system/**'
       - 'tests/benchmarks/**'
+  # Dispatch-only refresh lane: run this workflow on `main` and the second job
+  # re-measures the numbers and opens a baseline-only PR. A PR run never writes.
+  # See .spec/tech.md § CI Benchmarking and issue #253.
+  workflow_dispatch:
 
-# Read-only default; the benchmark job below opts into the writes it needs.
+# Read-only default; each job below opts into exactly the writes it needs.
 permissions:
   contents: read
 
 concurrency:
-  group: benchmark-${{ github.event.pull_request.number }}
+  group: benchmark-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   benchmark:
-    if: github.event.pull_request.draft != true
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     name: Performance Benchmarks
     runs-on: ubuntu-latest
+    # Measure and gate, never write. `contents: read` is the hard guarantee that
+    # this job cannot move .benchmarks/baselines/main.json: the action's update
+    # path stages that file and pushes a `[skip ci]` commit, so with no write
+    # scope the push cannot succeed. Do NOT grant `contents: write` here again —
+    # it leaves the PR head as an untested SHA and hands the gate its own
+    # numbers, which is the defect in #253. The baseline moves only through
+    # `refresh-baseline` below, as a reviewed PR.
     permissions:
-      contents: read  # The gate must never push: main's baseline is not a PR's to move
-      pull-requests: write  # Required to comment on PRs
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.14"]  # Use single version for consistent benchmarks
-
+      contents: read
+      pull-requests: write  # required to post the report comment
     steps:
     - name: Cache HuggingFace embedding model
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -43,10 +49,15 @@ jobs:
     # as 0.0.0.postN+g<sha> rather than a tag-derived version. Harmless here —
     # nothing under tests/system or tests/benchmarks asserts a version — but it
     # is why the "every workflow uses fetch-depth: 0" rule has an exception.
+    #
+    # The `with:` block is anchored and reused verbatim by the refresh job, so
+    # the gate and the refresh can never disagree on tolerances or thresholds.
     - name: Run benchmarks
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
-      with:
-        python-version: ${{ matrix.python-version }}
+      with: &benchmark-inputs
+        # One interpreter, pinned: numbers from different interpreters are not
+        # comparable, and the baseline is written by whichever run refreshes it.
+        python-version: "3.14"
         github-token: ${{ secrets.GITHUB_TOKEN }}
         setup-command: python -m pip install uv && python -m uv sync
         pre-benchmark-command: |
@@ -61,11 +72,136 @@ jobs:
           --benchmark-json=benchmark-results.json
           -v
         cross-branch-tolerance: 20
-        # Matches PR #254's value: this PR job holds `contents: read`, so it
-        # measures, comments and gates but can never write the baseline — the
-        # real guarantee. `baseline-guard.yml` owns `main`'s file, and a drift
-        # the gate would have blessed is reported in the PR comment instead
-        # (#253). Aligned with #254 so the two changes merge cleanly.
+        # Inert by design: far beyond any real drift, so a PR run never stages a
+        # baseline commit in the first place. It cannot be the guarantee on its
+        # own — the action also flags an update when the comparison is skipped
+        # for a hardware mismatch (exit 3) or when main has no baseline yet, and
+        # no tolerance value covers those. `contents: read` above does.
         update-tolerance: 1000
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
+
+  refresh-baseline:
+    # Dispatch-only and main-only. A baseline move is never a side effect of
+    # somebody else's PR: this run measures main, then opens a PR that changes
+    # nothing but the baseline file, so the move is reviewed like any other
+    # change (and the guard allows a baseline-only PR — see
+    # .github/workflows/baseline-guard.yml).
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: Refresh main baseline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # push the refresh branch
+      pull-requests: write  # open the refresh PR
+    steps:
+    - name: Cache HuggingFace embedding model
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
+        key: hf-model-all-MiniLM-L6-v2
+
+    # Same pin, same inputs as the PR job. The action's update path is
+    # pull_request-only, so this run never pushes anything; its "Save baseline"
+    # step rewrites .benchmarks/baselines/main.json in the workspace and that
+    # rewritten file is the refresh. A >20% slowdown against main's previous
+    # numbers fails the run here instead — that is a regression to investigate,
+    # not a baseline to adopt.
+    - name: Measure main
+      uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
+      with: *benchmark-inputs
+
+    - name: Summarise drift against main's baseline
+      id: drift
+      env:
+        FILE: .benchmarks/baselines/main.json
+        DRIFT_PCT: "5"
+      run: |
+        set -euo pipefail
+        # The committed file is main's reference; the workspace copy is what
+        # this run just measured.
+        git show "HEAD:$FILE" > "${RUNNER_TEMP}/committed-baseline.json"
+        python - <<'PY'
+        import json, os, pathlib
+
+        old = json.load(open(f"{os.environ['RUNNER_TEMP']}/committed-baseline.json"))
+        new = json.load(open(os.environ["FILE"]))
+        out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+        limit = float(os.environ["DRIFT_PCT"])
+
+        def fingerprint(doc):
+            mi, cpu = doc.get("machine_info", {}), doc.get("machine_info", {}).get("cpu", {})
+            return (cpu.get("brand_raw"), cpu.get("arch"), cpu.get("count"), mi.get("system"))
+
+        if fingerprint(old) != fingerprint(new):
+            # Adopting another machine's numbers would poison the reference the
+            # gate compares against; the action's own compare gate skips these.
+            print(f"::notice::Hardware changed ({fingerprint(old)} -> {fingerprint(new)}); not refreshing the baseline.")
+            out.write_text("moved=false\n")
+            raise SystemExit(0)
+
+        def means(doc):
+            return {
+                b.get("fullname") or b.get("name"): b["stats"]["mean"]
+                for b in doc.get("benchmarks", [])
+            }
+
+        was, now = means(old), means(new)
+        rows = []
+        for name in sorted(set(was) & set(now)):
+            pct = (now[name] - was[name]) / was[name] * 100 if was[name] else 0.0
+            rows.append((pct, name, was[name], now[name]))
+
+        moved = [r for r in rows if abs(r[0]) > limit]
+        dropped = sorted(set(was) ^ set(now))
+        for name in dropped:
+            print(f"::warning::Benchmark {name} is only in one of the two files; not compared.")
+
+        table = [
+            "| Benchmark | Baselines | This run | Change |",
+            "|---|---|---|---|",
+        ] + [
+            f"| `{name}` | {before * 1000:.2f} ms | {after * 1000:.2f} ms | {pct:+.1f}% |"
+            for pct, name, before, after in sorted(rows, key=lambda r: -abs(r[0]))
+            if abs(pct) > limit
+        ]
+        pathlib.Path("drift-table.md").write_text("\n".join(table) + "\n")
+        for pct, name, before, after in sorted(rows, key=lambda r: -abs(r[0]))[:5]:
+            print(f"{pct:+7.1f}%  {name}  ({before * 1000:.2f} -> {after * 1000:.2f} ms)")
+        print(f"{len(moved)} of {len(rows)} benchmarks moved more than {limit:g}%.")
+        out.write_text("moved=true\n" if moved else "moved=false\n")
+        PY
+
+    - name: Open a baseline-refresh PR when the numbers moved
+      if: steps.drift.outputs.moved == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        FILE: .benchmarks/baselines/main.json
+        BRANCH: chore/benchmark-baseline-refresh
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # Detached HEAD or branch: -B works for both.
+        git checkout -B "$BRANCH"
+        git add "$FILE"
+        git commit -m "chore(benchmark): refresh main baseline"
+        git push --force origin "$BRANCH"
+        {
+          echo "Re-measures \`main\` and stores the numbers this run produced."
+          echo
+          echo "Changes only \`$FILE\` — the one shape of baseline move a PR may"
+          echo "make (see \`.spec/tech.md\` § CI Benchmarking). No code change, so no"
+          echo "gate decision here is made against numbers this PR writes."
+          echo
+          cat drift-table.md
+          echo
+          echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        } > "${RUNNER_TEMP}/refresh-body.md"
+        if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qv '^0$'; then
+          gh pr edit "$BRANCH" --body-file "${RUNNER_TEMP}/refresh-body.md"
+          echo "Refresh PR already open — branch force-pushed and body refreshed."
+          exit 0
+        fi
+        gh pr create --base main --head "$BRANCH" \
+          --title "chore(benchmark): refresh main baseline" \
+          --body-file "${RUNNER_TEMP}/refresh-body.md"
