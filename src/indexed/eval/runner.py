@@ -41,14 +41,17 @@ from indexed.eval.cases import (
     DEFAULT_CORPUS_MANIFEST,
     Case,
     CaseSet,
+    EvalDataError,
     corpus_revision,
     load_case_set,
 )
 from indexed.eval.metrics import aggregate, score_case
+from indexed.eval.runtime_config import evaluation_config, source_environment
 
 REPORT_SCHEMA = "indexed.eval.report.v1"
 DEFAULT_COLLECTION = "eval-corpus"
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_RERANKER = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 @dataclass(frozen=True)
@@ -65,8 +68,18 @@ class RunConfig:
     top_k: int = 5
     max_docs: int = 10
     rerank: bool = False
+    embedding_model: str = DEFAULT_MODEL
+    embedding_batch_size: int = 32
+    score_threshold: float = 0.0
+    reranker_model: str = DEFAULT_RERANKER
+    reranker_top_n: int = 10
 
     def __post_init__(self) -> None:
+        """Reject unsupported engine settings and unreachable hit-rate cutoffs."""
+        if self.engine == "1" and self.rerank:
+            raise ValueError("rerank is only supported by engine '2'")
+        if self.engine == "1" and self.embedding_model != DEFAULT_MODEL:
+            raise ValueError("engine '1' uses the fixed eval source embedding model")
         if self.top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
         if self.max_docs < self.top_k:
@@ -119,6 +132,7 @@ def build_collection(
 
 
 def _hf_cache_dir() -> Path:
+    """Resolve the Hub cache using HF_HUB_CACHE, HF_HOME, then the home default."""
     explicit = os.environ.get("HF_HUB_CACHE")
     if explicit:
         return Path(explicit)
@@ -128,31 +142,53 @@ def _hf_cache_dir() -> Path:
     return Path.home() / ".cache" / "huggingface" / "hub"
 
 
-def _model_cache_hint(model: str) -> Dict[str, Any]:
+def _model_cache_hint(model: str, *, engine: str = "2") -> Dict[str, Any]:
     """Where the embedding weights come from — recorded so drift is visible.
 
-    A cache hit means a run needs no network; a miss means the first run
-    downloads, which is provisioning, not a metric difference.
+    Repo-ID loaders require a main reference, config and weights. V1 instead
+    loads its selected snapshot path directly and supports orphan snapshots.
     """
     cache = _hf_cache_dir()
-    slug = "models--" + model.replace("/", "--")
+    repo_id = model if "/" in model else f"sentence-transformers/{model}"
+    slug = "models--" + repo_id.replace("/", "--")
     snapshots = cache / slug / "snapshots"
     weights: List[str] = []
-    if snapshots.is_dir():
-        for snapshot in snapshots.iterdir():
-            weights.extend(
-                str(path.name)
-                for path in snapshot.iterdir()
-                if path.suffix in {".bin", ".safetensors"}
-            )
+    selected = None
+    reference = cache / slug / "refs" / "main"
+    if reference.is_file():
+        snapshot = snapshots / reference.read_text().strip()
+        if snapshot.is_dir():
+            selected = snapshot
+    elif engine == "1" and snapshots.is_dir():
+        selected = next(
+            (
+                snapshot
+                for snapshot in sorted(snapshots.iterdir())
+                if snapshot.is_dir()
+                and any(
+                    (snapshot / name).is_file()
+                    for name in ("model.safetensors", "pytorch_model.bin")
+                )
+            ),
+            None,
+        )
+    if selected is not None and (engine == "1" or (selected / "config.json").is_file()):
+        weights = [
+            name
+            for name in ("model.safetensors", "pytorch_model.bin")
+            if (selected / name).is_file()
+        ]
     return {
         "cache_dir": str(cache),
         "present": bool(weights),
         "weights": sorted(set(weights)),
+        "selected_snapshot": selected.name if selected and weights else None,
+        "snapshot_path": str(selected) if selected and weights else None,
     }
 
 
 def _environment() -> Dict[str, Any]:
+    """Record interpreter, platform, installed version and measured source provenance."""
     try:
         version = importlib.metadata.version("indexed-sh")
     except importlib.metadata.PackageNotFoundError:  # pragma: no cover - dev tree
@@ -161,13 +197,14 @@ def _environment() -> Dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "indexed_version": version,
-        "indexed_git_rev": os.environ.get("GIT_COMMIT", ""),
+        **source_environment(),
     }
 
 
 def _search_one(
     query: str, collections_path: Path, config: RunConfig
 ) -> Dict[str, Any]:
+    """Search the isolated collection with the pinned retrieval settings."""
     from indexed.core import engine
 
     return engine.search(
@@ -177,6 +214,11 @@ def _search_one(
         include_matched_chunks=True,
         collections_path=str(collections_path),
         rerank=config.rerank,
+        score_threshold=(
+            config.score_threshold
+            if config.engine == "2" or config.score_threshold > 0
+            else None
+        ),
     )
 
 
@@ -186,6 +228,7 @@ def _case_record(
     config: RunConfig,
     elapsed_ms: float,
 ) -> Dict[str, Any]:
+    """Score one facade response and attach judgments, timing and ranking evidence."""
     hits, error = hits_from_engine_result(result, collection=config.collection)
     ranking = document_ranking(hits)
     record = score_case(
@@ -229,6 +272,16 @@ def run_eval(
 
     case_set: CaseSet = load_case_set(cases_path)
     revision = corpus_revision(corpus_dir, corpus_manifest, verify=verify_corpus)
+    if case_set.corpus_id != revision["corpus_id"]:
+        raise EvalDataError(f"{cases_path}: corpus_id does not match {corpus_manifest}")
+    names = {entry["path"].lower() for entry in revision["files"]}
+    for case in case_set.cases:
+        for field in ("relevant", "distractors"):
+            unknown = set(doc.lower() for doc in getattr(case, field)) - names
+            if unknown:
+                raise EvalDataError(
+                    f"{cases_path}: {case.id} {field} documents are not in corpus: {sorted(unknown)}"
+                )
 
     owns_collections = collections_path is None
     workdir: Optional[Path] = None
@@ -240,21 +293,30 @@ def run_eval(
     collections_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        build_collection(
-            corpus_dir, collections_path, config, connector_factory=connector_factory
-        )
+        with evaluation_config(config) as applied_config:
+            build_collection(
+                corpus_dir,
+                collections_path,
+                config,
+                connector_factory=connector_factory,
+            )
 
-        records: List[Dict[str, Any]] = []
-        embedding_model = ""
-        score_kind = ""
-        for case in case_set.cases:
-            started = time.perf_counter()
-            result = _search_one(case.query, collections_path, config)
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
-            payload = result.get(config.collection) or {}
-            embedding_model = embedding_model or str(payload.get("indexerName") or "")
-            score_kind = score_kind or str(payload.get("scoreKind") or "")
-            records.append(_case_record(case, result, config, elapsed_ms))
+            records: List[Dict[str, Any]] = []
+            embedding_model = ""
+            score_kind = ""
+            for case in case_set.cases:
+                started = time.perf_counter()
+                result = _search_one(case.query, collections_path, config)
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
+                record = _case_record(case, result, config, elapsed_ms)
+                records.append(record)
+                if not record["error"]:
+                    payload = result[config.collection]
+                    if config.engine == "2":
+                        embedding_model = embedding_model or payload.get(
+                            "indexerName", ""
+                        )
+                    score_kind = score_kind or payload.get("scoreKind", "")
     finally:
         if owns_collections and workdir is not None:
             shutil.rmtree(workdir, ignore_errors=True)
@@ -276,14 +338,24 @@ def run_eval(
         },
         "corpus": revision,
         "config": {
-            **config.as_dict(),
-            "embedding_model": embedding_model or DEFAULT_MODEL,
+            **applied_config,
+            "embedding_model": embedding_model or applied_config["embedding_model"],
             "score_kind": score_kind,
         },
         "environment": {
             **_environment(),
             "embedding_model_cache": _model_cache_hint(
-                embedding_model or DEFAULT_MODEL
+                embedding_model or applied_config["embedding_model"],
+                engine=config.engine,
+            ),
+            **(
+                {
+                    "reranker_model_cache": _model_cache_hint(
+                        applied_config["reranker_model"]
+                    )
+                }
+                if config.rerank
+                else {}
             ),
         },
         "metrics": metrics,

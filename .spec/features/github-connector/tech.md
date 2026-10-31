@@ -3,7 +3,7 @@ type: feature-tech
 feature: github-connector
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-09-07
+updated: 2026-10-30
 ---
 
 # Feature: GitHub Projects & Issues Connector — Architecture
@@ -240,7 +240,7 @@ Core v2 equivalent (v2 only has document-level hash-skip). Research during
 implementation confirmed this is a cross-cutting engine change, not part of
 "making the GitHub connector work" — moved out of this plan entirely (see
 plan.md unit 6 and
-[docs/superpowers/plans/2026-09-05-github-connector.md § Out of scope](../../../docs/superpowers/plans/2026-09-05-github-connector.md)).
+[the retained feature plan](plan.md)).
 Needs its own follow-up plan.
 <!-- /merge -->
 

@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-29
+updated: 2026-10-31
 ---
 
 # Lessons Learned
@@ -1196,3 +1196,63 @@ with `git add`/`git status`, since that's what CI actually runs.
   and passes, so the gate is disarmed while all its checks are green. Require
   the file to exist at HEAD before opening the door; a refresh *rewrites*, it
   never removes.
+
+## Retrieval evaluation review (#265, 2026-10-30)
+
+- [workflow] Discover optional paths and JSON keys before reading them. Repeated
+  guessed filenames, absent worktree environments and assumed review-envelope
+  keys caused avoidable failed commands. Inspect anchors and the working diff
+  after a failed multi-file patch; insert tests at complete function boundaries.
+- [testing] Temporary Git fixtures must disable inherited signing and hooks.
+  Sandbox runs may forbid pytest-rerunfailures' loopback listener before any
+  test collects; record that environment failure and use an appropriate scoped
+  retry. Full service/socket checks need their actual execution permissions.
+- [environment] Provision the locked worktree environment; an offline uv cache
+  can lack a wheel. Use an explicit writable cache for sandboxed read-only
+  probes. Do not count a failed setup as a product test failure.
+  When process inventory is unavailable, use the tool session and advancing log
+  instead of retrying unsupported OS process services.
+- [models] A cached filename can be a dangling weight symlink. Confirm regular
+  usable weights and the same selected snapshot that the loader resolves.
+  Repo-ID v2/reranker loads require their active ref; a v1 direct-path fallback
+  must not be advertised as a snapshot selected by a repo-ID loader.
+- [testing] Resolve the intended model cache before HOME isolation, then use
+  that exact cache for both availability and loading. Validate structural/config
+  evidence before gating exact metrics on Python, platform, numerical libraries
+  and model identity. A module unit marker also selects integration-decorated
+  tests; classify mixed files per test and check marker intersections.
+- [config] Whole-app binding can reject unrelated connector/MCP settings during
+  evaluation. Scope the measured namespaces, pin effective settings, and restore
+  preexisting overrides after success, failure and nested scopes. Deep-copy the
+  overlay before mutation so earlier snapshots cannot alias the new values.
+- [validation] Reject falsey wrong types before truthiness checks. Otherwise
+  malformed error arrays/booleans and case-label fields become healthy misses.
+  Reject ambiguous scheme-like basenames and every unpinned/nested input byte.
+- [reports] Reconcile query IDs, immutable judgments, saved rankings, derived
+  ranks/RR/hits/leakage, counts and failures before deciding a verdict. Compare
+  all effective config fields, reject recursive nonfinite values, and recompute
+  leakage at the requested cut. Missing IDs or equal missing hashes are not
+  evidence of a comparable experiment.
+- [errors] JSON's integer digit limit raises plain ValueError; finite checks on
+  enormous integers can raise OverflowError. Translate malformed input at the
+  read boundary to exit 2. Preserve the producer's valid unknown-chunk sentinel
+  rather than rejecting reports the runner itself emits.
+- [fixtures] Nonblank anchors do not prove relevance. Independent semantic
+  review found real answers labeled distractors, omitted code/docs and an error
+  identifier used to justify the wrong boundary. Re-audit labels after corpus
+  expansion, pin direct evidence when available, and freeze labels before scores.
+- [provenance] Git snapshots and authored sanitized extracts need different
+  provenance. Hash local extracts and capture their upstream identity separately.
+  Record dirty-worktree status and a source fingerprint when measurements precede
+  a commit gate; a Git head alone cannot identify uncommitted measured code.
+  Include new files in whitespace checks before freezing evidence. Preserve
+  intentional snapshot bytes and report any trailing-blank-line exceptions.
+  Exclude byte-pinned inputs from whitespace-rewriting hooks, as for benchmark
+  baselines; a commit hook otherwise invalidates their recorded content hashes.
+- [integration] Rebase size caps must retain both legitimate branches' deltas.
+  Measure the combined tree and final review tests; do not restore an older cap
+  or stale benchmark baseline. Distinguish local repairs from published PR/CI state.
+- [spec] Validate scenario syntax with explicit WHEN/THEN bullets. Keep structural
+  validation separate from the pre-merge drift audit: legacy historical evidence
+  and active local plan artifacts can fail the latter. Report both results and
+  baseline the flagged lines instead of calling an unrelated cleanup a PR fix.

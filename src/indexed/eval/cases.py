@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -65,10 +67,12 @@ class CaseSet:
 
     @property
     def ids(self) -> List[str]:
+        """Return case identifiers in their committed order."""
         return [case.id for case in self.cases]
 
 
 def _sha256_file(path: Path) -> str:
+    """Hash file bytes in bounded blocks without loading the whole file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 16), b""):
@@ -77,8 +81,41 @@ def _sha256_file(path: Path) -> str:
 
 
 def _require(condition: bool, message: str) -> None:
+    """Raise EvalDataError when an artifact contract is violated."""
     if not condition:
         raise EvalDataError(message)
+
+
+def _load_object(path: Path) -> Dict[str, Any]:
+    """Read a JSON object and wrap unreadable or malformed input as EvalDataError."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise EvalDataError(f"{path}: cannot read JSON: {exc}") from exc
+    _require(isinstance(raw, dict), f"{path}: top level must be an object")
+    return raw
+
+
+def _text(value: Any) -> bool:
+    """Accept strings containing at least one non-whitespace character."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _flat_name(value: Any, where: str) -> str:
+    """Validate a flat document name and return its case-insensitive identity."""
+    _require(
+        _text(value)
+        and value == value.strip()
+        and value not in {".", ".."}
+        and not any(char in value for char in "/\\:\x00"),
+        f"{where}: expected a flat document path",
+    )
+    return value.lower()
+
+
+def _hash(value: Any) -> bool:
+    """Accept only lowercase hexadecimal SHA-256 digests."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def load_case_set(path: Optional[Path] = None) -> CaseSet:
@@ -91,21 +128,28 @@ def load_case_set(path: Optional[Path] = None) -> CaseSet:
     path = Path(path) if path is not None else DEFAULT_CASES_PATH
     if not path.is_file():
         raise EvalDataError(f"case set not found: {path}")
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = _load_object(path)
 
     _require(
         raw.get("schema") == CASES_SCHEMA,
         f"{path}: expected schema {CASES_SCHEMA!r}, got {raw.get('schema')!r}",
     )
-    _require(bool(raw.get("cases")), f"{path}: case set is empty")
+    _require(isinstance(raw.get("cases"), list), f"{path}: cases must be a list")
+    _require(bool(raw["cases"]), f"{path}: case set is empty")
+    _require(_text(raw.get("corpus_id")), f"{path}: missing 'corpus_id'")
+    _require(
+        isinstance(raw.get("description", ""), str),
+        f"{path}: description must be a string",
+    )
 
     cases: List[Case] = []
     seen: set[str] = set()
     for index, entry in enumerate(raw["cases"]):
         where = f"{path}: cases[{index}]"
+        _require(isinstance(entry, dict), f"{where}: must be an object")
         case_id = entry.get("id")
         _require(
-            isinstance(case_id, str) and bool(case_id),
+            _text(case_id) and case_id == case_id.strip(),
             f"{where}: missing 'id'",
         )
         _require(case_id not in seen, f"{where}: duplicate id {case_id!r}")
@@ -126,8 +170,8 @@ def load_case_set(path: Optional[Path] = None) -> CaseSet:
             f"{where} ({case_id}): missing 'rationale' — relevance must be "
             "arguable against the corpus",
         )
-        relevant = entry.get("relevant") or []
-        distractors = entry.get("distractors") or []
+        relevant = entry.get("relevant", [])
+        distractors = entry.get("distractors", [])
         _require(
             isinstance(relevant, list) and isinstance(distractors, list),
             f"{where} ({case_id}): 'relevant'/'distractors' must be lists",
@@ -142,11 +186,21 @@ def load_case_set(path: Optional[Path] = None) -> CaseSet:
             f"{where} ({case_id}): an unanswerable case needs at least one "
             "distractor, or it measures nothing",
         )
-        overlap = set(relevant) & set(distractors)
+        canonical_relevant = [_flat_name(doc, where) for doc in relevant]
+        canonical_distractors = [_flat_name(doc, where) for doc in distractors]
+        for names in (canonical_relevant, canonical_distractors):
+            _require(
+                len(names) == len(set(names)), f"{where}: duplicate document identity"
+            )
+        overlap = set(canonical_relevant) & set(canonical_distractors)
         _require(
             not overlap,
             f"{where} ({case_id}): {sorted(overlap)} listed as both relevant "
             "and distractor",
+        )
+        _require(
+            isinstance(entry.get("answered_by", ""), str),
+            f"{where}: answered_by must be a string",
         )
         cases.append(
             Case(
@@ -191,19 +245,49 @@ def corpus_revision(
     if not manifest_path.is_file():
         raise EvalDataError(f"corpus manifest not found: {manifest_path}")
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = _load_object(manifest_path)
     _require(
         manifest.get("schema") == CORPUS_SCHEMA,
         f"{manifest_path}: expected schema {CORPUS_SCHEMA!r}",
     )
+    for key in ("corpus_id", "source_repo_rev"):
+        _require(_text(manifest.get(key)), f"{manifest_path}: missing '{key}'")
+    _require(
+        _hash(manifest.get("tree_sha256")), f"{manifest_path}: invalid tree_sha256"
+    )
+    entries = manifest.get("files")
+    if not isinstance(entries, list) or not entries:
+        raise EvalDataError(f"{manifest_path}: files must be a non-empty list")
+    identities: set[str] = set()
+    for index, entry in enumerate(entries):
+        where = f"{manifest_path}: files[{index}]"
+        _require(isinstance(entry, dict), f"{where}: must be an object")
+        name = _flat_name(entry.get("path"), where)
+        _require(name not in identities, f"{where}: duplicate document path {name!r}")
+        identities.add(name)
+        _require(_hash(entry.get("sha256")), f"{where}: invalid sha256")
+        _require(
+            type(entry.get("bytes")) is int and entry["bytes"] >= 0,
+            f"{where}: invalid bytes",
+        )
+        _require(_text(entry.get("source")), f"{where}: invalid source")
 
     files: List[Dict[str, Any]] = []
     lines: List[str] = []
-    pinned = [entry["path"] for entry in manifest["files"]]
+    pinned = {entry["path"] for entry in entries}
+    for path in corpus_dir.iterdir():
+        _require(
+            stat.S_ISREG(path.lstat().st_mode),
+            f"corpus entry is not a regular file: {path}",
+        )
+        _require(
+            path.name in pinned,
+            f"corpus directory holds files the manifest does not pin: {path.name}",
+        )
     for entry in manifest["files"]:
         name = entry["path"]
         path = corpus_dir / name
-        if not path.is_file():
+        if not path.exists():
             raise EvalDataError(f"pinned corpus file missing: {path}")
         actual = _sha256_file(path)
         if verify and actual != entry["sha256"]:
@@ -212,26 +296,18 @@ def corpus_revision(
                 f"{entry['sha256']} — regenerate corpus.json deliberately if the "
                 "corpus really changed"
             )
-        files.append(
-            {"path": name, "sha256": actual, "source": entry.get("source", "")}
+        _require(
+            not verify or path.stat().st_size == entry["bytes"],
+            f"{manifest_path}: bytes mismatch for {name}",
         )
+        files.append({**entry, "sha256": actual, "bytes": path.stat().st_size})
         lines.append(f"{actual}  {name}\n")
 
-    # The tree hash covers the pinned names only, so an unpinned file sitting in
-    # the corpus directory would be indexed without moving the revision the
-    # report claims to have measured.
-    unpacked = sorted(
-        path.name
-        for path in corpus_dir.iterdir()
-        if path.is_file() and path.name not in set(pinned)
-    )
-    if unpacked:
-        raise EvalDataError(
-            f"corpus directory holds files the manifest does not pin: {unpacked} "
-            "— remove them, or pin them via scripts/build_eval_corpus.py"
-        )
-
     tree = hashlib.sha256("".join(sorted(lines)).encode("utf-8")).hexdigest()
+    _require(
+        not verify or tree == manifest["tree_sha256"],
+        f"{manifest_path}: tree_sha256 drift",
+    )
     return {
         "corpus_id": manifest.get("corpus_id", ""),
         "source_repo_rev": manifest.get("source_repo_rev", ""),

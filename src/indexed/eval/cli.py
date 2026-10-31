@@ -162,13 +162,13 @@ def compare_command(
     from indexed.eval.compare import load_report
 
     try:
-        result = compare_reports(
-            load_report(str(baseline)), load_report(str(report)), tolerance=tolerance
-        )
+        baseline_report = load_report(str(baseline))
+        candidate_report = load_report(str(report))
     except (OSError, ValueError) as exc:
         typer.echo(f"cannot read report: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
+    result = compare_reports(baseline_report, candidate_report, tolerance=tolerance)
     if as_json:
         typer.echo(json.dumps(result, indent=2))
     else:

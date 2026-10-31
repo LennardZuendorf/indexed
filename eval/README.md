@@ -1,203 +1,155 @@
 # Retrieval evaluation baseline
 
-Measured retrieval, not vibes. This directory holds a pinned corpus, a pinned
-set of judged queries, and the baseline numbers every later retrieval change is
-compared against — reranking, hybrid BM25+vector (#205), chunking, graph scoring.
+The harness measures document retrieval on a small pinned local corpus.
+It does not evaluate generated answers or prove general benchmark quality.
+Public website documentation remains a paired `indexed-web` follow-up to #204.
 
-What this is **not**: a claim about answer quality, faithfulness or task success.
-It measures one thing — *does the right document reach the top of the ranking* —
-against one corpus. Generated answers, LLM judges and cloud APIs are out of
-scope on purpose (both would add a second moving part to a number that only
-needs to detect movement).
+## Inputs and artifacts
 
-## Contents
-
-| Path | What it is |
+| Path | Purpose |
 |---|---|
-| `eval/corpus/` | The pinned corpus: 11 Markdown documents copied from this repo. |
-| `eval/corpus.json` | Manifest: `sha256` per file, `tree_sha256`, and the source repo revision. |
-| `eval/cases.json` | The case set: 15 queries, 11 answerable + 4 deliberately unanswerable. |
-| `eval/baseline.json` | The committed baseline report (numbers + per-query rankings). |
-| `scripts/build_eval_corpus.py` | Rebuilds `eval/corpus/` + `eval/corpus.json` from the repo (`--check` for drift). |
+| `eval/corpus/` | 16 flat files: 11 documentation snapshots, three native Python files, and two sanitized issue/PR extracts. |
+| `eval/corpus.json` | Corpus identity, per-file hashes, tree hash, and source provenance. |
+| `eval/sources/` | Authored sanitized GitHub extracts and their capture metadata/hashes. |
+| `eval/cases.json` | 23 judged probes: 19 answerable and four deliberately unanswerable. |
+| `eval/baseline.json` | Measured dense report. |
+| `eval/rerank-baseline.json` | Measured dense-plus-rerank report over identical cases. |
+| `eval/experiment.json` | Report hashes, configuration differences and per-case rank movement between modes. |
 
-Code lives in `src/indexed/eval/` and is exposed as the `indexed-eval` command.
+Code and documentation bytes come from `git show <source_repo_rev>:<source>`.
+The revision identifies the bytes actually read; it does not describe an
+uncommitted working-tree copy. Sanitized GitHub extracts are separate local
+snapshot inputs. Their entries record upstream URL, captured revision/time,
+sanitization notes, input path and hash. They do not claim that transformed
+text existed at the repository revision.
 
-## Provenance
+Per-file hashes and the sorted tree hash bind the corpus bytes.
+The runner refuses extra files, directories, symlinks, ambiguous paths,
+invalid artifact shapes, and mismatched corpus IDs before building.
 
-**Corpus** — a *copy*, never a reference: a doc edit in the repo must not silently
-move the baseline. The 11 documents are the project's own documentation
-(`README.md`, `AGENTS.md`, `.spec/*.md`) at
-`source_repo_rev 89a6cb0a5589d5d20ea9ae0676fcd427cc40dbf1`, tree hash
-`1343091323763f5a18c9d5eb44d0461408d8718688ec5e8118ae26d7a2fca533`. Every entry
-in `corpus.json` records the repo file it came from. `source_repo_rev` names the
-revision the branch was based on: the copy is taken from the working tree as it
-ships, so the per-file `sha256` values — which every run verifies — are the
-binding record, not the rev label.
-
-**Queries** — every query is a verbatim GitHub issue title from
-`LennardZuendorf/indexed`; the issue number is recorded per case. Nothing is
-invented to make the benchmark look good, and no query was written after seeing
-what the retriever returned.
-
-**Judgements** — each case lists the documents that genuinely answer it, the
-near-miss documents that do not, a rationale, and the anchor (`answered_by`) that
-justifies the call. An anchor is `file:line`, `file:first-last`, or a
-comma-separated list where a bare number keeps the previous file; the committed
-anchors are *resolved* by `tests/unit/indexed/eval/test_cases.py` against the
-pinned corpus (in range, on prose, and into a document the case judges relevant),
-because a line reference that points at a blank line is not evidence. Documents
-are matched by file name, so a judgement survives a corpus move.
-
-Four cases are **deliberately unanswerable** — an LSP server, a time-travel
-search mode, the LOC size gate, and this harness itself. A benchmark made only of
-answerable questions flatters a retriever that always returns something; these
-four make that behaviour visible.
-
-## Metrics
-
-Defined once, in `src/indexed/eval/metrics.py`:
-
-- **hit-rate@k** — fraction of answerable cases whose relevant document is ranked
-  at or above `k` (default `k = 5`).
-- **MRR** — mean of `1/rank` of the first relevant document, over the whole
-  returned ranking (not truncated at `k`); `0.0` when nothing relevant is
-  returned.
-- **Ties and duplicates** — the engine's order is the ranking; a document keeps
-  its first rank. No tie-break is invented, so recomputing metrics from a saved
-  ranking is identical by construction.
-- **Errors** — a collection that fails to load is a *trusted-context failure*:
-  excluded from both denominators and counted in `errors`, never scored as a miss.
-- **Unanswerable cases** — never enter hit-rate or MRR. They report
-  `distractor_leak`: whether a near-miss document reached the top `k`.
-
-## Baseline (measured 2026-10-29)
-
-```
-corpus   134309132376 (11 documents, tree pinned)
-cases    11 answerable, 4 unanswerable (3 leaked a near-miss), 0 errors
-hit@5    0.818      mrr 0.578
-model    sentence-transformers/all-MiniLM-L6-v2, cosine scores, rerank off
-engine   v2, max_docs 10, top_k 5
-latency  431 ms mean per query (406–547 ms, local CPU, model already loaded)
-```
-
-Per case (`rank` = rank of the first relevant document, `—` = outside `max_docs`):
-
-| Case (GitHub issue) | Expected | Rank |
-|---|---|---|
-| #205 hybrid search: BM25 + vector fusion | `plan.md` | 4 |
-| #112 MCP server serves stale collections | `tech.md`, `tech-app.md` | 1 |
-| #125 wrap v2 errors as CoreV2Error | `lessons.md` | 2 |
-| #186 engine-routing correctness gaps | `lessons.md` | 1 |
-| #123 jira attachment credentials | `tech-connectors.md` | 1 |
-| #61 migrate files parsing to Docling | `tech-parsing.md`, `README.md` | 3 |
-| #63 smart model caching | `lessons.md` | 2 |
-| #211 duplicate HuggingFace warning | `lessons.md` | 2 |
-| #66 pluggable embedding model | `plan.md` | **9 — miss at k=5** |
-| #185 `index create` flips a collection's engine | `tech.md`, `tech-core.md` | **6 — miss at k=5** |
-| #109 improve CLI search output | `tech-app.md` | 1 |
-| #241 `indexed lsp` (unanswerable) | — | distractor leak |
-| #204 retrieval eval harness (unanswerable) | — | distractor leak |
-| #147 time-travel search (unanswerable) | — | distractor leak |
-| #216 LOC size gate (unanswerable) | — | no leak (top 3 avoided the near-miss) |
-
-Reading it honestly: dense retrieval finds the right document for 9 of 11
-answerable questions inside the top 5, and both misses sit just outside the cut
-(rank 6 and rank 9) rather than nowhere. Both misses are questions whose answer
-lives in a *roadmap/decision* document that shares vocabulary with the technical
-reference docs — the classic case for hybrid lexical matching (#205). And
-`distractor_leak` is 3/4: three of the four unanswerable questions still get a
-confident top-5 of near-miss documents, which is exactly what a benchmark needs to
-keep in view. The fourth is the one piece of evidence that the retriever *can*
-rank a near-miss out of the cut on this corpus.
-
-## Running it
+`scripts/build_eval_corpus.py --check` verifies the pinned copies without
+writing. Source edits, renames and deletion at a valid newer Git revision
+are informational; corruption or missing pinned bytes fail. An invalid
+`--rev` always fails. Rebuild deliberately with:
 
 ```bash
-# Measure and print the numbers (needs the local embedding model; no keys, no network)
-uv run indexed-eval run --out /tmp/eval-report.json
-
-# Compare a fresh run against the committed baseline:
-# exit 0 = unchanged/improved, 1 = regressed, 2 = not comparable
-uv run indexed-eval run --out /tmp/eval-report.json && \
-  uv run indexed-eval compare --report /tmp/eval-report.json
-
-# The same comparison as a test (skips when the model is not cached)
-uv run pytest tests/unit/indexed/eval -q
+uv run python scripts/build_eval_corpus.py --rev <full-git-revision>
 ```
 
-A run builds the pinned corpus into a throwaway collections directory, so it
-never touches `~/.indexed`. The embedding model is read from the local
-HuggingFace cache; the report records the cache directory and whether weights
-were present, so a first-run download reads as provisioning, not as a metric
-change.
+## Judgments and metric definitions
 
-## Reproducibility
+The original 15 probes use public issue titles. Eight authored probes add
+exact symbols, config keys, error identifiers, issue/PR numbers,
+paraphrased implementation intent and rationale. Cases name relevant files,
+similar distractors, provenance, rationale and `answered_by` anchors.
 
-Two consecutive runs over the same corpus and model produce identical rankings,
-scores and metrics — only `generated_at` and `elapsed_ms` differ. The gated test
-`tests/unit/indexed/eval/test_runner.py::test_the_committed_baseline_reproduces`
-asserts exactly that against `eval/baseline.json`.
+Anchor tests resolve `file:line`, `file:first-last` and comma-separated
+references against the pinned files. They check document membership, line
+range and nonblank endpoints. They do not determine whether the prose or
+code supports the judgment. Review that relevance manually whenever fixtures
+or judgments change. Freeze judgments before measuring.
 
-Reproducibility is **within one environment**. A different interpreter or CPU
-build produces different embedding floats and therefore a different ranking: the
-same pinned corpus on x86_64 CI measured hit@5 0.909 against this baseline's 0.818
-on arm64, with three cases moving down and five up. That is why the report records
-the environment and `compare` prints `environment_changes` next to the metric
-delta instead of quietly scoring the difference as a ranking change. Compare runs
-from the same machine (or a pinned runner), and read a cross-environment diff as a
-smoke test, not a verdict.
+- Document ranking keeps the first occurrence of each canonical file name.
+  Ties preserve the engine's order.
+- Hit-rate@k is the fraction of scored answerable cases with any relevant
+  document in the first k results. Empty rankings count as misses.
+- Reciprocal rank is 1 divided by the first relevant document's rank, or zero
+  for a miss. MRR averages it over scored answerable cases; it is not cut at k.
+- Unanswerable cases are outside those denominators. Distractor leakage counts
+  unanswerable cases with a labeled distractor inside the first k results.
+- Collection load errors and malformed retrieval envelopes are trusted-context
+  failures. They are recorded separately and excluded from the denominators.
+  A report containing them cannot become a baseline.
 
-A report is comparable to another only when the corpus tree hash **and** the case
-set hash **and** the retrieval configuration all match; anything else is reported
-as `incomparable` (exit 2) instead of being dressed up as a regression or an
-improvement. A model swap or a `max_docs` change moves the numbers without being a
-ranking win, so it is never scored as one — the difference is listed under
-`config_changes` next to the metric delta for the human to read.
+Saved query identities, judgments, ranks, arithmetic, counts and failure
+summaries must agree before comparison. A report cannot improve by dropping
+a query or changing only a headline metric.
 
-A comparable run fails (exit 1) when a metric drops, when a case that used to be
-found moves *down* (even if another case compensates and the average is flat),
-when a case newly errors, or when `distractor_leak` rises. The unanswerable cases
-are part of the gate, not decoration.
+## Provision once, measure offline
 
-## Changing the baseline
+The default metric/unit path needs no model, network or credentials:
 
-The baseline moves only deliberately:
+```bash
+uv run pytest tests/unit/indexed/eval -m unit -q
+```
 
-1. Change the retrieval code or configuration and measure:
-   `uv run indexed-eval run --out /tmp/new.json`.
-2. Compare: `uv run indexed-eval compare --report /tmp/new.json`. The per-case
-   `improved` / `regressed` lists say *which* queries moved, not just whether the
-   average did.
-3. If the change is intended, commit the new baseline
-   (`uv run indexed-eval run --write-baseline`) in the same PR as the change and
-   say why in the PR body.
+Provision the embedding model with `indexed init`. Provisioning is the
+networked step; measurement uses the resulting local cache. Reranking also
+needs `cross-encoder/ms-marco-MiniLM-L-6-v2` locally. For example:
 
-Corpus changes are their own revision: `uv run python scripts/build_eval_corpus.py`
-(and `--check` in CI to catch accidental drift), then regenerate the baseline.
-Adding a case means a *real* query with a recorded origin, a rationale, and the
-anchor that justifies it — `eval/cases.json` is validated on every run, a case
-without provenance or rationale is refused, and the anchors are resolved by the
-test suite rather than trusted.
+```bash
+uv run indexed init --model sentence-transformers/all-MiniLM-L6-v2
+uv run python -c 'from huggingface_hub import snapshot_download; snapshot_download("cross-encoder/ms-marco-MiniLM-L-6-v2", allow_patterns=["config.json", "model.safetensors", "pytorch_model.bin", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.txt"])'
+```
 
-## Known limits
+Set `HF_HUB_CACHE` explicitly when using a separate cache.
+Use that same cache for availability checks and actual loads. Real-model tests
+capture the intended cache before pytest isolates HOME.
 
-- 15 cases over one documentation corpus: enough to detect a ranking change,
-  far too few to claim generality. Do not quote these numbers as a product
-  benchmark.
-- Document-level judgement only: it does not measure whether the *chunk* handed
-  to an agent is the useful one.
-- Document identity is the adapter's normalised basename, so two files with the
-  same name in one collection collapse into a single document and only the first
-  one can rank. The pinned corpus is flat, so this cannot bite here, but a corpus
-  with subdirectories needs an identity fix first.
-- The report's summary counts are aggregated from the per-query records but never
-  reconciled record-by-record, so read the per-query records when a count looks
-  wrong rather than trusting the header.
-- The corpus is documentation, not code. Code retrieval, and the GitHub
-  issue/PR text the roadmap promises later, need their own pinned corpus and
-  their own judgements.
-- Regression tolerance defaults to `0.0`: with 15 cases a single case moving is a
-  visible metric move, and one baseline run cannot yet separate signal from
-  noise. Set a tolerance from observed run-to-run variance once there is more
-  than one measurement, not from a percentage that sounds rigorous.
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run indexed-eval run --out /tmp/eval-dense.json
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run indexed-eval run --rerank --out /tmp/eval-rerank.json
+uv run indexed-eval compare --report /tmp/eval-dense.json
+uv run indexed-eval compare --baseline eval/rerank-baseline.json --report /tmp/eval-rerank.json
+```
+
+Reports record the corpus/case hashes, effective embedding/search/reranker
+settings, model cache snapshots, Python/platform, dependency versions and code
+provenance. Inspect these fields before attributing movement to ranking code.
+
+A same-environment baseline test always checks corpus, case and configuration
+identity. Exact numeric/rank assertions apply only to matching numerical
+environments. Different CPUs, Python/library builds or model snapshots can
+change retrieval floats even when metric arithmetic is deterministic.
+
+## Comparing and changing evidence
+
+`compare` returns 0 for unchanged/improved, 1 for regressed, and 2 for invalid
+or incomparable reports. Corpus, judgment or configuration changes are different
+experiments. Tolerance must be finite and nonnegative.
+
+A per-case rank drop, newly failed case, aggregate metric drop, or increased
+unanswerable leakage counts as regression. A compensating improvement cannot
+hide a regressed case. Recomputing metrics at a different k also recomputes
+leakage at that cut.
+
+Dense versus reranked reports intentionally differ in configuration.
+Present their side-by-side metrics and per-case movement as an experiment;
+ordinary comparison must keep returning incomparable across configurations.
+
+The recorded arm64/Python 3.13.11 experiment measured:
+
+| Mode | hit@5 | MRR | Unanswerable distractor leaks | Errors |
+|---|---:|---:|---:|---:|
+| Dense | 1.000000 | 0.808772 | 4/4 | 0 |
+| Dense + rerank | 1.000000 | 0.828947 | 3/4 | 0 |
+
+Both use corpus `8a52afa74226…` and case set `924efe7313ff…`.
+The full hashes and eight per-case rank movements are in
+[`experiment.json`](experiment.json). Some cases move down despite the higher
+average MRR. This small experiment sets no tolerance or general superiority
+claim. Both reports record the dirty working tree and exact source fingerprint
+measured before the commit gate. Saved metrics recompute identically in both modes.
+
+Update fixtures or judgments first, review anchors and labels, then regenerate
+both reports. Inspect failures and repeat metrics from the saved rankings.
+`--write-baseline` writes a local artifact; it does not create a Git commit.
+It refuses failures and unverified corpus drift. Commit and push only through
+the repository's human gates.
+
+## CI and limits
+
+`python-eval.yml` verifies the pinned corpus, runs harness tests, measures and
+compares, then uploads `retrieval-eval` artifacts. The informative measurement
+still runs after a harness-test failure when corpus verification succeeded;
+the failed test remains visible. Artifact upload runs even after failure.
+
+Phase one is informative. No hard gate or arbitrary regression tolerance is
+inferred from one measurement. Real missing/corrupt-collection tests use the
+facade with a local MockEmbedding; mock scores prove failure plumbing, not
+retrieval quality.
+
+The corpus remains small, flat and basename-identified. Nested corpora and
+duplicate canonical file names are refused. Sanitized GitHub text proves local
+fixture retrieval, not live connector behavior. Document-level relevance does
+not establish that every returned chunk is sufficient evidence for an agent.

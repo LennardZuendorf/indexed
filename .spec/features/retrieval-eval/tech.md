@@ -3,7 +3,7 @@ type: feature-tech
 feature: retrieval-eval
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # Feature: Retrieval Evaluation Baseline — Architecture
@@ -57,17 +57,29 @@ refused before anything is measured. `answered_by` is `file:line`,
 file); the loader cannot resolve it — it has no corpus path — so the test suite
 resolves every anchor against the pinned copy and fails on a line that is out of
 range, blank, or outside the case's relevant documents.
+These structural checks do not establish semantic relevance; fixture review
+must confirm that the cited text supports the judgment.
+
+Artifact loaders reject malformed JSON, wrong container/field types, ambiguous
+document identities and invalid flat paths with `EvalDataError`. Case and corpus
+IDs must match before a build. Every indexed file must be a declared regular
+file; nested or unpinned content is refused. Malformed retrieval envelopes are
+trusted-context failures, excluded from denominators and baseline writing.
 
 `eval/corpus.json` — `{schema: indexed.eval.corpus.v1, corpus_id,
 source_repo_rev, tree_sha256, files[{path, source, sha256, bytes}]}`.
 `tree_sha256` hashes the sorted `"<sha256>  <name>\n"` lines, so it is cheap to
 recompute and changes on any byte change. The runner verifies it by default; a
 drifted corpus is an error, not a footnote.
+Code and docs are copied from the stated Git revision. Sanitized GitHub extracts
+are local snapshot inputs with separate upstream URL, capture revision/time,
+sanitization notes and content hash; transformed bytes do not claim Git origin.
 
 `eval/baseline.json` — `indexed.eval.report.v1`: `case_set{path, sha256, cases}`,
 `corpus{tree_sha256, source_repo_rev, files[]}`, `config{engine, embedding_model,
 score_kind, rerank, top_k, max_docs}`, `environment{python, platform,
-indexed_version, embedding_model_cache{dir, present, weights}}`,
+indexed_version, embedding_model_cache{cache_dir, present, weights,
+selected_snapshot, snapshot_path}}`,
 `metrics{hit_rate, mrr, answerable, unanswerable, errors, k}`,
 `queries[]{id, query, provenance, rationale, relevant, distractors,
 ranked_docs[], ranking[{rank, doc, chunk, score, score_kind}],
@@ -81,9 +93,9 @@ unanswerable cases are scored only on `distractor_leak`.
 
 ## Determinism boundaries
 
-- Same corpus + same model + same config ⇒ identical rankings, scores (6 dp) and
-  metrics; only `generated_at` and `elapsed_ms` differ. Verified by running the
-  harness twice and by the gated test that reproduces `eval/baseline.json`.
+- Same corpus, model, config and numerical environment are the reproduction
+  boundary. The real-model test checks saved rankings and metrics within that
+  environment; metric recomputation from saved rankings is deterministic.
 - Model drift is *not* disguised as determinism: the model id, the score kind and
   the cache location/weights are recorded in every report, and a report whose
   configuration differs keeps its numbers but shows `config_changes`.
@@ -94,6 +106,13 @@ unanswerable cases are scored only on `distractor_leak`.
   because an `Optional[bool]` default of `None` was recorded as `rerank: null` and
   made an otherwise identical run report `incomparable`. The gated test asserts the
   whole `config` block equals the committed baseline's, not just the model.
+
+Comparison validates each report before arithmetic: experiment hashes/config,
+unique query identities, internally reconciled counts/failures, and metrics
+derived from saved rankings. All baseline query IDs must remain present;
+candidate-only errors remain reportable regressions. Tolerances must be finite
+and nonnegative. Dense/rerank experiments retain configuration incomparability.
+Both model identities, effective settings and cache snapshots are recorded.
 
 ## Testing
 
@@ -113,5 +132,13 @@ unanswerable cases are scored only on `distractor_leak`.
 - runner mechanics under `MockEmbedding` (report shape, failure classification,
   drift refusal) — the `MockEmbedding` path proves structure, not ranking, since
   all its scores tie;
-- one gated real-model test that reruns the pinned set and asserts the committed
-  baseline reproduces (`skipif not model_available()`).
+- one real-model test resolves availability after installing its explicit cache
+  fixture, checks corpus/case/config identity, then checks exact reproduction
+  only for matching Python/platform, numerical dependencies and model snapshot.
+
+Effective report settings include embedding batch size, score threshold and
+reranker identity/top-n. `ConfigService.temporary_overlay` restores prior values
+after every run; unrelated connector/MCP and other-engine sections are masked
+inside that scope. Both model caches record usable selected snapshot identity.
+Environment provenance includes numerical package versions, Git head, dirty
+status and a source/dependency fingerprint for measurements before a commit.

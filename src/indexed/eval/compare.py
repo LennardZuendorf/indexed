@@ -13,10 +13,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from indexed.eval.metrics import aggregate
+from indexed.eval.report_validation import (
+    REPORT_SCHEMA as REPORT_SCHEMA,
+    ReportValidationError as ReportValidationError,
+    _number,
+    report_problems as report_problems,
+)
 
 COMPARE_SCHEMA = "indexed.eval.compare.v1"
-REPORT_SCHEMA = "indexed.eval.report.v1"
 
 #: Absolute metric deltas smaller than this are noise, not movement.
 DEFAULT_TOLERANCE = 0.0
@@ -34,6 +38,7 @@ def _metric(report: Dict[str, Any], name: str) -> Optional[float]:
 
 
 def _by_id(report: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Index validated query records by identity, treating absent queries as empty."""
     return {record["id"]: record for record in report.get("queries") or []}
 
 
@@ -43,28 +48,30 @@ def _environment_value(report: Dict[str, Any], key: str) -> Optional[str]:
     return None if value is None else str(value)
 
 
-def report_problems(report: Dict[str, Any], label: str) -> List[str]:
-    """Why a report cannot be trusted as a measurement, if anything."""
-    problems: List[str] = []
-    if report.get("schema") != REPORT_SCHEMA:
-        problems.append(
-            f"{label} is not a {REPORT_SCHEMA} report (schema={report.get('schema')!r})"
-        )
-    metrics = report.get("metrics")
-    if not isinstance(metrics, dict) or not metrics:
-        problems.append(f"{label} carries no metrics")
-    if not isinstance(report.get("queries"), list):
-        problems.append(f"{label} carries no per-case records")
-    if not isinstance(report.get("corpus"), dict):
-        problems.append(f"{label} names no corpus revision")
-    if not isinstance(report.get("case_set"), dict):
-        problems.append(f"{label} names no case-set revision")
-    return problems
-
-
-def _recomputed_metrics(report: Dict[str, Any], k: int) -> Dict[str, Any]:
-    """Metrics recomputed from the per-case records (the report's own evidence)."""
-    return aggregate(report.get("queries") or [], k)
+def _invalid_result(reasons: List[str], tolerance: float) -> Dict[str, Any]:
+    """Keep invalid-input results compatible with summary and exit-code consumers."""
+    missing_metrics = {
+        "hit_rate": None,
+        "mrr": None,
+        "unanswerable_distractor_leaks": None,
+    }
+    return {
+        "schema": COMPARE_SCHEMA,
+        "verdict": VERDICT_INCOMPARABLE,
+        "comparable": False,
+        "incomparable_reasons": reasons,
+        "tolerance": tolerance if _number(tolerance) else None,
+        "baseline": {"generated_at": None, "corpus_tree": None, "case_set": None},
+        "candidate": {"generated_at": None, "corpus_tree": None, "case_set": None},
+        "config_changes": {},
+        "environment_changes": {},
+        "metrics": {
+            key: dict(missing_metrics) for key in ("baseline", "candidate", "delta")
+        },
+        "improved": [],
+        "regressed": [],
+        "newly_failed": [],
+    }
 
 
 def compare_reports(
@@ -85,6 +92,10 @@ def compare_reports(
     """
     reasons: List[str] = report_problems(baseline, "baseline")
     reasons.extend(report_problems(candidate, "candidate"))
+    if not _number(tolerance) or tolerance < 0:
+        reasons.append("tolerance must be finite and nonnegative")
+    if reasons:
+        return _invalid_result(reasons, tolerance)
 
     baseline_corpus = (baseline.get("corpus") or {}).get("tree_sha256")
     candidate_corpus = (candidate.get("corpus") or {}).get("tree_sha256")
@@ -112,7 +123,9 @@ def compare_reports(
             "candidate": candidate_config.get(key),
         }
         for key in sorted(set(baseline_config) | set(candidate_config))
-        if baseline_config.get(key) != candidate_config.get(key)
+        if key not in baseline_config
+        or key not in candidate_config
+        or baseline_config[key] != candidate_config[key]
     }
     for key in config_changes:
         reasons.append(f"config {key} differs")
@@ -127,22 +140,6 @@ def compare_reports(
         reasons.append("baseline has no measured metric (no answerable case scored)")
     if hit_after is None or mrr_after is None:
         reasons.append("candidate has no measured metric (no answerable case scored)")
-
-    # A report whose headline numbers disagree with its own per-case records was
-    # edited, not measured.
-    for label, report, metrics in (
-        ("baseline", baseline, baseline_metrics),
-        ("candidate", candidate, candidate_metrics),
-    ):
-        if isinstance(metrics.get("k"), int) and isinstance(
-            report.get("queries"), list
-        ):
-            rebuilt = _recomputed_metrics(report, metrics["k"])
-            if (rebuilt["hit_rate"], rebuilt["mrr"]) != (
-                metrics.get("hit_rate"),
-                metrics.get("mrr"),
-            ):
-                reasons.append(f"{label} metrics contradict its per-case records")
 
     deltas = {
         "hit_rate": (
@@ -159,6 +156,9 @@ def compare_reports(
 
     before_cases = _by_id(baseline)
     after_cases = _by_id(candidate)
+    missing = sorted(set(before_cases) - set(after_cases))
+    if missing:
+        reasons.append(f"candidate is missing baseline query IDs: {', '.join(missing)}")
     improved: List[Dict[str, Any]] = []
     regressed: List[Dict[str, Any]] = []
     newly_failed: List[str] = []
@@ -170,6 +170,18 @@ def compare_reports(
             if after is not None and after.get("error"):
                 newly_failed.append(case_id)
             continue
+        for field in (
+            "query",
+            "relevant",
+            "distractors",
+            "provenance",
+            "rationale",
+            "answered_by",
+        ):
+            if before.get(field) != after.get(field):
+                reasons.append(
+                    f"query {case_id} {field} differs under the same case set"
+                )
         if after.get("error") and not before.get("error"):
             newly_failed.append(case_id)
         before_rr = float(before.get("reciprocal_rank") or 0.0)

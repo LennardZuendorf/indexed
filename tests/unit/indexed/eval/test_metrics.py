@@ -18,6 +18,9 @@ from indexed.eval.metrics import (
 )
 
 
+pytestmark = pytest.mark.unit
+
+
 def _case(
     ranked,
     relevant,
@@ -112,6 +115,7 @@ def test_unanswerable_case_without_a_distractor_leak() -> None:
 
 
 def test_recomputing_metrics_from_saved_records_is_identical() -> None:
+    """Keep aggregation reproducible while excluding failures and unanswerable cases."""
     records = [
         _case(["a.md", "target.md"], ["target.md"], case_id="one"),
         _case(["target.md"], ["target.md"], case_id="two"),
@@ -148,3 +152,10 @@ def test_aggregate_derives_the_hit_from_the_stored_rank_at_the_requested_k() -> 
     wider = aggregate([record], 10)
     assert wider["k"] == 10
     assert wider["hit_rate_at_10"] == 1.0
+
+
+def test_recompute_derives_leakage_at_requested_cut() -> None:
+    record = _case(["safe.md", "near.md"], [], k=1, distractors=["near.md"])
+    assert record["distractor_leak"] is False
+    assert aggregate([record], 2)["unanswerable_distractor_leaks"] == 1
+    assert aggregate([record], 1)["unanswerable_distractor_leaks"] == 0

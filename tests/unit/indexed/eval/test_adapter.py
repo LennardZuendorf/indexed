@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import pytest
+
 from indexed.eval.adapter import (
     document_identity,
     document_ranking,
     hits_from_engine_result,
     ranking_detail,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def _payload(
@@ -30,6 +34,7 @@ def _doc(doc_id, path, chunks):
 
 
 def test_documents_keep_engine_order_and_flatten_their_chunks() -> None:
+    """Prevent chunk flattening from changing the engine document ranking."""
     result = _payload(
         [
             _doc("b.md", "file:///corpus/b.md", [{"chunkNumber": 2, "score": 0.9}]),
@@ -74,6 +79,7 @@ def test_a_document_without_matched_chunks_still_counts_as_a_hit() -> None:
 
 
 def test_ranking_detail_dedupes_documents_and_honours_top_k() -> None:
+    """Ensure extra chunks cannot consume multiple document-level ranking slots."""
     result = _payload(
         [
             _doc(
@@ -118,3 +124,69 @@ def test_a_null_chunk_number_reads_as_the_document_sentinel() -> None:
     assert error is None
     assert hits[0].chunk == -1
     assert hits[0].score == 0.4
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        None,
+        "a.md",
+        {},
+        {"id": 12},
+        {"id": " "},
+        {"id": "a.md", "path": []},
+        {"id": "a.md", "matchedChunks": "bad"},
+        {"id": "a.md", "matchedChunks": False},
+        {"id": "a.md", "matchedChunks": [None]},
+        {"id": "a.md", "matchedChunks": [{"score": "bad"}]},
+        {"id": "a.md", "matchedChunks": [{"score": float("nan")}]},
+        {"id": "a.md", "matchedChunks": [{"score": float("inf")}]},
+        {"id": "a.md", "matchedChunks": [{"score": 10**400}]},
+        {"id": "a.md", "matchedChunks": [{"score": True}]},
+        {"id": "a.md", "matchedChunks": [{"chunkNumber": "bad"}]},
+        {"id": "a.md", "matchedChunks": [{"chunkNumber": 1.5}]},
+        {"id": "a.md", "matchedChunks": [{"chunkNumber": True}]},
+    ],
+)
+def test_malformed_documents_and_chunks_fail_the_collection(entry):
+    hits, error = hits_from_engine_result(_payload([entry]), collection="c1")
+    assert hits == []
+    assert error is not None
+    assert "results[0]" in error
+
+
+@pytest.mark.parametrize(
+    "payload", [{"results": [], "indexerName": []}, {"results": [], "scoreKind": []}]
+)
+def test_collection_metadata_has_string_types(payload):
+    hits, error = hits_from_engine_result({"c1": payload}, collection="c1")
+    assert hits == []
+    assert error is not None
+
+
+def test_optional_chunk_fields_keep_the_document_hit():
+    """Keep document-only hits measurable when optional chunk evidence is absent."""
+    hits, error = hits_from_engine_result(
+        _payload([{"id": "a.md", "matchedChunks": [{}]}])
+    )
+    assert error is None
+    assert [(hit.chunk, hit.score) for hit in hits] == [(-1, 0.0)]
+
+
+@pytest.mark.parametrize("error_value", [False, 0, [], {}])
+def test_falsey_non_string_collection_errors_are_failures(error_value):
+    payload = _payload([{"id": "plan.md"}])
+    payload["c1"]["error"] = error_value
+    hits, error = hits_from_engine_result(payload, collection="c1")
+    assert hits == []
+    assert error is not None
+
+
+@pytest.mark.parametrize("error_value", [None, ""])
+def test_empty_optional_error_slots_preserve_healthy_results(error_value):
+    """Accept producer error sentinels without discarding healthy document hits."""
+    payload = _payload([{"id": "plan.md"}])
+    payload["c1"]["error"] = error_value
+    hits, error = hits_from_engine_result(payload, collection="c1")
+    assert error is None
+    assert [hit.doc_name for hit in hits] == ["plan.md"]

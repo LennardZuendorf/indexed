@@ -64,15 +64,19 @@ jobs:
         python -m uv sync --all-groups
 
     - name: Verify the pinned corpus has not drifted
+      id: corpus
       run: uv run python scripts/build_eval_corpus.py --check
 
     - name: Unit tests for the harness
       run: uv run pytest tests/unit/indexed/eval -q
 
     - name: Measure the pinned case set
+      id: measure
+      if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
       run: uv run indexed-eval run --out eval-report.json
 
     - name: Compare against the committed baseline
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
       # Informative on purpose: the runner is a different interpreter/CPU build
       # from the machine the baseline was measured on, and that alone moves ranks
       # (observed: hit@5 0.909 on x86_64 CI vs 0.818 on the baseline's arm64).

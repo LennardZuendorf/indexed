@@ -25,6 +25,7 @@ it can never break because an envelope added a field.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import PurePosixPath
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -82,67 +83,71 @@ def hits_from_engine_result(
     if not isinstance(result, dict):
         return [], f"unexpected result type: {type(result).__name__}"
 
-    names = [collection] if collection else [name for name in result]
+    names = [collection] if collection else list(result)
     hits: List[Hit] = []
-    error: str | None = None
-
     for name in names:
         payload = result.get(name)
         if not isinstance(payload, dict):
-            error = error or f"no result payload for collection {name!r}"
-            continue
-        if payload.get("error"):
-            error = error or f"{name}: {payload['error']}"
-            continue
-
-        score_kind = str(payload.get("scoreKind") or "")
+            return [], f"no result payload for collection {name!r}"
+        failure = payload.get("error")
+        if failure is not None and not isinstance(failure, str):
+            return [], f"{name}: error must be a string or null"
+        if failure:
+            return [], f"{name}: {failure}"
+        for key in ("collectionName", "indexerName", "scoreKind"):
+            if key in payload and not isinstance(payload[key], str):
+                return [], f"{name}: {key} must be a string"
+        score_kind = payload.get("scoreKind", "")
         results = payload.get("results")
         if not isinstance(results, list):
-            # A payload without a result list is not "zero hits": it means the
-            # envelope is not the one this adapter understands. Recording it as an
-            # error keeps it out of the denominators instead of scoring 0.0 — and
-            # stops `--write-baseline` from committing that 0.0 as the baseline.
-            error = error or (
-                f"{name}: result payload carries no 'results' list "
-                f"(got {type(results).__name__})"
+            return (
+                [],
+                f"{name}: result payload carries no 'results' list (got {type(results).__name__})",
             )
-            continue
         for rank, entry in enumerate(results, start=1):
-            if not isinstance(entry, dict):
-                continue
-            doc_id, doc_name = document_identity(entry)
-            chunks: Sequence[Dict[str, Any]] = entry.get("matchedChunks") or []
-            if not chunks:
-                hits.append(
-                    Hit(
-                        rank=rank,
-                        collection=name,
-                        doc_id=doc_id,
-                        doc_name=doc_name,
-                        path=str(entry.get("path") or entry.get("url") or ""),
-                        chunk=-1,
-                        score=0.0,
-                        score_kind=score_kind,
+            where = f"{name}: results[{rank - 1}]"
+            try:
+                if not isinstance(entry, dict):
+                    raise ValueError("document must be an object")
+                for key in ("id", "path", "url"):
+                    if key in entry and not isinstance(entry[key], str):
+                        raise ValueError(f"{key} must be a string")
+                    if key in entry and entry[key] != entry[key].strip():
+                        raise ValueError(f"{key} has ambiguous whitespace")
+                doc_id, doc_name = document_identity(entry)
+                if not doc_name or doc_name in {".", ".."}:
+                    raise ValueError("document identity is missing")
+                chunks = entry.get("matchedChunks", [])
+                if not isinstance(chunks, list):
+                    raise ValueError("matchedChunks must be a list")
+                for chunk in chunks or [{}]:
+                    if not isinstance(chunk, dict):
+                        raise ValueError("matchedChunks entry must be an object")
+                    number = chunk.get("chunkNumber")
+                    if number is not None and (type(number) is not int or number < -1):
+                        raise ValueError("chunkNumber must be an integer or null")
+                    score = chunk.get("score", 0.0)
+                    if (
+                        isinstance(score, bool)
+                        or not isinstance(score, (int, float))
+                        or not math.isfinite(score)
+                    ):
+                        raise ValueError("score must be a finite number")
+                    hits.append(
+                        Hit(
+                            rank=rank,
+                            collection=name,
+                            doc_id=doc_id,
+                            doc_name=doc_name,
+                            path=entry.get("path") or entry.get("url") or "",
+                            chunk=-1 if number is None else number,
+                            score=float(score),
+                            score_kind=score_kind,
+                        )
                     )
-                )
-                continue
-            for chunk in chunks:
-                if not isinstance(chunk, dict):
-                    continue
-                chunk_number = chunk.get("chunkNumber")
-                hits.append(
-                    Hit(
-                        rank=rank,
-                        collection=name,
-                        doc_id=doc_id,
-                        doc_name=doc_name,
-                        path=str(entry.get("path") or entry.get("url") or ""),
-                        chunk=-1 if chunk_number is None else int(chunk_number),
-                        score=float(chunk.get("score") or 0.0),
-                        score_kind=score_kind,
-                    )
-                )
-    return hits, error
+            except (ValueError, OverflowError) as exc:
+                return [], f"{where}: {exc}"
+    return hits, None
 
 
 def document_ranking(hits: Sequence[Hit]) -> List[str]:

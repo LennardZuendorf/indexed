@@ -159,7 +159,10 @@ def aggregate(per_query: Sequence[Dict[str, Any]], k: int) -> Dict[str, Any]:
         if scored
         else None
     )
-    leaks = sum(1 for case in unanswerable if case.get("distractor_leak"))
+    leaks = sum(
+        bool(set(rank_documents(case["ranked_docs"])[:k]) & set(case["distractors"]))
+        for case in unanswerable
+    )
 
     return {
         "k": k,
