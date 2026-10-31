@@ -239,7 +239,13 @@ deliberately not the fix: on a heterogeneous fleet it reds PRs at random with no
 remedy, which teaches everyone to ignore the check. The step reds exactly one
 honest case — *this machine cannot be compared, so there is no verdict* — plus
 the bootstrap case, main having no committed baseline at all, which the same
-step reports explicitly instead of dying on a `git show`. The step decides from
+step reports explicitly instead of dying on a `git show`. The reference it reads
+is `origin/<base branch>`, never `HEAD`: the action's update path ends in a
+`EndBug/add-and-commit` that commits its own numbers **locally** even when the
+push is denied by `contents: read`, so inside that job HEAD's baseline is the
+run's own measurement and a HEAD-based guard would compare the run with itself,
+agree, and return green (observed on PR #268's first run — the same
+self-referential defect as #253, one layer up). The step decides from
 the fingerprints rather than from the flag alone: the action's
 `comparison-skipped` is also set by the *sequential* comparison, so it only
 fails when this run's machine differs from main's baseline — when they match,

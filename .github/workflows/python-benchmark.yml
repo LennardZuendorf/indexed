@@ -109,13 +109,25 @@ jobs:
       if: steps.benchmark.outputs.comparison-skipped == 'true'
       env:
         BASELINE_FILE: .benchmarks/baselines/main.json
+        # Resolved here, not in the shell: `github.base_ref` is the branch this
+        # PR merges into, i.e. the only baseline that may be compared against.
+        BASE_REF: ${{ github.base_ref }}
         RESULTS_FILE: benchmark-results.json
       run: |
         set -euo pipefail
-        # The action's own update path rewrites the workspace copy of the
-        # baseline, so the committed numbers are read back from git.
-        if ! git show "HEAD:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
-          echo "::error title=Benchmark gate has no verdict::No committed baseline at HEAD, so this run had nothing to compare against. Dispatch 'Python Performance Benchmarks' on main to record one."
+        # Never read the baseline from HEAD in this job. The action's update path
+        # ends in `EndBug/add-and-commit`, which commits its own numbers locally
+        # even when the push is denied by `contents: read` — so by the time this
+        # step runs, HEAD's copy of the baseline IS this run's measurement. The
+        # guard would then compare the run with itself, agree, and return green:
+        # the gate handing itself its own numbers is the very defect this step
+        # exists to catch. The base branch is immutable, so read that instead.
+        # Best-effort: a missing/unfetchable ref must fall through to the check
+        # below so the failure carries the repair, not a raw git error.
+        git fetch --no-tags --depth=1 origin \
+          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
+        if ! git show "origin/${BASE_REF}:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
+          echo "::error title=Benchmark gate has no verdict::No committed baseline on '${BASE_REF}', so this run had nothing to compare against. Dispatch 'Python Performance Benchmarks' on main to record one."
           exit 1
         fi
         python3 - <<'PY'
@@ -196,7 +208,9 @@ jobs:
       run: |
         set -euo pipefail
         # The committed file is main's reference; the workspace copy is what
-        # this run just measured.
+        # this run just measured. HEAD is trustworthy here where it is not in the
+        # gate job: the action's update path is PR-only, so nothing in this run
+        # commits a baseline of its own.
         git show "HEAD:$FILE" > "${RUNNER_TEMP}/committed-baseline.json"
         python - <<'PY'
         import json, os, pathlib
