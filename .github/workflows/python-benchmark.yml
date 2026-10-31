@@ -103,16 +103,26 @@ jobs:
     # everyone to ignore the check. The failure belongs here, where it can name
     # both fingerprints and the repair.
     - name: A skipped comparison is not a pass
-      # The action's `comparison-skipped` output is true if EITHER comparison was
-      # skipped. Only a skip of the cross-branch one leaves this PR without a
-      # verdict, and that is exactly what the fingerprints below decide.
-      if: steps.benchmark.outputs.comparison-skipped == 'true'
+      # Deliberately NOT gated on the action's `comparison-skipped` output. That
+      # output is only ever written by the compare steps, so on the one path
+      # where nothing could be compared at all — the base branch has no
+      # committed baseline, so `compare-main` never runs — the flag is false and
+      # a flag-gated step is SKIPPED, leaving the job green with no cross-branch
+      # verdict. That is the defect this step exists to end. Run it whenever the
+      # benchmark step itself succeeded; the fingerprints (and a baseline that
+      # cannot be read at all) decide the rest. Costs a `git fetch` + a `git
+      # show` on a normal green run.
+      if: steps.benchmark.outcome == 'success'
       env:
         BASELINE_FILE: .benchmarks/baselines/main.json
         # Resolved here, not in the shell: `github.base_ref` is the branch this
         # PR merges into, i.e. the only baseline that may be compared against.
         BASE_REF: ${{ github.base_ref }}
         RESULTS_FILE: benchmark-results.json
+        # Only used to word the green notice honestly: on the no-baseline path
+        # this is false while the step still ran, and claiming a sequential
+        # comparison was skipped there would be a lie in the log.
+        COMPARISON_SKIPPED: ${{ steps.benchmark.outputs.comparison-skipped }}
       run: |
         set -euo pipefail
         # Never read the baseline from HEAD in this job. The action's update path
@@ -127,7 +137,15 @@ jobs:
         git fetch --no-tags --depth=1 origin \
           "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
         if ! git show "origin/${BASE_REF}:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
-          echo "::error title=Benchmark gate has no verdict::No committed baseline on '${BASE_REF}', so this run had nothing to compare against. Dispatch 'Python Performance Benchmarks' on main to record one."
+          message="No readable committed baseline on '${BASE_REF}' (absent, or the ref could not be fetched), so this run had nothing to compare against. Re-run if that was a fetch problem; if '${BASE_REF}' genuinely has no baseline, dispatch 'Python Performance Benchmarks' on main to record one."
+          echo "::error title=Benchmark gate has no verdict::${message}"
+          {
+            echo "## Benchmark gate: no verdict"
+            echo
+            echo "${BASE_REF} has no readable copy of ${BASELINE_FILE}, so this run produced no comparison and therefore no verdict."
+            echo
+            echo "$message"
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 1
         fi
         python3 - <<'PY'
@@ -142,10 +160,14 @@ jobs:
         measured = json.load(open(os.environ["RESULTS_FILE"]))
         was, now = fingerprint(committed), fingerprint(measured)
         if was == now:
-            # Same hardware as main's baseline, so the cross-branch comparison
-            # ran and returned a verdict; the skip came from the other comparison
-            # (a per-branch baseline at HEAD~1) and does not disarm the gate.
-            print(f"::notice::A sequential comparison was skipped, but this run's machine matches main's baseline ({now}) — the cross-branch verdict stands.")
+            # Same hardware as main's baseline, so any cross-branch comparison
+            # that ran used it. The flag may still be true because the OTHER
+            # (per-branch, HEAD~1) comparison was skipped; that one does not
+            # disarm the gate.
+            if os.environ.get("COMPARISON_SKIPPED") == "true":
+                print(f"::notice::A sequential comparison was skipped, but this run's machine matches main's baseline ({now}) — the cross-branch verdict stands.")
+            else:
+                print(f"::notice::This run's machine matches main's baseline ({now}) — the cross-branch comparison produced a verdict.")
             raise SystemExit(0)
         message = (
             f"Cross-machine comparison is invalid, so this run compared nothing against "
