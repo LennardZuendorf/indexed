@@ -255,7 +255,12 @@ step decides from the fingerprints rather than from the flag alone: the action's
 `comparison-skipped` is also set by the *sequential* comparison, so it only
 fails when this run's machine differs from main's baseline — when they match,
 the cross-branch verdict stands and the job stays green (and the notice says
-which of the two comparisons was skipped, rather than claiming one was).
+which of the two comparisons was skipped, rather than claiming one was). A
+matching fingerprint is necessary but **not** sufficient for a valid verdict:
+two runs on different nodes of the same CPU model put
+`test_parse_large_markdown` at 690 ms, 922 ms and 943 ms, so per-node variance
+alone can red a clean diff — the guard cannot detect that, and the same-job A/B
+below is what removes it.
 
 **Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
 a fingerprint change by default, because adopting another machine's numbers
