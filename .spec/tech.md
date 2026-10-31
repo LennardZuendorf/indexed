@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-10-27
+updated: 2026-10-31
 ---
 
 # Tech Spec: indexed
@@ -227,6 +227,38 @@ understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
 action.
 
+**A skipped comparison is a failed check, not a pass (#267).** With
+`enforce-same-node` at its `"false"` default the action's hardware-mismatch path
+(exit 3) logs a `::warning::` and reports `regression-detected=false`, so the job
+returned **green while comparing nothing** on every PR after GitHub rotated the
+`ubuntu-latest` CPU (EPYC 7763 → 9V74, 2026-10). The gate job therefore has a
+step keyed on the action's `comparison-skipped == 'true'` output that fails it,
+writes both CPU fingerprints (the committed baseline's and this run's) to the
+log and the job summary, and names the repair. `enforce-same-node: "true"` is
+deliberately not the fix: on a heterogeneous fleet it reds PRs at random with no
+remedy, which teaches everyone to ignore the check. The step reds exactly one
+honest case — *this machine cannot be compared, so there is no verdict* — plus
+the bootstrap case, main having no committed baseline at all, which the same
+step reports explicitly instead of dying on a `git show`. The step decides from
+the fingerprints rather than from the flag alone: the action's
+`comparison-skipped` is also set by the *sequential* comparison, so it only
+fails when this run's machine differs from main's baseline — when they match,
+the cross-branch verdict stands and the job stays green.
+
+**Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
+a fingerprint change by default, because adopting another machine's numbers
+would poison the very reference the gate compares against. `workflow_dispatch`
+takes `accept_cpu_change: true`, which lets the refresh proceed, forces the
+refresh PR even when the numbers moved less than `DRIFT_PCT`, and records old vs
+new fingerprint in the job summary, the refresh PR body and its title. That PR's
+table is a
+**measurement, not a verdict** — a cross-CPU diff cannot say whether code got
+slower — and it exists so the next PR run compares like with like. Without that
+input no mechanism in the repo can re-record a rotated baseline. That repair
+cannot deadlock on the check it repairs: `.benchmarks/**` is not in this
+workflow's `paths` filter, so the baseline-only refresh PR triggers no benchmark
+run at all, and the guard (below) is the only check it faces.
+
 Configured in this repo via `cross-branch-tolerance: 20`, the inert
 `update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per
 benchmark name substring). A regression can be waived per-PR via the
@@ -254,7 +286,9 @@ CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
 so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
 hardware mismatch now skips with `comparison-skipped` (or hard-fails if
 `enforce-same-node: "true"`, unset here) instead of hard-failing by default.
-Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
+Not configured in this repo: `enforce-same-node` (defaults `"false"`; the skip
+is turned into a job failure by the workflow step above, which can name both
+fingerprints and the repair — the action's own hard-fail cannot).
 
 ---
 
@@ -570,7 +604,10 @@ Connector readers use this helper — do not duplicate status-code tuples.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
-7. **CI benchmark runner stability** — resolved by `pytest-bench-action`'s
-   CPU-fingerprint gate (see tech.md § CI Benchmarking). `override-label` now
-   configured. Still open: adopt `enforce-same-node: "true"`, or stay on the
-   skip-not-fail default (hosted runners only)?
+7. **CI benchmark runner stability** — the CPU-fingerprint gate handles the
+   hostname randomization (see tech.md § CI Benchmarking); `override-label` is
+   configured, a skipped comparison now fails the gate (#267), and a fleet
+   rotation is repairable via `accept_cpu_change`. Still open: does the hosted
+   fleet **alternate** between CPU models? If it does, a committed cross-run
+   baseline cannot be a gate, and the fix is measuring the merge base and the PR
+   head back-to-back in the same job so hardware cancels out.
