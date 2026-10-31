@@ -236,8 +236,9 @@ step that fails it, writes both CPU fingerprints (the committed baseline's and
 this run's) to the log and the job summary, and names the repair.
 `enforce-same-node: "true"` is deliberately not the fix: on a heterogeneous
 fleet it reds PRs at random with no remedy, which teaches everyone to ignore the
-check. The step reds exactly one honest case — *this machine cannot be compared,
-so there is no verdict*. It is **not** gated on the action's
+check. It reds two honest cases and no others — *this machine cannot be
+compared, so there is no verdict*, and *the base branch has no committed
+baseline to compare against*. It is **not** gated on the action's
 `comparison-skipped` output, because that output is only written by the compare
 steps: when main has no committed baseline at all, `compare-main` never runs,
 the flag stays `false`, and a flag-gated step is skipped — a green job with no
