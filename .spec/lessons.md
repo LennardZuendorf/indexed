@@ -1204,6 +1204,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   keys caused avoidable failed commands. Inspect anchors and the working diff
   after a failed multi-file patch; insert tests at complete function boundaries.
 - [testing] Temporary Git fixtures must disable inherited signing and hooks.
+  Clear Git's repository-local environment before fixture setup. Pre-push hooks
+  export GIT_DIR; git init can otherwise reinitialize the caller's repository
+  and set core.bare=true despite a temporary cwd. Verify the caller's config
+  remains unchanged in a disposable hook-environment regression.
   Sandbox runs may forbid pytest-rerunfailures' loopback listener before any
   test collects; record that environment failure and use an appropriate scoped
   retry. Full service/socket checks need their actual execution permissions.

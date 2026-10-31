@@ -77,6 +77,7 @@ one usable model cache before HOME isolation and use it for checks and loads.
 Scoped evaluation config restores prior overrides and excludes unrelated
 connector/MCP settings from validation.
 Check new fixture files for whitespace before freezing their hashes.
+Clear hook Git routing variables before temporary-repository tests.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
