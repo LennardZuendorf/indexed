@@ -1284,10 +1284,14 @@ with `git add`/`git status`, since that's what CI actually runs.
   green having compared nothing — `comparison-skipped=true` next to
   `conclusion: success` in the same log is the tell. GitHub rotated the
   `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
-  rubber stamp. A gate that CAN skip must fail on the skip: key a workflow step
-  on the action's `comparison-skipped` output, name both fingerprints, and name
-  the repair. Decide the failure from the fingerprints, not the flag — the flag
-  is also set by the sequential comparison, which is not a missing verdict. Do
+  rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
+  to be decided from the two fingerprints: run the guard step whenever the
+  benchmark step succeeded, re-read the base branch's
+  `machine_info.cpu.brand_raw` and compare it with this run's, then name both
+  fingerprints and the repair. Never gate that step on the action's
+  `comparison-skipped` flag — it is written only inside the compare steps, so
+  keying on it makes the no-baseline branch unreachable (see below), and it is
+  also set by the sequential comparison, which is not a missing verdict. Do
   not reach for the action's own hard-fail mode — on a mixed
   fleet it reds at random and teaches people to ignore the check, which is the
   same end state by a louder road.
