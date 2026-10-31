@@ -1180,3 +1180,37 @@ with `git add`/`git status`, since that's what CI actually runs.
   and passes, so the gate is disarmed while all its checks are green. Require
   the file to exist at HEAD before opening the door; a refresh *rewrites*, it
   never removes.
+
+## A skipped gate is a red gate (2026-10-31)
+
+- **`enforce-same-node: false` makes a hardware mismatch silently PASS.** The
+  action logs `::warning::` and sets `regression-detected=false`, so the job is
+  green having compared nothing — `comparison-skipped=true` next to
+  `conclusion: success` in the same log is the tell. GitHub rotated the
+  `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
+  rubber stamp. A gate that CAN skip must fail on the skip: key a workflow step
+  on the action's `comparison-skipped` output, name both fingerprints, and name
+  the repair. Decide the failure from the fingerprints, not the flag — the flag
+  is also set by the sequential comparison, which is not a missing verdict. Do
+  not reach for the action's own hard-fail mode — on a mixed
+  fleet it reds at random and teaches people to ignore the check, which is the
+  same end state by a louder road.
+- **A guard that refuses a state change needs a named override in the same PR,
+  or a rotation becomes unrepairable.** The refresh lane rightly refused to
+  adopt another machine's numbers, and that left no path at all to a valid
+  baseline: every PR compared against a machine that no longer exists. The
+  override belongs on the trigger (`workflow_dispatch` input
+  `accept_cpu_change`), must force the reviewed PR even when the numbers happen
+  not to move, and must print old vs new fingerprint in the job summary AND the
+  PR body — an override nobody can see in review is just a quieter gate. Check
+  too that the repair lane is not gated by the check it repairs: a baseline-only
+  PR must trigger no benchmark run, or the fix deadlocks behind its own red.
+- **A benchmark delta is a measurement until you have checked what recorded it.**
+  Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
+  PR never touched) was not the diff, and not a CPU rotation either: same CPU
+  model both sides, shared-vCPU hosted runners. The rotation shows up
+  separately as three fingerprints in three days — `AMD EPYC 7763`,
+  `AMD EPYC 9V74`, `INTEL(R) XEON(R) PLATINUM 8573C`. So before quoting any
+  benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
+  treat a single run-to-run delta as noise to re-measure; only a repeated,
+  same-fingerprint shift is a regression.
