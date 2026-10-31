@@ -36,7 +36,43 @@ indexed index create files --collection my-project --path ./src
 
 # 3. Search your collection
 indexed index search "your query"
+
+# 4. Or take the machine payload (the MCP tools return the same object)
+indexed index search "your query" --json
 ```
+
+`--json` prints one object with a `schema` id, documents grouped, and a locator
+per hit — excerpt from a real collection, values verbatim; the second hit (the
+whole-document chunk) is elided here, which is why `counts.hits` says 2:
+
+```json
+{
+  "schema": "indexed.search/1",
+  "query": "how are failed requests retried",
+  "counts": { "documents": 1, "hits": 2 },
+  "collections": ["docs-quick"],
+  "collection_errors": [],
+  "documents": [
+    {
+      "collection": "docs-quick",
+      "source_type": "localFiles",
+      "id": "retry.md",
+      "url": "file:///tmp/indexed-docs-quick/retry.md",
+      "score_kind": "l2_squared",
+      "hits": [
+        {
+          "relevance": 0.6003,
+          "score": 0.7995,
+          "locator": { "kind": "headings", "headings": ["Retry policy"] },
+          "text": "Retry policy\nRequests are retried three times with exponential backoff. A 429 response resets the backoff window instead of failing the call."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Full field list: [`docs/reference/search-output.md`](docs/reference/search-output.md).
 
 ## Why Indexed?
 
@@ -170,6 +206,7 @@ indexed index create files --collection my-app --path ./src --engine v2
 indexed index search "authentication flow"
 indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
+indexed index search "authentication flow" --json        # indexed.search/1 payload
 
 # Manage collections
 indexed index inspect                    # list all collections
@@ -195,6 +232,7 @@ vs. planned.
 
 ## Documentation
 
+- [Search result reference](docs/reference/search-output.md) — the `indexed.search/1` payload that `--json` and the MCP tools return, field by field
 - [Full Documentation](https://indexed.sh/docs) — CLI reference, configuration, and guides
 - [Blog & Guides](https://indexed.sh/blog) — tutorials and use cases
 - [Issue Tracker](https://github.com/LennardZuendorf/indexed/issues) — report bugs or request features
