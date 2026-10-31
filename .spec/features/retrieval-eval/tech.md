@@ -3,7 +3,7 @@ type: feature-tech
 feature: retrieval-eval
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Feature: Retrieval Evaluation Baseline — Architecture

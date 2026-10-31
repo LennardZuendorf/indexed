@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Development Plan: indexed

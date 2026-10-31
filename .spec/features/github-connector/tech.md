@@ -3,7 +3,7 @@ type: feature-tech
 feature: github-connector
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Feature: GitHub Projects & Issues Connector — Architecture

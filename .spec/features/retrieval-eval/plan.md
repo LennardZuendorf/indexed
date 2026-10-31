@@ -3,7 +3,7 @@ type: feature-plan
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Retrieval Evaluation Baseline — Delivery Plan

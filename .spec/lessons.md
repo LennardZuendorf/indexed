@@ -1256,7 +1256,9 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [integration] Rebase size caps must retain both legitimate branches' deltas.
   Measure the combined tree and final review tests; do not restore an older cap
   or stale benchmark baseline. Distinguish local repairs from published PR/CI state.
-- [spec] Validate scenario syntax with explicit WHEN/THEN bullets. Keep structural
-  validation separate from the pre-merge drift audit: legacy historical evidence
+- [spec] Validate scenario syntax with explicit WHEN/THEN bullets. Keep
+  spec dates current at publication when a repair crosses calendar days; the
+  validator compares updated dates against the final commit date.
+  Keep structural validation separate from the pre-merge drift audit: legacy historical evidence
   and active local plan artifacts can fail the latter. Report both results and
   baseline the flagged lines instead of calling an unrelated cleanup a PR fix.
