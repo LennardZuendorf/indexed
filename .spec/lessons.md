@@ -1320,16 +1320,18 @@ with `git add`/`git status`, since that's what CI actually runs.
   benchmark step succeeded"), let the guard's own inputs decide, and for every
   branch in a guard ask which run can ever reach it — an unreachable `::error::`
   reads exactly like a green check.
-- **A matching CPU fingerprint is not the same machine.** Two runs on
-  `runnervm48cm3`, both `AMD EPYC 7763 64-Core Processor`, put
-  `test_parse_large_markdown` at 922 ms and 943 ms against a 690 ms baseline
-  recorded on `runnervmtai0g` — +33 % and +37 %, a red gate on a diff that
-  changes no Python, while a run on a *different* node with the same CPU model
-  passed everything. For I/O-heavy benchmarks the per-node variance dwarfs the
-  code effect, so a committed cross-run baseline cannot separate them; only
-  measuring both sides in the same job on the same node does. Corollary: when a
-  gate reds on one benchmark while every other row sits within a few percent,
-  suspect the node before the diff.
+- **A matching CPU fingerprint is not the same machine.** Three consecutive runs
+  of PR #268 reported the same node (`runnervm48cm3`) and the same
+  `AMD EPYC 7763 64-Core Processor`, and still disagreed: everything within
+  tolerance once (`test_parse_large_markdown` +10.4 %), then
+  `test_parse_large_markdown` +36.6 % (943 ms vs a 690 ms baseline recorded on
+  `runnervmtai0g`), then `test_cli_license` +47.6 % — one green and two reds from
+  an unchanged diff. Shared-vCPU tenancy, not code, and not even the CPU model:
+  the variance is *run-to-run*. So a committed cross-run baseline cannot gate on
+  a single sample at any tolerance; only measuring both sides in the same job
+  cancels it. Corollary: when a gate reds on one benchmark while every other row
+  sits within a few percent, suspect the machine before the diff — and when it
+  reds on a *different* benchmark after a re-run, you already have your answer.
 - **A benchmark delta is a measurement until you have checked what recorded it.**
   Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
   PR never touched) was not the diff, and not a CPU rotation either: same CPU
