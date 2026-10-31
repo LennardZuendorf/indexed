@@ -46,6 +46,8 @@ regression exit 1 and candidate-only error reporting.
 Use model-free unit and filesystem integration markers explicitly.
 Use one explicit cache for real-model checks and loads. Gate exact reproduction
 on numerical environment identity. Keep informative artifacts after test failure.
+Publish a formatted job summary and one updated comment on current-head,
+same-repository PRs; preserve warnings and fork/manual summary fallback.
 Run independent reviews and fresh full-suite/lint/type/import/size checks.
 
 ## Requirements Trace
@@ -58,6 +60,7 @@ Run independent reviews and fresh full-suite/lint/type/import/size checks.
 | R4 | retrieval-eval/2 |
 | R5 | retrieval-eval/4 |
 | R6 | retrieval-eval/5 |
+| R7 | retrieval-eval/5 |
 
 ## Follow-ups
 

@@ -1259,6 +1259,20 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [spec] Validate scenario syntax with explicit WHEN/THEN bullets. Keep
   spec dates current at publication when a repair crosses calendar days; the
   validator compares updated dates against the final commit date.
-  Keep structural validation separate from the pre-merge drift audit: legacy historical evidence
+  Keep structural validation separate from the pre-merge drift audit: legacy
+  historical evidence
   and active local plan artifacts can fail the latter. Report both results and
   baseline the flagged lines instead of calling an unrelated cleanup a PR fix.
+
+## Evaluation PR comments (2026-10-31)
+
+- [tools] Check optional directories before searching them, quote API endpoints
+  containing query strings, and fall back to dedicated connectors on transient
+  CLI network errors. Use `uv run --no-sync --no-cache` or a writable task cache
+  for checks when the global uv cache is unavailable.
+- [ci] An informative compare step can exit successfully after a failed command.
+  Render the saved verdict and explicit report availability, not the step's green
+  state. Preserve environment differences and failed harness tests in summaries.
+- [reporting] Budget comment size after Markdown escaping; character entities
+  expand raw text. Omit whole details with an artifact link when the budget is
+  reached. Preserve block separators and keep environment warnings above details.

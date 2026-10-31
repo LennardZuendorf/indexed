@@ -144,6 +144,25 @@ compares, then uploads `retrieval-eval` artifacts. The informative measurement
 still runs after a harness-test failure when corpus verification succeeded;
 the failed test remains visible. Artifact upload runs even after failure.
 
+After artifact upload, a Node 24 publisher writes the job summary and updates
+one bot comment on same-repository pull requests. The report shows baseline and
+current metrics with deltas, the comparison verdict, per-case rank changes,
+environment and configuration differences, and harness or measurement failures.
+It links to the workflow run and its artifacts. Missing or invalid report data
+is shown as unavailable. A newer PR head prevents an older run from updating
+the comment.
+
+Fork pull requests and manual runs retain the job summary and artifacts, with
+a notice explaining why no PR comment was posted. Comment publication failures
+produce warnings. The publisher uses read-only repository contents and
+job-scoped PR comment permission; it does not use `pull_request_target`.
+
+Run the dependency-free publisher tests with Node's built-in test runner:
+
+```bash
+uv run node --test .github/scripts/eval-comment.test.cjs
+```
+
 Phase one is informative. No hard gate or arbitrary regression tolerance is
 inferred from one measurement. Real missing/corrupt-collection tests use the
 facade with a local MockEmbedding; mock scores prove failure plumbing, not

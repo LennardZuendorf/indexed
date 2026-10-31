@@ -142,3 +142,17 @@ after every run; unrelated connector/MCP and other-engine sections are masked
 inside that scope. Both model caches record usable selected snapshot identity.
 Environment provenance includes numerical package versions, Git head, dirty
 status and a source/dependency fingerprint for measurements before a commit.
+
+## CI reporting
+
+The evaluation workflow consumes its existing report/comparison JSON through
+`.github/scripts/eval-comment.cjs`. A pinned GitHub Script action writes a job
+summary, then creates or updates the bot comment marked `indexed:retrieval-eval`.
+Show metrics, verdict, changed ranks, failure IDs, source commits and run links;
+highlight environment/config differences and unavailable reports.
+
+Repository contents stay read-only. PR comment permission is job-scoped;
+comments target same-repository PRs only. Fork/manual runs keep summaries and
+artifacts. Paginate comments, match marker plus bot identity, and check the
+current PR head before posting. Escape report-derived text. Posting failures
+produce a warning without changing phase-one evaluation semantics.

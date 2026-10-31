@@ -123,6 +123,17 @@ Publish informative CI artifacts and track the separate public-docs pairing.
 A retrieval PR can state, in its body, "hit@5 0.818 → 0.886, MRR 0.578 → 0.712,
 no case regressed" — and a reviewer can reproduce it with one command.
 
+### Requirement: visible CI results (R7)
+
+CI MUST update one bot comment on same-repository PRs with the verdict, metric
+changes, changed cases, failures, environment notes and a link to the full run.
+Keep results informational. Missing reports MUST appear as unavailable.
+
+#### Scenario: repeated evaluation
+- **GIVEN** an existing evaluation comment on the current PR head
+- **WHEN** evaluation completes again
+- **THEN** the bot updates that comment instead of adding another; fork/manual runs retain a summary and artifacts without posting.
+
 ## Current measured fixture baseline
 
 The current expanded fixture experiment is recorded in

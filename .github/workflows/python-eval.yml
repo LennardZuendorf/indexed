@@ -19,6 +19,7 @@ on:
       - 'tests/unit/indexed/eval/**'
       - 'pyproject.toml'
       - 'uv.lock'
+      - '.github/scripts/**'
       - '.github/workflows/python-eval.yml'
 
 permissions:
@@ -33,6 +34,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft != true
     name: Retrieval Baseline
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     # Informative in phase 1 — see the header comment.
     continue-on-error: true
     env:
@@ -63,11 +67,15 @@ jobs:
         python -m pip install uv
         python -m uv sync --all-groups
 
+    - name: Unit tests for the PR report
+      run: uv run node --test .github/scripts/eval-comment.test.cjs
+
     - name: Verify the pinned corpus has not drifted
       id: corpus
       run: uv run python scripts/build_eval_corpus.py --check
 
     - name: Unit tests for the harness
+      id: harness
       run: uv run pytest tests/unit/indexed/eval -q
 
     - name: Measure the pinned case set
@@ -76,6 +84,7 @@ jobs:
       run: uv run indexed-eval run --out eval-report.json
 
     - name: Compare against the committed baseline
+      id: compare
       if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
       # Informative on purpose: the runner is a different interpreter/CPU build
       # from the machine the baseline was measured on, and that alone moves ranks
@@ -96,3 +105,22 @@ jobs:
           eval-report.json
           eval-compare.json
         if-no-files-found: warn
+
+    - name: Publish eval summary and PR comment
+      if: ${{ !cancelled() }}
+      continue-on-error: true
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        HARNESS_OUTCOME: ${{ steps.harness.outcome }}
+        MEASURE_OUTCOME: ${{ steps.measure.outcome }}
+        COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+      with:
+        script: |
+          await require('./.github/scripts/eval-comment.cjs').publishReport({
+            github, context, core,
+            outcomes: {
+              harness: process.env.HARNESS_OUTCOME,
+              measure: process.env.MEASURE_OUTCOME,
+              compare: process.env.COMPARE_OUTCOME,
+            },
+          });
