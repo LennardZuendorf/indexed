@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-09-02
+updated: 2026-11-01
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -127,6 +127,13 @@ just that the flag exists.
 1. **Default (quiet)** — warnings + errors only; stdout reserved for command results
 2. **Verbose (`--verbose`)** — INFO; progress steps
 3. **Debug (`--log-level=DEBUG`)** — internal detail, timings, HTTP requests
+
+Log records never touch stdout. The CLI wires `bootstrap_logging` to a
+stderr-backed Rich console (`cli/utils/console.py::log_console`), while
+human-facing output and progress displays keep the stdout `console`. Under
+`--simple-output` (and `--json` where the result-shape work adds it) stdout is
+the payload and nothing else, so a `json.loads(stdout)` consumer never has to
+strip a log line — including a WARNING raised mid-command.
 
 ---
 

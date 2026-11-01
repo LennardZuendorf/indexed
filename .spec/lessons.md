@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-31
+updated: 2026-11-01
 ---
 
 # Lessons Learned
@@ -1276,3 +1276,21 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [reporting] Budget comment size after Markdown escaping; character entities
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
+
+## stdout purity: log records are not payload (2026-11-01)
+
+- **A log sink and a user-output sink are two different streams.** The CLI's
+  shared Rich `console` is stdout-backed (it carries results, cards, progress),
+  so wiring `bootstrap_logging(rich_console=console)` made every record at the
+  default WARNING level print *into* the machine payload — `index search
+  --simple-output` emitted `WARNING  | …\n{…}` and `json.loads(stdout)` failed.
+  Give logging its own stderr-backed console (`cli/utils/console.py::log_console`)
+  and keep stdout for what the command was asked to produce. Rich resolves
+  `sys.stdout`/`sys.stderr` lazily per write, so both consoles stay capturable
+  by `CliRunner`.
+- **A contract test must own the wiring it claims to pin.** The payload golden
+  test stubs `setup_root_logger`/`is_verbose_mode`, so it cannot see the sink at
+  all and stayed green while stdout was polluted. A stdout-purity test has to
+  drive the real app callback (real `bootstrap_logging`, unstubbed) and emit a
+  record mid-command, then assert both halves: the record is *present on
+  stderr* (relocated, not swallowed) and stdout still parses.
