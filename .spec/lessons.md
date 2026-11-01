@@ -1276,3 +1276,72 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [reporting] Budget comment size after Markdown escaping; character entities
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
+
+## A skipped gate is a red gate (2026-10-31)
+
+- **`enforce-same-node: false` makes a hardware mismatch silently PASS.** The
+  action logs `::warning::` and sets `regression-detected=false`, so the job is
+  green having compared nothing — `comparison-skipped=true` next to
+  `conclusion: success` in the same log is the tell. GitHub rotated the
+  `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
+  rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
+  to be decided from the two fingerprints: run the guard step whenever the
+  benchmark step succeeded, re-read the base branch's
+  `machine_info.cpu.brand_raw` and compare it with this run's, then name both
+  fingerprints and the repair. Never gate that step on the action's
+  `comparison-skipped` flag — it is written only inside the compare steps, so
+  keying on it makes the no-baseline branch unreachable (see below), and it is
+  also set by the sequential comparison, which is not a missing verdict. Do
+  not reach for the action's own hard-fail mode — on a mixed
+  fleet it reds at random and teaches people to ignore the check, which is the
+  same end state by a louder road.
+- **A guard that refuses a state change needs a named override in the same PR,
+  or a rotation becomes unrepairable.** The refresh lane rightly refused to
+  adopt another machine's numbers, and that left no path at all to a valid
+  baseline: every PR compared against a machine that no longer exists. The
+  override belongs on the trigger (`workflow_dispatch` input
+  `accept_cpu_change`), must force the reviewed PR even when the numbers happen
+  not to move, and must print old vs new fingerprint in the job summary AND the
+  PR body — an override nobody can see in review is just a quieter gate. Check
+  too that the repair lane is not gated by the check it repairs: a baseline-only
+  PR must trigger no benchmark run, or the fix deadlocks behind its own red.
+- **A gate must not read its own numbers back out of the workspace it graded.**
+  Reading the reference baseline with `git show HEAD:…` inside the benchmark job
+  looked immutable and was not: the action's update path ends in
+  `EndBug/add-and-commit`, which COMMITS its numbers locally even when the push
+  is denied by `contents: read`. By the time the guard ran, HEAD held this run's
+  measurement, the fingerprints matched by construction, and the gate went green
+  on a mismatched machine — the same self-referential defect as the original
+  one, one layer up. Read the base branch (`origin/<base_ref>`) instead, and
+  treat "the check agreed with itself" as the first hypothesis when a gate you
+  just wrote passes on a case you expected to fail.
+- **A gate gated on an output that only exists on the happy path never runs.**
+  The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
+  but that output is written only inside the compare steps — when main has no
+  committed baseline the compare step is itself skipped, the flag stays `false`,
+  and the guard's own bootstrap branch was dead code while the spec and PR body
+  described it as live. Gate on the prerequisite that actually holds ("the
+  benchmark step succeeded"), let the guard's own inputs decide, and for every
+  branch in a guard ask which run can ever reach it — an unreachable `::error::`
+  reads exactly like a green check.
+- **A matching CPU fingerprint is not the same machine.** Three consecutive runs
+  of PR #268 reported the same node (`runnervm48cm3`) and the same
+  `AMD EPYC 7763 64-Core Processor`, and still disagreed: everything within
+  tolerance once (`test_parse_large_markdown` +10.4 %), then
+  `test_parse_large_markdown` +36.6 % (943 ms vs a 690 ms baseline recorded on
+  `runnervmtai0g`), then `test_cli_license` +47.6 % — one green and two reds from
+  an unchanged diff. Shared-vCPU tenancy, not code, and not even the CPU model:
+  the variance is *run-to-run*. So a committed cross-run baseline cannot gate on
+  a single sample at any tolerance; only measuring both sides in the same job
+  cancels it. Corollary: when a gate reds on one benchmark while every other row
+  sits within a few percent, suspect the machine before the diff — and when it
+  reds on a *different* benchmark after a re-run, you already have your answer.
+- **A benchmark delta is a measurement until you have checked what recorded it.**
+  Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
+  PR never touched) was not the diff, and not a CPU rotation either: same CPU
+  model both sides, shared-vCPU hosted runners. The rotation shows up
+  separately as three fingerprints in three days — `AMD EPYC 7763`,
+  `AMD EPYC 9V74`, `INTEL(R) XEON(R) PLATINUM 8573C`. So before quoting any
+  benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
+  treat a single run-to-run delta as noise to re-measure; only a repeated,
+  same-fingerprint shift is a regression.

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-10-27
+updated: 2026-10-31
 ---
 
 # Tech Spec: indexed
@@ -227,6 +227,57 @@ understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
 action.
 
+**A skipped comparison is a failed check, not a pass (#267).** With
+`enforce-same-node` at its `"false"` default the action's hardware-mismatch path
+(exit 3) logs a `::warning::` and reports `regression-detected=false`, so the job
+returned **green while comparing nothing** on every PR after GitHub rotated the
+`ubuntu-latest` CPU (EPYC 7763 → 9V74, 2026-10). The gate job therefore has a
+step that fails it, writes both CPU fingerprints (the committed baseline's and
+this run's) to the log and the job summary, and names the repair.
+`enforce-same-node: "true"` is deliberately not the fix: on a heterogeneous
+fleet it reds PRs at random with no remedy, which teaches everyone to ignore the
+check. It reds two honest cases and no others — *this machine cannot be
+compared, so there is no verdict*, and *the base branch has no committed
+baseline to compare against*. It is **not** gated on the action's
+`comparison-skipped` output, because that output is only written by the compare
+steps: when main has no committed baseline at all, `compare-main` never runs,
+the flag stays `false`, and a flag-gated step is skipped — a green job with no
+cross-branch verdict, the very defect being fixed. It runs whenever the
+benchmark step itself succeeded, and the fingerprints plus the baseline fetch
+decide the rest; the bootstrap case is then reported explicitly ("no committed
+baseline on 'main', dispatch … to record one") instead of dying on a `git
+show`. The reference it reads is `origin/<base branch>`, never `HEAD`: the
+action's update path ends in a `EndBug/add-and-commit` that commits its own
+numbers **locally** even when the push is denied by `contents: read`, so inside
+that job HEAD's baseline is the run's own measurement and a HEAD-based guard
+would compare the run with itself, agree, and return green (observed on PR
+#268's first run — the same self-referential defect as #253, one layer up). The
+step decides from the fingerprints rather than from the flag alone: the action's
+`comparison-skipped` is also set by the *sequential* comparison, so it only
+fails when this run's machine differs from main's baseline — when they match,
+the cross-branch verdict stands and the job stays green (and the notice says
+which of the two comparisons was skipped, rather than claiming one was). A
+matching fingerprint is necessary but **not** sufficient for a valid verdict:
+three consecutive runs reported the same node and CPU model and still disagreed —
+`test_parse_large_markdown` at 690 ms, 762 ms and 943 ms and `test_cli_license`
+at 43 ms vs 82 ms, one green and two reds from an unchanged diff. Run-to-run
+tenancy variance alone can red a clean PR; the guard cannot see that, and the
+same-job A/B below is what removes it.
+
+**Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
+a fingerprint change by default, because adopting another machine's numbers
+would poison the very reference the gate compares against. `workflow_dispatch`
+takes `accept_cpu_change: true`, which lets the refresh proceed, forces the
+refresh PR even when the numbers moved less than `DRIFT_PCT`, and records old vs
+new fingerprint in the job summary, the refresh PR body and its title. That PR's
+table is a
+**measurement, not a verdict** — a cross-CPU diff cannot say whether code got
+slower — and it exists so the next PR run compares like with like. Without that
+input no mechanism in the repo can re-record a rotated baseline. That repair
+cannot deadlock on the check it repairs: `.benchmarks/**` is not in this
+workflow's `paths` filter, so the baseline-only refresh PR triggers no benchmark
+run at all, and the guard (below) is the only check it faces.
+
 Configured in this repo via `cross-branch-tolerance: 20`, the inert
 `update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per
 benchmark name substring). A regression can be waived per-PR via the
@@ -254,7 +305,9 @@ CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
 so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
 hardware mismatch now skips with `comparison-skipped` (or hard-fails if
 `enforce-same-node: "true"`, unset here) instead of hard-failing by default.
-Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
+Not configured in this repo: `enforce-same-node` (defaults `"false"`; the skip
+is turned into a job failure by the workflow step above, which can name both
+fingerprints and the repair — the action's own hard-fail cannot).
 
 ---
 
@@ -570,7 +623,17 @@ Connector readers use this helper — do not duplicate status-code tuples.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
-7. **CI benchmark runner stability** — resolved by `pytest-bench-action`'s
-   CPU-fingerprint gate (see tech.md § CI Benchmarking). `override-label` now
-   configured. Still open: adopt `enforce-same-node: "true"`, or stay on the
-   skip-not-fail default (hosted runners only)?
+7. **CI benchmark runner stability** — the CPU-fingerprint gate handles the
+   hostname randomization (see tech.md § CI Benchmarking); `override-label` is
+   configured, a skipped comparison now fails the gate (#267), and a fleet
+   rotation is repairable via `accept_cpu_change`. **Answered, 2026-10-31:** the
+   hosted fleet *does* alternate — four jobs of one PR (same code) landed on
+   `AMD EPYC 9V74`, `AMD EPYC 7763` (twice) and `INTEL(R) XEON(R) PLATINUM
+   8573C` within an hour, producing two green and two red verdicts from the same
+   diff. So a committed cross-run baseline cannot be a stable PR gate, and
+   `test_parse_large_markdown` moving +10.4 % and +33.6 % against the same
+   baseline on the same CPU model rules out "just raise the tolerance". The
+   durable design — measure the merge base and the PR head back-to-back in the
+   same job so hardware cancels, keeping the committed baseline as a coarse
+   `main` drift alarm — is **proposed and awaiting a decision** (board card
+   `t_37f94f47`, ~2× the job cost). Not implemented.

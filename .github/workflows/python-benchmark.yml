@@ -13,6 +13,19 @@ on:
   # re-measures the numbers and opens a baseline-only PR. A PR run never writes.
   # See .spec/tech.md § CI Benchmarking and issue #253.
   workflow_dispatch:
+    inputs:
+      accept_cpu_change:
+        # GitHub rotates the ubuntu-latest fleet without asking. When the CPU
+        # fingerprint changes, the refresh otherwise refuses to adopt the new
+        # numbers (see "Summarise drift") and nothing in the repo can re-record
+        # the baseline — every PR then compares against a machine that no
+        # longer exists. This input is the sanctioned repair, and its PR records
+        # both fingerprints so the move is visible in review (#267).
+        description: >-
+          Adopt this runner's numbers even though its CPU fingerprint differs
+          from the committed baseline. Set only after a runner-fleet rotation.
+        type: boolean
+        default: false
 
 # Read-only default; each job below opts into exactly the writes it needs.
 permissions:
@@ -53,6 +66,7 @@ jobs:
     # The `with:` block is anchored and reused verbatim by the refresh job, so
     # the gate and the refresh can never disagree on tolerances or thresholds.
     - name: Run benchmarks
+      id: benchmark
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
       with: &benchmark-inputs
         # One interpreter, pinned: numbers from different interpreters are not
@@ -80,6 +94,101 @@ jobs:
         update-tolerance: 1000
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
+
+    # A skipped comparison is not a pass. The action treats a hardware mismatch
+    # as "skip with a warning" and reports regression-detected=false, so this
+    # gate returned green while comparing nothing on every PR after GitHub
+    # rotated the ubuntu-latest CPU (#267). `enforce-same-node: true` is not the
+    # fix — on a heterogeneous fleet it reds PRs at random, which teaches
+    # everyone to ignore the check. The failure belongs here, where it can name
+    # both fingerprints and the repair.
+    - name: A skipped comparison is not a pass
+      # Deliberately NOT gated on the action's `comparison-skipped` output. That
+      # output is only ever written by the compare steps, so on the one path
+      # where nothing could be compared at all — the base branch has no
+      # committed baseline, so `compare-main` never runs — the flag is false and
+      # a flag-gated step is SKIPPED, leaving the job green with no cross-branch
+      # verdict. That is the defect this step exists to end. Run it whenever the
+      # benchmark step itself succeeded; the fingerprints (and a baseline that
+      # cannot be read at all) decide the rest. Costs a `git fetch` + a `git
+      # show` on a normal green run.
+      if: steps.benchmark.outcome == 'success'
+      env:
+        BASELINE_FILE: .benchmarks/baselines/main.json
+        # Resolved here, not in the shell: `github.base_ref` is the branch this
+        # PR merges into, i.e. the only baseline that may be compared against.
+        BASE_REF: ${{ github.base_ref }}
+        RESULTS_FILE: benchmark-results.json
+        # Only used to word the green notice honestly: on the no-baseline path
+        # this is false while the step still ran, and claiming a sequential
+        # comparison was skipped there would be a lie in the log.
+        COMPARISON_SKIPPED: ${{ steps.benchmark.outputs.comparison-skipped }}
+      run: |
+        set -euo pipefail
+        # Never read the baseline from HEAD in this job. The action's update path
+        # ends in `EndBug/add-and-commit`, which commits its own numbers locally
+        # even when the push is denied by `contents: read` — so by the time this
+        # step runs, HEAD's copy of the baseline IS this run's measurement. The
+        # guard would then compare the run with itself, agree, and return green:
+        # the gate handing itself its own numbers is the very defect this step
+        # exists to catch. The base branch is immutable, so read that instead.
+        # Best-effort: a missing/unfetchable ref must fall through to the check
+        # below so the failure carries the repair, not a raw git error.
+        git fetch --no-tags --depth=1 origin \
+          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
+        if ! git show "origin/${BASE_REF}:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
+          message="No readable committed baseline on '${BASE_REF}' (absent, or the ref could not be fetched), so this run had nothing to compare against. Re-run if that was a fetch problem; if '${BASE_REF}' genuinely has no baseline, dispatch 'Python Performance Benchmarks' on main to record one."
+          echo "::error title=Benchmark gate has no verdict::${message}"
+          {
+            echo "## Benchmark gate: no verdict"
+            echo
+            echo "${BASE_REF} has no readable copy of ${BASELINE_FILE}, so this run produced no comparison and therefore no verdict."
+            echo
+            echo "$message"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+        python3 - <<'PY'
+        import json, os
+
+        def fingerprint(doc):
+            info = doc.get("machine_info", {})
+            cpu = info.get("cpu", {})
+            return f"{cpu.get('brand_raw')}|{cpu.get('arch')}|{cpu.get('count')}|{info.get('system')}"
+
+        committed = json.load(open(f"{os.environ['RUNNER_TEMP']}/committed-baseline.json"))
+        measured = json.load(open(os.environ["RESULTS_FILE"]))
+        was, now = fingerprint(committed), fingerprint(measured)
+        if was == now:
+            # Same hardware as main's baseline, so any cross-branch comparison
+            # that ran used it. The flag may still be true because the OTHER
+            # (per-branch, HEAD~1) comparison was skipped; that one does not
+            # disarm the gate.
+            if os.environ.get("COMPARISON_SKIPPED") == "true":
+                print(f"::notice::A sequential comparison was skipped, but this run's machine matches main's baseline ({now}) — the cross-branch verdict stands.")
+            else:
+                print(f"::notice::This run's machine matches main's baseline ({now}) — the cross-branch comparison produced a verdict.")
+            raise SystemExit(0)
+        message = (
+            f"Cross-machine comparison is invalid, so this run compared nothing against "
+            f"'main': this run measured {now}, the committed baseline was recorded on {was}. "
+            "No comparison means no verdict, so the job fails instead of passing green. "
+            "Repair: if the ubuntu-latest fleet rotated, re-record the baseline — dispatch "
+            "'Python Performance Benchmarks' on main with accept_cpu_change: true."
+        )
+        print(f"::error title=Benchmark gate has no verdict::{message}")
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write(
+                "## Benchmark gate: no verdict\n\n"
+                "`main`'s baseline was recorded on other hardware, so this run "
+                "produced no comparison and therefore no verdict.\n\n"
+                "| | CPU fingerprint |\n|---|---|\n"
+                f"| committed baseline | `{was}` |\n"
+                f"| this run | `{now}` |\n\n"
+                f"{message}\n"
+            )
+        raise SystemExit(1)
+        PY
 
   refresh-baseline:
     # Dispatch-only and main-only. A baseline move is never a side effect of
@@ -115,10 +224,15 @@ jobs:
       env:
         FILE: .benchmarks/baselines/main.json
         DRIFT_PCT: "5"
+        # Empty on a PR run; only a dispatch can set it. Boolean inputs arrive
+        # as the string "true"/"false" and "" when the event has no inputs.
+        ACCEPT_CPU_CHANGE: ${{ inputs.accept_cpu_change }}
       run: |
         set -euo pipefail
         # The committed file is main's reference; the workspace copy is what
-        # this run just measured.
+        # this run just measured. HEAD is trustworthy here where it is not in the
+        # gate job: the action's update path is PR-only, so nothing in this run
+        # commits a baseline of its own.
         git show "HEAD:$FILE" > "${RUNNER_TEMP}/committed-baseline.json"
         python - <<'PY'
         import json, os, pathlib
@@ -127,16 +241,20 @@ jobs:
         new = json.load(open(os.environ["FILE"]))
         out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
         limit = float(os.environ["DRIFT_PCT"])
+        accept = os.environ.get("ACCEPT_CPU_CHANGE") == "true"
 
         def fingerprint(doc):
             mi, cpu = doc.get("machine_info", {}), doc.get("machine_info", {}).get("cpu", {})
-            return (cpu.get("brand_raw"), cpu.get("arch"), cpu.get("count"), mi.get("system"))
+            return f"{cpu.get('brand_raw')}|{cpu.get('arch')}|{cpu.get('count')}|{mi.get('system')}"
 
-        if fingerprint(old) != fingerprint(new):
+        was_fp, now_fp = fingerprint(old), fingerprint(new)
+        cpu_changed = was_fp != now_fp
+        if cpu_changed and not accept:
             # Adopting another machine's numbers would poison the reference the
-            # gate compares against; the action's own compare gate skips these.
-            print(f"::notice::Hardware changed ({fingerprint(old)} -> {fingerprint(new)}); not refreshing the baseline.")
-            out.write_text("moved=false\n")
+            # gate compares against, so a hardware change is refused unless it
+            # is an explicit, reviewed act (dispatch accept_cpu_change: true).
+            print(f"::notice::Hardware changed ({was_fp} -> {now_fp}); not refreshing the baseline. Re-dispatch with accept_cpu_change: true after a runner-fleet rotation.")
+            out.write_text("moved=false\ncpu_changed=false\n")
             raise SystemExit(0)
 
         def means(doc):
@@ -168,7 +286,31 @@ jobs:
         for pct, name, before, after in sorted(rows, key=lambda r: -abs(r[0]))[:5]:
             print(f"{pct:+7.1f}%  {name}  ({before * 1000:.2f} -> {after * 1000:.2f} ms)")
         print(f"{len(moved)} of {len(rows)} benchmarks moved more than {limit:g}%.")
-        out.write_text("moved=true\n" if moved else "moved=false\n")
+        if cpu_changed:
+            # Named in the job summary AND the refresh PR body: the move is a
+            # measurement to review, never a verdict on this diff.
+            note = [
+                "### Hardware change accepted",
+                "",
+                f"Committed baseline: `{was_fp}`",
+                "",
+                f"This run: `{now_fp}`",
+                "",
+                "The numbers below are a cross-CPU **measurement, not a drift verdict** —",
+                "they cannot say whether code got slower. They exist so the next PR run",
+                "compares like with like again. Accepting them was this dispatch's",
+                "`accept_cpu_change: true`; without it this refresh refuses to move.",
+                "",
+            ]
+            text = "\n".join(note) + "\n"
+            pathlib.Path("cpu-change.md").write_text(text)
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                summary.write("## Baseline refresh: hardware change accepted\n\n" + text)
+            print(f"::warning::Hardware change accepted ({was_fp} -> {now_fp}); adopting these numbers as main's baseline.")
+        out.write_text(
+            f"moved={'true' if moved or cpu_changed else 'false'}\n"
+            f"cpu_changed={'true' if cpu_changed else 'false'}\n"
+        )
         PY
 
     - name: Open a baseline-refresh PR when the numbers moved
@@ -184,8 +326,19 @@ jobs:
         # Detached HEAD or branch: -B works for both.
         git checkout -B "$BRANCH"
         git add "$FILE"
-        git commit -m "chore(benchmark): refresh main baseline"
+        if [ "${{ steps.drift.outputs.cpu_changed }}" = "true" ]; then
+          git commit -m "chore(benchmark): refresh main baseline (new CPU)"
+        else
+          git commit -m "chore(benchmark): refresh main baseline"
+        fi
         git push --force origin "$BRANCH"
+        # A CPU move must be visible in the PR list, not only in the body: it is
+        # the one baseline change nobody should skim past.
+        if [ "${{ steps.drift.outputs.cpu_changed }}" = "true" ]; then
+          TITLE='chore(benchmark): refresh main baseline (new CPU)'
+        else
+          TITLE='chore(benchmark): refresh main baseline'
+        fi
         {
           echo "Re-measures \`main\` and stores the numbers this run produced."
           echo
@@ -193,6 +346,7 @@ jobs:
           echo "make (see \`.spec/tech.md\` § CI Benchmarking). No code change, so no"
           echo "gate decision here is made against numbers this PR writes."
           echo
+          if [ -f cpu-change.md ]; then cat cpu-change.md; fi
           cat drift-table.md
           echo
           echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -203,5 +357,5 @@ jobs:
           exit 0
         fi
         gh pr create --base main --head "$BRANCH" \
-          --title "chore(benchmark): refresh main baseline" \
+          --title "$TITLE" \
           --body-file "${RUNNER_TEMP}/refresh-body.md"
