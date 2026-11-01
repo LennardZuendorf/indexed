@@ -36,18 +36,28 @@ mcp__indexed__search_collection(collection="<name>", query="$ARGUMENTS")
 
 ## Result Format
 
-Results are ranked by relevance (lowest L2 distance = best match). Each result contains:
+Both tools return the documented payload (`schema: "indexed.search/1"`) — the same
+object `indexed index search --json` prints. Documents are grouped and ranked by
+their best hit:
 
-- `rank` — position in result list
-- `relevance_score` — similarity score
-- `collection` — source collection
-- `document_id` / `document_url` — source reference
-- `chunk_number` — matched chunk position
-- `text` — the actual matched content
+- `schema` — `indexed.search/1`. Branch on it; an `error` string with no `schema`
+  means the search failed, not that nothing matched
+- `counts` — `{documents, hits}`; `collections` — what was searched;
+  `collection_errors` — collections that failed (always present, `[]` when none)
+- `documents[]` — each states `collection`, `source_type`, `id`, optional `path` /
+  `url` and `score_kind` once
+- `documents[].hits[]` — `relevance` (higher is better, comparable across
+  collections; normally 0–1 but not clamped, so `l2_squared` can go negative),
+  `score` (raw engine number, only comparable within one `score_kind`),
+  `locator`, `text`
+- `locator` — where the hit sits; read only the keys its `kind` declares:
+  `line_span` (`start_line`/`end_line`, 1-based inclusive — what `grep -n` prints),
+  `page` (1-based), `headings` (heading path), or `document` (position unknown)
 
 ## Workflow
 
 1. Call `mcp__indexed__search(query="...")` with a natural-language query
-2. Review ranked results — best matches first
-3. Use `Read` to open the source files for the top hits
+2. Review the hits — `relevance` sorts them, `locator` says where to look
+3. Use `Read` on the hit's document (`path` or `url`, then `locator` lines) for the
+   full context around the match
 4. Only fall back to Grep/Glob if MCP search doesn't cover your use case
