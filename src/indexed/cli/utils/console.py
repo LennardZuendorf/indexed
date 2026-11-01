@@ -1,9 +1,12 @@
-"""Shared Rich console instance for the CLI.
+"""Rich consoles for the CLI: stdout for user output, stderr for log records.
 
-This module provides a single Console instance used across all CLI commands
-and the Loguru logging sink for consistent formatting and output. Routing
-all output through one Console prevents conflicts between Rich
-Live/Progress/Status displays and log messages.
+``console`` carries what a human reads — results, cards, progress displays —
+and is stdout-backed. ``log_console`` is the Loguru sink target and is
+stderr-backed, because stdout is the machine stream: under ``--json`` /
+``--simple-output`` it holds the payload and nothing else, so a log record
+must never land there. Both are Rich consoles, so formatting and theme styles
+stay in one place; Rich resolves ``sys.stdout``/``sys.stderr`` lazily per
+write, so Typer's ``CliRunner`` capture keeps working for both.
 
 Non-interactive environments (piped output, CI) degrade gracefully via
 Console.is_terminal auto-detection.
@@ -14,10 +17,14 @@ from typing import Optional
 from rich.console import Console
 from rich.text import Text
 
-# Single shared console instance — ALL CLI output goes through this.
+# Single shared console instance — ALL human-facing CLI output goes through this.
 # Uses stdout (default) for compatibility with Typer's CliRunner in tests.
 # Rich auto-detects non-interactive (piped) environments via Console.is_terminal.
 console = Console()
+
+# The Loguru sink (``bootstrap_logging(rich_console=...)``) writes here, never
+# to ``console``: stdout belongs to the command's machine output.
+log_console = Console(stderr=True)
 
 
 def is_interactive() -> bool:
@@ -49,4 +56,4 @@ def render_user_text(value: object, style: Optional[str] = None) -> Text:
     return Text(str(value), style=style or "")
 
 
-__all__ = ["console", "is_interactive", "render_user_text"]
+__all__ = ["console", "is_interactive", "log_console", "render_user_text"]

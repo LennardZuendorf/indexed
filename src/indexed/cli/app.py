@@ -36,7 +36,7 @@ from .utils.components.theme import (  # noqa: E402
     get_success_style,
     get_warning_style,
 )
-from .utils.console import console as _shared_console  # noqa: E402
+from .utils.console import log_console as _log_console  # noqa: E402
 
 # Single source of truth for level → Rich style mapping. New themes change
 # theme.py; logging picks them up automatically.
@@ -138,7 +138,7 @@ def _init_app(
         level=effective_level,
         debug=(effective_level == "DEBUG"),
         quiet=(effective_level == "ERROR"),
-        rich_console=_shared_console,
+        rich_console=_log_console,
         theme_styles=THEME_STYLES,
         log_dir=Path.home() / ".indexed" / "logs",
         json_mode=json_mode,
@@ -231,7 +231,7 @@ def main() -> None:
     # reconfigures with the resolved verbosity (idempotent).
     bootstrap_logging(
         level="WARNING",
-        rich_console=_shared_console,
+        rich_console=_log_console,
         theme_styles=THEME_STYLES,
     )
 

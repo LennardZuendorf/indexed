@@ -304,8 +304,10 @@ def bootstrap_logging(
             is enabled if ``log_dir`` is provided.
         quiet: When True, the status sink is not registered (spinner stays
             silent) and the console sink emits only ERROR+.
-        rich_console: Shared Rich Console instance. When None, the console
-            sink writes plain text to stderr.
+        rich_console: Rich Console for the console sink. The caller picks the
+            stream: the CLI passes its stderr-backed ``log_console`` so records
+            never enter a machine-readable stdout. When None, the console sink
+            writes plain text to stderr.
         theme_styles: Mapping of Loguru level name → Rich style markup. Used
             only when ``rich_console`` is also provided. The CLI builds this
             from ``apps/indexed/.../components/theme.py`` accessors.
