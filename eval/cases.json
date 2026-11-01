@@ -1,0 +1,332 @@
+{
+  "schema": "indexed.eval.cases.v1",
+  "description": "Pinned 23-case local retrieval evaluation over documentation, three native Python code files and sanitized public issue/PR snapshots. Original probes use real issue titles; eight authored probes add exact identifiers/config keys and paraphrased implementation intent. Document-level judgments include rationale and resolvable anchors. Four deliberately unanswerable queries expose distractor leakage. Git and transformed-snapshot provenance are recorded separately in corpus.json.",
+  "corpus_id": "indexed-docs",
+  "cases": [
+    {
+      "id": "issue-205-hybrid-search",
+      "query": "Hybrid search: BM25 + vector fusion (pre-ranking)",
+      "provenance": "GitHub issue #205 title, verbatim",
+      "rationale": "plan.md states hybrid retrieval is deferred to future features behind the shipped engine, which is exactly what a reader asking about hybrid search needs to know. lessons.md only mentions LlamaIndex's HybridChunker, a different concept, so it is a deliberate near-miss.",
+      "relevant": [
+        "plan.md"
+      ],
+      "distractors": [
+        "lessons.md"
+      ],
+      "answered_by": "plan.md:394-396"
+    },
+    {
+      "id": "issue-112-mcp-stale-collections",
+      "query": "MCP server serves stale collections; no refresh for long-running process",
+      "provenance": "GitHub issue #112 title, verbatim",
+      "rationale": "The technical and app references explicitly forbid stale responses after reindexing and document the no-response-cache/invalidation contract for long-lived MCP processes.",
+      "relevant": [
+        "tech.md",
+        "tech-app.md"
+      ],
+      "distractors": [
+        "agents-doc.md",
+        "lessons.md"
+      ],
+      "answered_by": "tech.md:436, tech-app.md:141-148"
+    },
+    {
+      "id": "issue-125-coretov2error-boundary",
+      "query": "mcp(v2): wrap v2 search/status errors as CoreV2Error at the boundary",
+      "provenance": "GitHub issue #125 title, verbatim",
+      "rationale": "The pinned service source shows the current boundary directly: search runs inside _wrap and preserves project errors while wrapping other exceptions as CoreV2Error; unreadable status manifests are logged and omitted. Model-acquisition errors in lessons are a different boundary and do not justify this label.",
+      "relevant": [
+        "v2-service-code.py"
+      ],
+      "distractors": [
+        "tech.md"
+      ],
+      "answered_by": "v2-service-code.py:36-48, 96-108, 239-253"
+    },
+    {
+      "id": "issue-186-engine-routing-gaps",
+      "query": "core(v2): engine-routing correctness gaps (batch abort, error swallowing, MCP crash, reranking)",
+      "provenance": "GitHub issue #186 title, verbatim",
+      "rationale": "The issue-specific lessons and facade contract describe the actual fixes: scoped validation failures, continued batch processing and per-collection search error envelopes, rather than only generic engine selection. The service source supplies partial direct code evidence for preserved typed-error boundaries and continuing status batches by omitting unreadable manifests.",
+      "relevant": [
+        "lessons.md",
+        "tech.md",
+        "v2-service-code.py"
+      ],
+      "distractors": [],
+      "answered_by": "lessons.md:1000-1018, 1051-1068, tech.md:491-505, v2-service-code.py:36-48, 164-178"
+    },
+    {
+      "id": "issue-123-jira-attachment-credentials",
+      "query": "security(jira): attachment download sends credentials to unvalidated API-supplied URL",
+      "provenance": "GitHub issue #123 title, verbatim",
+      "rationale": "The connector contract and threat-specific lesson require same-origin credentialed attachment fetches with effective-port comparison, including rejection of a non-default port.",
+      "relevant": [
+        "tech-connectors.md",
+        "lessons.md"
+      ],
+      "distractors": [
+        "plan.md",
+        "product.md"
+      ],
+      "answered_by": "tech-connectors.md:75-81, lessons.md:332-342"
+    },
+    {
+      "id": "issue-61-docling-parsing",
+      "query": "feat(connectors): migrate FileSystemConnector parsing to Docling",
+      "provenance": "GitHub issue #61 title, verbatim",
+      "rationale": "The parser reference and README describe Docling routing and supported formats. The implementation lesson supplies the concrete parser/chunker choice, so it is partial implementation evidence rather than a distractor.",
+      "relevant": [
+        "tech-parsing.md",
+        "README.md",
+        "lessons.md"
+      ],
+      "distractors": [
+        "tech.md",
+        "agents-doc.md"
+      ],
+      "answered_by": "tech-parsing.md:22-23, README.md:48, lessons.md:394-404"
+    },
+    {
+      "id": "issue-63-model-caching",
+      "query": "feat(cli): smart model caching with HuggingFace Hub + indexed init",
+      "provenance": "GitHub issue #63 title, verbatim",
+      "rationale": "The lessons and core reference both explain usable weights-bearing HuggingFace snapshots, shared cache identity and offline cached loads; both directly answer smart model caching.",
+      "relevant": [
+        "lessons.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "answered_by": "lessons.md:366, 400, 802, 1075-1078, tech-core.md:67-83"
+    },
+    {
+      "id": "issue-211-huggingface-warning",
+      "query": "Badly formatted Duplicate Huggingface Warning",
+      "provenance": "GitHub issue #211 title, verbatim",
+      "rationale": "The acquisition lesson records Hub retry chatter, and the core reference explicitly describes suppression of retry warnings and actionable errors instead of duplicate dependency messages.",
+      "relevant": [
+        "lessons.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "answered_by": "lessons.md:14, tech-core.md:100-104"
+    },
+    {
+      "id": "issue-66-pluggable-embedding-model",
+      "query": "Pluggable Embedding Model & Remote API Support",
+      "provenance": "GitHub issue #66 title, verbatim",
+      "rationale": "The roadmap states the remote-provider limitation. The core reference and native config expose alternative local model identities, supplying partial answers to the local pluggability part of this broad issue title. Any document that supplies a substantive part of the current answer is relevant.",
+      "relevant": [
+        "plan.md",
+        "tech-core.md",
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "answered_by": "plan.md:391-399, tech-core.md:45-46, v2-config-code.py:16-22"
+    },
+    {
+      "id": "issue-185-engine-flip-data-loss",
+      "query": "core(v2): \"index create\" silently flips an existing collection's engine (data loss)",
+      "provenance": "GitHub issue #185 title, verbatim",
+      "rationale": "The facade contract, exact data-loss lesson and app engine-selection rule explain that an existing manifest remains authoritative and a conflicting selector fails. Typed on-disk DTO documentation alone is not evidence for that behavior.",
+      "relevant": [
+        "tech.md",
+        "lessons.md",
+        "tech-app.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "answered_by": "tech.md:491-493, lessons.md:847-865, tech-app.md:58-60"
+    },
+    {
+      "id": "issue-109-cli-search-output",
+      "query": "Improve CLI search output for humans and agents",
+      "provenance": "GitHub issue #109 title, verbatim",
+      "rationale": "The app reference describes current human and agent output surfaces. The lessons and roadmap provide partial implemented output fixes; they do not establish that every part of the broad output-improvement issue is complete.",
+      "relevant": [
+        "tech-app.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "distractors": [
+        "README.md"
+      ],
+      "answered_by": "tech-app.md:94-98, 156-162, lessons.md:83-96, plan.md:111-113, 365-366"
+    },
+    {
+      "id": "issue-241-lsp-knowledge-server",
+      "query": "feat: `indexed lsp` — knowledge server over the Language Server Protocol",
+      "provenance": "GitHub issue #241 title, verbatim",
+      "rationale": "Unanswerable by this corpus: no pinned document mentions the Language Server Protocol or an LSP command. The app-layer documents are the near-miss — they describe the CLI and MCP surfaces an LSP server would sit beside, not LSP itself.",
+      "relevant": [],
+      "distractors": [
+        "tech-app.md",
+        "tech.md"
+      ],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-204-retrieval-eval-harness",
+      "query": "Retrieval evaluation harness (golden queries, hit-rate/MRR, faithfulness)",
+      "provenance": "GitHub issue #204 title, verbatim",
+      "rationale": "Unanswerable by this corpus: hit-rate, MRR and the eval harness live in eval/README.md, which is deliberately not part of the pinned corpus (a benchmark that indexes its own documentation measures nothing). plan.md and lessons.md discuss retrieval work, which is why they look close.",
+      "relevant": [],
+      "distractors": [
+        "plan.md",
+        "lessons.md"
+      ],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-147-time-travel-search",
+      "query": "Time-travel search (\"search as of &lt;ref&gt;\")",
+      "provenance": "GitHub issue #147 title, verbatim as returned by the GitHub API",
+      "rationale": "Unanswerable by this corpus: no pinned document promises or rules out time-travel/ref-scoped search. plan.md and product.md list planned features generally, which makes them the near-miss.",
+      "relevant": [],
+      "distractors": [
+        "plan.md",
+        "product.md"
+      ],
+      "answered_by": ""
+    },
+    {
+      "id": "issue-216-loc-size-gate",
+      "query": "chore: LOC reduction pass — the size gate has ratcheted 23 times since Feature 14",
+      "provenance": "GitHub issue #216 title, verbatim",
+      "rationale": "Unanswerable for the exact historical claim of 23 ratchets since Feature 14. The corpus does discuss size gates and LOC reduction in lessons and the roadmap, so those are genuine near misses; it does not substantiate that count/history.",
+      "relevant": [],
+      "distractors": [
+        "agents-doc.md",
+        "lessons.md",
+        "plan.md"
+      ],
+      "answered_by": ""
+    },
+    {
+      "id": "exact-recovery-symbol",
+      "query": "recover_stranded",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Exact public symbol in pinned recovery implementation and sanitized PR #244.",
+      "relevant": [
+        "recovery-code.py",
+        "github-pr-244.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "answered_by": "recovery-code.py:148-161, github-pr-244.md:15-17, tech-core.md:121-125"
+    },
+    {
+      "id": "exact-rerank-config-key",
+      "query": "core.v2.rerank.top_n",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The native config model defines the rerank namespace, the top_n field and its default of ten; the product overview only describes reranking generally.",
+      "relevant": [
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "product.md"
+      ],
+      "answered_by": "v2-config-code.py:4, 57-58"
+    },
+    {
+      "id": "exact-recovery-error",
+      "query": "CollectionRecoveryError",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The sanitized PR states the explicit-open error identifier and its relation to preserved/quarantined data.",
+      "relevant": [
+        "github-pr-244.md",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "answered_by": "github-pr-244.md:26-30, tech-core.md:148-153"
+    },
+    {
+      "id": "issue-and-pr-identity",
+      "query": "#126 #244 collection crash recovery",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Both sanitized records identify the related issue/PR and explain why a collection can disappear between swap renames.",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-config.md"
+      ],
+      "answered_by": "github-issue-126.md:1, 15-18, github-pr-244.md:1, 8-11, recovery-code.py:1-15, tech-core.md:110-125"
+    },
+    {
+      "id": "paraphrased-invisible-index",
+      "query": "After a crash my old index still exists but no longer shows in search. Why?",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "Both records explain invisible preserved generations and recovery before discovery; code shows the implementation seam.",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "answered_by": "github-issue-126.md:15-18, github-pr-244.md:8-11, recovery-code.py:3-15, tech-core.md:121-125"
+    },
+    {
+      "id": "windows-probe-rationale",
+      "query": "Why does collection recovery avoid probing Windows processes?",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The PR gives the Windows termination rationale; the native implementation returns unknown without probing on non-POSIX.",
+      "relevant": [
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "v2-config-code.py"
+      ],
+      "answered_by": "github-pr-244.md:21-22, recovery-code.py:495-498, tech-core.md:145-147"
+    },
+    {
+      "id": "power-loss-constraint",
+      "query": "Does recovering an interrupted collection swap guarantee durability after a power cut?",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The issue and PR explicitly distinguish process-crash recovery from an unimplemented fsync/power-loss guarantee.",
+      "relevant": [
+        "github-issue-126.md",
+        "github-pr-244.md",
+        "recovery-code.py",
+        "tech-core.md"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "answered_by": "github-issue-126.md:27-29, github-pr-244.md:34-35, recovery-code.py:53-54, tech-core.md:155-157"
+    },
+    {
+      "id": "rerank-default-model",
+      "query": "Which cross-encoder runs when v2 reranking is enabled, and how many results does it keep?",
+      "provenance": "Authored fixture probe; native code/docs at git 7066bef2b3b4adf09144a3df5089ec3f1ea165d7; sanitized issue/PR provenance in corpus manifest.",
+      "rationale": "The code names cross-encoder/ms-marco-MiniLM-L-6-v2 and top_n=10; an embedding model mention is a near-miss.",
+      "relevant": [
+        "v2-config-code.py"
+      ],
+      "distractors": [
+        "tech-parsing.md"
+      ],
+      "answered_by": "v2-config-code.py:53-58"
+    }
+  ]
+}

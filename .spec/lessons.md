@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-10-19
+updated: 2026-10-31
 ---
 
 # Lessons Learned
@@ -36,6 +36,33 @@ Accumulated mistakes and earned defaults. Read at session start.
   build was known to succeed — a failed acquisition (or any failure) then lost
   the previously usable collection. Removed; the swap alone gives force its
   overwrite semantics atomically.
+
+## Dependabot alert-cluster sweep (2026-10-26)
+
+- **Group alerts by whether the package reaches the wheel, not by the
+  `dependency.scope` GitHub reports.** Dependabot labelled `virtualenv`
+  `scope=runtime` on every one of its 19 alerts even though it is dev-only and
+  ships in no wheel; triaging by that field over-rates a dev tool above
+  `aiohttp`. Resolve the actual dependency class from `uv.lock`/`pyproject.toml`
+  before ranking by severity.
+- **A single lock refresh plus `[tool.uv] constraint-dependencies` floors closes
+  a whole cluster at once — and the floors are what stop it reopening.** One
+  `uv lock` resolution moved 20 alerting packages past their first-patched
+  versions; adding each floor alongside it means the next routine resolution
+  cannot silently walk back below the fix. Without the floor the bump is a
+  one-off that regresses on the next lock churn.
+- **`first_patched_version: null` is a snapshot of the advisory, not a verdict
+  on the range — re-check PyPI before writing accepted risk.** A null value means
+  "no patched release existed when the advisory was published". Read the
+  vulnerable range instead: if it is bounded above (`accelerate <=1.14.0`,
+  `nltk <=3.10.3`), any later release above the bound clears the alert — both
+  got one within days (1.15.0, 3.10.4) and resolved under the same constraints.
+  Only an advisory whose range stays open above every published release is a
+  genuine accepted-risk item, and that claim needs a version check, not a
+  memory of the earlier null.
+- **`pip-audit --vulnerability-service osv` is the cheap end-to-end proof that
+  the lock sweep worked**, independent of Dependabot's alert state (which
+  re-evaluates on its own schedule and can lag a merged fix by hours).
 
 ## Dependency lock reconciliation (2026-10-19)
 
@@ -745,6 +772,8 @@ with `git add`/`git status`, since that's what CI actually runs.
 - **The CI benchmark action pushes baseline commits (`chore(benchmark): update baseline … [skip ci]`)
   onto the PR branch itself**, so the next push is a non-fast-forward. `git fetch && git rebase
   origin/<branch>` before each push (the baseline JSON touches disjoint files — clean rebase).
+  *(Superseded 2026-10-27: a PR benchmark run holds `contents: read` and cannot push at all — see
+  tech.md § CI Benchmarking. Local rebases are still needed for ordinary concurrent pushes.)*
 - **The whole-branch review catches cross-UNIT gaps no per-unit review can.** Migration created the
   `<name>.v1-backup` convention (unit 4) but collection-discovery lives in units 1/2, so the default
   `migrate` left the backup as a discoverable + searchable phantom v1 collection (duplicate hits)
@@ -1098,6 +1127,22 @@ with `git add`/`git status`, since that's what CI actually runs.
   (an autouse class fixture) is the hermetic pattern; the local-config-wins
   behavior itself is the correct config priority chain, not a bug.
 
+## Evidence that is asserted, not checked (2026-10-29)
+
+- **A line reference in a judgement is not evidence until something resolves
+  it.** The eval case set records an `answered_by` anchor per judgement, but the
+  tests only asserted the field was non-empty, so six `lessons.md` references sat
+  +27 lines stale — pointing at blank lines and unrelated lessons — with every
+  gate green and a review selling them as the justification. Resolve the anchor
+  mechanically (file in the pinned corpus, line in range, line non-blank, file
+  one the case judges relevant); a parser in the test suite is cheaper than the
+  review that eventually finds it.
+- **A run knob with an `Optional` default of `None` is recorded as "unset", and
+  "unset" never compares equal to the explicit default.** One otherwise identical
+  run then reports `incomparable` against its own baseline. Pin the type to the
+  value it means (`bool`, not `Optional[bool]`) and assert the whole recorded
+  config in the reproduction test, not just the model name.
+
 ## CI-only gates are not in the pre-push hooks (2026-09-26)
 
 - **`scripts/check_imports.py` and `scripts/check_sizes.py` run only in CI —
@@ -1113,3 +1158,121 @@ with `git add`/`git status`, since that's what CI actually runs.
   breached is trim boilerplate first (one-line docstrings, a shared layout
   helper, inlined scenario comments — never weaken an assertion or drop a
   scenario), then bump with a precedent comment last.
+
+## Neutralise a bot's write with the token, not with its own knob (2026-10-27)
+
+- **Grant the CI job `contents: read` and a commit-pushing action simply cannot
+  move the file; every in-action switch that looks like a disable is only a
+  heuristic.** `pytest-bench-action` exposes `update-tolerance` (drift % that
+  triggers a baseline commit), but the same `should_update` path also fires when
+  the comparison is skipped for a hardware mismatch (exit 3) and when the base
+  branch has no baseline yet — cases no tolerance value reaches. Meanwhile the
+  push itself needed `contents: write`, so dropping that scope is the guarantee
+  and the tolerance is only log hygiene. Prefer the permission boundary over the
+  tool's own off-switch; state in the workflow comment which one is the
+  guarantee so nobody re-grants write "because the action needs it".
+- **A composite action owns the job's git checkout, so a later step inherits
+  whatever it left behind.** The benchmark action does its own `checkout` at a
+  hardcoded `fetch-depth: 2`; a step after it can still branch, commit and
+  force-push (`git checkout -B <branch>` works from its detached HEAD) but must
+  not assume tags or history. That also makes the action's non-PR "Save
+  baseline" step usable as a refresh primitive: on `workflow_dispatch` it
+  rewrites `baselines/main.json` in the workspace and (its update path being
+  `pull_request`-only) never pushes it — the following step just has to land
+  that one file through a reviewed PR, since a branch-protected `main` rejects a
+  bot push even for a bot's own commit.
+- **A guard that forbids a change outright needs one sanctioned door, or its
+  remedy cannot converge.** `baseline-guard` forbids a code PR from rewriting
+  `main.json`; once the benchmark job lost write scope, the guard's "restore the
+  file and re-run" advice became satisfiable for the first time — but the
+  baseline then had no way to move at all. The door is "a PR that changes
+  nothing but that file": the invariant worth keeping is that no gate decision
+  is made against numbers the same PR writes, and a baseline-only PR cannot
+  violate it. Keep the door narrow (paths other than the one file still fail)
+  and say in the message which door is sanctioned. Then close the second hole a
+  "nothing but that file" rule leaves open: a DELETION also changes nothing
+  else, passes the empty-`others` test, and lands main with no baseline — after
+  which every run logs "No baseline found ... skipping cross-branch comparison"
+  and passes, so the gate is disarmed while all its checks are green. Require
+  the file to exist at HEAD before opening the door; a refresh *rewrites*, it
+  never removes.
+
+## Retrieval evaluation review (#265, 2026-10-30)
+
+- [workflow] Discover optional paths and JSON keys before reading them. Repeated
+  guessed filenames, absent worktree environments and assumed review-envelope
+  keys caused avoidable failed commands. Inspect anchors and the working diff
+  after a failed multi-file patch; insert tests at complete function boundaries.
+- [testing] Temporary Git fixtures must disable inherited signing and hooks.
+  Clear Git's repository-local environment before fixture setup. Pre-push hooks
+  export GIT_DIR; git init can otherwise reinitialize the caller's repository
+  and set core.bare=true despite a temporary cwd. Verify the caller's config
+  remains unchanged in a disposable hook-environment regression.
+  Sandbox runs may forbid pytest-rerunfailures' loopback listener before any
+  test collects; record that environment failure and use an appropriate scoped
+  retry. Full service/socket checks need their actual execution permissions.
+- [environment] Provision the locked worktree environment; an offline uv cache
+  can lack a wheel. Use an explicit writable cache for sandboxed read-only
+  probes. Do not count a failed setup as a product test failure.
+  When process inventory is unavailable, use the tool session and advancing log
+  instead of retrying unsupported OS process services.
+- [models] A cached filename can be a dangling weight symlink. Confirm regular
+  usable weights and the same selected snapshot that the loader resolves.
+  Repo-ID v2/reranker loads require their active ref; a v1 direct-path fallback
+  must not be advertised as a snapshot selected by a repo-ID loader.
+- [testing] Resolve the intended model cache before HOME isolation, then use
+  that exact cache for both availability and loading. Validate structural/config
+  evidence before gating exact metrics on Python, platform, numerical libraries
+  and model identity. A module unit marker also selects integration-decorated
+  tests; classify mixed files per test and check marker intersections.
+- [config] Whole-app binding can reject unrelated connector/MCP settings during
+  evaluation. Scope the measured namespaces, pin effective settings, and restore
+  preexisting overrides after success, failure and nested scopes. Deep-copy the
+  overlay before mutation so earlier snapshots cannot alias the new values.
+- [validation] Reject falsey wrong types before truthiness checks. Otherwise
+  malformed error arrays/booleans and case-label fields become healthy misses.
+  Reject ambiguous scheme-like basenames and every unpinned/nested input byte.
+- [reports] Reconcile query IDs, immutable judgments, saved rankings, derived
+  ranks/RR/hits/leakage, counts and failures before deciding a verdict. Compare
+  all effective config fields, reject recursive nonfinite values, and recompute
+  leakage at the requested cut. Missing IDs or equal missing hashes are not
+  evidence of a comparable experiment.
+- [errors] JSON's integer digit limit raises plain ValueError; finite checks on
+  enormous integers can raise OverflowError. Translate malformed input at the
+  read boundary to exit 2. Preserve the producer's valid unknown-chunk sentinel
+  rather than rejecting reports the runner itself emits.
+- [fixtures] Nonblank anchors do not prove relevance. Independent semantic
+  review found real answers labeled distractors, omitted code/docs and an error
+  identifier used to justify the wrong boundary. Re-audit labels after corpus
+  expansion, pin direct evidence when available, and freeze labels before scores.
+- [provenance] Git snapshots and authored sanitized extracts need different
+  provenance. Hash local extracts and capture their upstream identity separately.
+  Record dirty-worktree status and a source fingerprint when measurements precede
+  a commit gate; a Git head alone cannot identify uncommitted measured code.
+  Include new files in whitespace checks before freezing evidence. Preserve
+  intentional snapshot bytes and report any trailing-blank-line exceptions.
+  Exclude byte-pinned inputs from whitespace-rewriting hooks, as for benchmark
+  baselines; a commit hook otherwise invalidates their recorded content hashes.
+- [integration] Rebase size caps must retain both legitimate branches' deltas.
+  Measure the combined tree and final review tests; do not restore an older cap
+  or stale benchmark baseline. Distinguish local repairs from published PR/CI state.
+- [spec] Validate scenario syntax with explicit WHEN/THEN bullets. Keep
+  spec dates current at publication when a repair crosses calendar days; the
+  validator compares updated dates against the final commit date.
+  Keep structural validation separate from the pre-merge drift audit: legacy
+  historical evidence
+  and active local plan artifacts can fail the latter. Report both results and
+  baseline the flagged lines instead of calling an unrelated cleanup a PR fix.
+
+## Evaluation PR comments (2026-10-31)
+
+- [tools] Check optional directories before searching them, quote API endpoints
+  containing query strings, and fall back to dedicated connectors on transient
+  CLI network errors. Use `uv run --no-sync --no-cache` or a writable task cache
+  for checks when the global uv cache is unavailable.
+- [ci] An informative compare step can exit successfully after a failed command.
+  Render the saved verdict and explicit report availability, not the step's green
+  state. Preserve environment differences and failed harness tests in summaries.
+- [reporting] Budget comment size after Markdown escaping; character entities
+  expand raw text. Omit whole details with an artifact link when the budget is
+  reached. Preserve block separators and keep environment warnings above details.

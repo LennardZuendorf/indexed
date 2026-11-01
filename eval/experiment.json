@@ -1,0 +1,107 @@
+{
+  "schema": "indexed.eval.experiment.v1",
+  "description": "Dense and dense-plus-rerank over identical frozen fixtures; a configuration experiment, not a same-config regression comparison.",
+  "corpus_tree_sha256": "8a52afa742267d52204241bb7dbe00f76ba9354b1b750bf641c73e45c1982eca",
+  "case_set_sha256": "924efe7313ff2deadb6345f8daf49e165d14a799e8d861644c1a572fba1803ef",
+  "reports": {
+    "dense": {
+      "path": "eval/baseline.json",
+      "sha256": "9b61d148c1be94192ef164a377a6681321560f72375c04b41634c853582f7de4",
+      "metrics": {
+        "k": 5,
+        "cases": 23,
+        "answerable": 19,
+        "unanswerable": 4,
+        "errors": 0,
+        "hit_rate": 1.0,
+        "hit_rate_at_5": 1.0,
+        "mrr": 0.808772,
+        "unanswerable_distractor_leaks": 4,
+        "failed_by_id": []
+      }
+    },
+    "rerank": {
+      "path": "eval/rerank-baseline.json",
+      "sha256": "3e3ab3526b05ecb27e140e44a258a4f92178d48f1f2d7b808b09c82ca960a10c",
+      "metrics": {
+        "k": 5,
+        "cases": 23,
+        "answerable": 19,
+        "unanswerable": 4,
+        "errors": 0,
+        "hit_rate": 1.0,
+        "hit_rate_at_5": 1.0,
+        "mrr": 0.828947,
+        "unanswerable_distractor_leaks": 3,
+        "failed_by_id": []
+      }
+    }
+  },
+  "delta": {
+    "hit_rate": 0.0,
+    "mrr": 0.020175,
+    "unanswerable_distractor_leaks": -1
+  },
+  "ordinary_compare_verdict": "incomparable",
+  "config_changes": {
+    "rerank": {
+      "baseline": false,
+      "candidate": true
+    },
+    "reranker_model": {
+      "baseline": null,
+      "candidate": "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    },
+    "reranker_top_n": {
+      "baseline": null,
+      "candidate": 10
+    },
+    "score_kind": {
+      "baseline": "cosine",
+      "candidate": "rerank"
+    }
+  },
+  "rank_movements": [
+    {
+      "id": "issue-205-hybrid-search",
+      "dense_rank": 5,
+      "rerank_rank": 4
+    },
+    {
+      "id": "issue-112-mcp-stale-collections",
+      "dense_rank": 1,
+      "rerank_rank": 3
+    },
+    {
+      "id": "issue-125-coretov2error-boundary",
+      "dense_rank": 2,
+      "rerank_rank": 1
+    },
+    {
+      "id": "issue-211-huggingface-warning",
+      "dense_rank": 3,
+      "rerank_rank": 1
+    },
+    {
+      "id": "issue-185-engine-flip-data-loss",
+      "dense_rank": 2,
+      "rerank_rank": 1
+    },
+    {
+      "id": "issue-109-cli-search-output",
+      "dense_rank": 1,
+      "rerank_rank": 2
+    },
+    {
+      "id": "exact-recovery-error",
+      "dense_rank": 2,
+      "rerank_rank": 1
+    },
+    {
+      "id": "paraphrased-invisible-index",
+      "dense_rank": 1,
+      "rerank_rank": 3
+    }
+  ],
+  "decision": "Keep both modes as measured evidence. Do not set a hard tolerance or claim general ranking superiority from this small fixture set."
+}

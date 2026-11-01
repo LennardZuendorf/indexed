@@ -29,6 +29,7 @@ from loguru import logger
 
 from indexed.config.errors import ConfigurationError
 from indexed.core.errors import (
+    CollectionRecoveryError,
     EngineMismatchError,
     UnknownEngineVersionError,
 )
@@ -119,6 +120,105 @@ def _collections_base(collections_path: Optional[str]) -> Path:
     return Path(get_default_collections_path())
 
 
+def _preserved(base: Path, names: Optional[List[str]] = None) -> Dict[str, str]:
+    """Collections whose data sits under ``.recovery/``, and why (durable).
+
+    Read back from the marker ``core.recovery`` writes beside the preserved
+    data, because the quarantining pass is one-shot: after the move nothing is
+    left to detect, so a marker is the only thing that keeps a read from
+    reporting a bare "not found" for data that is still on disk.
+    """
+    try:
+        from indexed.core.recovery import quarantine_reasons
+
+        reasons = quarantine_reasons(base)
+    except Exception as exc:  # housekeeping must never mask the real operation
+        logger.warning(f"collection recovery: unreadable quarantine markers: {exc}")
+        return {}
+    if names is None:
+        return reasons
+    wanted = set(names)
+    return {name: reason for name, reason in reasons.items() if name in wanted}
+
+
+def _recover(
+    base: Path,
+    names: Optional[List[str]] = None,
+    *,
+    strict: bool = False,
+) -> None:
+    """Resolve generations stranded by an interrupted swap, before listing/opening.
+
+    ``core.recovery`` restores a complete collection whose canonical directory a
+    crashed ``replace_dir`` left missing (both generations sit in ``.tmp-``/
+    ``.trash-`` dirs discovery skips) or quarantines what it cannot prove.
+    Called from every collection *list* and *open* gate below, so a crash
+    between the swap's two renames is healed on the next read instead of
+    leaving the collection permanently invisible.
+
+    ``strict`` (an explicitly requested collection) raises
+    :class:`~indexed.core.errors.CollectionRecoveryError` when the name could
+    not be restored — a silent omission would read as "no such collection" and
+    hide the preserved data.
+
+    A sweep never raises: housekeeping must not break a read. It does not fall
+    silent either — the durable quarantine marker is re-read on EVERY read path,
+    so a collection whose data was preserved keeps explaining itself on later
+    reads instead of vanishing into "no results found".
+    """
+    try:
+        from indexed.core.recovery import QUARANTINE_DIRNAME, recover_stranded
+    except Exception as exc:  # pragma: no cover - recovery is best effort
+        logger.warning(f"collection recovery skipped: {exc}")
+        return
+
+    fresh: Dict[str, str] = {}
+    moved: set[str] = set()
+    try:
+        outcome = recover_stranded(base, names=names)
+    except Exception as exc:  # housekeeping must never mask the real operation
+        logger.warning(f"collection recovery skipped: {exc}")
+    else:
+        fresh = dict(outcome.unrecoverable)
+        # Names whose data this pass actually moved under `.recovery/<name>/`.
+        moved = {name for name, _target in outcome.quarantined}
+
+    durable = _preserved(base, names)
+    preserved: Dict[str, str] = {**durable, **fresh}
+    if not preserved:
+        return
+    # Only a name whose data really sits under `.recovery/<name>/` may claim it:
+    # a hold on a live writer, or an incomplete canonical left in place, must
+    # point the operator at the data instead of at an empty quarantine dir.
+    located = set(durable) | moved
+    if strict and names:
+        for name in names:
+            reason = preserved.get(name)
+            if reason is None:
+                continue
+            if name in located:
+                raise CollectionRecoveryError(
+                    name,
+                    reason=reason,
+                    quarantine_path=base / QUARANTINE_DIRNAME / name,
+                )
+            canonical = base / name
+            raise CollectionRecoveryError(
+                name,
+                reason=reason,
+                canonical_path=canonical if canonical.is_dir() else None,
+            )
+        return
+    for name, reason in preserved.items():
+        if name in fresh:
+            continue  # the pass itself already logged this incident
+        logger.warning(
+            f"collection '{name}' is not readable: {reason}. Its data is preserved "
+            f"under {str(base / QUARANTINE_DIRNAME / name)!r} — inspect that "
+            f"directory and move it back by hand, or rebuild the collection."
+        )
+
+
 def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
     """List existing collection names for engine detection.
 
@@ -131,6 +231,7 @@ def _existing_collection_names(collections_path: Optional[str]) -> List[str]:
     consolidation, not a new cross-layer dependency.
     """
     base = _collections_base(collections_path)
+    _recover(base)
     if not base.is_dir():
         return []
     names: List[str] = []
@@ -173,6 +274,7 @@ def _resolve_existing_engine(
         _validate_engine(engine) if engine is not None else None
     )
     base = _collections_base(collections_path)
+    _recover(base, collection_names)
     detected_versions: set[EngineVersion] = set()
     for name in collection_names:
         collection_path = base / name
@@ -240,6 +342,7 @@ def _group_names_by_engine(
         ``UnknownEngineVersionError`` message for every name skipped above.
     """
     base = _collections_base(collections_path)
+    _recover(base, collection_names)
     groups: "dict[EngineVersion, List[str]]" = {}
     omitted: dict[str, str] = {}
     for name in collection_names:
@@ -532,6 +635,33 @@ def collection_exists(
     return result
 
 
+def _surface_preserved(
+    base: Path, result: Dict[str, Any], names: Optional[List[str]] = None
+) -> None:
+    """Add an ``{"error": ...}`` entry for every collection data was preserved for.
+
+    ``search``'s return type is a dict keyed by collection name, so a
+    quarantined collection CAN explain itself here (the CLI renders an ``error``
+    entry as a failed collection) instead of the whole read reporting
+    "no results found" while its data sits under ``.recovery/``. Same shape as
+    the unknown-manifest-version entry above.
+    """
+    from indexed.core.recovery import QUARANTINE_DIRNAME
+
+    for name, reason in _preserved(base, list(names) if names else None).items():
+        if name in result:
+            continue  # a readable copy answered for this name
+        result[name] = {
+            "error": str(
+                CollectionRecoveryError(
+                    name,
+                    reason=reason,
+                    quarantine_path=base / QUARANTINE_DIRNAME / name,
+                )
+            )
+        }
+
+
 def search(
     query: str,
     configs: Optional[List[Any]] = None,
@@ -588,8 +718,19 @@ def search(
         if configs
         else _existing_collection_names(collections_path)
     )
+    if configs:
+        # An explicitly requested collection that could not be recovered must
+        # fail loud rather than come back as a bare "not found".
+        _recover(_collections_base(collections_path), names, strict=True)
+    # An unfiltered read reports every quarantined collection; an explicit one
+    # only explains the names it was asked for.
+    preserved_scope = names if configs else None
     if engine is not None:
-        return _run(_resolve_existing_engine(engine, names, collections_path), configs)
+        result = _run(
+            _resolve_existing_engine(engine, names, collections_path), configs
+        )
+        _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        return result
 
     groups, omitted = _group_names_by_engine(names, collections_path)
     if len(groups) <= 1:
@@ -598,12 +739,14 @@ def search(
         version, grp_names = next(iter(groups.items()), (_DEFAULT_ENGINE, []))
         result = _run(version, _configs_for_group(configs, grp_names))
         result.update({name: {"error": msg} for name, msg in omitted.items()})
+        _surface_preserved(_collections_base(collections_path), result, preserved_scope)
         return result
 
     merged: Dict[str, Any] = {}
     for grp_version, grp_names in sorted(groups.items()):
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     merged.update({name: {"error": msg} for name, msg in omitted.items()})
+    _surface_preserved(_collections_base(collections_path), merged, preserved_scope)
     return merged
 
 
@@ -626,6 +769,8 @@ def status(
             ),
         )
 
+    if collection_names:
+        _recover(_collections_base(collections_path), collection_names, strict=True)
     resolved = collection_names or _existing_collection_names(collections_path)
     if engine is not None:
         return _run(
@@ -665,6 +810,8 @@ def inspect(
             ),
         )
 
+    if collection_names:
+        _recover(_collections_base(collections_path), collection_names, strict=True)
     resolved = collection_names or _existing_collection_names(collections_path)
     if engine is not None:
         return _run(
