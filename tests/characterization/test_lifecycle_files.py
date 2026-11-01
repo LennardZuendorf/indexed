@@ -71,17 +71,17 @@ def test_files_lifecycle_create_search_update_inspect_remove(
 
     # --- search: a KNOWN document is the top hit -------------------------
     payload = _search("penguin migration survey along the Antarctic coastline")
-    assert payload["total_collections_searched"] >= 1
-    assert payload["results"], "expected at least one search hit"
-    top = payload["results"][0]
-    assert top["document_id"].endswith("needle.txt"), (
-        f"expected needle.txt as top hit, got {top['document_id']!r}"
+    assert len(payload["collections"]) >= 1
+    assert payload["documents"], "expected at least one search hit"
+    top = payload["documents"][0]
+    assert top["id"].endswith("needle.txt"), (
+        f"expected needle.txt as top hit, got {top['id']!r}"
     )
-    assert "penguin" in top["text"].lower()
+    assert "penguin" in top["hits"][0]["text"].lower()
 
     # A query matching a different document ranks that document first.
     other = _search("vector indexing embeddings retrieval")
-    assert other["results"][0]["document_id"].endswith("beta.txt")
+    assert other["documents"][0]["id"].endswith("beta.txt")
 
     # --- update: new content becomes searchable --------------------------
     (files_corpus / "gamma.txt").write_text(
@@ -95,7 +95,7 @@ def test_files_lifecycle_create_search_update_inspect_remove(
     assert updated.exit_code == 0, updated.stdout + updated.stderr
 
     post = _search("volcanic soil sulfur concentrations caldera")
-    assert any(r["document_id"].endswith("gamma.txt") for r in post["results"]), (
+    assert any(d["id"].endswith("gamma.txt") for d in post["documents"]), (
         "newly indexed document should be searchable after update"
     )
 

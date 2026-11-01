@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-09-02
+updated: 2026-10-27
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -189,6 +189,130 @@ def collection_status(name: str) -> dict:
 | **sse** | Server-Sent Events | SSE streaming |
 
 `src/indexed/mcp/cli.py` handles transport selection.
+
+---
+
+## Search result contract (`indexed.search/1`)
+
+**Source of truth for every machine consumer:** `indexed search --json` and the MCP
+tools `search` / `search_collection`. One typed contract
+(`src/indexed/protocols/results.py`), one builder
+(`indexed.mcp.formatting.build_search_payload`), so the two surfaces cannot drift into
+lookalikes (issues #108/#109). Downstream consumers — the eval harness (#204), the
+`index-use` skill text (#222), the CLI hover payload (#241) — branch on `schema`, never
+on the presence of a key.
+
+```json
+{
+  "schema": "indexed.search/1",
+  "query": "how is relevance unified",
+  "counts": {"documents": 2, "hits": 3},
+  "collections": ["indexed-src", "notes-v2"],
+  "collection_errors": [{"collection": "jira", "error": "…"}],
+  "documents": [
+    {
+      "collection": "indexed-src",
+      "source_type": "localFiles",
+      "id": "src/indexed/utils/relevance.py",
+      "path": "/repo/src/indexed/utils/relevance.py",
+      "url": "https://…",
+      "score_kind": "l2_squared",
+      "hits": [
+        {
+          "relevance": 0.625,
+          "score": 0.75,
+          "locator": {"kind": "line_span", "start_line": 18, "end_line": 19},
+          "text": "HIGHER_IS_BETTER = frozenset({\"cosine\", \"rerank\"})"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Rules the shape encodes — each one exists because the old flat payload got it wrong:
+
+- **Document-level facts are stated once.** `collection`, `source_type`, `id`, `path`,
+  `url` and `score_kind` belong to the document; only `relevance`, `score`, `locator`
+  and `text` repeat per hit. Repeating `collection`/`document_id`/`document_url` on
+  every chunk was most of the old payload's token cost.
+- **A locator is honest.** `kind` is `line_span` (1-based inclusive lines — what
+  `grep -n` prints — plus the file when the document states no `path`), `page`
+  (paginated PDF/DOCX), `headings` (prose: Markdown/Jira/Confluence/Outline) or
+  `document` (position genuinely unknown). A range is never invented to fill the field.
+  `headings` is never empty: the converters emit `headings: [""]` for whole-file
+  chunks, so headings are trimmed and blank ones dropped before the kind is chosen —
+  a chunk left with no headings gets `document`, not `{"kind": "headings",
+  "headings": []}`.
+- **`relevance` is comparable, `score` is not.** `relevance` is 0–1, higher-is-better,
+  unified across engines (`indexed.utils.relevance.unified_relevance`); `score` is the
+  raw engine number, only comparable within one `score_kind` (`l2_squared` = v1,
+  `cosine`/`rerank` = v2).
+- **Ranking is document-first.** A document's position reflects its best hit; ties keep
+  discovery order (stable sort).
+- **`source_type` is a collection fact**, taken from `manifest.reader.type`; omitted
+  rather than guessed when the manifest does not say.
+- **No boilerplate to strip.** `--json` stdout is the JSON document and nothing else
+  (logs and notices — a skipped unsearchable collection, a no-op `--rerank` — go to
+  stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
+  is removed because `locator.path` already carries the path.
+- **Failures never read as emptiness.** `collection_errors` is always present; a failed
+  collection appears there, not as a silent zero. A request that fails as a whole
+  returns the failure envelope below instead of a payload with empty `documents`.
+- **`include_matched_chunks = false` degrades the payload to counts only** —
+  `documents: []` / `counts.hits: 0` while `collections` still lists what was searched.
+  The provenance lives in the chunks, so there is nothing to locate without them.
+- **`--json` ignores `--compact` / `--no-content`** (they shape the human view only;
+  `--simple-output`/`--json` wins). The machine payload is fixed, never flag-shaped.
+
+### The two bodies: success and failure
+
+A payload either carries `schema: "indexed.search/1"` or it does not, and that is the
+first thing a consumer reads:
+
+- **`schema` present** → the success shape documented above. Empty `documents` here
+  means *nothing matched*, and `collections` says what that judgement is about:
+  `collections: []` means **nothing was searched** (empty store — see the MCP row
+  below); a non-empty `collections` means those were searched and matched nothing.
+- **`schema` absent** → an error envelope, `error` holding the message. A request that
+  failed never reads as "nothing matched".
+
+| Surface | Body | Exit |
+|---|---|---|
+| CLI `search --json -c <name>` — collection unknown | `{"error": "Collection 'x' not found"}` | `1` |
+| CLI `search --json -c <name>` — known but unsearchable (unreadable manifest / no indexers) | `{"error": "No searchable collections available"}` | `1` |
+| CLI `search --json` (all) — no collections exist | `{"error": "No collections found"}` | `0` |
+| CLI `search --json` (all) — collections exist, none searchable | `{"error": "No searchable collections available"}` | `0` |
+| MCP `search` — empty store / nothing searchable | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
+| MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors` | n/a |
+| MCP `search` / `search_collection` — `IndexedError` (corrupt index, …) or unexpected failure | `{"error": "…", "type": "MCPError"}` | n/a |
+| MCP `search_collection` — collection unknown on disk | `{"error": "Collection 'x' not found or has no indexers"}` — **no `type`** | n/a |
+
+Two asymmetries are deliberate and must not surprise a harness:
+
+- **MCP has no exit code, and one of its bodies has no `type`.** `search_collection`
+  answers an unknown name with the bare `{"error"}` its clients already match on
+  (`mcp/collection_errors.py`) and reserves `type` for *present but unusable* — an
+  agent branching on `type` must treat its absence as "unknown collection", not as
+  success. Branch on `schema` first; `type` is a refinement.
+- **The empty store is a CLI envelope but an MCP success payload.** The CLI says
+  `{"error": "No collections found"}`, the MCP tool returns the success shape with
+  `collections: []`. On MCP the discriminator is `collections`, not the presence of
+  `error`: empty `collections` = nothing was searched (create/index a collection),
+  empty `documents` with non-empty `collections` = searched and nothing matched.
+
+**Errors that escape the command** (`ConfigurationError`, `StorageError`, … raised
+before a payload exists) go to the CLI's top-level handler: the message is printed to
+**stderr** as prose and the process exits with the mapped code (`1`, `2` for config,
+`3` for storage) — stdout stays empty. So the machine contract is: *a non-zero exit, an
+`error` body, or an empty `collections` list means "no results"; never trust stdout
+without checking the exit code.* Every body above is pinned:
+`tests/unit/indexed/mcp/test_search_payload_golden.py` (CLI and MCP envelopes),
+`tests/unit/indexed/mcp/test_tools_collection_errors.py` (unknown vs unusable
+collection) and `tests/unit/indexed/knowledge/commands/test_search.py` (the CLI
+`{"error": "No searchable collections available"}` rows, exit codes included).
+
+Versioning: bump `SEARCH_SCHEMA` on any incompatible change.
 
 ---
 

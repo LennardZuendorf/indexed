@@ -1,0 +1,86 @@
+{
+  "schema": "indexed.search/1",
+  "query": "how is relevance unified across engines",
+  "counts": {
+    "documents": 3,
+    "hits": 4
+  },
+  "collections": [
+    "indexed-src",
+    "notes-v2"
+  ],
+  "collection_errors": [],
+  "documents": [
+    {
+      "collection": "notes-v2",
+      "source_type": "outline",
+      "id": "page-42",
+      "url": "https://outline.example/page-42",
+      "score_kind": "cosine",
+      "hits": [
+        {
+          "relevance": 0.91,
+          "score": 0.91,
+          "locator": {
+            "kind": "headings",
+            "headings": [
+              "Rerank",
+              "Cross-engine relevance"
+            ]
+          },
+          "text": "Reranking replaces the cosine score with a cross-encoder logit."
+        }
+      ]
+    },
+    {
+      "collection": "indexed-src",
+      "source_type": "localFiles",
+      "id": "src/indexed/utils/relevance.py",
+      "path": "/repo/src/indexed/utils/relevance.py",
+      "score_kind": "l2_squared",
+      "hits": [
+        {
+          "relevance": 0.875,
+          "score": 0.25,
+          "locator": {
+            "kind": "line_span",
+            "start_line": 21,
+            "end_line": 39
+          },
+          "text": "def unified_relevance(raw_score, score_kind):\n    return 1.0\n"
+        },
+        {
+          "relevance": 0.625,
+          "score": 0.75,
+          "locator": {
+            "kind": "line_span",
+            "start_line": 18,
+            "end_line": 19
+          },
+          "text": "HIGHER_IS_BETTER = frozenset({\"cosine\", \"rerank\"})"
+        }
+      ]
+    },
+    {
+      "collection": "indexed-src",
+      "source_type": "localFiles",
+      "id": "docs/search.md",
+      "url": "file:///repo/docs/search.md",
+      "score_kind": "l2_squared",
+      "hits": [
+        {
+          "relevance": 0.25,
+          "score": 1.5,
+          "locator": {
+            "kind": "headings",
+            "headings": [
+              "Search",
+              "Output shape"
+            ]
+          },
+          "text": "## Output shape\n\nAgents get one payload, documents grouped."
+        }
+      ]
+    }
+  ]
+}
