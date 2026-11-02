@@ -81,6 +81,7 @@ Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
 Publish saved eval verdicts with environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
+Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

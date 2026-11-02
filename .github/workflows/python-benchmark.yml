@@ -110,11 +110,10 @@ jobs:
       # a flag-gated step is SKIPPED, leaving the job green with no cross-branch
       # verdict. That is the defect this step exists to end. Run it whenever the
       # benchmark step itself succeeded; the fingerprints (and a baseline that
-      # cannot be read at all) decide the rest. Costs a `git fetch` + a `git
-      # show` on a normal green run.
+      # cannot be read at all) decide the rest. Read the target ref already
+      # fetched by the action, so the guard checks the same comparison input.
       if: steps.benchmark.outcome == 'success'
       env:
-        BASELINE_FILE: .benchmarks/baselines/main.json
         # Resolved here, not in the shell: `github.base_ref` is the branch this
         # PR merges into, i.e. the only baseline that may be compared against.
         BASE_REF: ${{ github.base_ref }}
@@ -131,13 +130,13 @@ jobs:
         # step runs, HEAD's copy of the baseline IS this run's measurement. The
         # guard would then compare the run with itself, agree, and return green:
         # the gate handing itself its own numbers is the very defect this step
-        # exists to catch. The base branch is immutable, so read that instead.
-        # Best-effort: a missing/unfetchable ref must fall through to the check
-        # below so the failure carries the repair, not a raw git error.
-        git fetch --no-tags --depth=1 origin \
-          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
+        # exists to catch. Use the origin ref captured by the action's fetch;
+        # fetching again could compare against a newer, unmeasured baseline.
+        # Match the pinned action's target-branch filename sanitization.
+        SANITIZED_TARGET=$(echo "${BASE_REF}" | tr '/\\. ' '_')
+        BASELINE_FILE=".benchmarks/baselines/${SANITIZED_TARGET}.json"
         if ! git show "origin/${BASE_REF}:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
-          message="No readable committed baseline on '${BASE_REF}' (absent, or the ref could not be fetched), so this run had nothing to compare against. Re-run if that was a fetch problem; if '${BASE_REF}' genuinely has no baseline, dispatch 'Python Performance Benchmarks' on main to record one."
+          message="No readable committed baseline on '${BASE_REF}' (absent, or the action could not fetch the ref), so this run had nothing to compare against. Re-run if that was a fetch problem; otherwise restore ${BASELINE_FILE} on '${BASE_REF}' through a reviewed baseline-only PR (use the main refresh dispatch for main)."
           echo "::error title=Benchmark gate has no verdict::${message}"
           {
             echo "## Benchmark gate: no verdict"
@@ -159,19 +158,20 @@ jobs:
         committed = json.load(open(f"{os.environ['RUNNER_TEMP']}/committed-baseline.json"))
         measured = json.load(open(os.environ["RESULTS_FILE"]))
         was, now = fingerprint(committed), fingerprint(measured)
+        base = os.environ["BASE_REF"]
         if was == now:
-            # Same hardware as main's baseline, so any cross-branch comparison
+            # Same hardware as the target baseline, so any cross-branch comparison
             # that ran used it. The flag may still be true because the OTHER
             # (per-branch, HEAD~1) comparison was skipped; that one does not
             # disarm the gate.
             if os.environ.get("COMPARISON_SKIPPED") == "true":
-                print(f"::notice::A sequential comparison was skipped, but this run's machine matches main's baseline ({now}) — the cross-branch verdict stands.")
+                print(f"::notice::A sequential comparison was skipped, but this run's machine matches the '{base}' baseline ({now}) — the cross-branch verdict stands.")
             else:
-                print(f"::notice::This run's machine matches main's baseline ({now}) — the cross-branch comparison produced a verdict.")
+                print(f"::notice::This run's machine matches the '{base}' baseline ({now}) — the cross-branch comparison produced a verdict.")
             raise SystemExit(0)
         message = (
             f"Cross-machine comparison is invalid, so this run compared nothing against "
-            f"'main': this run measured {now}, the committed baseline was recorded on {was}. "
+            f"'{base}': this run measured {now}, the committed baseline was recorded on {was}. "
             "No comparison means no verdict, so the job fails instead of passing green. "
             "Repair: if the ubuntu-latest fleet rotated, re-record the baseline — dispatch "
             "'Python Performance Benchmarks' on main with accept_cpu_change: true."
@@ -180,7 +180,7 @@ jobs:
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
             summary.write(
                 "## Benchmark gate: no verdict\n\n"
-                "`main`'s baseline was recorded on other hardware, so this run "
+                f"`{base}`'s baseline was recorded on other hardware, so this run "
                 "produced no comparison and therefore no verdict.\n\n"
                 "| | CPU fingerprint |\n|---|---|\n"
                 f"| committed baseline | `{was}` |\n"
@@ -352,8 +352,8 @@ jobs:
           echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         } > "${RUNNER_TEMP}/refresh-body.md"
         if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qv '^0$'; then
-          gh pr edit "$BRANCH" --body-file "${RUNNER_TEMP}/refresh-body.md"
-          echo "Refresh PR already open — branch force-pushed and body refreshed."
+          gh pr edit "$BRANCH" --title "$TITLE" --body-file "${RUNNER_TEMP}/refresh-body.md"
+          echo "Refresh PR already open — branch force-pushed and title/body refreshed."
           exit 0
         fi
         gh pr create --base main --head "$BRANCH" \
