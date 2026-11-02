@@ -88,7 +88,7 @@ Freeze publication hashes after the pinned pre-commit formatter passes.
 Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
-Pin event base/merge SHAs and require every selected benchmark before a verdict.
+Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
 Advisory reports must not skip the independently enforced A/B setup and results.
 Integrate reviewed CI gates before judging search timing; preserve product bytes.
 Read cached hook entries; set UV_NO_SYNC=1 when hooks use the shared environment.
