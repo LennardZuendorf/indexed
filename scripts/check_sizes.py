@@ -143,7 +143,10 @@ SRC_LOC_MAX = 31_800
 # reproduced two-shapes drift, not stealth regrowth; ceiling = measured
 # (49_095 on the post-#265 tree, whose eval suite is already inside main's own
 # 48_600) + headroom.
-TEST_LOC_MAX = 49_300
+# The reviewed #273 paired-gate suite adds 312 lines to the repaired search
+# tree's 49_244: measured union 49_556, preserving both legitimate test tracks
+# with 244 lines of bounded headroom. Source budget stays at 31_800.
+TEST_LOC_MAX = 49_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

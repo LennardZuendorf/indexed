@@ -86,6 +86,12 @@ Rank before rounding; check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
 Freeze publication hashes after the pinned pre-commit formatter passes.
 
+Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
+Pin event base/merge SHAs and require every selected benchmark before a verdict.
+Advisory reports must not skip the independently enforced A/B setup and results.
+Integrate reviewed CI gates before judging search timing; preserve product bytes.
+Read cached hook entries; set UV_NO_SYNC=1 when hooks use the shared environment.
+
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
 file (multi-tool compatibility).
