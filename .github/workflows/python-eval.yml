@@ -139,11 +139,44 @@ jobs:
       run: |
         set -Eeuo pipefail
         trap 'echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
-        git fetch --no-tags --depth=2 origin "$BASE_SHA" "$MERGE_SHA"
+        verify_pr_merge() {
+          local parents first wrapper_parents wrapper_tree base_tree revision
+          local -a merge_parents wrapper
+          provenance_invalid() {
+            echo "::error title=Same-job measurement invalid::$1; captured base=$BASE_SHA merge=$MERGE_SHA head=$PR_HEAD_SHA"
+            exit 2
+          }
+          parents=$(git show -s --format=%P "$MERGE_SHA")
+          read -r -a merge_parents <<< "$parents"
+          if [[ "${#merge_parents[@]}" -ne 2 || "${merge_parents[1]:-missing}" != "$PR_HEAD_SHA" ]]; then
+            provenance_invalid "expected two merge parents ending in captured head; actual parents=$parents"
+          fi
+          first=${merge_parents[0]}
+          for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA" "$first"; do
+            if ! git cat-file -e "${revision}^{commit}"; then
+              provenance_invalid "missing commit object=$revision"
+            fi
+          done
+          if [[ "$first" == "$BASE_SHA" ]]; then return; fi
+          wrapper_parents=$(git show -s --format=%P "$first")
+          read -r -a wrapper <<< "$wrapper_parents"
+          if [[ "${#wrapper[@]}" -ne 2 || "${wrapper[1]:-missing}" != "$BASE_SHA" ]]; then
+            provenance_invalid "expected two wrapper parents ending in captured base; wrapper=$first actual parents=$wrapper_parents"
+          fi
+          if ! git cat-file -e "${wrapper[0]}^{commit}"; then
+            provenance_invalid "missing wrapper parent object=${wrapper[0]}"
+          fi
+          wrapper_tree=$(git rev-parse --verify "${first}^{tree}")
+          base_tree=$(git rev-parse --verify "${BASE_SHA}^{tree}")
+          if [[ "$wrapper_tree" != "$base_tree" ]]; then
+            provenance_invalid "wrapper tree differs from captured base; wrapper=$first actual tree=$wrapper_tree expected tree=$base_tree"
+          fi
+          echo "::notice::Verified native-stack wrapper=$first complete tree=$base_tree; measuring original base=$BASE_SHA and merge=$MERGE_SHA"
+        }
+        git fetch --no-tags --depth=3 origin "$BASE_SHA" "$MERGE_SHA"
         [[ "$(git rev-parse HEAD)" == "$MERGE_SHA" ]]
         if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-          [[ "$(git rev-parse "${MERGE_SHA}^1")" == "$BASE_SHA" ]]
-          [[ "$(git rev-parse "${MERGE_SHA}^2")" == "$PR_HEAD_SHA" ]]
+          verify_pr_merge
         fi
         [[ "$REPEATS" =~ ^[1-9][0-9]*$ && "$REPEATS" -le 10 ]]
         LAUNCHER="$GITHUB_WORKSPACE/scripts/eval_ab_run.py"

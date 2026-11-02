@@ -88,7 +88,7 @@ file (multi-tool compatibility).
 
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 
-Pin event base/merge SHAs and require every selected benchmark before a verdict.
+Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
 
 Advisory reports must not skip the independently enforced A/B setup and results.
 
