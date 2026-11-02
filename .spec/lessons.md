@@ -1510,3 +1510,19 @@ with `git add`/`git status`, since that's what CI actually runs.
   hook tried dependency downloads and failed on sandbox DNS; no-sync passed.
 - Executable AST comparisons must exclude attribute documentation strings too.
   Filtering only each owner's first docstring falsely flagged TypedDict field prose.
+
+## Native-stack provenance (2026-11-02)
+
+- A native stack can put an upstream synthetic merge before the captured base.
+  Accept one wrapper only with exactly two parents, captured base second, and
+  complete Git tree identity. Require exactly two outer parents and captured
+  head second. Measure the original captured SHAs; never substitute the wrapper.
+- Fetch depth 3 before inspecting the nested graph. Depth 2 can hide wrapper
+  parents even when their objects exist. Missing objects remain invalid.
+- Capture Git reads before array parsing or comparison so command failures reach
+  the measurement trap. Compare complete tree IDs, including modes and docs.
+- Workflow doubles must model environment names and escape generated source.
+  Benchmark fixtures supply GITHUB_SHA; eval fixtures supply MERGE. A raw
+  newline in a generated Git stub caused a false syntax failure before RED.
+- File hooks can open even unchanged inputs with write access. Run them with
+  scoped worktree write permissions; a denied rb+ open is an environment failure.
