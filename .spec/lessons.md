@@ -1437,3 +1437,11 @@ with `git add`/`git status`, since that's what CI actually runs.
   renderer, including label-only sides and null tolerance. Validate invalid
   artifacts separately without weakening measured pass/fail evidence. Escape
   and bound invalid reasons, and render missing identity as unavailable.
+
+## Provenance fixtures across publication (2026-11-02)
+
+- [fixtures] A provenance test must control whether committed instrumentation
+  matches current bytes. The legacy injection fixture assumed every checkout
+  was uncommitted and failed after publication preparation committed the helper.
+  Exercise matching and mismatching Git blob evidence explicitly while retaining
+  real legacy-runner injection, own-side imports and actual content digests.

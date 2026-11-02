@@ -92,7 +92,7 @@ Pin event base/merge SHAs and require every selected benchmark before a verdict.
 
 Advisory reports must not skip the independently enforced A/B setup and results.
 
-Canonicalize only generated eval path prefixes; record common-harness digests.
+Canonicalize only generated eval path prefixes; record harness digests; control test Git evidence.
 
 Reject equal-missing model snapshots and common instrumentation before comparison.
 

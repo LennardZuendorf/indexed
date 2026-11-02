@@ -86,10 +86,16 @@ def test_common_launcher_does_not_replace_side_modules():
     assert evidence["engine_revision"]
 
 
+@pytest.mark.parametrize(
+    "matches_revision",
+    [False, True],
+    ids=["mismatching-instrumentation", "matching-instrumentation"],
+)
 def test_common_launcher_injects_legacy_runner_without_modifying_it(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, matches_revision
 ):
     import inspect
+    from hashlib import sha256
     import subprocess
     import indexed.eval.runner as current_runner
 
@@ -142,11 +148,47 @@ def test_common_launcher_injects_legacy_runner_without_modifying_it(
     revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=root, text=True
     ).strip()
+    instrumentation = {
+        f"{revision}:{path.relative_to(root)}": path
+        for path in (
+            root / "scripts/eval_ab_run.py",
+            root / "src/indexed/eval/canonical.py",
+        )
+    }
+    real_run = subprocess.run
+    seen = []
+
+    def controlled_instrumentation(args, *positional, **keywords):
+        if (
+            isinstance(args, list)
+            and len(args) == 5
+            and args[:4] == ["git", "-C", str(root), "show"]
+            and args[4] in instrumentation
+        ):
+            seen.append(args[4])
+            content = instrumentation[args[4]].read_bytes()
+            if not matches_revision:
+                content = b"different committed bytes\n" + content
+            return subprocess.CompletedProcess(args, 0, stdout=content, stderr=b"")
+        return real_run(args, *positional, **keywords)
+
+    monkeypatch.setattr(common.subprocess, "run", controlled_instrumentation)
     report = common.measure(root, revision, revision)
+    assert set(seen) == set(instrumentation)
     assert received and received[0].policy == "eval-corpus-relative-v1"
     assert report["config"]["input_context_policy"] == "eval-corpus-relative-v1"
     assert report["environment"]["common_harness"]["files_sha256"]["canonical_helper"]
-    assert report["environment"]["common_harness"]["content_matches_revision"] is False
+    provenance = report["environment"]["common_harness"]
+    assert provenance["files_sha256"] == {
+        "launcher": sha256((root / "scripts/eval_ab_run.py").read_bytes()).hexdigest(),
+        "canonical_helper": sha256(
+            (root / "src/indexed/eval/canonical.py").read_bytes()
+        ).hexdigest(),
+    }
+    assert provenance["content_matches_revision"] is matches_revision
+    assert provenance["instrumentation_status"] == (
+        "captured-commit" if matches_revision else "uncommitted-overlay"
+    )
 
 
 def test_default_factory_uses_real_side_reader_under_distinct_roots(tmp_path):
