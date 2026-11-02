@@ -1,9 +1,10 @@
 # Search result reference (`indexed.search/1`)
 
-Every machine consumer of indexed gets one shape: `indexed index search --json`
-and the MCP tools `search` / `search_collection` return the same object, built by
-the same code. Read `schema` first and branch on it — never on whether a
-particular key happens to be present.
+Successful machine searches share one shape: `indexed index search --json`
+and the MCP tools `search` / `search_collection` use the same payload builder.
+For CLI calls, check the exit code before parsing stdout: a non-zero exit may
+contain a non-JSON Rich error panel. On exit 0, parse JSON and read `schema`;
+MCP results have no process exit code, so read `schema` directly.
 
 - `schema: "indexed.search/1"` → the success shape below.
 - no `schema`, an `error` string instead → the request failed. A failed request
@@ -145,8 +146,8 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 | `counts.documents` | int | Number of entries in `documents`. |
 | `counts.hits` | int | Total hits across all documents. |
 | `collections` | string[] | Collections that were searched **successfully**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". |
-| `collection_errors` | object[] | Always present, `[]` when nothing failed. Each entry is `{"collection": "<name>", "error": "<message>"}`. A collection that reached the engine and failed appears here and is absent from `collections`; it never turns into a silent zero. Only collections that reached the engine are accounted for: on the CLI a collection whose manifest cannot be read is never searched and appears in neither array, while the MCP tools enumerate by manifest presence and report its failure here. |
-| `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; ties keep discovery order. |
+| `collection_errors` | object[] | Always present, `[]` when nothing failed. Each entry is `{"collection": "<name>", "error": "<message>"}`. A collection that reached the engine and failed appears here and is absent from `collections`. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI omits unreadable manifests from both arrays. MCP `search` enumerates by manifest presence and reports those failures here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
+| `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; full-precision ties keep discovery order. Ranking happens before output scores are rounded. |
 
 ## Document object
 
@@ -155,7 +156,7 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 | `collection` | string | Which collection the document came from. |
 | `source_type` | string, optional | The collection's reader type: `localFiles`, `jira`/`jiraCloud`, `confluence`/`confluenceCloud`, `outline` or `github`. A collection is fed by one reader, so this is stated once. Omitted when the collection's manifest does not record it. |
 | `id` | string | The document's identity inside its collection (a file name, a page id). |
-| `path` | string, optional | Absolute source path. Present when the document's hits agree on one file — the path is then hoisted here and removed from each hit's locator. A hit whose file genuinely differs keeps its own `locator.path`. |
+| `path` | string, optional | Absolute source path. Present when the hit locators supply exactly one distinct path; that path is hoisted here and removed from the locators. With multiple distinct paths, document `path` is omitted and each located hit retains its own `locator.path`. |
 | `url` | string, optional | Where a human or agent opens the whole document. Omitted when unknown, and dropped when it only restates `path` as `file://<path>`. |
 | `score_kind` | string | What `score` means for this document: `l2_squared` (v1 collections), `cosine` or `rerank` (v2 collections). |
 | `hits` | object[] | The matched chunks of this document, best relevance first. |
@@ -164,10 +165,10 @@ document, hits carrying only `relevance`, `score`, `locator` and `text`.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `relevance` | float | Higher is better, **comparable across collections and engines**. Derived from the raw score per `score_kind`: `1 - score/2` for `l2_squared`, the score itself for `cosine`, a sigmoid of the logit for `rerank`. Normally 0–1, but it is not clamped: an `l2_squared` hit at a distance above 2 goes negative. Use this to rank hits from different collections against each other. |
+| `relevance` | float | Higher is better, **comparable across collections and engines**. Derived from the raw score per `score_kind`: `1 - score/2` for `l2_squared`, the score itself for `cosine`, a sigmoid of the logit for `rerank`. Normally 0–1, but it is not clamped: an `l2_squared` hit at a distance above 2 goes negative. Emitted values are rounded to 4 decimals after ranking; preserve payload order for near ties. Use relevance to compare hits across collections. |
 | `score` | float | The raw engine score, rounded to 4 decimals. Only comparable **within one `score_kind`**. |
 | `locator` | object | Where the hit sits. See below. |
-| `text` | string | The matched chunk's text as indexed, with the `# <path>` context prefix that code chunks carry removed (the path is already in the locator). For `kind: "document"` this is the whole-document chunk — typically just the title or file name. |
+| `text` | string | The matched chunk's text. Only an exact leading `# <metadata.file_path>\n` prefix is removed when that metadata path is present; other text stays unchanged. `kind: "document"` means position unknown: the text may still be a body fragment, not a title or whole-document chunk. |
 
 ## Locator kinds
 
@@ -180,14 +181,16 @@ chunk's `file_path` or its `file://` url), otherwise it falls through to `page`,
 
 | `kind` | Keys | What it means |
 |---|---|---|
-| `line_span` | `start_line`, `end_line`, optional `path` | Code, from tree-sitter chunks. Lines are **1-based and inclusive** — what `grep -n` prints and what your editor shows. `path` appears only when it differs from the document's `path`. |
-| `page` | `page`, optional `path` | Paginated documents (PDF, DOCX) parsed by Docling. `page` is 1-based. |
+| `line_span` | `start_line`, `end_line`, optional `path` | Code, from tree-sitter chunks. Lines are **1-based and inclusive** — what `grep -n` prints and what your editor shows. `path` stays on each located hit when multiple distinct paths prevent a document `path`. |
+| `page` | `page`, optional `path` | Positive page metadata, when supplied by the producer. `page` is 1-based; a PDF/DOCX source alone does not guarantee this metadata. |
 | `headings` | `headings` | Prose: Markdown, Jira, Confluence, Outline. The heading path down to the chunk, e.g. `["Caching notes", "Invalidation"]`. Never empty — a chunk with no real headings degrades to `document` rather than claiming a precision it does not have. |
-| `document` | *(none)* | The source carries no position (a one-chunk document, a connector record without anchors). Hit the document, nothing narrower. |
+| `document` | *(none)* | The chunk carries no usable position. Open the source for context; the chunk can be any body fragment, including one of many chunks. |
 
 ## Failures
 
-A failed request returns an `error` envelope with no `schema` key, for example:
+Check CLI exit status **before** parsing stdout. A non-zero exit is a failed
+request; stdout can contain a JSON error body or a non-JSON Rich error panel.
+For example, a missing named collection returns JSON and exits 1:
 
 ```console
 $ indexed index search "x" -c nope --json
@@ -198,21 +201,33 @@ $ echo $?
 1
 ```
 
-On the CLI, `--json` writes the payload to stdout and nothing else — log lines and
-notices (a skipped unsearchable collection, a no-op `--rerank`) go to stderr, and a
-non-zero exit means there is no payload to trust. The converse does not hold: with no
-collection to search the CLI writes `{"error": "No collections found"}` and still
-exits 0, so branch on `schema`, never on the exit code alone. Over MCP there is no
-exit code: branch on `schema` first, then on `collections` being empty.
+An `IndexedError` escaping the command reaches the top-level CLI handler, which
+prints its Rich panel to **stdout** and exits 1, 2 for configuration errors, or
+3 for storage errors. Ordinary logs and search notices go to stderr. The JSON
+stdout guarantee applies to normal command returns, not this escape path.
 
-`--json` ignores `--compact` / `--no-content`; those shape the human view only. The
-machine payload is fixed.
+Exit 0 alone does not mean success. An empty CLI store returns
+`{"error": "No collections found"}` with exit 0. After the exit check, parse the
+JSON and branch on `schema`; an error body has no success schema. In a success
+payload, inspect `collection_errors` for partial failures and `collections` to
+see what was searched. Empty `documents` with non-empty `collections` means
+nothing matched in those collections. Empty `collections` means no collection was
+searched successfully; inspect `collection_errors` to distinguish an empty store
+from all searches failing.
 
-Requesting counts without matched chunks (`include_matched_chunks = false` in MCP
-search config) degrades to `documents: []` and `counts.hits: 0` while `collections`
-still lists what was searched — the provenance lives in the chunks, so there is
-nothing to locate without them.
+MCP has no exit code. Read `schema` first. Global `search` reports per-collection
+failures in `collection_errors`, including unreadable manifests. Named
+`search_collection` resolves status first: a collection present on disk with an
+unreadable manifest or no indexers returns a top-level `{"error": "…", "type":
+"MCPError"}`; an unknown name returns `{"error": "Collection 'x' not found or has
+no indexers"}` without `type`. Neither body has a success schema. If a boundary
+catches an `IndexedError`, `type` preserves its concrete class name, such as
+`StorageError`; unexpected search/status exceptions are wrapped as `MCPError`.
 
-The full failure surface (every envelope, exit code and the one MCP body that
-carries no `type`) is pinned in
+`--json` ignores `--compact` / `--no-content`; those shape the human view only.
+CLI JSON and both MCP search tools always request matched chunk content, even
+when MCP search config sets `include_matched_chunks = false`. The canonical
+payload retains matched text and provenance.
+
+The full failure table is in
 [`.spec/tech-app.md` § Search result contract](../../.spec/tech-app.md#search-result-contract-indexedsearch1).

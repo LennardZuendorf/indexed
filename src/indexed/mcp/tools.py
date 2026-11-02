@@ -40,7 +40,7 @@ def _run_search(
             score_threshold=search_cfg.score_threshold,
             include_full_text=search_cfg.include_full_text,
             include_all_chunks=search_cfg.include_all_chunks,
-            include_matched_chunks=search_cfg.include_matched_chunks,
+            include_matched_chunks=True,
             collections_path=collections_path,
         )
         return build_search_payload(raw_results, query)

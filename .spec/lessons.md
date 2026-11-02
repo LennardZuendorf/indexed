@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Lessons Learned
@@ -1329,8 +1329,48 @@ with `git add`/`git status`, since that's what CI actually runs.
   measuring, and state the corpus.
 - **A doc that says "branch on `schema`" must document the bodies that lack it.**
   The contract named `schema` as the key consumers branch on, while the failure
-  body the CLI actually printed (`{"error": …}`) and the escape path (prose on
-  stderr, exit 1/2/3, empty stdout) were undocumented, so a harness had to guess.
+  body the CLI actually printed (`{"error": …}`) and the escape path (Rich panel on
+  stdout, exit 1/2/3) were undocumented, so a harness had to guess.
   Write the failure side of every contract in the same section as the success
   shape, pin each body with a test, and state what the exit code means — including
   which empty states are exits 0 because an empty store is not a failure.
+
+
+## Canonical search repair (2026-11-02)
+
+- Preserve skipped collection failures in machine results before filtering search
+  configs. The mixed good/broken regression failed with empty `collection_errors`.
+- Fixed machine payloads must request matched chunk content. Respecting a false
+  config value erased known matches; the golden regression exposed zero counts.
+- Rank on full precision, then round emitted scores. Cosine .50004 must precede
+  .50001 even when both display as .5; the regression exposed discovery-order ties.
+- Run entrypoint failures before documenting output streams. A real `StorageError`
+  exits 3 and writes its Rich panel to stdout, so check exit status before JSON.
+- Check optional workflow paths exist before reading them. Direct `cat`/`ls` on
+  the absent `.agents/skills/vibe` cursor returned exit 1 during this repair.
+- For isolated worktree verification, pin the usable HF cache and offline mode;
+  use an external pytest cache, disable rerunfailures when socket access is denied,
+  and use Ruff `--no-cache` on read-only worktrees.
+
+## Search consumer documentation (#255, 2026-11-02)
+
+- Check CLI exit status before JSON parsing. Ordinary logs use stderr, but an
+  escaping typed error prints a Rich panel to stdout. Exit 0 can carry an error.
+- Document each MCP tool's failure boundary separately. Global search reports
+  collection errors; named search checks status first. Typed exceptions retain
+  their concrete class name in the top-level envelope.
+- Resolve a local source from hit locator path, then document path, then a decoded
+  local file URL. Remote URLs require a source/fetch tool, not filesystem Read.
+- A document locator means unknown position, not a title or whole-document chunk.
+  Preserve source-type optionality and describe context stripping conditionally.
+- Discover exact source and test filenames before multi-file reads or check runs.
+  Guessed result, envelope, engine and stdout-test filenames caused avoidable
+  failed commands in this cycle; use `rg --files` before constructing paths.
+
+- Empty `collections` means no collection was searched successfully. Inspect
+  `collection_errors` to distinguish an empty store from all searches failing;
+  preserve concrete exception types when documenting boundary envelopes.
+
+- Run each branch's pinned pre-commit formatter before freezing publication
+  hashes. The shared venv can use a different Ruff version. Accept layout
+  changes only after proving Python AST equivalence; read the owning config.

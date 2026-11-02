@@ -212,6 +212,7 @@ def search(
         s.name: s for s in (all_statuses if collection is None else statuses)
     }
     search_configs = {}
+    skipped_results = {}
     for coll_name in collections_to_search:
         coll_status = status_by_name.get(coll_name)
         if coll_status is None or not coll_status.indexers:
@@ -219,6 +220,7 @@ def search(
             # stderr, so `--json`'s stdout stays parseable (same rule as the
             # --rerank notice below).
             notice = f"Collection '{coll_name}' is unavailable, skipping"
+            skipped_results[coll_name] = {"error": notice}
             if simple:
                 typer.echo(notice, err=True)
             else:
@@ -291,7 +293,7 @@ def search(
                 print_info(notice)
 
     # Search each collection with phased progress
-    results = {}
+    results = skipped_results if simple else {}
 
     if simple or is_verbose_mode():
         # Simple output / verbose mode: no progress display

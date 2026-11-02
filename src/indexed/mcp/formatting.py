@@ -1,8 +1,10 @@
 """The machine-readable search payload (``indexed.search/1``).
 
-This is the ONE result shape for machine consumers: the MCP ``search`` /
-``search_collection`` tools return it, and the CLI prints it byte-for-byte
-under ``indexed search --json`` (``--simple-output`` is the legacy alias).
+This is the success result shape for machine consumers: the MCP ``search`` /
+``search_collection`` tools return it, and the CLI emits it under
+``indexed index search --json`` (``--simple-output`` is the legacy alias).
+CLI consumers check exit status before JSON parsing; escaping errors can write
+non-JSON stdout. Normal JSON and MCP responses discriminate on ``schema``.
 The contract is typed in ``indexed.protocols.results`` and documented for users
 in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
 contract stays the design record (issues #108/#109).
@@ -28,8 +30,7 @@ from indexed.utils.relevance import unified_relevance
 #: key: squared-L2 distance over unit vectors (see ``unified_relevance``).
 V1_SCORE_KIND = "l2_squared"
 
-#: Precision of the emitted floats. Four decimals is well past the point a
-#: ranking can change, and drops the ~17-digit tails that cost tokens per hit.
+#: Precision of emitted floats; ranking retains full precision internally.
 _SCORE_DECIMALS = 4
 
 
@@ -92,13 +93,14 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     continue
                 raw_score = float(chunk_data.get("score", 0.0) or 0.0)
                 locator = build_locator(metadata, doc_url)
+                relevance = unified_relevance(raw_score, score_kind)
                 hit: Hit = {
-                    "relevance": round(unified_relevance(raw_score, score_kind), 4),
+                    "relevance": round(relevance, _SCORE_DECIMALS),
                     "score": round(raw_score, _SCORE_DECIMALS),
                     "locator": locator,
                     "text": _strip_context_prefix(text, metadata),
                 }
-                ranked.append((hit["relevance"], key, hit))
+                ranked.append((relevance, key, hit))
 
     # Best first. Ties keep discovery order: sort is stable.
     ranked.sort(key=lambda item: item[0], reverse=True)
@@ -129,8 +131,9 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     A document's hits nearly always sit in the same file, so repeating an
     absolute path on every hit is exactly the boilerplate this shape exists to
     remove (it measured LARGER than the payload it replaced). The path is
-    stated once on the document and stripped from the hits; a hit whose path
-    genuinely differs keeps its own. Likewise a ``file://`` url that only
+    stated once on the document and stripped from the hits when exactly one
+    distinct locator path exists. Multiple paths omit document ``path`` and
+    stay on their respective locators. Likewise a ``file://`` url that only
     restates the path carries no extra information and is dropped.
     """
     hits: List[Hit] = doc["hits"]
@@ -161,9 +164,9 @@ def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
     Precision order: a line span outranks a page, which outranks a heading
     path, which outranks the bare document. Sources differ: tree-sitter code
     chunks carry ``start_line``/``end_line`` (0-based, inclusive) and a
-    ``file_path``; Docling-parsed PDFs/DOCX carry ``page``; Markdown, Jira,
-    Confluence and Outline carry ``headings`` only. A source with none of
-    them gets ``kind: "document"`` rather than an invented range.
+    ``file_path``; positive ``page`` metadata selects a page locator when
+    supplied; prose converters can supply ``headings``. Without usable position
+    metadata, any chunk (including a body fragment) gets ``kind: "document"``.
     """
     meta = metadata or {}
 
@@ -222,8 +225,8 @@ def _strip_context_prefix(text: str, metadata: Dict[str, Any]) -> str:
     """Drop the ``# <path>\\n`` context prefix code chunks embed in their text.
 
     The indexer prepends the file path so the embedding sees it; the payload
-    already carries that path in ``locator.path``, so keeping it would make
-    every code hit start with a line the agent has to strip.
+    removes only an exact leading prefix matching ``metadata.file_path``.
+    Other text stays unchanged; the source path may be hoisted to the document.
     """
     path = metadata.get("file_path")
     if isinstance(path, str) and path:

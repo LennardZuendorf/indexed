@@ -41,9 +41,11 @@ indexed index search "your query"
 indexed index search "your query" --json
 ```
 
-`--json` prints one object with a `schema` id, documents grouped, and a locator
-per hit — excerpt from a real collection, values verbatim; the second hit (the
-whole-document chunk) is elided here, which is why `counts.hits` says 2:
+On success, `--json` prints one object with a `schema` id, documents grouped, and
+a locator per hit. Check the CLI exit code before parsing stdout; escaping errors
+can print a non-JSON error panel, and exit 0 can still contain an error body.
+This excerpt keeps values from a real collection; the second hit is elided,
+which is why `counts.hits` says 2:
 
 ```json
 {

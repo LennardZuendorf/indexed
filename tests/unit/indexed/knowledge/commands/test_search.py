@@ -1314,6 +1314,30 @@ class TestSearchCommandExecution:
         }
         assert "unavailable, skipping" in result.stderr
 
+    def test_search_json_retains_skipped_collection_error(self, monkeypatch):
+        good = self._make_status("good")
+        good.source_type = "localFiles"
+        broken = self._make_status("broken")
+        broken.indexers = []
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [good, broken])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(
+            search_cmd, "svc_search", lambda *a, **kw: {"good": {"results": []}}
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["collections"] == ["good"]
+        assert payload["collection_errors"] == [
+            {
+                "collection": "broken",
+                "error": "Collection 'broken' is unavailable, skipping",
+            }
+        ]
+        assert "Collection 'broken' is unavailable, skipping" in result.stderr
+
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
         from unittest.mock import Mock, MagicMock

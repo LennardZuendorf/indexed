@@ -81,6 +81,11 @@ Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
 Publish saved eval verdicts with environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
+Canonical search retains skipped collection errors and always requests matched text.
+Rank before rounding; check exceptional CLI exit status before parsing stdout.
+Empty collections may mean all searches failed; inspect collection_errors.
+Freeze publication hashes after the pinned pre-commit formatter passes.
+Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
