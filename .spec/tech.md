@@ -181,9 +181,13 @@ anything.
 **The gate: two measurements, one job, one runner.** Before the report action,
 `Capture benchmark revisions` pins the event's base SHA, PR head SHA and GitHub
 merge-result SHA (`github.sha`). The A/B fetches those exact base and merge
-objects and verifies the merge parents match the captured base and PR head.
-An advanced target branch or the report action's own checkout cannot replace
-this pair. Missing objects or inconsistent parents fail the measurement.
+objects with depth 3 and requires exactly two merge parents, ending in the
+captured PR head. The first parent must be the captured base, or one native-stack
+wrapper with exactly two parents ending in that base and the exact same complete
+Git tree as that base. Tree identity includes every path, mode and content blob.
+Missing objects, extra parents or a changed wrapper tree fail the measurement.
+The wrapper is provenance evidence only: both original captured base and merge
+SHAs remain the measured revisions. Moving target refs cannot replace this pair.
 
 `Same-job A/B gate` measures the captured base and its corresponding PR merge
 result back to back. Each has a separate detached worktree and venv installed
