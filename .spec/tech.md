@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-10-31
+updated: 2026-11-02
 ---
 
 # Tech Spec: indexed
@@ -243,11 +243,13 @@ baseline to compare against*. It is **not** gated on the action's
 steps: when main has no committed baseline at all, `compare-main` never runs,
 the flag stays `false`, and a flag-gated step is skipped — a green job with no
 cross-branch verdict, the very defect being fixed. It runs whenever the
-benchmark step itself succeeded, and the fingerprints plus the baseline fetch
+benchmark step itself succeeded, and the fingerprints plus the captured baseline
 decide the rest; the bootstrap case is then reported explicitly ("no committed
 baseline on 'main', dispatch … to record one") instead of dying on a `git
-show`. The reference it reads is `origin/<base branch>`, never `HEAD`: the
-action's update path ends in a `EndBug/add-and-commit` that commits its own
+show`. It reads `origin/<base branch>` as captured by the action's fetch,
+without fetching a newer ref after measurement, and uses the action's filename
+sanitization (`/`, backslash, space and `.` become `_`) for the target baseline.
+It never reads `HEAD`: the action's update path ends in a `EndBug/add-and-commit` that commits its own
 numbers **locally** even when the push is denied by `contents: read`, so inside
 that job HEAD's baseline is the run's own measurement and a HEAD-based guard
 would compare the run with itself, agree, and return green (observed on PR
@@ -269,8 +271,10 @@ a fingerprint change by default, because adopting another machine's numbers
 would poison the very reference the gate compares against. `workflow_dispatch`
 takes `accept_cpu_change: true`, which lets the refresh proceed, forces the
 refresh PR even when the numbers moved less than `DRIFT_PCT`, and records old vs
-new fingerprint in the job summary, the refresh PR body and its title. That PR's
-table is a
+new fingerprint in the job summary and the refresh PR body. The fingerprint
+contains CPU brand, architecture, core count and system. The title marks the
+hardware change with `(new CPU)`, including when updating an existing PR. That
+PR's table is a
 **measurement, not a verdict** — a cross-CPU diff cannot say whether code got
 slower — and it exists so the next PR run compares like with like. Without that
 input no mechanism in the repo can re-record a rotated baseline. That repair

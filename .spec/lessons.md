@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Lessons Learned
@@ -1304,8 +1304,9 @@ with `git add`/`git status`, since that's what CI actually runs.
   `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
   rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
   to be decided from the two fingerprints: run the guard step whenever the
-  benchmark step succeeded, re-read the base branch's
-  `machine_info.cpu.brand_raw` and compare it with this run's, then name both
+  benchmark step succeeded, read the action-captured target baseline and
+  compare its full CPU/system fingerprint (`machine_info.cpu.brand_raw`,
+  `arch`, `count`, and `machine_info.system`) with this run's, then name both
   fingerprints and the repair. Never gate that step on the action's
   `comparison-skipped` flag — it is written only inside the compare steps, so
   keying on it makes the no-baseline branch unreachable (see below), and it is
@@ -1330,8 +1331,9 @@ with `git add`/`git status`, since that's what CI actually runs.
   is denied by `contents: read`. By the time the guard ran, HEAD held this run's
   measurement, the fingerprints matched by construction, and the gate went green
   on a mismatched machine — the same self-referential defect as the original
-  one, one layer up. Read the base branch (`origin/<base_ref>`) instead, and
-  treat "the check agreed with itself" as the first hypothesis when a gate you
+  one, one layer up. Read the action-captured base ref (`origin/<base_ref>`)
+  with the action's sanitized target filename; do not fetch a newer baseline
+  after measurement. Treat "the check agreed with itself" as the first hypothesis when a gate you
   just wrote passes on a case you expected to fail.
 - **A gate gated on an output that only exists on the happy path never runs.**
   The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
@@ -1363,3 +1365,15 @@ with `git add`/`git status`, since that's what CI actually runs.
   benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
   treat a single run-to-run delta as noise to re-measure; only a repeated,
   same-fingerprint shift is a regression.
+
+## Baseline-refresh repair verification (2026-11-02)
+
+- [ci] A downstream guard must read the same target filename and captured ref
+  as the action it verifies. Re-fetching after measurement can turn a skipped
+  comparison against A into a false verdict against newer baseline B.
+- [tests] Shell fixtures must admit each legitimate Git read before judging a
+  regression. A git stub that only admitted `origin/<base>` falsely failed the
+  refresh job's valid `HEAD` read; model those reads separately and keep writes
+  stubbed.
+- [workflow] Check a referenced file exists before reading it; optional missing
+  paths must not become unrelated command failures during task setup.
