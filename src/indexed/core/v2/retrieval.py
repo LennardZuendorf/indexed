@@ -186,6 +186,10 @@ def _search_one(
     retriever = index.as_retriever(similarity_top_k=fetch_k, embed_model=embed_model)
     nodes_with_scores: List["NodeWithScore"] = retriever.retrieve(query)
 
+    # Evidence run for the retrieval gate: rank the *least* similar chunks first.
+    # Temporary commit on this PR's own branch, reverted by the next push.
+    nodes_with_scores.reverse()
+
     if score_threshold is not None:
         # Threshold is a COSINE cutoff (the retriever's score kind), so it is
         # applied to the vector-similarity scores BEFORE any rerank replaces
