@@ -139,18 +139,34 @@ the repository's human gates.
 
 ## CI and limits
 
-`python-eval.yml` verifies the pinned corpus, runs harness tests, measures and
-compares, then uploads `retrieval-eval` artifacts. The informative measurement
-still runs after a harness-test failure when corpus verification succeeded;
-the failed test remains visible. Artifact upload runs even after failure.
+`python-eval.yml` gates retrieval quality on a **same-job A/B**: it checks out
+`origin/<base ref>` in a detached worktree, measures the pinned case set there,
+then measures the PR head immediately after in this job's venv, and compares
+the two reports with `scripts/benchmark_ab.py`. Both reports record the machine
+(CPU brand, arch, core count, system) and the comparator refuses a verdict when
+the machine, interpreter, corpus, case set or retrieval configuration differ.
+Nothing in CI compares against the committed `eval/baseline.json`: a number
+measured on another machine can drift-report, not decide. The PR that
+introduces the machine block is the one exception to the report-to-report
+check: the job adopts its own fingerprint for a base report that predates the
+field, after that report's `platform` string proves it ran on this runner.
+
+The gate fails when hit-rate@k or MRR falls more than 0.02 metric points below
+its own merge base. The leak count is reported, not gated. Both reports and
+`eval-ab.json` are uploaded as the `retrieval-eval` artifact. A harness-test
+failure or an invalid measurement still runs the publisher; the failure stays
+visible and the verdict reads `invalid` rather than passing.
 
 After artifact upload, a Node 24 publisher writes the job summary and updates
-one bot comment on same-repository pull requests. The report shows baseline and
-current metrics with deltas, the comparison verdict, per-case rank changes,
-environment and configuration differences, and harness or measurement failures.
-It links to the workflow run and its artifacts. Missing or invalid report data
-is shown as unavailable. A newer PR head prevents an older run from updating
-the comment.
+one bot comment on same-repository pull requests. The comment shows the verdict,
+both revisions, both fingerprints, the metric table and the per-case rank
+movement, and links to the workflow run and its artifacts. Missing or invalid
+`eval-ab.json` is shown as unavailable. A newer PR head prevents an older run
+from updating the comment.
+
+`workflow_dispatch` exposes `variance_repeats`; measuring the head tree N times
+in one job and printing the spread is how a tolerance number is earned. Three
+repeats produced spread 0.000 on hit-rate@5 and MRR.
 
 Fork pull requests and manual runs retain the job summary and artifacts, with
 a notice explaining why no PR comment was posted. Comment publication failures
@@ -163,8 +179,7 @@ Run the dependency-free publisher tests with Node's built-in test runner:
 uv run node --test .github/scripts/eval-comment.test.cjs
 ```
 
-Phase one is informative. No hard gate or arbitrary regression tolerance is
-inferred from one measurement. Real missing/corrupt-collection tests use the
+Real missing/corrupt-collection tests use the
 facade with a local MockEmbedding; mock scores prove failure plumbing, not
 retrieval quality.
 

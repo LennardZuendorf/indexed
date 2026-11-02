@@ -1,29 +1,37 @@
 const fs = require('node:fs/promises');
 
 const MARKER = '<!-- indexed:retrieval-eval -->';
+const metricLabels = { hit_rate: 'Hit@k', hit_rate_at_5: 'Hit@5', mrr: 'MRR', unanswerable_distractor_leaks: 'Distractor leaks' };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const number = value => typeof value === 'number' && Number.isFinite(value);
-const metricNames = ['hit_rate', 'mrr', 'unanswerable_distractor_leaks'];
-const metrics = value => object(value) && metricNames.every(key => value[key] === null || number(value[key]));
-const validReport = value => object(value) && value.schema === 'indexed.eval.report.v1'
-  && metrics(value.metrics) && Array.isArray(value.failures) && number(value.metrics.errors);
-const validComparison = value => object(value) && value.schema === 'indexed.eval.compare.v1'
-  && ['improved', 'regressed', 'unchanged', 'incomparable'].includes(value.verdict)
-  && typeof value.comparable === 'boolean' && object(value.metrics)
-  && ['baseline', 'candidate', 'delta'].every(key => metrics(value.metrics[key]))
-  && ['improved', 'regressed', 'newly_failed', 'incomparable_reasons'].every(key => Array.isArray(value[key]))
-  && object(value.config_changes) && object(value.environment_changes)
-  && (value.comparable === (value.verdict !== 'incomparable'));
+const text = value => typeof value === 'string' && value.trim().length > 0;
+const rank = value => value === null || value === undefined || Number.isInteger(value);
+const side = value => object(value) && text(value.label) && text(value.fingerprint)
+  && text(value.interpreter) && (value.revision === null || typeof value.revision === 'string');
+const metric = value => object(value) && text(value.name) && number(value.base) && number(value.head)
+  && number(value.delta) && typeof value.gating === 'boolean' && ['within', 'over'].includes(value.verdict);
+const moved = value => object(value) && text(value.id) && rank(value.rank_before) && rank(value.rank_after);
+// The gate's own artifact is the only source of a verdict: two same-job
+// measurements and the comparator's ratio. A comment cannot invent one from a
+// file whose shape it does not know.
+const validAb = value => object(value) && value.schema === 'indexed.eval.ab.v1'
+  && ['pass', 'fail', 'invalid'].includes(value.verdict)
+  && number(value.tolerance) && side(value.base) && side(value.head)
+  && Array.isArray(value.metrics) && value.metrics.every(metric)
+  && Array.isArray(value.cases) && value.cases.every(moved)
+  && Array.isArray(value.warnings) && Array.isArray(value.invalid_reasons)
+  && (value.verdict !== 'invalid' || value.invalid_reasons.length > 0);
 
 // Character references keep report text inert in Markdown tables and mentions.
 function escape(value) {
   const raw = value == null ? 'unavailable' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-  const text = raw.length > 300 ? `${raw.slice(0, 300)}… [truncated]` : raw;
-  return text.replace(/[\r\n]+/g, ' ').replace(/[&<>@\\`*_{}\[\]()#!|~]/g, char => `&#${char.charCodeAt(0)};`);
+  const body = raw.length > 300 ? `${raw.slice(0, 300)}… [truncated]` : raw;
+  return body.replace(/[\r\n]+/g, ' ').replace(/[&<>@\\`*_{}\[\]()#!|~]/g, char => `&#${char.charCodeAt(0)};`);
 }
 function format(value, signed = false, integer = false) {
   if (!number(value)) return 'unavailable';
-  return `${signed && value > 0 ? '+' : ''}${integer ? value : value.toFixed(4)}`;
+  const digits = integer ? String(value) : value.toFixed(4);
+  return `${signed && value > 0 ? '+' : ''}${digits}`;
 }
 function details(title, rows, limit = 20) {
   if (!rows.length) return '';
@@ -31,38 +39,46 @@ function details(title, rows, limit = 20) {
   return `\n<details>\n<summary>${title} (${rows.length})</summary>\n\n${shown}${rows.length > limit ? `\n- ${rows.length - limit} more omitted (truncated).` : ''}\n\n</details>\n`;
 }
 
-function renderReport({ report, comparison, runUrl, headSha, outcomes = {}, errors = [] }) {
-  const reportOk = validReport(report), comparisonOk = validComparison(comparison);
-  const verdict = reportOk && comparisonOk ? comparison.verdict : 'unavailable';
-  const lines = [MARKER, '## Retrieval evaluation', '', '**Informational — results do not block merging.**', '', `Verdict: ${verdict}`, '',
-    `PR head: ${escape(headSha)} · Measured source commit: ${escape(reportOk ? report.environment?.indexed_git_rev : null)}`,
-    `[Workflow run](${runUrl}) · [Report artifacts](${runUrl}#artifacts)`, '',
-    `Steps: ${['harness', 'measure', 'compare'].map(key => `${key}: ${escape(outcomes[key] || 'unavailable')}`).join(' · ')}`];
-  if (!reportOk) lines.push('', 'Evaluation report unavailable (missing or malformed JSON).');
-  if (!comparisonOk) lines.push('', 'Comparison unavailable (missing or malformed JSON).');
+function renderReport({ ab, runUrl, headSha, outcomes = {}, errors = [] }) {
+  const ok = validAb(ab);
+  const verdict = ok ? ab.verdict : 'unavailable';
+  const lines = [MARKER, '## Retrieval evaluation', '', `Verdict: ${verdict}`, ''];
+  if (ok) {
+    lines.push(
+      `Merge base: ${escape(ab.base.label)} · Head: ${escape(ab.head.label)}`,
+      `Fingerprints: ${escape(ab.base.fingerprint)} · ${escape(ab.head.fingerprint)}`,
+      `Interpreter: ${escape(ab.base.interpreter)} · ${escape(ab.head.interpreter)}`,
+      `Measured revisions: ${escape(ab.base.revision)} · ${escape(ab.head.revision)} · PR head: ${escape(headSha)}`,
+      `[Workflow run](${runUrl}) · [Report artifacts](${runUrl}#artifacts)`,
+    );
+  } else {
+    lines.push(
+      `PR head: ${escape(headSha)}`,
+      `[Workflow run](${runUrl}) · [Report artifacts](${runUrl}#artifacts)`,
+    );
+  }
+  lines.push('', `Steps: ${['harness', 'measure', 'gate'].map(key => `${key}: ${escape(outcomes[key] || 'unavailable')}`).join(' · ')}`);
+  if (!ok) lines.push('', 'Gate verdict unavailable: missing or malformed `eval-ab.json` — both sides must be measured in this job.');
   if (outcomes.harness === 'failure') lines.push('', '**Warning: harness tests failed.**');
-  if (comparisonOk && Object.keys(comparison.environment_changes).length) {
-    lines.push('', '**Warning: evaluation environments differ; interpret ranking changes with care.**');
+  if (ok && ab.verdict === 'invalid') {
+    lines.push('', '**Measurement invalid — this is a harness bug, not a verdict.**', '');
+    lines.push(...ab.invalid_reasons.map(reason => `- ${escape(reason)}`));
   }
-  if (reportOk) lines.push('', `Cases: ${format(report.metrics.cases, false, true)} · Answerable: ${format(report.metrics.answerable, false, true)} · Unanswerable: ${format(report.metrics.unanswerable, false, true)} · Evaluation errors: ${format(report.metrics.errors, false, true)}`);
-  lines.push('', '| Metric | Baseline | Current | Delta |', '| --- | ---: | ---: | ---: |');
-  for (const [key, label, integer] of [['hit_rate', `Hit@${number(report?.metrics?.k) ? report.metrics.k : '?'}`, false], ['mrr', 'MRR', false], ['unanswerable_distractor_leaks', 'Distractor leaks', true]]) {
-    const before = comparisonOk ? comparison.metrics.baseline[key] : null;
-    const after = reportOk ? report.metrics[key] : null;
-    const delta = reportOk && comparisonOk ? comparison.metrics.delta[key] : null;
-    lines.push(`| ${label} | ${format(before, false, integer)} | ${format(after, false, integer)} | ${format(delta, true, integer)} |`);
-  }
-  const sections = [];
-  if (comparisonOk) {
-    const changed = ['improved', 'regressed'].flatMap(kind => comparison[kind].map(row => `${kind}: ${escape(row?.id)} — ${format(row?.rank_before, false, true)} → ${format(row?.rank_after, false, true)}`));
-    changed.push(...comparison.newly_failed.map(id => `newly failed: ${escape(id)}`));
-    sections.push(details('Changed cases', changed));
-    sections.push(details('Incomparable reasons', comparison.incomparable_reasons.map(escape), 10));
-    for (const [field, title] of [['config_changes', 'Configuration changes'], ['environment_changes', 'Environment changes']]) {
-      sections.push(details(title, Object.entries(comparison[field]).map(([key, value]) => `${escape(key)}: ${escape(value?.baseline)} → ${escape(value?.candidate)}`), 10));
+  if (ok) {
+    lines.push('', `Gating metrics: hit-rate@k and MRR within ${format(ab.tolerance)} metric points of the merge base. Leaks are report-only.`);
+    lines.push('', '| Metric | Merge base | Head | Delta | Verdict |', '| --- | ---: | ---: | ---: | --- |');
+    for (const row of ab.metrics) {
+      const label = metricLabels[row.name] || escape(row.name);
+      const integer = row.name === 'unanswerable_distractor_leaks';
+      const verdict = row.verdict === 'over' ? '**over tolerance**' : escape(row.gating ? 'within' : 'report only');
+      lines.push(`| ${label} | ${format(row.base, false, integer)} | ${format(row.head, false, integer)} | ${format(row.delta, true, integer)} | ${verdict} |`);
     }
   }
-  if (reportOk) sections.push(details('Evaluation failures', report.failures.map(row => `${escape(row?.id)}: ${escape(row?.error)}`), 10));
+  const sections = [];
+  if (ok) {
+    sections.push(details('Per-case rank movement', ab.cases.map(row => `${escape(row.id)}: rank ${escape(row.rank_before)} → ${escape(row.rank_after)}`)));
+    sections.push(details('Comparator warnings', ab.warnings.map(escape), 10));
+  }
   sections.push(details('Report loading errors', errors.map(escape), 10));
   const omitted = `\n\nAdditional details omitted (truncated). See [Report artifacts](${runUrl}#artifacts) for complete reports.`;
   let body = lines.join('\n'), truncated = false;
@@ -73,17 +89,14 @@ function renderReport({ report, comparison, runUrl, headSha, outcomes = {}, erro
   return body + (truncated ? omitted : '');
 }
 
-async function publishReport({ github, context, core, reportPath = 'eval-report.json', comparisonPath = 'eval-compare.json', outcomes = {} }) {
+async function publishReport({ github, context, core, abPath = 'eval-ab.json', outcomes = {} }) {
   const errors = [];
-  async function load(file, label) {
-    try { return JSON.parse(await fs.readFile(file, 'utf8')); }
-    catch (error) { errors.push(`${label} JSON unavailable: ${error.message}`); return null; }
-  }
-  const report = await load(reportPath, 'Evaluation report');
-  const comparison = await load(comparisonPath, 'Comparison');
-  const pr = context.payload.pull_request;
+  let ab = null;
+  try { ab = JSON.parse(await fs.readFile(abPath, 'utf8')); }
+  catch (error) { errors.push(`Gate result JSON unavailable: ${error.message}`); }
+  const pr = context.payload?.pull_request;
   const runUrl = `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-  const body = renderReport({ report, comparison, runUrl, headSha: pr?.head?.sha || context.sha, outcomes, errors });
+  const body = renderReport({ ab, runUrl, headSha: pr?.head?.sha || context.sha, outcomes, errors });
   await core.summary.addRaw(body).write();
   if (context.eventName !== 'pull_request' || !pr || pr.head?.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
     core.notice('Evaluation comment skipped: only same-repository pull requests support comments; summary and artifacts remain available.');

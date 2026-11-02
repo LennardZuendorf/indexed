@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-10-27
+updated: 2026-11-02
 ---
 
 # Tech Spec: indexed
@@ -255,6 +255,52 @@ so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
 hardware mismatch now skips with `comparison-skipped` (or hard-fails if
 `enforce-same-node: "true"`, unset here) instead of hard-failing by default.
 Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
+
+### Retrieval Evaluation Gate
+
+`python-eval.yml` gates the thing the product actually promises — the right
+passage in the top k — on the same rule as the benchmark gate: **a quality gate
+must measure both sides on one machine; a committed cross-machine reference can
+only be a drift alarm.** The committed `eval/baseline.json` stays in the repo as
+a drift alarm and as the harness's own fixture; it decides nothing in CI.
+
+One job, one runner, back to back: `origin/<base ref>` is checked out into a
+detached worktree, `uv sync` gives it the base's own dependencies, and the eval
+runs there; the head runs immediately after in this job's venv. Both reports
+record `environment.machine` (CPU brand, arch, core count, system — the same
+block `pytest-benchmark` writes), and `scripts/benchmark_ab.py` compares them
+only when the fingerprints, the interpreter, the pinned corpus tree, the case
+set and the retrieval configuration all match. A mismatch exits 2 with
+*"Same-job measurement invalid — this is a harness bug, not a verdict"*: it is a
+broken measurement, not a red PR, and it must not be read as a pass either.
+
+The verdict is the comparator's: hit-rate@k and MRR may fall at most
+`EVAL_TOLERANCE` = 0.02 metric points against their own merge base (measured
+spread 0.000 over three same-tree runs in one CI job, plus a margin below half a
+case — one case is 1/19 = 0.053 of hit-rate@5). Distractor leaks stay report-only
+(issue #204 asks for hit-rate/MRR; a leak count is a whole-case event, not a
+tolerance-sized one). Faithfulness/latency are not measured here at all yet, so
+#204's own criteria are only partly met by this gate — see the issue.
+
+The PR that introduced `environment.machine` is measured against a base that
+predates the field. The gate step computes the runner's own fingerprint
+(`--show-host-fingerprint`) and passes it to the comparator, which adopts it for
+a report without a machine block **only** after that report's `platform` string
+equals the running machine's. A recorded machine block is validated against the
+job fingerprint and never overwritten; a disagreement exits 2. From the second
+PR onward both reports carry the block, so the cross-check is report-to-report.
+
+A regression past tolerance fails the step (no `continue-on-error` anywhere in
+the job). Both reports and `eval-ab.json` are uploaded, and the PR comment is
+built from `eval-ab.json`: the verdict, both revisions, both fingerprints, the
+metric table and the per-case rank movement. `workflow_dispatch` alone exposes
+`variance_repeats`, which re-measures the head tree N times and prints the
+run-to-run spread — that is where a future tolerance number comes from.
+
+A PR that changes the retrieval configuration, the pinned corpus or the case set
+is a *different experiment*: the gate refuses to call it better or worse (exit
+2). Re-pinning those inputs is a deliberate, reviewed change; it is not a
+regression, and the gate must not silently pass it either.
 
 ---
 

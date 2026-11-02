@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Lessons Learned
@@ -1276,6 +1276,46 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [reporting] Budget comment size after Markdown escaping; character entities
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
+
+## Quality gates must measure both sides on one machine (2026-11-02)
+
+- **A committed cross-machine baseline can only be a drift alarm; a PR verdict
+  needs both sides in one job.** Retrieval floats are a function of the machine:
+  the same tree measured 0.8351 MRR on this workstation and 0.8088 on the
+  baseline's arm64 host, and CI's x86_64 run moved hit@5 from 0.818 to 0.909
+  with no code change. No tolerance width survives a 9-point swing — wide enough
+  to absorb it hides a real regression, narrow enough to catch one reds every
+  run. Measure `origin/<base>` and the head back to back on one runner; then the
+  machine cancels out of the ratio.
+- **A tolerance is a measurement plus a margin, and retrieval metrics are
+  deterministic per machine.** Three same-tree runs in one job produced spread
+  0.000 on hit-rate@5 and MRR (and identical per-case ranks), so the run-to-run
+  term is zero; the margin comes from the metric's granularity instead — one of
+  19 answerable cases is 0.053 of hit-rate@5, so 0.02 still fails if a single
+  case drops out of the top 5. Write the observed number next to the constant.
+- **The report must name the machine, in the comparator's own shape.** Adding
+  `environment.machine` (`cpu.brand_raw`/arch/count + `system`) in
+  pytest-benchmark's layout lets one `fingerprint()` read both gates' files;
+  `platform.processor()` alone returns the arch on Linux and cannot tell the
+  hosted fleet's CPU models apart.
+- **A schema the gate needs cannot gate its own bootstrap.** The merge base for
+  the PR that adds `environment.machine` was written before the field existed,
+  so strict report-to-report comparison would have exited 2 on the very PR that
+  introduced the guard. The job names its own host once and adopts that
+  fingerprint for a legacy report *only* after the report's `platform` string
+  matches this machine; recorded blocks are validated, never overwritten. Any
+  schema the gate depends on needs a bootstrap path, or the first PR is red for
+  a reason unrelated to its diff.
+- **Two verdicts in one job is the defect to avoid.** The gate's verdict comes
+  from one comparator; the PR comment renders that verdict file and nothing
+  else. A second comparison may still produce the per-case table, but it must
+  not name an outcome, and a missing verdict file renders "unavailable" rather
+  than falling back to a green-sounding line.
+- **Invalid is red, and it says so.** Machine, interpreter, corpus, case-set or
+  configuration mismatch exits 2 with "Same-job measurement invalid — this is a
+  harness bug, not a verdict". Silently passing it is how the old informative
+  job let a halved relevance land; calling it a regression sends someone
+  hunting a diff that never caused it.
 
 ## stdout purity: log records are not payload (2026-11-01)
 

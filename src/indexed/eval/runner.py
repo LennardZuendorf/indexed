@@ -187,8 +187,25 @@ def _model_cache_hint(model: str, *, engine: str = "2") -> Dict[str, Any]:
     }
 
 
+def _cpu_brand() -> str:
+    """CPU model string, so a report names the machine that produced it.
+
+    ``platform.processor()`` returns the architecture on many Linux builds, and
+    the hosted-runner fleet alternates CPU models under one image (#267). The
+    kernel's own string is the only one that tells those machines apart, and a
+    same-job A/B can only assert identity when both reports carry it.
+    """
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            if line.lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except (OSError, IndexError):
+        pass
+    return platform.processor() or "?"
+
+
 def _environment() -> Dict[str, Any]:
-    """Record interpreter, platform, installed version and measured source provenance."""
+    """Record interpreter, platform, machine, version and measured source provenance."""
     try:
         version = importlib.metadata.version("indexed-sh")
     except importlib.metadata.PackageNotFoundError:  # pragma: no cover - dev tree
@@ -196,6 +213,16 @@ def _environment() -> Dict[str, Any]:
     return {
         "python": sys.version.split()[0],
         "platform": platform.platform(),
+        # Same block shape as pytest-benchmark's machine_info, so the CI gate's
+        # one fingerprint function can read either gate's result file.
+        "machine": {
+            "cpu": {
+                "brand_raw": _cpu_brand(),
+                "arch": platform.machine(),
+                "count": os.cpu_count(),
+            },
+            "system": platform.system(),
+        },
         "indexed_version": version,
         **source_environment(),
     }

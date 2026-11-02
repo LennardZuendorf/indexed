@@ -1,13 +1,27 @@
 name: Retrieval Evaluation
 
-# Measures the retrieval baseline (#204) and compares it against the committed
-# `eval/baseline.json`. Phase 1 is deliberately informative rather than a gate:
-# one baseline run cannot yet separate signal from noise, so the job reports the
-# verdict and the artifacts without blocking a merge. Tighten it into a gate
-# once a tolerance from observed run-to-run variance exists.
+# Gates retrieval quality on the product's actual promise: the right passage in
+# the top k. The verdict comes from two measurements taken back to back in THIS
+# job on THIS runner — the merge base (`origin/<base ref>`) and the PR head —
+# because a retrieval number carries the machine that produced it. The old job
+# compared one fresh run against the committed `eval/baseline.json` and had to
+# stay informative: the runner is a different interpreter/CPU build from the
+# baseline's arm64 machine, and that alone moved hit@5 from 0.818 to 0.909.
+# Same-job measurement cancels the machine out (see .spec/tech.md § Retrieval
+# evaluation gate and scripts/benchmark_ab.py).
 
 on:
   workflow_dispatch:
+    inputs:
+      variance_repeats:
+        # Tolerance provenance, not a gate input: measure the head tree N times
+        # in one job and print the run-to-run spread. The constant in
+        # scripts/benchmark_ab.py carries the observed number.
+        description: >-
+          Measure the head tree this many times and report the metric spread
+          (1 = gate only).
+        type: number
+        default: 1
   pull_request:
     paths:
       - 'src/indexed/core/**'
@@ -16,7 +30,9 @@ on:
       - 'src/indexed/parsing/**'
       - 'eval/**'
       - 'scripts/build_eval_corpus.py'
+      - 'scripts/benchmark_ab.py'
       - 'tests/unit/indexed/eval/**'
+      - 'tests/unit/test_benchmark_ab.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/scripts/**'
@@ -37,12 +53,15 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    # Informative in phase 1 — see the header comment.
-    continue-on-error: true
     env:
-      # The report records this next to the numbers, so a CI artifact can name the
-      # code revision it measured (the runner reads GIT_COMMIT).
-      GIT_COMMIT: ${{ github.sha }}
+      # The branch this PR merges into. A dispatch has no PR, so it gates main.
+      BASE_REF: ${{ github.base_ref || 'main' }}
+      BASE_REPORT: eval-ab-base.json
+      HEAD_REPORT: eval-ab-head.json
+      AB_RESULT: eval-ab.json
+      # Absolute metric points; the derivation lives next to the constant in
+      # scripts/benchmark_ab.py (measured spread + metric granularity).
+      AB_TOLERANCE: "0.02"
 
     steps:
     - name: Checkout
@@ -74,27 +93,76 @@ jobs:
       id: corpus
       run: uv run python scripts/build_eval_corpus.py --check
 
-    - name: Unit tests for the harness
+    - name: Unit tests for the harness and the comparator
       id: harness
-      run: uv run pytest tests/unit/indexed/eval -q
+      run: |
+        uv run pytest tests/unit/indexed/eval -q
+        uv run pytest tests/unit/test_benchmark_ab.py -q
 
-    - name: Measure the pinned case set
+    # Both sides, one runner, back to back. The base is measured in its own
+    # worktree and its own venv, so a PR that changes dependencies is compared
+    # against the base's dependencies too; nothing here mutates this job's venv,
+    # which the head run below uses unchanged. The repeats are the tolerance
+    # probe (workflow_dispatch only) — the gate itself measures each side once.
+    - name: Measure merge base and head in this job
       id: measure
       if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
-      run: uv run indexed-eval run --out eval-report.json
-
-    - name: Compare against the committed baseline
-      id: compare
-      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
-      # Informative on purpose: the runner is a different interpreter/CPU build
-      # from the machine the baseline was measured on, and that alone moves ranks
-      # (observed: hit@5 0.909 on x86_64 CI vs 0.818 on the baseline's arm64).
-      # The verdict and the per-case movement land in eval-compare.json; only a
-      # pinned runner plus an observed tolerance can turn this into a gate.
-      continue-on-error: true
+      env:
+        BASE_DIR: ${{ runner.temp }}/eval-ab-base
+        REPEATS: ${{ inputs.variance_repeats || '1' }}
       run: |
-        uv run indexed-eval compare --report eval-report.json --json > eval-compare.json || true
-        uv run indexed-eval compare --report eval-report.json || true
+        set -euo pipefail
+        git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+        BASE_SHA=$(git rev-parse --short "origin/${BASE_REF}")
+        echo "base revision: origin/${BASE_REF} @ ${BASE_SHA}"
+        echo "head revision: ${GITHUB_SHA}"
+        echo "BASE_LABEL=origin/${BASE_REF} @ ${BASE_SHA}" >> "${GITHUB_ENV}"
+
+        git worktree add --detach "${BASE_DIR}" "origin/${BASE_REF}"
+        (
+          cd "${BASE_DIR}"
+          python -m uv sync
+          GIT_COMMIT=$(git rev-parse HEAD) \
+            python -m uv run --no-sync indexed-eval run --out "${GITHUB_WORKSPACE}/${BASE_REPORT}"
+        ) || {
+          echo "::error title=Same-job measurement invalid::the merge-base run did not complete, so this job measured only one side. That is a harness bug, not a verdict."
+          exit 1
+        }
+
+        GIT_COMMIT="${GITHUB_SHA}" \
+          python -m uv run --no-sync indexed-eval run --out "${HEAD_REPORT}"
+        echo "${HEAD_REPORT}" > "${RUNNER_TEMP}/head-reports.txt"
+
+        if [ "${REPEATS}" -gt 1 ]; then
+          for index in $(seq 2 "${REPEATS}"); do
+            GIT_COMMIT="${GITHUB_SHA}" \
+              python -m uv run --no-sync indexed-eval run --out "eval-ab-head-${index}.json"
+            echo "eval-ab-head-${index}.json" >> "${RUNNER_TEMP}/head-reports.txt"
+          done
+        fi
+
+    # The verdict: two files from this job, nothing else. The comparator prints
+    # both revisions and both fingerprints, and refuses to turn a machine
+    # mismatch into a pass (exit 2, "this is a harness bug, not a verdict").
+    - name: Retrieval gate (merge base vs head)
+      id: gate
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
+      run: |
+        HOST_FP=$(uv run --no-sync python scripts/benchmark_ab.py --show-host-fingerprint)
+        echo "job CPU fingerprint: ${HOST_FP}"
+        uv run --no-sync python scripts/benchmark_ab.py \
+          --base "${BASE_REPORT}" \
+          --head "${HEAD_REPORT}" \
+          --tolerance "${AB_TOLERANCE}" \
+          --host-fingerprint "${HOST_FP}" \
+          --base-label "${BASE_LABEL}" \
+          --head-label "head @ ${GITHUB_SHA}" \
+          --out "${AB_RESULT}" \
+          --summary "${GITHUB_STEP_SUMMARY}"
+
+    - name: Run-to-run spread of the same tree
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' && inputs.variance_repeats > 1 }}
+      run: uv run --no-sync python scripts/benchmark_ab.py --spread $(cat "${RUNNER_TEMP}/head-reports.txt")
 
     - name: Upload eval artifacts
       if: always()
@@ -102,8 +170,9 @@ jobs:
       with:
         name: retrieval-eval
         path: |
-          eval-report.json
-          eval-compare.json
+          eval-ab-base.json
+          eval-ab-head*.json
+          eval-ab.json
         if-no-files-found: warn
 
     - name: Publish eval summary and PR comment
@@ -113,7 +182,7 @@ jobs:
       env:
         HARNESS_OUTCOME: ${{ steps.harness.outcome }}
         MEASURE_OUTCOME: ${{ steps.measure.outcome }}
-        COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        GATE_OUTCOME: ${{ steps.gate.outcome }}
       with:
         script: |
           await require('./.github/scripts/eval-comment.cjs').publishReport({
@@ -121,6 +190,6 @@ jobs:
             outcomes: {
               harness: process.env.HARNESS_OUTCOME,
               measure: process.env.MEASURE_OUTCOME,
-              compare: process.env.COMPARE_OUTCOME,
+              gate: process.env.GATE_OUTCOME,
             },
           });

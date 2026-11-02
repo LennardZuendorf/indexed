@@ -91,6 +91,13 @@ def test_run_eval_emits_a_report_pinned_to_corpus_case_set_and_config(
     # A document ranking is part of the evidence, whatever the model does.
     assert isinstance(records["answered"]["ranking"], list)
     assert report["environment"]["embedding_model_cache"]["cache_dir"]
+    # The CI gate can only assert a same-machine A/B when a report names the
+    # machine, in the same block shape pytest-benchmark writes.
+    machine = report["environment"]["machine"]
+    assert machine["cpu"]["brand_raw"]
+    assert machine["cpu"]["arch"]
+    assert machine["cpu"]["count"] >= 1
+    assert machine["system"]
 
 
 @pytest.mark.integration

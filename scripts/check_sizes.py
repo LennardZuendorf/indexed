@@ -127,7 +127,13 @@ SRC_LOC_MAX = 31_600
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-TEST_LOC_MAX = 48_600
+# Raised from 48_600 by the same-job A/B proofs: the benchmark comparator's
+# synthetic-result tests (inherited from #273) and the retrieval gate's
+# synthetic-report tests share one comparator and prove it reds on a real
+# regression, passes inside the measured tolerance, and exits 2 — not 1 or 0 —
+# on a machine, interpreter, corpus or case-set mismatch. Tests only, no
+# product surface; measured 48_901, ceiling = measured + headroom.
+TEST_LOC_MAX = 49_100
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
