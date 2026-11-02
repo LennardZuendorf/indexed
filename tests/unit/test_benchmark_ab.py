@@ -385,7 +385,9 @@ def test_eval_legacy_report_from_another_machine_is_invalid(tmp_path: Path):
     """Adoption checks provenance: another host's platform string is refused."""
     proc = run(
         tmp_path,
-        legacy_report(0.82, 0.69, machine_platform="Linux-6.11.0-1018-azure-x86_64-with-glibc2.39"),
+        legacy_report(
+            0.82, 0.69, machine_platform="Linux-6.11.0-1018-azure-x86_64-with-glibc2.39"
+        ),
         legacy_report(0.82, 0.69, machine_platform=platform.platform()),
         "--host-fingerprint",
         host_fingerprint(),
