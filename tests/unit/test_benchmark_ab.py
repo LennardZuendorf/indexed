@@ -30,8 +30,8 @@ def results(mean_s: float, **overrides: object) -> dict:
         "node": "runnervmtest",
     }
     machine.update(overrides.pop("machine", {}))  # type: ignore[arg-type]
-    # median and mean agree unless a caller sets them apart: the gate compares
-    # the median, so a file has to carry it.
+    # The gate compares the minimum, so every file has to carry `min`; the
+    # other statistics are here so a caller can pull them apart.
     stats = {"mean": mean_s, "median": mean_s, "min": mean_s}
     stats.update(overrides.pop("stats", {}))  # type: ignore[arg-type]
     return {
