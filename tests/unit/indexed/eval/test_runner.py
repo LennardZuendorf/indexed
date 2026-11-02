@@ -329,3 +329,7 @@ def test_malformed_search_is_excluded_and_cannot_be_a_baseline(
     assert outcome.exit_code == 2
     assert "refusing --write-baseline" in outcome.output
     assert not baseline.exists()
+
+
+# Evidence run: an irrelevant test-file touch must not red the retrieval gate.
+
