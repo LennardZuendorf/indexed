@@ -1374,3 +1374,154 @@ with `git add`/`git status`, since that's what CI actually runs.
 - Run each branch's pinned pre-commit formatter before freezing publication
   hashes. The shared venv can use a different Ruff version. Accept layout
   changes only after proving Python AST equivalence; read the owning config.
+
+## A skipped gate is a red gate (2026-10-31)
+
+- **`enforce-same-node: false` makes a hardware mismatch silently PASS.** The
+  action logs `::warning::` and sets `regression-detected=false`, so the job is
+  green having compared nothing — `comparison-skipped=true` next to
+  `conclusion: success` in the same log is the tell. GitHub rotated the
+  `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
+  rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
+  to be decided from the two fingerprints: run the guard step whenever the
+  benchmark step succeeded, read the action-captured target baseline and
+  compare its full CPU/system fingerprint (`machine_info.cpu.brand_raw`,
+  `arch`, `count`, and `machine_info.system`) with this run's, then name both
+  fingerprints and the repair. Never gate that step on the action's
+  `comparison-skipped` flag — it is written only inside the compare steps, so
+  keying on it makes the no-baseline branch unreachable (see below), and it is
+  also set by the sequential comparison, which is not a missing verdict. Do
+  not reach for the action's own hard-fail mode — on a mixed
+  fleet it reds at random and teaches people to ignore the check, which is the
+  same end state by a louder road.
+- **A guard that refuses a state change needs a named override in the same PR,
+  or a rotation becomes unrepairable.** The refresh lane rightly refused to
+  adopt another machine's numbers, and that left no path at all to a valid
+  baseline: every PR compared against a machine that no longer exists. The
+  override belongs on the trigger (`workflow_dispatch` input
+  `accept_cpu_change`), must force the reviewed PR even when the numbers happen
+  not to move, and must print old vs new fingerprint in the job summary AND the
+  PR body — an override nobody can see in review is just a quieter gate. Check
+  too that the repair lane is not gated by the check it repairs: a baseline-only
+  PR must trigger no benchmark run, or the fix deadlocks behind its own red.
+- **A gate must not read its own numbers back out of the workspace it graded.**
+  Reading the reference baseline with `git show HEAD:…` inside the benchmark job
+  looked immutable and was not: the action's update path ends in
+  `EndBug/add-and-commit`, which COMMITS its numbers locally even when the push
+  is denied by `contents: read`. By the time the guard ran, HEAD held this run's
+  measurement, the fingerprints matched by construction, and the gate went green
+  on a mismatched machine — the same self-referential defect as the original
+  one, one layer up. Read the action-captured base ref (`origin/<base_ref>`)
+  with the action's sanitized target filename; do not fetch a newer baseline
+  after measurement. Treat "the check agreed with itself" as the first hypothesis when a gate you
+  just wrote passes on a case you expected to fail.
+- **A gate gated on an output that only exists on the happy path never runs.**
+  The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
+  but that output is written only inside the compare steps — when main has no
+  committed baseline the compare step is itself skipped, the flag stays `false`,
+  and the guard's own bootstrap branch was dead code while the spec and PR body
+  described it as live. Gate on the prerequisite that actually holds ("the
+  benchmark step succeeded"), let the guard's own inputs decide, and for every
+  branch in a guard ask which run can ever reach it — an unreachable `::error::`
+  reads exactly like a green check.
+- **A matching CPU fingerprint is not the same machine.** Three consecutive runs
+  of PR #268 reported the same node (`runnervm48cm3`) and the same
+  `AMD EPYC 7763 64-Core Processor`, and still disagreed: everything within
+  tolerance once (`test_parse_large_markdown` +10.4 %), then
+  `test_parse_large_markdown` +36.6 % (943 ms vs a 690 ms baseline recorded on
+  `runnervmtai0g`), then `test_cli_license` +47.6 % — one green and two reds from
+  an unchanged diff. Shared-vCPU tenancy, not code, and not even the CPU model:
+  the variance is *run-to-run*. So a committed cross-run baseline cannot gate on
+  a single sample at any tolerance; only measuring both sides in the same job
+  cancels it. Corollary: when a gate reds on one benchmark while every other row
+  sits within a few percent, suspect the machine before the diff — and when it
+  reds on a *different* benchmark after a re-run, you already have your answer.
+- **A benchmark delta is a measurement until you have checked what recorded it.**
+  Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
+  PR never touched) was not the diff, and not a CPU rotation either: same CPU
+  model both sides, shared-vCPU hosted runners. The rotation shows up
+  separately as three fingerprints in three days — `AMD EPYC 7763`,
+  `AMD EPYC 9V74`, `INTEL(R) XEON(R) PLATINUM 8573C`. So before quoting any
+  benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
+  treat a single run-to-run delta as noise to re-measure; only a repeated,
+  same-fingerprint shift is a regression.
+
+## A benchmark gate must measure both sides in one job (2026-11-02)
+
+- **Two numbers from two machines are not a comparison, at any tolerance.** The
+  hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
+  9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
+  compared against a committed baseline reds or greens by which runner it
+  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  repair is structural, not statistical — measure the captured event base and
+  its corresponding merge result back to back on one runner, and compare those two
+  files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
+  drift report. Make its failure advisory, and independently enforce setup and
+  complete measurements in the hard A/B; a finite report tolerance is not a boundary.
+- **Same fingerprint is still not same machine, so compare the best round, not
+  the mean.** Three consecutive runs reported the same node and CPU and
+  disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
+  shared-vCPU tenancy adds time but never removes it. On unchanged code
+  measured both ways locally, means disagreed by 20 % (one slow round in a
+  3-round benchmark), medians by 12 %, minimums by 0.7 % — so the gate compares
+  the minimum and keeps `--stat` as the escape hatch. A real regression moves
+  the minimum too; noise does not.
+- **A harness bug must not spend the verdict.** A machine mismatch inside a
+  same-job A/B, a different interpreter, or two files with no shared rows is
+  not a red PR and not a green one: exit with its own code (2), name it
+  `same-job measurement invalid`, and say it is a bug. Keeping "no verdict"
+  separate from "regressed" is what makes the red mean something — and the
+  committed unit test proves it without a runner (`tests/unit/test_benchmark_ab.py`:
+  +25 % fails, +2 % passes).
+- **A guard around a comparison that no longer decides anything is dead weight
+  with a red exit.** #268's fail-on-skip step was right while a cross-run
+  comparison was the gate and became a random red generator once the A/B took
+  over, so this PR deletes it rather than leaving two gates disagreeing. When
+  superseding a gate, remove the machinery that only enforced honesty about the
+  old one, and say in the spec which issue's step went where.
+
+## Baseline-refresh repair verification (2026-11-02)
+
+- [ci] A downstream guard must read the same target filename and captured ref
+  as the action it verifies. Re-fetching after measurement can turn a skipped
+  comparison against A into a false verdict against newer baseline B.
+- [tests] Shell fixtures must admit each legitimate Git read before judging a
+  regression. A git stub that only admitted `origin/<base>` falsely failed the
+  refresh job's valid `HEAD` read; model those reads separately and keep writes
+  stubbed.
+- [workflow] Check a referenced file exists before reading it; optional missing
+  paths must not become unrelated command failures during task setup.
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
+
+## Search CI dependency integration (2026-11-02)
+
+- Integrate the reviewed paired CI gate before judging search performance.
+  Preserve every product and consumer-document byte; measure the complete
+  combined test tree before setting the shared size ceiling. Historical mean
+  failures remain disclosed until the actual integrated paired run completes.
+- Read the cached hook entry before selecting a binary. The pinned ty hook
+  runs `uv check`; set `UV_NO_SYNC=1` with a shared environment. The unscoped
+  hook tried dependency downloads and failed on sandbox DNS; no-sync passed.
+- Executable AST comparisons must exclude attribute documentation strings too.
+  Filtering only each owner's first docstring falsely flagged TypedDict field prose.
