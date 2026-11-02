@@ -1285,11 +1285,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   baseline's arm64 host, and CI's x86_64 run moved hit@5 from 0.818 to 0.909
   with no code change. No tolerance width survives a 9-point swing — wide enough
   to absorb it hides a real regression, narrow enough to catch one reds every
-  run. Measure `origin/<base>` and the head back to back on one runner; then the
-  machine cancels out of the ratio.
-- **A tolerance is a measurement plus a margin, and the base/head boundary is
-  the noisy term.** Three same-tree runs in one job produced spread 0.000 on
-  hit-rate@5 and MRR (identical per-case ranks), so repeat noise is zero. The
+  run. Measure the captured event base and corresponding merge result on one runner;
+  verify parents and keep their frozen environments separate.
+- **Historical tolerance evidence is bounded, not a diagnosed cause.** Three same-tree runs in one job produced spread 0.000 on
+  hit-rate@5 and MRR (identical per-case ranks), within those repeats. The
   base/head boundary is not: the base runs in its own worktree and venv, and on
   a diff that cannot move retrieval MRR moved 0.0307 with hit@5 unchanged. A
   tolerance must cover what the harness does to *unchanged* code across the two
@@ -1336,3 +1335,105 @@ with `git add`/`git status`, since that's what CI actually runs.
   drive the real app callback (real `bootstrap_logging`, unstubbed) and emit a
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
+
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
+
+## Evaluation stability and repair fixtures (2026-11-02)
+
+- [inputs] Hash evidence at the boundary actually observed. Generated absolute
+  paths changed 77 model inputs and one controlled rank 5 to 6 crossing.
+  Canonicalize only recognized leading context in evaluation; preserve authored
+  body paths and physical metadata. Converter-chunk hashes are not post-engine
+  embedding-input hashes. Same-source equality is not a product-change gate.
+- [bootstrap] Use the existing explicit connector-factory injection on both
+  genuine runners with one common helper. Verify actual side imports and locks.
+  Record the captured harness SHA plus file digests and uncommitted overlay
+  status. Test the pre-policy runner; do not replace its package import path.
+- [validation] Build complete report fixtures before single-field mutations.
+  Validate both reports before fingerprint/headline use. Invalid-result JSON
+  must not call identity formatters on malformed containers. Reject nonfinite
+  tolerance and unrepresentably large measurements at the read boundary.
+- [fixtures] Combining benchmark and eval tests dropped the eval platform import;
+  restore every dependency in the union. Preserve the benchmark CLI's truthful
+  unit label rather than weakening an inherited assertion. Record authoritative
+  RED after fixture corrections. Avoid dataclass field-name shadowing in loops.
+- [baseline] A historical physical-path baseline cannot assert exact canonical
+  rankings. Keep its original bytes and disclose the input-policy difference.
+- [ci] Keep the full CPU brand/arch/core-count/system fingerprint. Refresh PR
+  updates retain `(new CPU)` in their title. Use the action-captured baseline
+  reference and sanitized target filename; never re-fetch after measurement.
+
+- [compatibility] Local report validation accepts mathematically finite integer
+  ranking scores. Keep that contract; apply representability checks at the
+  same-job gate boundary. A broad shared finite-number guard broke an existing
+  local-comparison test and was restored before completion.
+- [typing] Narrow optional import specifications in fixtures. A type-only cast
+  for module file origins preserves measured runtime behavior; retain the actual
+  pre-cast launcher digest when reporting a prior measured pair.
+- [workflow] Scope venv environment variables to each command rather than
+  subshell exports; use a shell array for spread-report paths. Check measured
+  combined test size before reconciling separate-branch ceilings.
+
+- [labels] Audit title-case summary headings after semantic unions; actual SHA
+  labels do not make a stale Git merge-base heading accurate.
+
+- [outputs] A new common launcher must enforce the existing declared-output
+  rule too: lstat rejects symlinks/nonregular paths; exclusive same-directory
+  temporary descriptors and atomic replacement preserve the victim and clean
+  failures. The RED symlink test caught Path.write_text following the target.
+
+- [discovery] Discover actual reader/converter module names before opening
+  guessed converter.py or models.py paths. Those guessed reads failed harmlessly.
+
+- [workflow] Captured-event validation must emit the explicit invalid-measurement
+  diagnostic and exit 2; bare set-e regex failure loses that distinction. After
+  a freeze, obtain coordinator authorization and invalidate/retest affected
+  executable evidence before changing the workflow.
+
+## Retrieval gate identity review corrections (2026-11-02)
+
+- [validation] Validate every consumed cache container before `.get`. Equal
+  missing/malformed selected snapshots and common-harness fields do not prove
+  identity. Require valid revision, policy/config agreement and exact helper
+  hashes. Make mandatory CI instrumentation explicit while preserving local
+  legacy reports deliberately. Active reranking needs its own model identity.
+- [metrics] Errored queries leave headline denominators; a gate must reject
+  either report with errors before comparing those smaller denominators.
+- [cpu] Reading cpuinfo successfully does not establish a model-name line.
+  Apply the processor fallback after scanning, including readable arm64 files.
+- [reporting] Distinguish unavailable measurement phases from comparator-invalid
+  artifacts. Exercise base, head and repeat failures separately, plus read and
+  adoption failures. Do not promise a synthesized verdict after no measurement.
+
+- [fixtures] Scope edits to the intended block in mixed-indent external
+  verification scripts. A global assertion insertion broke the capture block
+  indentation; repair the fixture before accepting its execution evidence.
+
+## Invalid-result publisher contract (2026-11-02)
+
+- [contracts] A producer's valid invalid-result JSON can still be rejected by
+  its consumer. Exercise the actual comparator artifact through the actual
+  renderer, including label-only sides and null tolerance. Validate invalid
+  artifacts separately without weakening measured pass/fail evidence. Escape
+  and bound invalid reasons, and render missing identity as unavailable.

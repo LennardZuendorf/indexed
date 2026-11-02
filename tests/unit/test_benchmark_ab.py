@@ -9,11 +9,14 @@ never a regression and never a pass.
 
 from __future__ import annotations
 
+import copy
 import json
 import platform
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_ab.py"
 
@@ -22,7 +25,7 @@ BASE_MEAN_S = 0.690
 CPU = "AMD EPYC 7763 64-Core Processor"
 
 
-def results(mean_s: float, **overrides: object) -> dict:
+def results(mean_s: float, **overrides: dict) -> dict:
     """One synthetic pytest-benchmark file, in the shape the action writes."""
     machine = {
         "cpu": {"brand_raw": CPU, "arch": "X86_64", "count": 4},
@@ -30,11 +33,11 @@ def results(mean_s: float, **overrides: object) -> dict:
         "python_version": "3.14.0",
         "node": "runnervmtest",
     }
-    machine.update(overrides.pop("machine", {}))  # type: ignore[arg-type]
+    machine.update(overrides.pop("machine", {}))
     # The gate compares the minimum, so every file has to carry `min`; the
     # other statistics are here so a caller can pull them apart.
     stats = {"mean": mean_s, "median": mean_s, "min": mean_s}
-    stats.update(overrides.pop("stats", {}))  # type: ignore[arg-type]
+    stats.update(overrides.pop("stats", {}))
     return {
         "machine_info": machine,
         "benchmarks": [
@@ -141,8 +144,8 @@ def test_no_shared_rows_is_an_invalid_measurement(tmp_path: Path):
     assert "Same-job measurement invalid" in proc.stdout
 
 
-def test_summary_records_fingerprints_and_verdict(tmp_path: Path):
-    """The job summary carries both fingerprints and the verdict it earned."""
+def test_summary_records_sources_and_verdict(tmp_path: Path):
+    """The job summary carries the measured source and the verdict it earned."""
     summary = tmp_path / "summary.md"
     proc = run(
         tmp_path,
@@ -159,6 +162,155 @@ def test_summary_records_fingerprints_and_verdict(tmp_path: Path):
     assert "origin/main @ abc1234" in text
     assert "Verdict: FAIL" in text
     assert "over tolerance" in text
+
+
+SELECTED = (
+    "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs",
+    FULLNAME,
+    "tests/system/test_search_performance.py::test_searcher_first_search",
+)
+EXPECTED_ARGS = tuple(
+    arg for name in SELECTED for arg in ("--expected-benchmark", name)
+)
+
+
+def complete_results() -> dict:
+    """Build a valid three-row measurement before mutating one field."""
+    doc = results(BASE_MEAN_S)
+    doc["benchmarks"] = [
+        dict(copy.deepcopy(doc["benchmarks"][0]), fullname=name) for name in SELECTED
+    ]
+    return doc
+
+
+def assert_invalid(proc):
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Same-job measurement invalid" in proc.stdout
+    assert "gate verdict" not in proc.stdout
+    assert "Traceback" not in proc.stderr
+
+
+def test_selected_set_accepts_pytest_fullnames_without_tests_prefix(tmp_path: Path):
+    base, head = complete_results(), complete_results()
+    for row in head["benchmarks"]:
+        row["fullname"] = row["fullname"].removeprefix("tests/")
+    proc = run(tmp_path, base, head, *EXPECTED_ARGS)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "PASS (3 benchmarks" in proc.stdout
+
+
+@pytest.mark.parametrize("side", ["base", "head", "both"])
+def test_selected_row_omission_is_invalid(tmp_path: Path, side: str):
+    base, head = complete_results(), complete_results()
+    if side in ("base", "both"):
+        base["benchmarks"].pop()
+    if side in ("head", "both"):
+        head["benchmarks"].pop()
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "missing",
+        "slow",
+        True,
+        0,
+        -1,
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+        10**400,
+    ],
+)
+def test_unusable_selected_stat_is_invalid(tmp_path: Path, side: str, value):
+    base, head = complete_results(), complete_results()
+    doc = base if side == "base" else head
+    if value == "missing":
+        del doc["benchmarks"][1]["stats"]["min"]
+    else:
+        doc["benchmarks"][1]["stats"]["min"] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+def test_duplicate_normalized_fullname_is_invalid(tmp_path: Path, side: str):
+    base, head = complete_results(), complete_results()
+    doc = base if side == "base" else head
+    duplicate = copy.deepcopy(doc["benchmarks"][0])
+    duplicate["fullname"] = duplicate["fullname"].removeprefix("tests/")
+    doc["benchmarks"].append(duplicate)
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("machine_info",), None),
+        (("machine_info",), []),
+        (("machine_info", "cpu"), None),
+        (("machine_info", "cpu", "brand_raw"), " "),
+        (("machine_info", "cpu", "arch"), None),
+        (("machine_info", "cpu", "count"), 0),
+        (("machine_info", "cpu", "count"), True),
+        (("machine_info", "system"), ""),
+        (("machine_info", "python_version"), None),
+    ],
+)
+def test_equal_missing_identities_are_invalid(tmp_path: Path, path, value):
+    base, head = complete_results(), complete_results()
+    for doc in (base, head):
+        parent = doc
+        for key in path[:-1]:
+            parent = parent[key]
+        parent[path[-1]] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "malformed", [None, [], 4, True, {"machine_info": [], "benchmarks": []}]
+)
+def test_malformed_document_is_invalid(tmp_path: Path, malformed):
+    assert_invalid(run(tmp_path, malformed, complete_results(), *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("benchmarks",), {}),
+        (("benchmarks",), []),
+        (("benchmarks",), [None]),
+        (("benchmarks", 0, "fullname"), None),
+        (("benchmarks", 0, "fullname"), " "),
+        (("benchmarks", 0, "stats"), []),
+    ],
+)
+def test_malformed_rows_are_invalid(tmp_path: Path, path, value):
+    base, head = complete_results(), complete_results()
+    parent = head
+    for key in path[:-1]:
+        parent = parent[key]
+    parent[path[-1]] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("tolerance", ["nan", "inf", "-inf", "-1"])
+def test_invalid_tolerance_cannot_waive_regression(tmp_path: Path, tolerance: str):
+    proc = run(tmp_path, results(1), results(1.5), "--tolerance=" + tolerance)
+    assert_invalid(proc)
+
+
+def test_zero_tolerance_is_valid(tmp_path: Path):
+    proc = run(tmp_path, results(1), results(1.01), "--tolerance", "0")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+
+
+def test_incomplete_rows_invalid_without_expected_option(tmp_path: Path):
+    base, head = complete_results(), complete_results()
+    head["benchmarks"].pop()
+    assert_invalid(run(tmp_path, base, head))
 
 
 # --- retrieval gate: two ``indexed.eval.report.v1`` files, same job --------
@@ -181,45 +333,71 @@ def eval_report(
     case_set: str = CASES,
     revision: str = "abc1234",
 ) -> dict:
-    """One synthetic retrieval report, in the shape ``indexed-eval run`` writes."""
-    return {
-        "schema": "indexed.eval.report.v1",
-        "generated_at": "2026-11-02T10:00:00+00:00",
-        "corpus": {"tree_sha256": CORPUS},
-        "case_set": {"sha256": case_set},
-        "config": {
-            "collection": "eval-corpus",
-            "engine": "2",
-            "top_k": 5,
-            "max_docs": 10,
-            "rerank": False,
-            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-            "score_kind": "cosine",
-        },
-        "metrics": {
-            "k": 5,
-            "cases": 2,
-            "answerable": 2,
-            "unanswerable": 1,
-            "errors": 0,
-            "hit_rate": hit_rate,
-            "mrr": mrr,
-            "unanswerable_distractor_leaks": leak,
-        },
-        "queries": [
-            {"id": "q1", "first_relevant_rank": 1},
-            {"id": "q2", "first_relevant_rank": 2},
-        ],
-        "environment": {
-            "python": "3.13.18",
-            "platform": "Linux-6.11.0-1018-azure-x86_64-with-glibc2.39",
-            "machine": {
-                "cpu": {"brand_raw": cpu, "arch": "x86_64", "count": 4},
-                "system": "Linux",
-            },
-            "indexed_git_rev": revision,
-        },
-    }
+    """Build complete evidence first; negative tests mutate exactly one field."""
+    from indexed.eval.metrics import aggregate, score_case
+
+    queries = []
+    for number in range(104):
+        relevant = ["target.md"] if number < 100 else []
+        rank = (
+            (1 if number < int(mrr * 100) else 2) if number < int(hit_rate * 100) else 6
+        )
+        ranked = (
+            [f"other-{i}.md" for i in range(rank - 1)] + ["target.md"]
+            if relevant
+            else (["decoy.md"] if number < 100 + leak else [])
+        )
+        query = score_case(
+            case_id=f"q{number}",
+            query="question",
+            ranked_doc_ids=ranked,
+            relevant=relevant,
+            distractors=[] if relevant else ["decoy.md"],
+            k=5,
+        )
+        query.update(
+            provenance="fixture",
+            rationale="target answers question",
+            elapsed_ms=1.0,
+            ranking=[
+                dict(rank=i, doc=doc, chunk=0, score=0.9, score_kind="cosine")
+                for i, doc in enumerate(ranked, 1)
+            ],
+        )
+        queries.append(query)
+    return dict(
+        schema="indexed.eval.report.v1",
+        generated_at="2026-11-02T10:00:00+00:00",
+        corpus=dict(tree_sha256=CORPUS, source_repo_rev="rev", files=[]),
+        case_set=dict(sha256=case_set, path="cases.json", cases=len(queries)),
+        config=dict(
+            collection="eval-corpus",
+            engine="2",
+            top_k=5,
+            max_docs=10,
+            rerank=False,
+            embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+            score_kind="cosine",
+        ),
+        metrics=aggregate(queries, 5),
+        queries=queries,
+        failures=[],
+        environment=dict(
+            python="3.13.18",
+            platform="Linux-6.11.0-1018-azure-x86_64-with-glibc2.39",
+            indexed_version="test",
+            embedding_model_cache=dict(
+                cache_dir="/cache",
+                present=True,
+                weights=["model.safetensors"],
+                selected_snapshot="same",
+            ),
+            machine=dict(
+                cpu=dict(brand_raw=cpu, arch="x86_64", count=4), system="Linux"
+            ),
+            indexed_git_rev=revision,
+        ),
+    )
 
 
 def test_eval_head_five_points_down_fails(tmp_path: Path):
@@ -331,7 +509,7 @@ def test_spread_reports_run_to_run_variance(tmp_path: Path):
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "hit_rate spread 0.000000 (0.8200..0.8200 over 3 runs)" in proc.stdout
-    assert "mrr      spread 0.000000 (0.6900..0.6900 over 3 runs)" in proc.stdout
+    assert "mrr      spread 0.000000" in proc.stdout
     assert "cases with a rank difference across repeats: 0" in proc.stdout
 
 
@@ -411,3 +589,285 @@ def test_eval_report_on_another_cpu_than_the_job_is_invalid(tmp_path: Path):
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "but this job runs on" in proc.stdout
     assert "gate verdict" not in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("queries",), []),
+        (("queries",), {}),
+        (("metrics", "hit_rate"), None),
+        (("metrics", "mrr"), float("nan")),
+        (("config", "embedding_model"), "different"),
+        (("config", "score_kind"), "distance"),
+        (("environment",), []),
+        (("environment", "machine", "cpu"), []),
+        (("queries", 0, "relevant"), ["different.md"]),
+        (("queries", 0, "query"), "another question"),
+        (("queries", 0, "id"), "changed-id"),
+        (("queries", 0, "ranking", 0, "score"), float("nan")),
+        (("metrics", "mrr"), 10**400),
+        (("queries", 0, "ranking", 0, "score"), 10**400),
+    ],
+)
+def test_eval_invalid_evidence_has_safe_invalid_json(tmp_path, path, value):
+    base, head = eval_report(0.82, 0.69), eval_report(0.82, 0.69)
+    parent = head
+    for key in path[:-1]:
+        parent = parent[key]
+    parent[path[-1]] = value
+    out = tmp_path / "invalid.json"
+    proc = run(tmp_path, base, head, "--out", str(out))
+    assert_invalid(proc)
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+@pytest.mark.parametrize(
+    "value", [[], None, 7, {"schema": "indexed.eval.report.v1", "environment": []}]
+)
+def test_eval_bad_container_writes_invalid_json(tmp_path, value):
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, value, eval_report(0.82, 0.69), "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+def test_eval_selected_metric_is_mandatory(tmp_path):
+    base, head = eval_report(0.82, 0.69), eval_report(0.82, 0.69)
+    for report in (base, head):
+        del report["metrics"]["hit_rate"]
+    assert_invalid(run(tmp_path, base, head))
+
+
+def test_eval_mrr_regression_with_stable_hit_rate_fails(tmp_path):
+    proc = run(tmp_path, eval_report(0.82, 0.69), eval_report(0.82, 0.59))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "mrr is -0.0500 metric points" in proc.stdout
+
+
+def test_eval_changed_model_snapshot_is_invalid(tmp_path):
+    base, head = eval_report(0.82, 0.69), eval_report(0.82, 0.69)
+    head["environment"]["embedding_model_cache"]["selected_snapshot"] = "other"
+    assert_invalid(run(tmp_path, base, head))
+
+
+def test_eval_json_integer_limit_writes_invalid_result(tmp_path):
+    base, head, out = (
+        tmp_path / "base.json",
+        tmp_path / "head.json",
+        tmp_path / "invalid.json",
+    )
+    base.write_text('{"schema":"indexed.eval.report.v1","value":' + "9" * 5000 + "}")
+    head.write_text(json.dumps(eval_report(0.82, 0.69)))
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--base",
+            str(base),
+            "--head",
+            str(head),
+            "--out",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert_invalid(proc)
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+_MISSING = object()
+
+
+def instrumented_report():
+    report = eval_report(0.82, 0.69)
+    report["config"]["input_context_policy"] = "eval-corpus-relative-v1"
+    report["environment"]["common_harness"] = {
+        "revision": "a" * 40,
+        "policy": "eval-corpus-relative-v1",
+        "files_sha256": {"launcher": "b" * 64, "canonical_helper": "c" * 64},
+    }
+    return report
+
+
+@pytest.mark.parametrize("side", ["base", "head", "both"])
+@pytest.mark.parametrize("value", [[], None, 7, "bad"])
+def test_malformed_reranker_cache_emits_invalid_json(tmp_path, side, value):
+    base, head = instrumented_report(), instrumented_report()
+    for label, report in (("base", base), ("head", head)):
+        if side in (label, "both"):
+            report["environment"]["reranker_model_cache"] = value
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, base, head, "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+@pytest.mark.parametrize("side", ["head", "both"])
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("embedding_model_cache", "selected_snapshot"), _MISSING),
+        (("embedding_model_cache", "selected_snapshot"), []),
+        (("embedding_model_cache", "selected_snapshot"), " "),
+        (("embedding_model_cache", "weights"), []),
+        (("common_harness", "revision"), _MISSING),
+        (("common_harness", "revision"), "bad"),
+        (("common_harness", "policy"), _MISSING),
+        (("common_harness", "policy"), []),
+        (("common_harness", "policy"), "other-policy"),
+        (("common_harness", "files_sha256"), _MISSING),
+        (("common_harness", "files_sha256"), []),
+        (("common_harness", "files_sha256", "launcher"), _MISSING),
+        (("common_harness", "files_sha256", "launcher"), "not-a-hash"),
+        (("common_harness", "files_sha256", "canonical_helper"), "g" * 64),
+    ],
+)
+def test_incomplete_gate_identity_emits_invalid_json(tmp_path, side, path, value):
+    base, head = instrumented_report(), instrumented_report()
+    for label, report in (("base", base), ("head", head)):
+        if side not in (label, "both"):
+            continue
+        parent = report["environment"]
+        for key in path[:-1]:
+            parent = parent[key]
+        if value is _MISSING:
+            del parent[path[-1]]
+        else:
+            parent[path[-1]] = value
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, base, head, "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_reranker_absence_is_compatible_only_when_inactive(tmp_path, active):
+    base, head = instrumented_report(), instrumented_report()
+    for report in (base, head):
+        report["config"]["rerank"] = active
+    out = tmp_path / "result.json"
+    proc = run(tmp_path, base, head, "--out", str(out))
+    if active:
+        assert_invalid(proc)
+        assert json.loads(out.read_text())["verdict"] == "invalid"
+    else:
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_canonical_ci_requires_common_harness_but_local_remains_compatible(tmp_path):
+    base, head = eval_report(0.82, 0.69), eval_report(0.82, 0.69)
+    assert run(tmp_path, base, head).returncode == 0
+    out = tmp_path / "invalid.json"
+    assert_invalid(
+        run(tmp_path, base, head, "--require-common-harness", "--out", str(out))
+    )
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+    assert (
+        run(
+            tmp_path,
+            instrumented_report(),
+            instrumented_report(),
+            "--require-common-harness",
+        ).returncode
+        == 0
+    )
+
+
+def test_host_fingerprint_falls_back_after_readable_cpuinfo_without_model(monkeypatch):
+    import runpy
+
+    namespace = runpy.run_path(str(SCRIPT))
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda *args, **kwargs: "processor: 0\nCPU implementer: 0x41\n",
+    )
+    monkeypatch.setattr(namespace["platform"], "processor", lambda: "arm processor")
+    assert namespace["host_fingerprint"]().startswith("arm processor|")
+
+
+@pytest.mark.parametrize("both", [False, True])
+def test_errored_query_cannot_disappear_from_gate_denominators(tmp_path, both):
+    from indexed.eval.metrics import aggregate, score_case
+
+    base, head = instrumented_report(), instrumented_report()
+    for report in (base, head) if both else (head,):
+        record = report["queries"][0]
+        record.update(
+            score_case(
+                case_id=record["id"],
+                query=record["query"],
+                ranked_doc_ids=[],
+                relevant=record["relevant"],
+                distractors=record["distractors"],
+                k=5,
+                error="retrieval failed",
+            )
+        )
+        record["ranking"] = []
+        report["metrics"] = aggregate(report["queries"], 5)
+        report["failures"] = [{"id": record["id"], "error": record["error"]}]
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, base, head, "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+@pytest.mark.parametrize("failure", ["read", "adoption"])
+def test_early_failure_always_writes_invalid_artifact(tmp_path, failure):
+    out = tmp_path / "invalid.json"
+    if failure == "adoption":
+        base = legacy_report(0.82, 0.69, machine_platform="wrong platform")
+        proc = run(
+            tmp_path,
+            base,
+            eval_report(0.82, 0.69),
+            "--host-fingerprint",
+            host_fingerprint(),
+            "--out",
+            str(out),
+        )
+    else:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--base",
+                str(tmp_path / "absent.json"),
+                "--head",
+                str(tmp_path / "absent-head.json"),
+                "--out",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    assert_invalid(proc)
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+@pytest.mark.parametrize("path", [("corpus", "tree_sha256"), ("case_set", "sha256")])
+def test_equal_missing_experiment_hashes_are_invalid(tmp_path, path):
+    base, head = instrumented_report(), instrumented_report()
+    for report in (base, head):
+        del report[path[0]][path[1]]
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, base, head, "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+
+
+def test_active_reranker_requires_model_identity_and_accepts_complete_cache(tmp_path):
+    from copy import deepcopy
+
+    base, head = instrumented_report(), instrumented_report()
+    for report in (base, head):
+        report["config"]["rerank"] = True
+        report["environment"]["reranker_model_cache"] = deepcopy(
+            report["environment"]["embedding_model_cache"]
+        )
+    out = tmp_path / "invalid.json"
+    assert_invalid(run(tmp_path, base, head, "--out", str(out)))
+    assert json.loads(out.read_text())["verdict"] == "invalid"
+    for report in (base, head):
+        report["config"]["reranker_model"] = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    assert run(tmp_path, base, head).returncode == 0

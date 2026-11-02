@@ -101,10 +101,10 @@ class RunConfig:
 
 
 def _files_connector_factory(corpus_dir: Path):
-    """Real files connector over the pinned corpus (lazy, like composition.py)."""
-    from indexed.connectors.files.connector import FileSystemConnector
+    """Evaluator-only stable context; ordinary product connectors stay unchanged."""
+    from indexed.eval.canonical import CanonicalFactory
 
-    return lambda _config: FileSystemConnector(path=str(corpus_dir))
+    return CanonicalFactory(corpus_dir)
 
 
 def build_collection(
@@ -310,6 +310,11 @@ def run_eval(
                     f"{cases_path}: {case.id} {field} documents are not in corpus: {sorted(unknown)}"
                 )
 
+    connector_factory = (
+        connector_factory
+        if connector_factory is not None
+        else _files_connector_factory(corpus_dir)
+    )
     owns_collections = collections_path is None
     workdir: Optional[Path] = None
     if collections_path is None:
@@ -368,9 +373,15 @@ def run_eval(
             **applied_config,
             "embedding_model": embedding_model or applied_config["embedding_model"],
             "score_kind": score_kind,
+            "input_context_policy": getattr(connector_factory, "policy", "custom"),
         },
         "environment": {
             **_environment(),
+            **(
+                {"converter_inputs": connector_factory.evidence()}
+                if hasattr(connector_factory, "evidence")
+                else {}
+            ),
             "embedding_model_cache": _model_cache_hint(
                 embedding_model or applied_config["embedding_model"],
                 engine=config.engine,

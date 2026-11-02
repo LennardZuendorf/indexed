@@ -139,3 +139,64 @@ test('API errors warn after summary without failing the job', async t => {
   const f = await fixture(t); f.github.rest.issues.createComment = async () => { throw new Error('no permission'); };
   await publishReport(f); assert.equal(f.events.at(-1)[0], 'warning'); assert.equal(f.events[0][0], 'summary');
 });
+
+function minimalInvalid() {
+  return {
+    schema: 'indexed.eval.ab.v1', kind: null, verdict: 'invalid', tolerance: 0.04, unit: null,
+    base: { label: 'captured base' }, head: { label: 'merge result' },
+    metrics: [], cases: [], warnings: [], invalid_reasons: ['the retrieval configuration differs (embedding_model)'],
+  };
+}
+test('renders the exact minimal invalid artifact emitted by the comparator', () => {
+  for (const tolerance of [0.04, null, -1]) {
+    const ab = minimalInvalid(); ab.tolerance = tolerance;
+    const body = renderReport({ ...data(), ab });
+    assert.match(body, /Verdict: invalid/);
+    assert.match(body, /the retrieval configuration differs/);
+    assert.doesNotMatch(body, /missing or malformed|Verdict: unavailable|Gating metrics:|\| Metric \|/);
+    assert.match(body, /Fingerprints: unavailable · unavailable/);
+  }
+});
+test('minimal invalid metadata never weakens pass or fail artifact validation', () => {
+  for (const verdict of ['pass', 'fail']) {
+    const ab = minimalInvalid(); ab.verdict = verdict;
+    assert.match(renderReport({ ...data(), ab }), /Verdict: unavailable/);
+  }
+  for (const mutate of [
+    ab => { ab.invalid_reasons = []; },
+    ab => { ab.invalid_reasons = [null]; },
+    ab => { ab.invalid_reasons = [{}]; },
+    ab => { ab.base = null; },
+    ab => { ab.base.label = 42; },
+    ab => { ab.base.fingerprint = {}; },
+    ab => { ab.tolerance = 'invalid'; },
+    ab => { ab.tolerance = Infinity; },
+    ab => { ab.warnings = {}; },
+    ab => { ab.metrics = [null]; },
+    ab => { ab.cases = false; },
+  ]) {
+    const ab = minimalInvalid(); mutate(ab);
+    assert.match(renderReport({ ...data(), ab }), /Verdict: unavailable/);
+  }
+});
+test('invalid reasons stay escaped and bounded with an artifact link', () => {
+  const ab = minimalInvalid();
+  ab.invalid_reasons = Array(10000).fill('@all | <img> **bad** [link](url)\n'.repeat(1000));
+  const body = renderReport({ ...data(), ab });
+  assert.match(body, /Verdict: invalid/);
+  assert.doesNotMatch(body, /@all|<img>|\*\*bad\*\*|\[link\]\(url\)/);
+  assert.ok(body.length <= 60000, `body length ${body.length}`);
+  assert.match(body, /omitted|truncated/);
+  assert.match(body, /Report artifacts/);
+});
+
+test('publishes minimal invalid reasons in both summary and comment', async t => {
+  const f = await fixture(t);
+  await fs.writeFile(f.abPath, JSON.stringify(minimalInvalid()));
+  await publishReport(f);
+  for (const body of [f.events[0][1], f.events.find(event => event[0] === 'create')[1].body]) {
+    assert.match(body, /Verdict: invalid/);
+    assert.match(body, /the retrieval configuration differs/);
+    assert.doesNotMatch(body, /missing or malformed|Verdict: unavailable/);
+  }
+});

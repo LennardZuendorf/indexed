@@ -133,7 +133,9 @@ SRC_LOC_MAX = 31_600
 # regression, passes inside the measured tolerance, and exits 2 — not 1 or 0 —
 # on a machine, interpreter, corpus or case-set mismatch. Tests only, no
 # product surface; measured 48_901, ceiling = measured + headroom.
-TEST_LOC_MAX = 49_100
+# The measured #273/#274 union and canonical-boundary regressions exceed
+# the separate-branch cap; retain about 100 lines of bounded headroom.
+TEST_LOC_MAX = 49_850
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

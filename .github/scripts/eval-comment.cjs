@@ -14,13 +14,27 @@ const moved = value => object(value) && text(value.id) && rank(value.rank_before
 // The gate's own artifact is the only source of a verdict: two same-job
 // measurements and the comparator's ratio. A comment cannot invent one from a
 // file whose shape it does not know.
-const validAb = value => object(value) && value.schema === 'indexed.eval.ab.v1'
-  && ['pass', 'fail', 'invalid'].includes(value.verdict)
+const validMeasuredAb = value => object(value) && value.schema === 'indexed.eval.ab.v1'
+  && ['pass', 'fail'].includes(value.verdict)
   && number(value.tolerance) && side(value.base) && side(value.head)
   && Array.isArray(value.metrics) && value.metrics.every(metric)
   && Array.isArray(value.cases) && value.cases.every(moved)
-  && Array.isArray(value.warnings) && Array.isArray(value.invalid_reasons)
-  && (value.verdict !== 'invalid' || value.invalid_reasons.length > 0);
+  && Array.isArray(value.warnings) && Array.isArray(value.invalid_reasons);
+const invalidSide = value => object(value) && text(value.label)
+  && ['fingerprint', 'interpreter', 'revision'].every(key => !(key in value) || value[key] === null || text(value[key]));
+// Invalid measurements can fail before identities are safe to read. Accept
+// only their explicit diagnostic schema; pass/fail still requires full sides.
+const validInvalidAb = value => object(value) && value.schema === 'indexed.eval.ab.v1'
+  && value.verdict === 'invalid' && (value.tolerance === null || number(value.tolerance))
+  && [null, 'indexed-eval', 'pytest-benchmark'].includes(value.kind)
+  && [null, 'points', 'pct'].includes(value.unit)
+  && invalidSide(value.base) && invalidSide(value.head)
+  && Array.isArray(value.metrics) && value.metrics.every(metric)
+  && Array.isArray(value.cases) && value.cases.every(moved)
+  && Array.isArray(value.warnings) && value.warnings.every(text)
+  && Array.isArray(value.invalid_reasons) && value.invalid_reasons.length > 0
+  && value.invalid_reasons.every(text);
+const validAb = value => validMeasuredAb(value) || validInvalidAb(value);
 
 // Character references keep report text inert in Markdown tables and mentions.
 function escape(value) {
@@ -62,9 +76,10 @@ function renderReport({ ab, runUrl, headSha, outcomes = {}, errors = [] }) {
   if (outcomes.harness === 'failure') lines.push('', '**Warning: harness tests failed.**');
   if (ok && ab.verdict === 'invalid') {
     lines.push('', '**Measurement invalid — this is a harness bug, not a verdict.**', '');
-    lines.push(...ab.invalid_reasons.map(reason => `- ${escape(reason)}`));
+    lines.push(...ab.invalid_reasons.slice(0, 10).map(reason => `- ${escape(reason)}`));
+    if (ab.invalid_reasons.length > 10) lines.push(`- ${ab.invalid_reasons.length - 10} more reasons omitted (truncated). See [Report artifacts](${runUrl}#artifacts).`);
   }
-  if (ok) {
+  if (ok && ab.verdict !== 'invalid') {
     lines.push('', `Gating metrics: hit-rate@k and MRR within ${format(ab.tolerance)} metric points of the merge base. Leaks are report-only.`);
     lines.push('', '| Metric | Merge base | Head | Delta | Verdict |', '| --- | ---: | ---: | ---: | --- |');
     for (const row of ab.metrics) {

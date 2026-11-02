@@ -85,3 +85,15 @@ Bound formatted comments after escaping and link omitted details to artifacts.
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
 file (multi-tool compatibility).
+
+Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
+
+Pin event base/merge SHAs and require every selected benchmark before a verdict.
+
+Advisory reports must not skip the independently enforced A/B setup and results.
+
+Canonicalize only generated eval path prefixes; record common-harness digests.
+
+Reject equal-missing model snapshots and common instrumentation before comparison.
+
+Verify invalid-result artifacts through the actual publisher consumer.

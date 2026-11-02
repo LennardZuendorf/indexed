@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Same-job A/B comparator for the PR benchmark and retrieval gates.
 
-Reads two measurement files taken back to back on one runner — the merge base
-(``origin/<base ref>``) and the PR head — and turns their ratio into the gate's
+Reads two measurement files taken back to back on one runner — the captured event base
+and corresponding PR merge result — and turns their ratio into the gate's
 only verdict. No committed baseline is read here: a cross-run number carries the
 machine that produced it, so it can report drift but cannot decide a PR
 (.spec/tech.md § CI Benchmarking).
@@ -10,13 +10,13 @@ machine that produced it, so it can report drift but cannot decide a PR
 Two shapes are accepted, because both gates answer the same question:
 
 * **pytest-benchmark results** (``benchmarks``) — seconds, lower is better, and
-  the tolerance is a percentage of the merge base.
+  the tolerance is a percentage of the captured base.
 * **``indexed.eval.report.v1``** retrieval reports — hit-rate@k and MRR, higher
   is better, and the tolerance is an absolute metric delta.
 
 Two failure modes are kept apart on purpose:
 
-* **a regression** — the head is worse than its own merge base past tolerance.
+* **a regression** — the head is worse than its own captured base past tolerance.
   That is a verdict, and the gate fails.
 * **an invalid measurement** — the two files disagree on machine fingerprint,
   interpreter, corpus tree, case set or retrieval configuration, so the
@@ -29,7 +29,7 @@ Usage::
         --tolerance 20 --summary "$GITHUB_STEP_SUMMARY"
 
     python scripts/benchmark_ab.py --base base.json --head head.json \\
-        --tolerance 0.02 --out eval-ab.json
+        --tolerance 0.04 --out eval-ab.json
 
     python scripts/benchmark_ab.py --spread run1.json run2.json run3.json
 
@@ -40,8 +40,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,17 +56,11 @@ INVALID_EXIT = 2
 BENCHMARK_SHAPE = "pytest-benchmark"
 EVAL_SHAPE = "indexed-eval"
 
-#: Absolute retrieval-metric delta treated as noise, in metric points.
-#:
-#: Measured, not tasted. Three repeats of the head tree in one CI job were
-#: identical (spread 0.000 on hit-rate@5 and MRR, zero rank differences), so
-#: repeat-to-repeat noise is zero. The larger term is the base/head boundary:
-#: the base is measured in its own worktree and venv, and on PR #274 — whose
-#: diff cannot move retrieval at all — MRR differed by 0.0307 while hit@5
-#: stayed 1.0 (base 0.8070, head 0.8377; run 41422911438). 0.04 covers that
-#: 0.0307 plus a margin and stays under one case of the 19 answerable ones
-#: (1/19 = 0.0526 of hit@5), so a single case falling out of the top 5 still
-#: fails the gate. Raise it only with a new measurement recorded here.
+#: Retained approved absolute-point policy. Historical CI boundary movement
+#: was 0.0307 MRR (run 41422911438); that did not diagnose its cause. A later
+#: controlled local experiment isolated generated absolute path context, fixed
+#: only inside evaluation. Keep 0.04; bounded same-source validation is not a
+#: universal determinism bound or authority to widen this policy.
 EVAL_TOLERANCE = 0.04
 
 #: Retrieval metrics the gate decides on. Leaks stay report-only (issue #204).
@@ -136,6 +132,7 @@ class Result:
 
 def shape(doc: dict) -> str:
     """Which gate produced this file."""
+    doc = object_value(doc, "report")
     if str(doc.get("schema", "")).startswith("indexed.eval.report"):
         return EVAL_SHAPE
     if isinstance(doc.get("benchmarks"), list):
@@ -152,6 +149,7 @@ def _machine(doc: dict) -> dict:
     Retrieval reports record the same block under ``environment.machine`` so one
     fingerprint function serves both gates.
     """
+    doc = object_value(doc, "report")
     info = doc.get("machine_info")
     if isinstance(info, dict):
         return info
@@ -162,32 +160,27 @@ def _machine(doc: dict) -> dict:
 
 
 def fingerprint(doc: dict) -> str:
-    """CPU fingerprint of the machine that produced a result file.
-
-    Matches the identity each workflow prints: CPU model, architecture, core
-    count, OS. ``?`` stands in for a missing field so two equally broken files
-    still compare equal-or-not honestly. Reports from before the machine block
-    existed fall back to their platform string.
-    """
-    info = _machine(doc)
-    cpu = info.get("cpu") or {}
-    parts = [
-        cpu.get("brand_raw"),
-        cpu.get("arch"),
-        cpu.get("count"),
-        info.get("system"),
-    ]
-    if all(part is None for part in parts):
-        return str((doc.get("environment") or {}).get("platform", "?"))
-    return "|".join("?" if part is None else str(part) for part in parts)
+    """Require the full CPU/system identity before using it."""
+    info = object_value(_machine(object_value(doc, "result")), "machine")
+    cpu = object_value(info.get("cpu"), "machine.cpu")
+    brand = text_value(cpu.get("brand_raw"), "cpu.brand_raw")
+    arch = text_value(cpu.get("arch"), "cpu.arch")
+    count = cpu.get("count")
+    if type(count) is not int or count <= 0:
+        raise MeasurementInvalid("cpu.count must be a positive integer.")
+    system = text_value(info.get("system"), "machine.system")
+    return f"{brand}|{arch}|{count}|{system}"
 
 
 def interpreter(doc: dict) -> str:
-    """Python version that produced a result file."""
-    return str(
-        _machine(doc).get("python_version")
-        or (doc.get("environment") or {}).get("python")
-        or "?"
+    """Require the producing Python identity."""
+    if shape(doc) == BENCHMARK_SHAPE:
+        return text_value(
+            _machine(doc).get("python_version"), "machine_info.python_version"
+        )
+    return text_value(
+        object_value(doc.get("environment"), "environment").get("python"),
+        "environment.python",
     )
 
 
@@ -198,21 +191,22 @@ def host_fingerprint() -> str:
     (and validating any recorded ``environment.machine`` against it) is how the
     gate proves both measurements ran here rather than merely asserting it.
     """
-    brand = "?"
+    brand = ""
     try:
         for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
             if line.lower().startswith("model name"):
                 brand = line.split(":", 1)[1].strip()
                 break
     except (OSError, IndexError):
-        brand = platform.processor() or "?"
+        pass
+    brand = brand or platform.processor() or "?"
     return "|".join([brand, platform.machine(), str(os.cpu_count()), platform.system()])
 
 
 def adopt_host_machine(doc: dict, host: str) -> str | None:
     """Stamp this job's machine into a report that predates the machine block.
 
-    Reports written before ``environment.machine`` existed (any merge base from
+    Reports written before ``environment.machine`` existed (any captured base from
     a commit older than this feature) cannot name their own host. The job can:
     it measured this side on this runner minutes ago. Adoption is not a free
     pass — it happens only when the report's recorded ``platform`` string is
@@ -227,7 +221,7 @@ def adopt_host_machine(doc: dict, host: str) -> str | None:
             f"the job fingerprint {host!r} is not brand|arch|count|system."
         )
     brand, arch, count, system = parts
-    environment = doc.get("environment") or {}
+    environment = object_value(doc.get("environment"), "environment")
     recorded = environment.get("platform")
     current = platform.platform()
     if recorded != current:
@@ -259,7 +253,7 @@ def _check_same_machine(
     was, now = fingerprint(base_doc), fingerprint(head_doc)
     if host:
         for side, doc, seen in (
-            ("merge base", base_doc, was),
+            ("captured base", base_doc, was),
             ("head", head_doc, now),
         ):
             if _machine(doc) and seen != host:
@@ -270,75 +264,180 @@ def _check_same_machine(
                 )
     if was != now:
         raise MeasurementInvalid(
-            f"the merge base was measured on {was}, the head on {now}. "
+            f"the captured base was measured on {was}, the head on {now}. "
             "Same-job measurement invalid — this is a harness bug, not a verdict."
         )
     base_py, head_py = interpreter(base_doc), interpreter(head_doc)
     if base_py != head_py:
         raise MeasurementInvalid(
-            f"the merge base was measured with Python {base_py}, the head with "
+            f"the captured base was measured with Python {base_py}, the head with "
             f"Python {head_py}. Same-job measurement invalid — numbers from "
             "different interpreters are not comparable."
         )
 
 
-def samples(doc: dict, stat: str = "min") -> dict[str, float]:
-    """Map benchmark full name -> ``stat`` seconds for one result file.
+def object_value(value: object, label: str) -> dict:
+    """Require a JSON object before reading its fields."""
+    if not isinstance(value, dict):
+        raise MeasurementInvalid(f"{label} must be an object.")
+    return value
 
-    The default is the minimum, not the mean: tenancy noise only ever *adds*
-    time to a round, so the best observed round is the most stable estimator of
-    the code's own cost. On unchanged code measured locally, means disagreed by
-    up to 20 % (one slow round in a 3-round benchmark), medians by 12 %, and
-    minimums by 0.7 %. A real regression moves the minimum too; noise does not.
-    """
+
+def text_value(value: object, label: str) -> str:
+    """Missing identities cannot establish a comparable experiment."""
+    if not isinstance(value, str) or not value.strip():
+        raise MeasurementInvalid(f"{label} must be a nonempty string.")
+    return value
+
+
+def benchmark_name(value: object) -> str:
+    """pytest-benchmark fullnames can omit the common tests/ prefix."""
+    return text_value(value, "benchmark fullname").removeprefix("tests/")
+
+
+def samples(doc: dict, stat: str = "min") -> dict[str, float]:
+    """Require unique complete rows and finite positive selected durations."""
+    benchmarks = object_value(doc, "result").get("benchmarks")
+    if not isinstance(benchmarks, list) or not benchmarks:
+        raise MeasurementInvalid("benchmarks must be a nonempty list.")
     out: dict[str, float] = {}
-    for bench in doc.get("benchmarks") or []:
-        name = bench.get("fullname") or bench.get("name")
-        value = (bench.get("stats") or {}).get(stat)
-        if name is not None and value is not None:
-            out[str(name)] = float(value)
+    for bench in benchmarks:
+        bench = object_value(bench, "benchmark")
+        name = benchmark_name(bench.get("fullname"))
+        if name in out:
+            raise MeasurementInvalid(f"duplicate benchmark fullname: {name}.")
+        stats = object_value(bench.get("stats"), f"{name} stats")
+        value = stats.get(stat)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise MeasurementInvalid(f"{name} {stat} must be a numeric duration.")
+        try:
+            valid = math.isfinite(value) and value > 0
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise MeasurementInvalid(
+                f"{name} {stat} must be a finite positive duration."
+            )
+        out[name] = float(value)
     return out
 
 
-def _benchmark_result(base_doc: dict, head_doc: dict, stat: str) -> Result:
-    """Pair the two benchmark files and keep only same-code rows."""
+def _benchmark_result(
+    base_doc: dict,
+    head_doc: dict,
+    stat: str,
+    expected_benchmarks: Iterable[str] | None = None,
+) -> Result:
+    """Require the identical selected benchmark set on both sides."""
     base_rows, head_rows = samples(base_doc, stat), samples(head_doc, stat)
-    result = Result(shape=BENCHMARK_SHAPE, unit="pct", stat=stat)
-    for name in sorted(set(base_rows) | set(head_rows)):
-        if name not in head_rows:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} was measured on the merge base only — not compared."
-            )
-            continue
-        if name not in base_rows:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} was measured on the head only — not compared."
-            )
-            continue
-        if base_rows[name] <= 0:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} has a non-positive merge-base {stat} ({base_rows[name]}) — not compared."
-            )
-            continue
-        result.rows.append(Row(name, base_rows[name], head_rows[name]))
-    if not result.rows:
+    if base_rows.keys() != head_rows.keys():
         raise MeasurementInvalid(
-            "the two result files share no comparable benchmark rows, so the "
-            "A/B measured nothing. Same-job measurement invalid — this is a "
-            "harness bug, not a verdict."
+            "base and merge result must contain identical benchmark sets."
         )
+    expected = {benchmark_name(name) for name in expected_benchmarks or ()}
+    missing = expected - base_rows.keys()
+    if missing:
+        raise MeasurementInvalid(
+            f"selected benchmarks were not measured: {', '.join(sorted(missing))}."
+        )
+    result = Result(shape=BENCHMARK_SHAPE, unit="pct", stat=stat)
+    for name in sorted(base_rows):
+        row = Row(name, base_rows[name], head_rows[name])
+        if not math.isfinite(row.change_pct):
+            raise MeasurementInvalid(f"{name} ratio is not finite.")
+        result.rows.append(row)
     return result
 
 
+def _gate_numbers(value: object) -> None:
+    """The gate must represent every numeric measurement without overflow."""
+    if isinstance(value, dict):
+        for item in value.values():
+            _gate_numbers(item)
+    elif isinstance(value, list):
+        for item in value:
+            _gate_numbers(item)
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite:
+            raise MeasurementInvalid(
+                "gate report numbers must be finite and representable."
+            )
+
+
 def _eval_config(report: dict) -> dict:
-    """Retrieval configuration, without the fields that record what was measured."""
-    config = dict(report.get("config") or {})
-    for key in ("embedding_model", "score_kind"):
-        config.pop(key, None)
-    return config
+    """Every effective model/scoring/normalization setting defines the experiment."""
+    return report["config"]
+
+
+def _cache_identity(report: dict, name: str, *, required: bool) -> tuple | None:
+    """Validate model-cache evidence before reading or comparing its identity."""
+    environment = report["environment"]
+    if name not in environment and not required:
+        return None
+    cache = object_value(environment.get(name), name)
+    text_value(cache.get("cache_dir"), f"{name}.cache_dir")
+    present, weights, snapshot = (
+        cache.get("present"),
+        cache.get("weights"),
+        cache.get("selected_snapshot"),
+    )
+    if (
+        type(present) is not bool
+        or not isinstance(weights, list)
+        or any(not isinstance(item, str) or not item.strip() for item in weights)
+    ):
+        raise MeasurementInvalid(
+            f"{name} must record boolean present and a string weights list."
+        )
+    if len(weights) != len(set(weights)):
+        raise MeasurementInvalid(f"{name} weights must be unique.")
+    if present:
+        text_value(snapshot, f"{name}.selected_snapshot")
+        if not weights:
+            raise MeasurementInvalid(f"{name} present model must name usable weights.")
+    elif weights or snapshot is not None or required:
+        raise MeasurementInvalid(
+            f"{name} cache state does not identify the required model."
+        )
+    return (present, tuple(weights), snapshot) if required else None
+
+
+def _hash_identity(value: object, length: int, label: str) -> str:
+    """Equal omissions and malformed digest strings do not establish identity."""
+    value = text_value(value, label)
+    if re.fullmatch(rf"[0-9a-f]{{{length}}}", value) is None:
+        raise MeasurementInvalid(
+            f"{label} must be a {length}-character lowercase hexadecimal identity."
+        )
+    return value
+
+
+def _harness_identity(report: dict, *, required: bool) -> tuple | None:
+    """Local legacy reports may omit instrumentation; CI may require it."""
+    environment = report["environment"]
+    if "common_harness" not in environment and not required:
+        return None
+    harness = object_value(environment.get("common_harness"), "common_harness")
+    revision = _hash_identity(harness.get("revision"), 40, "common_harness.revision")
+    policy = text_value(harness.get("policy"), "common_harness.policy")
+    if policy != report["config"].get("input_context_policy"):
+        raise MeasurementInvalid(
+            "common_harness policy must match effective input_context_policy."
+        )
+    hashes = object_value(harness.get("files_sha256"), "common_harness.files_sha256")
+    if set(hashes) != {"launcher", "canonical_helper"}:
+        raise MeasurementInvalid(
+            "common_harness files must identify exactly launcher and canonical_helper."
+        )
+    digests = tuple(
+        _hash_identity(hashes[key], 64, f"common_harness.{key}")
+        for key in ("launcher", "canonical_helper")
+    )
+    return revision, policy, digests
 
 
 def _check_same_experiment(base_doc: dict, head_doc: dict) -> None:
@@ -364,6 +463,26 @@ def _check_same_experiment(base_doc: dict, head_doc: dict) -> None:
             f"{str(head_cases)[:12]}). Same-job measurement invalid — a case-set "
             "change is a different experiment, not a verdict on this diff."
         )
+    identity_keys = (
+        "id",
+        "query",
+        "relevant",
+        "distractors",
+        "provenance",
+        "rationale",
+        "answered_by",
+    )
+
+    def identities(doc):
+        return {
+            record["id"]: {key: record.get(key) for key in identity_keys}
+            for record in doc["queries"]
+        }
+
+    if identities(base_doc) != identities(head_doc):
+        raise MeasurementInvalid("query identities or immutable judgments differ.")
+    if not base_doc["queries"] or not head_doc["queries"]:
+        raise MeasurementInvalid("evaluation reports must contain query evidence.")
     base_config, head_config = _eval_config(base_doc), _eval_config(head_doc)
     changed = sorted(
         key
@@ -399,7 +518,7 @@ def _eval_rows(base_doc: dict, head_doc: dict, metrics: Iterable[str]) -> list[R
     for name in names:
         before, after = _metric(base_doc, name), _metric(head_doc, name)
         if before is None or after is None:
-            continue
+            raise MeasurementInvalid(f"selected metric {name} is missing.")
         rows.append(
             Row(
                 name=name,
@@ -440,15 +559,51 @@ def compare(
     stat: str = "min",
     metrics: Iterable[str] = EVAL_GATE_METRICS,
     host: str | None = None,
+    expected_benchmarks: Iterable[str] | None = None,
+    require_common_harness: bool = False,
 ) -> Result:
     """Pair two measurements from one job into rows, or say why there is no verdict."""
     base_shape, head_shape = shape(base_doc), shape(head_doc)
     if base_shape != head_shape:
         raise MeasurementInvalid(
-            f"the merge base is a {base_shape} file, the head a {head_shape} "
+            f"the captured base is a {base_shape} file, the head a {head_shape} "
             "file. Same-job measurement invalid — the two sides measured "
             "different things."
         )
+    if base_shape == EVAL_SHAPE:
+        from indexed.eval.report_validation import report_problems
+
+        problems = report_problems(base_doc, "base") + report_problems(head_doc, "head")
+        if problems:
+            raise MeasurementInvalid("; ".join(problems))
+        for doc in (base_doc, head_doc):
+            if doc["config"]["rerank"]:
+                text_value(doc["config"].get("reranker_model"), "config.reranker_model")
+        for cache_name in ("embedding_model_cache", "reranker_model_cache"):
+            identities = [
+                _cache_identity(
+                    doc,
+                    cache_name,
+                    required=cache_name == "embedding_model_cache"
+                    or doc["config"]["rerank"],
+                )
+                for doc in (base_doc, head_doc)
+            ]
+            if identities[0] != identities[1]:
+                raise MeasurementInvalid(f"{cache_name} model identity differs.")
+        identities = [
+            _harness_identity(doc, required=require_common_harness)
+            for doc in (base_doc, head_doc)
+        ]
+        if identities[0] != identities[1]:
+            raise MeasurementInvalid("common evaluator harness identity differs.")
+        for label, doc in (("base", base_doc), ("head", head_doc)):
+            if doc["metrics"]["errors"]:
+                raise MeasurementInvalid(
+                    f"{label} report contains errored cases; gate denominators are incomplete."
+                )
+    _gate_numbers(base_doc)
+    _gate_numbers(head_doc)
     _check_same_machine(base_doc, head_doc, host)
 
     if base_shape == EVAL_SHAPE:
@@ -460,7 +615,7 @@ def compare(
             rows=_eval_rows(base_doc, head_doc, metrics),
             cases=_case_movement(base_doc, head_doc),
         )
-        if not result.rows:
+        if not result.gating_rows:
             raise MeasurementInvalid(
                 "the two reports share no gating metric, so the A/B measured "
                 "nothing. Same-job measurement invalid — this is a harness bug, "
@@ -468,7 +623,7 @@ def compare(
             )
         return result
 
-    return _benchmark_result(base_doc, head_doc, stat)
+    return _benchmark_result(base_doc, head_doc, stat, expected_benchmarks)
 
 
 def table(result: Result) -> str:
@@ -507,12 +662,12 @@ def verdict_line(result: Result, tolerance: float) -> str:
         worst = max(result.regressions, key=lambda row: row.worse_by(result.unit))
         return (
             f"gate verdict: FAIL ({len(result.regressions)}/{len(result.gating_rows)} "
-            f"{result.unit} over {tolerance:g} of the merge base; worst "
+            f"{result.unit} over {tolerance:g} of the captured base; worst "
             f"{worst.name} {worst.worse_by(result.unit):+.4g})"
         )
     return (
-        f"gate verdict: PASS ({len(result.gating_rows)} measurements within "
-        f"{tolerance:g} of the merge base, {result.unit})"
+        f"gate verdict: PASS ({len(result.gating_rows)} {'benchmarks' if result.shape == BENCHMARK_SHAPE else 'measurements'} within "
+        f"{tolerance:g} of the captured base, {result.unit})"
     )
 
 
@@ -538,8 +693,8 @@ def summary_markdown(
         "",
         "| Side | Revision | Fingerprint |",
         "|---|---|---|",
-        f"| merge base | `{base_label}` | `{fingerprint(base_doc) if base_doc else '?'}` |",
-        f"| head | `{head_label}` | `{fingerprint(head_doc) if head_doc else '?'}` |",
+        f"| captured base | `{base_label}` | `{fingerprint(base_doc) if base_doc else '?'}` |",
+        f"| merge result | `{head_label}` | `{fingerprint(head_doc) if head_doc else '?'}` |",
         "",
     ]
     if result.shape == EVAL_SHAPE:
@@ -547,7 +702,7 @@ def summary_markdown(
             f"Comparing hit-rate@k and MRR with an absolute tolerance of "
             f"{tolerance:g} metric points; the distractor-leak count is reported.",
             "",
-            "| Metric | Merge base | Head | Delta | Verdict |",
+            "| Metric | Captured base | Merge result | Delta | Verdict |",
             "|---|---|---|---|---|",
         ]
         for row in result.rows:
@@ -571,7 +726,7 @@ def summary_markdown(
         lines += [
             f"Comparing the {result.stat} of each benchmark.",
             "",
-            "| Benchmark | Merge base | Head | Change | Verdict |",
+            "| Benchmark | Captured base | Merge result | Change | Verdict |",
             "|---|---|---|---|---|",
         ]
         for row in result.rows:
@@ -585,12 +740,12 @@ def summary_markdown(
         lines.append(
             f"**Verdict: FAIL** — {len(result.regressions)} of "
             f"{len(result.gating_rows)} measurements regressed past "
-            f"{tolerance:g} against their own merge base."
+            f"{tolerance:g} against their own captured base."
         )
     else:
         lines.append(
             f"**Verdict: PASS** — {len(result.gating_rows)} measurements within "
-            f"{tolerance:g} of their own merge base."
+            f"{tolerance:g} of their own captured base."
         )
     for warning in result.warnings:
         lines.append(f"- {warning}")
@@ -658,6 +813,12 @@ def spread(paths: list[str]) -> int:
     if len(docs) < 2:
         print("::error title=Variance probe invalid::need at least two runs")
         return INVALID_EXIT
+    try:
+        for doc in docs:
+            compare(docs[0], doc)
+    except MeasurementInvalid as exc:
+        print(f"::error title=Variance probe invalid::{exc}")
+        return INVALID_EXIT
     if len({fingerprint(doc) for doc in docs}) != 1:
         print(
             "::error title=Variance probe invalid::the repeats ran on different machines"
@@ -694,9 +855,9 @@ def spread(paths: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Compare merge-base and head measurements from one job."
+        description="Compare captured-base and head measurements from one job."
     )
-    parser.add_argument("--base", help="merge-base result JSON")
+    parser.add_argument("--base", help="captured-base result JSON")
     parser.add_argument("--head", help="head result JSON")
     parser.add_argument(
         "--spread",
@@ -709,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=None,
         help=(
-            "how far the head may move against its own merge base before it is a "
+            "how far the head may move against its own captured base before it is a "
             "regression: percent of the base for benchmarks (default 20), absolute "
             f"metric points for retrieval reports (default {EVAL_TOLERANCE})"
         ),
@@ -726,10 +887,16 @@ def main(argv: list[str] | None = None) -> int:
         choices=tuple(EVAL_METRIC_DIRECTION),
         help="retrieval metric the gate decides on (repeatable; default hit_rate, mrr)",
     )
+    parser.add_argument("--expected-benchmark", action="append", default=[])
+    parser.add_argument(
+        "--require-common-harness",
+        action="store_true",
+        help="require complete common instrumentation identity for CI evaluation",
+    )
     parser.add_argument("--summary", help="append the markdown summary to this file")
     parser.add_argument("--out", help="write the machine-readable A/B result here")
-    parser.add_argument("--base-label", default="merge base", help="summary label")
-    parser.add_argument("--head-label", default="head", help="summary label")
+    parser.add_argument("--base-label", default="captured base", help="summary label")
+    parser.add_argument("--head-label", default="merge result", help="summary label")
     parser.add_argument(
         "--host-fingerprint",
         help=(
@@ -753,23 +920,63 @@ def main(argv: list[str] | None = None) -> int:
     if not args.base or not args.head:
         parser.error("--base and --head are required unless --spread is given")
 
-    try:
-        base_doc = json.loads(Path(args.base).read_text())
-        head_doc = json.loads(Path(args.head).read_text())
-    except (OSError, ValueError) as exc:
-        print(
-            f"::error title=Same-job measurement invalid::cannot read a result file: {exc}"
-        )
-        return INVALID_EXIT
-
+    base_doc = head_doc = None
     adopted: list[str] = []
     try:
+        if args.tolerance is not None and (
+            not math.isfinite(args.tolerance) or args.tolerance < 0
+        ):
+            raise MeasurementInvalid("tolerance must be finite and nonnegative.")
+        base_doc = json.loads(Path(args.base).read_text())
+        head_doc = json.loads(Path(args.head).read_text())
         for doc in (base_doc, head_doc):
+            object_value(doc, "report")
+            if shape(doc) == EVAL_SHAPE:
+                from indexed.eval.report_validation import report_problems
+
+                problems = report_problems(doc, "report")
+                if problems:
+                    raise MeasurementInvalid("; ".join(problems))
             note = adopt_host_machine(doc, args.host_fingerprint or "")
             if note:
                 adopted.append(note)
-    except MeasurementInvalid as exc:
+        result = compare(
+            base_doc,
+            head_doc,
+            stat=args.stat,
+            metrics=args.metric or EVAL_GATE_METRICS,
+            host=args.host_fingerprint,
+            expected_benchmarks=args.expected_benchmark,
+            require_common_harness=args.require_common_harness,
+        )
+        tolerance = args.tolerance
+        if tolerance is None:
+            tolerance = EVAL_TOLERANCE if result.shape == EVAL_SHAPE else 20.0
+    except (OSError, ValueError, OverflowError, MeasurementInvalid) as exc:
         print(f"::error title=Same-job measurement invalid::{exc}")
+        if args.out:
+            Path(args.out).write_text(
+                json.dumps(
+                    {
+                        "schema": "indexed.eval.ab.v1",
+                        "kind": None,
+                        "verdict": "invalid",
+                        "tolerance": args.tolerance
+                        if args.tolerance is not None and math.isfinite(args.tolerance)
+                        else None,
+                        "unit": None,
+                        "base": {"label": args.base_label},
+                        "head": {"label": args.head_label},
+                        "metrics": [],
+                        "cases": [],
+                        "warnings": [],
+                        "invalid_reasons": [str(exc)],
+                    },
+                    allow_nan=False,
+                    indent=2,
+                )
+                + "\n"
+            )
         return INVALID_EXIT
 
     print(f"base: {args.base}")
@@ -781,42 +988,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"base python: {interpreter(base_doc)}")
     print(f"head python: {interpreter(head_doc)}")
 
-    metrics = args.metric or list(EVAL_GATE_METRICS)
-    try:
-        result = compare(
-            base_doc,
-            head_doc,
-            stat=args.stat,
-            metrics=metrics,
-            host=args.host_fingerprint,
-        )
-    except MeasurementInvalid as exc:
-        print(f"::error title=Same-job measurement invalid::{exc}")
-        if args.out:
-            Path(args.out).write_text(
-                json.dumps(
-                    {
-                        "schema": "indexed.eval.ab.v1",
-                        "kind": None,
-                        "verdict": "invalid",
-                        "tolerance": args.tolerance,
-                        "unit": None,
-                        "base": _side(base_doc, args.base_label),
-                        "head": _side(head_doc, args.head_label),
-                        "metrics": [],
-                        "cases": [],
-                        "warnings": [],
-                        "invalid_reasons": [str(exc)],
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-        return INVALID_EXIT
-
-    tolerance = args.tolerance
-    if tolerance is None:
-        tolerance = EVAL_TOLERANCE if result.shape == EVAL_SHAPE else 20.0
     result.warnings[:0] = adopted
     result.decide(tolerance)
 
@@ -839,7 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(
                 f"::error title={title}::{row.name} is {moved} against its own "
-                f"merge base ({row.base:g} -> {row.head:g}), tolerance "
+                f"captured base ({row.base:g} -> {row.head:g}), tolerance "
                 f"{tolerance:g}."
             )
         exit_code = REGRESSION_EXIT
