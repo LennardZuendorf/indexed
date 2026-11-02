@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from indexed.eval.compare import VERDICT_UNCHANGED, compare_reports
-from indexed.eval.runner import RunConfig, run_eval
+from indexed.eval.runner import RunConfig, _cpu_brand, run_eval
 
 from tests.conftest import model_available
 from tests.unit.indexed.core.v2._engine_helpers import mock_embedding
@@ -329,3 +329,43 @@ def test_malformed_search_is_excluded_and_cannot_be_a_baseline(
     assert outcome.exit_code == 2
     assert "refusing --write-baseline" in outcome.output
     assert not baseline.exists()
+
+
+def test_cpu_brand_reads_the_kernel_model_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The report names the CPU model, not the architecture string."""
+    cpuinfo = "processor\t: 0\nmodel name\t: Test CPU 9000\n"
+    real_read_text = Path.read_text
+
+    def read_text(path: Path, *args: str | None, **kwargs: str | None) -> str:
+        if str(path) == "/proc/cpuinfo":
+            return cpuinfo
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    assert _cpu_brand() == "Test CPU 9000"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("/proc/cpuinfo unreadable"), IndexError("no colon on the model line")],
+    ids=["unreadable", "unparseable"],
+)
+def test_cpu_brand_falls_back_to_the_platform_string(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    """A kernel string the harness cannot read degrades to the platform string."""
+    real_read_text = Path.read_text
+
+    def read_text(path: Path, *args: str | None, **kwargs: str | None) -> str:
+        if str(path) == "/proc/cpuinfo":
+            if isinstance(failure, IndexError):
+                return "model name\n"
+            raise failure
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    assert _cpu_brand() == (platform.processor() or "?")
