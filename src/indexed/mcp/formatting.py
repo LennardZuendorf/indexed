@@ -27,8 +27,7 @@ from indexed.utils.relevance import unified_relevance
 #: key: squared-L2 distance over unit vectors (see ``unified_relevance``).
 V1_SCORE_KIND = "l2_squared"
 
-#: Precision of the emitted floats. Four decimals is well past the point a
-#: ranking can change, and drops the ~17-digit tails that cost tokens per hit.
+#: Precision of emitted floats; ranking retains full precision internally.
 _SCORE_DECIMALS = 4
 
 
@@ -91,13 +90,14 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     continue
                 raw_score = float(chunk_data.get("score", 0.0) or 0.0)
                 locator = build_locator(metadata, doc_url)
+                relevance = unified_relevance(raw_score, score_kind)
                 hit: Hit = {
-                    "relevance": round(unified_relevance(raw_score, score_kind), 4),
+                    "relevance": round(relevance, _SCORE_DECIMALS),
                     "score": round(raw_score, _SCORE_DECIMALS),
                     "locator": locator,
                     "text": _strip_context_prefix(text, metadata),
                 }
-                ranked.append((hit["relevance"], key, hit))
+                ranked.append((relevance, key, hit))
 
     # Best first. Ties keep discovery order: sort is stable.
     ranked.sort(key=lambda item: item[0], reverse=True)

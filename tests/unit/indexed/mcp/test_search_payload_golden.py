@@ -150,17 +150,27 @@ def _mcp_search_tool():
     return asyncio.run(server_module.mcp.get_tool("search"))
 
 
-def test_mcp_search_tool_returns_the_golden_payload() -> None:
+@pytest.mark.parametrize("include_matched_chunks", [True, False])
+def test_mcp_search_tool_returns_the_golden_payload(include_matched_chunks) -> None:
     search_cfg = MagicMock()
     search_cfg.max_docs = 10
     search_cfg.max_chunks = 30
     search_cfg.score_threshold = None
     search_cfg.include_full_text = False
     search_cfg.include_all_chunks = False
-    search_cfg.include_matched_chunks = True
+    search_cfg.include_matched_chunks = include_matched_chunks
+
+    def search_service(query, **kwargs):
+        raw = json.loads(json.dumps(RAW_RESULTS))
+        if not kwargs["include_matched_chunks"]:
+            for collection in raw.values():
+                for document in collection["results"]:
+                    for chunk in document["matchedChunks"]:
+                        chunk.pop("content")
+        return raw
 
     with (
-        patch.object(tools_module, "svc_search", return_value=RAW_RESULTS),
+        patch.object(tools_module, "svc_search", side_effect=search_service),
         patch.object(server_module, "_get_config", return_value=search_cfg),
     ):
         payload = _mcp_search_tool().fn(QUERY)

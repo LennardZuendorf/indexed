@@ -15,7 +15,12 @@ properties the shape exists for:
 
 from __future__ import annotations
 
+import pytest
+
 from indexed.mcp.formatting import V1_SCORE_KIND, build_locator, build_search_payload
+
+
+pytestmark = pytest.mark.unit
 
 
 def _doc(doc_id: str, score: float, **chunk) -> dict:
@@ -58,6 +63,17 @@ def test_v2_cosine_higher_ranks_first() -> None:
 
     assert _ids(payload) == ["text for best", "text for worst"]
     assert payload["documents"][0]["score_kind"] == "cosine"
+
+
+def test_near_ties_rank_before_output_rounding() -> None:
+    raw = {
+        "a": {"scoreKind": "cosine", "results": [_doc("worse", 0.50001)]},
+        "b": {"scoreKind": "cosine", "results": [_doc("better", 0.50004)]},
+    }
+    payload = build_search_payload(raw, "q")
+
+    assert [doc["id"] for doc in payload["documents"]] == ["better", "worse"]
+    assert [doc["hits"][0]["relevance"] for doc in payload["documents"]] == [0.5, 0.5]
 
 
 def test_mixed_engines_rank_on_one_comparable_relevance() -> None:
