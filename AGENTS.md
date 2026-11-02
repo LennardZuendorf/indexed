@@ -76,7 +76,7 @@ Evaluation reports reconcile saved rankings, labels, counts and metrics. Capture
 one usable model cache before HOME isolation and use it for checks and loads.
 Scoped evaluation config restores prior overrides and excludes unrelated
 connector/MCP settings from validation.
-Check new fixture files for whitespace before freezing their hashes.
+Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
 Publish saved eval verdicts with environment notes; step success is not a verdict.

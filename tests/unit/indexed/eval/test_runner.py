@@ -353,7 +353,7 @@ def test_cpu_brand_reads_the_kernel_model_name(
     real_read_text = Path.read_text
 
     def read_text(path: Path, *args: str | None, **kwargs: str | None) -> str:
-        if str(path) == "/proc/cpuinfo":
+        if path == Path("/proc/cpuinfo"):
             return cpuinfo
         return real_read_text(path, *args, **kwargs)
 
@@ -374,7 +374,7 @@ def test_cpu_brand_falls_back_to_the_platform_string(
     real_read_text = Path.read_text
 
     def read_text(path: Path, *args: str | None, **kwargs: str | None) -> str:
-        if str(path) == "/proc/cpuinfo":
+        if path == Path("/proc/cpuinfo"):
             if isinstance(failure, IndexError):
                 return "model name\n"
             raise failure

@@ -1445,3 +1445,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   was uncommitted and failed after publication preparation committed the helper.
   Exercise matching and mismatching Git blob evidence explicitly while retaining
   real legacy-runner injection, own-side imports and actual content digests.
+
+## Native path identity in CPU fixtures (2026-11-02)
+
+- [fixtures] Compare mocked filesystem paths as Path objects. Native Windows
+  separators make `str(path) == "/proc/cpuinfo"` miss the intended reader stub;
+  fallback cases can then pass for the wrong filesystem error. Keep normal,
+  unreadable and unparseable cases on the exact intended callback branch.
