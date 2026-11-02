@@ -178,39 +178,49 @@ diff logic) were deleted and replaced by the GitHub Marketplace action
 `scripts/benchmark_ab.py`. A PR run has two halves, and only the first decides
 anything.
 
-**The gate: two measurements, one job, one runner.** The `Same-job A/B gate`
-step measures `origin/<base_ref>` (the base the PR would land on) and the PR
-head *back to back in the same job* and compares the two result files with
-`scripts/benchmark_ab.py`. It covers the rows that actually gated —
-`test_searcher_first_search` and the markdown-parse family
-(`test_parse_markdown_docs`, `test_parse_large_markdown`) — and fails the job
-only when the head is slower than its own merge base by more than
-`AB_TOLERANCE` (20 %). The base is measured in a `git worktree` of
-`origin/<base_ref>` with its own `uv sync`, so a PR that changes dependencies is
-measured with the base's dependencies too; the head is then measured in the
-job's own venv, minutes later but on the same runner, which is the point.
+**The gate: two measurements, one job, one runner.** Before the report action,
+`Capture benchmark revisions` pins the event's base SHA, PR head SHA and GitHub
+merge-result SHA (`github.sha`). The A/B fetches those exact base and merge
+objects and verifies the merge parents match the captured base and PR head.
+An advanced target branch or the report action's own checkout cannot replace
+this pair. Missing objects or inconsistent parents fail the measurement.
 
-Both files carry a CPU fingerprint, and the comparator prints both lines and
-asserts they are equal. If they differ — or the two sides ran different Python
-versions, or share no benchmark rows — it exits **2** with
-`::error title=Same-job measurement invalid::` and the job fails: that is a
-harness bug with no verdict to give, never a green build and never a red PR.
-What it compares is the **minimum** time per benchmark, not the mean: tenancy
-noise only ever adds time to a round, so on unchanged code measured locally the
-two means disagreed by up to 20 %, the medians by 12 % and the minimums by 0.7 %
-(`--stat` switches it). Cost of the added half, measured on #271 run
-`41407096799`: 40 s on an 8.5-minute report step (base `uv sync` from the warm
-wheel cache + 3 benchmarks per side, ~19 s and ~12 s).
+`Same-job A/B gate` measures the captured base and its corresponding PR merge
+result back to back. Each has a separate detached worktree and venv installed
+from that revision's lock with `uv sync --locked`. Logs and summary name the
+actual measured commits as base and merge result, never as a Git merge base or
+an unmerged head. The gate requires all three selected rows:
+`test_searcher_first_search`, `test_parse_markdown_docs`, and
+`test_parse_large_markdown`. Repeatable `--expected-benchmark` arguments pin
+that selected set even if pytest omits a test on both sides. Only the common
+`tests/` prefix is normalized to match pytest-benchmark fullnames.
 
-**The report: everything else, advisory.** The action still measures
-`tests/system` + `tests/benchmarks` once, posts one PR comment per run (deletes
-any prior bot comment matching the report header before posting, so re-runs
-don't spam the thread), and prints the cross-run comparison against main's
-committed baseline. That comparison cannot fail the check:
-`cross-branch-tolerance: 1000` makes it inert, because a number produced on
-another machine cannot decide this PR (see the fingerprint section below). The
-`.benchmarks/baselines/` files stay in the tree as a drift reference, not as the
-gate.
+`scripts/benchmark_ab.py` requires unique identical row sets, finite positive
+selected durations, and complete matching CPU/system and Python identities.
+Malformed containers, missing rows/statistics, duplicates, unusable identities,
+and nonfinite or negative tolerance exit **2** with
+`::error title=Same-job measurement invalid::` and no verdict. The comparator
+prints both validated fingerprints. A valid measurement exits **1** only when
+a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
+(20 %); otherwise it exits **0**. Zero tolerance is valid.
+
+The selected statistic defaults to the **minimum** (`--stat` can select another
+statistic). Historical unchanged-code measurements found means disagreeing by
+up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
+`41407096799` added 40 s to an 8.5-minute report job; that timing predates the
+explicit two-worktree setup and is not a fresh performance measurement.
+
+**The report: everything else, advisory.** The pinned action measures
+`tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift
+against the target branch's committed baseline. The PR invocation has
+`continue-on-error: true`: no finite tolerance makes this action observation-only,
+since missing names or sufficiently large regressions can still fail it.
+`cross-branch-tolerance: 1000` is report policy, not the safety boundary.
+The required A/B runs after report failure, independently checks checkout and
+Python setup, installs uv, and measures both revisions. Setup failure, failed
+pytest or absent result files fails with exit 2; A/B exits 1 and 2 remain hard
+job failures. The dispatch refresh invocation retains its hard action failure
+behavior and live tolerance of 20. Committed baselines remain drift references.
 
 `.benchmarks/baselines/` holds the per-branch JSON baselines (the general
 `.benchmarks/*.json` ignore carries a `!baselines/**` exception — negating just
@@ -282,8 +292,10 @@ a fingerprint change by default, because adopting another machine's numbers
 would poison the very reference the gate compares against. `workflow_dispatch`
 takes `accept_cpu_change: true`, which lets the refresh proceed, forces the
 refresh PR even when the numbers moved less than `DRIFT_PCT`, and records old vs
-new fingerprint in the job summary, the refresh PR body and its title. That PR's
-table is a
+new fingerprint in the job summary and the refresh PR body. The fingerprint
+contains CPU brand, architecture, core count and system. The title marks the
+hardware change with `(new CPU)`, including when updating an existing PR. That
+PR's table is a
 **measurement, not a verdict** — a cross-CPU diff cannot say whether code got
 slower — and it exists so the next PR run compares like with like. Without that
 input no mechanism in the repo can re-record a rotated baseline. That repair
@@ -291,15 +303,15 @@ cannot deadlock on the check it repairs: `.benchmarks/**` is not in this
 workflow's `paths` filter, so the baseline-only refresh PR triggers no benchmark
 run at all, and the guard (below) is the only check it faces.
 
-Configured in this repo as `cross-branch-tolerance: 1000` on the PR report step
-(inert by design — that comparison crosses machines), `cross-branch-tolerance:
-20` on the refresh lane (live: there it is main's drift alarm), the inert
+Configured as `cross-branch-tolerance: 1000` on the advisory PR report step
+(its failure is continued because that comparison crosses machines), and
+`cross-branch-tolerance: 20` on the refresh lane (live: there it is main's drift alarm), the inert
 `update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per
 benchmark name substring). GitHub Actions has no YAML merge keys, so the two
 `with:` blocks are copies of each other; change them together. The
 `benchmark-override` label (`override-label`) still waives a *cross-run* report
-regression — the A/B gate has no waiver, because a same-machine regression is a
-fact rather than a lottery.
+regression — the A/B gate has no label waiver and always decides from its
+validated measurements.
 
 A `concurrency` group (keyed on PR number, else ref; `cancel-in-progress: true`)
 prevents overlapping runs from racing each other.
@@ -649,7 +661,8 @@ Connector readers use this helper — do not duplicate status-code tuples.
    diff. So a committed cross-run baseline cannot be a stable PR gate, and
    `test_parse_large_markdown` moving +10.4 % and +33.6 % against the same
    baseline on the same CPU model rules out "just raise the tolerance". The
-   durable design — measure the merge base and the PR head back-to-back in the
-   same job so hardware cancels, keeping the committed baseline as a coarse
-   `main` drift alarm — is **proposed and awaiting a decision** (board card
-   `t_37f94f47`, ~2× the job cost). Not implemented.
+   implemented design measures the captured event base and corresponding PR
+   merge result back to back in one job, keeping the committed baseline as a
+   coarse `main` drift alarm. The comparator and required-row contract are
+   described in CI Benchmarking above; hosted acceptance of these repairs is
+   separate from local executable verification.

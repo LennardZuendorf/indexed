@@ -2,14 +2,14 @@
 """Same-job A/B comparator for the PR benchmark gate.
 
 Reads two pytest-benchmark result files measured back to back on one runner —
-the merge base (``origin/<base ref>``) and the PR head — and turns their ratio
-into the gate's only verdict. No committed baseline is read here: a cross-run
+the captured event base and its corresponding PR merge result — and turns
+their ratio into the gate's only verdict. No committed baseline is read here: a cross-run
 number carries the machine that produced it, so it can report drift but cannot
 decide a PR (.spec/tech.md § CI Benchmarking).
 
 Two failure modes are kept apart on purpose:
 
-* **a regression** — the head is slower than its own merge base past tolerance.
+* **a regression** — the head is slower than its captured base past tolerance.
   That is a verdict, and the gate fails.
 * **an invalid measurement** — the two files disagree on CPU fingerprint or
   interpreter, so the ratio measures the harness, not the diff. That is a bug to
@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -65,96 +67,104 @@ class Result:
     stat: str = "min"
 
 
-def fingerprint(doc: dict) -> str:
-    """CPU fingerprint of the machine that produced a result file.
+def object_value(value: object, label: str) -> dict:
+    """Require a JSON object before reading its fields."""
+    if not isinstance(value, dict):
+        raise MeasurementInvalid(f"{label} must be an object.")
+    return value
 
-    Matches the identity the workflow prints and the action compares on:
-    CPU model, architecture, core count, OS. ``?`` stands in for a missing
-    field so two equally broken files still compare equal-or-not honestly.
-    """
-    info = doc.get("machine_info") or {}
-    cpu = info.get("cpu") or {}
-    parts = [
-        cpu.get("brand_raw"),
-        cpu.get("arch"),
-        cpu.get("count"),
-        info.get("system"),
-    ]
-    return "|".join("?" if part is None else str(part) for part in parts)
+
+def text_value(value: object, label: str) -> str:
+    """Missing identities cannot establish a comparable experiment."""
+    if not isinstance(value, str) or not value.strip():
+        raise MeasurementInvalid(f"{label} must be a nonempty string.")
+    return value
+
+
+def fingerprint(doc: dict) -> str:
+    """Validated CPU brand, architecture, core count and system identity."""
+    info = object_value(object_value(doc, "result").get("machine_info"), "machine_info")
+    cpu = object_value(info.get("cpu"), "machine_info.cpu")
+    brand = text_value(cpu.get("brand_raw"), "cpu.brand_raw")
+    arch = text_value(cpu.get("arch"), "cpu.arch")
+    count = cpu.get("count")
+    if type(count) is not int or count <= 0:
+        raise MeasurementInvalid("cpu.count must be a positive integer.")
+    system = text_value(info.get("system"), "machine_info.system")
+    return f"{brand}|{arch}|{count}|{system}"
 
 
 def interpreter(doc: dict) -> str:
-    """Python version that produced a result file."""
-    return str((doc.get("machine_info") or {}).get("python_version", "?"))
+    """Validated Python version that produced the result file."""
+    info = object_value(object_value(doc, "result").get("machine_info"), "machine_info")
+    return text_value(info.get("python_version"), "machine_info.python_version")
+
+
+def benchmark_name(value: object) -> str:
+    """pytest-benchmark fullnames can omit the common tests/ prefix."""
+    return text_value(value, "benchmark fullname").removeprefix("tests/")
 
 
 def samples(doc: dict, stat: str = "min") -> dict[str, float]:
-    """Map benchmark full name -> ``stat`` seconds for one result file.
-
-    The default is the minimum, not the mean: tenancy noise only ever *adds*
-    time to a round, so the best observed round is the most stable estimator of
-    the code's own cost. On unchanged code measured locally, means disagreed by
-    up to 20 % (one slow round in a 3-round benchmark), medians by 12 %, and
-    minimums by 0.7 %. A real regression moves the minimum too; noise does not.
-    """
+    """Require unique complete rows and finite positive selected durations."""
+    benchmarks = object_value(doc, "result").get("benchmarks")
+    if not isinstance(benchmarks, list) or not benchmarks:
+        raise MeasurementInvalid("benchmarks must be a nonempty list.")
     out: dict[str, float] = {}
-    for bench in doc.get("benchmarks") or []:
-        name = bench.get("fullname") or bench.get("name")
-        value = (bench.get("stats") or {}).get(stat)
-        if name is not None and value is not None:
-            out[str(name)] = float(value)
+    for bench in benchmarks:
+        bench = object_value(bench, "benchmark")
+        name = benchmark_name(bench.get("fullname"))
+        if name in out:
+            raise MeasurementInvalid(f"duplicate benchmark fullname: {name}.")
+        stats = object_value(bench.get("stats"), f"{name} stats")
+        value = stats.get(stat)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise MeasurementInvalid(f"{name} {stat} must be a numeric duration.")
+        try:
+            valid = math.isfinite(value) and value > 0
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise MeasurementInvalid(
+                f"{name} {stat} must be a finite positive duration."
+            )
+        out[name] = float(value)
     return out
 
 
-def compare(base_doc: dict, head_doc: dict, stat: str = "min") -> Result:
-    """Pair the two measurements and keep only same-machine, same-code rows.
-
-    Raises ``MeasurementInvalid`` when the files cannot support a verdict at
-    all — mismatched machine, mismatched interpreter, or nothing in common.
-    """
+def compare(
+    base_doc: dict,
+    head_doc: dict,
+    stat: str = "min",
+    *,
+    expected_benchmarks: Iterable[str] | None = None,
+) -> Result:
+    """Validate both measurements completely before computing any ratios."""
     was, now = fingerprint(base_doc), fingerprint(head_doc)
     if was != now:
-        raise MeasurementInvalid(
-            f"the merge base was measured on {was}, the head on {now}. "
-            "Same-job measurement invalid — this is a harness bug, not a verdict."
-        )
+        raise MeasurementInvalid(f"base CPU {was} differs from merge-result CPU {now}.")
     base_py, head_py = interpreter(base_doc), interpreter(head_doc)
     if base_py != head_py:
         raise MeasurementInvalid(
-            f"the merge base was measured with Python {base_py}, the head with "
-            f"Python {head_py}. Same-job measurement invalid — numbers from "
-            "different interpreters are not comparable."
+            f"base Python {base_py} differs from merge-result Python {head_py}."
         )
-
     base_rows, head_rows = samples(base_doc, stat), samples(head_doc, stat)
-    result = Result(stat=stat)
-    for name in sorted(set(base_rows) | set(head_rows)):
-        if name not in head_rows:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} was measured on the merge base only — not compared."
-            )
-            continue
-        if name not in base_rows:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} was measured on the head only — not compared."
-            )
-            continue
-        if base_rows[name] <= 0:
-            result.skipped.append(name)
-            result.warnings.append(
-                f"{name} has a non-positive merge-base {stat} ({base_rows[name]}) — not compared."
-            )
-            continue
-        result.rows.append(Row(name, base_rows[name], head_rows[name]))
-
-    if not result.rows:
+    if base_rows.keys() != head_rows.keys():
         raise MeasurementInvalid(
-            "the two result files share no comparable benchmark rows, so the "
-            "A/B measured nothing. Same-job measurement invalid — this is a "
-            "harness bug, not a verdict."
+            "base and merge result must contain identical benchmark sets."
         )
+    expected = {benchmark_name(name) for name in expected_benchmarks or ()}
+    missing = expected - base_rows.keys()
+    if missing:
+        raise MeasurementInvalid(
+            f"selected benchmarks were not measured: {', '.join(sorted(missing))}."
+        )
+    result = Result(stat=stat)
+    for name in sorted(base_rows):
+        row = Row(name, base_rows[name], head_rows[name])
+        if not math.isfinite(row.change_pct):
+            raise MeasurementInvalid(f"{name} ratio is not finite.")
+        result.rows.append(row)
     return result
 
 
@@ -175,7 +185,7 @@ def table(rows: list[Row], stat: str) -> str:
 def summary_markdown(
     result: Result, tolerance: float, base_label: str, head_label: str
 ) -> str:
-    """GitHub job-summary section for the A/B, fingerprints included."""
+    """GitHub job-summary section with measured source labels and verdict."""
     lines = [
         "## Benchmark gate: same-job A/B",
         "",
@@ -184,12 +194,12 @@ def summary_markdown(
         "",
         "| Side | Source |",
         "|---|---|",
-        f"| merge base | `{base_label}` |",
-        f"| head | `{head_label}` |",
+        f"| base | `{base_label}` |",
+        f"| merge result | `{head_label}` |",
         "",
         f"Comparing the {result.stat} of each benchmark.",
         "",
-        "| Benchmark | Merge base | Head | Change | Verdict |",
+        "| Benchmark | Base | Merge result | Change | Verdict |",
         "|---|---|---|---|---|",
     ]
     for row in result.rows:
@@ -202,12 +212,12 @@ def summary_markdown(
     if result.regressions:
         lines.append(
             f"**Verdict: FAIL** — {len(result.regressions)} of {len(result.rows)} "
-            f"benchmarks regressed past {tolerance:g}% against their own merge base."
+            f"benchmarks regressed past {tolerance:g}% against their captured base."
         )
     else:
         lines.append(
             f"**Verdict: PASS** — {len(result.rows)} benchmarks within "
-            f"{tolerance:g}% of their own merge base."
+            f"{tolerance:g}% of their captured base."
         )
     for warning in result.warnings:
         lines.append(f"- {warning}")
@@ -216,9 +226,9 @@ def summary_markdown(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Compare merge-base and head benchmark results from one job."
+        description="Compare base and head benchmark results from one job."
     )
-    parser.add_argument("--base", required=True, help="merge-base result JSON")
+    parser.add_argument("--base", required=True, help="base result JSON")
     parser.add_argument("--head", required=True, help="head result JSON")
     parser.add_argument(
         "--tolerance",
@@ -233,8 +243,14 @@ def main(argv: list[str] | None = None) -> int:
         help="pytest-benchmark statistic to compare (default: min, the noise-free round)",
     )
     parser.add_argument("--summary", help="append the markdown summary to this file")
-    parser.add_argument("--base-label", default="merge base", help="summary label")
+    parser.add_argument("--base-label", default="base", help="summary label")
     parser.add_argument("--head-label", default="head", help="summary label")
+    parser.add_argument(
+        "--expected-benchmark",
+        action="append",
+        default=[],
+        help="required pytest node ID; repeat for each selected benchmark",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -246,18 +262,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         return INVALID_EXIT
 
+    try:
+        if not math.isfinite(args.tolerance) or args.tolerance < 0:
+            raise MeasurementInvalid("tolerance must be finite and nonnegative.")
+        result = compare(
+            base_doc, head_doc, args.stat, expected_benchmarks=args.expected_benchmark
+        )
+    except MeasurementInvalid as exc:
+        print(f"::error title=Same-job measurement invalid::{exc}")
+        return INVALID_EXIT
+
     print(f"base: {args.base}")
     print(f"head: {args.head}")
     print(f"base CPU fingerprint: {fingerprint(base_doc)}")
     print(f"head CPU fingerprint: {fingerprint(head_doc)}")
     print(f"base python: {interpreter(base_doc)}")
     print(f"head python: {interpreter(head_doc)}")
-
-    try:
-        result = compare(base_doc, head_doc, args.stat)
-    except MeasurementInvalid as exc:
-        print(f"::error title=Same-job measurement invalid::{exc}")
-        return INVALID_EXIT
 
     for warning in result.warnings:
         print(f"::warning::{warning}")
@@ -268,13 +288,13 @@ def main(argv: list[str] | None = None) -> int:
         worst = max(result.regressions, key=lambda row: row.change_pct)
         print(
             f"gate verdict: FAIL ({len(result.regressions)}/{len(result.rows)} "
-            f"{result.stat} over {args.tolerance:g}% of the merge base; worst "
+            f"{result.stat} over {args.tolerance:g}% of the base; worst "
             f"{worst.name} {worst.change_pct:+.1f}%)"
         )
         for row in result.regressions:
             print(
                 f"::error title=Benchmark regression::{row.name} {result.stat} is "
-                f"{row.change_pct:+.1f}% against its own merge base "
+                f"{row.change_pct:+.1f}% against its captured base "
                 f"({row.base_s * 1000:.2f} ms -> {row.head_s * 1000:.2f} ms), "
                 f"tolerance {args.tolerance:g}%."
             )
@@ -282,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(
             f"gate verdict: PASS ({len(result.rows)} benchmarks within "
-            f"{args.tolerance:g}% of the merge base, {result.stat})"
+            f"{args.tolerance:g}% of the base, {result.stat})"
         )
         exit_code = PASS_EXIT
 

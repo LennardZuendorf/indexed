@@ -57,22 +57,32 @@ jobs:
         path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
         key: hf-model-all-MiniLM-L6-v2
 
-    # This action does its own checkout at a hardcoded fetch-depth: 2 with no
-    # tags and no input to override it, so `uv sync` below installs the package
-    # as 0.0.0.postN+g<sha> rather than a tag-derived version. Harmless here —
-    # nothing under tests/system or tests/benchmarks asserts a version — but it
-    # is why the "every workflow uses fetch-depth: 0" rule has an exception.
-    #
-    # This step is the REPORT, not the gate. It measures the whole suite once and
-    # compares it against main's committed baseline — a cross-run, cross-machine
-    # comparison, which on the hosted fleet alternates CPU models within a day
-    # (#267) and therefore reds by runner lottery. That is why
-    # `cross-branch-tolerance` below is inert: the verdict comes from the
-    # same-job A/B step after this one. Every value here must otherwise stay
-    # identical to the refresh job's copy — GitHub Actions has no YAML merge
-    # keys, so the block is duplicated rather than anchored (#271).
+    # Capture the event pair before the advisory composite replaces HEAD.
+    - name: Capture benchmark revisions
+      id: revisions
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        MERGE_SHA: ${{ github.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA"; do
+          if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Same-job measurement invalid::missing event revision"
+            exit 2
+          fi
+        done
+        {
+          echo "base=$BASE_SHA"
+          echo "merge=$MERGE_SHA"
+          echo "head=$PR_HEAD_SHA"
+        } >> "$GITHUB_OUTPUT"
+
+    # Historical comparison/publication is advisory. The independent A/B below
+    # owns checkout, interpreter, dependency setup and both result files.
     - name: Run benchmarks
       id: benchmark
+      continue-on-error: true
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
       with:
         # One interpreter, pinned: numbers from different interpreters are not
@@ -91,9 +101,7 @@ jobs:
           --benchmark-only
           --benchmark-json=benchmark-results.json
           -v
-        # Inert by design, like `update-tolerance` below: this number is compared
-        # across runs and machines, so it reports drift and never decides a PR.
-        # The A/B step after this one owns the verdict.
+        # Report policy only; continue-on-error above is the advisory boundary.
         cross-branch-tolerance: 1000
         # Inert by design: far beyond any real drift, so a PR run never stages a
         # baseline commit in the first place. It cannot be the guarantee on its
@@ -104,77 +112,78 @@ jobs:
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
-    # The gate: two measurements taken in THIS job on THIS runner, back to back.
-    # A benchmark number carries the machine that produced it, and the hosted
-    # fleet alternates CPU models within a day (#267), so a committed cross-run
-    # baseline can only ever be a drift report. Hardware, tenancy and CPU
-    # frequency cancel out of a same-job ratio; nothing else does. The rows that
-    # used to rotate red are the ones measured here — the rest of the suite is
-    # reported by the step above and decides nothing.
-    - name: Same-job A/B gate (merge base vs head)
-      # Runs only if the report step succeeded: that step owns the checkout, the
-      # interpreter and this job's venv, so a failed install leaves nothing to
-      # A/B. Its own comparison cannot fail this way — its tolerances are inert.
-      if: steps.benchmark.outcome == 'success'
+    - name: Check out captured merge result for A/B
+      id: ab-checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ steps.revisions.outputs.merge }}
+        fetch-depth: 2
+
+    - name: Set up A/B Python
+      id: ab-python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.14"
+
+    - name: Same-job A/B gate (captured base vs merge result)
+      if: "!cancelled() && steps.revisions.outcome == 'success'"
       env:
-        # The branch this PR merges into: measured as a tree, never as a
-        # baseline file (see .spec/tech.md § CI Benchmarking).
-        BASE_REF: ${{ github.base_ref }}
+        BASE_SHA: ${{ steps.revisions.outputs.base }}
+        MERGE_SHA: ${{ steps.revisions.outputs.merge }}
+        PR_HEAD_SHA: ${{ steps.revisions.outputs.head }}
+        CHECKOUT_OUTCOME: ${{ steps.ab-checkout.outcome }}
+        PYTHON_OUTCOME: ${{ steps.ab-python.outcome }}
         AB_TOLERANCE: "20"
         BASE_DIR: ${{ runner.temp }}/bench-ab-base
+        MERGE_DIR: ${{ runner.temp }}/bench-ab-merge
         BASE_RESULTS: ${{ runner.temp }}/bench-ab-base.json
-        HEAD_RESULTS: ${{ runner.temp }}/bench-ab-head.json
+        HEAD_RESULTS: ${{ runner.temp }}/bench-ab-merge.json
       run: |
-        set -euo pipefail
-        # The rows the gate owns: the three that rotated red on hardware rather
-        # than on a diff (#267). Everything else is measured and reported by the
-        # step above; a full-suite A/B would double an 8-minute job, this subset
-        # measured 40 s end to end (run 41407096799).
+        set -Eeuo pipefail
+        trap 'echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
+        [[ "$CHECKOUT_OUTCOME" == success && "$PYTHON_OUTCOME" == success ]]
         AB_TESTS=(
           "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs"
           "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown"
           "tests/system/test_search_performance.py::test_searcher_first_search"
         )
+        EXPECTED_ARGS=()
+        for node in "${AB_TESTS[@]}"; do
+          EXPECTED_ARGS+=(--expected-benchmark "$node")
+        done
 
-        # `origin/<base_ref>` is the base this PR would land on: what the diff
-        # adds, measured on top of main as it is now. Read, not merged — this
-        # checkout is shallow (fetch-depth: 2, inside the action), so
-        # `git merge-base` would need the whole history for no gain in what is
-        # being measured.
-        git fetch --no-tags --depth=1 origin \
-          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-        BASE_SHA=$(git rev-parse --short "origin/${BASE_REF}")
+        # Fetch immutable objects, never substitute a moving target branch tip.
+        git fetch --no-tags --depth=2 origin "$BASE_SHA" "$MERGE_SHA"
+        [[ "$(git rev-parse "${MERGE_SHA}^1")" == "$BASE_SHA" ]]
+        [[ "$(git rev-parse "${MERGE_SHA}^2")" == "$PR_HEAD_SHA" ]]
+        python -m pip install uv
 
-        # The base, in its own worktree and its own venv: `uv sync` there
-        # resolves the base's lock, so a PR that changes dependencies is
-        # measured with the base's dependencies too. Nothing here mutates this
-        # job's venv, which the head run below uses unchanged.
-        git worktree add --detach "${BASE_DIR}" "origin/${BASE_REF}"
-        if ! (
-          cd "${BASE_DIR}"
-          python -m uv sync
-          python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
-            --benchmark-only --benchmark-json "${BASE_RESULTS}"
-        ); then
-          echo "::error title=Same-job measurement invalid::the merge-base run did not complete, so this job measured only one side. That is a harness bug, not a verdict."
-          exit 1
-        fi
+        measure() {
+          local directory=$1 revision=$2 output=$3 actual
+          git worktree add --detach "$directory" "$revision"
+          actual=$(git -C "$directory" rev-parse HEAD)
+          [[ "$actual" == "$revision" ]]
+          echo "Measuring revision: $actual in $directory"
+          (
+            cd "$directory"
+            export UV_PROJECT_ENVIRONMENT="$directory/.venv"
+            python -m uv sync --locked
+            python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
+              --benchmark-only --benchmark-json "$output"
+          )
+        }
+        measure "$BASE_DIR" "$BASE_SHA" "$BASE_RESULTS"
+        measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"
 
-        # Then the head, immediately, on the same runner: back-to-back is the
-        # whole point. Re-running the base, or moving to another job, would put
-        # the two sides minutes and one tenancy change apart again.
-        python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
-          --benchmark-only --benchmark-json "${HEAD_RESULTS}"
-
-        # The verdict, from those two files only. The comparator prints both CPU
-        # fingerprints and refuses to turn a machine mismatch into a pass.
-        python "${GITHUB_WORKSPACE}/scripts/benchmark_ab.py" \
-          --base "${BASE_RESULTS}" \
-          --head "${HEAD_RESULTS}" \
-          --tolerance "${AB_TOLERANCE}" \
-          --base-label "origin/${BASE_REF} @ ${BASE_SHA}" \
-          --head-label "${GITHUB_SHA}" \
-          --summary "${GITHUB_STEP_SUMMARY}"
+        # Preserve the comparator's distinct regression (1) and invalid (2) exits.
+        status=0
+        python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
+          --base "$BASE_RESULTS" --head "$HEAD_RESULTS" \
+          --tolerance "$AB_TOLERANCE" "${EXPECTED_ARGS[@]}" \
+          --base-label "captured event base @ $BASE_SHA" \
+          --head-label "captured PR merge result @ $MERGE_SHA" \
+          --summary "$GITHUB_STEP_SUMMARY" || status=$?
+        exit "$status"
 
   refresh-baseline:
     # Dispatch-only and main-only. A baseline move is never a side effect of
@@ -361,8 +370,8 @@ jobs:
           echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         } > "${RUNNER_TEMP}/refresh-body.md"
         if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qv '^0$'; then
-          gh pr edit "$BRANCH" --body-file "${RUNNER_TEMP}/refresh-body.md"
-          echo "Refresh PR already open — branch force-pushed and body refreshed."
+          gh pr edit "$BRANCH" --title "$TITLE" --body-file "${RUNNER_TEMP}/refresh-body.md"
+          echo "Refresh PR already open — branch force-pushed and title/body refreshed."
           exit 0
         fi
         gh pr create --base main --head "$BRANCH" \

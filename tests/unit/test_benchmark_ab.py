@@ -9,10 +9,13 @@ never a regression and never a pass.
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_ab.py"
 
@@ -21,7 +24,7 @@ BASE_MEAN_S = 0.690
 CPU = "AMD EPYC 7763 64-Core Processor"
 
 
-def results(mean_s: float, **overrides: object) -> dict:
+def results(mean_s: float, **overrides: dict) -> dict:
     """One synthetic pytest-benchmark file, in the shape the action writes."""
     machine = {
         "cpu": {"brand_raw": CPU, "arch": "X86_64", "count": 4},
@@ -29,11 +32,11 @@ def results(mean_s: float, **overrides: object) -> dict:
         "python_version": "3.14.0",
         "node": "runnervmtest",
     }
-    machine.update(overrides.pop("machine", {}))  # type: ignore[arg-type]
+    machine.update(overrides.pop("machine", {}))
     # The gate compares the minimum, so every file has to carry `min`; the
     # other statistics are here so a caller can pull them apart.
     stats = {"mean": mean_s, "median": mean_s, "min": mean_s}
-    stats.update(overrides.pop("stats", {}))  # type: ignore[arg-type]
+    stats.update(overrides.pop("stats", {}))
     return {
         "machine_info": machine,
         "benchmarks": [
@@ -140,8 +143,8 @@ def test_no_shared_rows_is_an_invalid_measurement(tmp_path: Path):
     assert "Same-job measurement invalid" in proc.stdout
 
 
-def test_summary_records_fingerprints_and_verdict(tmp_path: Path):
-    """The job summary carries both fingerprints and the verdict it earned."""
+def test_summary_records_sources_and_verdict(tmp_path: Path):
+    """The job summary carries the measured source and the verdict it earned."""
     summary = tmp_path / "summary.md"
     proc = run(
         tmp_path,
@@ -158,3 +161,152 @@ def test_summary_records_fingerprints_and_verdict(tmp_path: Path):
     assert "origin/main @ abc1234" in text
     assert "Verdict: FAIL" in text
     assert "over tolerance" in text
+
+
+SELECTED = (
+    "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs",
+    FULLNAME,
+    "tests/system/test_search_performance.py::test_searcher_first_search",
+)
+EXPECTED_ARGS = tuple(
+    arg for name in SELECTED for arg in ("--expected-benchmark", name)
+)
+
+
+def complete_results() -> dict:
+    """Build a valid three-row measurement before mutating one field."""
+    doc = results(BASE_MEAN_S)
+    doc["benchmarks"] = [
+        dict(copy.deepcopy(doc["benchmarks"][0]), fullname=name) for name in SELECTED
+    ]
+    return doc
+
+
+def assert_invalid(proc):
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Same-job measurement invalid" in proc.stdout
+    assert "gate verdict" not in proc.stdout
+    assert "Traceback" not in proc.stderr
+
+
+def test_selected_set_accepts_pytest_fullnames_without_tests_prefix(tmp_path: Path):
+    base, head = complete_results(), complete_results()
+    for row in head["benchmarks"]:
+        row["fullname"] = row["fullname"].removeprefix("tests/")
+    proc = run(tmp_path, base, head, *EXPECTED_ARGS)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "PASS (3 benchmarks" in proc.stdout
+
+
+@pytest.mark.parametrize("side", ["base", "head", "both"])
+def test_selected_row_omission_is_invalid(tmp_path: Path, side: str):
+    base, head = complete_results(), complete_results()
+    if side in ("base", "both"):
+        base["benchmarks"].pop()
+    if side in ("head", "both"):
+        head["benchmarks"].pop()
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "missing",
+        "slow",
+        True,
+        0,
+        -1,
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+        10**400,
+    ],
+)
+def test_unusable_selected_stat_is_invalid(tmp_path: Path, side: str, value):
+    base, head = complete_results(), complete_results()
+    doc = base if side == "base" else head
+    if value == "missing":
+        del doc["benchmarks"][1]["stats"]["min"]
+    else:
+        doc["benchmarks"][1]["stats"]["min"] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+def test_duplicate_normalized_fullname_is_invalid(tmp_path: Path, side: str):
+    base, head = complete_results(), complete_results()
+    doc = base if side == "base" else head
+    duplicate = copy.deepcopy(doc["benchmarks"][0])
+    duplicate["fullname"] = duplicate["fullname"].removeprefix("tests/")
+    doc["benchmarks"].append(duplicate)
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("machine_info",), None),
+        (("machine_info",), []),
+        (("machine_info", "cpu"), None),
+        (("machine_info", "cpu", "brand_raw"), " "),
+        (("machine_info", "cpu", "arch"), None),
+        (("machine_info", "cpu", "count"), 0),
+        (("machine_info", "cpu", "count"), True),
+        (("machine_info", "system"), ""),
+        (("machine_info", "python_version"), None),
+    ],
+)
+def test_equal_missing_identities_are_invalid(tmp_path: Path, path, value):
+    base, head = complete_results(), complete_results()
+    for doc in (base, head):
+        parent = doc
+        for key in path[:-1]:
+            parent = parent[key]
+        parent[path[-1]] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "malformed", [None, [], 4, True, {"machine_info": [], "benchmarks": []}]
+)
+def test_malformed_document_is_invalid(tmp_path: Path, malformed):
+    assert_invalid(run(tmp_path, malformed, complete_results(), *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("benchmarks",), {}),
+        (("benchmarks",), []),
+        (("benchmarks",), [None]),
+        (("benchmarks", 0, "fullname"), None),
+        (("benchmarks", 0, "fullname"), " "),
+        (("benchmarks", 0, "stats"), []),
+    ],
+)
+def test_malformed_rows_are_invalid(tmp_path: Path, path, value):
+    base, head = complete_results(), complete_results()
+    parent = head
+    for key in path[:-1]:
+        parent = parent[key]
+    parent[path[-1]] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+@pytest.mark.parametrize("tolerance", ["nan", "inf", "-inf", "-1"])
+def test_invalid_tolerance_cannot_waive_regression(tmp_path: Path, tolerance: str):
+    proc = run(tmp_path, results(1), results(1.5), "--tolerance=" + tolerance)
+    assert_invalid(proc)
+
+
+def test_zero_tolerance_is_valid(tmp_path: Path):
+    proc = run(tmp_path, results(1), results(1.01), "--tolerance", "0")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+
+
+def test_incomplete_rows_invalid_without_expected_option(tmp_path: Path):
+    base, head = complete_results(), complete_results()
+    head["benchmarks"].pop()
+    assert_invalid(run(tmp_path, base, head))

@@ -1304,8 +1304,9 @@ with `git add`/`git status`, since that's what CI actually runs.
   `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
   rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
   to be decided from the two fingerprints: run the guard step whenever the
-  benchmark step succeeded, re-read the base branch's
-  `machine_info.cpu.brand_raw` and compare it with this run's, then name both
+  benchmark step succeeded, read the action-captured target baseline and
+  compare its full CPU/system fingerprint (`machine_info.cpu.brand_raw`,
+  `arch`, `count`, and `machine_info.system`) with this run's, then name both
   fingerprints and the repair. Never gate that step on the action's
   `comparison-skipped` flag — it is written only inside the compare steps, so
   keying on it makes the no-baseline branch unreachable (see below), and it is
@@ -1330,8 +1331,9 @@ with `git add`/`git status`, since that's what CI actually runs.
   is denied by `contents: read`. By the time the guard ran, HEAD held this run's
   measurement, the fingerprints matched by construction, and the gate went green
   on a mismatched machine — the same self-referential defect as the original
-  one, one layer up. Read the base branch (`origin/<base_ref>`) instead, and
-  treat "the check agreed with itself" as the first hypothesis when a gate you
+  one, one layer up. Read the action-captured base ref (`origin/<base_ref>`)
+  with the action's sanitized target filename; do not fetch a newer baseline
+  after measurement. Treat "the check agreed with itself" as the first hypothesis when a gate you
   just wrote passes on a case you expected to fail.
 - **A gate gated on an output that only exists on the happy path never runs.**
   The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
@@ -1371,11 +1373,11 @@ with `git add`/`git status`, since that's what CI actually runs.
   9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
   compared against a committed baseline reds or greens by which runner it
   landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
-  repair is structural, not statistical — measure `origin/<base_ref>` and the
-  head back to back in the same job, in the same runner, and compare those two
+  repair is structural, not statistical — measure the captured event base and
+  its corresponding merge result back to back on one runner, and compare those two
   files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
-  drift report, so make that honest too: give the report step an inert
-  cross-branch tolerance instead of letting a lottery decide the check.
+  drift report. Make its failure advisory, and independently enforce setup and
+  complete measurements in the hard A/B; a finite report tolerance is not a boundary.
 - **Same fingerprint is still not same machine, so compare the best round, not
   the mean.** Three consecutive runs reported the same node and CPU and
   disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
@@ -1397,3 +1399,37 @@ with `git add`/`git status`, since that's what CI actually runs.
   over, so this PR deletes it rather than leaving two gates disagreeing. When
   superseding a gate, remove the machinery that only enforced honesty about the
   old one, and say in the spec which issue's step went where.
+
+## Baseline-refresh repair verification (2026-11-02)
+
+- [ci] A downstream guard must read the same target filename and captured ref
+  as the action it verifies. Re-fetching after measurement can turn a skipped
+  comparison against A into a false verdict against newer baseline B.
+- [tests] Shell fixtures must admit each legitimate Git read before judging a
+  regression. A git stub that only admitted `origin/<base>` falsely failed the
+  refresh job's valid `HEAD` read; model those reads separately and keep writes
+  stubbed.
+- [workflow] Check a referenced file exists before reading it; optional missing
+  paths must not become unrelated command failures during task setup.
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
