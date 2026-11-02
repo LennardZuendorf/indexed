@@ -1287,12 +1287,14 @@ with `git add`/`git status`, since that's what CI actually runs.
   to absorb it hides a real regression, narrow enough to catch one reds every
   run. Measure `origin/<base>` and the head back to back on one runner; then the
   machine cancels out of the ratio.
-- **A tolerance is a measurement plus a margin, and retrieval metrics are
-  deterministic per machine.** Three same-tree runs in one job produced spread
-  0.000 on hit-rate@5 and MRR (and identical per-case ranks), so the run-to-run
-  term is zero; the margin comes from the metric's granularity instead — one of
-  19 answerable cases is 0.053 of hit-rate@5, so 0.02 still fails if a single
-  case drops out of the top 5. Write the observed number next to the constant.
+- **A tolerance is a measurement plus a margin, and the base/head boundary is
+  the noisy term.** Three same-tree runs in one job produced spread 0.000 on
+  hit-rate@5 and MRR (identical per-case ranks), so repeat noise is zero. The
+  base/head boundary is not: the base runs in its own worktree and venv, and on
+  a diff that cannot move retrieval MRR moved 0.0307 with hit@5 unchanged. A
+  tolerance must cover what the harness does to *unchanged* code across the two
+  sides, not just repeats of one side — write the observed number next to the
+  constant.
 - **The report must name the machine, in the comparator's own shape.** Adding
   `environment.machine` (`cpu.brand_raw`/arch/count + `system`) in
   pytest-benchmark's layout lets one `fingerprint()` read both gates' files;

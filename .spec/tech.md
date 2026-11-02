@@ -275,12 +275,15 @@ set and the retrieval configuration all match. A mismatch exits 2 with
 broken measurement, not a red PR, and it must not be read as a pass either.
 
 The verdict is the comparator's: hit-rate@k and MRR may fall at most
-`EVAL_TOLERANCE` = 0.02 metric points against their own merge base (measured
-spread 0.000 over three same-tree runs in one CI job, plus a margin below half a
-case — one case is 1/19 = 0.053 of hit-rate@5). Distractor leaks stay report-only
-(issue #204 asks for hit-rate/MRR; a leak count is a whole-case event, not a
-tolerance-sized one). Faithfulness/latency are not measured here at all yet, so
-#204's own criteria are only partly met by this gate — see the issue.
+`EVAL_TOLERANCE` = 0.04 metric points against their own merge base. Provenance:
+three repeats of the head tree in one job were identical (spread 0.000, zero
+rank differences), but the base/head boundary alone moved MRR by 0.0307 on a
+diff that cannot change retrieval (hit@5 unchanged), so the constant covers
+that plus a margin and still sits under one case of the 19 answerable ones
+(1/19 = 0.0526 of hit@5). Distractor leaks stay report-only (issue #204 asks
+for hit-rate/MRR; a leak count is a whole-case event, not a tolerance-sized
+one). Faithfulness/latency are not measured here at all yet, so #204's own
+criteria are only partly met by this gate — see the issue.
 
 The PR that introduced `environment.machine` is measured against a base that
 predates the field. The gate step computes the runner's own fingerprint
