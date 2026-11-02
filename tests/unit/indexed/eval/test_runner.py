@@ -332,4 +332,3 @@ def test_malformed_search_is_excluded_and_cannot_be_a_baseline(
 
 
 # Evidence run: an irrelevant test-file touch must not red the retrieval gate.
-
