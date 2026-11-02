@@ -151,7 +151,7 @@ introduces the machine block is the one exception to the report-to-report
 check: the job adopts its own fingerprint for a base report that predates the
 field, after that report's `platform` string proves it ran on this runner.
 
-The gate fails when hit-rate@k or MRR falls more than 0.02 metric points below
+The gate fails when hit-rate@k or MRR falls more than 0.04 metric points below
 its own merge base. The leak count is reported, not gated. Both reports and
 `eval-ab.json` are uploaded as the `retrieval-eval` artifact. A harness-test
 failure or an invalid measurement still runs the publisher; the failure stays

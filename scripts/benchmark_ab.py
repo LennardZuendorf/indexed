@@ -56,15 +56,16 @@ EVAL_SHAPE = "indexed-eval"
 
 #: Absolute retrieval-metric delta treated as noise, in metric points.
 #:
-#: Measured, not tasted: the same tree was measured three times in one job on
-#: one runner and hit-rate@5 and MRR were identical every time (spread 0.000 on
-#: both; see the job log of the variance dispatch), so the run-to-run term is
-#: zero and the margin comes from the metric's own granularity. There are 19
-#: answerable cases, so one case is 1/19 = 0.053 of hit-rate@5: 0.02 sits under
-#: half a case, which means one case falling out of the top 5 still fails the
-#: gate while float wobble and a sub-rank MRR shift do not. Raise it only with a
-#: new measurement recorded in this comment.
-EVAL_TOLERANCE = 0.02
+#: Measured, not tasted. Three repeats of the head tree in one CI job were
+#: identical (spread 0.000 on hit-rate@5 and MRR, zero rank differences), so
+#: repeat-to-repeat noise is zero. The larger term is the base/head boundary:
+#: the base is measured in its own worktree and venv, and on PR #274 — whose
+#: diff cannot move retrieval at all — MRR differed by 0.0307 while hit@5
+#: stayed 1.0 (base 0.8070, head 0.8377; run 41422911438). 0.04 covers that
+#: 0.0307 plus a margin and stays under one case of the 19 answerable ones
+#: (1/19 = 0.0526 of hit@5), so a single case falling out of the top 5 still
+#: fails the gate. Raise it only with a new measurement recorded here.
+EVAL_TOLERANCE = 0.04
 
 #: Retrieval metrics the gate decides on. Leaks stay report-only (issue #204).
 EVAL_GATE_METRICS = ("hit_rate", "mrr")
@@ -775,8 +776,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"head: {args.head}")
     if args.host_fingerprint:
         print(f"job CPU fingerprint: {args.host_fingerprint}")
-    for note in adopted:
-        print(f"::warning::{note}")
     print(f"base CPU fingerprint: {fingerprint(base_doc)}")
     print(f"head CPU fingerprint: {fingerprint(head_doc)}")
     print(f"base python: {interpreter(base_doc)}")
