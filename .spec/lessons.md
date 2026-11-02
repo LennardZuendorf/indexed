@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Lessons Learned
@@ -1363,3 +1363,37 @@ with `git add`/`git status`, since that's what CI actually runs.
   benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
   treat a single run-to-run delta as noise to re-measure; only a repeated,
   same-fingerprint shift is a regression.
+
+## A benchmark gate must measure both sides in one job (2026-11-02)
+
+- **Two numbers from two machines are not a comparison, at any tolerance.** The
+  hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
+  9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
+  compared against a committed baseline reds or greens by which runner it
+  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  repair is structural, not statistical — measure `origin/<base_ref>` and the
+  head back to back in the same job, in the same runner, and compare those two
+  files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
+  drift report, so make that honest too: give the report step an inert
+  cross-branch tolerance instead of letting a lottery decide the check.
+- **Same fingerprint is still not same machine, so compare the best round, not
+  the mean.** Three consecutive runs reported the same node and CPU and
+  disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
+  shared-vCPU tenancy adds time but never removes it. On unchanged code
+  measured both ways locally, means disagreed by 20 % (one slow round in a
+  3-round benchmark), medians by 12 %, minimums by 0.7 % — so the gate compares
+  the minimum and keeps `--stat` as the escape hatch. A real regression moves
+  the minimum too; noise does not.
+- **A harness bug must not spend the verdict.** A machine mismatch inside a
+  same-job A/B, a different interpreter, or two files with no shared rows is
+  not a red PR and not a green one: exit with its own code (2), name it
+  `same-job measurement invalid`, and say it is a bug. Keeping "no verdict"
+  separate from "regressed" is what makes the red mean something — and the
+  committed unit test proves it without a runner (`tests/unit/test_benchmark_ab.py`:
+  +25 % fails, +2 % passes).
+- **A guard around a comparison that no longer decides anything is dead weight
+  with a red exit.** #268's fail-on-skip step was right while a cross-run
+  comparison was the gate and became a random red generator once the A/B took
+  over, so this PR deletes it rather than leaving two gates disagreeing. When
+  superseding a gate, remove the machinery that only enforced honesty about the
+  old one, and say in the spec which issue's step went where.
