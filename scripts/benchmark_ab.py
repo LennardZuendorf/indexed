@@ -205,9 +205,7 @@ def host_fingerprint() -> str:
                 break
     except (OSError, IndexError):
         brand = platform.processor() or "?"
-    return "|".join(
-        [brand, platform.machine(), str(os.cpu_count()), platform.system()]
-    )
+    return "|".join([brand, platform.machine(), str(os.cpu_count()), platform.system()])
 
 
 def adopt_host_machine(doc: dict, host: str) -> str | None:
@@ -787,7 +785,11 @@ def main(argv: list[str] | None = None) -> int:
     metrics = args.metric or list(EVAL_GATE_METRICS)
     try:
         result = compare(
-            base_doc, head_doc, stat=args.stat, metrics=metrics, host=args.host_fingerprint
+            base_doc,
+            head_doc,
+            stat=args.stat,
+            metrics=metrics,
+            host=args.host_fingerprint,
         )
     except MeasurementInvalid as exc:
         print(f"::error title=Same-job measurement invalid::{exc}")
