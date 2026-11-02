@@ -63,12 +63,18 @@ jobs:
     # nothing under tests/system or tests/benchmarks asserts a version — but it
     # is why the "every workflow uses fetch-depth: 0" rule has an exception.
     #
-    # The `with:` block is anchored and reused verbatim by the refresh job, so
-    # the gate and the refresh can never disagree on tolerances or thresholds.
+    # This step is the REPORT, not the gate. It measures the whole suite once and
+    # compares it against main's committed baseline — a cross-run, cross-machine
+    # comparison, which on the hosted fleet alternates CPU models within a day
+    # (#267) and therefore reds by runner lottery. That is why
+    # `cross-branch-tolerance` below is inert: the verdict comes from the
+    # same-job A/B step after this one. Every value here must otherwise stay
+    # identical to the refresh job's copy — GitHub Actions has no YAML merge
+    # keys, so the block is duplicated rather than anchored (#271).
     - name: Run benchmarks
       id: benchmark
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
-      with: &benchmark-inputs
+      with:
         # One interpreter, pinned: numbers from different interpreters are not
         # comparable, and the baseline is written by whichever run refreshes it.
         python-version: "3.14"
@@ -85,7 +91,10 @@ jobs:
           --benchmark-only
           --benchmark-json=benchmark-results.json
           -v
-        cross-branch-tolerance: 20
+        # Inert by design, like `update-tolerance` below: this number is compared
+        # across runs and machines, so it reports drift and never decides a PR.
+        # The A/B step after this one owns the verdict.
+        cross-branch-tolerance: 1000
         # Inert by design: far beyond any real drift, so a PR run never stages a
         # baseline commit in the first place. It cannot be the guarantee on its
         # own — the action also flags an update when the comparison is skipped
@@ -95,100 +104,77 @@ jobs:
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
-    # A skipped comparison is not a pass. The action treats a hardware mismatch
-    # as "skip with a warning" and reports regression-detected=false, so this
-    # gate returned green while comparing nothing on every PR after GitHub
-    # rotated the ubuntu-latest CPU (#267). `enforce-same-node: true` is not the
-    # fix — on a heterogeneous fleet it reds PRs at random, which teaches
-    # everyone to ignore the check. The failure belongs here, where it can name
-    # both fingerprints and the repair.
-    - name: A skipped comparison is not a pass
-      # Deliberately NOT gated on the action's `comparison-skipped` output. That
-      # output is only ever written by the compare steps, so on the one path
-      # where nothing could be compared at all — the base branch has no
-      # committed baseline, so `compare-main` never runs — the flag is false and
-      # a flag-gated step is SKIPPED, leaving the job green with no cross-branch
-      # verdict. That is the defect this step exists to end. Run it whenever the
-      # benchmark step itself succeeded; the fingerprints (and a baseline that
-      # cannot be read at all) decide the rest. Costs a `git fetch` + a `git
-      # show` on a normal green run.
+    # The gate: two measurements taken in THIS job on THIS runner, back to back.
+    # A benchmark number carries the machine that produced it, and the hosted
+    # fleet alternates CPU models within a day (#267), so a committed cross-run
+    # baseline can only ever be a drift report. Hardware, tenancy and CPU
+    # frequency cancel out of a same-job ratio; nothing else does. The rows that
+    # used to rotate red are the ones measured here — the rest of the suite is
+    # reported by the step above and decides nothing.
+    - name: Same-job A/B gate (merge base vs head)
+      # Runs only if the report step succeeded: that step owns the checkout, the
+      # interpreter and this job's venv, so a failed install leaves nothing to
+      # A/B. Its own comparison cannot fail this way — its tolerances are inert.
       if: steps.benchmark.outcome == 'success'
       env:
-        BASELINE_FILE: .benchmarks/baselines/main.json
-        # Resolved here, not in the shell: `github.base_ref` is the branch this
-        # PR merges into, i.e. the only baseline that may be compared against.
+        # The branch this PR merges into: measured as a tree, never as a
+        # baseline file (see .spec/tech.md § CI Benchmarking).
         BASE_REF: ${{ github.base_ref }}
-        RESULTS_FILE: benchmark-results.json
-        # Only used to word the green notice honestly: on the no-baseline path
-        # this is false while the step still ran, and claiming a sequential
-        # comparison was skipped there would be a lie in the log.
-        COMPARISON_SKIPPED: ${{ steps.benchmark.outputs.comparison-skipped }}
+        AB_TOLERANCE: "20"
+        BASE_DIR: ${{ runner.temp }}/bench-ab-base
+        BASE_RESULTS: ${{ runner.temp }}/bench-ab-base.json
+        HEAD_RESULTS: ${{ runner.temp }}/bench-ab-head.json
       run: |
         set -euo pipefail
-        # Never read the baseline from HEAD in this job. The action's update path
-        # ends in `EndBug/add-and-commit`, which commits its own numbers locally
-        # even when the push is denied by `contents: read` — so by the time this
-        # step runs, HEAD's copy of the baseline IS this run's measurement. The
-        # guard would then compare the run with itself, agree, and return green:
-        # the gate handing itself its own numbers is the very defect this step
-        # exists to catch. The base branch is immutable, so read that instead.
-        # Best-effort: a missing/unfetchable ref must fall through to the check
-        # below so the failure carries the repair, not a raw git error.
+        # The rows the gate owns: the three that rotated red on hardware rather
+        # than on a diff (#267). Everything else is measured and reported by the
+        # step above; a full-suite A/B would double an 8-minute job, this subset
+        # costs ~2 minutes.
+        AB_TESTS=(
+          "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs"
+          "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown"
+          "tests/system/test_search_performance.py::test_searcher_first_search"
+        )
+
+        # `origin/<base_ref>` is the base this PR would land on: what the diff
+        # adds, measured on top of main as it is now. Read, not merged — this
+        # checkout is shallow (fetch-depth: 2, inside the action), so
+        # `git merge-base` would need the whole history for no gain in what is
+        # being measured.
         git fetch --no-tags --depth=1 origin \
-          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
-        if ! git show "origin/${BASE_REF}:$BASELINE_FILE" > "${RUNNER_TEMP}/committed-baseline.json" 2>/dev/null; then
-          message="No readable committed baseline on '${BASE_REF}' (absent, or the ref could not be fetched), so this run had nothing to compare against. Re-run if that was a fetch problem; if '${BASE_REF}' genuinely has no baseline, dispatch 'Python Performance Benchmarks' on main to record one."
-          echo "::error title=Benchmark gate has no verdict::${message}"
-          {
-            echo "## Benchmark gate: no verdict"
-            echo
-            echo "${BASE_REF} has no readable copy of ${BASELINE_FILE}, so this run produced no comparison and therefore no verdict."
-            echo
-            echo "$message"
-          } >> "$GITHUB_STEP_SUMMARY"
+          "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+        BASE_SHA=$(git rev-parse --short "origin/${BASE_REF}")
+
+        # The base, in its own worktree and its own venv: `uv sync` there
+        # resolves the base's lock, so a PR that changes dependencies is
+        # measured with the base's dependencies too. Nothing here mutates this
+        # job's venv, which the head run below uses unchanged.
+        git worktree add --detach "${BASE_DIR}" "origin/${BASE_REF}"
+        if ! (
+          cd "${BASE_DIR}"
+          python -m uv sync
+          python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
+            --benchmark-only --benchmark-json "${BASE_RESULTS}"
+        ); then
+          echo "::error title=Same-job measurement invalid::the merge-base run did not complete, so this job measured only one side. That is a harness bug, not a verdict."
           exit 1
         fi
-        python3 - <<'PY'
-        import json, os
 
-        def fingerprint(doc):
-            info = doc.get("machine_info", {})
-            cpu = info.get("cpu", {})
-            return f"{cpu.get('brand_raw')}|{cpu.get('arch')}|{cpu.get('count')}|{info.get('system')}"
+        # Then the head, immediately, on the same runner: back-to-back is the
+        # whole point. Re-running the base, or moving to another job, would put
+        # the two sides minutes and one tenancy change apart again.
+        python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
+          --benchmark-only --benchmark-json "${HEAD_RESULTS}"
 
-        committed = json.load(open(f"{os.environ['RUNNER_TEMP']}/committed-baseline.json"))
-        measured = json.load(open(os.environ["RESULTS_FILE"]))
-        was, now = fingerprint(committed), fingerprint(measured)
-        if was == now:
-            # Same hardware as main's baseline, so any cross-branch comparison
-            # that ran used it. The flag may still be true because the OTHER
-            # (per-branch, HEAD~1) comparison was skipped; that one does not
-            # disarm the gate.
-            if os.environ.get("COMPARISON_SKIPPED") == "true":
-                print(f"::notice::A sequential comparison was skipped, but this run's machine matches main's baseline ({now}) — the cross-branch verdict stands.")
-            else:
-                print(f"::notice::This run's machine matches main's baseline ({now}) — the cross-branch comparison produced a verdict.")
-            raise SystemExit(0)
-        message = (
-            f"Cross-machine comparison is invalid, so this run compared nothing against "
-            f"'main': this run measured {now}, the committed baseline was recorded on {was}. "
-            "No comparison means no verdict, so the job fails instead of passing green. "
-            "Repair: if the ubuntu-latest fleet rotated, re-record the baseline — dispatch "
-            "'Python Performance Benchmarks' on main with accept_cpu_change: true."
-        )
-        print(f"::error title=Benchmark gate has no verdict::{message}")
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-            summary.write(
-                "## Benchmark gate: no verdict\n\n"
-                "`main`'s baseline was recorded on other hardware, so this run "
-                "produced no comparison and therefore no verdict.\n\n"
-                "| | CPU fingerprint |\n|---|---|\n"
-                f"| committed baseline | `{was}` |\n"
-                f"| this run | `{now}` |\n\n"
-                f"{message}\n"
-            )
-        raise SystemExit(1)
-        PY
+        # The verdict, from those two files only. The comparator prints both CPU
+        # fingerprints and refuses to turn a machine mismatch into a pass.
+        python "${GITHUB_WORKSPACE}/scripts/benchmark_ab.py" \
+          --base "${BASE_RESULTS}" \
+          --head "${HEAD_RESULTS}" \
+          --tolerance "${AB_TOLERANCE}" \
+          --base-label "origin/${BASE_REF} @ ${BASE_SHA}" \
+          --head-label "${GITHUB_SHA}" \
+          --summary "${GITHUB_STEP_SUMMARY}"
 
   refresh-baseline:
     # Dispatch-only and main-only. A baseline move is never a side effect of
@@ -209,15 +195,38 @@ jobs:
         path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
         key: hf-model-all-MiniLM-L6-v2
 
-    # Same pin, same inputs as the PR job. The action's update path is
-    # pull_request-only, so this run never pushes anything; its "Save baseline"
-    # step rewrites .benchmarks/baselines/main.json in the workspace and that
-    # rewritten file is the refresh. A >20% slowdown against main's previous
-    # numbers fails the run here instead — that is a regression to investigate,
-    # not a baseline to adopt.
+    # Same pin and same measurement inputs as the PR job, with one deliberate
+    # difference: `cross-branch-tolerance` is live (20) here. This run compares
+    # main against main's own committed baseline on a dispatch that only main
+    # triggers, which is the coarse drift alarm — it is not a PR verdict, and
+    # there is no same-job A/B to take its place. GitHub Actions has no YAML
+    # merge keys, so this block is a copy of the PR job's: change both together.
+    # The action's update path is pull_request-only, so this run never pushes
+    # anything; its "Save baseline" step rewrites .benchmarks/baselines/main.json
+    # in the workspace and that rewritten file is the refresh. A >20% slowdown
+    # against main's previous numbers fails the run here instead — that is a
+    # regression to investigate, not a baseline to adopt.
     - name: Measure main
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
-      with: *benchmark-inputs
+      with:
+        python-version: "3.14"
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        setup-command: python -m pip install uv && python -m uv sync
+        pre-benchmark-command: |
+          uv run python -c "
+          from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+          ensure_model('all-MiniLM-L6-v2')
+          print('Model ready')
+          "
+        benchmark-run-command: >
+          uv run pytest tests/system tests/benchmarks
+          --benchmark-only
+          --benchmark-json=benchmark-results.json
+          -v
+        cross-branch-tolerance: 20
+        update-tolerance: 1000
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        override-label: benchmark-override
 
     - name: Summarise drift against main's baseline
       id: drift
