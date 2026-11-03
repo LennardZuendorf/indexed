@@ -1472,11 +1472,15 @@ with `git add`/`git status`, since that's what CI actually runs.
 - **An absolute threshold a healthy `main` already exceeds is worse than no
   threshold: it spends the report's ❌ on a non-regression and teaches the
   reader to ignore the column.** `batch_parse` carried a 5 s cap against a
-  5.93 s committed baseline, so every green run printed two ❌ rows while the
-  real gate (20% cross-branch) said PASS. Derive each cap from
-  `.benchmarks/baselines/main.json` with explicit headroom (~2× for
-  second-scale benchmarks, ≥5× for cheap ones) and record the derivation beside
-  the map — an unreviewable number drifts silently as the baseline moves.
+  5.93 s committed baseline — `main`'s own baseline already failed it — and
+  `full_connector_pipeline` a 10 s cap against 9.27 s, which only a slower
+  runner (10.42 s) tipped over, adding a second ❌ inside a green job whose real
+  gate said PASS. Re-derive only the caps whose old value was within ~1.4× of
+  main's baseline, to ≈2× their baseline mean; caps already carrying ≥5×
+  headroom are left alone.
+  Record the derivation beside the map — an unreviewable number drifts silently
+  as the baseline moves, and a rule that doesn't reproduce its own table gets
+  "fixed" back to the stale value on the next refresh.
 - **A substring-matched cap map is order-sensitive and hides a default.**
   `threshold-map` resolves on the first `includes` hit in the JSON's own order,
   so the longer key must precede its prefix, and any unmatched test silently

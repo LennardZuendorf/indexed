@@ -111,9 +111,11 @@ jobs:
         update-tolerance: 1000
         # Absolute per-test ceilings, re-derived from main's committed baseline
         # (`.benchmarks/baselines/main.json`, AMD EPYC 7763) on 2026-11-03:
-        # second-scale benchmarks get ~2x their baseline mean (rounded up),
-        # cheaper ones keep a >=5x margin. This column is a blowup backstop —
-        # drift between comparable runs is what `cross-branch-tolerance` gates.
+        # a cap whose old value was within ~1.4x of main's baseline became ~2x
+        # that mean (rounded up) — batch_parse, full_connector_pipeline and its
+        # _mixed variant. Caps that already had >=5x headroom were left alone.
+        # This column is a blowup backstop — drift between comparable runs is
+        # what `cross-branch-tolerance` gates.
         # Keys match as substrings in the order written (first hit wins), so
         # `full_connector_pipeline_mixed` must stay before
         # `full_connector_pipeline`. An unmatched name gets the action's 1.0 s
