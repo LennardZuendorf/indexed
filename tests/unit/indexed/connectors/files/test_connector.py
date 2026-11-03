@@ -119,7 +119,9 @@ def test_from_config_threads_change_tracking_and_code_chunking(tmp_path):
 
     from indexed.connectors.files.schema import FileSystemConfig
 
-    cfg = FileSystemConfig(path=str(tmp_path), change_tracking="mtime", code_chunking=False)
+    cfg = FileSystemConfig(
+        path=str(tmp_path), change_tracking="mtime", code_chunking=False
+    )
     connector = FileSystemConnector.from_config(cast(Any, _FakeConfigService(cfg)))
 
     details = connector.reader.get_reader_details()
