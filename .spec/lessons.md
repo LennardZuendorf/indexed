@@ -1311,4 +1311,3 @@ with `git add`/`git status`, since that's what CI actually runs.
   `trailing-whitespace` / `end-of-file-fixer` hooks edit tracked files at commit
   time, so a byte-checked corpus must be excluded from both (as `eval/corpus/`
   already is) or the next hook run breaks its own lock.
-
