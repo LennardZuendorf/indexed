@@ -11,6 +11,7 @@ import datetime
 import fnmatch
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -22,6 +23,23 @@ if TYPE_CHECKING:
 
 from .schema import DEFAULT_EXCLUDED_DIRS
 from .v1_adapter import V1FormatAdapter
+
+
+def default_storage_roots(base_path: str) -> frozenset[Path]:
+    """Absolute storage roots that are never source content.
+
+    Both storage modes live in a directory named ``.indexed``: the local root
+    under the scanned tree (``<base>/.indexed``) and the global root
+    (``~/.indexed``, which may itself sit inside a scanned tree). The files
+    connector must not index them — that is how a collection ended up indexing
+    its own ``.indexed/.gitignore`` (issue #279 follow-up).
+
+    ``base_path`` is expected to be absolute (``normalize_base_path`` guarantees
+    it); the global root is returned as-is so callers compare resolved paths.
+    """
+    from indexed.config.storage import get_global_root
+
+    return frozenset({Path(base_path) / ".indexed", get_global_root()})
 
 
 def normalize_base_path(raw_path: str) -> str:
@@ -61,6 +79,7 @@ class FilesDocumentReader:
         max_tokens: int = 512,
         excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
+        excluded_paths: Iterable[str | Path] | None = None,
     ) -> None:
         # Stored expanded + absolute so a later `update` from a different
         # CWD still reads the originally intended directory (foundation/6b
@@ -74,6 +93,7 @@ class FilesDocumentReader:
             excluded_dirs if excluded_dirs is not None else DEFAULT_EXCLUDED_DIRS
         )
         self._respect_gitignore = respect_gitignore
+        self._excluded_paths = self._normalize_excluded_paths(excluded_paths)
 
         # Split include_patterns into positive and negative (! prefix) at init.
         positive = [p for p in self.include_patterns if not p.startswith("!")]
@@ -94,6 +114,44 @@ class FilesDocumentReader:
             return re.compile(pattern)
         except re.error:
             return re.compile(fnmatch.translate(pattern))
+
+    def _normalize_excluded_paths(
+        self, excluded_paths: Iterable[str | Path] | None
+    ) -> frozenset[Path]:
+        """Resolve the absolute-path guard set for this scan.
+
+        Defaults to indexed's own storage roots (``<base>/.indexed`` and
+        ``~/.indexed``). Roots that *contain* the scan root are dropped: if a
+        caller deliberately points a collection inside a storage root, that
+        request wins over the guard.
+        """
+        candidates = (
+            default_storage_roots(self.base_path)
+            if excluded_paths is None
+            else {Path(p) for p in excluded_paths}
+        )
+        base = Path(self.base_path)
+        guarded: set[Path] = set()
+        for candidate in candidates:
+            resolved = Path(candidate).expanduser().resolve()
+            if resolved == base or base.is_relative_to(resolved):
+                continue
+            guarded.add(resolved)
+        return frozenset(guarded)
+
+    def _is_excluded_path(self, path: Path) -> bool:
+        """True when *path* is a guarded storage root or sits inside one."""
+        for root in self._excluded_paths:
+            if path == root or path.is_relative_to(root):
+                return True
+        return False
+
+    def _is_relative_excluded(self, relative_path: str) -> bool:
+        """True when a base-relative path is inside a pruned dir or root."""
+        parts = Path(relative_path).parts[:-1]
+        if any(part in self._excluded_dirs for part in parts):
+            return True
+        return self._is_excluded_path(Path(self.base_path) / relative_path)
 
     @property
     def parsing(self) -> ParsingModule:
@@ -186,6 +244,8 @@ class FilesDocumentReader:
                 if not os.path.isfile(full_path):
                     continue
                 relative_path = os.path.relpath(full_path, self.base_path)
+                if self._is_relative_excluded(relative_path):
+                    continue
                 if not self._is_file_negated(relative_path):
                     yield full_path
             return
@@ -250,6 +310,8 @@ class FilesDocumentReader:
         self, dir_path: Path, gitignore_specs: list[tuple[Path, Any]]
     ) -> bool:
         """Return True if this directory should be excluded before descending."""
+        if self._is_excluded_path(dir_path):
+            return True
         if dir_path.name in self._excluded_dirs:
             return True
         if not self._respect_gitignore:

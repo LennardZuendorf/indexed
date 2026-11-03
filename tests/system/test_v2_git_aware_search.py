@@ -68,6 +68,22 @@ def _search(query: str, collection: str, *extra: str) -> dict:
     return json.loads(result.stdout)
 
 
+def _inspect(collection: str) -> dict:
+    result = runner.invoke(
+        app,
+        [
+            "--local",
+            "--simple-output",
+            "--log-level",
+            "ERROR",
+            "inspect",
+            collection,
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
+
+
 @pytest.fixture
 def git_corpus(tmp_path: Path) -> Path:
     """Two commits: the second edits ``beta.txt`` only, as 'Second Author'."""
@@ -158,6 +174,54 @@ def test_bad_changed_since_ref_exits_nonzero(local_workspace, git_corpus: Path) 
     )
     assert bad.exit_code == 1
     assert "not a valid git ref" in bad.stdout
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", COLLECTION, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+def test_storage_root_never_indexed(tmp_path: Path, monkeypatch) -> None:
+    """``./.indexed`` created by ``--local`` is never source content.
+
+    The scanned tree IS the workspace here, which is the shape that leaked:
+    creating the collection materializes ``.indexed/`` (config, collections,
+    ``.gitignore``) *before* the walk, so without the guard the collection
+    indexed its own storage and ``--changed-since`` then listed
+    ``.indexed/.gitignore`` as changed (it is untracked).
+    """
+    from indexed.config import reload as reload_config
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TQDM_DISABLE", "1")
+    reload_config()
+
+    run_git(tmp_path, "init")
+    (tmp_path / "alpha.txt").write_text("alpha document about penguin colonies\n")
+    (tmp_path / "beta.txt").write_text("beta document about walrus haul-outs\n")
+    run_git(tmp_path, "add", "alpha.txt", "beta.txt")
+    run_git(tmp_path, "commit", "-m", "initial corpus")
+    (tmp_path / "beta.txt").write_text(
+        "beta document about walrus migration survey routes\n"
+    )
+    run_git(tmp_path, "add", "beta.txt")
+    run_git(tmp_path, "commit", "-m", "second commit")
+
+    _create_v2(Path("."))
+
+    # --- the collection holds the corpus, not its own storage --------------
+    info = _inspect(COLLECTION)
+    assert info["number_of_documents"] == 2
+
+    searchable = {row["document_id"] for row in _search(QUERY, COLLECTION)["results"]}
+    assert searchable == {"alpha.txt", "beta.txt"}
+    assert not any(doc_id.startswith(".indexed/") for doc_id in searchable)
+
+    # --- changed-since does not report storage files -----------------------
+    filtered = _search(QUERY, COLLECTION, "--changed-since", "HEAD~1")
+    changed = {row["document_id"] for row in filtered["results"]}
+    assert changed == {"beta.txt"}
+    assert not any(doc_id.startswith(".indexed/") for doc_id in changed)
 
     removed = runner.invoke(
         app, ["--local", "--log-level", "ERROR", "remove", COLLECTION, "--force"]

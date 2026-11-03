@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-03
 ---
 
 # Lessons Learned
@@ -1310,3 +1310,20 @@ with `git add`/`git status`, since that's what CI actually runs.
   so a leak that only bites when both are collected together ships green. Run
   `uv run pytest` (testpaths=[tests]) before handing off, and guard the
   teardown invariant where the leak would land.
+
+## A scanner must exclude its own storage (2026-11-03)
+
+- **Name pruning and path pruning solve different halves of one promise.**
+  `.indexed` in `DEFAULT_EXCLUDED_DIRS` catches the storage root anywhere in the
+  tree (nested workspaces included) and is independent of `.gitignore` /
+  `include_patterns` — but an explicit `excluded_dirs` list *replaces* that
+  default. Guarding the resolved storage roots (`<scan>/.indexed`,
+  `~/.indexed`) by absolute path is what keeps the guarantee under an override.
+  Do both, and write down which layer a user can undo.
+- **Self-indexing is also a query-time bug.** Storage files are untracked, so any
+  "changed since" filter surfaces them; fix the ingest side rather than teaching
+  the query path to special-case `.indexed` again.
+- **Old collections heal through change tracking.** A stale storage document is
+  absent from the new state snapshot, so the next `update` reports it deleted
+  and prunes it — no migration code, and a test that creates *before* the fix
+  and updates *after* proves the reconciliation end to end.
