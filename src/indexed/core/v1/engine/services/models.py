@@ -22,6 +22,9 @@ class CollectionStatus:
     source_type: Optional[str] = None
     relative_path: Optional[str] = None
     disk_size_bytes: Optional[int] = None
+    # Freshness vs the working tree (#146 slice 1) — opt-in on the facade so a
+    # plain status poll stays git-free; the MCP status resources ask for it.
+    freshness: Optional[dict] = None
 
 
 @dataclass
@@ -54,6 +57,12 @@ class CollectionInfo:
 
     # Index info
     indexers: Optional[List[str]] = None
+
+    # Freshness vs the working tree (issue #146 slice 1). Attached by the
+    # `core.engine` facade after either engine's inspect(); `None` only for a
+    # collection whose manifest could not be read. A dict, not a dataclass, so
+    # both engines' plain-dict inspect payloads stay coercible.
+    freshness: Optional[dict] = None
 
     # Computed statistics (calculated from other fields)
     avg_chunks_per_doc: Optional[float] = None

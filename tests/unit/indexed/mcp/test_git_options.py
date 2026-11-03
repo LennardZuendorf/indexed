@@ -135,6 +135,29 @@ class TestSearchCollectionToolGitOptions:
         kwargs = mock_search.call_args.kwargs
         assert "changed_since" not in kwargs
         assert "git_provenance" not in kwargs
+        assert "include_freshness" not in kwargs
+
+    @patch.object(tools_module, "svc_status")
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_freshness_reaches_svc_search(
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+    ) -> None:
+        """The #146 advisory is opt-in and must reach the facade (both tools)."""
+        mock_resolve_config.return_value = _cfg()
+        mock_status.return_value = [self._status(["default"], "localFiles")]
+        mock_search.return_value = {}
+
+        _get_tool("search").fn("q", include_freshness=True, ctx=_ctx())
+        assert mock_search.call_args.kwargs["include_freshness"] is True
+
+        _get_tool("search_collection").fn(
+            "col", "q", include_freshness=True, ctx=_ctx()
+        )
+        assert mock_search.call_args.kwargs["include_freshness"] is True
 
     @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")

@@ -317,6 +317,31 @@ class TestInspectEngineDiagnostics:
         assert result.exit_code == 0, result.stdout
         assert "v1" in result.stdout
 
+    def test_detail_renders_the_freshness_verdict(self, monkeypatch):
+        """The row prints the verdict's own summary — the same words as the MCP
+        envelope and the search advisory (#146 slice 1)."""
+        coll = _make_collection("docs")
+        coll.freshness = {
+            "status": "stale",
+            "summary": "stale — 2 files changed since commit abc1234",
+        }
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Freshness" in result.stdout
+        assert "2 files changed since commit abc1234" in result.stdout
+
+    def test_detail_without_a_verdict_has_no_freshness_row(self, monkeypatch):
+        coll = _make_collection("docs")
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Freshness" not in result.stdout
+
     def test_simple_output_carries_engine_fields(self, monkeypatch):
         from indexed.cli.utils.simple_output import (
             reset_simple_output,

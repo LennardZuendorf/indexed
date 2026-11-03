@@ -172,11 +172,12 @@ indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
 indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
 indexed index search "who wrote this" --git-provenance     # commit + author per file
+indexed index search "auth" --freshness                    # warn if the index is behind
 # A filter a collection cannot honour warns per collection, never silently
 
 # Manage collections
 indexed index inspect                    # list all collections
-indexed index inspect my-project         # inspect specific collection
+indexed index inspect my-project         # inspect specific collection (+ freshness)
 indexed index update my-project          # update a collection
 indexed index remove my-project          # delete a collection
 indexed index migrate my-project         # migrate to the v2 engine

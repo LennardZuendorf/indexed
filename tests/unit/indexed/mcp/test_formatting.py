@@ -300,3 +300,38 @@ def test_applied_git_filter_adds_no_error() -> None:
     }
 
     assert format_search_results_for_llm(raw, "q")["collection_errors"] == []
+
+
+def test_freshness_verdicts_reach_the_envelope() -> None:
+    """#146 slice 1: the advisory travels with its summary words, per collection."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_chunk("alpha", 0.9)],
+            "freshness": {
+                "status": "stale",
+                "reason": "source-changed",
+                "filesChanged": 2,
+                "summary": "stale — 2 files changed since commit abc1234",
+            },
+        }
+    }
+
+    out = format_search_results_for_llm(raw, "q")
+
+    assert out["freshness"] == [
+        {
+            "collection": "c1",
+            "status": "stale",
+            "reason": "source-changed",
+            "filesChanged": 2,
+            "summary": "stale — 2 files changed since commit abc1234",
+        }
+    ]
+
+
+def test_no_freshness_key_when_the_advisory_was_not_requested() -> None:
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": []}}
+
+    assert "freshness" not in format_search_results_for_llm(raw, "q")

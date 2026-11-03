@@ -75,7 +75,8 @@ Storage dirs owned by `src/indexed/config/` (`storage.py`). Persistence semantic
 ├── .env                       # credentials (not in git)
 └── data/collections/{name}/
     ├── manifest.json          # both engines; v2 adds a version + engine block
-    ├── state.json             # files connector only (change-tracker baseline)
+    ├── state.json             # files connector only (change-tracker baseline;
+    │                          #  also read by index freshness, tech-core § Index Freshness)
     ├── storage/               # v2 only (LlamaIndex persist): docstore.json,
     │                          # index_store.json, default__vector_store.json
     ├── documents/<id>.json    # v1 only

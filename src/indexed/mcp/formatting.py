@@ -121,6 +121,18 @@ def format_search_results_for_llm(
     formatted["total_chunks_found"] = len(all_chunks)
     formatted["collection_errors"] = collection_errors
 
+    # Per-collection index freshness, present only when the caller asked for it
+    # (#146 slice 1). Same `summary` words as `index inspect` — one verdict,
+    # never a second phrasing that could drift.
+    freshness_rows = [
+        {"collection": collection_name, **verdict}
+        for collection_name, collection_data in raw_results.items()
+        if isinstance(collection_data, dict)
+        and isinstance(verdict := collection_data.get("freshness"), dict)
+    ]
+    if freshness_rows:
+        formatted["freshness"] = freshness_rows
+
     return formatted
 
 

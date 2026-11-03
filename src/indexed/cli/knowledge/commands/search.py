@@ -192,6 +192,14 @@ def search(
             "(v2 files collections; overrides core.v1.search.git_provenance)"
         ),
     ),
+    freshness: bool = typer.Option(
+        False,
+        "--freshness",
+        help=(
+            "Warn when a collection's index is behind its source working tree "
+            "(files collections with a git baseline)"
+        ),
+    ),
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
     ),
@@ -348,6 +356,10 @@ def search(
         git_kwargs["git_provenance"] = git_provenance
     elif search_cfg.git_provenance:
         git_kwargs["git_provenance"] = True
+    if freshness:
+        # Opt-in advisory: ask the facade for each collection's freshness so
+        # the CLI warning and `index inspect` share one verdict and wording.
+        git_kwargs["include_freshness"] = True
 
     if not collections_to_search:
         # A specific collection was named but turned out unsearchable (corrupt

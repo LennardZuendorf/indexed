@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-03
 ---
 
 # Lessons Learned
@@ -1310,3 +1310,19 @@ with `git add`/`git status`, since that's what CI actually runs.
   so a leak that only bites when both are collected together ships green. Run
   `uv run pytest` (testpaths=[tests]) before handing off, and guard the
   teardown invariant where the leak would land.
+
+## Index freshness must compare bytes, not just `git status` (2026-11-03)
+
+- **A dirty working tree does not make an index stale — the INDEXED BYTES do.**
+  Indexing a tree that has uncommitted edits is normal, and `state.json` is
+  written after that run, so `git diff HEAD` reports changes the index already
+  contains. Freshness therefore re-hashes only the changed paths against
+  `file_hashes`; a HEAD-only comparison would have warned "stale" on every
+  collection indexed from a dirty tree. Without stored hashes, stay
+  conservative (count every changed path) rather than claiming fresh.
+- **A collection with no baseline is `unknown`, never `fresh`.** `state.json`
+  only exists after the files connector's `post_run` on a *successful*
+  create/update; an older or differently-built collection has none. Any
+  "cannot tell" path carries a reason code to the surface, exactly like
+  `gitFilter` — a silent skip would turn "indexed before change tracking" into
+  a false all-clear.
