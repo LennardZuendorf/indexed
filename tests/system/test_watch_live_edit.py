@@ -121,13 +121,25 @@ def test_live_edit_updates_the_collection_without_a_manual_update(
         apply_update = _watch_wiring(collections_dir)
         stop = threading.Event()
         write_done = threading.Event()
+        baseline_taken = threading.Event()
+
+        def scan():
+            # The first call IS the watcher's baseline snapshot. The edit must
+            # land after it — otherwise the new file is part of the baseline and
+            # no change is ever detected (a real race on a fast runner).
+            signature = watch_service.signature_for(
+                files_corpus, excluded_dirs=(), respect_gitignore=True
+            )
+            baseline_taken.set()
+            return signature
 
         def edit_and_watch() -> None:
+            assert baseline_taken.wait(timeout=10), "watcher never took a baseline"
             (files_corpus / "delta.txt").write_text(
                 "The volcanic sulfur survey found deposits near the caldera rim.\n"
             )
             write_done.set()
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 try:
                     if any(
@@ -143,9 +155,7 @@ def test_live_edit_updates_the_collection_without_a_manual_update(
         writer.start()
 
         code = watch_service.run_watch_loop(
-            scan=lambda: watch_service.signature_for(
-                files_corpus, excluded_dirs=(), respect_gitignore=True
-            ),
+            scan=scan,
             apply_update=apply_update,
             debounce_seconds=0.2,
             poll_interval_seconds=0.05,
