@@ -1107,6 +1107,57 @@ def test_git_rerank_enabled_reorders_and_reports_its_score_kind(
     assert scores[0] > scores[1]
 
 
+def test_git_rerank_runs_before_the_cross_encoder_which_keeps_the_score(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both opt-ins on: git decides ``top_n`` membership, the CE owns the score.
+
+    The git pass must run BEFORE the cross-encoder. The CE replaces every score
+    and truncates, so a blend applied afterwards could neither change membership
+    nor survive in the output — yet the result would still claim
+    ``scoreKind == "rerank"`` (review round 1, finding 1).
+    """
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    seen: list[list[str]] = []
+
+    def fake_rerank(nws, query, cfg):  # noqa: ANN001, ANN202
+        seen.append([n.node.metadata["source_id"] for n in nws])
+        # Mimic SentenceTransformerRerank: keep ``top_n``, replace the score.
+        return [n.model_copy(update={"score": 0.42}) for n in nws[: cfg.top_n]]
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="x", top_n=1),
+    )
+    monkeypatch.setattr(retrieval, "_apply_rerank", fake_rerank)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(recency_weight=5.0, churn_weight=0.0),
+        )
+
+    out = res["c1"]
+    # A 5.0 recency bonus swamps any cosine gap: git's order is what the CE sees,
+    # so its ``top_n`` membership is decided by the git pass, as documented.
+    assert seen == [["recent.txt", "stale.txt"]]
+    assert out["gitRerank"] == {"applied": True, "scored": 2}
+    # The cross-encoder owns both the final score and the reported score kind.
+    assert out["scoreKind"] == "rerank"
+    assert [d["id"] for d in out["results"]] == ["recent.txt"]
+    assert out["results"][0]["matchedChunks"][0]["score"] == pytest.approx(0.42)
+
+
 GIT_RERANK_KIND = "git-rerank"
 
 

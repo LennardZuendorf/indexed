@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # / `recent_commit_count` / `rerank_skip_message`, the blend + window + skip
 # status in `core/v2/retrieval.py`, the `GitRerankOptions` config model and the
 # facade/CLI/MCP/render plumbing — still opt-in, query-time, nothing persisted;
-# ceiling = measured (32_616) + headroom.
+# ceiling = measured (32_619 after the cross-encoder ordering fix) + headroom.
 SRC_LOC_MAX = 32_890
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
@@ -157,9 +157,9 @@ SRC_LOC_MAX = 32_890
 # Raised from 50_350 by issue #144's git-signal re-rank tests: the scoring-helper
 # units (span/whole-file/uncommitted touches, churn counts, skip messages), the
 # blend-order / author-weight / score-kind / skip-status / off-path-no-git-work
-# retrieval cases, MCP+CLI forwarding, the formatting skip entry, and the
-# real-engine fixture-repo ranking system test; ceiling = measured (50_515) +
-# headroom.
+# retrieval cases, MCP+CLI forwarding, the formatting skip entry, the
+# real-engine fixture-repo ranking system test, and the both-opt-ins + config
+# seam tests; ceiling = measured (50_635) + headroom.
 TEST_LOC_MAX = 50_850
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for

@@ -359,12 +359,14 @@ def _apply_git_rerank(
 ) -> tuple[List["NodeWithScore"], int]:
     """Blend git signals into the candidate scores, then reorder (#144).
 
-    Runs AFTER retrieval and BEFORE document grouping/output; git facts feed
-    SCORING only — never the embedding, never the vector store, nothing
-    persisted. Only the first ``_GIT_RERANK_WINDOW`` candidates are scored (the
-    cost bound), and the sort is stable, so equal blends keep their retrieval
-    order. Returns ``(ordered_nodes, scored)`` where ``scored`` counts the
-    candidates that got a real git answer.
+    Runs AFTER retrieval and BEFORE document grouping/output — and BEFORE the
+    cross-encoder when that is enabled, so the cross-encoder keeps ownership of
+    the final score and the git blend only decides which candidates reach its
+    ``top_n``. Git facts feed SCORING only — never the embedding, never the
+    vector store, nothing persisted. Only the first ``_GIT_RERANK_WINDOW``
+    candidates are scored (the cost bound), and the sort is stable, so equal
+    blends keep their retrieval order. Returns ``(ordered_nodes, scored)`` where
+    ``scored`` counts the candidates that got a real git answer.
     """
     now = time.time() if now_epoch is None else now_epoch
     window = nodes_with_scores[:_GIT_RERANK_WINDOW]
@@ -437,9 +439,6 @@ def _search_one(
             if (nws.score if nws.score is not None else 0.0) >= score_threshold
         ]
 
-    if rerank_cfg.enabled:
-        nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
-
     # Query-time git awareness: ONE repo resolution per collection shared by all
     # four options, and a git problem skips the feature rather than emptying
     # results — but the skip is REPORTED in ``gitFilter``/``gitRerank``, never a
@@ -456,9 +455,10 @@ def _search_one(
     )
 
     # Git-signal re-rank (#144): after retrieval/threshold (cosine space) and
-    # before grouping, so the ORDER the groupers see is the ranked one. With the
-    # cross-encoder also enabled it runs first: the cross-encoder's score still
-    # wins, so the git pass only decides which candidates reach its top_n.
+    # before grouping, so the ORDER the groupers see is the ranked one. It runs
+    # BEFORE the cross-encoder when that is enabled, so the cross-encoder still
+    # owns the final score: the git pass only decides which candidates reach
+    # its ``top_n`` (it cannot, and does not, survive as a blended score there).
     git_rerank_status: Optional[Dict[str, Any]] = None
     if git_rerank is not None:
         if manifest.reader.type not in _FILES_READER_TYPES:
@@ -470,6 +470,9 @@ def _search_one(
                 nodes_with_scores, git_ctx, git_rerank
             )
             git_rerank_status = {"applied": True, "scored": scored}
+
+    if rerank_cfg.enabled:
+        nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
     git_filter: Optional[Dict[str, Any]] = None
     if changed_since is not None:

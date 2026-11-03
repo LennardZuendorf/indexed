@@ -264,9 +264,10 @@ candidates are scored (`_GIT_RERANK_WINDOW`); the tail keeps its cosine score an
 which bounds the cost at one blame + one `rev-list` per distinct candidate document.
 The pass never touches the embedding or the vector store and persists nothing, so no
 re-index is needed. `scoreKind` becomes `git-rerank` (cosine plus non-negative boosts)
-only when at least one candidate was scored; with `[core.v2.rerank]` enabled too, the
-cross-encoder still owns the final score — the git pass then only decides which
-candidates reach its `top_n`.
+only when at least one candidate was scored. With `[core.v2.rerank]` enabled too, the
+git pass runs first and the cross-encoder still owns the final score: it replaces every
+blended score, so the git pass only decides which candidates reach the cross-encoder's
+`top_n` and the result kind stays `rerank`.
 
 **A skipped filter is never silent.** Every collection result carries a `gitFilter`
 status when — and only when — `changed_since` was requested:
