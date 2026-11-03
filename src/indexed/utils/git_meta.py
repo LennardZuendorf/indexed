@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 _TIMEOUT = 5
 
@@ -115,6 +117,156 @@ def last_commit(repo: str, path: str) -> dict[str, str] | None:
     }
 
 
+_ZERO_SHA = "0" * 40
+
+# Keys ``resolve_range`` returns for an attributed span. The internal ``epoch``
+# and ``uncommitted`` markers never leave this module's public shape.
+_SPAN_FIELDS = ("commit", "short", "author", "email", "committedAt", "subject")
+
+
+def _iso_time(epoch: str, tz: str) -> str:
+    """Porcelain's ``<epoch> <±HHMM>`` as the same ISO-8601 ``%aI`` form git prints."""
+    try:
+        offset_seconds = 0
+        if len(tz) == 5 and tz[0] in "+-":
+            offset_seconds = int(tz[1:3]) * 3600 + int(tz[3:5]) * 60
+            if tz[0] == "-":
+                offset_seconds = -offset_seconds
+        stamp = datetime.fromtimestamp(
+            int(epoch), tz=timezone(timedelta(seconds=offset_seconds))
+        )
+    except (TypeError, ValueError, OSError):
+        return ""
+    return stamp.isoformat(timespec="seconds")
+
+
+def _parse_porcelain(out: str) -> List[Optional[Dict[str, Any]]]:
+    """Parse ``git blame --line-porcelain`` into one record per final line.
+
+    ``--line-porcelain`` repeats the full header block for every line, so the
+    parse is a flat scan: a 40-hex header line sets the destination line, the
+    key/value lines fill the record, the leading-tab content line commits it.
+    A line the output never covered stays ``None`` (never guessed).
+    """
+    records: Dict[int, Dict[str, Any]] = {}
+    header: Dict[str, str] = {}
+    final_line: Optional[int] = None
+    for raw in out.splitlines():
+        if raw.startswith("\t"):
+            if final_line is not None:
+                commit = header.get("commit", "")
+                records[final_line] = {
+                    "commit": commit,
+                    "short": commit[:7],
+                    "author": "" if commit == _ZERO_SHA else header.get("author", ""),
+                    "email": "" if commit == _ZERO_SHA else header.get("email", ""),
+                    "committedAt": ""
+                    if commit == _ZERO_SHA
+                    else _iso_time(header.get("epoch", ""), header.get("tz", "")),
+                    "subject": ""
+                    if commit == _ZERO_SHA
+                    else header.get("summary", "")[:200],
+                    "epoch": 0
+                    if commit == _ZERO_SHA
+                    else int(header.get("epoch", "0") or 0),
+                    "uncommitted": commit == _ZERO_SHA,
+                }
+            header = {}
+            final_line = None
+            continue
+        if not raw:
+            continue
+        parts = raw.split(" ")
+        if final_line is None and len(parts) >= 3 and len(parts[0]) == 40:
+            header = {"commit": parts[0]}
+            try:
+                final_line = int(parts[2])
+            except ValueError:
+                final_line = None
+            continue
+        key, _, value = raw.partition(" ")
+        if key == "author":
+            header["author"] = value
+        elif key == "author-mail":
+            header["email"] = value.strip().lstrip("<").rstrip(">")
+        elif key == "author-time":
+            header["epoch"] = value
+        elif key == "author-tz":
+            header["tz"] = value
+        elif key == "summary":
+            header["summary"] = value
+    if not records:
+        return []
+    return [records.get(line) for line in range(1, max(records) + 1)]
+
+
+def _looks_binary(repo: str, path: str) -> bool:
+    """Mirror git's own binary heuristic (a NUL in the first 8000 bytes).
+
+    ``git blame`` happily returns the whole file as ONE line for a binary blob,
+    which would let a caller attribute a "line span" that means nothing. The
+    sniff is bounded and read-only; an unreadable path is not treated as binary
+    (git will fail on it anyway).
+    """
+    try:
+        with open(os.path.join(repo, path), "rb") as handle:
+            return b"\x00" in handle.read(8000)
+    except OSError:
+        return False
+
+
+def blame_lines(repo: str, path: str) -> Optional[List[Optional[Dict[str, Any]]]]:
+    """One ``git blame --line-porcelain`` for ``path``, indexed by line (0-based).
+
+    Returns ``None`` when git cannot answer at all — untracked path, non-repo,
+    binary file, no history — so the caller omits the field instead of inventing
+    provenance. One call per path, never per chunk: callers memoize by
+    ``(repo, path)`` within a search.
+    """
+    if _looks_binary(repo, path):
+        return None
+    out = _run(repo, "blame", "--line-porcelain", "--", path)
+    if out is None:
+        return None
+    return _parse_porcelain(out)
+
+
+def resolve_range(
+    lines: Optional[List[Optional[Dict[str, Any]]]],
+    start_line: int,
+    end_line: int,
+) -> Optional[Dict[str, Any]]:
+    """Attribute a 0-based, inclusive line span to its newest touching commit.
+
+    The newest commit among the span's lines is the one that last touched it;
+    ties resolve to the later line, so the answer is deterministic. Any
+    uncommitted line in the span wins — a working-tree edit is the last touch,
+    and reporting a committed ancestor as line-level provenance would be a
+    whole-file guess wearing a line-level label. The span is reported back
+    (1-based, as git counts lines) so a consumer can show what it covers.
+    ``None`` when blame has no record for part of the span (unanswerable).
+    """
+    if lines is None or start_line < 0 or end_line < start_line:
+        return None
+    span = lines[start_line : end_line + 1]
+    if len(span) != end_line - start_line + 1 or any(item is None for item in span):
+        return None
+    records = [item for item in span if item is not None]
+    if any(record.get("uncommitted") for record in records):
+        return {
+            "uncommitted": True,
+            "startLine": start_line + 1,
+            "endLine": end_line + 1,
+        }
+    best = max(
+        enumerate(records), key=lambda pair: (int(pair[1].get("epoch", 0)), pair[0])
+    )[1]
+    resolved = {key: best.get(key, "") for key in _SPAN_FIELDS}
+    resolved["startLine"] = start_line + 1
+    resolved["endLine"] = end_line + 1
+    return resolved
+
+
 # Human-readable text for the ``reason`` codes a skipped ``changed_since`` carries
 # (see ``core/v2/retrieval.py``). One table, shared by the MCP formatter and the
 # CLI renderers, so "why was nothing filtered" reads the same on every surface.
@@ -151,10 +303,12 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
 
 
 __all__ = [
+    "blame_lines",
     "changed_paths",
     "filter_skip_message",
     "is_git_repo",
     "last_commit",
     "repo_relative",
     "repo_toplevel",
+    "resolve_range",
 ]

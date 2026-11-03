@@ -32,13 +32,14 @@ def _run_search(
     *,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
+    git_line_blame: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
-    # Only the requested git keys are splatted: both default to None (off), and
+    # Only the requested git keys are splatted: all default to None (off), and
     # an omitted option must not reach the engine as an explicit override. An
-    # omitted ``git_provenance`` means "configured default", exactly like the
-    # CLI (``[core.v1.search] git_provenance``) — the CLI/MCP parity invariant
-    # of ``_load_search_config`` applies to this key too (#279 review).
+    # omitted ``git_provenance``/``git_line_blame`` means "configured default",
+    # exactly like the CLI (``[core.v1.search] git_provenance``) — the CLI/MCP
+    # parity invariant of ``_load_search_config`` applies to both keys (#279).
     git_kwargs: Dict[str, Any] = {}
     if changed_since is not None:
         git_kwargs["changed_since"] = changed_since
@@ -46,6 +47,10 @@ def _run_search(
         git_kwargs["git_provenance"] = git_provenance
     elif getattr(search_cfg, "git_provenance", False) is True:
         git_kwargs["git_provenance"] = True
+    if git_line_blame is not None:
+        git_kwargs["git_line_blame"] = git_line_blame
+    elif getattr(search_cfg, "git_line_blame", False) is True:
+        git_kwargs["git_line_blame"] = True
     try:
         raw_results = svc_search(
             query,
@@ -86,6 +91,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         query: str,
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
+        git_line_blame: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
@@ -100,6 +106,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 the filter cannot be applied to is named in ``collection_errors``.
             git_provenance (Optional[bool]): Add git_commit/git_author/git_committed_at
                 to each result row (defaults to core.v1.search.git_provenance).
+            git_line_blame (Optional[bool]): Add git_line_commit/git_line_author/
+                git_line_committed_at to rows whose chunk records a line span
+                (defaults to core.v1.search.git_line_blame).
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -118,6 +127,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             collections_path,
             changed_since=changed_since,
             git_provenance=git_provenance,
+            git_line_blame=git_line_blame,
         )
 
     @mcp.tool
@@ -126,6 +136,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         query: str,
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
+        git_line_blame: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
@@ -140,6 +151,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 collection_errors)
             git_provenance: Add git_commit/git_author/git_committed_at to each result row
                 (defaults to core.v1.search.git_provenance)
+            git_line_blame: Add git_line_commit/git_line_author/git_line_committed_at
+                to rows whose chunk records a line span
+                (defaults to core.v1.search.git_line_blame)
             ctx: FastMCP Context (optional, for accessing lifespan state)
 
         Returns:
@@ -190,4 +204,5 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             collections_path,
             changed_since=changed_since,
             git_provenance=git_provenance,
+            git_line_blame=git_line_blame,
         )

@@ -108,6 +108,20 @@ def format_search_results_for_llm(
                         row["git_commit"] = git.get("commit", "")
                         row["git_author"] = git.get("author", "")
                         row["git_committed_at"] = git.get("committedAt", "")
+                    line_git = chunk_data.get("git")
+                    if isinstance(line_git, dict):
+                        # Per-chunk blame (--git-line-blame): this chunk's own
+                        # line span, never the document's whole-file commit.
+                        row["git_line_start"] = line_git.get("startLine")
+                        row["git_line_end"] = line_git.get("endLine")
+                        if line_git.get("uncommitted"):
+                            row["git_line_uncommitted"] = True
+                        else:
+                            row["git_line_commit"] = line_git.get("commit", "")
+                            row["git_line_author"] = line_git.get("author", "")
+                            row["git_line_committed_at"] = line_git.get(
+                                "committedAt", ""
+                            )
                     all_chunks.append(row)
 
     _rank_chunks(all_chunks, unified=any_higher_is_better)

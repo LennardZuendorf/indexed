@@ -211,14 +211,36 @@ state, no re-index, and the v1 engine ignores both (its behaviour is unchanged).
 |--------|--------|
 | `changed_since: str` | Keep only result documents whose file changed since that git ref, **including uncommitted and untracked work**. Applied to retrieved NODES, before document grouping, so `max_docs` fills with survivors instead of being starved. |
 | `git_provenance: bool` | Attach a document-level `git` field — `{commit, short, author, email, committedAt, subject}` (camelCase, additive: absent when not requested). |
+| `git_line_blame: bool` | Attach a **per-chunk** `git` field on each `matchedChunks` entry whose chunk recorded a line span — the commit that last touched THOSE lines, plus `startLine`/`endLine` (1-based, inclusive). Independent of `git_provenance`; absent when git or blame cannot answer. |
 
-Both are no-ops unless the collection's manifest reader is a files reader
+All three are no-ops unless the collection's manifest reader is a files reader
 (`localFiles`/`files` **and** a `basePath`); the repo is resolved ONCE per collection
 via `utils/git_meta.repo_toplevel` (see [tech-connectors](tech-connectors.md) § Query-Time
 Git Helper), node `source_id`s are rebased from base-path-relative to repo-relative, and
 a git failure (not a repo, invalid ref, no history) skips the filter — never an empty
 result set and never a raised search. Provenance costs at most one
 `git log -1` per admitted document, memoized per `(repo, path)` within the call.
+
+**Line-level granularity (`git_line_blame`).** A chunk is attributed only when its
+parser recorded the span it came from — `start_line`/`end_line` (0-based, inclusive) in
+the node metadata, which today means the code chunker's chunks
+(`parsing/code_chunker.py`). Everything else (Docling PDF/DOCX chunks, plaintext
+chunks) has no line mapping, so it gets NO line-level field rather than the file's
+whole-file commit wearing a line-level label. The cost is ONE
+`git blame --line-porcelain` per path per collection per search — memoized in
+`_GitContext.blames`, so a multi-chunk document pays a single blame — with each call
+bounded by the helper's 5 s timeout. The bound is therefore
+`min(admitted documents, max_docs)` blame invocations per collection per search
+(default `max_docs` = 10), never `max_docs × chunks`.
+
+Within a span, the commit whose author date is newest is the last touch; equal
+timestamps resolve to the later line, so the answer is deterministic. A span
+containing a working-tree line yields `{"uncommitted": true, "startLine", "endLine"}`
+instead of a commit — the honest answer is that the lines are not committed yet.
+Untracked paths, binary files (a NUL in git's own 8 kB sniff window), out-of-range
+spans (the file shrank after indexing) and blame failures all leave the field absent.
+The field is additive and separate from `entry["git"]`: line-level does not imply
+document-level, and vice versa.
 
 **A skipped filter is never silent.** Every collection result carries a `gitFilter`
 status when — and only when — `changed_since` was requested:
@@ -231,11 +253,15 @@ went to v1). The skip is logged at WARNING, `mcp/formatting.py` turns it into a
 same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving under a
 "changed only" request are a defect, not a quiet degrade.
 
-Surfaced as `--changed-since` / `--git-provenance` on `indexed index search` and as
-`changed_since` / `git_provenance` on the MCP search tools, whose flattened rows then
-carry `git_commit`, `git_author`, `git_committed_at`. An omitted `git_provenance` means
-the configured `core.v1.search.git_provenance` on BOTH surfaces (the CLI/MCP parity
-invariant of `[core.v1.search]`). The CLI detail card gains a `Last commit` row.
+Surfaced as `--changed-since` / `--git-provenance` / `--git-line-blame` on
+`indexed index search` and as `changed_since` / `git_provenance` / `git_line_blame` on
+the MCP search tools, whose flattened rows then carry `git_commit`, `git_author`,
+`git_committed_at` (document level) and `git_line_commit`, `git_line_author`,
+`git_line_committed_at`, `git_line_start`, `git_line_end` — or `git_line_uncommitted`
+— (line level). An omitted `git_provenance`/`git_line_blame` means the configured
+`core.v1.search.git_provenance`/`git_line_blame` on BOTH surfaces (the CLI/MCP parity
+invariant of `[core.v1.search]`). The CLI detail card gains a `Last commit` row and a
+`Lines commit` row.
 
 The CLI validates `--changed-since` up front: an unresolvable ref always exits 1, and so
 does naming (`--collection`) a collection that cannot carry the filter — no files reader,

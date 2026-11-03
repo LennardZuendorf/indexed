@@ -88,6 +88,42 @@ class TestSearchToolGitOptions:
 
         assert mock_search.call_args.kwargs["git_provenance"] is False
 
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_line_blame_reaches_svc_search(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_resolve_config.return_value = _cfg()
+        mock_search.return_value = {}
+
+        _get_tool("search").fn("q", git_line_blame=True, ctx=_ctx())
+
+        assert mock_search.call_args.kwargs["git_line_blame"] is True
+
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_line_blame_configured_default_applies(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_resolve_config.return_value = _cfg(git_line_blame=True)
+        mock_search.return_value = {}
+
+        _get_tool("search").fn("q", ctx=_ctx())
+
+        assert mock_search.call_args.kwargs["git_line_blame"] is True
+
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_line_blame_explicit_false_beats_the_default(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_resolve_config.return_value = _cfg(git_line_blame=True)
+        mock_search.return_value = {}
+
+        _get_tool("search").fn("q", git_line_blame=False, ctx=_ctx())
+
+        assert mock_search.call_args.kwargs["git_line_blame"] is False
+
 
 class TestSearchCollectionToolGitOptions:
     def _status(self, indexers: list[str], source_type: str) -> MagicMock:
@@ -110,12 +146,18 @@ class TestSearchCollectionToolGitOptions:
         mock_search.return_value = {}
 
         _get_tool("search_collection").fn(
-            "col", "q", changed_since="HEAD", git_provenance=True, ctx=_ctx()
+            "col",
+            "q",
+            changed_since="HEAD",
+            git_provenance=True,
+            git_line_blame=True,
+            ctx=_ctx(),
         )
 
         kwargs = mock_search.call_args.kwargs
         assert kwargs["changed_since"] == "HEAD"
         assert kwargs["git_provenance"] is True
+        assert kwargs["git_line_blame"] is True
 
     @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
@@ -135,6 +177,7 @@ class TestSearchCollectionToolGitOptions:
         kwargs = mock_search.call_args.kwargs
         assert "changed_since" not in kwargs
         assert "git_provenance" not in kwargs
+        assert "git_line_blame" not in kwargs
 
     @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")

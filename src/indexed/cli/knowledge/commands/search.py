@@ -192,6 +192,15 @@ def search(
             "(v2 files collections; overrides core.v1.search.git_provenance)"
         ),
     ),
+    git_line_blame: Optional[bool] = typer.Option(
+        None,
+        "--git-line-blame/--no-git-line-blame",
+        help=(
+            "Attribute each matched chunk to the commit that last touched its "
+            "own lines, for chunks that record a line span (v2 files "
+            "collections; overrides core.v1.search.git_line_blame)"
+        ),
+    ),
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
     ),
@@ -348,6 +357,10 @@ def search(
         git_kwargs["git_provenance"] = git_provenance
     elif search_cfg.git_provenance:
         git_kwargs["git_provenance"] = True
+    if git_line_blame is not None:
+        git_kwargs["git_line_blame"] = git_line_blame
+    elif search_cfg.git_line_blame:
+        git_kwargs["git_line_blame"] = True
 
     if not collections_to_search:
         # A specific collection was named but turned out unsearchable (corrupt

@@ -2017,6 +2017,8 @@ class TestGitFlags:
         assert "--changed-since" in clean
         assert "--git-provenance" in clean
         assert "--no-git-provenance" in clean
+        assert "--git-line-blame" in clean
+        assert "--no-git-line-blame" in clean
 
     def test_flags_reach_svc_search(self, monkeypatch):
         self._wire_common(monkeypatch, [self._make_status("col1")])
@@ -2030,12 +2032,19 @@ class TestGitFlags:
 
         result = runner.invoke(
             search_cmd.app,
-            ["my-query", "--changed-since", "HEAD~1", "--git-provenance"],
+            [
+                "my-query",
+                "--changed-since",
+                "HEAD~1",
+                "--git-provenance",
+                "--git-line-blame",
+            ],
         )
 
         assert result.exit_code == 0
         assert captured["changed_since"] == "HEAD~1"
         assert captured["git_provenance"] is True
+        assert captured["git_line_blame"] is True
 
     def test_omitted_flags_forward_nothing(self, monkeypatch):
         """Neither flag given → no git kwarg at all, exactly as before."""
@@ -2053,6 +2062,7 @@ class TestGitFlags:
         assert result.exit_code == 0
         assert "changed_since" not in captured
         assert "git_provenance" not in captured
+        assert "git_line_blame" not in captured
 
     def test_invalid_ref_exits_nonzero(self, monkeypatch, git_repo):
         """A typo'd ref must fail loud, not come back unfiltered."""

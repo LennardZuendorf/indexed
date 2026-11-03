@@ -27,7 +27,7 @@ COLLECTION = "files-v2-git-aware"
 QUERY = "walrus migration survey beta"
 
 
-def _create_v2(path: Path) -> None:
+def _create_v2(path: Path, collection: str = COLLECTION) -> None:
     created = runner.invoke(
         app,
         [
@@ -39,7 +39,7 @@ def _create_v2(path: Path) -> None:
             "create",
             "files",
             "--collection",
-            COLLECTION,
+            collection,
             "--path",
             str(path),
             "--local",
@@ -161,5 +161,113 @@ def test_bad_changed_since_ref_exits_nonzero(local_workspace, git_corpus: Path) 
 
     removed = runner.invoke(
         app, ["--local", "--log-level", "ERROR", "remove", COLLECTION, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+# ── line-level blame (#60) ─────────────────────────────────────────────────
+
+
+LINE_COLLECTION = "files-v2-line-blame"
+LINE_QUERY = "walrus section"
+
+
+def _function_block(name: str, terms: str, lines: int = 20) -> str:
+    """A function big enough to be its OWN chunk, under the token budget."""
+    body = [f"def {name}():", f'    """{terms} section."""', "    total = 0"]
+    body.extend(f"    value_{i} = {i} + total  # {terms}" for i in range(lines))
+    body.append("    return total")
+    return "\n".join(body) + "\n"
+
+
+@pytest.fixture
+def line_blame_corpus(tmp_path: Path) -> tuple[Path, str, str]:
+    """One file, two chunks, two commits: c2 rewrites a line inside ``beta`` only.
+
+    The module is deliberately two medium functions: the code chunker emits one
+    chunk per function (neither exceeds the token budget), so the two chunks'
+    line spans belong to different commits. Both functions carry the query term.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_git(repo, "init")
+    alpha = _function_block("alpha", "walrus")
+    beta = _function_block("beta", "walrus")
+    (repo / "module.py").write_text(
+        '"""Synthetic module."""\n\n' + alpha + "\n\n" + beta + "\n"
+    )
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "initial module", "--date=2026-01-01T00:00:00+00:00")
+    first = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    # Same line count, so the indexed spans stay valid: only the marker changes,
+    # and only inside ``beta`` — ``alpha``'s span must keep its c1 provenance.
+    (repo / "module.py").write_text(
+        '"""Synthetic module."""\n\n'
+        + alpha
+        + "\n\n"
+        + beta.replace(
+            "value_3 = 3 + total  # walrus",
+            "value_3 = 3 + total  # walrus EDITED",
+        )
+        + "\n"
+    )
+    run_git(repo, "add", "module.py")
+    run_git(
+        repo,
+        "commit",
+        "--author=Second Author <second@test.com>",
+        "--date=2026-01-02T00:00:00+00:00",
+        "-m",
+        "edit beta line",
+    )
+    second = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    return repo, first, second
+
+
+def test_line_blame_resolves_two_chunks_of_one_file_to_two_commits(
+    local_workspace, line_blame_corpus: tuple[Path, str, str]
+) -> None:
+    repo, first, second = line_blame_corpus
+    _create_v2(repo, LINE_COLLECTION)
+
+    blamed = _search(LINE_QUERY, LINE_COLLECTION, "--git-line-blame")
+    rows = [r for r in blamed["results"] if r["document_id"] == "module.py"]
+    assert len(rows) >= 2, f"expected both chunks of module.py, got {rows}"
+
+    by_commit = {
+        row["git_line_commit"]: row for row in rows if "git_line_commit" in row
+    }
+    # Two chunks of ONE file, attributed to TWO different commits.
+    assert set(by_commit) == {first, second}
+    assert by_commit[second]["git_line_author"] == "Second Author"
+    assert by_commit[first]["git_line_start"] < by_commit[second]["git_line_start"]
+    # Line-level only: the document-level triple stays off unless asked for.
+    assert all("git_commit" not in row for row in rows)
+
+    # --- the Rich detail card names the lines' commit too -------------------
+    from indexed.cli.utils.simple_output import reset_simple_output
+
+    reset_simple_output()
+    rich = runner.invoke(
+        app,
+        [
+            "--local",
+            "--log-level",
+            "ERROR",
+            "search",
+            LINE_QUERY,
+            "--collection",
+            LINE_COLLECTION,
+            "--git-line-blame",
+        ],
+    )
+    assert rich.exit_code == 0, rich.stdout + rich.stderr
+    assert "Lines commit" in rich.stdout
+    # The card names the span it attributed, alongside the commit line.
+    assert "lines " in rich.stdout
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", LINE_COLLECTION, "--force"]
     )
     assert removed.exit_code == 0, removed.stdout + removed.stderr

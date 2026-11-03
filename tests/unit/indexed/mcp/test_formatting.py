@@ -260,6 +260,52 @@ def test_git_provenance_adds_three_keys_only_when_present() -> None:
     assert not {"git_commit", "git_author", "git_committed_at"} & set(row)
 
 
+def test_git_line_blame_adds_span_keys_only_when_present() -> None:
+    """``--git-line-blame`` rows name the chunk's own span and commit (#60)."""
+    doc = _chunk("with-lines", 0.9)
+    doc["matchedChunks"][0]["git"] = {
+        "commit": "b" * 40,
+        "short": "b" * 7,
+        "author": "Bob Blamer",
+        "email": "bob@test.com",
+        "committedAt": "2026-11-03T10:00:00+01:00",
+        "subject": "touch these lines",
+        "startLine": 12,
+        "endLine": 30,
+    }
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": [doc]}}
+
+    row = format_search_results_for_llm(raw, "q")["results"][0]
+    assert row["git_line_commit"] == "b" * 40
+    assert row["git_line_author"] == "Bob Blamer"
+    assert row["git_line_committed_at"] == "2026-11-03T10:00:00+01:00"
+    assert (row["git_line_start"], row["git_line_end"]) == (12, 30)
+    # Line-level is additive: it never fabricates the document-level triple.
+    assert "git_commit" not in row
+
+    uncommitted = _chunk("local-edit", 0.9)
+    uncommitted["matchedChunks"][0]["git"] = {
+        "uncommitted": True,
+        "startLine": 3,
+        "endLine": 4,
+    }
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [uncommitted],
+        }
+    }
+    row = format_search_results_for_llm(raw, "q")["results"][0]
+    assert row["git_line_uncommitted"] is True
+    assert "git_line_commit" not in row
+
+    plain = _chunk("no-lines", 0.9)
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": [plain]}}
+    row = format_search_results_for_llm(raw, "q")["results"][0]
+    assert not {key for key in row if key.startswith("git_line_")}
+
+
 def test_skipped_git_filter_is_reported_not_silent() -> None:
     """A requested filter a collection could not apply must be visible (#279 review).
 
