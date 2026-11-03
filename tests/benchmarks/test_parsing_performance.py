@@ -24,8 +24,16 @@ from indexed.parsing.router import FileRouter
 # Root of the indexed project
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = PROJECT_ROOT / "docs"
-SPEC_DIR = PROJECT_ROOT / ".spec"
 LOGO_PNG = DOCS_DIR / "img" / "logo.png"
+
+# Pinned benchmark corpus: a frozen snapshot of the docs tree, never the live
+# spec tree. Measuring the repo's own documents would slow this benchmark by
+# construction whenever a PR adds a spec file, while the baseline-guard forbids
+# that PR from absorbing the difference — a red gate with no in-PR fix. The
+# bytes are locked by fixtures/parsing_corpus.sha256 and enforced by
+# tests/unit/test_benchmark_corpus_pin.py; refresh the corpus only as a
+# deliberate change, followed by a benchmark baseline refresh.
+CORPUS_DIR = Path(__file__).resolve().parent / "fixtures" / "parsing_corpus"
 
 
 # ---------------------------------------------------------------------------
@@ -62,16 +70,16 @@ def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a realistic mixed workspace with ~50 files for batch benchmarks."""
     base = tmp_path_factory.mktemp("bench_workspace")
 
-    # Copy .spec/ markdown files into a docs/ subdir (simulated content tree)
+    # Copy the pinned corpus markdown files into a docs/ subdir (content tree)
     docs_sub = base / "docs"
     docs_sub.mkdir()
-    for md in SPEC_DIR.glob("*.md"):
+    for md in CORPUS_DIR.glob("*.md"):
         (docs_sub / md.name).write_text(md.read_text())
 
-    # Copy .spec/ markdown files
+    # Copy the same corpus into a spec/ subdir
     spec_sub = base / "spec"
     spec_sub.mkdir()
-    for md in SPEC_DIR.glob("*.md"):
+    for md in CORPUS_DIR.glob("*.md"):
         (spec_sub / md.name).write_text(md.read_text())
 
     # Generate Python files
@@ -121,8 +129,8 @@ def mixed_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=2.0)
 def test_parse_markdown_docs(benchmark, parsing_module: ParsingModule):
-    """Benchmark: parse a real .spec/ markdown file."""
-    target = SPEC_DIR / "product.md"
+    """Benchmark: parse a pinned corpus markdown file."""
+    target = CORPUS_DIR / "product.md"
     assert target.exists()
 
     def parse_md():
@@ -134,8 +142,8 @@ def test_parse_markdown_docs(benchmark, parsing_module: ParsingModule):
 
 @pytest.mark.benchmark(min_rounds=3, max_time=2.0)
 def test_parse_large_markdown(benchmark, parsing_module: ParsingModule):
-    """Benchmark: parse the largest .spec/ markdown file (~24KB)."""
-    target = SPEC_DIR / "tech.md"
+    """Benchmark: parse the corpus's largest top-level doc (~30 KB)."""
+    target = CORPUS_DIR / "tech.md"
     assert target.exists()
 
     def parse_large_md():
@@ -208,8 +216,8 @@ def test_file_router_throughput(benchmark, file_router: FileRouter):
 @pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=10.0)
 def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
-    """Benchmark: parse all markdown files in .spec/ directory."""
-    md_files = list(SPEC_DIR.glob("*.md"))
+    """Benchmark: parse every top-level markdown file in the pinned corpus."""
+    md_files = list(CORPUS_DIR.glob("*.md"))
     assert len(md_files) > 0
 
     def parse_all_docs():
@@ -225,12 +233,12 @@ def test_batch_parse_docs_directory(benchmark, parsing_module: ParsingModule):
 @pytest.mark.slow
 @pytest.mark.benchmark(min_rounds=3, max_time=15.0)
 def test_full_connector_pipeline_docs(benchmark):
-    """Benchmark: full FileSystemConnector pipeline on .spec/ directory."""
-    assert SPEC_DIR.is_dir()
+    """Benchmark: full FileSystemConnector pipeline on the pinned corpus."""
+    assert CORPUS_DIR.is_dir()
 
     def full_pipeline():
         connector = FileSystemConnector(
-            path=str(SPEC_DIR),
+            path=str(CORPUS_DIR),
             include_patterns=[r".*\.md$"],
             ocr_enabled=False,
             table_structure=False,
@@ -273,7 +281,7 @@ def test_full_connector_pipeline_mixed(benchmark, mixed_workspace: Path):
 @pytest.mark.benchmark(min_rounds=5, max_time=2.0)
 def test_v1_adapter_conversion(benchmark, parsing_module: ParsingModule):
     """Benchmark: V1FormatAdapter conversion on multiple parsed documents."""
-    md_files = list(SPEC_DIR.glob("*.md"))
+    md_files = list(CORPUS_DIR.glob("*.md"))
     assert len(md_files) > 0
 
     # Pre-parse all documents (setup, not measured)
