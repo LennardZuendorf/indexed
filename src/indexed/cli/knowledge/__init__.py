@@ -6,7 +6,7 @@ and performing semantic search operations.
 
 from .cli import app
 
-__all__ = ["app", "create", "search", "inspect", "update", "remove", "migrate"]
+__all__ = ["app", "create", "search", "inspect", "update", "remove", "migrate", "watch"]
 
 
 # Lazy loading to avoid importing heavy dependencies during CLI startup
@@ -35,6 +35,10 @@ def __getattr__(name: str):
         from .commands import migrate
 
         return migrate
+    elif name == "watch":
+        from .commands import watch
+
+        return watch
     elif name == "commands":
         from . import commands
 

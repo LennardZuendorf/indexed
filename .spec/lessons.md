@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-03
 ---
 
 # Lessons Learned
@@ -1294,3 +1294,23 @@ with `git add`/`git status`, since that's what CI actually runs.
   drive the real app callback (real `bootstrap_logging`, unstubbed) and emit a
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
+
+## Freshness loops: the missing source path is the dangerous case (2026-11-03)
+
+- **An unreachable source is not an empty collection — it reads as a full
+  deletion.** The files reader walks with `os.walk`, which yields nothing for a
+  path that is gone (deleted, renamed, unmounted, not yet restored), and the
+  change tracker then classifies every indexed file as `deleted`, so an update
+  empties the collection. Any loop that re-derives a collection from its source
+  (watcher, scheduled job, agent) must gate on `is_dir()` **before** calling
+  update and keep the last good generation instead, resuming when the path
+  returns. Test the missing case, not just the happy one.
+- **A watcher must not clean the store's in-flight siblings.** `.tmp-*`/`.trash-*`
+  belong to `recover_stranded`, which needs pid liveness to decide; a loop that
+  "tidies up" removes the only evidence of a crashed swap. Treat a missing
+  canonical collection directory as a transient swap window too, never as a
+  user deletion.
+- **The fingerprint must honour the reader's exclusions.** Fingerprinting every
+  file under the root turns an edit to a `.gitignore`d file or an excluded dir
+  into an update pass; skip them the way the reader does, and pin the
+  duplicated exclusion logic with a test rather than trusting it to stay in step.

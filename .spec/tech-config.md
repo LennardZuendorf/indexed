@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-07-10
+updated: 2026-11-03
 ---
 
 # Tech Branch: Config (`src/indexed/config/`)
@@ -160,6 +160,10 @@ json_logs = false
 transport = "stdio"
 host = "127.0.0.1"
 port = 8000
+
+[watch]
+debounce_seconds = 2.0     # quiet period before one update runs
+poll_interval_seconds = 2.0  # seconds between scans of the watched tree
 ```
 
 > **Note:** `[core.v1.indexing]` (`chunk_size`/`chunk_overlap`) and most of

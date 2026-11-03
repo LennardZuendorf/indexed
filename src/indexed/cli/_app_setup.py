@@ -65,6 +65,11 @@ def register_commands(app: typer.Typer) -> None:
         "index update", rich_help_panel=KNOWLEDGE_PANEL, help="Update a Collection"
     )(knowledge.update.update)
     app.command(
+        "index watch",
+        rich_help_panel=KNOWLEDGE_PANEL,
+        help="Watch a local Collection and update it as files change",
+    )(knowledge.watch.watch)
+    app.command(
         "index remove",
         rich_help_panel=KNOWLEDGE_PANEL,
         help="Remove one or more Collections",
@@ -80,6 +85,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command("search", hidden=True)(knowledge.search.search)
     app.command("inspect", hidden=True)(knowledge.inspect.inspect_collections)
     app.command("update", hidden=True)(knowledge.update.update)
+    app.command("watch", hidden=True)(knowledge.watch.watch)
     app.command("remove", hidden=True)(knowledge.remove.remove)
     app.command("migrate", hidden=True)(knowledge.migrate.migrate)
 
