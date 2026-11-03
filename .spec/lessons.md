@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Lessons Learned
@@ -1334,3 +1334,33 @@ with `git add`/`git status`, since that's what CI actually runs.
   Write the failure side of every contract in the same section as the success
   shape, pin each body with a test, and state what the exit code means — including
   which empty states are exits 0 because an empty store is not a failure.
+- **Sharing a builder means importing it, not mirroring it.** The LSP surface was
+  first written with a copy of `build_locator` plus a parity test over eight
+  sample inputs; the copies had already diverged on text-only chunks and prose
+  heading prefixes, which a fixed sample set cannot catch. Move the pure
+  normaliser down to `indexed/utils/provenance.py` and have every surface import
+  the one function — a test can only pin two implementations to the cases it
+  happens to enumerate.
+- **A hover range must be in the hovered document.** LSP defines `Hover.range`
+  as a range in the document under the cursor; taking it from the top search hit
+  underlines unrelated text whenever that hit lives in another file. Omit the
+  optional field and let the hover text state the locator instead.
+- **Lead with the comparable number, never a raw distance.** A v1 score is a
+  squared-L2 distance: smaller is better, so printing it as "score" reads
+  inverted. Print the shared `unified_relevance` first and the raw value with its
+  `score_kind` second.
+- **Cap a framed read before you block on it.** A `Content-Length` header is
+  peer-controlled: bound it (`MAX_CONTENT_LENGTH`) and treat a short body as a
+  decode error, or one bad client hangs the server on a read that never returns.
+  Once the frame is refused *before* its body is read, end the session too — the
+  unread bytes would be parsed as the next frame's headers and the client's real
+  request would go unanswered instead of merely failing.
+- **A prefix has as many shapes as it has producers.** Stripping the `# <path>`
+  code prefix left plaintext chunks' bare `<path>` line in place, so the first
+  hover line and the whole symbol name were an absolute path. Strip every shape
+  the producers actually emit, and assert the symbol name — a fence-only
+  assertion passes on the leak.
+- **A notification must not mutate the lifecycle.** Answering a request-less
+  `initialize` (with the reserved `id: null`) and marking the session
+  initialized makes the client's real `initialize` a "second" one, so the
+  session can never start. Check for an id before the state machine.

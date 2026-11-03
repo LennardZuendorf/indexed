@@ -427,6 +427,36 @@ def test_code_context_prefix_is_stripped_when_the_locator_already_has_the_path()
     assert payload["documents"][0]["hits"][0]["text"] == "print(1)"
 
 
+def test_plaintext_context_prefix_is_stripped_too() -> None:
+    """Plaintext chunks embed ``<path>\\n`` (no ``# ``): the payload must not
+    repeat a path the locator already states."""
+    raw = {
+        "coll": {
+            "results": [
+                {
+                    "id": "runbooks/deploy steps.txt",
+                    "url": "file:///runbooks/deploy steps.txt",
+                    "matchedChunks": [
+                        {
+                            "chunkNumber": 1,
+                            "score": 0.5,
+                            "content": {
+                                "indexedData": (
+                                    "/runbooks/deploy steps.txt\nRollback runbook"
+                                ),
+                                "metadata": {"file_path": "/runbooks/deploy steps.txt"},
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    payload = build_search_payload(raw, "q")
+
+    assert payload["documents"][0]["hits"][0]["text"] == "Rollback runbook"
+
+
 def test_text_prefix_is_kept_when_no_file_path_is_known() -> None:
     raw = {
         "coll": {

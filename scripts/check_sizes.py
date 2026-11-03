@@ -45,7 +45,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
 # `metadata` so a v2 hit can say where it sits — genuine contract surface, not
 # stealth regrowth; ceiling = measured (31_602) + headroom.
-SRC_LOC_MAX = 31_800
+# Raised from 31_800 by issue #241's LSP Tier 0 surface: `indexed/lsp/` is a
+# fourth presentation entry point (Content-Length framing, capability-honest
+# dispatch, the locator->LSP-range conversion and the collection-ownership
+# seam) plus the `indexed lsp` command — new product surface with its own unit
+# and out-of-process stdio tests, not stealth regrowth; ceiling = measured
+# (32_656) + headroom.
+SRC_LOC_MAX = 32_900
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -143,7 +149,18 @@ SRC_LOC_MAX = 31_800
 # reproduced two-shapes drift, not stealth regrowth; ceiling = measured
 # (49_095 on the post-#265 tree, whose eval suite is already inside main's own
 # 48_600) + headroom.
-TEST_LOC_MAX = 49_300
+# Raised from 49_300 by issue #241's LSP Tier 0 surface: framing, dispatch and
+# payload-builder units plus an out-of-process stdio session that drives all
+# five Tier 0 acceptance points against a real collection — the protocol is the
+# contract, so the transcript IS the regression test; ceiling = measured
+# (50_312) + headroom.
+# Raised from 50_600 by the LSP Tier 0 review remediation: red->green cases for
+# the plaintext context prefix (symbol name / hover text), notification-only
+# `initialize`/`shutdown`, the over-limit frame ending the session instead of
+# desyncing the stream, and percent-encoded file URIs under a spaced, non-ASCII
+# path — all defect-guarding coverage for reproduced payload/protocol bugs, not
+# stealth regrowth; ceiling = measured (50_674) + headroom.
+TEST_LOC_MAX = 50_900
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
