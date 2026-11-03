@@ -1294,3 +1294,19 @@ with `git add`/`git status`, since that's what CI actually runs.
   drive the real app callback (real `bootstrap_logging`, unstubbed) and emit a
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
+
+## Fixture-ordering leaks poison the shared process (2026-11-03)
+
+- **An autouse fixture that consumes `monkeypatch` reorders teardown.** The
+  shared `monkeypatch` fixture is then set up *before* per-test fixtures, so its
+  `undo()` runs last — a test that `monkeypatch.setattr`s an attribute another
+  fixture already patched (e.g. `resolve_collections_context` under the autouse
+  runtime-context patch) restores the **Mock** permanently and every later test
+  in the process fails on a MockCtx / MagicMock config. Autouse fixtures that
+  need env or attribute isolation must build their own `MonkeyPatch()` instance
+  (the `isolate_config_paths` idiom) instead of taking the fixture.
+- **Unit-only CI cannot see cross-suite leaks.** `python-cov.yml` runs
+  `tests/unit/` and `python-ci.yml` runs `tests/system/` in separate processes,
+  so a leak that only bites when both are collected together ships green. Run
+  `uv run pytest` (testpaths=[tests]) before handing off, and guard the
+  teardown invariant where the leak would land.

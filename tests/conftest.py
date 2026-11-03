@@ -179,15 +179,26 @@ def run_git(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_git_env(monkeypatch: pytest.MonkeyPatch):
+def _isolate_git_env():
     """Drop inherited GIT_* vars for every test.
 
     Production code under test shells out to git too — if it inherits a leaked
     GIT_DIR/GIT_INDEX_FILE it operates on the outer repo. Scrubbing the process
     env keeps both the test setup and the code pinned to their own repos.
+
+    Uses a private ``MonkeyPatch`` (like ``isolate_config_paths`` above) rather
+    than the ``monkeypatch`` fixture on purpose: an autouse fixture that consumes
+    the shared fixture gets it set up *before* per-test fixtures, which flips
+    teardown order — a test that ``monkeypatch.setattr``s an attribute another
+    fixture already patched (test_inspect.py does exactly that with
+    ``resolve_collections_context``) then restores a Mock permanently, poisoning
+    every later test in the same process.
     """
+    mp = MonkeyPatch()
     for var in _LEAKED_GIT_VARS:
-        monkeypatch.delenv(var, raising=False)
+        mp.delenv(var, raising=False)
+    yield
+    mp.undo()
 
 
 @pytest.fixture
