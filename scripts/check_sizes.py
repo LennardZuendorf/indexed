@@ -127,7 +127,13 @@ SRC_LOC_MAX = 31_600
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-TEST_LOC_MAX = 48_600
+# Raised from 48_600 by the files-connector dead-config fix (changeTracking was
+# read but never persisted, codeChunking never reached ParsingModule): whole
+# reader-block round-trip through manifest.json, update-strategy honouring
+# (none vs auto), config→reader threading and AST-vs-plaintext chunk assertions,
+# all red on the pre-fix commit — genuine defect-guarding coverage, not stealth
+# regrowth; ceiling = measured (48_696) + headroom.
+TEST_LOC_MAX = 48_900
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
