@@ -150,4 +150,3 @@ Indexing is not the only consumer of git: `search --changed-since` and
   arithmetic only (no symlink resolution, no filesystem probe).
 - **No global cache.** Callers memoize per search call, so a long-lived MCP server
   cannot serve stale git facts.
-
