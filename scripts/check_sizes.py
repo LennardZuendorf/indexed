@@ -140,7 +140,15 @@ SRC_LOC_MAX = 32_000
 # renderer warning, v1 facade stamping) plus the MCP tool forwarding tests that
 # did not exist — defect-guarding coverage, not stealth regrowth; measured
 # 49_497.
-TEST_LOC_MAX = 49_600
+# Raised from 49_600 by the storage-root exclusion follow-up (PR #279): the
+# files-connector regression suite pins both layers of the guard (`.indexed` in
+# the default name list, the resolved-root path guard under an explicit
+# `excluded_dirs` override, the global root inside a scanned tree, the
+# `specific_files` update path, and the deliberate scan-root-inside-storage
+# escape hatch), and the system test proves `--changed-since` no longer reports
+# the collection's own storage file — defect-guarding coverage for a reproduced
+# self-indexing bug, not stealth regrowth; measured 49_737.
+TEST_LOC_MAX = 49_900
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
