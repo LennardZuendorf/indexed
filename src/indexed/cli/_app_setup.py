@@ -15,6 +15,7 @@ import typer
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
 CONFIG_PANEL = "Configuration Management"
 MCP_PANEL = "MCP Server"
+LSP_PANEL = "Language Server (LSP)"
 RESOURCES_PANEL = "Resources"
 
 
@@ -26,6 +27,7 @@ def register_commands(app: typer.Typer) -> None:
     from indexed.config import cli as config
     from .debug import debug as debug_command
     from .init import init as init_command
+    from .lsp import lsp as lsp_command
 
     app.command(
         "init",
@@ -121,6 +123,12 @@ def register_commands(app: typer.Typer) -> None:
     app.command(
         "mcp inspect", rich_help_panel=MCP_PANEL, help="Inspect MCP Server Capabilities"
     )(mcp.inspect)
+
+    app.command(
+        "lsp",
+        rich_help_panel=LSP_PANEL,
+        help="Serve the Index Over the Language Server Protocol (stdio)",
+    )(lsp_command)
 
     app.add_typer(
         info.app,

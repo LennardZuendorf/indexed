@@ -20,12 +20,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from indexed.protocols.results import SEARCH_SCHEMA, Hit, Locator
-from indexed.utils.relevance import unified_relevance
-
-#: Score kind reported for a v1 collection, which carries no ``scoreKind``
-#: key: squared-L2 distance over unit vectors (see ``unified_relevance``).
-V1_SCORE_KIND = "l2_squared"
+from indexed.protocols.results import SEARCH_SCHEMA, Hit
+from indexed.utils.provenance import build_locator, chunk_parts, strip_context_prefix
+from indexed.utils.relevance import V1_SCORE_KIND, unified_relevance
 
 #: Precision of emitted floats; ranking retains full precision internally.
 _SCORE_DECIMALS = 4
@@ -85,7 +82,7 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                 documents[key] = entry  # type: ignore[assignment]
 
             for chunk_data in doc.get("matchedChunks", []) or []:
-                text, metadata = _chunk_parts(chunk_data)
+                text, metadata = chunk_parts(chunk_data)
                 if not text:
                     continue
                 raw_score = float(chunk_data.get("score", 0.0) or 0.0)
@@ -95,7 +92,7 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     "relevance": round(relevance, _SCORE_DECIMALS),
                     "score": round(raw_score, _SCORE_DECIMALS),
                     "locator": locator,
-                    "text": _strip_context_prefix(text, metadata),
+                    "text": strip_context_prefix(text, metadata),
                 }
                 ranked.append((relevance, key, hit))
 
@@ -152,91 +149,6 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     out["score_kind"] = doc["score_kind"]
     out["hits"] = hits
     return out
-
-
-def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
-    """Say where a hit sits — and say nothing it does not know.
-
-    Precision order: a line span outranks a page, which outranks a heading
-    path, which outranks the bare document. Sources differ: tree-sitter code
-    chunks carry ``start_line``/``end_line`` (0-based, inclusive) and a
-    ``file_path``; Docling-parsed PDFs/DOCX carry ``page``; Markdown, Jira,
-    Confluence and Outline carry ``headings`` only. A source with none of
-    them gets ``kind: "document"`` rather than an invented range.
-    """
-    meta = metadata or {}
-
-    path = meta.get("file_path") or _path_from_url(doc_url)
-    start, end = meta.get("start_line"), meta.get("end_line")
-    if isinstance(start, int) and isinstance(end, int) and path:
-        # 0-based inclusive on disk -> 1-based inclusive here: what `grep -n`
-        # prints and what every editor shows.
-        return {
-            "kind": "line_span",
-            "path": path,
-            "start_line": start + 1,
-            "end_line": end + 1,
-        }
-
-    page = meta.get("page")
-    if isinstance(page, int) and page > 0:
-        locator: Locator = {"kind": "page", "page": page}
-        if path:
-            locator["path"] = path
-        return locator
-
-    headings = meta.get("headings")
-    if isinstance(headings, list):
-        # Decide the kind AFTER cleaning: the Markdown/Jira converters emit
-        # ``headings: [""]`` for whole-file chunks, and a ``headings`` locator
-        # declaring an empty path would claim a precision the chunk does not
-        # have. An empty cleaning means "position unknown" -> ``document``.
-        cleaned = [h.strip() for h in headings if isinstance(h, str) and h.strip()]
-        if cleaned:
-            return {"kind": "headings", "headings": cleaned}
-
-    return {"kind": "document"}
-
-
-def _chunk_parts(chunk_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    """Pull ``(text, metadata)`` out of a matched chunk's ``content``.
-
-    v1 puts the raw converted chunk there (``{indexedData, metadata}``); v2
-    used to put ``{indexedData}`` only, so v2 hits lost their locator — both
-    engines now carry ``metadata`` when the chunk has any.
-    """
-    content = chunk_data.get("content")
-    if isinstance(content, str):
-        return content, {}
-    if not isinstance(content, dict):
-        return "", {}
-    metadata = content.get("metadata")
-    text = content.get("indexedData") or ""
-    if not isinstance(text, str):
-        text = str(text)
-    return text, metadata if isinstance(metadata, dict) else {}
-
-
-def _strip_context_prefix(text: str, metadata: Dict[str, Any]) -> str:
-    """Drop the ``# <path>\\n`` context prefix code chunks embed in their text.
-
-    The indexer prepends the file path so the embedding sees it; the payload
-    already carries that path in ``locator.path``, so keeping it would make
-    every code hit start with a line the agent has to strip.
-    """
-    path = metadata.get("file_path")
-    if isinstance(path, str) and path:
-        prefix = f"# {path}\n"
-        if text.startswith(prefix):
-            return text[len(prefix) :]
-    return text
-
-
-def _path_from_url(url: str) -> str:
-    """``file:///a/b.py`` -> ``/a/b.py``; anything else is left alone."""
-    if url.startswith("file://"):
-        return url[len("file://") :]
-    return ""
 
 
 __all__ = ["V1_SCORE_KIND", "build_locator", "build_search_payload"]

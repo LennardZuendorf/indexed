@@ -5,15 +5,15 @@ Walks ``src/indexed`` via AST and fails on forbidden cross-subpackage import
 edges. Subpackages are the first path component under ``src/indexed`` and the
 first two components of an ``indexed.<sub>`` import.
 
-Rules (top may import down; nothing imports up into cli/mcp):
-  - core        ↛ connectors, cli, mcp
-  - connectors  ↛ core, cli, mcp
-  - config      ↛ core, connectors, cli, mcp   (may use only protocols/models)
-  - parsing     ↛ core, connectors, cli, mcp
-  - utils       ↛ core, connectors, cli, mcp
-  - protocols   ↛ core, connectors, cli, mcp
+Rules (top may import down; nothing imports up into cli/mcp/lsp):
+  - core        ↛ connectors, cli, mcp, lsp
+  - connectors  ↛ core, cli, mcp, lsp
+  - config      ↛ core, connectors, cli, mcp, lsp   (may use only protocols/models)
+  - parsing     ↛ core, connectors, cli, mcp, lsp
+  - utils       ↛ core, connectors, cli, mcp, lsp
+  - protocols   ↛ core, connectors, cli, mcp, lsp
   - core/v2     ↛ core.v1   (v2 is self-contained: protocols/config/utils + 3rd-party only)
-  - cli/mcp     ↛ core.v1, core.v2   (app layer uses only the core facade)
+  - cli/mcp/lsp ↛ core.v1, core.v2   (app layer uses only the core facade)
 
 Run with ``--self-test`` to verify synthetic forbidden edges are caught.
 """
@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "indexed"
 
-_UP = frozenset({"cli", "mcp"})
+_UP = frozenset({"cli", "mcp", "lsp"})
 
 # The `indexed config` CLI command lives at config/cli.py and its per-command
 # modules under config/commands/ (merged there so they share the
@@ -169,12 +169,16 @@ def check(src: Path = SRC) -> list[str]:
 
 
 def _self_test() -> int:
-    src = "from indexed.connectors.files import connector\nimport indexed.cli.app\n"
+    src = (
+        "from indexed.connectors.files import connector\n"
+        "import indexed.cli.app\n"
+        "import indexed.lsp.server\n"
+    )
     tree = ast.parse(src)
     subs = {t for _, t in _imported_subpackages(tree)}
     forbidden = FORBIDDEN["core"]
     caught = subs & forbidden
-    expected = {"connectors", "cli"}
+    expected = {"connectors", "cli", "lsp"}
     if caught != expected:
         print(
             f"SELF-TEST FAILED: caught {caught}, expected {expected}", file=sys.stderr
@@ -224,7 +228,7 @@ def _self_test() -> int:
         return 1
     print(
         f"self-test OK: forbidden edges detected for 'core' -> {sorted(caught)}; "
-        "v2 ↛ core.v1 enforced; cli/mcp ↛ core.v1/core.v2 enforced"
+        "v2 ↛ core.v1 enforced; cli/mcp/lsp ↛ core.v1/core.v2 enforced"
     )
     return 0
 
