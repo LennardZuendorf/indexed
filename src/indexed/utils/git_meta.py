@@ -115,6 +115,30 @@ def last_commit(repo: str, path: str) -> dict[str, str] | None:
     }
 
 
+# Human-readable text for the ``reason`` codes a skipped ``changed_since`` carries
+# (see ``core/v2/retrieval.py``). One table, shared by the MCP formatter and the
+# CLI renderers, so "why was nothing filtered" reads the same on every surface.
+_FILTER_SKIP_REASONS = {
+    "no-git-repository": "no git repository could be resolved for the collection",
+    "unknown-ref": "the git ref could not be resolved",
+    "not-a-files-collection": "the collection has no files reader",
+    "v1-engine": "git filtering applies to v2 collections only",
+}
+
+
+def filter_skip_message(status: dict) -> str:
+    """One line explaining a ``gitFilter`` status that was not applied.
+
+    ``status`` is the per-collection ``gitFilter`` dict; an unrecognized reason
+    code is passed through verbatim rather than hidden.
+    """
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        f"changed_since '{status.get('ref', '')}' was not applied: "
+        f"{_FILTER_SKIP_REASONS.get(reason, reason)}; results are unfiltered"
+    )
+
+
 def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     """Repo-relative POSIX path for a document id.
 
@@ -128,6 +152,7 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
 
 __all__ = [
     "changed_paths",
+    "filter_skip_message",
     "is_git_repo",
     "last_commit",
     "repo_relative",

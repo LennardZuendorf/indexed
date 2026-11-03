@@ -721,6 +721,19 @@ def search(
             **rerank_kwargs,
             **git_kwargs,
         )
+        if changed_since is not None and version != "2":
+            # v1 ignores the git options (documented) — say so per collection
+            # instead of handing back silently unfiltered rows (#279 review).
+            for entry in out.values():
+                if isinstance(entry, dict) and "error" not in entry:
+                    entry.setdefault(
+                        "gitFilter",
+                        {
+                            "ref": changed_since,
+                            "applied": False,
+                            "reason": "v1-engine",
+                        },
+                    )
         return out
 
     names = (

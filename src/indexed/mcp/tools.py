@@ -35,12 +35,17 @@ def _run_search(
 ) -> Dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
     # Only the requested git keys are splatted: both default to None (off), and
-    # an omitted option must not reach the engine as an explicit override.
+    # an omitted option must not reach the engine as an explicit override. An
+    # omitted ``git_provenance`` means "configured default", exactly like the
+    # CLI (``[core.v1.search] git_provenance``) — the CLI/MCP parity invariant
+    # of ``_load_search_config`` applies to this key too (#279 review).
     git_kwargs: Dict[str, Any] = {}
     if changed_since is not None:
         git_kwargs["changed_since"] = changed_since
     if git_provenance is not None:
         git_kwargs["git_provenance"] = git_provenance
+    elif getattr(search_cfg, "git_provenance", False) is True:
+        git_kwargs["git_provenance"] = True
     try:
         raw_results = svc_search(
             query,
@@ -91,9 +96,10 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         Parameters:
             query (str): The search query text.
             changed_since (Optional[str]): Keep only files changed since this git ref,
-                tag or commit, including uncommitted and untracked changes.
+                tag or commit, including uncommitted and untracked changes. A collection
+                the filter cannot be applied to is named in ``collection_errors``.
             git_provenance (Optional[bool]): Add git_commit/git_author/git_committed_at
-                to each result row.
+                to each result row (defaults to core.v1.search.git_provenance).
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -130,7 +136,10 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             collection: Name of the collection to search
             query: The search query text
             changed_since: Keep only files changed since this git ref, tag or commit
+                (a collection the filter cannot be applied to is named in
+                collection_errors)
             git_provenance: Add git_commit/git_author/git_committed_at to each result row
+                (defaults to core.v1.search.git_provenance)
             ctx: FastMCP Context (optional, for accessing lifespan state)
 
         Returns:

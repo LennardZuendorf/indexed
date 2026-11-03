@@ -258,3 +258,45 @@ def test_git_provenance_adds_three_keys_only_when_present() -> None:
     raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": [plain]}}
     row = format_search_results_for_llm(raw, "q")["results"][0]
     assert not {"git_commit", "git_author", "git_committed_at"} & set(row)
+
+
+def test_skipped_git_filter_is_reported_not_silent() -> None:
+    """A requested filter a collection could not apply must be visible (#279 review).
+
+    The rows still come back (a git problem never empties a search), but the
+    envelope names the collection and the ref instead of looking like a clean,
+    filtered result set.
+    """
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_chunk("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": False, "reason": "unknown-ref"},
+        }
+    }
+
+    out = format_search_results_for_llm(raw, "q")
+
+    assert [r["document_id"] for r in out["results"]] == ["alpha"]
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "changed_since 'HEAD~1' was not applied: the git ref could "
+            "not be resolved; results are unfiltered",
+        }
+    ]
+
+
+def test_applied_git_filter_adds_no_error() -> None:
+    """A filter that ran leaves ``collection_errors`` exactly as before."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_chunk("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": True},
+        }
+    }
+
+    assert format_search_results_for_llm(raw, "q")["collection_errors"] == []

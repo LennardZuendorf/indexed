@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from indexed.utils.git_meta import filter_skip_message
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -44,6 +45,18 @@ def format_search_results_for_llm(
 
         if not isinstance(collection_data, dict) or "results" not in collection_data:
             continue
+
+        # A requested changed_since the collection could not honour is reported
+        # here too: unfiltered rows arriving under a "changed only" request are
+        # a defect, not a quiet degrade (#279 review, finding 1).
+        git_filter = collection_data.get("gitFilter")
+        if isinstance(git_filter, dict) and git_filter.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": filter_skip_message(git_filter),
+                }
+            )
 
         # v1 carries no "scoreKind" (squared-L2, lower-better); v2 records
         # "cosine" or "rerank" (both higher-better) per collection.

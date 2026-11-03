@@ -74,24 +74,77 @@ def _files_base_path(collections_path: str, name: str) -> str | None:
     return base if isinstance(base, str) and base else None
 
 
-def _changed_since_unusable(
-    ref: str, collections_path: str, names: list[str]
-) -> str | None:
-    """The repo that rejects ``ref``, or None when every searched files repo has it.
+# ``_changed_since_problems`` kinds: a "ref" problem is a broken request (the ref
+# does not resolve) and always fails; a "shape" problem is a collection that
+# cannot carry the filter at all — fatal when the user named that collection,
+# a per-collection warning (the renderers') when searching everything.
+_REF_PROBLEM = "ref"
+_SHAPE_PROBLEM = "shape"
 
-    Up-front validation: a typo'd ref must fail loud, never render as
-    "everything changed" / "nothing changed" (``changed_paths`` returns None).
+
+def _engine_of(collections_path: str, name: str) -> str | None:
+    """The collection's engine marker ("1"/"2"), or None when it can't be read."""
+    from indexed.core.errors import UnknownEngineVersionError
+    from indexed.core.versioning import detect_engine_version
+
+    try:
+        return detect_engine_version(Path(collections_path) / name)
+    except (ValueError, UnknownEngineVersionError):
+        return None
+
+
+def _changed_since_problems(
+    ref: str, collections_path: str, names: list[str]
+) -> list[tuple[str, str]]:
+    """``(kind, message)`` for every searched collection that cannot honour ``ref``.
+
+    Up-front validation: a typo'd ref — or a files collection with no git repo
+    behind it — must fail loud, never render as "everything changed" /
+    "nothing changed" (``changed_paths`` returns None and retrieval then skips
+    the filter). What stays a warning is the heterogeneous "search everything"
+    case, where a Jira or v1 collection would otherwise veto the whole search.
     """
     from indexed.utils import git_meta
 
+    problems: list[tuple[str, str]] = []
     for name in names:
         base_path = _files_base_path(collections_path, name)
         if base_path is None:
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' has no files reader",
+                )
+            )
             continue
         repo = git_meta.repo_toplevel(base_path)
-        if repo is not None and git_meta.changed_paths(repo, ref) is None:
-            return repo
-    return None
+        if repo is None:
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' is not inside a git repository",
+                )
+            )
+            continue
+        if git_meta.changed_paths(repo, ref) is None:
+            problems.append(
+                (
+                    _REF_PROBLEM,
+                    f"--changed-since '{ref}' is not a valid git ref in {repo}",
+                )
+            )
+            continue
+        if _engine_of(collections_path, name) != "2":
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' uses the v1 engine (git filtering is v2-only)",
+                )
+            )
+    return problems
 
 
 @app.command()
@@ -314,20 +367,23 @@ def search(
         return
 
     # A typo'd --changed-since must fail loud: retrieval deliberately treats an
-    # unusable ref as "skip the filter", which here would silently unfilter.
+    # unusable ref (or a collection with no repo behind it) as "skip the
+    # filter", which here would silently unfilter. An unresolvable ref is
+    # always fatal; a collection that cannot carry the filter is fatal when the
+    # user named it, and a per-collection warning (renderers) when searching
+    # every collection, so one Jira collection can't veto the whole search.
     if changed_since is not None:
-        bad_repo = _changed_since_unusable(
+        problems = _changed_since_problems(
             changed_since, collections_path, collections_to_search
         )
-        if bad_repo is not None:
-            message = (
-                f"--changed-since '{changed_since}' is not a valid git ref "
-                f"in {bad_repo}"
-            )
+        fatal = [msg for kind, msg in problems if kind == _REF_PROBLEM]
+        if not fatal and collection is not None:
+            fatal = [msg for _kind, msg in problems]
+        if fatal:
             if simple:
-                print_json({"error": message})
+                print_json({"error": fatal[0]})
             else:
-                print_error(message)
+                print_error(fatal[0])
             raise typer.Exit(1)
 
     # --rerank was explicitly requested but reranking is v2-only: if none of

@@ -2069,6 +2069,148 @@ class TestGitFlags:
         assert result.exit_code == 1
         assert "not a valid git ref" in result.stdout
 
+    def test_non_git_collection_exits_nonzero(self, monkeypatch, tmp_path):
+        """A NAMED files collection with no repo behind it cannot be filtered:
+        the old validator skipped it and returned unfiltered rows at exit 0."""
+        from unittest.mock import patch
+
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        outside = tmp_path / "not-a-repo"
+        outside.mkdir()
+        monkeypatch.setattr(
+            search_cmd, "_files_base_path", lambda *a, **kw: str(outside)
+        )
+        searched: List[Any] = []
+
+        def fake_svc_search(query, **kwargs):
+            searched.append(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        with patch.object(search_cmd, "print_error") as mock_error:
+            result = runner.invoke(
+                search_cmd.app,
+                ["my-query", "--collection", "col1", "--changed-since", "HEAD"],
+            )
+
+        assert result.exit_code == 1
+        message = mock_error.call_args[0][0]
+        assert "cannot be applied" in message
+        assert "not inside a git repository" in message
+        assert searched == []
+
+    def test_named_v1_collection_exits_nonzero(self, monkeypatch, git_repo):
+        """v1 ignores the filter (documented) — naming such a collection and
+        asking for a filtered search is a failed request, not a quiet degrade."""
+        from unittest.mock import patch
+
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        monkeypatch.setattr(
+            search_cmd, "_files_base_path", lambda *a, **kw: str(git_repo)
+        )
+        monkeypatch.setattr(search_cmd, "_engine_of", lambda *a, **kw: "1")
+
+        with patch.object(search_cmd, "print_error") as mock_error:
+            result = runner.invoke(
+                search_cmd.app,
+                ["my-query", "--collection", "col1", "--changed-since", "HEAD"],
+            )
+
+        assert result.exit_code == 1
+        assert "v1 engine" in mock_error.call_args[0][0]
+
+    def test_search_all_collections_warns_instead_of_vetoing(
+        self, monkeypatch, tmp_path
+    ):
+        """Searching EVERY collection stays allowed when one of them cannot
+        carry the filter — the renderers announce it per collection instead."""
+        self._wire_common(
+            monkeypatch, [self._make_status("nogit"), self._make_status("col2")]
+        )
+        outside = tmp_path / "not-a-repo"
+        outside.mkdir()
+
+        def base_path(_collections, name):
+            return str(outside) if name == "nogit" else None
+
+        monkeypatch.setattr(search_cmd, "_files_base_path", base_path)
+        searched: List[Any] = []
+
+        def fake_svc_search(query, **kwargs):
+            searched.append(kwargs)
+            return {"col2": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--changed-since", "HEAD"])
+
+        assert result.exit_code == 0, result.stdout
+        assert searched and searched[0]["changed_since"] == "HEAD"
+
+
+class TestGitFilterSkipRendering:
+    """A skipped ``--changed-since`` filter must be announced, never silent."""
+
+    def test_skipped_filter_warns_with_collection_and_ref(self, monkeypatch):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+        results: Dict[str, Any] = {
+            "nogit": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "path": "/path/doc1",
+                        "matchedChunks": [
+                            {"id": "c1", "score": 0.4, "content": {"indexedData": "x"}}
+                        ],
+                    }
+                ],
+                "gitFilter": {
+                    "ref": "HEAD~1",
+                    "applied": False,
+                    "reason": "unknown-ref",
+                },
+            }
+        }
+
+        with patch.object(search_render, "print_warning") as mock_warn:
+            search_render.format_search_results_compact("query", results=results)
+
+        messages = [call[0][0] for call in mock_warn.call_args_list]
+        assert any(
+            "nogit" in m and "HEAD~1" in m and "unfiltered" in m for m in messages
+        )
+
+    def test_applied_filter_prints_no_skip_warning(self, monkeypatch):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+        results: Dict[str, Any] = {
+            "c1": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "path": "/path/doc1",
+                        "matchedChunks": [
+                            {"id": "c1", "score": 0.4, "content": {"indexedData": "x"}}
+                        ],
+                    }
+                ],
+                "gitFilter": {"ref": "HEAD~1", "applied": True},
+            }
+        }
+
+        with patch.object(search_render, "print_warning") as mock_warn:
+            search_render.format_search_results_compact("query", results=results)
+
+        assert mock_warn.call_count == 0
+
 
 class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""

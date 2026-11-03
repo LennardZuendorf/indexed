@@ -619,6 +619,8 @@ def test_changed_since_keeps_only_changed_documents(
         )
 
     assert [d["id"] for d in res["c1"]["results"]] == ["changed.txt"]
+    # An applied filter is reported too, so callers can tell it apart from a skip.
+    assert res["c1"]["gitFilter"] == {"ref": "HEAD~1", "applied": True}
 
 
 def test_changed_since_filters_before_grouping_so_max_docs_still_fills(
@@ -703,6 +705,7 @@ def test_git_options_attach_nothing_when_not_requested(
         )
 
     assert "git" not in res["c1"]["results"][0]
+    assert "gitFilter" not in res["c1"]
 
 
 def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
@@ -731,6 +734,13 @@ def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
 
     assert [d["id"] for d in res["c1"]["results"]] == ["JIRA-1"]
     assert "git" not in res["c1"]["results"][0]
+    # The filter cannot apply to a non-files reader, and says so instead of
+    # quietly returning unfiltered rows.
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "not-a-files-collection",
+    }
 
 
 def test_changed_since_invalid_ref_skips_the_filter(
@@ -752,6 +762,11 @@ def test_changed_since_invalid_ref_skips_the_filter(
         )
 
     assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "no-such-ref",
+        "applied": False,
+        "reason": "unknown-ref",
+    }
 
 
 def test_git_options_are_noops_outside_a_repo(tmp_path: Path) -> None:
@@ -774,3 +789,8 @@ def test_git_options_are_noops_outside_a_repo(tmp_path: Path) -> None:
 
     assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
     assert "git" not in res["c1"]["results"][0]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "no-git-repository",
+    }

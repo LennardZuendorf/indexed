@@ -26,6 +26,7 @@ from ...utils.components import (
     print_warning,
 )
 from ...utils.components.theme import get_detail_card_width
+from indexed.utils.git_meta import filter_skip_message
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -89,6 +90,30 @@ def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
         # bracket-bearing collection name or error string prints verbatim.
         # Escaping first would leak the backslash into the output.
         print_error(f"Collection '{collection_name!s}' failed: {error!s}")
+
+
+def _git_filter_skips(results: Dict[str, Any]) -> List[tuple[str, Dict[str, Any]]]:
+    """Collections whose requested ``--changed-since`` filter was NOT applied.
+
+    Retrieval and the v1 facade mark them with ``gitFilter``; a skipped filter
+    must be announced, never rendered as a filtered result set (#279 review).
+    """
+    skips: List[tuple[str, Dict[str, Any]]] = []
+    for collection_name, collection_results in results.items():
+        if not isinstance(collection_results, dict):
+            continue
+        status = collection_results.get("gitFilter")
+        if isinstance(status, dict) and status.get("applied") is False:
+            skips.append((collection_name, status))
+    return skips
+
+
+def _print_git_filter_skips(skips: List[tuple[str, Dict[str, Any]]]) -> None:
+    """Warn per collection that its results are unfiltered, naming collection+ref."""
+    for collection_name, status in skips:
+        print_warning(
+            f"Collection '{collection_name!s}': {filter_skip_message(status)}"
+        )
 
 
 def format_search_results(
@@ -169,6 +194,11 @@ def format_search_results(
 
     if failed_collections:
         _print_collection_errors(failed_collections)
+        console.print()
+
+    git_skips = _git_filter_skips(results)
+    if git_skips:
+        _print_git_filter_skips(git_skips)
         console.print()
 
     if not all_chunks:
@@ -411,6 +441,11 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
         _print_collection_errors(failed_collections)
         console.print()
 
+    git_skips = _git_filter_skips(results)
+    if git_skips:
+        _print_git_filter_skips(git_skips)
+        console.print()
+
     # Summary
     console.print()
     if total_results > 0:
@@ -484,6 +519,11 @@ def format_search_results_compact(
 
     if failed_collections:
         _print_collection_errors(failed_collections)
+        console.print()
+
+    git_skips = _git_filter_skips(results)
+    if git_skips:
+        _print_git_filter_skips(git_skips)
         console.print()
 
     # Summary

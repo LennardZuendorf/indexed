@@ -57,6 +57,13 @@ _OVERFETCH_CEILING = 10_000
 # pathspec can be derived for (both spellings exist in the wild).
 _FILES_READER_TYPES = frozenset({"localFiles", "files"})
 
+# Why a requested ``changed_since`` filter was not applied. A skipped filter is
+# NEVER silent: the collection's result carries these in ``gitFilter`` so the
+# CLI and MCP surfaces can say "these rows are unfiltered" (#279 review).
+_FILTER_NOT_FILES = "not-a-files-collection"
+_FILTER_NO_REPO = "no-git-repository"
+_FILTER_UNKNOWN_REF = "unknown-ref"
+
 
 @dataclass
 class _GitContext:
@@ -257,24 +264,24 @@ def _search_one(
         nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
     # Query-time git awareness: ONE repo resolution per collection shared by both
-    # options, and a git problem skips the feature rather than emptying results.
+    # options, and a git problem skips the feature rather than emptying results —
+    # but the skip is REPORTED in ``gitFilter``, never a silent unfiltered set.
     git_ctx = (
         _git_context(manifest)
         if (changed_since is not None or git_provenance)
         else None
     )
+    git_filter: Optional[Dict[str, Any]] = None
     if changed_since is not None:
-        if git_ctx is None:
-            logger.debug(
-                f"changed_since={changed_since!r}: no git repo for {name}; "
-                "filter skipped"
-            )
+        if manifest.reader.type not in _FILES_READER_TYPES:
+            git_filter = _filter_not_applied(name, changed_since, _FILTER_NOT_FILES)
+        elif git_ctx is None:
+            git_filter = _filter_not_applied(name, changed_since, _FILTER_NO_REPO)
         else:
             changed = git_meta.changed_paths(git_ctx.repo, changed_since)
             if changed is None:
-                logger.debug(
-                    f"changed_since={changed_since!r}: unusable ref for {name}; "
-                    "filter skipped"
+                git_filter = _filter_not_applied(
+                    name, changed_since, _FILTER_UNKNOWN_REF
                 )
             else:
                 # Before grouping, so max_docs is filled by survivors, not starved.
@@ -283,6 +290,7 @@ def _search_one(
                     for nws in nodes_with_scores
                     if git_ctx.is_changed(nws.node, changed)
                 ]
+                git_filter = {"ref": changed_since, "applied": True}
 
     # Full-text/all-chunks reconstruction needs every chunk of a matched doc,
     # not just the retrieved ones — grouped from the docstore by source_id
@@ -305,12 +313,31 @@ def _search_one(
     # relevance, so the manifest's cosine score_kind no longer describes it
     # (PR #158 review #8) — report the distinct rerank kind instead.
     score_kind = RERANK_SCORE_KIND if rerank_cfg.enabled else manifest.engine.score_kind
-    return {
+    out: Dict[str, Any] = {
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
         "scoreKind": score_kind,
         "results": results,
     }
+    if git_filter is not None:
+        # Present only when ``changed_since`` was requested: the caller can then
+        # tell a filtered result set from a skipped filter instead of guessing.
+        out["gitFilter"] = git_filter
+    return out
+
+
+def _filter_not_applied(name: str, ref: str, reason: str) -> Dict[str, Any]:
+    """``gitFilter`` status for a requested filter this collection can't honour.
+
+    Logged at WARNING (a visible degrade, not a debug whisper) and carried into
+    the result so ``mcp/formatting.py`` / the CLI renderers can name both the
+    collection and the ref (#279 review, finding 1).
+    """
+    logger.warning(
+        f"changed_since={ref!r} was not applied to collection {name!r} ({reason}); "
+        "its results are unfiltered"
+    )
+    return {"ref": ref, "applied": False, "reason": reason}
 
 
 def _docs_by_source(index: Any) -> Dict[str, List[Any]]:

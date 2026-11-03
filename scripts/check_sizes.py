@@ -135,7 +135,12 @@ SRC_LOC_MAX = 32_000
 # Raised from 48_600 for the #60/#144/#146 tests: git_meta units, the v2
 # changed-since/provenance cases, the two CLI flags and the git-aware system
 # net; measured 49_084.
-TEST_LOC_MAX = 49_400
+# Raised again by the PR #279 review fixes: every skipped-filter path is now
+# asserted on each surface (retrieval gitFilter, MCP collection_errors, CLI
+# renderer warning, v1 facade stamping) plus the MCP tool forwarding tests that
+# did not exist — defect-guarding coverage, not stealth regrowth; measured
+# 49_497.
+TEST_LOC_MAX = 49_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
