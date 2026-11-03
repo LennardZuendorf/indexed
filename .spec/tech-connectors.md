@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-07-12
+updated: 2026-11-03
 ---
 
 # Tech Branch: Connectors (`src/indexed/connectors/`)
@@ -121,3 +121,33 @@ the diff against stored content hashes, so a file edited and then **reverted bac
 its committed state** is still re-indexed (a name-status diff alone would miss it).
 Git **C-quoted non-ASCII paths** (`"\303\244…"`) are unquoted to real filenames
 before tracking.
+
+---
+
+## Query-Time Git Helper (`utils/git_meta.py`)
+
+Indexing is not the only consumer of git: `search --changed-since` and
+`--git-provenance` ask the *query* side the same questions. The shared helper lives in
+`src/indexed/utils/git_meta.py` — `utils` is the only layer both `core` and
+`connectors` may import (a connector-local helper would break the import edges).
+
+- Stdlib `subprocess` only, every call a list argv with `timeout=5`, a checked return
+  code, and **all** exceptions swallowed to `None`/empty: a git problem must never
+  break a search. The child env strips leaked `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE`/
+  `GIT_OBJECT_DIRECTORY`/`GIT_CEILING_DIRECTORIES` and pins `GIT_TERMINAL_PROMPT=0`,
+  `LC_ALL=C` — the same hygiene as `change_tracker.py`.
+- `repo_toplevel` / `is_git_repo` — `git rev-parse --show-toplevel`.
+- `changed_paths(repo, ref)` — union of `git diff --name-only <ref> --`, the unstaged and
+  `--cached` diffs, and `git ls-files --others --exclude-standard`, so uncommitted and
+  untracked work counts as "changed". An invalid ref returns `None` (verified up front
+  via `rev-parse --verify <ref>^{commit}`) — a typo must never look like "nothing changed".
+- `last_commit(repo, path)` — ONE `git log -1 --format=…` per file, giving
+  `{commit, short, author, email, committedAt, subject}`. **No blame-by-line in this
+  slice**: provenance is document-level, so a file's history is one cheap call, not a
+  per-chunk `git blame`.
+- `repo_relative(repo, base_path, source_id)` — document ids are base-path-relative
+  (`v1_adapter.py:35-36`), git pathspecs are repo-relative; this rebases with `os.path`
+  arithmetic only (no symlink resolution, no filesystem probe).
+- **No global cache.** Callers memoize per search call, so a long-lived MCP server
+  cannot serve stale git facts.
+

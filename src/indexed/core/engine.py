@@ -675,6 +675,8 @@ def search(
     *,
     engine: Optional[str] = None,
     rerank: Optional[bool] = None,
+    changed_since: Optional[str] = None,
+    git_provenance: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
@@ -685,6 +687,8 @@ def search(
     raises ``EngineMismatchError`` before any I/O. ``rerank`` overrides
     ``[core.v2.rerank] enabled`` for this call; it is forwarded only when
     routing to the v2 impl — v1 has no rerank concept and no such param.
+    ``changed_since``/``git_provenance`` are v2-only for the same reason (v1
+    ignores them entirely, so its behaviour is unchanged).
 
     A collection with an unrecognized manifest ``version`` marker is dropped
     from ``_group_names_by_engine``'s per-engine groups (a warning is logged),
@@ -699,6 +703,11 @@ def search(
         rerank_kwargs = (
             {"rerank": rerank} if version == "2" and rerank is not None else {}
         )
+        git_kwargs = (
+            {"changed_since": changed_since, "git_provenance": git_provenance}
+            if version == "2"
+            else {}
+        )
         out: Dict[str, Any] = _engine_impl(version).search(
             query,
             configs=cfgs,
@@ -710,6 +719,7 @@ def search(
             include_matched_chunks=include_matched_chunks,
             collections_path=collections_path,
             **rerank_kwargs,
+            **git_kwargs,
         )
         return out
 

@@ -1980,6 +1980,96 @@ class TestRerankFlag:
         assert detect_calls == []
 
 
+class TestGitFlags:
+    """Tests for --changed-since / --git-provenance on `index search` (#60/#146)."""
+
+    def _make_status(self, name: str):
+        from unittest.mock import Mock
+
+        s = Mock()
+        s.name = name
+        s.indexers = ["default"]
+        return s
+
+    def _wire_common(self, monkeypatch, statuses):
+        from unittest.mock import Mock, MagicMock
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: statuses)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        monkeypatch.setattr(search_cmd, "SourceConfig", lambda **kw: Mock())
+        # No on-disk manifest for the mocked collection → no repo to validate
+        # the ref against; the bad-ref case wires its own base path.
+        monkeypatch.setattr(search_cmd, "_files_base_path", lambda *a, **kw: None)
+
+        phased_mock = MagicMock()
+        phased_mock.__enter__ = Mock(return_value=phased_mock)
+        phased_mock.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd, "create_phased_progress", lambda **kw: phased_mock
+        )
+
+    def test_search_help_shows_both_git_flags(self):
+        result = runner.invoke(search_cmd.app, ["--help"])
+
+        assert result.exit_code == 0
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "--changed-since" in clean
+        assert "--git-provenance" in clean
+        assert "--no-git-provenance" in clean
+
+    def test_flags_reach_svc_search(self, monkeypatch):
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(
+            search_cmd.app,
+            ["my-query", "--changed-since", "HEAD~1", "--git-provenance"],
+        )
+
+        assert result.exit_code == 0
+        assert captured["changed_since"] == "HEAD~1"
+        assert captured["git_provenance"] is True
+
+    def test_omitted_flags_forward_nothing(self, monkeypatch):
+        """Neither flag given → no git kwarg at all, exactly as before."""
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0
+        assert "changed_since" not in captured
+        assert "git_provenance" not in captured
+
+    def test_invalid_ref_exits_nonzero(self, monkeypatch, git_repo):
+        """A typo'd ref must fail loud, not come back unfiltered."""
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        monkeypatch.setattr(
+            search_cmd, "_files_base_path", lambda *a, **kw: str(git_repo)
+        )
+        monkeypatch.setattr(
+            search_cmd, "svc_search", lambda query, **kw: {"col1": {"results": []}}
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--changed-since", "nope"])
+
+        assert result.exit_code == 1
+        assert "not a valid git ref" in result.stdout
+
+
 class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""
 

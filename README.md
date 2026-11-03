@@ -170,6 +170,8 @@ indexed index create files --collection my-app --path ./src --engine v2
 indexed index search "authentication flow"
 indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
+indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
+indexed index search "who wrote this" --git-provenance     # commit + author per file
 
 # Manage collections
 indexed index inspect                    # list all collections

@@ -233,3 +233,28 @@ def test_v1_only_output_is_byte_identical_to_pre_feature() -> None:
             "text": "text for worst",
         },
     ]
+
+
+def test_git_provenance_adds_three_keys_only_when_present() -> None:
+    """``--git-provenance`` rows carry the commit; without it nothing changes."""
+    provenance = {
+        "commit": "a" * 40,
+        "short": "a" * 7,
+        "author": "Ann Author",
+        "email": "ann@test.com",
+        "committedAt": "2026-11-03T10:00:00+01:00",
+        "subject": "touch the file",
+    }
+    doc = _chunk("with-git", 0.9)
+    doc["git"] = provenance
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": [doc]}}
+
+    row = format_search_results_for_llm(raw, "q")["results"][0]
+    assert row["git_commit"] == "a" * 40
+    assert row["git_author"] == "Ann Author"
+    assert row["git_committed_at"] == "2026-11-03T10:00:00+01:00"
+
+    plain = _chunk("no-git", 0.9)
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": [plain]}}
+    row = format_search_results_for_llm(raw, "q")["results"][0]
+    assert not {"git_commit", "git_author", "git_committed_at"} & set(row)

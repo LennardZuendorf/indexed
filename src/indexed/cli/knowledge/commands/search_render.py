@@ -7,7 +7,7 @@ escaping (foundation/6c bug E2) and per-collection failure surfacing
 (foundation/6 E10, CLI twin of the MCP formatting bug).
 """
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
@@ -35,6 +35,20 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
+    # Document-level git provenance (v2 files collections + --git-provenance
+    # only); absent means the field is not part of the output at all.
+    git: NotRequired[Dict[str, Any]]
+
+
+def _git_label(git: Dict[str, Any]) -> str:
+    """``<short> <author> <date> <subject>`` — one line for the detail card."""
+    parts = [
+        str(git.get("short") or ""),
+        str(git.get("author") or ""),
+        str(git.get("committedAt") or "")[:10],
+        str(git.get("subject") or ""),
+    ]
+    return " ".join(part for part in parts if part)
 
 
 def _is_content_free(chunk_info: ChunkInfo) -> bool:
@@ -137,6 +151,9 @@ def format_search_results(
             matched_chunks = doc.get("matchedChunks", []) or doc.get(
                 "matched_chunks", []
             )
+            git = doc.get("git")
+            if not isinstance(git, dict):
+                git = {}
 
             for i, chunk in enumerate(matched_chunks):
                 all_chunks.append(
@@ -146,6 +163,7 @@ def format_search_results(
                         path=path,
                         chunk=chunk,
                         chunk_index=i + 1,  # 1-indexed for display
+                        git=git,
                     )
                 )
 
@@ -280,6 +298,11 @@ def _show_top_result_split_cards(
     chunk_id = chunk.get("id")
     if chunk_id:
         meta_rows.append(("Match ID", chunk_id))
+
+    # Additive: absent unless git provenance was requested and git answered.
+    git = chunk_info.get("git")
+    if git:
+        meta_rows.append(("Last commit", _git_label(git)))
 
     meta_card = create_detail_card(title="Top Result Meta", rows=meta_rows)
     console.print(meta_card)

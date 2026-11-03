@@ -29,8 +29,18 @@ def _run_search(
     configs: Optional[List[Any]],
     search_cfg: Any,
     collections_path: str,
+    *,
+    changed_since: Optional[str] = None,
+    git_provenance: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
+    # Only the requested git keys are splatted: both default to None (off), and
+    # an omitted option must not reach the engine as an explicit override.
+    git_kwargs: Dict[str, Any] = {}
+    if changed_since is not None:
+        git_kwargs["changed_since"] = changed_since
+    if git_provenance is not None:
+        git_kwargs["git_provenance"] = git_provenance
     try:
         raw_results = svc_search(
             query,
@@ -42,6 +52,7 @@ def _run_search(
             include_all_chunks=search_cfg.include_all_chunks,
             include_matched_chunks=search_cfg.include_matched_chunks,
             collections_path=collections_path,
+            **git_kwargs,
         )
         return format_search_results_for_llm(raw_results, query)
     except IndexedError as e:
@@ -66,7 +77,12 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     """Register search tools on the FastMCP instance."""
 
     @mcp.tool
-    def search(query: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
+    def search(
+        query: str,
+        changed_since: Optional[str] = None,
+        git_provenance: Optional[bool] = None,
+        ctx: Optional[Context] = None,
+    ) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
 
         Returns results in an LLM-optimized format with flat structure and direct text access.
@@ -74,6 +90,10 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
 
         Parameters:
             query (str): The search query text.
+            changed_since (Optional[str]): Keep only files changed since this git ref,
+                tag or commit, including uncommitted and untracked changes.
+            git_provenance (Optional[bool]): Add git_commit/git_author/git_committed_at
+                to each result row.
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -85,12 +105,21 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         cli_ctx = resolve_cli_context(ctx)
         collections_path = str(cli_ctx.collections_path)
 
-        return _run_search(query, None, search_cfg, collections_path)
+        return _run_search(
+            query,
+            None,
+            search_cfg,
+            collections_path,
+            changed_since=changed_since,
+            git_provenance=git_provenance,
+        )
 
     @mcp.tool
     def search_collection(
         collection: str,
         query: str,
+        changed_since: Optional[str] = None,
+        git_provenance: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
@@ -100,6 +129,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         Args:
             collection: Name of the collection to search
             query: The search query text
+            changed_since: Keep only files changed since this git ref, tag or commit
+            git_provenance: Add git_commit/git_author/git_committed_at to each result row
             ctx: FastMCP Context (optional, for accessing lifespan state)
 
         Returns:
@@ -143,4 +174,11 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             indexer=default_indexer,
         )
 
-        return _run_search(query, [source_config], search_cfg, collections_path)
+        return _run_search(
+            query,
+            [source_config],
+            search_cfg,
+            collections_path,
+            changed_since=changed_since,
+            git_provenance=git_provenance,
+        )

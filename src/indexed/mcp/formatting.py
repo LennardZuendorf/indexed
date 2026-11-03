@@ -59,6 +59,11 @@ def format_search_results_for_llm(
             doc_id = doc.get("id", "unknown")
             doc_url = doc.get("url", "")
             matched_chunks = doc.get("matchedChunks", [])
+            # Document-level provenance, present only when --git-provenance found
+            # a commit for this file (v2 files collections); absent otherwise.
+            git = doc.get("git")
+            if not isinstance(git, dict):
+                git = None
 
             for chunk_data in matched_chunks:
                 chunk_number = chunk_data.get("chunkNumber", 0)
@@ -73,21 +78,24 @@ def format_search_results_for_llm(
                         content_text = content
 
                 if content_text:
-                    all_chunks.append(
-                        {
-                            "rank": 0,
-                            "relevance_score": score,
-                            "collection": collection_name,
-                            "document_id": doc_id,
-                            "document_url": doc_url,
-                            "chunk_number": chunk_number,
-                            "text": content_text,
-                            # Sort helper only, popped before the envelope is
-                            # returned. The real score_kind ("cosine"/"rerank")
-                            # when known, else None (v1 / unknown kind).
-                            "_score_kind": raw_score_kind if higher_is_better else None,
-                        }
-                    )
+                    row: Dict[str, Any] = {
+                        "rank": 0,
+                        "relevance_score": score,
+                        "collection": collection_name,
+                        "document_id": doc_id,
+                        "document_url": doc_url,
+                        "chunk_number": chunk_number,
+                        "text": content_text,
+                        # Sort helper only, popped before the envelope is
+                        # returned. The real score_kind ("cosine"/"rerank")
+                        # when known, else None (v1 / unknown kind).
+                        "_score_kind": raw_score_kind if higher_is_better else None,
+                    }
+                    if git is not None:
+                        row["git_commit"] = git.get("commit", "")
+                        row["git_author"] = git.get("author", "")
+                        row["git_committed_at"] = git.get("committedAt", "")
+                    all_chunks.append(row)
 
     _rank_chunks(all_chunks, unified=any_higher_is_better)
     for chunk in all_chunks:

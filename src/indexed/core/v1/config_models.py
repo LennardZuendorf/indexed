@@ -109,6 +109,13 @@ class CoreV1SearchConfig(BaseModel):
         le=4.0,
         description="Maximum squared-L2 distance (lower = closer; range 0-4)",
     )
+    git_provenance: bool = Field(
+        default=False,
+        description=(
+            "Attach the last-touching commit/author to results "
+            "(v2 files collections only)"
+        ),
+    )
 
 
 def get_default_collections_path() -> Path:
