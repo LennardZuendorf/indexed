@@ -7,6 +7,7 @@ gitignore/excluded-dir behaviour is proven, not asserted.
 
 from __future__ import annotations
 
+import re
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,8 @@ from indexed.cli.knowledge.commands import watch_service
 from indexed.cli.watch_config import WatchConfig
 
 runner = CliRunner()
+
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 SIG_A = watch_service.WatchSignature(files=1, digest="a")
 SIG_B = watch_service.WatchSignature(files=2, digest="b")
@@ -190,7 +193,11 @@ def test_watch_command_is_registered_both_ways():
     for invocation in (["index", "watch"], ["watch"]):
         result = runner.invoke(app, [*invocation, "--help"])
         assert result.exit_code == 0, result.stdout
-        assert "--debounce" in result.stdout
+        # Strip ANSI: with color forced on (CI), Click wraps long flag names in
+        # escape codes and a plain substring match splits "--debounce".
+        help_text = ANSI_ESCAPE.sub("", result.stdout)
+        assert "--debounce" in help_text
+        assert "--poll-interval" in help_text
 
 
 def test_watch_refuses_a_non_local_source(monkeypatch, tmp_path: Path):
