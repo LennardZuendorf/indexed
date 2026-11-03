@@ -195,3 +195,50 @@ class TestSearchCollectionToolGitOptions:
         _get_tool("search_collection").fn("col", "q", ctx=_ctx())
 
         assert mock_search.call_args.kwargs["git_provenance"] is True
+
+
+class TestSearchToolRerankOption:
+    """``git_rerank`` must reach the engine from MCP and honour the config default."""
+
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_explicit_flag_reaches_svc_search(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_resolve_config.return_value = _cfg()
+        mock_search.return_value = {}
+
+        _get_tool("search").fn("q", git_rerank=True, ctx=_ctx())
+
+        assert mock_search.call_args.kwargs["git_rerank"] is True
+
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_config_default_enables_it_and_explicit_false_wins(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_search.return_value = {}
+        mock_resolve_config.return_value = _cfg(git_rerank=True)
+
+        _get_tool("search").fn("q", ctx=_ctx())
+        assert mock_search.call_args.kwargs["git_rerank"] is True
+
+        _get_tool("search").fn("q", git_rerank=False, ctx=_ctx())
+        assert mock_search.call_args.kwargs["git_rerank"] is False
+
+    @patch.object(tools_module, "svc_search")
+    @patch.object(tools_module, "_resolve_config")
+    def test_collection_tool_forwards_it_too(
+        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    ) -> None:
+        mock_resolve_config.return_value = _cfg()
+        mock_search.return_value = {}
+        status = MagicMock()
+        status.name = "col1"
+        status.indexers = ["default"]
+        status.source_type = "localFiles"
+
+        with patch.object(tools_module, "svc_status", return_value=[status]):
+            _get_tool("search_collection").fn("col1", "q", git_rerank=True, ctx=_ctx())
+
+        assert mock_search.call_args.kwargs["git_rerank"] is True

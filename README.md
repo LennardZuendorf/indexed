@@ -173,6 +173,7 @@ indexed index search "why was this refactored" --rerank   # v2 collections only
 indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
 indexed index search "who wrote this" --git-provenance     # commit + author per file
 indexed index search "who wrote these lines" --git-line-blame  # per-chunk line blame
+indexed index search "what changed lately" --git-rerank    # rank by recency + churn
 # A filter a collection cannot honour warns per collection, never silently
 
 # Manage collections

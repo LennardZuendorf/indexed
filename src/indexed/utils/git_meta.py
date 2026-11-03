@@ -267,6 +267,81 @@ def resolve_range(
     return resolved
 
 
+def newest_touch(
+    lines: Optional[List[Optional[Dict[str, Any]]]],
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """The newest blame record covering a chunk, for query-time SCORING (#144).
+
+    The scoring counterpart of ``resolve_range``: it keeps the commit ``epoch``
+    (the recency input), flags a working-tree touch instead of naming a commit,
+    and falls back to the WHOLE file when the chunk recorded no usable line span
+    — a span-less chunk still belongs to a document, and that document's newest
+    line is the best recency evidence there is. Never used for the provenance
+    contract: ``resolve_range`` stays the only source of ``chunk["git"]``.
+
+    Returns ``{"epoch": int | None, "author", "email", "uncommitted"}``, or
+    ``None`` when blame cannot answer at all.
+    """
+    if lines is None:
+        return None
+    records: List[Dict[str, Any]] = []
+    if start_line is not None and end_line is not None:
+        if 0 <= start_line <= end_line:
+            span = lines[start_line : end_line + 1]
+            if len(span) == end_line - start_line + 1:
+                records = [item for item in span if item is not None]
+    if not records:
+        records = [item for item in lines if item is not None]
+    if not records:
+        return None
+    if any(record.get("uncommitted") for record in records):
+        # A working-tree line is the freshest possible touch; it has no epoch.
+        return {"epoch": None, "author": "", "email": "", "uncommitted": True}
+    best = max(
+        enumerate(records), key=lambda pair: (int(pair[1].get("epoch", 0)), pair[0])
+    )[1]
+    return {
+        "epoch": int(best.get("epoch", 0) or 0),
+        "author": str(best.get("author", "")),
+        "email": str(best.get("email", "")),
+        "uncommitted": False,
+    }
+
+
+def recent_commit_count(repo: str, path: str, since_epoch: int) -> Optional[int]:
+    """Commits touching ``path`` since ``since_epoch`` — the churn signal (#144).
+
+    One ``git rev-list --count`` over the file's history inside the window
+    (commit dates, as git defines ``--since``), repo-relative path, bounded like
+    every other call here. The bound is formatted as ISO-8601 rather than passed
+    as a bare epoch: git's date parser mishandles unix seconds past 2038.
+    ``None`` when git cannot answer (unborn HEAD, not a repo), so a caller drops
+    the signal rather than scoring a fabricated zero; an UNTRACKED path
+    legitimately answers 0.
+    """
+    try:
+        since = datetime.fromtimestamp(int(since_epoch), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+    out = _run(
+        repo,
+        "rev-list",
+        "--count",
+        f"--since={since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        "HEAD",
+        "--",
+        path,
+    )
+    if out is None or not out.strip():
+        return None
+    try:
+        return int(out.strip())
+    except ValueError:
+        return None
+
+
 # Human-readable text for the ``reason`` codes a skipped ``changed_since`` carries
 # (see ``core/v2/retrieval.py``). One table, shared by the MCP formatter and the
 # CLI renderers, so "why was nothing filtered" reads the same on every surface.
@@ -291,6 +366,25 @@ def filter_skip_message(status: dict) -> str:
     )
 
 
+# Why a requested git re-rank was not applied (#144). Same visible-degrade rule
+# as the filter table above: a skipped option is named, never silently ignored.
+_RERANK_SKIP_REASONS = {
+    "no-git-repository": "no git repository could be resolved for the collection",
+    "not-a-files-collection": "the collection has no files reader",
+    "v1-engine": "git re-ranking applies to v2 collections only",
+}
+
+
+def rerank_skip_message(status: dict) -> str:
+    """One line explaining a ``gitRerank`` status that was not applied."""
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        "git re-ranking was not applied: "
+        f"{_RERANK_SKIP_REASONS.get(reason, reason)}; "
+        "results are ordered by similarity only"
+    )
+
+
 def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     """Repo-relative POSIX path for a document id.
 
@@ -308,7 +402,10 @@ __all__ = [
     "filter_skip_message",
     "is_git_repo",
     "last_commit",
+    "newest_touch",
+    "recent_commit_count",
     "repo_relative",
     "repo_toplevel",
+    "rerank_skip_message",
     "resolve_range",
 ]

@@ -346,3 +346,43 @@ def test_applied_git_filter_adds_no_error() -> None:
     }
 
     assert format_search_results_for_llm(raw, "q")["collection_errors"] == []
+
+
+def test_skipped_git_rerank_becomes_a_collection_error() -> None:
+    """A re-rank that could not run must not present rows as re-ranked (#144)."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_chunk("alpha", 0.9)],
+            "gitRerank": {"applied": False, "reason": "no-git-repository"},
+        }
+    }
+
+    out = format_search_results_for_llm(raw, "q")
+
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "git re-ranking was not applied: no git repository could be "
+            "resolved for the collection; results are ordered by similarity only",
+        }
+    ]
+
+
+def test_applied_git_rerank_adds_no_error_and_ranks_on_its_score() -> None:
+    """An applied re-rank is silent, and its blended score is the rank basis."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "git-rerank",
+            "results": [_chunk("alpha", 0.95), _chunk("beta", 0.99)],
+            "gitRerank": {"applied": True, "scored": 2},
+        }
+    }
+
+    out = format_search_results_for_llm(raw, "q")
+
+    assert out["collection_errors"] == []
+    assert [r["document_id"] for r in out["results"]] == ["beta", "alpha"]
+    assert {r["score_kind"] for r in out["results"]} == {"git-rerank"}

@@ -155,6 +155,15 @@ max_docs = 10
 max_chunks = 30
 include_matched_chunks = true
 min_score = 0.0
+# Query-time git signals on v2 files collections (all off by default; nothing
+# is persisted, so enabling them never requires a re-index).
+git_provenance = false        # last-touching commit per result file
+git_line_blame = false        # the commit that last touched each chunk's lines
+git_rerank = false            # re-rank by recency + churn (+ author, if set)
+git_rerank_recency_weight = 0.10
+git_rerank_churn_weight = 0.05
+# git_rerank_author = "lennard@zuendorf.me"   # name/email substring; unset = off
+git_rerank_author_weight = 0.05
 
 [mcp]
 log_level = "INFO"

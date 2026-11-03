@@ -662,6 +662,33 @@ def _surface_preserved(
         }
 
 
+def _git_rerank_options(enabled: Optional[bool]) -> Any:
+    """v2 git-signal re-rank options from ``[core.v1.search]`` (``None`` = off).
+
+    The weights live in ``[core.v1.search]`` — one search config both the CLI
+    and MCP already bind — so the facade reads them here and neither surface
+    has to reach for a core.v2 type. Defaults apply when the section is not
+    registered, exactly like ``_load_search_config``.
+    """
+    if not enabled:
+        return None
+    from indexed.core.v1.config_models import CoreV1SearchConfig
+    from indexed.core.v2.retrieval import GitRerankOptions
+
+    try:
+        from indexed.config import get_config
+
+        cfg = get_config().bind().get(CoreV1SearchConfig)
+    except Exception:
+        cfg = CoreV1SearchConfig()
+    return GitRerankOptions(
+        recency_weight=cfg.git_rerank_recency_weight,
+        churn_weight=cfg.git_rerank_churn_weight,
+        author=cfg.git_rerank_author,
+        author_weight=cfg.git_rerank_author_weight,
+    )
+
+
 def search(
     query: str,
     configs: Optional[List[Any]] = None,
@@ -678,6 +705,7 @@ def search(
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
     git_line_blame: Optional[bool] = None,
+    git_rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
@@ -690,6 +718,8 @@ def search(
     routing to the v2 impl — v1 has no rerank concept and no such param.
     ``changed_since``/``git_provenance``/``git_line_blame`` are v2-only for the
     same reason (v1 ignores them entirely, so its behaviour is unchanged).
+    ``git_rerank`` is their scoring counterpart — a bool here, converted to the
+    v2 re-rank options from ``[core.v1.search]`` only when it is on.
 
     A collection with an unrecognized manifest ``version`` marker is dropped
     from ``_group_names_by_engine``'s per-engine groups (a warning is logged),
@@ -709,6 +739,7 @@ def search(
                 "changed_since": changed_since,
                 "git_provenance": git_provenance,
                 "git_line_blame": git_line_blame,
+                "git_rerank": _git_rerank_options(git_rerank),
             }
             if version == "2"
             else {}
@@ -738,6 +769,15 @@ def search(
                             "applied": False,
                             "reason": "v1-engine",
                         },
+                    )
+        if git_rerank and version != "2":
+            # Same rule for the re-rank: an unranked v1 result set under a
+            # requested re-rank says so rather than looking ranked (#144).
+            for entry in out.values():
+                if isinstance(entry, dict) and "error" not in entry:
+                    entry.setdefault(
+                        "gitRerank",
+                        {"applied": False, "reason": "v1-engine"},
                     )
         return out
 

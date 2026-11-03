@@ -48,7 +48,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # per-path blame in `core/v2/retrieval.py`'s `_GitContext`, and the
 # `git_line_blame` plumbing through services/facade/config/CLI/MCP — opt-in,
 # query-time, no persisted state; ceiling = measured (32_172) + headroom.
-SRC_LOC_MAX = 32_450
+# Raised from 32_450 by issue #144's git-signal re-rank: `git_meta.newest_touch`
+# / `recent_commit_count` / `rerank_skip_message`, the blend + window + skip
+# status in `core/v2/retrieval.py`, the `GitRerankOptions` config model and the
+# facade/CLI/MCP/render plumbing — still opt-in, query-time, nothing persisted;
+# ceiling = measured (32_616) + headroom.
+SRC_LOC_MAX = 32_890
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -149,7 +154,13 @@ SRC_LOC_MAX = 32_450
 # span-mapping units, retrieval tests for per-chunk attribution / uncommitted /
 # absent-span / non-repo cases, the two-chunk-two-commit system test, and the
 # CLI/MCP/formatting forwarding tests; ceiling = measured (50_009) + headroom.
-TEST_LOC_MAX = 50_350
+# Raised from 50_350 by issue #144's git-signal re-rank tests: the scoring-helper
+# units (span/whole-file/uncommitted touches, churn counts, skip messages), the
+# blend-order / author-weight / score-kind / skip-status / off-path-no-git-work
+# retrieval cases, MCP+CLI forwarding, the formatting skip entry, and the
+# real-engine fixture-repo ranking system test; ceiling = measured (50_515) +
+# headroom.
+TEST_LOC_MAX = 50_850
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

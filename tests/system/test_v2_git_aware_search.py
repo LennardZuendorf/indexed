@@ -271,3 +271,75 @@ def test_line_blame_resolves_two_chunks_of_one_file_to_two_commits(
         app, ["--local", "--log-level", "ERROR", "remove", LINE_COLLECTION, "--force"]
     )
     assert removed.exit_code == 0, removed.stdout + removed.stderr
+
+
+# ── git-signal re-rank (#144) ──────────────────────────────────────────────
+
+RERANK_COLLECTION = "files-v2-git-rerank"
+RERANK_QUERY = "walrus migration survey beta"
+
+
+@pytest.fixture
+def rerank_corpus(tmp_path: Path) -> Path:
+    """``archive.txt`` is the closer match but was committed in 2020.
+
+    ``current.txt`` sits a measured ~0.06 cosine behind it and was committed just
+    now — so embedding similarity ranks the stale file first, and recency (a
+    0.10 default weight) is what flips it. Both files live in one directory, so
+    the path prefix the connector puts in each chunk cancels out.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_git(repo, "init")
+    (repo / "archive.txt").write_text(f"{RERANK_QUERY} survey\n")
+    (repo / "current.txt").write_text(f"{RERANK_QUERY}\n")
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "initial corpus", "--date=2020-01-01T00:00:00+00:00")
+    (repo / "current.txt").write_text(f"{RERANK_QUERY} notes\n")
+    run_git(repo, "add", "current.txt")
+    run_git(repo, "commit", "-m", "recent edit")
+    return repo
+
+
+def _doc_order(payload: dict) -> list[str]:
+    """Document ids in first-admission order (chunks of one doc can repeat)."""
+    return list(dict.fromkeys(row["document_id"] for row in payload["results"]))
+
+
+def _best_scores(payload: dict) -> dict[str, float]:
+    """Each document's BEST chunk score (its filename chunk also matches)."""
+    best: dict[str, float] = {}
+    for row in payload["results"]:
+        doc = row["document_id"]
+        best[doc] = max(best.get(doc, 0.0), row["relevance_score"])
+    return best
+
+
+def test_git_rerank_lets_the_recent_file_beat_the_closer_stale_one(
+    local_workspace, rerank_corpus: Path
+) -> None:
+    _create_v2(rerank_corpus, RERANK_COLLECTION)
+
+    # --- default: cosine only, the closer (stale) file wins ---------------
+    baseline = _search(RERANK_QUERY, RERANK_COLLECTION)
+    assert _doc_order(baseline)[:2] == ["archive.txt", "current.txt"]
+    assert {row["score_kind"] for row in baseline["results"]} == {"cosine"}
+    baseline_best = _best_scores(baseline)
+    assert baseline_best["archive.txt"] > baseline_best["current.txt"]
+
+    # --- opt-in: git recency overtakes the cosine lead --------------------
+    ranked = _search(RERANK_QUERY, RERANK_COLLECTION, "--git-rerank")
+    assert _doc_order(ranked)[:2] == ["current.txt", "archive.txt"]
+    assert {row["score_kind"] for row in ranked["results"]} == {"git-rerank"}
+
+    best = _best_scores(ranked)
+    assert best["current.txt"] > best["archive.txt"]
+    # The boost is visible, not a silent reshuffle: the recent file's score
+    # gains the recency bonus, the 2020 file's does not.
+    assert best["current.txt"] - baseline_best["current.txt"] > 0.05
+    assert abs(best["archive.txt"] - baseline_best["archive.txt"]) < 0.01
+
+    removed = runner.invoke(
+        app, ["--local", "--log-level", "ERROR", "remove", RERANK_COLLECTION, "--force"]
+    )
+    assert removed.exit_code == 0, removed.stdout + removed.stderr

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -244,3 +245,75 @@ def test_resolve_range_prefers_the_newest_commit_and_later_line_on_a_tie() -> No
     resolved = git_meta.resolve_range(lines, 0, 2)
     assert resolved is not None
     assert resolved["commit"] == "c" * 40
+
+
+# ── scoring inputs for the git-signal re-rank (#144) ───────────────────────
+
+
+def test_newest_touch_keeps_the_epoch_of_the_span_newest_line() -> None:
+    lines: List[Optional[Dict[str, Any]]] = [
+        _blame_record(10, "a" * 40),
+        _blame_record(99, "b" * 40),
+        _blame_record(50, "c" * 40),
+    ]
+
+    whole = git_meta.newest_touch(lines)
+    assert whole is not None
+    assert whole["epoch"] == 99
+    assert whole["uncommitted"] is False
+
+    second = git_meta.newest_touch(lines, 1, 1)
+    assert second is not None
+    assert second["epoch"] == 99
+    # A span that no longer fits the file (it shrank) falls back to the file's
+    # newest line rather than inventing a span.
+    assert git_meta.newest_touch(lines, 5, 9)["epoch"] == 99  # type: ignore[index]
+
+
+def test_newest_touch_flags_a_working_tree_line_as_freshest() -> None:
+    dirty = dict(_blame_record(10, "a" * 40))
+    dirty.update({"uncommitted": True, "commit": "0" * 40})
+
+    touch = git_meta.newest_touch([_blame_record(999, "b" * 40), dirty])
+    assert touch is not None
+    assert touch["uncommitted"] is True
+    assert touch["epoch"] is None
+
+
+def test_newest_touch_is_none_when_blame_cannot_answer() -> None:
+    assert git_meta.newest_touch(None) is None
+    assert git_meta.newest_touch([]) is None
+    assert git_meta.newest_touch([None, None]) is None
+
+
+def test_recent_commit_count_counts_commits_since_and_none_outside_a_repo(
+    tmp_path: Path,
+) -> None:
+    run_git(tmp_path, "init")
+    (tmp_path / "a.txt").write_text("one")
+    run_git(tmp_path, "add", ".")
+    run_git(tmp_path, "commit", "-m", "old", "--date=2020-01-01T00:00:00+00:00")
+    (tmp_path / "a.txt").write_text("two")
+    run_git(tmp_path, "commit", "-am", "new")
+
+    # Since the epoch is "everything" — both commits count.
+    assert git_meta.recent_commit_count(str(tmp_path), "a.txt", 0) == 2
+    # A window that starts after every commit is a real zero, not unknown.
+    assert (
+        git_meta.recent_commit_count(str(tmp_path), "a.txt", int(time.time()) + 86_400)
+        == 0
+    )
+    # An untracked path is a real zero.
+    assert git_meta.recent_commit_count(str(tmp_path), "nope.txt", 0) == 0
+    # Outside a repo git cannot answer at all.
+    assert git_meta.recent_commit_count(str(tmp_path / "none"), "a.txt", 0) is None
+
+
+def test_rerank_skip_message_names_known_and_unknown_reasons() -> None:
+    message = git_meta.rerank_skip_message({"reason": "no-git-repository"})
+    assert "no git repository" in message
+    assert "similarity only" in message
+    # An unrecognized code is passed through, never hidden.
+    assert "brand-new-reason" in git_meta.rerank_skip_message(
+        {"reason": "brand-new-reason"}
+    )

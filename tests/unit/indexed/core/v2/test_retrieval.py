@@ -7,6 +7,8 @@ test gates on ``model_available()`` and uses the real corpus + model.
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -730,6 +732,7 @@ def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
             collections_path=str(cols),
             changed_since="HEAD",
             git_provenance=True,
+            git_rerank=retrieval.GitRerankOptions(),
         )
 
     assert [d["id"] for d in res["c1"]["results"]] == ["JIRA-1"]
@@ -738,6 +741,11 @@ def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
     # quietly returning unfiltered rows.
     assert res["c1"]["gitFilter"] == {
         "ref": "HEAD",
+        "applied": False,
+        "reason": "not-a-files-collection",
+    }
+    # Same visible skip for the re-rank (#144).
+    assert res["c1"]["gitRerank"] == {
         "applied": False,
         "reason": "not-a-files-collection",
     }
@@ -981,3 +989,179 @@ def test_git_line_blame_omits_the_field_outside_a_repo(tmp_path: Path) -> None:
 
     assert [d["id"] for d in res["c1"]["results"]] == ["code.py"]
     assert "git" not in res["c1"]["results"][0]["matchedChunks"][0]
+
+
+# ── git-signal re-rank (#144) ──────────────────────────────────────────────
+
+
+def _scored_node(source_id: str, score: float):
+    """One retrieved node with the metadata the re-rank reads."""
+    from llama_index.core.schema import NodeWithScore, TextNode
+
+    return NodeWithScore(
+        node=TextNode(text=f"text of {source_id}", metadata={"source_id": source_id}),
+        score=score,
+    )
+
+
+def _git_ready_repo(repo: Path) -> None:
+    """``stale.txt`` from 2020 and ``recent.txt`` committed now."""
+    (repo / "stale.txt").write_text("penguin stale")
+    _commit(repo, "add", ".")
+    _commit(
+        repo,
+        "commit",
+        "-m",
+        "stale c1",
+        "--date=2020-01-01T00:00:00+00:00",
+    )
+    (repo / "recent.txt").write_text("penguin recent")
+    _commit(repo, "add", "recent.txt")
+    _commit(repo, "commit", "-m", "recent c2")
+
+
+def test_git_rerank_lets_a_recent_chunk_beat_a_closer_stale_one(
+    git_repo: Path,
+) -> None:
+    """The whole point of #144: recency outweighs a small cosine advantage."""
+    _git_ready_repo(git_repo)
+    ctx = retrieval._GitContext(repo=str(git_repo), base_path=str(git_repo))
+    stale = _scored_node("stale.txt", 0.90)
+    recent = _scored_node("recent.txt", 0.86)
+
+    ordered, scored = retrieval._apply_git_rerank(
+        [stale, recent],
+        ctx,
+        retrieval.GitRerankOptions(recency_weight=0.10, churn_weight=0.0),
+        now_epoch=time.time(),
+    )
+
+    assert scored == 2
+    assert [n.node.metadata["source_id"] for n in ordered] == [
+        "recent.txt",
+        "stale.txt",
+    ]
+    # The visible scores carry the boost, so the ranking is explainable.
+    assert ordered[0].score > 0.86 + 0.09
+    assert ordered[1].score == pytest.approx(0.90)
+
+
+def test_git_rerank_author_weight_prefers_that_authors_chunk(git_repo: Path) -> None:
+    (git_repo / "theirs.txt").write_text("penguin their")
+    (git_repo / "mine.txt").write_text("penguin mine")
+    _commit(git_repo, "add", ".")
+    _commit(
+        git_repo,
+        "commit",
+        "-m",
+        "both",
+        "--author=Second Author <second@test.com>",
+    )
+    # ``mine.txt`` last so the unweighted order is theirs, mine; make the
+    # authorship signal the only difference by re-committing ``mine.txt`` alone.
+    (git_repo / "mine.txt").write_text("penguin mine v2")
+    _commit(git_repo, "commit", "-am", "mine again")
+
+    ctx = retrieval._GitContext(repo=str(git_repo), base_path=str(git_repo))
+    ordered, _ = retrieval._apply_git_rerank(
+        [_scored_node("mine.txt", 0.80), _scored_node("theirs.txt", 0.80)],
+        ctx,
+        retrieval.GitRerankOptions(
+            recency_weight=0.0,
+            churn_weight=0.0,
+            author="second@test.com",
+            author_weight=0.2,
+        ),
+        now_epoch=time.time(),
+    )
+
+    assert ordered[0].node.metadata["source_id"] == "theirs.txt"
+    assert ordered[0].score == pytest.approx(1.0)
+    assert ordered[1].score == pytest.approx(0.80)
+
+
+def test_git_rerank_enabled_reorders_and_reports_its_score_kind(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(recency_weight=0.5, churn_weight=0.0),
+        )
+
+    out = res["c1"]
+    assert out["scoreKind"] == GIT_RERANK_KIND
+    assert out["gitRerank"] == {"applied": True, "scored": 2}
+    assert [d["id"] for d in out["results"]] == ["recent.txt", "stale.txt"]
+    scores = [d["matchedChunks"][0]["score"] for d in out["results"]]
+    assert scores[0] > scores[1]
+
+
+GIT_RERANK_KIND = "git-rerank"
+
+
+def test_git_rerank_off_does_no_git_work_and_leaves_output_unchanged(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        before = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    def _no_git(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("no git work may happen when the re-rank is off")
+
+    for name in ("repo_toplevel", "blame_lines", "recent_commit_count"):
+        monkeypatch.setattr(retrieval.git_meta, name, _no_git)
+
+    with mock_embedding(embed_dim=8):
+        after = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    # Byte-for-byte identical, and no new key on the result.
+    assert json.dumps(after, sort_keys=True) == json.dumps(before, sort_keys=True)
+    assert "gitRerank" not in after["c1"]
+    assert after["c1"]["scoreKind"] == "cosine"
+
+
+def test_git_rerank_skip_is_reported_and_keeps_the_cosine_kind(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("penguin")
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(),
+        )
+
+    assert res["c1"]["gitRerank"] == {
+        "applied": False,
+        "reason": "no-git-repository",
+    }
+    # Nothing was blended, so the reported score kind stays honest.
+    assert res["c1"]["scoreKind"] == "cosine"
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]

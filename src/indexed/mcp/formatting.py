@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from indexed.utils.git_meta import filter_skip_message
+from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -55,6 +55,16 @@ def format_search_results_for_llm(
                 {
                     "collection": collection_name,
                     "error": filter_skip_message(git_filter),
+                }
+            )
+        # Same rule for a requested git re-rank (#144): rows that were not
+        # re-ranked must not look re-ranked.
+        git_rerank = collection_data.get("gitRerank")
+        if isinstance(git_rerank, dict) and git_rerank.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": rerank_skip_message(git_rerank),
                 }
             )
 
