@@ -332,6 +332,51 @@ benchmark name substring). GitHub Actions has no YAML merge keys, so the two
 regression — the A/B gate has no label waiver and always decides from its
 validated measurements.
 
+**Threshold caps are backstops derived from main's baseline, not the gate.**
+The action resolves a test's cap by the first key whose text is a substring of
+the test name, in the order the JSON lists them (`full_connector_pipeline_mixed`
+must therefore precede `full_connector_pipeline`), and an unmatched name falls
+back to a **1.0 s default**. A cap miss only prints a ❌ row in the report —
+it does not fail the job; `regression-detected` (cross-branch + sequential
+tolerance) is what fails it. So the caps exist to catch a blowup a 20% tolerance
+would technically allow, and every cap must be one a healthy `main` actually
+meets. Re-derived 2026-11-03 from `.benchmarks/baselines/main.json` (AMD
+EPYC 7763): only caps whose old value was at or within ~1.4× of `main`'s
+baseline were re-derived, each set to ≈2× that baseline mean rounded up
+(`batch_parse` 0.84×, `full_connector_pipeline` 1.08×,
+`full_connector_pipeline_mixed` 1.38× → 2.02× / 2.16× / 2.06×); every other
+cap already carried ≥5× headroom and was left alone.
+
+| `threshold-map` key | main baseline | cap | headroom |
+|---|---|---|---|
+| `batch_parse` | 5.9326 s | 12 s | 2.02× |
+| `full_connector_pipeline` (`..._docs`) | 9.2731 s | 20 s | 2.16× |
+| `full_connector_pipeline_mixed` | 14.539 s | 30 s | 2.06× |
+| `parse_png` | 1.8238 s | 10 s | 5.5× |
+| `e2e_v2_create` | 2.5228 s | 30 s | 11.9× |
+| `e2e_create` | 2.3364 s | 30 s | 12.8× |
+| `parse_large` | 0.6900 s | 5 s | 7.2× |
+| `parse_markdown_docs` | 0.4701 s | 3 s | 6.4× |
+| `e2e_v2_search` | 0.1805 s | 5 s | 28× |
+| `e2e_search` | 0.0549 s | 5 s | 91–112× |
+| `inspect` | 0.0346 s | 0.5 s | 14.5× |
+| `help` | 0.0340 s | 0.5 s | 14.7–18.6× |
+
+Why the derivation: before this, `batch_parse` carried a 5 s cap against a
+5.93 s baseline — `main`'s own committed number already failed it — and
+`full_connector_pipeline` a 10 s cap against 9.27 s, so a slower runner
+measuring 10.42 s printed a second ❌ (PR #281's run) inside a *green* job
+whose real gate said PASS. Either way the ❌ column spent its signal on
+something other than a regression, the same failure #280 fixed for corpus
+size. A cap that `main` is at or already exceeds is worse than no cap: it
+teaches reviewers to ignore the column. Consequences: raise a cap only in the
+same cycle as a change that legitimately grows a benchmark's input (a bigger
+pinned corpus, not a slower pipeline) — otherwise a slower number is a
+regression to investigate; a new benchmark whose healthy runtime exceeds 1 s
+needs its own key in the same PR; and when a baseline refresh adopts numbers
+above half a cap, raise that cap in the next code PR (a baseline-only refresh
+PR may not touch this file — see the guard above).
+
 A `concurrency` group (keyed on PR number, else ref; `cancel-in-progress: true`)
 prevents overlapping runs from racing each other.
 
