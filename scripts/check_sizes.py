@@ -132,7 +132,12 @@ SRC_LOC_MAX = 31_600
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-TEST_LOC_MAX = 48_800
+# Raised to 48_950 by the same-job benchmark A/B gate: `test_benchmark_ab.py`
+# pins the comparator's verdicts off synthetic result files (head +25% fails,
+# +2% passes, CPU mismatch is exit 2 not a verdict) so the gate has a
+# hardware-independent red proof; measured 48_643, ceiling = measured +
+# headroom.
+TEST_LOC_MAX = 48_950
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

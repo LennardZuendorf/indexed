@@ -82,6 +82,8 @@ Refresh touched spec dates when publication crosses calendar days.
 Publish saved eval verdicts with environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
+Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
+Advisory reports must not skip the independently enforced A/B setup and results.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this

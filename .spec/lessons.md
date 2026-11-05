@@ -1383,6 +1383,40 @@ with `git add`/`git status`, since that's what CI actually runs.
   treat a single run-to-run delta as noise to re-measure; only a repeated,
   same-fingerprint shift is a regression.
 
+## A benchmark gate must measure both sides in one job (2026-11-02)
+
+- **Two numbers from two machines are not a comparison, at any tolerance.** The
+  hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
+  9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
+  compared against a committed baseline reds or greens by which runner it
+  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  repair is structural, not statistical — measure the captured event base and
+  its corresponding merge result back to back on one runner, and compare those two
+  files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
+  drift report. Make its failure advisory, and independently enforce setup and
+  complete measurements in the hard A/B; a finite report tolerance is not a boundary.
+- **Same fingerprint is still not same machine, so compare the best round, not
+  the mean.** Three consecutive runs reported the same node and CPU and
+  disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
+  shared-vCPU tenancy adds time but never removes it. On unchanged code
+  measured both ways locally, means disagreed by 20 % (one slow round in a
+  3-round benchmark), medians by 12 %, minimums by 0.7 % — so the gate compares
+  the minimum and keeps `--stat` as the escape hatch. A real regression moves
+  the minimum too; noise does not.
+- **A harness bug must not spend the verdict.** A machine mismatch inside a
+  same-job A/B, a different interpreter, or two files with no shared rows is
+  not a red PR and not a green one: exit with its own code (2), name it
+  `same-job measurement invalid`, and say it is a bug. Keeping "no verdict"
+  separate from "regressed" is what makes the red mean something — and the
+  committed unit test proves it without a runner (`tests/unit/test_benchmark_ab.py`:
+  +25 % fails, +2 % passes).
+- **A guard around a comparison that no longer decides anything is dead weight
+  with a red exit.** #268's fail-on-skip step was right while a cross-run
+  comparison was the gate and became a random red generator once the A/B took
+  over, so this PR deletes it rather than leaving two gates disagreeing. When
+  superseding a gate, remove the machinery that only enforced honesty about the
+  old one, and say in the spec which issue's step went where.
+
 ## Baseline-refresh repair verification (2026-11-02)
 
 - [ci] A downstream guard must read the same target filename and captured ref
@@ -1394,3 +1428,41 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
+
+## Native-stack provenance (2026-11-02)
+
+- A native stack can put an upstream synthetic merge before the captured base.
+  Accept one wrapper only with exactly two parents, captured base second, and
+  complete Git tree identity. Require exactly two outer parents and captured
+  head second. Measure the original captured SHAs; never substitute the wrapper.
+- Fetch depth 3 before inspecting the nested graph. Depth 2 can hide wrapper
+  parents even when their objects exist. Missing objects remain invalid.
+- Capture Git reads before array parsing or comparison so command failures reach
+  the measurement trap. Compare complete tree IDs, including modes and docs.
+- Workflow doubles must model environment names and escape generated source.
+  Benchmark fixtures supply GITHUB_SHA; eval fixtures supply MERGE. A raw
+  newline in a generated Git stub caused a false syntax failure before RED.
+- File hooks can open even unchanged inputs with write access. Run them with
+  scoped worktree write permissions; a denied rb+ open is an environment failure.
