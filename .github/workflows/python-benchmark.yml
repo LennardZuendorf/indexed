@@ -279,7 +279,9 @@ jobs:
           -v
         cross-branch-tolerance: 20
         update-tolerance: 1000
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        # Must stay identical to the PR job's map above (same copy, no YAML
+        # merge keys); derivation is documented there.
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Summarise drift against main's baseline
