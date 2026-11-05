@@ -76,15 +76,24 @@ Evaluation reports reconcile saved rankings, labels, counts and metrics. Capture
 one usable model cache before HOME isolation and use it for checks and loads.
 Scoped evaluation config restores prior overrides and excludes unrelated
 connector/MCP settings from validation.
-Check new fixture files for whitespace before freezing their hashes.
+Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
 Publish saved eval verdicts with environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
-Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
-Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
-Advisory reports must not skip the independently enforced A/B setup and results.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
 file (multi-tool compatibility).
+
+Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
+
+Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
+
+Advisory reports must not skip the independently enforced A/B setup and results.
+
+Canonicalize only generated eval path prefixes; record harness digests; control test Git evidence.
+
+Reject equal-missing model snapshots and common instrumentation before comparison.
+
+Verify invalid-result artifacts through the actual publisher consumer.

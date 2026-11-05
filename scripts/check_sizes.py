@@ -137,7 +137,16 @@ SRC_LOC_MAX = 31_600
 # +2% passes, CPU mismatch is exit 2 not a verdict) so the gate has a
 # hardware-independent red proof; measured 48_643, ceiling = measured +
 # headroom.
-TEST_LOC_MAX = 48_950
+# Raised from 48_600 by the same-job A/B proofs: the benchmark comparator's
+# synthetic-result tests (inherited from #273) and the retrieval gate's
+# synthetic-report tests share one comparator and prove it reds on a real
+# regression, passes inside the measured tolerance, and exits 2 — not 1 or 0 —
+# on a machine, interpreter, corpus or case-set mismatch. Tests only, no
+# product surface; measured 48_901, ceiling = measured + headroom.
+# The measured #273/#274 union and canonical-boundary regressions exceed
+# the separate-branch cap: stacked on #273 the union measures 49_875, so the
+# ceiling carries the stack with ~100 lines of bounded headroom.
+TEST_LOC_MAX = 49_975
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

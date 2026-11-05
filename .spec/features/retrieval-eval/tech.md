@@ -3,7 +3,7 @@ type: feature-tech
 feature: retrieval-eval
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-10-31
+updated: 2026-11-02
 ---
 
 # Feature: Retrieval Evaluation Baseline — Architecture
@@ -125,7 +125,7 @@ Both model identities, effective settings and cache snapshots are recorded.
   document the case judges relevant) — a stale line reference fails the suite
   instead of silently justifying nothing;
 - adapter flattening (fake payloads, `file://` ids, error payloads);
-- Comparison verdicts and exit codes: a metric drop, a per-case rank drop (even
+- Local baseline comparison verdicts and exit codes: a metric drop, a per-case rank drop (even
   when a compensating case leaves the average flat), a newly errored case, or a
   rise in `distractor_leak` all mean `regressed` (exit 1) — the unanswerable
   cases are part of the gate, not a footnote;
@@ -156,3 +156,84 @@ comments target same-repository PRs only. Fork/manual runs keep summaries and
 artifacts. Paginate comments, match marker plus bot identity, and check the
 current PR head before posting. Escape report-derived text. Posting failures
 produce a warning without changing phase-one evaluation semantics.
+
+## Same-job gate and canonical context
+
+`python-eval.yml` measures the captured event base and its corresponding PR
+merge result in one job. It fetches immutable SHAs, verifies both merge parents,
+and verifies each measured HEAD. Each side uses its own detached worktree and
+`uv sync --locked` environment. Dispatch measures its captured revision twice;
+it never resolves a moving branch tip. The common launcher is captured once
+from the merge result and runs by absolute path through each side's own Python.
+
+`scripts/eval_ab_run.py` calls the side's existing `run_eval(connector_factory=...)`
+API. It loads only the shared `eval/canonical.py` helper by explicit file path.
+The side retains its own evaluator runner, core, parser, connectors and lock.
+Actual import origins must be inside that side. Reports record full engine and
+harness SHAs, lock digest, common-file digests and whether instrumentation
+matches its captured commit. Local uncommitted instrumentation says so. Report outputs reject nonregular
+paths with `lstat` and use exclusive temporary descriptors plus atomic replacement.
+
+The evaluator-only converter replaces recognized generated leading absolute
+code/plaintext path context with `eval/corpus/<relative path>`. It preserves
+authored body occurrences, headings, chunk boundaries, IDs and physical
+URLs/metadata. The default local evaluator uses the same canonical factory;
+explicit custom factories remain supported. Effective configuration records
+`input_context_policy=eval-corpus-relative-v1` (or `custom`).
+
+`environment.converter_inputs` hashes normalized converter chunks with the
+boundary label `normalized-converter-chunks`. It does not claim to capture
+post-engine embedding inputs. Equal digests are checked during same-source
+stability validation; intentional parser/engine changes may change inputs.
+
+One comparator validates complete saved reports with
+`indexed.eval.report_validation.report_problems` before metrics or fingerprints.
+Both sides require every selected metric, identical query identities/judgments,
+full effective model/score configuration, selected model snapshots, complete
+CPU/system/Python identities and matching common instrumentation. Invalid
+containers, missing evidence, nonfinite/unrepresentable numbers and invalid
+tolerance exit 2 with an invalid-result JSON and no verdict. Regressions exit 1;
+valid within-policy measurements exit 0. The publisher consumes this sole verdict.
+
+The retained policy is **0.04 absolute points** for hit-rate@k and MRR.
+Distractor leakage remains report-only. Historical CI measured 0.0307 MRR
+movement at the two-environment boundary; that observation did not diagnose its
+cause. A later controlled local experiment isolated generated absolute path
+prefixes: changing only 77 inputs moved one relevant rank 5 to 6. Canonical
+context fixes that demonstrated harness cause without a product retrieval
+change or wider tolerance. Bounded local same-source validation is separate
+from hosted acceptance and is not a universal determinism guarantee.
+
+The committed `eval/baseline.json` remains a historical drift reference, with
+its original physical-path context. Exact reproduction requires the same input
+policy and numerical environment. CI compares its two fresh reports instead.
+Machine-block adoption for legacy reports still requires matching the actual
+job platform and never overwrites an explicit recorded machine block.
+
+Both reports and `eval-ab.json` are uploaded. A failed harness blocks
+measurement; the publisher still displays unavailable phases and preserves
+failures. The publisher step alone is advisory. Fork/manual runs retain summary
+and artifacts. Dispatch `variance_repeats` accepts integers 1 through 10.
+
+
+Gate identity validation requires a present model's nonempty selected snapshot
+and weights. Active reranking also requires its model name and valid cache;
+an absent inactive reranker remains compatible. Common instrumentation, when
+present, must include a full revision, matching effective normalization policy,
+and exactly two valid SHA256 digests for launcher and canonical helper.
+CI passes `--require-common-harness`; ordinary local/legacy reports may omit
+that instrumentation. Errored queries invalidate the gate rather than reducing
+its metric denominators.
+
+Measurement setup/base/head/repeat failures exit 2 through the shared error
+trap. They do not synthesize a verdict artifact: the publisher shows the failed
+measurement phase and unavailable verdict. Comparator input-read, host-adoption
+and report-validation failures write an explicit invalid-result artifact.
+
+
+The publisher validates comparator-invalid artifacts separately from pass/fail
+artifacts. Early failures may contain label-only sides and null tolerance;
+unknown identity fields render as unavailable, while escaped reasons retain the
+invalid status. Pass/fail still requires complete machine/interpreter sides.
+Invalid reasons are limited to ten displayed entries with bounded text and an
+artifact link for omitted content; invalid artifacts show no gating table.
