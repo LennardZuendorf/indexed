@@ -16,7 +16,10 @@ import re
 from pathlib import Path
 
 WORKFLOW = (
-    Path(__file__).resolve().parents[2] / ".github" / "workflows" / "python-benchmark.yml"
+    Path(__file__).resolve().parents[2]
+    / ".github"
+    / "workflows"
+    / "python-benchmark.yml"
 )
 
 
