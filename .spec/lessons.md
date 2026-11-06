@@ -1745,3 +1745,7 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [publication] Guard both the expected branch and HEAD before each merge.
   Different branches can share a HEAD, so a revision check alone can commit to
   the wrong branch. Validate the step range and frozen target tree too.
+- [spec] Audit dates after real merge commits, not only the uncommitted overlay.
+  A newly retained rebase history can expose older updated metadata even when
+  the document's bytes did not change. Refresh the affected dates and rerun the
+  structural audit while retaining unrelated historical drift findings.

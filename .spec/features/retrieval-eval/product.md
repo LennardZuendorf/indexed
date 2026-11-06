@@ -3,7 +3,7 @@ type: feature-product
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-11-02
+updated: 2026-11-06
 ---
 
 # Feature: Retrieval Evaluation Baseline — Product
