@@ -141,6 +141,16 @@ Indexing is not the only consumer of git: `search --changed-since` and
   `--cached` diffs, and `git ls-files --others --exclude-standard`, so uncommitted and
   untracked work counts as "changed". An invalid ref returns `None` (verified up front
   via `rev-parse --verify <ref>^{commit}`) — a typo must never look like "nothing changed".
+- `head_commit` / `commit_exists` / `is_ancestor` / `is_shallow_repository` /
+  `commit_count` / `is_detached_head` — the freshness facts behind
+  `utils/freshness.py` (#146 slice 1): the HEAD SHA, whether the indexed commit still
+  exists and is an ancestor of HEAD, a real `rev-list --count`, and detached-HEAD
+  detection. These need `_run_code`, because `merge-base --is-ancestor` answers "no"
+  with exit 1 — folding that into `None` like `_run` does would turn "git says no" into
+  "git is broken", and `unknown`/`history-rewritten` must stay distinguishable.
+- `ignored_paths` — `git ls-files --others --ignored --exclude-standard`. `git status`
+  never reports an ignored file, so one that was indexed and only later ignored would
+  otherwise read `fresh` forever.
 - `last_commit(repo, path)` — ONE `git log -1 --format=…` per file, giving
   `{commit, short, author, email, committedAt, subject}`. **No blame-by-line in this
   slice**: provenance is document-level, so a file's history is one cheap call, not a

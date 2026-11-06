@@ -563,6 +563,24 @@ class TestFormatSearchResults:
         joined = "\n".join(outputs)
         assert "/ rel" not in joined
 
+    def test_freshness_advisory_prints_the_verdict_words(self, monkeypatch):
+        """#146 slice 1: the search advisory is the inspect verdict, verbatim."""
+        warnings: List[str] = []
+        monkeypatch.setattr(search_render, "print_warning", warnings.append)
+        monkeypatch.setattr(search_render.console, "print", lambda *a, **k: None)
+        summary = "stale — 2 files changed since commit abc1234"
+        results: Dict[str, Any] = {
+            "docs": {
+                "scoreKind": "cosine",
+                "results": [],
+                "freshness": {"status": "stale", "summary": summary},
+            }
+        }
+
+        search_render.format_search_results("query", results=results, limit=5)
+
+        assert warnings[0] == f"docs: {summary}"
+
     def test_format_search_results_compact_handles_no_results(self, monkeypatch):
         """Compact formatter should also show a friendly message when empty."""
         outputs: List[str] = []
@@ -2017,6 +2035,7 @@ class TestGitFlags:
         assert "--changed-since" in clean
         assert "--git-provenance" in clean
         assert "--no-git-provenance" in clean
+        assert "--freshness" in clean
 
     def test_flags_reach_svc_search(self, monkeypatch):
         self._wire_common(monkeypatch, [self._make_status("col1")])
@@ -2037,6 +2056,22 @@ class TestGitFlags:
         assert captured["changed_since"] == "HEAD~1"
         assert captured["git_provenance"] is True
 
+    def test_freshness_flag_reaches_svc_search(self, monkeypatch):
+        """#146 slice 1: the advisory is opt-in, and only then asked for."""
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: Dict[str, Any] = {}
+
+        def fake_svc_search(query, **kwargs):
+            captured.update(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--freshness"])
+
+        assert result.exit_code == 0
+        assert captured["include_freshness"] is True
+
     def test_omitted_flags_forward_nothing(self, monkeypatch):
         """Neither flag given → no git kwarg at all, exactly as before."""
         self._wire_common(monkeypatch, [self._make_status("col1")])
@@ -2053,6 +2088,7 @@ class TestGitFlags:
         assert result.exit_code == 0
         assert "changed_since" not in captured
         assert "git_provenance" not in captured
+        assert "include_freshness" not in captured
 
     def test_invalid_ref_exits_nonzero(self, monkeypatch, git_repo):
         """A typo'd ref must fail loud, not come back unfiltered."""

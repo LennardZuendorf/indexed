@@ -28,7 +28,11 @@ from .config import resolve_cli_context, resolve_config as _resolve_config
 
 def _format_status(s: Any) -> Dict[str, Any]:
     """Format a status object into a serializable dict."""
-    return {
+    # Opt-in freshness-vs-working-tree verdict (#146 slice 1); absent for a
+    # plain status poll so it stays git-free. A non-dict (e.g. a mock from a
+    # caller's test) is treated as absent rather than serialized.
+    verdict = getattr(s, "freshness", None)
+    out = {
         "name": s.name,
         "number_of_documents": s.number_of_documents,
         "number_of_chunks": s.number_of_chunks,
@@ -40,6 +44,9 @@ def _format_status(s: Any) -> Dict[str, Any]:
         "relative_path": s.relative_path,
         "disk_size_bytes": s.disk_size_bytes,
     }
+    if isinstance(verdict, dict):
+        out["freshness"] = verdict
+    return out
 
 
 def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
@@ -72,6 +79,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             statuses = svc_status(
                 include_index_size=mcp_cfg.include_index_size,
                 collections_path=collections_path,
+                include_freshness=True,
             )
             return {"collections": [_format_status(s) for s in statuses]}
         except IndexedError as e:
@@ -91,6 +99,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
                 [name],
                 include_index_size=mcp_cfg.include_index_size,
                 collections_path=collections_path,
+                include_freshness=True,
             )
             if not statuses:
                 return unresolvable_collection_error(
