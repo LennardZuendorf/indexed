@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # Lessons Learned
@@ -1728,3 +1728,20 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [reporting] Read saved coverage totals before stating a percentage. The
   measured result was 94.06%; an early 94.15% update lacked evidence and needed
   correction. Capture the JSON totals and bind verification to the exact tree.
+
+## Publication refresh (2026-11-06)
+
+- [integration] An automatic merge can silently restore an obsolete workflow
+  without a textual conflict. Current main's standalone guard displaced the
+  already reviewed paired gate. Restore that exact gate blob, preserve both
+  histories, and prove source/test identity before reusing runtime evidence.
+- [tools] Optional git-config reads return 1 for an unset value; capture their
+  status and apply the default. Use known evidence paths, not guessed skill or
+  report files, and check optional workflow directories before searching them.
+- [identity] Repository test overrides can replace the user's name, email and
+  signing setting. Apply the normal global identity/signing per command and
+  verify the actual SSH signature; do not silently ship test or unsigned commits.
+
+- [publication] Guard both the expected branch and HEAD before each merge.
+  Different branches can share a HEAD, so a revision check alone can commit to
+  the wrong branch. Validate the step range and frozen target tree too.

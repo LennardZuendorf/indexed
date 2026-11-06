@@ -81,13 +81,13 @@ Bound formatted comments after escaping and link omitted details to artifacts.
 Canonical search retains errors and matched text; rank before rounding.
 Check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
-Freeze publication hashes after the pinned pre-commit formatter passes.
+Freeze hashes after pinned formatting; check branch and HEAD before mutations.
 Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
 Advisory reports must not skip the independently enforced A/B setup and results.
-Integrate reviewed CI gates before judging search timing; preserve product bytes.
+Integrate reviewed CI gates before timing; verify automatic merges; preserve product bytes.
 Read cached hook entries; set UV_NO_SYNC=1 when hooks use the shared environment.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
