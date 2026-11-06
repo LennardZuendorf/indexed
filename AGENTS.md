@@ -76,7 +76,7 @@ Scoped evaluation config restores overrides and validates only measured namespac
 Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
-Publish saved eval verdicts with environment notes; step success is not a verdict.
+Read saved totals/verdicts; retain environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
 Canonical search retains errors and matched text; rank before rounding.
 Check exceptional CLI exit status before parsing stdout.
@@ -96,3 +96,5 @@ file (multi-tool compatibility).
 Canonicalize only generated eval path prefixes; record harness digests; control test Git evidence.
 Reject equal-missing model snapshots and common instrumentation before comparison.
 Verify invalid-result artifacts through the actual publisher consumer.
+Pin corpus bytes; retain original/refreshed tips; keep AGENTS snapshots outside worktrees.
+Pin uv environments/caches and plan paths; avoid zsh's path; select dist suffixes.

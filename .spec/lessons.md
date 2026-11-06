@@ -1695,3 +1695,36 @@ with `git add`/`git status`, since that's what CI actually runs.
   `trailing-whitespace` / `end-of-file-fixer` hooks edit tracked files at commit
   time, so a byte-checked corpus must be excluded from both (as `eval/corpus/`
   already is) or the next hook run breaks its own lock.
+
+## Combined PR integration (2026-11-05)
+
+- [history] Refreshed branch heads can preserve bytes while dropping approved
+  ancestry through a rebase. Retain original and refreshed tips explicitly;
+  prove all required ancestors before publication.
+- [verification] Preserve pinned benchmark corpus blobs when merging growing
+  specs. Measure combined test size; a separate branch's ceiling omits the
+  independent track. Keep the inherited failing gate as RED before reconciliation.
+- [tools] Read the supplied absolute plan path. In zsh, use probe_path rather
+  than path: assigning path replaces command lookup. Check optional paths first.
+  Discover workflow/report filenames before reading them. Include hidden ignored
+  artifacts explicitly when searching saved verification evidence.
+- [environment] Set UV_PROJECT_ENVIRONMENT, UV_NO_SYNC and a writable UV_CACHE_DIR
+  on every shared-environment probe. A cache-only retry can create a second local
+  venv; that environment does not establish use of the verified locked runtime.
+- [baseline] Keep the existing spec-drift failure separate from structural
+  validation. The combined tree retains the same historical findings; a new
+  integration report must not silently relabel them as a clean pre-merge check.
+- [rules] Compact duplicate guidance without removing requirements. Keep KISS
+  in existing prose when reducing the active-rules digest to its line ceiling.
+- [artifacts] Keep AGENTS.md snapshots outside the worktree. The size guard
+  discovers even ignored copies, so in-tree merge evidence created an unrelated
+  extra-file failure. Isolate snapshots before recording the size-gate RED.
+- [build] Select wheel and sdist artifacts by their declared suffixes. Python's
+  glob includes uv's .gitignore marker, which is not a third distribution and
+  must not enter the archive count or metadata command.
+- [hooks] Inspect the cached hook manifest before assuming it supplies a binary.
+  The ty 0.0.92 hook runs uv check with an explicit tool version; its environment
+  need not contain a ty executable. Run that exact entry with no-sync routing.
+- [reporting] Read saved coverage totals before stating a percentage. The
+  measured result was 94.06%; an early 94.15% update lacked evidence and needed
+  correction. Capture the JSON totals and bind verification to the exact tree.
