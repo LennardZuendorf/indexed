@@ -116,6 +116,13 @@ class CoreV1SearchConfig(BaseModel):
             "(v2 files collections only)"
         ),
     )
+    git_line_blame: bool = Field(
+        default=False,
+        description=(
+            "Attribute each matched chunk to the commit that last touched its "
+            "lines (v2 files collections only; code files record line spans)"
+        ),
+    )
 
 
 def get_default_collections_path() -> Path:

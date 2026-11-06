@@ -72,6 +72,11 @@ class _GitContext:
     repo: str
     base_path: str
     commits: Dict[str, Optional[Dict[str, str]]] = field(default_factory=dict)
+    # Per-path blame, memoized for the same reason as ``commits``: a multi-chunk
+    # document pays ONE ``git blame``, not one per matched chunk.
+    blames: Dict[str, Optional[List[Optional[Dict[str, Any]]]]] = field(
+        default_factory=dict
+    )
 
     def relative(self, source_id: str) -> str:
         return git_meta.repo_relative(self.repo, self.base_path, source_id)
@@ -87,6 +92,14 @@ class _GitContext:
                 self.repo, self.relative(source_id)
             )
         return self.commits[source_id]
+
+    def blame_lines(self, source_id: str) -> Optional[List[Optional[Dict[str, Any]]]]:
+        """Memoized per (repo, path): at most one ``git blame`` per admitted doc."""
+        if source_id not in self.blames:
+            self.blames[source_id] = git_meta.blame_lines(
+                self.repo, self.relative(source_id)
+            )
+        return self.blames[source_id]
 
 
 def _git_context(manifest: "V2Manifest") -> Optional[_GitContext]:
@@ -119,6 +132,7 @@ def search(
     rerank: Optional[bool] = None,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
+    git_line_blame: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search v2 collections; return ``{collection: per-collection-result}``.
 
@@ -128,8 +142,10 @@ def search(
     this call only (CLI ``--rerank``/``--no-rerank``, R2) without touching the
     stored config. ``changed_since`` keeps only nodes whose file changed since
     that git ref (uncommitted work included); ``git_provenance`` attaches the
-    last-touching commit per result document. Both apply to files collections
-    only and are no-ops when git can't answer (issues #60/#144/#146).
+    last-touching commit per result document. ``git_line_blame`` additionally
+    attributes each matched chunk to the commit that last touched the lines it
+    covers, for chunks whose parser recorded a line span. All three apply to
+    files collections only and are no-ops when git can't answer (#60/#144/#146).
     """
     if max_docs is None:
         max_docs = resolve_search_config().max_docs
@@ -170,6 +186,7 @@ def search(
                 rerank_cfg=rerank_cfg,
                 changed_since=changed_since,
                 git_provenance=git_provenance,
+                git_line_blame=git_line_blame,
             )
         except Exception as exc:  # per-collection failure never aborts the rest
             logger.error(f"Error searching v2 collection {name}: {exc}")
@@ -229,6 +246,7 @@ def _search_one(
     rerank_cfg: "CoreV2RerankConfig",
     changed_since: Optional[str],
     git_provenance: Optional[bool],
+    git_line_blame: Optional[bool],
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
 
@@ -263,12 +281,13 @@ def _search_one(
     if rerank_cfg.enabled:
         nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
-    # Query-time git awareness: ONE repo resolution per collection shared by both
-    # options, and a git problem skips the feature rather than emptying results —
-    # but the skip is REPORTED in ``gitFilter``, never a silent unfiltered set.
+    # Query-time git awareness: ONE repo resolution per collection shared by all
+    # three options, and a git problem skips the feature rather than emptying
+    # results — but the skip is REPORTED in ``gitFilter``, never a silent
+    # unfiltered set.
     git_ctx = (
         _git_context(manifest)
-        if (changed_since is not None or git_provenance)
+        if (changed_since is not None or git_provenance or git_line_blame)
         else None
     )
     git_filter: Optional[Dict[str, Any]] = None
@@ -308,6 +327,7 @@ def _search_one(
         include_all_chunks=include_all_chunks,
         docs_by_source=docs_by_source,
         git_context=git_ctx if git_provenance else None,
+        line_git_context=git_ctx if git_line_blame else None,
     )
     # Reranking REPLACES each NodeWithScore.score with a cross-encoder
     # relevance, so the manifest's cosine score_kind no longer describes it
@@ -368,6 +388,7 @@ def _group_by_document(
     include_all_chunks: bool = False,
     docs_by_source: Optional[Dict[str, List[Any]]] = None,
     git_context: Optional[_GitContext] = None,
+    line_git_context: Optional[_GitContext] = None,
 ) -> List[Dict[str, Any]]:
     """Group ranked chunk nodes into documents (v1 ``__build_results`` semantics).
 
@@ -378,6 +399,9 @@ def _group_by_document(
     attaches them the same way), reconstructed from ``docs_by_source``.
     ``git_context`` likewise attaches the document's last-touching commit as
     ``entry["git"]`` on first admission, and only when git answered.
+    ``line_git_context`` adds ``chunk["git"]`` — the commit that last touched
+    that chunk's own line span — whenever the chunk carries ``start_line``/
+    ``end_line`` metadata and blame can answer for that span.
     """
     result: Dict[str, Dict[str, Any]] = {}
     total_chunks = 0
@@ -425,7 +449,36 @@ def _group_by_document(
             result[source_id]["matchedChunks"].append(chunk)
             total_chunks += 1
 
+        # Only ADMITTED chunks pay for blame: the memoized per-path call is
+        # bounded by admitted documents (≤ max_docs), not by fetched nodes or
+        # matched chunks. The dict is already in the result list, so mutating
+        # it here still lands in the output.
+        if line_git_context is not None:
+            line_git = _line_provenance(line_git_context, str(source_id), meta)
+            if line_git is not None:
+                chunk["git"] = line_git
+
     return list(result.values())
+
+
+def _line_provenance(
+    git_context: _GitContext, source_id: str, meta: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """The commit that last touched this chunk's own line span, or ``None``.
+
+    Only chunks whose parser recorded the span (``start_line``/``end_line``,
+    0-based, inclusive — see ``parsing/code_chunker.py``) can be attributed
+    line-by-line; anything else stays absent rather than borrowing the
+    document's whole-file commit. Blame is memoized per path in
+    ``_GitContext``, so the cost is one call per admitted document.
+    """
+    start_line = meta.get("start_line")
+    end_line = meta.get("end_line")
+    if not isinstance(start_line, int) or not isinstance(end_line, int):
+        return None
+    return git_meta.resolve_range(
+        git_context.blame_lines(source_id), start_line, end_line
+    )
 
 
 def _attach_document_content(

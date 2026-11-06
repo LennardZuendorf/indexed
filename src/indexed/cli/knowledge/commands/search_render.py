@@ -333,6 +333,17 @@ def _show_top_result_split_cards(
     git = chunk_info.get("git")
     if git:
         meta_rows.append(("Last commit", _git_label(git)))
+    # Additive: per-chunk blame, present only for chunks that recorded a line
+    # span and only when --git-line-blame was requested.
+    line_git = chunk.get("git")
+    if isinstance(line_git, dict):
+        span = ""
+        if line_git.get("startLine") and line_git.get("endLine"):
+            span = f"lines {line_git['startLine']}-{line_git['endLine']}"
+        if line_git.get("uncommitted"):
+            meta_rows.append(("Lines commit", f"uncommitted ({span})"))
+        else:
+            meta_rows.append(("Lines commit", f"{_git_label(line_git)} ({span})"))
 
     meta_card = create_detail_card(title="Top Result Meta", rows=meta_rows)
     console.print(meta_card)

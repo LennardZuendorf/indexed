@@ -794,3 +794,190 @@ def test_git_options_are_noops_outside_a_repo(tmp_path: Path) -> None:
         "applied": False,
         "reason": "no-git-repository",
     }
+
+
+# ── line-level blame (#60) ─────────────────────────────────────────────────
+
+
+def _spanned_doc(doc_id: str, chunks: list[tuple[str, int, int]]) -> dict:
+    """A ConvertedDocument whose chunks carry the code chunker's line spans."""
+    return {
+        "id": doc_id,
+        "url": f"u/{doc_id}",
+        "modifiedTime": "2026-01-10T00:00:00+00:00",
+        "text": " ".join(text for text, _s, _e in chunks),
+        "chunks": [
+            {"indexedData": text, "metadata": {"start_line": start, "end_line": end}}
+            for text, start, end in chunks
+        ],
+    }
+
+
+def _two_region_repo(repo: Path) -> tuple[str, str]:
+    """code.py: c1 writes both regions, c2 rewrites the second one only."""
+    (repo / "code.py").write_text("alpha penguin one\nbeta penguin two\n")
+    _commit(repo, "add", ".")
+    _commit(repo, "commit", "-m", "c1", "--date=2026-01-01T00:00:00+00:00")
+    from tests.conftest import run_git
+
+    first = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    (repo / "code.py").write_text("alpha penguin one\nbeta penguin rewritten\n")
+    _commit(
+        repo,
+        "commit",
+        "-am",
+        "c2",
+        "--author=Second Author <second@test.com>",
+        "--date=2026-01-02T00:00:00+00:00",
+    )
+    return first, run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_git_line_blame_attributes_each_chunk_to_its_own_commit(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    first, second = _two_region_repo(git_repo)
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "code.py", [("alpha penguin one", 0, 0), ("beta penguin two", 1, 1)]
+        )
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    entry = res["c1"]["results"][0]
+    # Line-level only: the document-level contract stays absent unless asked.
+    assert "git" not in entry
+    by_chunk = {chunk["chunkNumber"]: chunk for chunk in entry["matchedChunks"]}
+    assert by_chunk[0]["git"]["commit"] == first
+    assert (by_chunk[0]["git"]["startLine"], by_chunk[0]["git"]["endLine"]) == (1, 1)
+    assert by_chunk[1]["git"]["commit"] == second
+    assert by_chunk[1]["git"]["author"] == "Second Author"
+    assert (by_chunk[1]["git"]["startLine"], by_chunk[1]["git"]["endLine"]) == (2, 2)
+
+
+def test_git_line_blame_marks_uncommitted_lines(tmp_path: Path, git_repo: Path) -> None:
+    _two_region_repo(git_repo)
+    # An uncommitted edit to the second line, still on disk at query time.
+    (git_repo / "code.py").write_text("alpha penguin one\nbeta penguin local only\n")
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "code.py", [("alpha penguin one", 0, 0), ("beta penguin two", 1, 1)]
+        )
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    by_chunk = {
+        chunk["chunkNumber"]: chunk
+        for chunk in res["c1"]["results"][0]["matchedChunks"]
+    }
+    assert "git" in by_chunk[0]
+    # The edited chunk's last touch is the working tree — named, not dressed up
+    # as the committed ancestor it replaced.
+    assert by_chunk[1]["git"]["uncommitted"] is True
+
+
+def test_git_line_blame_omits_the_field_for_chunks_without_a_line_span(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "plain.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("plain.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    chunk = res["c1"]["results"][0]["matchedChunks"][0]
+    # No span, no answer: a chunk without one never borrows the file-level commit.
+    assert "git" not in chunk
+
+
+def test_git_line_blame_costs_one_blame_call_per_admitted_document(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bound is admitted documents (≤ max_docs), never nodes × chunks."""
+    _two_region_repo(git_repo)  # code.py, two lines, two commits
+    for name in ("alpha.py", "beta.py"):
+        (git_repo / name).write_text(f"{name} walrus one\n{name} walrus two\n")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "two more files")
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "alpha.py", [("alpha walrus one", 0, 0), ("alpha walrus two", 1, 1)]
+        ),
+        _spanned_doc("beta.py", [("beta walrus one", 0, 0), ("beta walrus two", 1, 1)]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    calls: list[str] = []
+    original = retrieval.git_meta.blame_lines
+
+    def counting(repo: str, path: str):
+        calls.append(path)
+        return original(repo, path)
+
+    monkeypatch.setattr(retrieval.git_meta, "blame_lines", counting)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "walrus",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            max_docs=1,
+            git_line_blame=True,
+        )
+
+    assert len(res["c1"]["results"]) == 1
+    # One document admitted (two matched chunks of it) → exactly one blame.
+    assert len(calls) == 1
+    assert calls[0] in {"alpha.py", "beta.py"}
+
+
+def test_git_line_blame_omits_the_field_outside_a_repo(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "code.py").write_text("penguin\n")
+
+    cols = tmp_path / "cols"
+    docs = [_spanned_doc("code.py", [("alpha penguin one", 0, 0)])]
+    _build_files_at(cols, "c1", docs, corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["code.py"]
+    assert "git" not in res["c1"]["results"][0]["matchedChunks"][0]

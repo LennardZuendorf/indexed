@@ -43,7 +43,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # document-level `git` provenance in `core/v2/retrieval.py`, plus their CLI/MCP
 # plumbing — opt-in, v2-only, no new persisted state, so genuine new surface
 # rather than stealth regrowth; ceiling = measured (31_720) + headroom.
-SRC_LOC_MAX = 32_000
+# Raised from 32_000 by issue #60's line-level blame: `git_meta.blame_lines` /
+# `resolve_range` (porcelain parse, binary sniff, span resolution), the memoized
+# per-path blame in `core/v2/retrieval.py`'s `_GitContext`, and the
+# `git_line_blame` plumbing through services/facade/config/CLI/MCP — opt-in,
+# query-time, no persisted state; ceiling = measured (32_172) + headroom.
+SRC_LOC_MAX = 32_450
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -140,15 +145,19 @@ SRC_LOC_MAX = 32_000
 # renderer warning, v1 facade stamping) plus the MCP tool forwarding tests that
 # did not exist — defect-guarding coverage, not stealth regrowth; measured
 # 49_497.
+# Raised from 49_600 by issue #60's line-level blame: porcelain-parse and
+# span-mapping units, retrieval tests for per-chunk attribution / uncommitted /
+# absent-span / non-repo cases, the two-chunk-two-commit system test, and the
+# CLI/MCP/formatting forwarding tests; ceiling = measured (50_009) + headroom.
 # Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
 # (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-# Merging main into this branch keeps both sides' new tests, so the union
-# measures 49_621 — the two ceilings above cannot both hold; one measured
-# value with headroom replaces them.
-TEST_LOC_MAX = 49_800
+# Merging main (and #279's merged head) into this branch keeps both sides' new
+# tests, so the union measures 50_156 — the ceilings above cannot both hold; one
+# measured value with headroom replaces them.
+TEST_LOC_MAX = 50_350
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

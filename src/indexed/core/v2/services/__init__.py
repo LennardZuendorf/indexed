@@ -91,11 +91,12 @@ def search(
     rerank: Optional[bool] = None,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
+    git_line_blame: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search v2 collections; ``rerank`` overrides ``[core.v2.rerank]`` per call.
 
-    ``changed_since``/``git_provenance`` are the opt-in query-time git options
-    (v2 files collections only; no-ops elsewhere).
+    ``changed_since``/``git_provenance``/``git_line_blame`` are the opt-in
+    query-time git options (v2 files collections only; no-ops elsewhere).
     """
     from indexed.core.v2 import retrieval
 
@@ -113,6 +114,7 @@ def search(
             rerank=rerank,
             changed_since=changed_since,
             git_provenance=git_provenance,
+            git_line_blame=git_line_blame,
         )
 
 

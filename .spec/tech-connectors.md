@@ -142,9 +142,19 @@ Indexing is not the only consumer of git: `search --changed-since` and
   untracked work counts as "changed". An invalid ref returns `None` (verified up front
   via `rev-parse --verify <ref>^{commit}`) — a typo must never look like "nothing changed".
 - `last_commit(repo, path)` — ONE `git log -1 --format=…` per file, giving
-  `{commit, short, author, email, committedAt, subject}`. **No blame-by-line in this
-  slice**: provenance is document-level, so a file's history is one cheap call, not a
-  per-chunk `git blame`.
+  `{commit, short, author, email, committedAt, subject}`. Document-level provenance
+  stays this cheap call; line-level blame is a separate, opt-in helper.
+- `blame_lines(repo, path)` — ONE `git blame --line-porcelain` per file, parsed into
+  one record per line (`commit`/`short`/`author`/`email`/`committedAt`/`subject` plus
+  the sort-only author epoch). `None` when blame cannot answer: untracked path,
+  non-repo, binary file (a NUL in git's own 8 kB sniff window — plain blame would
+  return a binary blob as one meaningless "line"), or any git failure. Callers memoize
+  by `(repo, path)` within a search, so a document's chunks share one call.
+- `resolve_range(lines, start_line, end_line)` — pure mapping from a 0-based inclusive
+  span to its newest touching commit (`startLine`/`endLine` are reported 1-based, as
+  git counts). A span with any working-tree line returns
+  `{"uncommitted": true, "startLine", "endLine"}` — never the committed ancestor
+  dressed up as line-level provenance — and a gap or out-of-range span returns `None`.
 - `repo_relative(repo, base_path, source_id)` — document ids are base-path-relative
   (`v1_adapter.py:35-36`), git pathspecs are repo-relative; this rebases with `os.path`
   arithmetic only (no symlink resolution, no filesystem probe).
