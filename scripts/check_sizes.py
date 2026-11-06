@@ -160,6 +160,11 @@ SRC_LOC_MAX = 32_890
 # retrieval cases, MCP+CLI forwarding, the formatting skip entry, the
 # real-engine fixture-repo ranking system test, and the both-opt-ins + config
 # seam tests; ceiling = measured (50_635) + headroom.
+# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
+# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
+# the benchmark wiring so a corpus change is a deliberate, reviewable diff
+# instead of a benchmark gate that reds on spec growth) — gate-integrity
+# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
 TEST_LOC_MAX = 50_850
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for

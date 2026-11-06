@@ -1,0 +1,245 @@
+---
+type: entrypoint
+scope: product
+children: []
+updated: 2026-09-09
+---
+
+# Product Spec: indexed
+
+**indexed** builds a local, privacy-first knowledge base per project — pulling code,
+docs, issues, and wikis into searchable collections, indexed with a LlamaIndex-powered
+engine and exposed to AI agents via MCP (Model Context Protocol).
+
+**Core principle:** All processing happens locally. No data sent to third parties.
+
+**Status:** v0.1.0 Alpha
+
+---
+
+## Vision
+
+A single semantic index over one source is easy — every RAG toolkit does that. What's
+hard, and what indexed is *for*, is that no one source has all the answers. Code alone
+doesn't explain why a decision was made; a Jira ticket alone doesn't show what shipped;
+git history alone doesn't say whether it's still true today.
+
+**Shipped today:** indexed connects to files, Jira, Confluence, Outline, and GitHub, and
+indexes each as its own searchable collection (§ Features below) — parallel semantic
+indexes, queried together or one at a time.
+
+**Where this is going:** one merged knowledge graph per project — repo, docs, issues, git
+history, connected codebases, and accumulated lessons/memory tied together as one
+structure, not five indexes you have to query separately. Structural relationships
+first (a PR closing an issue, a file importing another file, a commit touching a path),
+graph-aware retrieval on top (follow a hit to what it's linked to, not just its nearest
+neighbors), then optional local-model-driven merging across sources. This generalizes
+past code — the same graph shape works for a second brain, a documentation set, or any
+knowledge base that's really several sources pretending to be one. See
+[plan.md](plan.md) Decision Log (2026-07-18) for the seam this was designed against
+(Core v2's pluggable store) and § Features below for what's shipped vs. planned.
+
+---
+
+## Non-Goals
+
+What indexed is **not**:
+- Cloud service or SaaS platform
+- Enterprise search replacement (targeting AI agent integration)
+- Real-time collaboration search
+- General-purpose database
+
+---
+
+## Features
+
+### Indexing
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **File System** | ✅ Shipped | Index local files (.pdf, .docx, .pptx, .md, etc.) |
+| **Jira Cloud** | ✅ Shipped | Index Jira Cloud issues with JQL filtering |
+| **Jira Server/DC** | ✅ Shipped | Index on-premises Jira with JQL filtering |
+| **Confluence Cloud** | ✅ Shipped | Index Confluence Cloud pages with CQL filtering |
+| **Confluence Server/DC** | ✅ Shipped | Index on-premises Confluence with CQL filtering |
+| **Outline Wiki** | ✅ Shipped | Index Outline docs + attachments (Cloud or self-hosted) |
+| **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
+| **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
+| **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
+| **GitHub Issues/PRs/Projects** | ◑ Mostly shipped | Index issues, PR threads, and Projects v2 boards ([plan.md](plan.md) Feature 19 — chunk-hash reuse follow-up not yet planned) |
+| Google Drive | 📋 Planned | Index Google Docs, Sheets, Slides |
+| Notion | 📋 Planned | Index Notion pages and databases |
+| Slack | 📋 Planned | Index Slack messages and threads |
+
+### Knowledge Graph
+
+Direction, not yet shipped — see § Vision above.
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Structural graph edges | 📋 Planned | Relationships derived from existing source structure — no LLM required (doc→chunk hierarchy, code imports, issue/PR links, commit→file) |
+| Graph-aware retrieval | 📋 Planned | Follow a search hit to its linked nodes, alongside vector search — not a replacement for it |
+| Cross-source merge | 📋 Planned | Unify multiple collections (code, docs, issues, git history, connected repos, lessons) into one graph per project |
+| Local-model-driven merging | 📋 Planned | Optional richer entity/relation extraction via a local model (e.g. Ollama) — additive on top of the structural graph, never required |
+
+### Search
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
+| **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
+| **Single Collection** | ✅ Shipped | Target specific collection for focused results |
+| **Relevance Scoring** | ✅ Shipped | FAISS squared-L2 ranking (lower = closer match) |
+| **Result Limits** | ✅ Shipped | Configurable max results per query |
+| **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
+| **Reranking (v2)** | ✅ Shipped | `--rerank`/`--no-rerank` — cross-encoder rerank, v2 collections only |
+| Filters | 📋 Planned | Filter by date, source type, metadata |
+| Boolean Operators | 📋 Planned | AND, OR, NOT query composition |
+| Phrase Search | 📋 Planned | Exact phrase matching |
+
+### MCP Integration
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Tools** | ✅ Shipped | `search`, `list_collections`, `collection_status` |
+| **Resources** | ✅ Shipped | Collection listings and status endpoints |
+| **Stdio Transport** | ✅ Shipped | For Claude Desktop, Cline |
+| **HTTP Transport** | ✅ Shipped | Network-accessible server |
+| **SSE Transport** | ✅ Shipped | Server-Sent Events streaming |
+| **Error Handling** | ✅ Shipped | Rich error messages with context |
+| Streaming Results | 📋 Planned | Progressive result delivery |
+| Subscriptions | 📋 Planned | Real-time collection updates |
+
+### CLI
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Create Collections** | ✅ Shipped | `indexed index create` |
+| **Search** | ✅ Shipped | `indexed index search` |
+| **Update** | ✅ Shipped | `indexed index update` |
+| **Inspect** | ✅ Shipped | `indexed index inspect` |
+| **Remove** | ✅ Shipped | `indexed index remove` |
+| **Config Management** | ✅ Shipped | `get`, `set`, `validate` commands |
+| **System Info** | ✅ Shipped | `indexed info` |
+| **Engine Selection** | ✅ Shipped | `--engine v1/v2` on `index create` (root, group, and leaf flags) — new collections only |
+| **Migrate to v2** | ✅ Shipped | `indexed index migrate` — dry-run/backup/rollback-safe v1→v2 conversion |
+| Interactive TUI | 📋 Planned | Full-screen interactive mode |
+| Progress Indicators | ⚠️ Partial | Spinners exist, bars planned |
+
+### Configuration
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **TOML Config** | ✅ Shipped | Human-readable config files |
+| **Environment Vars** | ✅ Shipped | `INDEXED__*` override system |
+| **Credential Management** | ✅ Shipped | Separate .env for secrets |
+| **Global/Local Modes** | ✅ Shipped | System-wide or per-project collections |
+| **Validation** | ✅ Shipped | Pydantic schema validation |
+| **Single-Source Config** | ✅ Shipped | Resolves to one config.toml (no global+local merge) |
+| **CWD/.env Support** | ✅ Shipped | Project-level .env loaded as credential fallback |
+| **.gitignore Protection** | ✅ Shipped | Local .indexed/ auto-creates .gitignore with .env entry |
+| Config Profiles | 📋 Planned | Named config sets (dev, prod, etc.) |
+
+---
+
+## Deployment Modes
+
+### Local (Primary)
+
+**What:** Run indexed on developer workstation
+**Why:** Privacy, offline access, zero ops overhead
+**Storage:** `~/.indexed/` (global) or `./.indexed/` (local)
+
+### Server (Future)
+
+**What:** Dedicated server for team access
+**Why:** Centralized collections, shared indexes
+**Status:** 📋 Planned (HTTP API + auth)
+
+---
+
+## UX Principles
+
+### Privacy First
+
+- Never send data externally
+- All embedding generation local
+- Credentials stored in .env (not config)
+- No telemetry or analytics
+
+### Fast & Minimal
+
+- CLI startup <1s despite ML dependencies
+- Search latency <1s for typical collections
+- Minimal configuration required
+- Sensible defaults
+
+### Developer Experience
+
+- Beautiful terminal output (Rich)
+- Guided prompts for setup
+- Clear error messages
+- Excellent documentation
+
+### Composability
+
+- Unix philosophy (do one thing well)
+- JSON output for scripting
+- Standard protocols (MCP)
+- Extensible connector system
+
+---
+
+## Output Formats
+
+| Format | Use Case | Example |
+|--------|----------|---------|
+| **Card** | Rich terminal display | Default for `search` |
+| **Table** | Structured comparison | `inspect` collections |
+| **Compact** | Quick scanning | Titles only |
+| **JSON** | Scripting/piping | `--json` flag |
+
+---
+
+## User Flows
+
+### First-Time Setup
+
+1. Install: `uv sync`
+2. Verify: `uv run indexed --help`
+3. Create first collection: `indexed index create --type files --name docs`
+4. Search: `indexed index search "query"`
+
+**Critical:** This must work in <5 minutes.
+
+### Adding MCP to Claude Desktop
+
+1. Create collections (above)
+2. Edit `claude_desktop_config.json`
+3. Add indexed MCP server config
+4. Restart Claude Desktop
+5. Ask Claude to search collections
+
+**Critical:** Clear instructions, no debugging needed.
+
+### Daily Developer Workflow
+
+1. Search from terminal: `indexed index search "query"`
+2. Or use Claude Desktop with MCP integration
+3. Periodically update: `indexed index update collection-name`
+
+**Critical:** Fast, no friction, always available.
+
+---
+
+## Open Questions
+
+1. **Multi-user collections** — How should permissions work in server mode? Per-collection ACLs? Role-based?
+
+2. **Embedding model updates** — What's the migration path when updating models? Automatic re-index? Versioning strategy?
+
+3. **Real-time updates** — Should collections auto-update when source data changes? Webhook integration? Polling?
+
+4. **Cloud offering** — Is there demand for optional hosted service? Conflicts with privacy-first positioning but may serve different market.
+
+5. **Licensing** — What license best serves community adoption while enabling sustainable development?
