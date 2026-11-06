@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-03
+updated: 2026-11-06
 ---
 
 # Tech Spec: indexed
@@ -574,6 +574,14 @@ TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
 
 `execute_with_retry` re-raises immediately on non-transient HTTP errors (e.g. 404).
 Connector readers use this helper — do not duplicate status-code tuples.
+
+### Spec Ledger Merge Attributes
+
+`.gitattributes` marks `.spec/lessons.md` and `.spec/tech.md` with `merge=union`:
+both are append-only ledgers where every branch adds its own dated entries at
+the tail, so a content merge would conflict on adjacent hunks while wanting both
+sides. Union keeps every appended line; `scripts/check_sizes.py` stays a normal
+merge because its ceiling needs one decided number, not a concatenation.
 
 ---
 
