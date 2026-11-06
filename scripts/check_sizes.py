@@ -131,9 +131,17 @@ SRC_LOC_MAX = 32_100
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
+# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
+# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
+# the benchmark wiring so a corpus change is a deliberate, reviewable diff
+# instead of a benchmark gate that reds on spec growth) — gate-integrity
+# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
 # Issue #67 adds the watcher's two required evidence tests — the debounce/burst
 # and vanished-path units (`test_watch.py`) and the live edit-without-manual-update
 # system net (`test_watch_live_edit.py`); ceiling = measured (48_926) + headroom.
+# Merging main into this branch keeps both sides' new tests (main's corpus-pin
+# suite plus the watcher tests), so the union measures 49_069; the higher
+# ceiling above absorbs both.
 TEST_LOC_MAX = 49_300
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
