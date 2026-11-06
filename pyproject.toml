@@ -126,7 +126,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pytest-rerunfailures>=16.4",
     "ruff>=0.16.2",
-    "ty==0.0.91",
+    "ty==0.0.95",
     "types-requests>=2.33.0.20260712",
 ]
 
