@@ -90,3 +90,40 @@ def test_filesystem_connector_properties():
 
         # Test connector_type property
         assert connector.connector_type == "localFiles"
+
+
+class _FakeConfigService:
+    """Minimal stand-in for ConfigService — the three calls ``from_config`` makes."""
+
+    def __init__(self, cfg):
+        self._cfg = cfg
+
+    def register(self, config_class, *, path: str) -> None:
+        self.registered = (config_class, path)
+
+    def bind(self):
+        return self
+
+    def get(self, config_class):
+        return self._cfg
+
+
+def test_from_config_threads_change_tracking_and_code_chunking(tmp_path):
+    """``from_config`` must carry every FileSystemConfig field to the reader.
+
+    ``code_chunking`` stopped at the connector constructor (never reaching the
+    parser) and ``change_tracking`` was never persisted to the manifest, so both
+    were dead config keys. This pins the config → reader → manifest path.
+    """
+    from typing import Any, cast
+
+    from indexed.connectors.files.schema import FileSystemConfig
+
+    cfg = FileSystemConfig(
+        path=str(tmp_path), change_tracking="mtime", code_chunking=False
+    )
+    connector = FileSystemConnector.from_config(cast(Any, _FakeConfigService(cfg)))
+
+    details = connector.reader.get_reader_details()
+    assert details["changeTracking"] == "mtime"
+    assert details["codeChunking"] is False

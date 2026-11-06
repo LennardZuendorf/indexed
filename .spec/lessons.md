@@ -1295,6 +1295,23 @@ with `git add`/`git status`, since that's what CI actually runs.
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
 
+## Accepted-but-dropped config keys (2026-11-03)
+
+- **A constructor parameter stops at the object that accepts it until something
+  consumes it.** `code_chunking` was a `FileSystemConnector`/`FileSystemConfig`
+  field, passed to nobody, so `--no-code-chunking`-equivalent config did nothing.
+  When adding an option, trace it to the component that *acts* on it (here
+  `ParsingModule`) and assert the behavioural difference — chunk count and
+  `source_type` — not that the value reached an attribute.
+- **`x.get(key, default)` is a promise that somebody writes `key`.** `from_manifest`
+  read `changeTracking` with an `auto` fallback while `get_reader_details()` never
+  wrote it: two halves of one contract, each locally reasonable, silently
+  discarding user intent. For any persisted settings block, test the whole block
+  round-trips (create → manifest → rebuild) rather than the keys individually;
+  per-key tests pass forever once someone hand-writes the fixture.
+- **A fallback that matches the default hides the bug.** Because the missing key
+  defaulted to `auto`, and `auto` is the usual choice, the loss was invisible
+  until a non-default strategy (`mtime`/`none`) was used.
 ## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
 
 - **A performance gate must not read content the project's own workflow keeps

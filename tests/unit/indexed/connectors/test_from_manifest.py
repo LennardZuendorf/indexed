@@ -49,6 +49,17 @@ _CUTOFF = "2026-07-04"
 # --- files ---------------------------------------------------------------------
 
 
+def _sorted_excluded_dirs(details: dict) -> dict:
+    """Normalize the one order-unstable key so whole-block equality is meaningful.
+
+    ``excludedDirs`` is persisted from a ``frozenset`` (set iteration order); every
+    other key is a scalar or an order-preserving list.
+    """
+    normalized = dict(details)
+    normalized["excludedDirs"] = sorted(normalized.get("excludedDirs") or [])
+    return normalized
+
+
 def test_files_from_manifest_builds_reader_and_hooks(tmp_path):
     from indexed.connectors.files.connector import FileSystemConnector
     from indexed.connectors.files.files_document_reader import FilesDocumentReader
@@ -177,6 +188,101 @@ def test_files_from_manifest_with_change_state_scopes_and_persists(tmp_path):
     new_state = json.loads((storage / "state.json").read_text())
     assert "a.txt" in new_state["file_hashes"]
     assert "b.txt" not in new_state["file_hashes"]
+
+
+def test_files_manifest_reader_block_round_trips_every_persisted_setting(tmp_path):
+    """Every setting the files connector accepts must survive create → update.
+
+    The block is compared whole (minus set ordering) so a key that is written by
+    ``get_reader_details`` but never read by ``from_manifest`` — or the reverse —
+    fails here instead of silently reverting to a default on the next update.
+    """
+    from indexed.connectors.files.connector import FileSystemConnector
+
+    (tmp_path / "a.py").write_text("print('hi')\n")
+    connector = FileSystemConnector(
+        path=str(tmp_path),
+        include_patterns=["*.py"],
+        fail_fast=True,
+        change_tracking="mtime",
+        ocr_enabled=False,
+        table_structure=False,
+        code_chunking=False,
+        max_chunk_tokens=128,
+        excluded_dirs=["build"],
+        respect_gitignore=False,
+    )
+    stored = connector.reader.get_reader_details()
+
+    # Literal create → manifest.json → update path: dump the block core would
+    # write, re-read it from disk, then rebuild as ``index update`` does.
+    manifest_path = tmp_path / "coll" / "manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(json.dumps(_manifest(stored).to_disk()))
+    reloaded = Manifest.from_disk(json.loads(manifest_path.read_text()))
+    run = FileSystemConnector.from_manifest(
+        reloaded, object(), storage_path=str(manifest_path.parent)
+    )
+
+    restored = run.reader.get_reader_details()
+    assert _sorted_excluded_dirs(restored) == _sorted_excluded_dirs(stored)
+    # Named assertions keep the failure legible when the block does drift.
+    assert restored["changeTracking"] == "mtime"
+    assert restored["codeChunking"] is False
+    assert restored["ocr"] is False
+    assert restored["tableStructure"] is False
+    assert restored["maxChunkTokens"] == 128
+
+
+def test_files_from_manifest_honours_stored_change_strategy(tmp_path):
+    """An explicit strategy must be used on update, not fall back to ``auto``.
+
+    ``none`` is the discriminating case: with no prior change of any kind it
+    re-reads every file, whereas ``auto`` (content-hash in this non-git tmp dir)
+    scopes to zero files. Pre-fix, ``changeTracking`` was never persisted, so
+    ``none`` silently became ``auto`` and this run returned no files.
+    """
+    from indexed.connectors.files.connector import FileSystemConnector
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
+
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "a.txt").write_text("stable content")
+    storage = tmp_path / "coll"
+    storage.mkdir()
+    FileSystemConnector(path=str(source), change_tracking="content_hash").save_state(
+        str(storage)
+    )
+
+    none_run = FileSystemConnector.from_manifest(
+        _manifest(
+            {
+                "type": "localFiles",
+                "basePath": str(source),
+                "changeTracking": "none",
+            }
+        ),
+        object(),
+        storage_path=str(storage),
+    )
+    assert none_run.reader.get_reader_details()["changeTracking"] == "none"
+    assert isinstance(none_run.reader, FilesDocumentReader)
+    assert none_run.reader.specific_files == [str(source / "a.txt")]
+
+    hash_run = FileSystemConnector.from_manifest(
+        _manifest(
+            {
+                "type": "localFiles",
+                "basePath": str(source),
+                "changeTracking": "content_hash",
+            }
+        ),
+        object(),
+        storage_path=str(storage),
+    )
+    assert hash_run.reader.get_reader_details()["changeTracking"] == "content_hash"
+    assert isinstance(hash_run.reader, FilesDocumentReader)
+    assert hash_run.reader.specific_files == []
 
 
 # --- jira ----------------------------------------------------------------------

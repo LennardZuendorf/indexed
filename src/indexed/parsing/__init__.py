@@ -37,6 +37,7 @@ class ParsingModule:
         ocr: bool = True,
         table_structure: bool = True,
         max_tokens: int = 512,
+        code_chunking: bool = True,
     ) -> None:
         self._router = FileRouter()
         self._docling = DoclingParser(
@@ -46,12 +47,17 @@ class ParsingModule:
         )
         self._code = CodeChunker(max_tokens=max_tokens)
         self._plaintext = PlaintextParser(max_tokens=max_tokens)
+        # ``False`` routes code extensions through PlaintextParser instead of
+        # CodeChunker: same file, paragraph windows instead of AST boundaries.
+        self._code_chunking = code_chunking
 
     def parse(self, path: Path) -> ParsedDocument:
         """Parse a file and return a ``ParsedDocument``."""
         strategy = self._router.route(path)
 
         if strategy == ParsingStrategy.CODE_AST:
+            if not self._code_chunking:
+                return self._plaintext.parse(path)
             chunks = self._code.chunk_file(path)
             return ParsedDocument(
                 file_path=str(path),
