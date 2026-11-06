@@ -1277,6 +1277,47 @@ with `git add`/`git status`, since that's what CI actually runs.
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
 
+## Quality gates must measure both sides on one machine (2026-11-02)
+
+- **A committed cross-machine baseline can only be a drift alarm; a PR verdict
+  needs both sides in one job.** Retrieval floats are a function of the machine:
+  the same tree measured 0.8351 MRR on this workstation and 0.8088 on the
+  baseline's arm64 host, and CI's x86_64 run moved hit@5 from 0.818 to 0.909
+  with no code change. No tolerance width survives a 9-point swing — wide enough
+  to absorb it hides a real regression, narrow enough to catch one reds every
+  run. Measure the captured event base and corresponding merge result on one runner;
+  verify parents and keep their frozen environments separate.
+- **Historical tolerance evidence is bounded, not a diagnosed cause.** Three same-tree runs in one job produced spread 0.000 on
+  hit-rate@5 and MRR (identical per-case ranks), within those repeats. The
+  base/head boundary is not: the base runs in its own worktree and venv, and on
+  a diff that cannot move retrieval MRR moved 0.0307 with hit@5 unchanged. A
+  tolerance must cover what the harness does to *unchanged* code across the two
+  sides, not just repeats of one side — write the observed number next to the
+  constant.
+- **The report must name the machine, in the comparator's own shape.** Adding
+  `environment.machine` (`cpu.brand_raw`/arch/count + `system`) in
+  pytest-benchmark's layout lets one `fingerprint()` read both gates' files;
+  `platform.processor()` alone returns the arch on Linux and cannot tell the
+  hosted fleet's CPU models apart.
+- **A schema the gate needs cannot gate its own bootstrap.** The merge base for
+  the PR that adds `environment.machine` was written before the field existed,
+  so strict report-to-report comparison would have exited 2 on the very PR that
+  introduced the guard. The job names its own host once and adopts that
+  fingerprint for a legacy report *only* after the report's `platform` string
+  matches this machine; recorded blocks are validated, never overwritten. Any
+  schema the gate depends on needs a bootstrap path, or the first PR is red for
+  a reason unrelated to its diff.
+- **Two verdicts in one job is the defect to avoid.** The gate's verdict comes
+  from one comparator; the PR comment renders that verdict file and nothing
+  else. A second comparison may still produce the per-case table, but it must
+  not name an outcome, and a missing verdict file renders "unavailable" rather
+  than falling back to a green-sounding line.
+- **Invalid is red, and it says so.** Machine, interpreter, corpus, case-set or
+  configuration mismatch exits 2 with "Same-job measurement invalid — this is a
+  harness bug, not a verdict". Silently passing it is how the old informative
+  job let a halved relevance land; calling it a regression sends someone
+  hunting a diff that never caused it.
+
 ## stdout purity: log records are not payload (2026-11-01)
 
 - **A log sink and a user-output sink are two different streams.** The CLI's
@@ -1525,6 +1566,100 @@ with `git add`/`git status`, since that's what CI actually runs.
   hook tried dependency downloads and failed on sandbox DNS; no-sync passed.
 - Executable AST comparisons must exclude attribute documentation strings too.
   Filtering only each owner's first docstring falsely flagged TypedDict field prose.
+
+## Evaluation stability and repair fixtures (2026-11-02)
+
+- [inputs] Hash evidence at the boundary actually observed. Generated absolute
+  paths changed 77 model inputs and one controlled rank 5 to 6 crossing.
+  Canonicalize only recognized leading context in evaluation; preserve authored
+  body paths and physical metadata. Converter-chunk hashes are not post-engine
+  embedding-input hashes. Same-source equality is not a product-change gate.
+- [bootstrap] Use the existing explicit connector-factory injection on both
+  genuine runners with one common helper. Verify actual side imports and locks.
+  Record the captured harness SHA plus file digests and uncommitted overlay
+  status. Test the pre-policy runner; do not replace its package import path.
+- [validation] Build complete report fixtures before single-field mutations.
+  Validate both reports before fingerprint/headline use. Invalid-result JSON
+  must not call identity formatters on malformed containers. Reject nonfinite
+  tolerance and unrepresentably large measurements at the read boundary.
+- [fixtures] Combining benchmark and eval tests dropped the eval platform import;
+  restore every dependency in the union. Preserve the benchmark CLI's truthful
+  unit label rather than weakening an inherited assertion. Record authoritative
+  RED after fixture corrections. Avoid dataclass field-name shadowing in loops.
+- [baseline] A historical physical-path baseline cannot assert exact canonical
+  rankings. Keep its original bytes and disclose the input-policy difference.
+- [ci] Keep the full CPU brand/arch/core-count/system fingerprint. Refresh PR
+  updates retain `(new CPU)` in their title. Use the action-captured baseline
+  reference and sanitized target filename; never re-fetch after measurement.
+
+- [compatibility] Local report validation accepts mathematically finite integer
+  ranking scores. Keep that contract; apply representability checks at the
+  same-job gate boundary. A broad shared finite-number guard broke an existing
+  local-comparison test and was restored before completion.
+- [typing] Narrow optional import specifications in fixtures. A type-only cast
+  for module file origins preserves measured runtime behavior; retain the actual
+  pre-cast launcher digest when reporting a prior measured pair.
+- [workflow] Scope venv environment variables to each command rather than
+  subshell exports; use a shell array for spread-report paths. Check measured
+  combined test size before reconciling separate-branch ceilings.
+
+- [labels] Audit title-case summary headings after semantic unions; actual SHA
+  labels do not make a stale Git merge-base heading accurate.
+
+- [outputs] A new common launcher must enforce the existing declared-output
+  rule too: lstat rejects symlinks/nonregular paths; exclusive same-directory
+  temporary descriptors and atomic replacement preserve the victim and clean
+  failures. The RED symlink test caught Path.write_text following the target.
+
+- [discovery] Discover actual reader/converter module names before opening
+  guessed converter.py or models.py paths. Those guessed reads failed harmlessly.
+
+- [workflow] Captured-event validation must emit the explicit invalid-measurement
+  diagnostic and exit 2; bare set-e regex failure loses that distinction. After
+  a freeze, obtain coordinator authorization and invalidate/retest affected
+  executable evidence before changing the workflow.
+
+## Retrieval gate identity review corrections (2026-11-02)
+
+- [validation] Validate every consumed cache container before `.get`. Equal
+  missing/malformed selected snapshots and common-harness fields do not prove
+  identity. Require valid revision, policy/config agreement and exact helper
+  hashes. Make mandatory CI instrumentation explicit while preserving local
+  legacy reports deliberately. Active reranking needs its own model identity.
+- [metrics] Errored queries leave headline denominators; a gate must reject
+  either report with errors before comparing those smaller denominators.
+- [cpu] Reading cpuinfo successfully does not establish a model-name line.
+  Apply the processor fallback after scanning, including readable arm64 files.
+- [reporting] Distinguish unavailable measurement phases from comparator-invalid
+  artifacts. Exercise base, head and repeat failures separately, plus read and
+  adoption failures. Do not promise a synthesized verdict after no measurement.
+
+- [fixtures] Scope edits to the intended block in mixed-indent external
+  verification scripts. A global assertion insertion broke the capture block
+  indentation; repair the fixture before accepting its execution evidence.
+
+## Invalid-result publisher contract (2026-11-02)
+
+- [contracts] A producer's valid invalid-result JSON can still be rejected by
+  its consumer. Exercise the actual comparator artifact through the actual
+  renderer, including label-only sides and null tolerance. Validate invalid
+  artifacts separately without weakening measured pass/fail evidence. Escape
+  and bound invalid reasons, and render missing identity as unavailable.
+
+## Provenance fixtures across publication (2026-11-02)
+
+- [fixtures] A provenance test must control whether committed instrumentation
+  matches current bytes. The legacy injection fixture assumed every checkout
+  was uncommitted and failed after publication preparation committed the helper.
+  Exercise matching and mismatching Git blob evidence explicitly while retaining
+  real legacy-runner injection, own-side imports and actual content digests.
+
+## Native path identity in CPU fixtures (2026-11-02)
+
+- [fixtures] Compare mocked filesystem paths as Path objects. Native Windows
+  separators make `str(path) == "/proc/cpuinfo"` miss the intended reader stub;
+  fallback cases can then pass for the wrong filesystem error. Keep normal,
+  unreadable and unparseable cases on the exact intended callback branch.
 
 ## Native-stack provenance (2026-11-02)
 

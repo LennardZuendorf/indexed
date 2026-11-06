@@ -3,7 +3,7 @@ type: feature-plan
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-10-31
+updated: 2026-11-02
 ---
 
 # Retrieval Evaluation Baseline — Delivery Plan
@@ -13,8 +13,9 @@ updated: 2026-10-31
 **Architecture:** [tech.md](tech.md)
 **Runbook:** [../../../eval/README.md](../../../eval/README.md)
 
-Local measurement implementation is under review in PR #265. Commit/push
-approval remains separate from local verification.
+The local measurement harness originated in PR #265. PR #274 adds the
+same-job gate and evaluator stability repair alongside the #273 benchmark
+validation union. Commit/push approval remains separate from local verification.
 
 ### retrieval-eval/1 — Pinned source evidence
 
@@ -45,7 +46,7 @@ regression exit 1 and candidate-only error reporting.
 
 Use model-free unit and filesystem integration markers explicitly.
 Use one explicit cache for real-model checks and loads. Gate exact reproduction
-on numerical environment identity. Keep informative artifacts after test failure.
+on input-policy and numerical environment identity. Keep artifacts after test failure.
 Publish a formatted job summary and one updated comment on current-head,
 same-repository PRs; preserve warnings and fork/manual summary fallback.
 Run independent reviews and fresh full-suite/lint/type/import/size checks.
@@ -66,6 +67,22 @@ Run independent reviews and fresh full-suite/lint/type/import/size checks.
 
 Public documentation changes in `indexed-web` remain paired work; this repository
 alone does not close all of #204. Website deployment is a separate outcome.
-A hard regression gate requires observed variance and a pinned numerical
-environment. Chunk-level sufficiency belongs with #219. Hybrid #205 can consume
+The same-job gate retains the approved 0.04 threshold and records its numerical
+environment. Hosted acceptance remains separate from local verification. Chunk-level sufficiency belongs with #219. Hybrid #205 can consume
 the existing runner/case contract when implemented.
+
+### retrieval-eval/6 — Same-job gate stability repair
+
+Validate both complete reports before reading identities or metrics. Require
+selected metrics and full query/judgment/model/score/config identity. Return
+invalid-result JSON and exit 2 on malformed data and invalid tolerance.
+Capture immutable event base/merge SHAs and verify their parents. Measure both
+with separate frozen locks through one captured common launcher and canonical
+factory. Preserve genuine side imports and record instrumentation digests/status.
+Keep default local conversion canonical and custom factory injection usable.
+Run distinct-root conversion, legacy-runner injection and both comparator-shape
+regressions. Validate one bounded actual same-source pair with equal normalized
+converter-input hashes; do not require digest equality for product changes.
+Retain 0.04. Independent review and full-suite verification remain separate.
+
+R8 maps to retrieval-eval/6; R5, R6 and R7 also cover this repair.

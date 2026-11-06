@@ -97,8 +97,9 @@ Reports record the corpus/case hashes, effective embedding/search/reranker
 settings, model cache snapshots, Python/platform, dependency versions and code
 provenance. Inspect these fields before attributing movement to ranking code.
 
-A same-environment baseline test always checks corpus, case and configuration
-identity. Exact numeric/rank assertions apply only to matching numerical
+A same-environment baseline test checks corpus, case and effective settings.
+The historical baseline has a different generated-path policy; exact rankings
+are skipped unless the policy also matches. Exact numeric/rank assertions apply only to matching numerical
 environments. Different CPUs, Python/library builds or model snapshots can
 change retrieval floats even when metric arithmetic is deterministic.
 
@@ -139,18 +140,73 @@ the repository's human gates.
 
 ## CI and limits
 
-`python-eval.yml` verifies the pinned corpus, runs harness tests, measures and
-compares, then uploads `retrieval-eval` artifacts. The informative measurement
-still runs after a harness-test failure when corpus verification succeeded;
-the failed test remains visible. Artifact upload runs even after failure.
+`python-eval.yml` measures the captured event base and its corresponding PR
+merge result in one job. It fetches immutable SHAs, verifies both merge parents,
+and verifies each measured HEAD. Each side uses its own detached worktree and
+`uv sync --locked` environment. Dispatch measures its captured revision twice;
+it never resolves a moving branch tip. The common launcher is captured once
+from the merge result and runs by absolute path through each side's own Python.
+
+`scripts/eval_ab_run.py` calls the side's existing `run_eval(connector_factory=...)`
+API. It loads only the shared `eval/canonical.py` helper by explicit file path.
+The side retains its own evaluator runner, core, parser, connectors and lock.
+Actual import origins must be inside that side. Reports record full engine and
+harness SHAs, lock digest, common-file digests and whether instrumentation
+matches its captured commit. Local uncommitted instrumentation says so. Report outputs reject nonregular
+paths with `lstat` and use exclusive temporary descriptors plus atomic replacement.
+
+The evaluator-only converter replaces recognized generated leading absolute
+code/plaintext path context with `eval/corpus/<relative path>`. It preserves
+authored body occurrences, headings, chunk boundaries, IDs and physical
+URLs/metadata. The default local evaluator uses the same canonical factory;
+explicit custom factories remain supported. Effective configuration records
+`input_context_policy=eval-corpus-relative-v1` (or `custom`).
+
+`environment.converter_inputs` hashes normalized converter chunks with the
+boundary label `normalized-converter-chunks`. It does not claim to capture
+post-engine embedding inputs. Equal digests are checked during same-source
+stability validation; intentional parser/engine changes may change inputs.
+
+One comparator validates complete saved reports with
+`indexed.eval.report_validation.report_problems` before metrics or fingerprints.
+Both sides require every selected metric, identical query identities/judgments,
+full effective model/score configuration, selected model snapshots, complete
+CPU/system/Python identities and matching common instrumentation. Invalid
+containers, missing evidence, nonfinite/unrepresentable numbers and invalid
+tolerance exit 2 with an invalid-result JSON and no verdict. Regressions exit 1;
+valid within-policy measurements exit 0. The publisher consumes this sole verdict.
+
+The retained policy is **0.04 absolute points** for hit-rate@k and MRR.
+Distractor leakage remains report-only. Historical CI measured 0.0307 MRR
+movement at the two-environment boundary; that observation did not diagnose its
+cause. A later controlled local experiment isolated generated absolute path
+prefixes: changing only 77 inputs moved one relevant rank 5 to 6. Canonical
+context fixes that demonstrated harness cause without a product retrieval
+change or wider tolerance. Bounded local same-source validation is separate
+from hosted acceptance and is not a universal determinism guarantee.
+
+The committed `eval/baseline.json` remains a historical drift reference, with
+its original physical-path context. Exact reproduction requires the same input
+policy and numerical environment. CI compares its two fresh reports instead.
+Machine-block adoption for legacy reports still requires matching the actual
+job platform and never overwrites an explicit recorded machine block.
+
+Both reports and `eval-ab.json` are uploaded. A failed harness blocks
+measurement; the publisher still displays unavailable phases and preserves
+failures. The publisher step alone is advisory. Fork/manual runs retain summary
+and artifacts. Dispatch `variance_repeats` accepts integers 1 through 10.
+
 
 After artifact upload, a Node 24 publisher writes the job summary and updates
-one bot comment on same-repository pull requests. The report shows baseline and
-current metrics with deltas, the comparison verdict, per-case rank changes,
-environment and configuration differences, and harness or measurement failures.
-It links to the workflow run and its artifacts. Missing or invalid report data
-is shown as unavailable. A newer PR head prevents an older run from updating
-the comment.
+one bot comment on same-repository pull requests. The comment shows the verdict,
+both revisions, both fingerprints, the metric table and the per-case rank
+movement, and links to the workflow run and its artifacts. Missing or malformed
+`eval-ab.json` is shown as unavailable. A newer PR head prevents an older run
+from updating the comment.
+
+`workflow_dispatch` exposes `variance_repeats` (1–10) on its captured revision.
+Historical repeats measured spread 0.000; this is bounded evidence, not a
+universal determinism guarantee. Keep the approved 0.04 threshold unchanged.
 
 Fork pull requests and manual runs retain the job summary and artifacts, with
 a notice explaining why no PR comment was posted. Comment publication failures
@@ -163,8 +219,7 @@ Run the dependency-free publisher tests with Node's built-in test runner:
 uv run node --test .github/scripts/eval-comment.test.cjs
 ```
 
-Phase one is informative. No hard gate or arbitrary regression tolerance is
-inferred from one measurement. Real missing/corrupt-collection tests use the
+Real missing/corrupt-collection tests use the
 facade with a local MockEmbedding; mock scores prove failure plumbing, not
 retrieval quality.
 
@@ -172,3 +227,26 @@ The corpus remains small, flat and basename-identified. Nested corpora and
 duplicate canonical file names are refused. Sanitized GitHub text proves local
 fixture retrieval, not live connector behavior. Document-level relevance does
 not establish that every returned chunk is sufficient evidence for an agent.
+
+
+Gate identity validation requires a present model's nonempty selected snapshot
+and weights. Active reranking also requires its model name and valid cache;
+an absent inactive reranker remains compatible. Common instrumentation, when
+present, must include a full revision, matching effective normalization policy,
+and exactly two valid SHA256 digests for launcher and canonical helper.
+CI passes `--require-common-harness`; ordinary local/legacy reports may omit
+that instrumentation. Errored queries invalidate the gate rather than reducing
+its metric denominators.
+
+Measurement setup/base/head/repeat failures exit 2 through the shared error
+trap. They do not synthesize a verdict artifact: the publisher shows the failed
+measurement phase and unavailable verdict. Comparator input-read, host-adoption
+and report-validation failures write an explicit invalid-result artifact.
+
+
+The publisher validates comparator-invalid artifacts separately from pass/fail
+artifacts. Early failures may contain label-only sides and null tolerance;
+unknown identity fields render as unavailable, while escaped reasons retain the
+invalid status. Pass/fail still requires complete machine/interpreter sides.
+Invalid reasons are limited to ten displayed entries with bounded text and an
+artifact link for omitted content; invalid artifacts show no gating table.

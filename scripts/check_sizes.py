@@ -134,19 +134,9 @@ SRC_LOC_MAX = 31_800
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-# Raised from 48_600 by issues #108/#109: the golden-output suite
-# (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
-# search_payload.json`) pins ONE hand-written payload across the builder, the
-# MCP tool and `search --json`, and `test_formatting.py` grows the locator/
-# ranking units (line span, page, headings, honest `document` fallback,
-# unified cross-engine relevance) — genuine defect-guarding coverage for a
-# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
-# (49_095 on the post-#265 tree, whose eval suite is already inside main's own
-# 48_600) + headroom.
-# Includes main's pinned parsing-corpus guard without changing its fixture bytes.
-# The reviewed #273 paired-gate suite adds 312 lines to the repaired search
-# tree's 49_244: measured union 49_556, preserving both legitimate test tracks
-# with 244 lines of bounded headroom. Source budget stays at 31_800.
+# Aggregate keeps search golden/locator tests, benchmark/evaluation gate
+# regressions and main's pinned parsing-corpus guard. Re-measure before
+# applying the approved combined ceiling.
 TEST_LOC_MAX = 49_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
