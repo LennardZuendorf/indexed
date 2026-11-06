@@ -2019,6 +2019,35 @@ class TestGitFlags:
         assert "--no-git-provenance" in clean
         assert "--git-line-blame" in clean
         assert "--no-git-line-blame" in clean
+        assert "--git-rerank" in clean
+        assert "--no-git-rerank" in clean
+
+    def test_rerank_flag_and_config_default_reach_svc_search(self, monkeypatch):
+        """Omitted → ``core.v1.search.git_rerank``; explicit --no-* wins (#144)."""
+        from indexed.core.v1.config_models import CoreV1SearchConfig
+
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        captured: List[Dict[str, Any]] = []
+
+        def fake_svc_search(query, **kwargs):
+            captured.append(kwargs)
+            return {"col1": {"results": []}}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_svc_search)
+        monkeypatch.setattr(
+            search_cmd,
+            "_load_search_config",
+            lambda: CoreV1SearchConfig(git_rerank=True),
+        )
+
+        assert runner.invoke(search_cmd.app, ["my-query"]).exit_code == 0
+        assert captured[-1]["git_rerank"] is True
+
+        assert (
+            runner.invoke(search_cmd.app, ["my-query", "--no-git-rerank"]).exit_code
+            == 0
+        )
+        assert captured[-1]["git_rerank"] is False
 
     def test_flags_reach_svc_search(self, monkeypatch):
         self._wire_common(monkeypatch, [self._make_status("col1")])

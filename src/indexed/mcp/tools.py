@@ -33,6 +33,7 @@ def _run_search(
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
     git_line_blame: Optional[bool] = None,
+    git_rerank: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
     # Only the requested git keys are splatted: all default to None (off), and
@@ -51,6 +52,10 @@ def _run_search(
         git_kwargs["git_line_blame"] = git_line_blame
     elif getattr(search_cfg, "git_line_blame", False) is True:
         git_kwargs["git_line_blame"] = True
+    if git_rerank is not None:
+        git_kwargs["git_rerank"] = git_rerank
+    elif getattr(search_cfg, "git_rerank", False) is True:
+        git_kwargs["git_rerank"] = True
     try:
         raw_results = svc_search(
             query,
@@ -92,6 +97,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
         git_line_blame: Optional[bool] = None,
+        git_rerank: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
@@ -109,6 +115,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             git_line_blame (Optional[bool]): Add git_line_commit/git_line_author/
                 git_line_committed_at to rows whose chunk records a line span
                 (defaults to core.v1.search.git_line_blame).
+            git_rerank (Optional[bool]): Re-rank by git recency, churn and author
+                signals, with the blended score reported as score_kind git-rerank
+                (defaults to core.v1.search.git_rerank).
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -128,6 +137,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
+            git_rerank=git_rerank,
         )
 
     @mcp.tool
@@ -137,6 +147,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
         git_line_blame: Optional[bool] = None,
+        git_rerank: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
@@ -154,6 +165,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             git_line_blame: Add git_line_commit/git_line_author/git_line_committed_at
                 to rows whose chunk records a line span
                 (defaults to core.v1.search.git_line_blame)
+            git_rerank: Re-rank by git recency, churn and author signals
+                (defaults to core.v1.search.git_rerank)
             ctx: FastMCP Context (optional, for accessing lifespan state)
 
         Returns:
@@ -205,4 +218,5 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
+            git_rerank=git_rerank,
         )

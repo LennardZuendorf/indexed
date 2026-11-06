@@ -716,3 +716,72 @@ def test_internal_tmp_dirs_excluded_from_enumeration(tmp_path: Path) -> None:
         "q", configs=None, collections_path=str(tmp_path), engine="2"
     )
     assert result == {}
+
+
+# --- v2 git-signal re-rank options (#144) -------------------------------------
+
+
+def test_git_rerank_options_off_returns_none_without_reading_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``None``/``False`` mean off: no options object and no config access."""
+    import indexed.config
+    import indexed.core.engine as facade
+
+    def _must_not_read():  # noqa: ANN202
+        raise AssertionError("the config must not be read when the re-rank is off")
+
+    monkeypatch.setattr(indexed.config, "get_config", _must_not_read)
+
+    assert facade._git_rerank_options(None) is None
+    assert facade._git_rerank_options(False) is None
+
+
+def test_git_rerank_options_carry_the_configured_search_weights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The only path from ``[core.v1.search]`` to the scorer must forward every
+    weight — a renamed key would otherwise silently fall back to defaults."""
+    import indexed.config
+    import indexed.core.engine as facade
+    from indexed.core.v1.config_models import CoreV1SearchConfig
+
+    search_cfg = CoreV1SearchConfig(
+        git_rerank_recency_weight=0.3,
+        git_rerank_churn_weight=0.2,
+        git_rerank_author="Lennard",
+        git_rerank_author_weight=0.4,
+    )
+
+    class _Config:
+        def bind(self):  # noqa: ANN202
+            return self
+
+        def get(self, _model):  # noqa: ANN001, ANN202
+            return search_cfg
+
+    monkeypatch.setattr(indexed.config, "get_config", lambda: _Config())
+
+    opts = facade._git_rerank_options(True)
+
+    assert opts is not None
+    assert opts.recency_weight == pytest.approx(0.3)
+    assert opts.churn_weight == pytest.approx(0.2)
+    assert opts.author == "Lennard"
+    assert opts.author_weight == pytest.approx(0.4)
+
+
+def test_git_rerank_options_fall_back_to_defaults_when_config_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable config degrades to the documented defaults, not to an error."""
+    import indexed.config
+    import indexed.core.engine as facade
+    from indexed.core.v2.retrieval import GitRerankOptions
+
+    def _boom():  # noqa: ANN202
+        raise RuntimeError("config exploded")
+
+    monkeypatch.setattr(indexed.config, "get_config", _boom)
+
+    assert facade._git_rerank_options(True) == GitRerankOptions()

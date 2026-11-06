@@ -1310,6 +1310,26 @@ with `git add`/`git status`, since that's what CI actually runs.
   so a leak that only bites when both are collected together ships green. Run
   `uv run pytest` (testpaths=[tests]) before handing off, and guard the
   teardown invariant where the leak would land.
+
+## Fixtures must measure the embedding, not assume it (2026-11-03)
+
+- **The files connector prefixes every chunk's text with the file's absolute
+  path**, so a fixture that wants "chunk A is more similar than chunk B" is
+  comparing `path + content`, and the *filename* can outweigh the content (a
+  `.txt` whose basename echoes the query scored +0.05 over its neighbour before
+  content mattered). Measure the real cosine for the exact chunk texts in the
+  fixture and pick a gap the feature under test must overcome, instead of
+  assuming an "exact match" wins — for this model, appending a query word
+  sometimes *raises* similarity.
+- **Keep a ranking fixture's gap bounded on both sides.** A re-rank test needs
+  the baseline order to hold AND the boost to flip it, so the cosine gap must sit
+  clearly between zero and the weight being exercised (here ~0.06 against a 0.10
+  recency weight, with the stale file's boost ≈ 0).
+- **Pass git date bounds as ISO-8601, never a bare epoch.** `git rev-list
+  --since=<seconds>` is unreliable once the value is far from now (a bare epoch
+  past 2038 silently stops filtering — the window matches everything), and
+  approxidate can read an ambiguous 4-digit year as a time of day. Format the
+  bound in UTC and keep the window in the past.
 ## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
 
 - **A performance gate must not read content the project's own workflow keeps

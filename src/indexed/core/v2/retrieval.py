@@ -26,6 +26,7 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional
@@ -64,6 +65,43 @@ _FILTER_NOT_FILES = "not-a-files-collection"
 _FILTER_NO_REPO = "no-git-repository"
 _FILTER_UNKNOWN_REF = "unknown-ref"
 
+# Reported as ``scoreKind`` when the git-signal re-rank has blended the raw
+# cosine score into a ranked one (#144) — mirrors ``RERANK_SCORE_KIND``: once the
+# score is no longer a pure cosine, the manifest's kind no longer describes it.
+GIT_RERANK_SCORE_KIND = "git-rerank"
+
+# Candidates scored per collection. Git facts cost one blame + one rev-list per
+# distinct document, so the window bounds subprocess work on a broad candidate
+# set (``fetch_k`` can reach ``_OVERFETCH_CEILING``); candidates beyond it keep
+# their cosine score and their relative order behind the scored ones.
+_GIT_RERANK_WINDOW = 50
+
+_SECONDS_PER_DAY = 86_400.0
+
+
+@dataclass(frozen=True)
+class GitRerankOptions:
+    """Weights for the opt-in git-signal re-rank (#144), from ``[core.v1.search]``.
+
+    Query-time only: every input is derived from git on each search, so nothing
+    is persisted and a re-index is never required. The score blend is
+    ``cosine + recency_weight*recency + churn_weight*churn + author_weight*author``
+    with each signal in ``[0, 1]``; a signal git cannot answer contributes
+    NOTHING (no fabricated value), and a chunk with no answerable signal at all
+    keeps its cosine score untouched.
+    """
+
+    recency_weight: float = 0.10
+    churn_weight: float = 0.05
+    # A name/email substring; ``None`` (the default) disables ownership entirely.
+    author: Optional[str] = None
+    author_weight: float = 0.05
+    # Half-life of the recency decay: a line touched this long ago scores 0.5.
+    half_life_days: float = 30.0
+    # Churn window and the commit count that saturates the churn signal.
+    churn_window_days: int = 90
+    churn_cap: int = 20
+
 
 @dataclass
 class _GitContext:
@@ -77,6 +115,9 @@ class _GitContext:
     blames: Dict[str, Optional[List[Optional[Dict[str, Any]]]]] = field(
         default_factory=dict
     )
+    # Churn input, memoized per path for the same reason: one ``rev-list`` per
+    # candidate document, never one per chunk.
+    churn: Dict[str, Optional[int]] = field(default_factory=dict)
 
     def relative(self, source_id: str) -> str:
         return git_meta.repo_relative(self.repo, self.base_path, source_id)
@@ -100,6 +141,14 @@ class _GitContext:
                 self.repo, self.relative(source_id)
             )
         return self.blames[source_id]
+
+    def commits_since(self, source_id: str, since_epoch: int) -> Optional[int]:
+        """Memoized per (repo, path): one ``rev-list --count`` per candidate doc."""
+        if source_id not in self.churn:
+            self.churn[source_id] = git_meta.recent_commit_count(
+                self.repo, self.relative(source_id), since_epoch
+            )
+        return self.churn[source_id]
 
 
 def _git_context(manifest: "V2Manifest") -> Optional[_GitContext]:
@@ -133,6 +182,7 @@ def search(
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
     git_line_blame: Optional[bool] = None,
+    git_rerank: Optional[GitRerankOptions] = None,
 ) -> Dict[str, Any]:
     """Search v2 collections; return ``{collection: per-collection-result}``.
 
@@ -144,8 +194,11 @@ def search(
     that git ref (uncommitted work included); ``git_provenance`` attaches the
     last-touching commit per result document. ``git_line_blame`` additionally
     attributes each matched chunk to the commit that last touched the lines it
-    covers, for chunks whose parser recorded a line span. All three apply to
-    files collections only and are no-ops when git can't answer (#60/#144/#146).
+    covers, for chunks whose parser recorded a line span. ``git_rerank``
+    (``None`` = off, no git work at all) re-ranks the candidate chunks by git
+    recency/churn/ownership before grouping, blending those signals into the
+    score. All four apply to files collections only and are no-ops when git
+    can't answer (#60/#144/#146).
     """
     if max_docs is None:
         max_docs = resolve_search_config().max_docs
@@ -187,6 +240,7 @@ def search(
                 changed_since=changed_since,
                 git_provenance=git_provenance,
                 git_line_blame=git_line_blame,
+                git_rerank=git_rerank,
             )
         except Exception as exc:  # per-collection failure never aborts the rest
             logger.error(f"Error searching v2 collection {name}: {exc}")
@@ -231,6 +285,112 @@ def _apply_rerank(
         return reranker.postprocess_nodes(nodes_with_scores, query_str=query)
 
 
+def _recency_score(
+    touch: Dict[str, Any], now_epoch: float, half_life_days: float
+) -> float:
+    """Exponential decay on the chunk's newest touch: 1.0 now, 0.5 in one half-life.
+
+    A working-tree line is the freshest possible touch (1.0) and has no epoch.
+    A missing/zero epoch scores 0.0 — an old commit is a real answer, but an
+    unknown one must not look fresh.
+    """
+    if touch.get("uncommitted"):
+        return 1.0
+    epoch = touch.get("epoch")
+    if not isinstance(epoch, int) or epoch <= 0 or half_life_days <= 0:
+        return 0.0
+    age_days = max(0.0, (now_epoch - epoch) / _SECONDS_PER_DAY)
+    return 0.5 ** (age_days / half_life_days)
+
+
+def _author_matches(touch: Dict[str, Any], author: str) -> bool:
+    """True when the touching commit's author name or email contains ``author``."""
+    wanted = author.strip().lower()
+    if not wanted:
+        return False
+    return (
+        wanted in str(touch.get("author", "")).lower()
+        or wanted in str(touch.get("email", "")).lower()
+    )
+
+
+def _signal_boost(
+    git_ctx: _GitContext,
+    source_id: str,
+    meta: Dict[str, Any],
+    options: GitRerankOptions,
+    now_epoch: float,
+) -> Optional[float]:
+    """The additive git boost for one candidate chunk, or ``None`` if unknowable.
+
+    Recency and ownership come from the chunk's line span (falling back to the
+    document's newest line when the chunk recorded no span); churn is the
+    document's commit count inside the churn window, which is the chunk's own
+    history too — a chunk cannot outlive the file it lives in. Each signal
+    contributes only when git ANSWERED it; ``None`` means no signal at all, so
+    the caller leaves the cosine score exactly as it was.
+    """
+    since = int(now_epoch - options.churn_window_days * _SECONDS_PER_DAY)
+    touch = git_meta.newest_touch(
+        git_ctx.blame_lines(source_id), meta.get("start_line"), meta.get("end_line")
+    )
+    churn_count = git_ctx.commits_since(source_id, since)
+    if touch is None and churn_count is None:
+        return None
+
+    boost = 0.0
+    if touch is not None:
+        boost += options.recency_weight * _recency_score(
+            touch, now_epoch, options.half_life_days
+        )
+        if options.author and _author_matches(touch, options.author):
+            boost += options.author_weight
+    if churn_count is not None:
+        cap = max(options.churn_cap, 1)
+        boost += options.churn_weight * min(churn_count / cap, 1.0)
+    return boost
+
+
+def _apply_git_rerank(
+    nodes_with_scores: List["NodeWithScore"],
+    git_ctx: "_GitContext",
+    options: GitRerankOptions,
+    now_epoch: Optional[float] = None,
+) -> tuple[List["NodeWithScore"], int]:
+    """Blend git signals into the candidate scores, then reorder (#144).
+
+    Runs AFTER retrieval and BEFORE document grouping/output — and BEFORE the
+    cross-encoder when that is enabled, so the cross-encoder keeps ownership of
+    the final score and the git blend only decides which candidates reach its
+    ``top_n``. Git facts feed SCORING only — never the embedding, never the
+    vector store, nothing persisted. Only the first ``_GIT_RERANK_WINDOW``
+    candidates are scored (the cost bound), and the sort is stable, so equal
+    blends keep their retrieval order. Returns ``(ordered_nodes, scored)`` where
+    ``scored`` counts the candidates that got a real git answer.
+    """
+    now = time.time() if now_epoch is None else now_epoch
+    window = nodes_with_scores[:_GIT_RERANK_WINDOW]
+    tail = nodes_with_scores[_GIT_RERANK_WINDOW:]
+    rescored: List["NodeWithScore"] = []
+    scored = 0
+    for nws in window:
+        meta = nws.node.metadata or {}
+        source_id = meta.get("source_id")
+        boost = (
+            _signal_boost(git_ctx, str(source_id), meta, options, now)
+            if source_id is not None
+            else None
+        )
+        if boost is None:
+            rescored.append(nws)
+            continue
+        scored += 1
+        base = float(nws.score) if nws.score is not None else 0.0
+        rescored.append(nws.model_copy(update={"score": base + boost}))
+    rescored.sort(key=lambda nws: float(nws.score or 0.0), reverse=True)
+    return rescored + tail, scored
+
+
 def _search_one(
     base: Path,
     name: str,
@@ -247,6 +407,7 @@ def _search_one(
     changed_since: Optional[str],
     git_provenance: Optional[bool],
     git_line_blame: Optional[bool],
+    git_rerank: Optional[GitRerankOptions],
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
 
@@ -278,18 +439,41 @@ def _search_one(
             if (nws.score if nws.score is not None else 0.0) >= score_threshold
         ]
 
+    # Query-time git awareness: ONE repo resolution per collection shared by all
+    # four options, and a git problem skips the feature rather than emptying
+    # results — but the skip is REPORTED in ``gitFilter``/``gitRerank``, never a
+    # silent unfiltered or unranked set.
+    git_ctx = (
+        _git_context(manifest)
+        if (
+            changed_since is not None
+            or git_provenance
+            or git_line_blame
+            or git_rerank is not None
+        )
+        else None
+    )
+
+    # Git-signal re-rank (#144): after retrieval/threshold (cosine space) and
+    # before grouping, so the ORDER the groupers see is the ranked one. It runs
+    # BEFORE the cross-encoder when that is enabled, so the cross-encoder still
+    # owns the final score: the git pass only decides which candidates reach
+    # its ``top_n`` (it cannot, and does not, survive as a blended score there).
+    git_rerank_status: Optional[Dict[str, Any]] = None
+    if git_rerank is not None:
+        if manifest.reader.type not in _FILES_READER_TYPES:
+            git_rerank_status = _rerank_not_applied(name, _FILTER_NOT_FILES)
+        elif git_ctx is None:
+            git_rerank_status = _rerank_not_applied(name, _FILTER_NO_REPO)
+        else:
+            nodes_with_scores, scored = _apply_git_rerank(
+                nodes_with_scores, git_ctx, git_rerank
+            )
+            git_rerank_status = {"applied": True, "scored": scored}
+
     if rerank_cfg.enabled:
         nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
-    # Query-time git awareness: ONE repo resolution per collection shared by all
-    # three options, and a git problem skips the feature rather than emptying
-    # results — but the skip is REPORTED in ``gitFilter``, never a silent
-    # unfiltered set.
-    git_ctx = (
-        _git_context(manifest)
-        if (changed_since is not None or git_provenance or git_line_blame)
-        else None
-    )
     git_filter: Optional[Dict[str, Any]] = None
     if changed_since is not None:
         if manifest.reader.type not in _FILES_READER_TYPES:
@@ -331,8 +515,15 @@ def _search_one(
     )
     # Reranking REPLACES each NodeWithScore.score with a cross-encoder
     # relevance, so the manifest's cosine score_kind no longer describes it
-    # (PR #158 review #8) — report the distinct rerank kind instead.
-    score_kind = RERANK_SCORE_KIND if rerank_cfg.enabled else manifest.engine.score_kind
+    # (PR #158 review #8) — report the distinct rerank kind instead. The git
+    # re-rank likewise replaces cosine with a blended score (#144), but only
+    # when it actually scored something.
+    if rerank_cfg.enabled:
+        score_kind = RERANK_SCORE_KIND
+    elif git_rerank_status is not None and git_rerank_status.get("scored"):
+        score_kind = GIT_RERANK_SCORE_KIND
+    else:
+        score_kind = manifest.engine.score_kind
     out: Dict[str, Any] = {
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
@@ -343,6 +534,8 @@ def _search_one(
         # Present only when ``changed_since`` was requested: the caller can then
         # tell a filtered result set from a skipped filter instead of guessing.
         out["gitFilter"] = git_filter
+    if git_rerank_status is not None:
+        out["gitRerank"] = git_rerank_status
     return out
 
 
@@ -358,6 +551,20 @@ def _filter_not_applied(name: str, ref: str, reason: str) -> Dict[str, Any]:
         "its results are unfiltered"
     )
     return {"ref": ref, "applied": False, "reason": reason}
+
+
+def _rerank_not_applied(name: str, reason: str) -> Dict[str, Any]:
+    """``gitRerank`` status for a requested re-rank this collection can't honour.
+
+    Same visible-degrade rule as ``gitFilter`` (#279 review, finding 1): a
+    requested re-rank that could not run is announced at WARNING and carried
+    into the result, so the CLI and MCP can say "these rows are unranked".
+    """
+    logger.warning(
+        f"git re-ranking was not applied to collection {name!r} ({reason}); "
+        "its results are ordered by similarity only"
+    )
+    return {"applied": False, "reason": reason}
 
 
 def _docs_by_source(index: Any) -> Dict[str, List[Any]]:
@@ -526,4 +733,4 @@ def _chunk_dict(node: Any) -> Dict[str, Any]:
     return chunk
 
 
-__all__ = ["search"]
+__all__ = ["GIT_RERANK_SCORE_KIND", "GitRerankOptions", "search"]

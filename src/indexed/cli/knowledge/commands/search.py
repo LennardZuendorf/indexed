@@ -201,6 +201,14 @@ def search(
             "collections; overrides core.v1.search.git_line_blame)"
         ),
     ),
+    git_rerank: Optional[bool] = typer.Option(
+        None,
+        "--git-rerank/--no-git-rerank",
+        help=(
+            "Re-rank results by git recency, churn and author signals (v2 files "
+            "collections; overrides core.v1.search.git_rerank)"
+        ),
+    ),
     compact: bool = typer.Option(
         False, "--compact", help="Show compact list instead of cards"
     ),
@@ -361,6 +369,10 @@ def search(
         git_kwargs["git_line_blame"] = git_line_blame
     elif search_cfg.git_line_blame:
         git_kwargs["git_line_blame"] = True
+    if git_rerank is not None:
+        git_kwargs["git_rerank"] = git_rerank
+    elif search_cfg.git_rerank:
+        git_kwargs["git_rerank"] = True
 
     if not collections_to_search:
         # A specific collection was named but turned out unsearchable (corrupt

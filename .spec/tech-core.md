@@ -204,20 +204,21 @@ the configurable range is **[0, 4]** (a sane cutoff is >1.0), not [0, 1].
 
 ## Search-Time Git Awareness (v2, issues #60/#144/#146)
 
-Two opt-in options on `core.v2.retrieval.search` — query-time only: no new persisted
-state, no re-index, and the v1 engine ignores both (its behaviour is unchanged).
+Four opt-in options on `core.v2.retrieval.search` — query-time only: no new persisted
+state, no re-index, and the v1 engine ignores all of them (its behaviour is unchanged).
 
 | Option | Effect |
 |--------|--------|
 | `changed_since: str` | Keep only result documents whose file changed since that git ref, **including uncommitted and untracked work**. Applied to retrieved NODES, before document grouping, so `max_docs` fills with survivors instead of being starved. |
 | `git_provenance: bool` | Attach a document-level `git` field — `{commit, short, author, email, committedAt, subject}` (camelCase, additive: absent when not requested). |
 | `git_line_blame: bool` | Attach a **per-chunk** `git` field on each `matchedChunks` entry whose chunk recorded a line span — the commit that last touched THOSE lines, plus `startLine`/`endLine` (1-based, inclusive). Independent of `git_provenance`; absent when git or blame cannot answer. |
+| `git_rerank: GitRerankOptions \| None` | **Re-rank** the candidates by git recency / churn / ownership before grouping, blending those signals into the score (`scoreKind` becomes `git-rerank`). `None` (default) does no git work at all. |
 
-All three are no-ops unless the collection's manifest reader is a files reader
+All four are no-ops unless the collection's manifest reader is a files reader
 (`localFiles`/`files` **and** a `basePath`); the repo is resolved ONCE per collection
 via `utils/git_meta.repo_toplevel` (see [tech-connectors](tech-connectors.md) § Query-Time
 Git Helper), node `source_id`s are rebased from base-path-relative to repo-relative, and
-a git failure (not a repo, invalid ref, no history) skips the filter — never an empty
+a git failure (not a repo, invalid ref, no history) skips the option — never an empty
 result set and never a raised search. Provenance costs at most one
 `git log -1` per admitted document, memoized per `(repo, path)` within the call.
 
@@ -242,6 +243,32 @@ spans (the file shrank after indexing) and blame failures all leave the field ab
 The field is additive and separate from `entry["git"]`: line-level does not imply
 document-level, and vice versa.
 
+**Git-signal re-rank (`git_rerank`).** After retrieval and the score threshold, and
+BEFORE document grouping (so the groupers see the ranked order), the candidate chunks
+are re-scored as
+`cosine + w_recency·recency + w_churn·churn + w_author·ownership`:
+
+- **recency** — exponential decay on the chunk's newest touch
+  (`0.5 ** (age_days / half_life)`, half-life 30 days), from the chunk's own line span
+  via blame, falling back to the document's newest line when the chunk recorded no
+  span. A working-tree line counts as fresh (1.0).
+- **churn / hotspot** — the document's commit count inside a 90-day window
+  (`git rev-list --count --since=<window> HEAD -- <path>`), scaled to 20 commits. One
+  call per candidate document, memoized next to the blame.
+- **ownership** — `git_rerank_author` (a name/email substring) gives the chunks it last
+  touched a fixed bonus. Unset disables ownership entirely.
+
+A signal git cannot answer contributes NOTHING — no fabricated zero-or-one score — and a
+chunk with no answerable git at all keeps its cosine value untouched. Only the first 50
+candidates are scored (`_GIT_RERANK_WINDOW`); the tail keeps its cosine score and order,
+which bounds the cost at one blame + one `rev-list` per distinct candidate document.
+The pass never touches the embedding or the vector store and persists nothing, so no
+re-index is needed. `scoreKind` becomes `git-rerank` (cosine plus non-negative boosts)
+only when at least one candidate was scored. With `[core.v2.rerank]` enabled too, the
+git pass runs first and the cross-encoder still owns the final score: it replaces every
+blended score, so the git pass only decides which candidates reach the cross-encoder's
+`top_n` and the result kind stays `rerank`.
+
 **A skipped filter is never silent.** Every collection result carries a `gitFilter`
 status when — and only when — `changed_since` was requested:
 `{"ref": <ref>, "applied": true}` after a run, and
@@ -253,14 +280,25 @@ went to v1). The skip is logged at WARNING, `mcp/formatting.py` turns it into a
 same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving under a
 "changed only" request are a defect, not a quiet degrade.
 
-Surfaced as `--changed-since` / `--git-provenance` / `--git-line-blame` on
-`indexed index search` and as `changed_since` / `git_provenance` / `git_line_blame` on
-the MCP search tools, whose flattened rows then carry `git_commit`, `git_author`,
-`git_committed_at` (document level) and `git_line_commit`, `git_line_author`,
-`git_line_committed_at`, `git_line_start`, `git_line_end` — or `git_line_uncommitted`
-— (line level). An omitted `git_provenance`/`git_line_blame` means the configured
-`core.v1.search.git_provenance`/`git_line_blame` on BOTH surfaces (the CLI/MCP parity
-invariant of `[core.v1.search]`). The CLI detail card gains a `Last commit` row and a
+A requested **re-rank** that could not run follows the same rule via `gitRerank`:
+`{"applied": true, "scored": <n>}` after a run, and
+`{"applied": false, "reason": <why>}` when the collection cannot carry it
+(`not-a-files-collection`, `no-git-repository`, or `v1-engine`, stamped by the facade),
+rendered by `utils/git_meta.rerank_skip_message` as an MCP `collection_errors` entry and
+a CLI warning. Rows must never look re-ranked when they are not.
+
+Surfaced as `--changed-since` / `--git-provenance` / `--git-line-blame` / `--git-rerank`
+on `indexed index search` and as `changed_since` / `git_provenance` / `git_line_blame` /
+`git_rerank` on the MCP search tools, whose flattened rows then carry `git_commit`,
+`git_author`, `git_committed_at` (document level) and `git_line_commit`,
+`git_line_author`, `git_line_committed_at`, `git_line_start`, `git_line_end` — or
+`git_line_uncommitted` — (line level); a re-ranked collection reports
+`score_kind: "git-rerank"` on every row. An omitted
+`git_provenance`/`git_line_blame`/`git_rerank` means the configured
+`core.v1.search.git_provenance`/`git_line_blame`/`git_rerank` on BOTH surfaces (the
+CLI/MCP parity invariant of `[core.v1.search]`), with the weights read from
+`git_rerank_recency_weight` / `git_rerank_churn_weight` / `git_rerank_author` /
+`git_rerank_author_weight`. The CLI detail card gains a `Last commit` row and a
 `Lines commit` row.
 
 The CLI validates `--changed-since` up front: an unresolvable ref always exits 1, and so

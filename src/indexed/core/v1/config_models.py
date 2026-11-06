@@ -123,6 +123,44 @@ class CoreV1SearchConfig(BaseModel):
             "lines (v2 files collections only; code files record line spans)"
         ),
     )
+    git_rerank: bool = Field(
+        default=False,
+        description=(
+            "Re-rank results by git signals: recency, churn and optional author "
+            "ownership (v2 files collections only; query-time, nothing persisted)"
+        ),
+    )
+    git_rerank_recency_weight: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Score bonus for a recently touched chunk: full weight when touched "
+            "now, half after the decay half-life"
+        ),
+    )
+    git_rerank_churn_weight: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Score bonus for a chunk in a frequently committed file (hotspot), "
+            "scaled to the churn window's commit count"
+        ),
+    )
+    git_rerank_author: Optional[str] = Field(
+        default=None,
+        description=(
+            "Prefer chunks last touched by this author (name or email substring); "
+            "unset disables ownership weighting"
+        ),
+    )
+    git_rerank_author_weight: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Score bonus when the chunk's newest touch matches git_rerank_author",
+    )
 
 
 def get_default_collections_path() -> Path:

@@ -8,11 +8,18 @@ from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
 def test_higher_is_better_contains_cosine_and_rerank() -> None:
-    assert HIGHER_IS_BETTER == frozenset({"cosine", "rerank"})
+    assert HIGHER_IS_BETTER == frozenset({"cosine", "rerank", "git-rerank"})
 
 
 def test_cosine_score_passes_through_unchanged() -> None:
     assert unified_relevance(0.75, "cosine") == 0.75
+
+
+def test_git_rerank_score_passes_through_unchanged() -> None:
+    """#144: the blended score stays on the cosine scale, so rank order is the
+    blended order and mixed views stay comparable."""
+    assert unified_relevance(0.87, "git-rerank") == 0.87
+    assert unified_relevance(0.92, "git-rerank") > unified_relevance(0.87, "git-rerank")
 
 
 def test_l2_squared_score_maps_to_cosine_similarity() -> None:
