@@ -154,7 +154,7 @@ SRC_LOC_MAX = 32_000
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
 # Merging main (and #279's merged head) into this branch keeps both sides' new
-# tests, so the union measures 49_621 — the two ceilings above cannot both
+# tests, so the union measures 49_830 — the two ceilings above cannot both
 # hold; one measured value with headroom replaces them.
 TEST_LOC_MAX = 49_900
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
