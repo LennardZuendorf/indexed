@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-06
 ---
 
 # Lessons Learned
@@ -1394,3 +1394,15 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Dependabot consolidation (2026-11-06)
+
+- [dependencies][verification] Compare the final lockfile with the exact union
+  of captured PR package records, including hashes and metadata; retain source
+  heads as ancestors and synchronize Ruff/ty hook pins with the resolved tools.
+- [verification] Record existing assertion failures before integration. A saved
+  retrieval baseline can fail on unchanged main even when Python/platform match;
+  preserve the observed values and corpus instead of refreshing numbers to pass.
+- [tools] Managed worktrees can need separate write permission for Git and tool
+  caches. Keep UV_CACHE_DIR and RUFF_CACHE_DIR writable; retry permission errors
+  separately from test failures. Use SIGTERM when a CLI harness catches SIGINT.
