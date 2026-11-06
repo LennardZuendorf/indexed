@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-10-27
+updated: 2026-11-03
 ---
 
 # Tech Spec: indexed
@@ -226,6 +226,21 @@ fails the run before that step — adopt numbers only once a slowdown is
 understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
 action.
+
+**Corpora are pinned, never the repo's own docs.**
+`tests/benchmarks/test_parsing_performance.py` measures the parsing pipeline
+over a frozen snapshot committed in
+`tests/benchmarks/fixtures/parsing_corpus/`, not over `.spec/`. Measuring the
+live spec tree coupled the gate to the docs: PR #278 added three feature spec
+files and `test_full_connector_pipeline_docs` went 9.27 s → 11.79 s (+27.1%,
+FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
+workspace, moved +4.1% — the corpus had changed, not the code. A corpus is a
+fixed input set: its bytes are locked by `parsing_corpus.sha256` and enforced by
+`tests/unit/test_benchmark_corpus_pin.py`, and the fixture tree is excluded from
+the trailing-whitespace/end-of-file hooks so a hook run cannot silently break
+that lock. Refreshing the corpus is a deliberate change that calls for a
+baseline refresh afterwards; never point a benchmark at documents the project's
+own workflow keeps growing.
 
 Configured in this repo via `cross-branch-tolerance: 20`, the inert
 `update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per

@@ -140,7 +140,15 @@ SRC_LOC_MAX = 32_000
 # renderer warning, v1 facade stamping) plus the MCP tool forwarding tests that
 # did not exist — defect-guarding coverage, not stealth regrowth; measured
 # 49_497.
-TEST_LOC_MAX = 49_600
+# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
+# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
+# the benchmark wiring so a corpus change is a deliberate, reviewable diff
+# instead of a benchmark gate that reds on spec growth) — gate-integrity
+# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
+# Merging main into this branch keeps both sides' new tests, so the union
+# measures 49_621 — the two ceilings above cannot both hold; one measured
+# value with headroom replaces them.
+TEST_LOC_MAX = 49_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
