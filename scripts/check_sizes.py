@@ -38,7 +38,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Issue #204 adds the eval harness alongside #126's recovery surface.
 # Combined recovery/eval plus review validation and scoped runtime settings
 # measure 31_278 source lines before final docstrings; retain bounded headroom.
-SRC_LOC_MAX = 31_600
+# Issue #67 adds the opt-in foreground file watcher (`index watch`): the
+# polling loop + tree fingerprint (`knowledge/commands/watch_service.py`), the
+# command and `[watch]` config model, and the registration plumbing — genuine
+# new-feature surface; ceiling = measured (31_785) + headroom.
+SRC_LOC_MAX = 32_100
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -132,7 +136,13 @@ SRC_LOC_MAX = 31_600
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-TEST_LOC_MAX = 48_800
+# Issue #67 adds the watcher's two required evidence tests — the debounce/burst
+# and vanished-path units (`test_watch.py`) and the live edit-without-manual-update
+# system net (`test_watch_live_edit.py`); ceiling = measured (48_926) + headroom.
+# Merging main into this branch keeps both sides' new tests (main's corpus-pin
+# suite plus the watcher tests), so the union measures 49_069; the higher
+# ceiling above absorbs both.
+TEST_LOC_MAX = 49_300
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

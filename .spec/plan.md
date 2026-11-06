@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-10-31
+updated: 2026-11-03
 ---
 
 # Development Plan: indexed
@@ -47,6 +47,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 18 | Core v2 rendering fixes (issue #187) | all 8 PR #162 review polish findings fixed behind regression tests — R1–R8 green | ✅ DONE | `cli/app.py`, `cli/utils/components/{alerts,theme,cards}.py`, `cli/knowledge/commands/{update_service,search_render,_create_options,inspect}.py`, `connectors/files/schema.py`, `core/engine.py` |
 | 19 | GitHub Projects/Issues connector | issues+PRs+Projects v2 indexed; incremental update | ◑ MOSTLY DONE | [features/github-connector/](features/github-connector/) · [#90](https://github.com/LennardZuendorf/indexed/issues/90) — chunk-hash reuse follow-up not yet planned |
 | 20 | retrieval-eval | pinned code/docs/GitHub fixtures, measured dense/rerank evidence, validated reports | IN REVIEW | [features/retrieval-eval/](features/retrieval-eval/) · PR #265; paired public docs remain open |
+| 21 | File watcher (issue #67) | one collection stays fresh from a foreground `index watch`: debounce coalescing, incremental update, vanished-path gate | IN REVIEW | [features/file-watcher/](features/file-watcher/) · `cli/knowledge/commands/{watch,watch_service}.py`, `cli/watch_config.py`; MCP wiring is slice 2 |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)

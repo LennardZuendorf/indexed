@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-11-01
+updated: 2026-11-03
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -34,7 +34,7 @@ def _init_app(ctx: typer.Context, local: bool = typer.Option(False, "--local"), 
 
 Organized in subdirectories, exposed flat for usability:
 
-- **Knowledge:** `create`, `search`, `inspect`, `update`, `remove` (as `index create`, …)
+- **Knowledge:** `create`, `search`, `inspect`, `update`, `watch`, `remove` (as `index create`, …)
 - **Config:** `inspect`, `set`, `validate`
 - **MCP:** `run`, `dev`, `inspect`
 
@@ -226,6 +226,9 @@ and `log_level` params are the only reliable source before logger setup.
 
 Techniques: lazy imports of heavy ML libs, deferred service init, minimal
 module-level imports (`TYPE_CHECKING`), `__getattr__` module-level lazy loading.
+The file watcher follows the same rule: `index watch` imports
+`watch_service` (and through it the connectors package) inside the command body,
+so a process that never watches pays nothing for the feature.
 
 ```python
 def __getattr__(name: str):

@@ -178,12 +178,38 @@ indexed index update my-project          # update a collection
 indexed index remove my-project          # delete a collection
 indexed index migrate my-project         # migrate to the v2 engine
 
+# Keep a collection fresh while you work (opt-in, foreground)
+indexed index watch my-project           # Ctrl-C to stop
+indexed index watch my-project --debounce 5 --poll-interval 1
+
 # Configuration
 indexed config inspect                   # view config
 indexed config set search.max_docs 20    # set a value
 ```
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
+
+### Watching a collection
+
+`indexed index watch <collection>` polls that collection's source directory and runs
+the normal incremental update once a burst of edits goes quiet, so edits, new files and
+deletions show up in search without a manual `index update`. It only works for `files`
+collections (remote sources have no local change signal) and it is **opt-in**: nothing
+starts it except typing the command, it runs in the foreground, and Ctrl-C is the off
+switch — no daemon, no service, no config flag.
+
+If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
+an error and **keeps the last good index** instead of updating against an empty tree; it
+resumes when the path returns. Three consecutive failed updates end the command with a
+non-zero exit code.
+
+Tune the cadence with `--debounce` / `--poll-interval`, or in config:
+
+```toml
+[watch]
+debounce_seconds = 2.0
+poll_interval_seconds = 2.0
+```
 
 ## Roadmap
 
