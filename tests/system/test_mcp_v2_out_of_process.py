@@ -110,11 +110,12 @@ def test_mcp_v2_search_out_of_process(local_workspace, files_corpus: Path) -> No
 
     payload = asyncio.run(_drive_mcp_search(ws.root))
 
-    results = payload.get("results") or []
+    results = payload.get("documents") or []
     assert results, f"MCP v2 search returned no results: {payload!r}"
     top = results[0]
-    assert top["document_id"].endswith("needle.txt"), (
-        f"expected needle.txt as top MCP v2 hit, got {top['document_id']!r}"
+    assert top["id"].endswith("needle.txt"), (
+        f"expected needle.txt as top MCP v2 hit, got {top['id']!r}"
     )
     assert top["collection"] == COLLECTION
-    assert "penguin" in top["text"].lower()
+    assert top["source_type"] == "localFiles"
+    assert "penguin" in top["hits"][0]["text"].lower()

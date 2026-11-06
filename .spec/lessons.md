@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-05
 ---
 
 # Lessons Learned
@@ -1294,6 +1294,255 @@ with `git add`/`git status`, since that's what CI actually runs.
   drive the real app callback (real `bootstrap_logging`, unstubbed) and emit a
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
+
+## One builder for both surfaces (2026-10-26)
+
+- **A payload the CLI and the MCP server both emit must be built by ONE function,
+  typed by ONE contract module, and pinned by ONE hand-written golden file.**
+  #108/#109 had two lookalike shapes (`format_search_results_for_llm` fed both,
+  but the CLI's human view and MCP's dict had already drifted, and v2 dropped
+  chunk `metadata` so a v2 hit could not say where it sits at all). Three
+  surfaces → one test file (`tests/unit/indexed/mcp/test_search_payload_golden.py`)
+  that asserts the builder, the MCP tool and `search --json` all equal the same
+  golden JSON, key order included. Hand-write the golden: a generated fixture
+  cannot disagree with the implementation, which is the only reason to have one.
+- **Provenance is a payload job, not a formatting afterthought.** Locators come
+  from chunk `metadata`; a shape that omits it (v2's `{indexedData}`-only chunk
+  content) silently degrades every hit to "somewhere in this document". When a
+  contract needs a field, check that every engine still CARRIES it before the
+  formatter is written, and assert an honest `kind: "document"` fallback rather
+  than an invented range.
+- **Never trust a converter's field for truthiness: clean before you branch.** The
+  Markdown converter emits `headings: [""]` for whole-file chunks, so `if headings:`
+  chose `kind: "headings"` and then emitted `{"kind": "headings", "headings": []}` —
+  9 of 351 chunks on a real collection. A non-empty INPUT is not a non-empty OUTPUT:
+  trim, drop blanks, and decide the kind from the cleaned list, with unit tests for
+  the degenerate inputs (`[""]`, `["", " Real "]`), not just the happy path.
+- **Document-level facts go on the document.** Grouping hits under their source
+  document and stating collection/type/id/url/score semantics once cuts per-hit
+  keys from seven to four, none of which a consumer must strip. Do not sell it as
+  a token win though: measured on a 16-document/62-hit code corpus the payload
+  went 57_132 B -> 57_526 B (+0.7%), because stripping the `# <path>\n` chunk
+  prefix (-2_363 B) and dropping the repeated `collection`/`document_id`/
+  `document_url` per hit is offset by the per-hit `locator` and the second
+  (raw) score. The value is provenance and actionability; claim size only after
+  measuring, and state the corpus.
+- **A doc that says "branch on `schema`" must document the bodies that lack it.**
+  The contract named `schema` as the key consumers branch on, while the failure
+  body the CLI actually printed (`{"error": …}`) and the escape path (Rich panel on
+  stdout, exit 1/2/3) were undocumented, so a harness had to guess.
+  Write the failure side of every contract in the same section as the success
+  shape, pin each body with a test, and state what the exit code means — including
+  which empty states are exits 0 because an empty store is not a failure.
+
+
+## Canonical search repair (2026-11-02)
+
+- Preserve skipped collection failures in machine results before filtering search
+  configs. The mixed good/broken regression failed with empty `collection_errors`.
+- Fixed machine payloads must request matched chunk content. Respecting a false
+  config value erased known matches; the golden regression exposed zero counts.
+- Rank on full precision, then round emitted scores. Cosine .50004 must precede
+  .50001 even when both display as .5; the regression exposed discovery-order ties.
+- Run entrypoint failures before documenting output streams. A real `StorageError`
+  exits 3 and writes its Rich panel to stdout, so check exit status before JSON.
+- Check optional workflow paths exist before reading them. Direct `cat`/`ls` on
+  the absent `.agents/skills/vibe` cursor returned exit 1 during this repair.
+- For isolated worktree verification, pin the usable HF cache and offline mode;
+  use an external pytest cache, disable rerunfailures when socket access is denied,
+  and use Ruff `--no-cache` on read-only worktrees.
+
+## Search consumer documentation (#255, 2026-11-02)
+
+- Check CLI exit status before JSON parsing. Ordinary logs use stderr, but an
+  escaping typed error prints a Rich panel to stdout. Exit 0 can carry an error.
+- Document each MCP tool's failure boundary separately. Global search reports
+  collection errors; named search checks status first. Typed exceptions retain
+  their concrete class name in the top-level envelope.
+- Resolve a local source from hit locator path, then document path, then a decoded
+  local file URL. Remote URLs require a source/fetch tool, not filesystem Read.
+- A document locator means unknown position, not a title or whole-document chunk.
+  Preserve source-type optionality and describe context stripping conditionally.
+- Discover exact source and test filenames before multi-file reads or check runs.
+  Guessed result, envelope, engine and stdout-test filenames caused avoidable
+  failed commands in this cycle; use `rg --files` before constructing paths.
+
+- Empty `collections` means no collection was searched successfully. Inspect
+  `collection_errors` to distinguish an empty store from all searches failing;
+  preserve concrete exception types when documenting boundary envelopes.
+
+- Run each branch's pinned pre-commit formatter before freezing publication
+  hashes. The shared venv can use a different Ruff version. Accept layout
+  changes only after proving Python AST equivalence; read the owning config.
+
+## A skipped gate is a red gate (2026-10-31)
+
+- **`enforce-same-node: false` makes a hardware mismatch silently PASS.** The
+  action logs `::warning::` and sets `regression-detected=false`, so the job is
+  green having compared nothing — `comparison-skipped=true` next to
+  `conclusion: success` in the same log is the tell. GitHub rotated the
+  `ubuntu-latest` CPU (EPYC 7763 → 9V74) and every PR's benchmark check became a
+  rubber stamp. A gate that CAN skip must fail on the skip, and the failure has
+  to be decided from the two fingerprints: run the guard step whenever the
+  benchmark step succeeded, read the action-captured target baseline and
+  compare its full CPU/system fingerprint (`machine_info.cpu.brand_raw`,
+  `arch`, `count`, and `machine_info.system`) with this run's, then name both
+  fingerprints and the repair. Never gate that step on the action's
+  `comparison-skipped` flag — it is written only inside the compare steps, so
+  keying on it makes the no-baseline branch unreachable (see below), and it is
+  also set by the sequential comparison, which is not a missing verdict. Do
+  not reach for the action's own hard-fail mode — on a mixed
+  fleet it reds at random and teaches people to ignore the check, which is the
+  same end state by a louder road.
+- **A guard that refuses a state change needs a named override in the same PR,
+  or a rotation becomes unrepairable.** The refresh lane rightly refused to
+  adopt another machine's numbers, and that left no path at all to a valid
+  baseline: every PR compared against a machine that no longer exists. The
+  override belongs on the trigger (`workflow_dispatch` input
+  `accept_cpu_change`), must force the reviewed PR even when the numbers happen
+  not to move, and must print old vs new fingerprint in the job summary AND the
+  PR body — an override nobody can see in review is just a quieter gate. Check
+  too that the repair lane is not gated by the check it repairs: a baseline-only
+  PR must trigger no benchmark run, or the fix deadlocks behind its own red.
+- **A gate must not read its own numbers back out of the workspace it graded.**
+  Reading the reference baseline with `git show HEAD:…` inside the benchmark job
+  looked immutable and was not: the action's update path ends in
+  `EndBug/add-and-commit`, which COMMITS its numbers locally even when the push
+  is denied by `contents: read`. By the time the guard ran, HEAD held this run's
+  measurement, the fingerprints matched by construction, and the gate went green
+  on a mismatched machine — the same self-referential defect as the original
+  one, one layer up. Read the action-captured base ref (`origin/<base_ref>`)
+  with the action's sanitized target filename; do not fetch a newer baseline
+  after measurement. Treat "the check agreed with itself" as the first hypothesis when a gate you
+  just wrote passes on a case you expected to fail.
+- **A gate gated on an output that only exists on the happy path never runs.**
+  The fail-on-skip step was keyed on the action's `comparison-skipped == 'true'`,
+  but that output is written only inside the compare steps — when main has no
+  committed baseline the compare step is itself skipped, the flag stays `false`,
+  and the guard's own bootstrap branch was dead code while the spec and PR body
+  described it as live. Gate on the prerequisite that actually holds ("the
+  benchmark step succeeded"), let the guard's own inputs decide, and for every
+  branch in a guard ask which run can ever reach it — an unreachable `::error::`
+  reads exactly like a green check.
+- **A matching CPU fingerprint is not the same machine.** Three consecutive runs
+  of PR #268 reported the same node (`runnervm48cm3`) and the same
+  `AMD EPYC 7763 64-Core Processor`, and still disagreed: everything within
+  tolerance once (`test_parse_large_markdown` +10.4 %), then
+  `test_parse_large_markdown` +36.6 % (943 ms vs a 690 ms baseline recorded on
+  `runnervmtai0g`), then `test_cli_license` +47.6 % — one green and two reds from
+  an unchanged diff. Shared-vCPU tenancy, not code, and not even the CPU model:
+  the variance is *run-to-run*. So a committed cross-run baseline cannot gate on
+  a single sample at any tolerance; only measuring both sides in the same job
+  cancels it. Corollary: when a gate reds on one benchmark while every other row
+  sits within a few percent, suspect the machine before the diff — and when it
+  reds on a *different* benchmark after a re-run, you already have your answer.
+- **A benchmark delta is a measurement until you have checked what recorded it.**
+  Run 40835797220's 27–44 % shift (incl. `test_cli_license` +44.0 % on code the
+  PR never touched) was not the diff, and not a CPU rotation either: same CPU
+  model both sides, shared-vCPU hosted runners. The rotation shows up
+  separately as three fingerprints in three days — `AMD EPYC 7763`,
+  `AMD EPYC 9V74`, `INTEL(R) XEON(R) PLATINUM 8573C`. So before quoting any
+  benchmark delta, compare `machine_info.cpu.brand_raw` of the two files *and*
+  treat a single run-to-run delta as noise to re-measure; only a repeated,
+  same-fingerprint shift is a regression.
+
+## A benchmark gate must measure both sides in one job (2026-11-02)
+
+- **Two numbers from two machines are not a comparison, at any tolerance.** The
+  hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
+  9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
+  compared against a committed baseline reds or greens by which runner it
+  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  repair is structural, not statistical — measure the captured event base and
+  its corresponding merge result back to back on one runner, and compare those two
+  files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
+  drift report. Make its failure advisory, and independently enforce setup and
+  complete measurements in the hard A/B; a finite report tolerance is not a boundary.
+- **Same fingerprint is still not same machine, so compare the best round, not
+  the mean.** Three consecutive runs reported the same node and CPU and
+  disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
+  shared-vCPU tenancy adds time but never removes it. On unchanged code
+  measured both ways locally, means disagreed by 20 % (one slow round in a
+  3-round benchmark), medians by 12 %, minimums by 0.7 % — so the gate compares
+  the minimum and keeps `--stat` as the escape hatch. A real regression moves
+  the minimum too; noise does not.
+- **A harness bug must not spend the verdict.** A machine mismatch inside a
+  same-job A/B, a different interpreter, or two files with no shared rows is
+  not a red PR and not a green one: exit with its own code (2), name it
+  `same-job measurement invalid`, and say it is a bug. Keeping "no verdict"
+  separate from "regressed" is what makes the red mean something — and the
+  committed unit test proves it without a runner (`tests/unit/test_benchmark_ab.py`:
+  +25 % fails, +2 % passes).
+- **A guard around a comparison that no longer decides anything is dead weight
+  with a red exit.** #268's fail-on-skip step was right while a cross-run
+  comparison was the gate and became a random red generator once the A/B took
+  over, so this PR deletes it rather than leaving two gates disagreeing. When
+  superseding a gate, remove the machinery that only enforced honesty about the
+  old one, and say in the spec which issue's step went where.
+
+## Baseline-refresh repair verification (2026-11-02)
+
+- [ci] A downstream guard must read the same target filename and captured ref
+  as the action it verifies. Re-fetching after measurement can turn a skipped
+  comparison against A into a false verdict against newer baseline B.
+- [tests] Shell fixtures must admit each legitimate Git read before judging a
+  regression. A git stub that only admitted `origin/<base>` falsely failed the
+  refresh job's valid `HEAD` read; model those reads separately and keep writes
+  stubbed.
+- [workflow] Check a referenced file exists before reading it; optional missing
+  paths must not become unrelated command failures during task setup.
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
+
+## Search CI dependency integration (2026-11-02)
+
+- Integrate the reviewed paired CI gate before judging search performance.
+  Preserve every product and consumer-document byte; measure the complete
+  combined test tree before setting the shared size ceiling. Historical mean
+  failures remain disclosed until the actual integrated paired run completes.
+- Read the cached hook entry before selecting a binary. The pinned ty hook
+  runs `uv check`; set `UV_NO_SYNC=1` with a shared environment. The unscoped
+  hook tried dependency downloads and failed on sandbox DNS; no-sync passed.
+- Executable AST comparisons must exclude attribute documentation strings too.
+  Filtering only each owner's first docstring falsely flagged TypedDict field prose.
+
+## Native-stack provenance (2026-11-02)
+
+- A native stack can put an upstream synthetic merge before the captured base.
+  Accept one wrapper only with exactly two parents, captured base second, and
+  complete Git tree identity. Require exactly two outer parents and captured
+  head second. Measure the original captured SHAs; never substitute the wrapper.
+- Fetch depth 3 before inspecting the nested graph. Depth 2 can hide wrapper
+  parents even when their objects exist. Missing objects remain invalid.
+- Capture Git reads before array parsing or comparison so command failures reach
+  the measurement trap. Compare complete tree IDs, including modes and docs.
+- Workflow doubles must model environment names and escape generated source.
+  Benchmark fixtures supply GITHUB_SHA; eval fixtures supply MERGE. A raw
+  newline in a generated Git stub caused a false syntax failure before RED.
+- File hooks can open even unchanged inputs with write access. Run them with
+  scoped worktree write permissions; a denied rb+ open is an environment failure.
+
+
 
 ## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
 

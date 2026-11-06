@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-03
+updated: 2026-11-05
 ---
 
 # Tech Spec: indexed
@@ -174,16 +174,62 @@ Performance regressions are caught in CI, not via local scripts. The former
 diff logic) were deleted and replaced by the GitHub Marketplace action
 [`pytest Benchmark Baseline Check`](https://github.com/marketplace/actions/pytest-benchmark-baseline-check)
 (`lennardzuendorf/pytest-bench-action`), wired in
-`.github/workflows/python-benchmark.yml`.
+`.github/workflows/python-benchmark.yml`, plus one repo-owned comparator,
+`scripts/benchmark_ab.py`. A PR run has two halves, and only the first decides
+anything.
 
-The action runs `tests/system` + `tests/benchmarks` with `--benchmark-only`,
-compares against a per-branch JSON baseline committed under
-`.benchmarks/baselines/` (the general `.benchmarks/*.json` ignore carries a
-`!baselines/**` exception — negating just the dir, not `**`, leaves files
-inside still matched by `*.json` and silently un-stageable), posts one PR
-comment per run (deletes any prior bot
-comment matching the report header before posting, so re-runs don't spam the
-thread), and fails the job on a tolerance-exceeding regression.
+**The gate: two measurements, one job, one runner.** Before the report action,
+`Capture benchmark revisions` pins the event's base SHA, PR head SHA and GitHub
+merge-result SHA (`github.sha`). The A/B fetches those exact base and merge
+objects with depth 3 and requires exactly two merge parents, ending in the
+captured PR head. The first parent must be the captured base, or one native-stack
+wrapper with exactly two parents ending in that base and the exact same complete
+Git tree as that base. Tree identity includes every path, mode and content blob.
+Missing objects, extra parents or a changed wrapper tree fail the measurement.
+The wrapper is provenance evidence only: both original captured base and merge
+SHAs remain the measured revisions. Moving target refs cannot replace this pair.
+
+`Same-job A/B gate` measures the captured base and its corresponding PR merge
+result back to back. Each has a separate detached worktree and venv installed
+from that revision's lock with `uv sync --locked`. Logs and summary name the
+actual measured commits as base and merge result, never as a Git merge base or
+an unmerged head. The gate requires all three selected rows:
+`test_searcher_first_search`, `test_parse_markdown_docs`, and
+`test_parse_large_markdown`. Repeatable `--expected-benchmark` arguments pin
+that selected set even if pytest omits a test on both sides. Only the common
+`tests/` prefix is normalized to match pytest-benchmark fullnames.
+
+`scripts/benchmark_ab.py` requires unique identical row sets, finite positive
+selected durations, and complete matching CPU/system and Python identities.
+Malformed containers, missing rows/statistics, duplicates, unusable identities,
+and nonfinite or negative tolerance exit **2** with
+`::error title=Same-job measurement invalid::` and no verdict. The comparator
+prints both validated fingerprints. A valid measurement exits **1** only when
+a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
+(20 %); otherwise it exits **0**. Zero tolerance is valid.
+
+The selected statistic defaults to the **minimum** (`--stat` can select another
+statistic). Historical unchanged-code measurements found means disagreeing by
+up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
+`41407096799` added 40 s to an 8.5-minute report job; that timing predates the
+explicit two-worktree setup and is not a fresh performance measurement.
+
+**The report: everything else, advisory.** The pinned action measures
+`tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift
+against the target branch's committed baseline. The PR invocation has
+`continue-on-error: true`: no finite tolerance makes this action observation-only,
+since missing names or sufficiently large regressions can still fail it.
+`cross-branch-tolerance: 1000` is report policy, not the safety boundary.
+The required A/B runs after report failure, independently checks checkout and
+Python setup, installs uv, and measures both revisions. Setup failure, failed
+pytest or absent result files fails with exit 2; A/B exits 1 and 2 remain hard
+job failures. The dispatch refresh invocation retains its hard action failure
+behavior and live tolerance of 20. Committed baselines remain drift references.
+
+`.benchmarks/baselines/` holds the per-branch JSON baselines (the general
+`.benchmarks/*.json` ignore carries a `!baselines/**` exception — negating just
+the dir, not `**`, leaves files inside still matched by `*.json` and silently
+un-stageable).
 
 **Contract: a PR run measures and gates, it never writes.** The pull_request
 job holds `contents: read` and `pull-requests: write` — nothing else. The
@@ -205,9 +251,9 @@ failing. `.github/workflows/baseline-guard.yml` enforces both halves — it fail
 a code-changing PR that rewrites the file, and passes a PR whose only change is
 a baseline *rewrite*. The door is deliberately not "nothing but that file": a
 PR that deletes it also changes nothing else, yet removing main's baseline
-leaves the next run logging "No baseline found for base branch 'main' —
-skipping cross-branch comparison" and passing green, so the performance gate
-silently stops gating (the same class of damage as an untested head). The guard
+disarms the drift monitor (the refresh lane has nothing to compare against and
+the PR report prints a first-run notice), so the reference disappears without a
+single red check. The guard
 therefore requires the file to be present at HEAD before it opens the door, and
 fails a deletion with an explicit message. Because the benchmark job can no
 longer add a `[skip ci]` commit, the guard's remedy ("restore the file, re-run
@@ -217,7 +263,8 @@ the benchmark job") now converges; a re-run cannot re-add it.
 `workflow_dispatch`-able, and its `refresh-baseline` job runs only when
 dispatched on `main` (that job alone opts into `contents: write` +
 `pull-requests: write`). It re-measures through the same pinned action and the
-same `&benchmark-inputs` inputs as the gate; since the action's update path is
+same pin and the same measurement inputs as the PR job's report step; since the
+action's update path is
 pull_request-only, its "Save baseline" step only rewrites the file in the
 workspace. If that differs from `main`'s copy, the job force-pushes it to
 `chore/benchmark-baseline-refresh` and opens (or updates) one PR changing
@@ -226,6 +273,39 @@ fails the run before that step — adopt numbers only once a slowdown is
 understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
 action.
+
+**Why a committed baseline cannot be the gate (#267, #271).** `ubuntu-latest` is
+a heterogeneous fleet. Four jobs of one PR on 2026-10-31 (same code) landed on
+`AMD EPYC 7763`, `AMD EPYC 9V74` and `INTEL(R) XEON(R) PLATINUM 8573C`; two PR
+runs minutes apart on 2026-11-01 produced opposite verdicts — #252's job passed
+against a matching baseline, #268's failed because it landed on a 9V45 and
+nothing could be compared. Before #268 that comparison skipped with a warning
+and the check was green **while comparing nothing**; after #268 it failed, which
+made the lottery visible but left roughly half of all PR runs red for no reason.
+Neither state is a verdict, and no tolerance fixes it: three consecutive runs on
+the *same* CPU model still disagreed (`test_parse_large_markdown` 690 → 943 ms,
+`test_cli_license` 43 → 82 ms, unchanged diff). Only measuring both sides in one
+job cancels hardware and tenancy, which is why #268's fail-on-skip guard is
+**removed** here rather than kept — it enforced honesty about a comparison that
+no longer decides anything. The A/B needs no such guard: a machine mismatch
+inside one job is a harness bug and exits 2, and a skipped cross-run comparison
+cannot make the gate green because the gate does not read it.
+
+**Fleet rotation is repairable: `accept_cpu_change`.** The refresh lane refuses
+a fingerprint change by default, because adopting another machine's numbers
+would poison the very reference the gate compares against. `workflow_dispatch`
+takes `accept_cpu_change: true`, which lets the refresh proceed, forces the
+refresh PR even when the numbers moved less than `DRIFT_PCT`, and records old vs
+new fingerprint in the job summary and the refresh PR body. The fingerprint
+contains CPU brand, architecture, core count and system. The title marks the
+hardware change with `(new CPU)`, including when updating an existing PR. That
+PR's table is a
+**measurement, not a verdict** — a cross-CPU diff cannot say whether code got
+slower — and it exists so the next PR run compares like with like. Without that
+input no mechanism in the repo can re-record a rotated baseline. That repair
+cannot deadlock on the check it repairs: `.benchmarks/**` is not in this
+workflow's `paths` filter, so the baseline-only refresh PR triggers no benchmark
+run at all, and the guard (below) is the only check it faces.
 
 **Corpora are pinned, never the repo's own docs.**
 `tests/benchmarks/test_parsing_performance.py` measures the parsing pipeline
@@ -242,12 +322,15 @@ that lock. Refreshing the corpus is a deliberate change that calls for a
 baseline refresh afterwards; never point a benchmark at documents the project's
 own workflow keeps growing.
 
-Configured in this repo via `cross-branch-tolerance: 20`, the inert
+Configured as `cross-branch-tolerance: 1000` on the advisory PR report step
+(its failure is continued because that comparison crosses machines), and
+`cross-branch-tolerance: 20` on the refresh lane (live: there it is main's drift alarm), the inert
 `update-tolerance: 1000`, and a per-test `threshold-map` (max seconds per
-benchmark name substring). A regression can be waived per-PR via the
-`benchmark-override` label (`override-label`, explicitly set here) — the
-regression still shows in the PR comment but doesn't fail the job; the
-repo-wide tolerance is untouched.
+benchmark name substring). GitHub Actions has no YAML merge keys, so the two
+`with:` blocks are copies of each other; change them together. The
+`benchmark-override` label (`override-label`) still waives a *cross-run* report
+regression — the A/B gate has no label waiver and always decides from its
+validated measurements.
 
 A `concurrency` group (keyed on PR number, else ref; `cancel-in-progress: true`)
 prevents overlapping runs from racing each other.
@@ -269,7 +352,9 @@ CPU/system fingerprint instead (`cpu.brand_raw` + arch + core count + `system`),
 so `ubuntu-latest` runs on the same CPU model compare cleanly; a genuine
 hardware mismatch now skips with `comparison-skipped` (or hard-fails if
 `enforce-same-node: "true"`, unset here) instead of hard-failing by default.
-Not configured in this repo: `enforce-same-node` (defaults `"false"`, skip not fail on hardware mismatch).
+Not configured in this repo: `enforce-same-node` (defaults `"false"`; the report
+step leaves a cross-run mismatch a warning, because the A/B — not the cross-run
+comparison — decides the job).
 
 ---
 
@@ -585,7 +670,18 @@ Connector readers use this helper — do not duplicate status-code tuples.
 4. **Query caching** — cache query embeddings? Deduplicate identical queries? Invalidation?
 5. **Connector reliability** — transient API failures: retry with backoff? Circuit breaker?
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
-7. **CI benchmark runner stability** — resolved by `pytest-bench-action`'s
-   CPU-fingerprint gate (see tech.md § CI Benchmarking). `override-label` now
-   configured. Still open: adopt `enforce-same-node: "true"`, or stay on the
-   skip-not-fail default (hosted runners only)?
+7. **CI benchmark runner stability** — the CPU-fingerprint gate handles the
+   hostname randomization (see tech.md § CI Benchmarking); `override-label` is
+   configured, a skipped comparison now fails the gate (#267), and a fleet
+   rotation is repairable via `accept_cpu_change`. **Answered, 2026-10-31:** the
+   hosted fleet *does* alternate — four jobs of one PR (same code) landed on
+   `AMD EPYC 9V74`, `AMD EPYC 7763` (twice) and `INTEL(R) XEON(R) PLATINUM
+   8573C` within an hour, producing two green and two red verdicts from the same
+   diff. So a committed cross-run baseline cannot be a stable PR gate, and
+   `test_parse_large_markdown` moving +10.4 % and +33.6 % against the same
+   baseline on the same CPU model rules out "just raise the tolerance". The
+   implemented design measures the captured event base and corresponding PR
+   merge result back to back in one job, keeping the committed baseline as a
+   coarse `main` drift alarm. The comparator and required-row contract are
+   described in CI Benchmarking above; hosted acceptance of these repairs is
+   separate from local executable verification.

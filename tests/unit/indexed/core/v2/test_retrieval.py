@@ -76,7 +76,13 @@ def test_search_returns_v1_result_shape(tmp_path: Path) -> None:
     chunk = doc["matchedChunks"][0]
     assert set(chunk) == {"chunkNumber", "score", "content"}
     assert isinstance(chunk["score"], float)
-    assert chunk["content"] == {"indexedData": "penguin migration"}
+    # Content mirrors v1's `{indexedData, metadata}` so a hit can say WHERE it
+    # sits (issue #108/#109); metadata is the docstore node's own dict.
+    assert chunk["content"]["indexedData"] == "penguin migration"
+    assert isinstance(chunk["content"]["metadata"], dict)
+    # The collection's reader type rides along with the results, for the same
+    # reason: it is the only true per-hit source discriminator.
+    assert per["sourceType"] == "localFiles"
 
 
 def test_search_omits_content_when_not_requested(tmp_path: Path) -> None:
