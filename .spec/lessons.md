@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-02
+updated: 2026-11-03
 ---
 
 # Lessons Learned
@@ -1374,6 +1374,23 @@ with `git add`/`git status`, since that's what CI actually runs.
 - Run each branch's pinned pre-commit formatter before freezing publication
   hashes. The shared venv can use a different Ruff version. Accept layout
   changes only after proving Python AST equivalence; read the owning config.
+
+## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
+
+- **A performance gate must not read content the project's own workflow keeps
+  growing.** `test_full_connector_pipeline_docs` walked `.spec/` (the live spec
+  tree), so PR #278's three added feature spec files slowed it 9.27 s → 11.79 s
+  (+27.1%, FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
+  workspace, moved +4.1% on the same runners: the gate was measuring the corpus,
+  not the code. The baseline guard then forbids that PR from absorbing the
+  difference, so the red has no in-PR fix. Pin the input set — a frozen copy
+  under `tests/benchmarks/fixtures/parsing_corpus/` plus a `sha256sum` lock and a
+  unit test that owns it. Any repo document a benchmark reads is a latent red for
+  the PR that edits that document.
+- **Freeze the bytes with a lock the pre-commit hooks cannot rewrite.** The
+  `trailing-whitespace` / `end-of-file-fixer` hooks edit tracked files at commit
+  time, so a byte-checked corpus must be excluded from both (as `eval/corpus/`
+  already is) or the next hook run breaks its own lock.
 
 ## A skipped gate is a red gate (2026-10-31)
 

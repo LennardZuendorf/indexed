@@ -134,6 +134,11 @@ SRC_LOC_MAX = 31_800
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
+# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
+# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
+# the benchmark wiring so a corpus change is a deliberate, reviewable diff
+# instead of a benchmark gate that reds on spec growth) — gate-integrity
+# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
 # Raised from 48_600 by issues #108/#109: the golden-output suite
 # (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
 # search_payload.json`) pins ONE hand-written payload across the builder, the
