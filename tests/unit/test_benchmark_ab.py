@@ -310,3 +310,129 @@ def test_incomplete_rows_invalid_without_expected_option(tmp_path: Path):
     base, head = complete_results(), complete_results()
     head["benchmarks"].pop()
     assert_invalid(run(tmp_path, base, head))
+
+
+def noise_table(
+    tmp_path: Path,
+    *,
+    band_ms: float,
+    band_pct: float = 30.0,
+    gate: bool = True,
+    stat: str = "min",
+    name: str = FULLNAME,
+) -> Path:
+    """Write a one-row noise band table in the shape the derivation emits."""
+    path = tmp_path / "noise.json"
+    path.write_text(
+        json.dumps(
+            {
+                "stat": stat,
+                "benchmarks": {
+                    name.removeprefix("tests/"): {
+                        "band_ms": band_ms,
+                        "band_pct": band_pct,
+                        "gate": gate,
+                    }
+                },
+            }
+        )
+    )
+    return path
+
+
+def test_delta_inside_noise_band_is_reported_not_gated(tmp_path: Path):
+    """+25 % on a row whose unchanged spread is 3.5 ms is not a verdict."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.30, band_pct=30.0)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "gate verdict: PASS" in proc.stdout
+    assert "inside its measured noise band" in proc.stdout
+    assert "::error title=Benchmark regression::" not in proc.stdout
+
+
+def test_delta_past_noise_band_still_fails(tmp_path: Path):
+    """Falsifiability: the same +25 % fails when it exceeds the measured band."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.10, band_pct=10.0)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "gate verdict: FAIL" in proc.stdout
+    assert "noise band" in proc.stdout
+
+
+def test_row_missing_from_noise_table_keeps_relative_verdict(tmp_path: Path):
+    """An unmeasured benchmark is not silently excused."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=1.0, name="tests/other.py::test_other")
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "::error title=Benchmark regression::" in proc.stdout
+
+
+def test_report_only_row_never_decides(tmp_path: Path):
+    """A row whose spread exceeds the cap is named, never gated — even at +100 %."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 2)
+    table = noise_table(tmp_path, band_ms=1.0, band_pct=120.0, gate=False)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "too large to gate; reported only" in proc.stdout
+    assert "gate verdict: PASS" in proc.stdout
+
+
+def test_band_for_another_statistic_is_ignored(tmp_path: Path):
+    """Bands are measured on one statistic; using them for another is invalid."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=1000.0, stat="mean")
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "bands do not apply to other statistics" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {},
+        {"band_ms": "3", "band_pct": 30.0, "gate": True},
+        {"band_ms": 0, "band_pct": 30.0, "gate": True},
+        {"band_ms": 3.0, "gate": True},
+        {"band_ms": 3.0, "band_pct": 30.0},
+    ],
+)
+def test_malformed_noise_table_is_invalid(tmp_path: Path, entry):
+    table = tmp_path / "noise.json"
+    table.write_text(json.dumps({"stat": "min", "benchmarks": {FULLNAME: entry}}))
+
+    proc = run(
+        tmp_path,
+        results(BASE_MEAN_S),
+        results(BASE_MEAN_S * 1.25),
+        "--noise-band",
+        str(table),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Same-job measurement invalid" in proc.stdout
+
+
+def test_committed_noise_table_covers_every_selected_row():
+    """CI passes this table; a missing selected row would silently re-open the lottery."""
+    table = json.loads((SCRIPT.parent / "benchmark_noise.json").read_text())
+    bands = table["benchmarks"]
+    for node in (
+        "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs",
+        "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown",
+        "tests/system/test_search_performance.py::test_searcher_first_search",
+    ):
+        assert node.removeprefix("tests/") in bands, node
+    assert table["stat"] == "min"

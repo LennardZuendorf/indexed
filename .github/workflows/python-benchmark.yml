@@ -221,10 +221,15 @@ jobs:
         measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"
 
         # Preserve the comparator's distinct regression (1) and invalid (2) exits.
+        # The noise band is the measured spread of unchanged code (see
+        # scripts/benchmark_noise.json and .spec/tech.md § CI Benchmarking): a
+        # delta has to beat the relative tolerance *and* that band to fail.
         status=0
         python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
           --base "$BASE_RESULTS" --head "$HEAD_RESULTS" \
-          --tolerance "$AB_TOLERANCE" "${EXPECTED_ARGS[@]}" \
+          --tolerance "$AB_TOLERANCE" \
+          --noise-band "$GITHUB_WORKSPACE/scripts/benchmark_noise.json" \
+          "${EXPECTED_ARGS[@]}" \
           --base-label "captured event base @ $BASE_SHA" \
           --head-label "captured PR merge result @ $MERGE_SHA" \
           --summary "$GITHUB_STEP_SUMMARY" || status=$?
