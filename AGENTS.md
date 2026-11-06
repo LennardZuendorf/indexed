@@ -85,6 +85,7 @@ Canonical search retains skipped collection errors and always requests matched t
 Rank before rounding; check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
 Freeze publication hashes after the pinned pre-commit formatter passes.
+Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.

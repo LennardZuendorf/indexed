@@ -1,10 +1,13 @@
 """The machine-readable search payload (``indexed.search/1``).
 
-This is the ONE result shape for machine consumers: the MCP ``search`` /
-``search_collection`` tools return it, and the CLI prints it byte-for-byte
-under ``indexed search --json`` (``--simple-output`` is the legacy alias).
-The contract is typed in ``indexed.protocols.results`` and documented for
-users in ``.spec/tech-app.md`` § Search result contract (issues #108/#109).
+This is the success result shape for machine consumers: the MCP ``search`` /
+``search_collection`` tools return it, and the CLI emits it under
+``indexed index search --json`` (``--simple-output`` is the legacy alias).
+CLI consumers check exit status before JSON parsing; escaping errors can write
+non-JSON stdout. Normal JSON and MCP responses discriminate on ``schema``.
+The contract is typed in ``indexed.protocols.results`` and documented for users
+in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
+contract stays the design record (issues #108/#109).
 
 Shape, in one breath: documents grouped, each stating its collection, source
 type, id, url and score semantics ONCE; each hit carrying only its
@@ -128,8 +131,9 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     A document's hits nearly always sit in the same file, so repeating an
     absolute path on every hit is exactly the boilerplate this shape exists to
     remove (it measured LARGER than the payload it replaced). The path is
-    stated once on the document and stripped from the hits; a hit whose path
-    genuinely differs keeps its own. Likewise a ``file://`` url that only
+    stated once on the document and stripped from the hits when exactly one
+    distinct locator path exists. Multiple paths omit document ``path`` and
+    stay on their respective locators. Likewise a ``file://`` url that only
     restates the path carries no extra information and is dropped.
     """
     hits: List[Hit] = doc["hits"]
@@ -160,9 +164,9 @@ def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
     Precision order: a line span outranks a page, which outranks a heading
     path, which outranks the bare document. Sources differ: tree-sitter code
     chunks carry ``start_line``/``end_line`` (0-based, inclusive) and a
-    ``file_path``; Docling-parsed PDFs/DOCX carry ``page``; Markdown, Jira,
-    Confluence and Outline carry ``headings`` only. A source with none of
-    them gets ``kind: "document"`` rather than an invented range.
+    ``file_path``; positive ``page`` metadata selects a page locator when
+    supplied; prose converters can supply ``headings``. Without usable position
+    metadata, any chunk (including a body fragment) gets ``kind: "document"``.
     """
     meta = metadata or {}
 
@@ -221,8 +225,8 @@ def _strip_context_prefix(text: str, metadata: Dict[str, Any]) -> str:
     """Drop the ``# <path>\\n`` context prefix code chunks embed in their text.
 
     The indexer prepends the file path so the embedding sees it; the payload
-    already carries that path in ``locator.path``, so keeping it would make
-    every code hit start with a line the agent has to strip.
+    removes only an exact leading prefix matching ``metadata.file_path``.
+    Other text stays unchanged; the source path may be hoisted to the document.
     """
     path = metadata.get("file_path")
     if isinstance(path, str) and path:

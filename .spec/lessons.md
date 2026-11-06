@@ -1352,6 +1352,21 @@ with `git add`/`git status`, since that's what CI actually runs.
   use an external pytest cache, disable rerunfailures when socket access is denied,
   and use Ruff `--no-cache` on read-only worktrees.
 
+## Search consumer documentation (#255, 2026-11-02)
+
+- Check CLI exit status before JSON parsing. Ordinary logs use stderr, but an
+  escaping typed error prints a Rich panel to stdout. Exit 0 can carry an error.
+- Document each MCP tool's failure boundary separately. Global search reports
+  collection errors; named search checks status first. Typed exceptions retain
+  their concrete class name in the top-level envelope.
+- Resolve a local source from hit locator path, then document path, then a decoded
+  local file URL. Remote URLs require a source/fetch tool, not filesystem Read.
+- A document locator means unknown position, not a title or whole-document chunk.
+  Preserve source-type optionality and describe context stripping conditionally.
+- Discover exact source and test filenames before multi-file reads or check runs.
+  Guessed result, envelope, engine and stdout-test filenames caused avoidable
+  failed commands in this cycle; use `rg --files` before constructing paths.
+
 - Empty `collections` means no collection was searched successfully. Inspect
   `collection_errors` to distinguish an empty store from all searches failing;
   preserve concrete exception types when documenting boundary envelopes.
