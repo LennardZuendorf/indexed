@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-29
+updated: 2026-11-03
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -199,6 +199,49 @@ in **[0, 4]** — used directly as the result `score`, **lower means more simila
 (monotonic with cosine; not normalized to 0–1). Threshold filtering
 (`min_score` / `score_threshold`) keeps chunks whose score is **≤** the threshold;
 the configurable range is **[0, 4]** (a sane cutoff is >1.0), not [0, 1].
+
+---
+
+## Search-Time Git Awareness (v2, issues #60/#144/#146)
+
+Two opt-in options on `core.v2.retrieval.search` — query-time only: no new persisted
+state, no re-index, and the v1 engine ignores both (its behaviour is unchanged).
+
+| Option | Effect |
+|--------|--------|
+| `changed_since: str` | Keep only result documents whose file changed since that git ref, **including uncommitted and untracked work**. Applied to retrieved NODES, before document grouping, so `max_docs` fills with survivors instead of being starved. |
+| `git_provenance: bool` | Attach a document-level `git` field — `{commit, short, author, email, committedAt, subject}` (camelCase, additive: absent when not requested). |
+
+Both are no-ops unless the collection's manifest reader is a files reader
+(`localFiles`/`files` **and** a `basePath`); the repo is resolved ONCE per collection
+via `utils/git_meta.repo_toplevel` (see [tech-connectors](tech-connectors.md) § Query-Time
+Git Helper), node `source_id`s are rebased from base-path-relative to repo-relative, and
+a git failure (not a repo, invalid ref, no history) skips the filter — never an empty
+result set and never a raised search. Provenance costs at most one
+`git log -1` per admitted document, memoized per `(repo, path)` within the call.
+
+**A skipped filter is never silent.** Every collection result carries a `gitFilter`
+status when — and only when — `changed_since` was requested:
+`{"ref": <ref>, "applied": true}` after a run, and
+`{"ref": <ref>, "applied": false, "reason": <why>}` when it could not run
+(`unknown-ref`, `no-git-repository`, `not-a-files-collection`, or `v1-engine` — stamped
+by the `core.engine` facade, whose routing is the only place that knows a collection
+went to v1). The skip is logged at WARNING, `mcp/formatting.py` turns it into a
+`collection_errors` entry naming collection and ref, and the CLI renderers print the
+same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving under a
+"changed only" request are a defect, not a quiet degrade.
+
+Surfaced as `--changed-since` / `--git-provenance` on `indexed index search` and as
+`changed_since` / `git_provenance` on the MCP search tools, whose flattened rows then
+carry `git_commit`, `git_author`, `git_committed_at`. An omitted `git_provenance` means
+the configured `core.v1.search.git_provenance` on BOTH surfaces (the CLI/MCP parity
+invariant of `[core.v1.search]`). The CLI detail card gains a `Last commit` row.
+
+The CLI validates `--changed-since` up front: an unresolvable ref always exits 1, and so
+does naming (`--collection`) a collection that cannot carry the filter — no files reader,
+no git repo behind it, or the v1 engine. When searching EVERY collection, an unfilterable
+one is not fatal (a single Jira collection must not veto the search): it is announced per
+collection, exactly like the MCP `collection_errors` entry.
 
 ---
 

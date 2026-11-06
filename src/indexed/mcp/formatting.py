@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from indexed.utils.git_meta import filter_skip_message
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -45,6 +46,18 @@ def format_search_results_for_llm(
         if not isinstance(collection_data, dict) or "results" not in collection_data:
             continue
 
+        # A requested changed_since the collection could not honour is reported
+        # here too: unfiltered rows arriving under a "changed only" request are
+        # a defect, not a quiet degrade (#279 review, finding 1).
+        git_filter = collection_data.get("gitFilter")
+        if isinstance(git_filter, dict) and git_filter.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": filter_skip_message(git_filter),
+                }
+            )
+
         # v1 carries no "scoreKind" (squared-L2, lower-better); v2 records
         # "cosine" or "rerank" (both higher-better) per collection.
         raw_score_kind = collection_data.get("scoreKind")
@@ -59,6 +72,11 @@ def format_search_results_for_llm(
             doc_id = doc.get("id", "unknown")
             doc_url = doc.get("url", "")
             matched_chunks = doc.get("matchedChunks", [])
+            # Document-level provenance, present only when --git-provenance found
+            # a commit for this file (v2 files collections); absent otherwise.
+            git = doc.get("git")
+            if not isinstance(git, dict):
+                git = None
 
             for chunk_data in matched_chunks:
                 chunk_number = chunk_data.get("chunkNumber", 0)
@@ -73,21 +91,24 @@ def format_search_results_for_llm(
                         content_text = content
 
                 if content_text:
-                    all_chunks.append(
-                        {
-                            "rank": 0,
-                            "relevance_score": score,
-                            "collection": collection_name,
-                            "document_id": doc_id,
-                            "document_url": doc_url,
-                            "chunk_number": chunk_number,
-                            "text": content_text,
-                            # Sort helper only, popped before the envelope is
-                            # returned. The real score_kind ("cosine"/"rerank")
-                            # when known, else None (v1 / unknown kind).
-                            "_score_kind": raw_score_kind if higher_is_better else None,
-                        }
-                    )
+                    row: Dict[str, Any] = {
+                        "rank": 0,
+                        "relevance_score": score,
+                        "collection": collection_name,
+                        "document_id": doc_id,
+                        "document_url": doc_url,
+                        "chunk_number": chunk_number,
+                        "text": content_text,
+                        # Sort helper only, popped before the envelope is
+                        # returned. The real score_kind ("cosine"/"rerank")
+                        # when known, else None (v1 / unknown kind).
+                        "_score_kind": raw_score_kind if higher_is_better else None,
+                    }
+                    if git is not None:
+                        row["git_commit"] = git.get("commit", "")
+                        row["git_author"] = git.get("author", "")
+                        row["git_committed_at"] = git.get("committedAt", "")
+                    all_chunks.append(row)
 
     _rank_chunks(all_chunks, unified=any_higher_is_better)
     for chunk in all_chunks:
