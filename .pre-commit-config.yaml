@@ -5,10 +5,11 @@ repos:
     hooks:
       - id: trailing-whitespace
         stages: [pre-commit]
-        exclude: ^(?:\.benchmarks/baselines/|eval/(?:corpus|sources)/)
+        # Byte-locked fixtures: rewriting them breaks their sha256 lock.
+        exclude: ^(?:\.benchmarks/baselines/|eval/(?:corpus|sources)/|tests/benchmarks/fixtures/)
       - id: end-of-file-fixer
         stages: [pre-commit]
-        exclude: ^(?:\.benchmarks/baselines/|eval/(?:corpus|sources)/)
+        exclude: ^(?:\.benchmarks/baselines/|eval/(?:corpus|sources)/|tests/benchmarks/fixtures/)
       - id: check-yaml
         stages: [pre-commit]
       - id: check-toml
