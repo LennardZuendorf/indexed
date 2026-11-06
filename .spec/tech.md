@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-03
+updated: 2026-11-06
 ---
 
 # Tech Spec: indexed
@@ -206,13 +206,45 @@ and nonfinite or negative tolerance exit **2** with
 `::error title=Same-job measurement invalid::` and no verdict. The comparator
 prints both validated fingerprints. A valid measurement exits **1** only when
 a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
-(20 %); otherwise it exits **0**. Zero tolerance is valid.
+(20 %) *and* by more than that benchmark's measured noise band (below);
+otherwise it exits **0**. Zero tolerance is valid.
 
 The selected statistic defaults to the **minimum** (`--stat` can select another
-statistic). Historical unchanged-code measurements found means disagreeing by
-up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
-`41407096799` added 40 s to an 8.5-minute report job; that timing predates the
-explicit two-worktree setup and is not a fresh performance measurement.
+statistic). An outlier round drags the mean and leaves the minimum alone: run
+`41794588148` recorded `test_parse_large_markdown` at 731 ms minimum, 749 ms
+median and 911 ms mean from three rounds, one of them 1.25 s. Minimums are
+steadier but not stable either — six same-CPU repeats of unchanged code
+(2026-11-06) spread by up to 31 % on the shortest rows — so the minimum is the
+statistic the noise band is measured on, not a tolerance by itself. The earlier
+#271 subset run `41407096799` added 40 s to an 8.5-minute report job; that
+timing predates the explicit two-worktree setup and is not a fresh performance
+measurement.
+
+**Resolution is measured, not assumed.** `scripts/benchmark_noise.json` holds,
+per benchmark, the spread of repeat measurements of unchanged code: `band_ms`
+is three times the population standard deviation of the compared statistic over
+at least three runs sharing one CPU and Python fingerprint, and the file records
+the sample. The A/B gate passes it as `--noise-band`, so a row fails only when it
+beats both `AB_TOLERANCE` and its band — a delta that unchanged code has
+produced cannot red a PR. A row whose measured spread exceeds the cap (50 %) is
+marked `gate: false` and printed as **report-only**: at that signal-to-noise
+ratio the benchmark has no verdict to give, and naming that is honest where a
+widened tolerance would be decorative. A row missing from the table keeps the
+plain relative verdict, so an unmeasured benchmark is never silently excused,
+and bands derived for one statistic are ignored (with a warning) when `--stat`
+selects another. `scripts/derive_benchmark_noise.py` regenerates the table from
+result files using the gate's own validation; re-derive it when the fleet or the
+benchmark corpus moves and review the diff like any other measurement.
+
+Measured 2026-11-06 from six repeats on `AMD EPYC 7763` (main's committed
+baseline plus five dependency- or CI-only heads): `test_searcher_first_search`
+σ = 1.22 ms → band ±3.67 ms (39.8 % over its 9.22 ms median),
+`test_parse_large_markdown` ±53.56 ms (7.4 %), `test_faiss_load_native_mmap`
+±0.38 ms (24.0 %), and `test_cli_license` ±51.69 ms (120.5 %) as the one
+report-only row. Replayed against `.benchmarks/baselines/main.json`, the five
+rows #292 and the one row #289 got red on all land inside their bands (exit 0),
+while a synthetic 2× on `test_searcher_first_search` (9.35 → 18.69 ms, +100 %)
+still exits 1.
 
 **The report: everything else, advisory.** The pinned action measures
 `tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift

@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-06
 ---
 
 # Lessons Learned
@@ -1487,3 +1487,15 @@ with `git add`/`git status`, since that's what CI actually runs.
   gets 1.0 s — a new multi-second benchmark shows ❌ without a key ever being
   written. Read the action's source at the pinned SHA for semantics like this;
   a rendered report shows *which* cap applied, never *why* that one won.
+
+## Measured resolution, not a wider tolerance (2026-11-06)
+
+- A tolerance below the run-to-run spread of unchanged code is a coin flip.
+  Measure the spread: six same-CPU repeats gave 39.8 % on a 9 ms row and 7.4 %
+  on a 720 ms row, so one number cannot fit both. Derive a per-benchmark band
+  and require a delta to beat the tolerance *and* the band.
+- Compare the minimum, not the mean. One 1.25 s round in three moved a row's
+  mean +32 % while its minimum moved +6.9 %; the mean reds a PR for one stall.
+- Keep a row without a measurement conservative and a row with no resolution
+  visibly report-only. An unmeasured row that passes silently is the same defect
+  as a skipped comparison that reports green.

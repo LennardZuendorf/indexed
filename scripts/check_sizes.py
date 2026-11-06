@@ -137,7 +137,14 @@ SRC_LOC_MAX = 31_600
 # +2% passes, CPU mismatch is exit 2 not a verdict) so the gate has a
 # hardware-independent red proof; measured 48_643, ceiling = measured +
 # headroom.
-TEST_LOC_MAX = 48_950
+# Raised to 50_250 by the measured-noise-band gate: `test_benchmark_ab.py`
+# gains the band verdicts (inside noise passes, past the band fails, missing
+# or report-only rows never decide) and `test_derive_benchmark_noise.py` pins
+# the 3σ derivation, so a tolerance cannot be widened without a red test —
+# measured 49_195 on this branch. The eval-gate lane measures 49_875 on its own
+# branch and lands ahead of this one, so the integrated tree is bounded by that
+# measurement plus this branch's new tests; ceiling = larger measured + headroom.
+TEST_LOC_MAX = 50_250
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

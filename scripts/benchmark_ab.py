@@ -57,13 +57,26 @@ class Row:
 
 
 @dataclass
+class Band:
+    """How far unchanged code has been seen to move, for one benchmark."""
+
+    name: str
+    band_ms: float
+    band_pct: float
+    gate: bool
+
+
+@dataclass
 class Result:
     """Everything the caller needs to print, summarise and exit on."""
 
     rows: list[Row] = field(default_factory=list)
     regressions: list[Row] = field(default_factory=list)
+    within_noise: list[Row] = field(default_factory=list)
+    not_gateable: list[Row] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    bands: dict[str, Band] = field(default_factory=dict)
     stat: str = "min"
 
 
@@ -168,6 +181,74 @@ def compare(
     return result
 
 
+def load_noise_bands(path: Path | None) -> tuple[dict[str, Band], str | None]:
+    """Read the derived per-benchmark noise bands, or nothing if not given."""
+    if path is None:
+        return {}, None
+    try:
+        doc = object_value(json.loads(path.read_text()), "noise band table")
+    except (OSError, ValueError) as exc:
+        raise MeasurementInvalid(f"cannot read noise band table {path}: {exc}") from exc
+    stat = doc.get("stat")
+    if stat is not None and not isinstance(stat, str):
+        raise MeasurementInvalid("noise band table stat must be a string.")
+    entries = object_value(doc.get("benchmarks"), "noise band benchmarks")
+    bands: dict[str, Band] = {}
+    for raw_name, value in entries.items():
+        entry = object_value(value, f"noise band for {raw_name}")
+        band_ms, band_pct = entry.get("band_ms"), entry.get("band_pct")
+        gate = entry.get("gate")
+        if not isinstance(band_ms, (int, float)) or isinstance(band_ms, bool):
+            raise MeasurementInvalid(
+                f"noise band for {raw_name} has no numeric band_ms."
+            )
+        if not math.isfinite(band_ms) or band_ms <= 0:
+            raise MeasurementInvalid(f"noise band for {raw_name} must be positive.")
+        if not isinstance(band_pct, (int, float)) or isinstance(band_pct, bool):
+            raise MeasurementInvalid(
+                f"noise band for {raw_name} has no numeric band_pct."
+            )
+        if not isinstance(gate, bool):
+            raise MeasurementInvalid(f"noise band for {raw_name} has no boolean gate.")
+        bands[benchmark_name(raw_name)] = Band(
+            name=raw_name, band_ms=float(band_ms), band_pct=float(band_pct), gate=gate
+        )
+    return bands, stat
+
+
+def classify(
+    result: Result, tolerance: float, bands: dict[str, Band], table_stat: str | None
+) -> None:
+    """Split over-tolerance rows into regressions, noise and report-only rows.
+
+    A row fails only when it beats the relative tolerance *and* moves further
+    than unchanged code has been observed to move. A row the table marks as
+    not gateable is reported and never decides the job; a row the table does
+    not cover keeps the plain relative verdict, so an unmeasured benchmark
+    cannot be silently excused.
+    """
+    if table_stat is not None and table_stat != result.stat:
+        result.warnings.append(
+            f"noise band table was derived for the {table_stat!r} statistic but "
+            f"this comparison uses {result.stat!r}; bands do not apply to other "
+            "statistics and only the relative tolerance is enforced."
+        )
+        bands = {}
+    result.bands = bands
+    for row in result.rows:
+        if row.change_pct <= tolerance:
+            continue
+        band = bands.get(row.name)
+        if band is None:
+            result.regressions.append(row)
+        elif not band.gate:
+            result.not_gateable.append(row)
+        elif (row.head_s - row.base_s) * 1000.0 >= band.band_ms:
+            result.regressions.append(row)
+        else:
+            result.within_noise.append(row)
+
+
 def table(rows: list[Row], stat: str) -> str:
     """Fixed-width table: absolute numbers on both sides, then the ratio."""
     lines = [
@@ -180,6 +261,21 @@ def table(rows: list[Row], stat: str) -> str:
             f"{row.change_pct:>+8.1f}%"
         )
     return "\n".join(lines)
+
+
+def verdicts(result: Result, tolerance: float) -> dict[str, str]:
+    """Per-row verdict label, including the measured band where one applies."""
+    labels = {row.name: "within" for row in result.rows}
+    for row in result.within_noise:
+        band = result.bands.get(row.name)
+        labels[row.name] = (
+            f"within noise (±{band.band_ms:.2f} ms)" if band else "within noise"
+        )
+    for row in result.not_gateable:
+        labels[row.name] = "report only (no resolution)"
+    for row in result.regressions:
+        labels[row.name] = "**over tolerance**"
+    return labels
 
 
 def summary_markdown(
@@ -197,27 +293,46 @@ def summary_markdown(
         f"| base | `{base_label}` |",
         f"| merge result | `{head_label}` |",
         "",
-        f"Comparing the {result.stat} of each benchmark.",
+        f"Comparing the {result.stat} of each benchmark, with the per-benchmark "
+        "noise band measured from repeat runs of unchanged code.",
         "",
-        "| Benchmark | Base | Merge result | Change | Verdict |",
-        "|---|---|---|---|---|",
+        "| Benchmark | Base | Merge result | Change | Band | Verdict |",
+        "|---|---|---|---|---|---|",
     ]
+    labels = verdicts(result, tolerance)
     for row in result.rows:
-        verdict = "**over tolerance**" if row in result.regressions else "within"
+        band = result.bands.get(row.name)
+        band_text = f"±{band.band_ms:.2f} ms" if band else "—"
+        if band is not None and not band.gate:
+            band_text += " (report only)"
         lines.append(
             f"| `{row.name}` | {row.base_s * 1000:.2f} ms | {row.head_s * 1000:.2f} ms "
-            f"| {row.change_pct:+.1f}% | {verdict} |"
+            f"| {row.change_pct:+.1f}% | {band_text} | {labels[row.name]} |"
         )
     lines.append("")
     if result.regressions:
         lines.append(
             f"**Verdict: FAIL** — {len(result.regressions)} of {len(result.rows)} "
-            f"benchmarks regressed past {tolerance:g}% against their captured base."
+            f"benchmarks regressed past {tolerance:g}% and past their measured noise "
+            "band against their captured base."
         )
     else:
         lines.append(
-            f"**Verdict: PASS** — {len(result.rows)} benchmarks within "
-            f"{tolerance:g}% of their captured base."
+            f"**Verdict: PASS** — no benchmark regressed past {tolerance:g}% and past "
+            "its measured noise band against its captured base."
+        )
+    if result.within_noise:
+        lines.append("")
+        lines.append(
+            f"{len(result.within_noise)} benchmark(s) exceeded {tolerance:g}% but "
+            "stayed inside the largest delta unchanged code has produced on this "
+            "machine class; they are reported, not gated."
+        )
+    if result.not_gateable:
+        lines.append("")
+        lines.append(
+            f"{len(result.not_gateable)} benchmark(s) are report-only: their "
+            "measured spread is too large to decide anything."
         )
     for warning in result.warnings:
         lines.append(f"- {warning}")
@@ -243,6 +358,14 @@ def main(argv: list[str] | None = None) -> int:
         help="pytest-benchmark statistic to compare (default: min, the noise-free round)",
     )
     parser.add_argument("--summary", help="append the markdown summary to this file")
+    parser.add_argument(
+        "--noise-band",
+        help=(
+            "per-benchmark noise band table derived by "
+            "scripts/derive_benchmark_noise.py; a row over tolerance only fails "
+            "when its delta also exceeds this band"
+        ),
+    )
     parser.add_argument("--base-label", default="base", help="summary label")
     parser.add_argument("--head-label", default="head", help="summary label")
     parser.add_argument(
@@ -268,6 +391,9 @@ def main(argv: list[str] | None = None) -> int:
         result = compare(
             base_doc, head_doc, args.stat, expected_benchmarks=args.expected_benchmark
         )
+        bands, table_stat = load_noise_bands(
+            Path(args.noise_band) if args.noise_band else None
+        )
     except MeasurementInvalid as exc:
         print(f"::error title=Same-job measurement invalid::{exc}")
         return INVALID_EXIT
@@ -279,30 +405,51 @@ def main(argv: list[str] | None = None) -> int:
     print(f"base python: {interpreter(base_doc)}")
     print(f"head python: {interpreter(head_doc)}")
 
-    for warning in result.warnings:
-        print(f"::warning::{warning}")
     print(table(result.rows, result.stat))
 
-    result.regressions = [row for row in result.rows if row.change_pct > args.tolerance]
+    classify(result, args.tolerance, bands, table_stat)
+    for row in result.within_noise:
+        band = result.bands[row.name]
+        print(
+            f"::warning::{row.name} {result.stat} is {row.change_pct:+.1f}% "
+            f"({(row.head_s - row.base_s) * 1000:.2f} ms) over the "
+            f"{args.tolerance:g}% tolerance but inside its measured noise band "
+            f"of ±{band.band_ms:.2f} ms ({band.band_pct:.1f}% over {band.name!r}); "
+            "not a regression."
+        )
+    for row in result.not_gateable:
+        band = result.bands[row.name]
+        print(
+            f"::warning::{row.name} {result.stat} is {row.change_pct:+.1f}% over the "
+            f"{args.tolerance:g}% tolerance, but its measured spread "
+            f"(±{band.band_ms:.2f} ms) is too large to gate; reported only."
+        )
+    for warning in result.warnings:
+        print(f"::warning::{warning}")
+
     if result.regressions:
         worst = max(result.regressions, key=lambda row: row.change_pct)
         print(
             f"gate verdict: FAIL ({len(result.regressions)}/{len(result.rows)} "
-            f"{result.stat} over {args.tolerance:g}% of the base; worst "
-            f"{worst.name} {worst.change_pct:+.1f}%)"
+            f"{result.stat} past {args.tolerance:g}% and past their measured noise "
+            f"band; worst {worst.name} {worst.change_pct:+.1f}%)"
         )
         for row in result.regressions:
+            band = result.bands.get(row.name)
+            band_note = f", noise band ±{band.band_ms:.2f} ms" if band else ""
             print(
                 f"::error title=Benchmark regression::{row.name} {result.stat} is "
                 f"{row.change_pct:+.1f}% against its captured base "
                 f"({row.base_s * 1000:.2f} ms -> {row.head_s * 1000:.2f} ms), "
-                f"tolerance {args.tolerance:g}%."
+                f"tolerance {args.tolerance:g}%{band_note}."
             )
         exit_code = REGRESSION_EXIT
     else:
         print(
             f"gate verdict: PASS ({len(result.rows)} benchmarks within "
-            f"{args.tolerance:g}% of the base, {result.stat})"
+            f"{args.tolerance:g}% or their measured noise band of the base, "
+            f"{result.stat}; {len(result.within_noise)} inside noise, "
+            f"{len(result.not_gateable)} report-only)"
         )
         exit_code = PASS_EXIT
 
