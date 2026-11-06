@@ -154,6 +154,9 @@ SRC_LOC_MAX = 32_450
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
+# Merging main (and #279's merged head) into this branch keeps both sides' new
+# tests, so the union measures 50_156 — the ceilings above cannot both hold; one
+# measured value with headroom replaces them.
 TEST_LOC_MAX = 50_350
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
