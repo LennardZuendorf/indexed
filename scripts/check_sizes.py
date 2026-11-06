@@ -38,7 +38,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # Issue #204 adds the eval harness alongside #126's recovery surface.
 # Combined recovery/eval plus review validation and scoped runtime settings
 # measure 31_278 source lines before final docstrings; retain bounded headroom.
-SRC_LOC_MAX = 31_600
+# Raised from 31_600 by issues #108/#109 (one documented result shape for the
+# CLI machine mode and the MCP envelope): `protocols/results.py` types the
+# contract, `mcp/formatting.py` rebuilds the payload from ONE builder, and the
+# per-hit provenance is plumbed where it was dropped — `sourceType` from
+# `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
+# `metadata` so a v2 hit can say where it sits — genuine contract surface, not
+# stealth regrowth; ceiling = measured (31_602) + headroom.
+SRC_LOC_MAX = 31_800
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -132,7 +139,19 @@ SRC_LOC_MAX = 31_600
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
 # instead of a benchmark gate that reds on spec growth) — gate-integrity
 # coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-TEST_LOC_MAX = 48_800
+# Raised from 48_600 by issues #108/#109: the golden-output suite
+# (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
+# search_payload.json`) pins ONE hand-written payload across the builder, the
+# MCP tool and `search --json`, and `test_formatting.py` grows the locator/
+# ranking units (line span, page, headings, honest `document` fallback,
+# unified cross-engine relevance) — genuine defect-guarding coverage for a
+# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
+# (49_095 on the post-#265 tree, whose eval suite is already inside main's own
+# 48_600) + headroom.
+# The reviewed #273 paired-gate suite adds 312 lines to the repaired search
+# tree's 49_244: measured union 49_556, preserving both legitimate test tracks
+# with 244 lines of bounded headroom. Source budget stays at 31_800.
+TEST_LOC_MAX = 49_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
