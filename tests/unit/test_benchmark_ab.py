@@ -26,7 +26,10 @@ CPU = "AMD EPYC 7763 64-Core Processor"
 #: Fixture-set identity the measuring job stamps in; one value means "same corpus".
 BENCH_CORPUS = "d" * 64
 WORKFLOW = (
-    Path(__file__).resolve().parents[2] / ".github" / "workflows" / "python-benchmark.yml"
+    Path(__file__).resolve().parents[2]
+    / ".github"
+    / "workflows"
+    / "python-benchmark.yml"
 )
 
 
@@ -892,6 +895,7 @@ def test_active_reranker_requires_model_identity_and_accepts_complete_cache(tmp_
 # the defect this repository spent two weeks fixing, so each refusal is
 # asserted by name and the workflow that calls it is pinned.
 
+
 @pytest.mark.parametrize("value", [1, 2, 0, True, "3", None])
 def test_fewer_than_three_rounds_is_refused(tmp_path: Path, value):
     """One round is the runner's mood, not the diff: it cannot earn a verdict."""
@@ -1040,4 +1044,3 @@ def test_report_step_keeps_its_advisory_tolerance():
     block = step_block("Run benchmarks")
     assert "continue-on-error: true" in block
     assert "cross-branch-tolerance: 1000" in block
-

@@ -378,9 +378,7 @@ def _check_same_benchmark_corpus(base_doc: dict, head_doc: dict) -> None:
         )
 
 
-def samples(
-    doc: dict, stat: str = "min", side: str = "result"
-) -> dict[str, float]:
+def samples(doc: dict, stat: str = "min", side: str = "result") -> dict[str, float]:
     """Require unique complete rows and finite positive selected durations."""
     benchmarks = object_value(doc, "result").get("benchmarks")
     if not isinstance(benchmarks, list) or not benchmarks:
@@ -1134,8 +1132,7 @@ def main(argv: list[str] | None = None) -> int:
         for label, doc in (("base", base_doc), ("head", head_doc)):
             identity = recorded_corpus(doc, label)
             print(
-                f"{label} corpus: {identity['sha256'][:12]} "
-                f"({identity['files']} files)"
+                f"{label} corpus: {identity['sha256'][:12]} ({identity['files']} files)"
             )
 
     result.warnings[:0] = adopted
