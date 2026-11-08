@@ -1409,3 +1409,22 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Git-aware search review fixes (2026-11-08)
+
+- [git] `git diff --name-only <ref> --` compares REF's tree with the **working
+  tree**, so it already covers staged and unstaged edits; the separate `--cached`
+  and plain-diff legs were pure cost (12 → 8 subprocesses per search). Before
+  adding a git leg, prove the existing one cannot see what the new one adds.
+- [git] Query-time provenance must not outlive the snapshot it describes:
+  `git log` answers for the file on disk NOW, so pairing it with text from an
+  older index credits a commit that never contained that text. Guard with the
+  node's recorded `modified_time` (one `stat`, no subprocess) and omit the field
+  when it disagrees — say the rule in the spec and the tool docstring, not only
+  in the test.
+- [tests] A hostile-ref test only bites on the mutation that is the actual
+  bypass. With list argv the `rev-parse --verify` gate is what rejects
+  option-shaped refs, so dropping `--` alone changes nothing; drop the gate too
+  and the `--output=` case fails as it should (it even wrote the file, proving
+  the option was parsed). A test that cannot be made to fail proves nothing.
+

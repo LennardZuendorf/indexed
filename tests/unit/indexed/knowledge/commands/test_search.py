@@ -7,6 +7,7 @@ We focus on realistic behaviors:
 - formatter behavior for no results and mixed results
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List
@@ -2068,6 +2069,48 @@ class TestGitFlags:
 
         assert result.exit_code == 1
         assert "not a valid git ref" in result.stdout
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "--upload-pack=touch /tmp/x",
+            "; rm -rf /tmp/x",
+            "--output=/tmp/x",
+            "a" * 500,
+        ],
+    )
+    def test_hostile_ref_exits_one_with_the_json_error(
+        self, monkeypatch, git_repo, ref
+    ):
+        """An option-shaped or metacharacter ref is a bad request, not a search.
+
+        Pairs with ``test_changed_paths_rejects_option_shaped_and_metacharacter_refs``
+        so a later ``shell=True`` / dropped ``--`` refactor is caught on both
+        surfaces (#279 review, finding 3).
+        """
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        self._wire_common(monkeypatch, [self._make_status("col1")])
+        monkeypatch.setattr(
+            search_cmd, "_files_base_path", lambda *a, **kw: str(git_repo)
+        )
+        monkeypatch.setattr(
+            search_cmd, "svc_search", lambda query, **kw: {"col1": {"results": []}}
+        )
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["my-query", "--changed-since", ref]
+            )
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 1
+        assert "not a valid git ref" in json.loads(result.stdout)["error"]
 
     def test_non_git_collection_exits_nonzero(self, monkeypatch, tmp_path):
         """A NAMED files collection with no repo behind it cannot be filtered:

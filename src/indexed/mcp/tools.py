@@ -99,7 +99,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 tag or commit, including uncommitted and untracked changes. A collection
                 the filter cannot be applied to is named in ``collection_errors``.
             git_provenance (Optional[bool]): Add git_commit/git_author/git_committed_at
-                to each result row (defaults to core.v1.search.git_provenance).
+                to each result row, omitted for a file changed since it was indexed
+                (defaults to core.v1.search.git_provenance).
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -138,7 +139,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             changed_since: Keep only files changed since this git ref, tag or commit
                 (a collection the filter cannot be applied to is named in
                 collection_errors)
-            git_provenance: Add git_commit/git_author/git_committed_at to each result row
+            git_provenance: Add git_commit/git_author/git_committed_at to each result row,
+                omitted for a file changed since it was indexed
                 (defaults to core.v1.search.git_provenance)
             ctx: FastMCP Context (optional, for accessing lifespan state)
 

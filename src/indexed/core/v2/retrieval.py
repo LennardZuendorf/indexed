@@ -88,6 +88,21 @@ class _GitContext:
             )
         return self.commits[source_id]
 
+    def provenance(self, node: Any) -> Optional[Dict[str, str]]:
+        """``git`` for ``node``, or ``None`` when its indexed snapshot is stale.
+
+        ``git log`` answers for the file as it is NOW, so attaching it to text
+        from an older index would credit a commit that never contained that
+        text (#279 review, finding 2). The guard is a pure stat comparison.
+        """
+        meta = node.metadata or {}
+        source_id = meta.get("source_id")
+        if source_id is None or not git_meta.snapshot_is_current(
+            self.base_path, str(source_id), meta.get("modified_time")
+        ):
+            return None
+        return self.last_commit(str(source_id))
+
 
 def _git_context(manifest: "V2Manifest") -> Optional[_GitContext]:
     """Git context for a files collection, or ``None`` when it can't be resolved.
@@ -128,7 +143,8 @@ def search(
     this call only (CLI ``--rerank``/``--no-rerank``, R2) without touching the
     stored config. ``changed_since`` keeps only nodes whose file changed since
     that git ref (uncommitted work included); ``git_provenance`` attaches the
-    last-touching commit per result document. Both apply to files collections
+    last-touching commit per result document, but only while the indexed
+    snapshot still matches the file on disk. Both apply to files collections
     only and are no-ops when git can't answer (issues #60/#144/#146).
     """
     if max_docs is None:
@@ -407,7 +423,7 @@ def _group_by_document(
                 "matchedChunks": [chunk],
             }
             if git_context is not None:
-                provenance = git_context.last_commit(str(source_id))
+                provenance = git_context.provenance(node)
                 if provenance is not None:
                     entry["git"] = provenance
             _attach_document_content(

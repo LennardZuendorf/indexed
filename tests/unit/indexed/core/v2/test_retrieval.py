@@ -593,6 +593,13 @@ def _commit(repo: Path, *args: str) -> None:
     run_git(repo, *args)
 
 
+def _mtime(path: Path) -> str:
+    """The ISO mtime a files reader records on the node when indexing ``path``."""
+    from datetime import datetime
+
+    return datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+
+
 def test_changed_since_keeps_only_changed_documents(
     tmp_path: Path, git_repo: Path
 ) -> None:
@@ -667,12 +674,18 @@ def test_changed_since_filters_before_grouping_so_max_docs_still_fills(
 
 
 def test_git_provenance_attaches_last_commit(tmp_path: Path, git_repo: Path) -> None:
-    (git_repo / "tracked.txt").write_text("penguin")
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin")
     _commit(git_repo, "add", ".")
     _commit(git_repo, "commit", "-m", "add penguin")
 
     cols = tmp_path / "cols"
-    _build_files_at(cols, "c1", [make_doc("tracked.txt", ["penguin"])], git_repo)
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
 
     with mock_embedding(embed_dim=8):
         res = retrieval.search(
@@ -687,6 +700,39 @@ def test_git_provenance_attaches_last_commit(tmp_path: Path, git_repo: Path) -> 
     assert git["subject"] == "add penguin"
     assert git["commit"].startswith(git["short"])
     assert git["committedAt"].startswith("20")
+
+
+def test_git_provenance_omits_a_stale_snapshot(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    """The c2/c3 repro (#279 review, finding 2): index at c2, then commit c3
+    without re-indexing. The row still shows c2's text, so it must NOT be
+    credited to c3's commit."""
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin c2")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "c2 penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin c2"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
+
+    tracked.write_text("penguin c3")
+    _commit(git_repo, "commit", "-am", "c3 penguin")
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+
+    assert "git" not in res["c1"]["results"][0]
 
 
 def test_git_options_attach_nothing_when_not_requested(

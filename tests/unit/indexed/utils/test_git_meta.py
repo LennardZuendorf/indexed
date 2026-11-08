@@ -59,8 +59,9 @@ def test_changed_paths_covers_committed_staged_unstaged_untracked(
     }
     assert "stable.txt" not in since_c1
 
-    # Same set minus the commit, proving the --cached leg is what finds a
-    # staged-only path (a plain `git diff` cannot see it).
+    # The same set minus the commit. A staged-only path is found by the single
+    # ``git diff <ref> --`` leg: it compares REF's tree with the WORKING TREE,
+    # so no ``--cached`` / unstaged leg is needed.
     assert git_meta.changed_paths(str(repo), "HEAD") == {
         "staged.txt",
         "initial.txt",
@@ -73,6 +74,22 @@ def test_changed_paths_invalid_ref_is_none_not_empty(tmp_path: Path) -> None:
     assert git_meta.changed_paths(str(repo), "no-such-ref") is None
     # HEAD is valid but HEAD~99 is not: a typo must never look like "no changes".
     assert git_meta.changed_paths(str(repo), "HEAD~99") is None
+
+
+@pytest.mark.parametrize(
+    "ref",
+    ["--upload-pack=touch /tmp/x", "; rm -rf /tmp/x", "--output=/tmp/x", "a" * 500],
+)
+def test_changed_paths_rejects_option_shaped_and_metacharacter_refs(
+    tmp_path: Path, ref: str
+) -> None:
+    """The ref is one argv element behind a ``rev-parse --verify`` gate.
+
+    A later refactor to ``shell=True`` or a dropped ``--`` must fail here
+    instead of shipping an injection (#279 review, finding 3).
+    """
+    repo = _two_commit_repo(tmp_path)
+    assert git_meta.changed_paths(str(repo), ref) is None
 
 
 def test_last_commit_reports_the_touching_commit(tmp_path: Path) -> None:
@@ -103,3 +120,16 @@ def test_repo_relative_keeps_a_space_in_the_path(tmp_path: Path) -> None:
         git_meta.repo_relative(str(repo), str(base), "my file.md")
         == "docs dir/my file.md"
     )
+
+
+def test_snapshot_is_current_compares_the_recorded_mtime(tmp_path: Path) -> None:
+    """Provenance may only ride a snapshot that still matches the file on disk."""
+    from datetime import datetime
+
+    (tmp_path / "a.txt").write_text("indexed text")
+    current = datetime.fromtimestamp((tmp_path / "a.txt").stat().st_mtime).isoformat()
+
+    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", current) is True
+    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", "2000-01-01T00:00:00") is False
+    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", None) is False
+    assert git_meta.snapshot_is_current(str(tmp_path), "gone.txt", current) is False

@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-11-03
+updated: 2026-11-08
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -230,6 +230,13 @@ went to v1). The skip is logged at WARNING, `mcp/formatting.py` turns it into a
 `collection_errors` entry naming collection and ref, and the CLI renderers print the
 same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving under a
 "changed only" request are a defect, not a quiet degrade.
+
+**Provenance never outlives its snapshot.** `git_provenance` is attached only when the
+node's indexed `modified_time` still equals the file's mtime at query time
+(`utils/git_meta.snapshot_is_current` — a stat comparison, no extra subprocess). If the
+file changed or was committed after the collection was indexed, the `git` field is
+omitted rather than crediting a commit that does not contain the returned text;
+re-indexing restores it (#279 review, finding 2).
 
 Surfaced as `--changed-since` / `--git-provenance` on `indexed index search` and as
 `changed_since` / `git_provenance` on the MCP search tools, whose flattened rows then

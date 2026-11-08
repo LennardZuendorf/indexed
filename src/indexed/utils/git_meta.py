@@ -9,6 +9,7 @@ degrades to ``None``/empty, so a git problem never breaks a search.
 
 from __future__ import annotations
 
+import datetime
 import os
 import subprocess
 
@@ -79,10 +80,11 @@ def changed_paths(repo: str, ref: str) -> frozenset[str] | None:
     if _run(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") is None:
         return None
     paths: set[str] = set()
+    # ``git diff <ref> --`` compares REF's tree with the WORKING TREE, so one
+    # leg covers committed, staged and unstaged changes alike; untracked paths
+    # are the only ones it cannot see. Two legs, not four (#279 review).
     for args in (
         ("diff", "--name-only", ref, "--"),
-        ("diff", "--name-only", "--"),
-        ("diff", "--name-only", "--cached", "--"),
         ("ls-files", "--others", "--exclude-standard"),
     ):
         out = _run(repo, *args)
@@ -150,6 +152,26 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     return os.path.relpath(absolute, repo).replace(os.sep, "/")
 
 
+def snapshot_is_current(base_path: str, source_id: str, modified_time: str | None) -> bool:
+    """True when the file on disk still has the mtime its indexed node recorded.
+
+    ``modified_time`` is the node's indexed ``modified_time`` (ISO 8601, from the
+    files reader). A missing/unparseable value, a vanished file, or a different
+    mtime all answer False: git provenance is only attached when the indexed
+    snapshot provably describes the file as it is now (#279 review, finding 2).
+    """
+    if not modified_time:
+        return False
+    path = os.path.normpath(os.path.join(base_path, source_id))
+    try:
+        recorded = datetime.datetime.fromisoformat(str(modified_time)).timestamp()
+        actual = os.path.getmtime(path)
+    except (TypeError, ValueError, OSError):
+        return False
+    # ``isoformat()`` keeps microseconds; anything beyond that rounding is an edit.
+    return abs(recorded - actual) < 1e-3
+
+
 __all__ = [
     "changed_paths",
     "filter_skip_message",
@@ -157,4 +179,5 @@ __all__ = [
     "last_commit",
     "repo_relative",
     "repo_toplevel",
+    "snapshot_is_current",
 ]
