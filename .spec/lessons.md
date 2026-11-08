@@ -1427,4 +1427,3 @@ with `git add`/`git status`, since that's what CI actually runs.
   option-shaped refs, so dropping `--` alone changes nothing; drop the gate too
   and the `--output=` case fails as it should (it even wrote the file, proving
   the option was parsed). A test that cannot be made to fail proves nothing.
-

@@ -702,9 +702,7 @@ def test_git_provenance_attaches_last_commit(tmp_path: Path, git_repo: Path) -> 
     assert git["committedAt"].startswith("20")
 
 
-def test_git_provenance_omits_a_stale_snapshot(
-    tmp_path: Path, git_repo: Path
-) -> None:
+def test_git_provenance_omits_a_stale_snapshot(tmp_path: Path, git_repo: Path) -> None:
     """The c2/c3 repro (#279 review, finding 2): index at c2, then commit c3
     without re-indexing. The row still shows c2's text, so it must NOT be
     credited to c3's commit."""

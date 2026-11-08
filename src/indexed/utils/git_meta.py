@@ -152,7 +152,9 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     return os.path.relpath(absolute, repo).replace(os.sep, "/")
 
 
-def snapshot_is_current(base_path: str, source_id: str, modified_time: str | None) -> bool:
+def snapshot_is_current(
+    base_path: str, source_id: str, modified_time: str | None
+) -> bool:
     """True when the file on disk still has the mtime its indexed node recorded.
 
     ``modified_time`` is the node's indexed ``modified_time`` (ISO 8601, from the

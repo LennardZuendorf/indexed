@@ -130,6 +130,9 @@ def test_snapshot_is_current_compares_the_recorded_mtime(tmp_path: Path) -> None
     current = datetime.fromtimestamp((tmp_path / "a.txt").stat().st_mtime).isoformat()
 
     assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", current) is True
-    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", "2000-01-01T00:00:00") is False
+    assert (
+        git_meta.snapshot_is_current(str(tmp_path), "a.txt", "2000-01-01T00:00:00")
+        is False
+    )
     assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", None) is False
     assert git_meta.snapshot_is_current(str(tmp_path), "gone.txt", current) is False

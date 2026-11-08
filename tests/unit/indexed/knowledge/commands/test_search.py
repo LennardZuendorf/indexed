@@ -2103,9 +2103,7 @@ class TestGitFlags:
 
         set_simple_output(True)
         try:
-            result = runner.invoke(
-                search_cmd.app, ["my-query", "--changed-since", ref]
-            )
+            result = runner.invoke(search_cmd.app, ["my-query", "--changed-since", ref])
         finally:
             reset_simple_output()
 
