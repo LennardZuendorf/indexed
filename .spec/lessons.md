@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-06
+updated: 2026-11-08
 ---
 
 # Lessons Learned
@@ -1749,3 +1749,26 @@ with `git add`/`git status`, since that's what CI actually runs.
   A newly retained rebase history can expose older updated metadata even when
   the document's bytes did not change. Refresh the affected dates and rerun the
   structural audit while retaining unrelated historical drift findings.
+
+## Benchmark A/B gate guards (2026-11-08)
+
+- **A "at least three repeats" promise that lives in the benchmark files is not
+  a guarantee.** `@pytest.mark.benchmark(min_rounds=3)` only shapes a run; the
+  comparator never read `stats.rounds`, so two result files with `rounds: 1`
+  earned `gate verdict: PASS`. Read the proof from the artifact the verdict is
+  computed from, and refuse when it is absent — a guard the consumer does not
+  enforce is documentation.
+- **Same machine, same rows is still not the same experiment: name the corpus.**
+  The eval lane refused differing corpus/case-set digests from the start; the
+  benchmark lane compared two runs over different fixtures as like-for-like.
+  Stamp the input identity in the writer (`--stamp-corpus`, a digest of the
+  measured tree's frozen fixture set) and require agreement on read, with a
+  missing identity as a refusal. Stamp each side from its OWN worktree so a PR
+  that edits the corpus cannot pass by comparing against the base it changed.
+- **Pin the gate itself, or a future edit deletes it silently.** Assert by test
+  that the workflow step exists with its `trap … exit 2` failure path, its
+  tolerance, and its advisory report policy; the comparator's refusals did not
+  previously red anything if the step that calls them disappeared.
+- [tests] A helper that asserts one diagnostic title must take the title as a
+  parameter once a second tool (the stamp writer) fails with its own. Reuse the
+  exit-code and no-verdict assertions, not the message text.

@@ -204,6 +204,13 @@ jobs:
             python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
               --benchmark-only --benchmark-json "$output"
           )
+          # The measured side stamps the digest of ITS OWN fixture tree, using
+          # the gate's script from the merge checkout. Both sides must agree on
+          # it: a corpus change is a different experiment, and an unstamped file
+          # is refused rather than compared (scripts/benchmark_ab.py).
+          python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
+            --stamp-corpus "$output" \
+            --corpus-root "$directory/tests/benchmarks/fixtures"
         }
         measure "$BASE_DIR" "$BASE_SHA" "$BASE_RESULTS"
         measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"

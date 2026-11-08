@@ -23,6 +23,13 @@ Two failure modes are kept apart on purpose:
   comparison measures the harness rather than the diff. That is a bug to fix,
   not a verdict to record, so it exits with its own code and message.
 
+The benchmark lane is refused too when a result file cannot say what it
+measured: every benchmark must report at least :data:`MIN_ROUNDS` repeats, and
+both files must carry the job-stamped fixture-set identity (``--stamp-corpus``,
+see :func:`corpus_identity`). One round is the runner's mood rather than the
+diff, and a comparison over an unnamed corpus measures nothing — an absent
+identity is a refusal, never a pass.
+
 Usage::
 
     python scripts/benchmark_ab.py --base base.json --head head.json \\
@@ -39,6 +46,7 @@ Exit codes: 0 pass, 1 regression, 2 measurement invalid (or unusable input).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -55,6 +63,20 @@ INVALID_EXIT = 2
 
 BENCHMARK_SHAPE = "pytest-benchmark"
 EVAL_SHAPE = "indexed-eval"
+
+#: Repeats a benchmark row needs before it may decide anything. pytest-benchmark
+#: records the achieved count per row; a single round is the runner's mood, not
+#: the diff, so a file carrying fewer is refused rather than compared.
+MIN_ROUNDS = 3
+
+#: Top-level key the measuring job stamps into its own pytest-benchmark JSON.
+CORPUS_KEY = "benchmark_corpus"
+
+#: Fixture set the A/B benchmarks read, relative to the measured tree. Each side
+#: digests its own copy, so a PR that changes the corpus cannot be compared.
+DEFAULT_CORPUS_ROOT = Path(__file__).resolve().parents[1] / Path(
+    "tests/benchmarks/fixtures"
+)
 
 #: Retained approved absolute-point policy. Historical CI boundary movement
 #: was 0.0307 MRR (run 41422911438); that did not diagnose its cause. A later
@@ -295,7 +317,70 @@ def benchmark_name(value: object) -> str:
     return text_value(value, "benchmark fullname").removeprefix("tests/")
 
 
-def samples(doc: dict, stat: str = "min") -> dict[str, float]:
+def corpus_identity(root: Path) -> dict[str, Any]:
+    """Identity of the frozen fixture set a benchmark run measured.
+
+    The digest names every file by relative path and content, so a run over a
+    different corpus cannot be compared as if only the diff moved. The job that
+    produced the numbers stamps this into its own result file; the comparator
+    only requires that both sides agree on it.
+    """
+    entries = sorted(
+        (
+            path.relative_to(root).as_posix(),
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+    if not entries:
+        raise MeasurementInvalid(
+            f"the benchmark corpus {root} contains no files, so a run over it "
+            "cannot name what it measured."
+        )
+    digest = hashlib.sha256()
+    for relative, content in entries:
+        digest.update(f"{relative}\0{content}\n".encode())
+    return {"files": len(entries), "sha256": digest.hexdigest()}
+
+
+def recorded_corpus(doc: dict, side: str) -> dict[str, Any]:
+    """Require the identity the measuring job stamped into its result file."""
+    identity = doc.get(CORPUS_KEY)
+    if identity is None:
+        raise MeasurementInvalid(
+            f"the {side} benchmark result carries no {CORPUS_KEY} identity, so "
+            "the corpus it measured is unknown. Same-job measurement invalid — "
+            "a comparison over an unnamed corpus measures nothing."
+        )
+    identity = object_value(identity, f"the {side} {CORPUS_KEY}")
+    files = identity.get("files")
+    if type(files) is not int or files <= 0:
+        raise MeasurementInvalid(
+            f"the {side} {CORPUS_KEY}.files must be a positive integer."
+        )
+    return {
+        "files": files,
+        "sha256": _hash_identity(identity.get("sha256"), 64, f"{CORPUS_KEY}.sha256"),
+    }
+
+
+def _check_same_benchmark_corpus(base_doc: dict, head_doc: dict) -> None:
+    """Refuse to compare two runs over different fixture sets."""
+    was = recorded_corpus(base_doc, "captured base")
+    now = recorded_corpus(head_doc, "head")
+    if was != now:
+        raise MeasurementInvalid(
+            f"the captured base measured corpus {was['sha256'][:12]} "
+            f"({was['files']} files), the head {now['sha256'][:12]} "
+            f"({now['files']} files). Same-job measurement invalid — a corpus "
+            "change is a different experiment, not a verdict on this diff."
+        )
+
+
+def samples(
+    doc: dict, stat: str = "min", side: str = "result"
+) -> dict[str, float]:
     """Require unique complete rows and finite positive selected durations."""
     benchmarks = object_value(doc, "result").get("benchmarks")
     if not isinstance(benchmarks, list) or not benchmarks:
@@ -307,6 +392,18 @@ def samples(doc: dict, stat: str = "min") -> dict[str, float]:
         if name in out:
             raise MeasurementInvalid(f"duplicate benchmark fullname: {name}.")
         stats = object_value(bench.get("stats"), f"{name} stats")
+        rounds = stats.get("rounds")
+        if type(rounds) is not int or rounds < MIN_ROUNDS:
+            counted = (
+                f"{rounds} round{'' if rounds == 1 else 's'}"
+                if type(rounds) is int
+                else "no usable round count"
+            )
+            raise MeasurementInvalid(
+                f"the {side} reports {counted} for {name}; the gate needs at least "
+                f"{MIN_ROUNDS} repeats to separate this diff from the runner. "
+                "Same-job measurement invalid."
+            )
         value = stats.get(stat)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise MeasurementInvalid(f"{name} {stat} must be a numeric duration.")
@@ -329,7 +426,8 @@ def _benchmark_result(
     expected_benchmarks: Iterable[str] | None = None,
 ) -> Result:
     """Require the identical selected benchmark set on both sides."""
-    base_rows, head_rows = samples(base_doc, stat), samples(head_doc, stat)
+    base_rows = samples(base_doc, stat, "captured base")
+    head_rows = samples(head_doc, stat, "head")
     if base_rows.keys() != head_rows.keys():
         raise MeasurementInvalid(
             "base and merge result must contain identical benchmark sets."
@@ -623,6 +721,7 @@ def compare(
             )
         return result
 
+    _check_same_benchmark_corpus(base_doc, head_doc)
     return _benchmark_result(base_doc, head_doc, stat, expected_benchmarks)
 
 
@@ -853,6 +952,33 @@ def spread(paths: list[str]) -> int:
     return PASS_EXIT
 
 
+def stamp_corpus(result_path: Path, corpus_root: Path) -> int:
+    """Record the measured fixture set in the result file a job just wrote.
+
+    This is the writer half of the corpus guard: the revision that produced the
+    numbers digests its OWN fixture tree, so a PR that changes the corpus shows
+    up as two identities rather than as a regression.
+    """
+    try:
+        doc = json.loads(result_path.read_text())
+        object_value(doc, "report")
+        if shape(doc) != BENCHMARK_SHAPE:
+            raise MeasurementInvalid(
+                f"{result_path} is a {shape(doc)} file, not a pytest-benchmark result."
+            )
+        doc[CORPUS_KEY] = corpus_identity(corpus_root)
+    except (OSError, ValueError, OverflowError, MeasurementInvalid) as exc:
+        print(f"::error title=Benchmark corpus identity invalid::{exc}")
+        return INVALID_EXIT
+    result_path.write_text(json.dumps(doc, indent=2) + "\n")
+    identity = doc[CORPUS_KEY]
+    print(
+        f"benchmark corpus: {identity['sha256'][:12]} over {identity['files']} "
+        f"files in {corpus_root}"
+    )
+    return PASS_EXIT
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare captured-base and head measurements from one job."
@@ -910,11 +1036,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print this machine's fingerprint and exit (the job's identity)",
     )
+    parser.add_argument(
+        "--stamp-corpus",
+        metavar="RESULT",
+        help=(
+            "record the measured fixture set in this pytest-benchmark result file "
+            "and exit; the writer half of the corpus-identity check"
+        ),
+    )
+    parser.add_argument(
+        "--corpus-root",
+        help="fixture set the benchmarks read (default tests/benchmarks/fixtures)",
+    )
     args = parser.parse_args(argv)
 
     if args.show_host_fingerprint:
         print(host_fingerprint())
         return PASS_EXIT
+    if args.stamp_corpus:
+        return stamp_corpus(
+            Path(args.stamp_corpus),
+            Path(args.corpus_root) if args.corpus_root else DEFAULT_CORPUS_ROOT,
+        )
     if args.spread:
         return spread(args.spread)
     if not args.base or not args.head:
@@ -987,6 +1130,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"head CPU fingerprint: {fingerprint(head_doc)}")
     print(f"base python: {interpreter(base_doc)}")
     print(f"head python: {interpreter(head_doc)}")
+    if result.shape == BENCHMARK_SHAPE:
+        for label, doc in (("base", base_doc), ("head", head_doc)):
+            identity = recorded_corpus(doc, label)
+            print(
+                f"{label} corpus: {identity['sha256'][:12]} "
+                f"({identity['files']} files)"
+            )
 
     result.warnings[:0] = adopted
     result.decide(tolerance)

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-06
+updated: 2026-11-08
 ---
 
 # Tech Spec: indexed
@@ -207,6 +207,20 @@ and nonfinite or negative tolerance exit **2** with
 prints both validated fingerprints. A valid measurement exits **1** only when
 a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
 (20 %); otherwise it exits **0**. Zero tolerance is valid.
+
+Two guards keep the benchmark lane from deciding on a comparison that measured
+nothing. Each benchmark row must report at least **three rounds** in its own
+result file (`MIN_ROUNDS`); a row with one round, a missing round count or a
+non-integer one is a refusal naming the row and its count, never a pass —
+one round is the runner's mood, not the diff. And every result file must carry
+the fixture-set identity the measuring job stamped into it: `measure()` in the
+A/B step runs `--stamp-corpus <result> --corpus-root
+<worktree>/tests/benchmarks/fixtures`, which hashes every file under that
+worktree's frozen corpus by relative path and content. Both sides must agree
+on the digest (`benchmark_corpus.sha256`); a differing digest is a corpus
+change and therefore a different experiment, and an absent identity is a
+refusal, not a pass. Each side digests its own tree, so a PR that edits the
+corpus cannot be compared against the base it changed.
 
 The selected statistic defaults to the **minimum** (`--stat` can select another
 statistic). Historical unchanged-code measurements found means disagreeing by

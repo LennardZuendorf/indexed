@@ -23,6 +23,11 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_ab.py"
 FULLNAME = "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown"
 BASE_MEAN_S = 0.690
 CPU = "AMD EPYC 7763 64-Core Processor"
+#: Fixture-set identity the measuring job stamps in; one value means "same corpus".
+BENCH_CORPUS = "d" * 64
+WORKFLOW = (
+    Path(__file__).resolve().parents[2] / ".github" / "workflows" / "python-benchmark.yml"
+)
 
 
 def results(mean_s: float, **overrides: dict) -> dict:
@@ -36,10 +41,11 @@ def results(mean_s: float, **overrides: dict) -> dict:
     machine.update(overrides.pop("machine", {}))
     # The gate compares the minimum, so every file has to carry `min`; the
     # other statistics are here so a caller can pull them apart.
-    stats = {"mean": mean_s, "median": mean_s, "min": mean_s}
+    stats = {"mean": mean_s, "median": mean_s, "min": mean_s, "rounds": 3}
     stats.update(overrides.pop("stats", {}))
     return {
         "machine_info": machine,
+        "benchmark_corpus": {"files": 3, "sha256": BENCH_CORPUS},
         "benchmarks": [
             {
                 "fullname": FULLNAME,
@@ -50,12 +56,8 @@ def results(mean_s: float, **overrides: dict) -> dict:
     }
 
 
-def run(tmp_path: Path, base: dict, head: dict, *extra: str):
-    """Write both files and run the comparator exactly as CI does."""
-    base_path = tmp_path / "base.json"
-    head_path = tmp_path / "head.json"
-    base_path.write_text(json.dumps(base))
-    head_path.write_text(json.dumps(head))
+def run_files(base_path: Path, head_path: Path, *extra: str):
+    """Run the comparator over two files exactly as CI does."""
     return subprocess.run(
         [
             sys.executable,
@@ -70,6 +72,15 @@ def run(tmp_path: Path, base: dict, head: dict, *extra: str):
         text=True,
         check=False,
     )
+
+
+def run(tmp_path: Path, base: dict, head: dict, *extra: str):
+    """Write both files and run the comparator exactly as CI does."""
+    base_path = tmp_path / "base.json"
+    head_path = tmp_path / "head.json"
+    base_path.write_text(json.dumps(base))
+    head_path.write_text(json.dumps(head))
+    return run_files(base_path, head_path, *extra)
 
 
 def test_head_twenty_five_percent_slower_fails(tmp_path: Path):
@@ -183,9 +194,9 @@ def complete_results() -> dict:
     return doc
 
 
-def assert_invalid(proc):
+def assert_invalid(proc, title: str = "Same-job measurement invalid"):
     assert proc.returncode == 2, proc.stdout + proc.stderr
-    assert "Same-job measurement invalid" in proc.stdout
+    assert title in proc.stdout
     assert "gate verdict" not in proc.stdout
     assert "Traceback" not in proc.stderr
 
@@ -871,3 +882,162 @@ def test_active_reranker_requires_model_identity_and_accepts_complete_cache(tmp_
     for report in (base, head):
         report["config"]["reranker_model"] = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     assert run(tmp_path, base, head).returncode == 0
+
+
+# --- the benchmark lane must prove it measured something -------------------
+#
+# Both guards below were absent until the #297 review: two files with
+# ``rounds: 1`` earned a PASS, and two runs over different corpora were
+# compared as like-for-like. A gate that goes green having measured nothing is
+# the defect this repository spent two weeks fixing, so each refusal is
+# asserted by name and the workflow that calls it is pinned.
+
+@pytest.mark.parametrize("value", [1, 2, 0, True, "3", None])
+def test_fewer_than_three_rounds_is_refused(tmp_path: Path, value):
+    """One round is the runner's mood, not the diff: it cannot earn a verdict."""
+    base, head = complete_results(), complete_results()
+    for doc in (base, head):
+        for row in doc["benchmarks"]:
+            row["stats"]["rounds"] = value
+    assert_invalid(run(tmp_path, base, head, *EXPECTED_ARGS))
+
+
+def test_rounds_refusal_names_the_round_count(tmp_path: Path):
+    """The message has to say how many repeats it got, or it cannot be actioned."""
+    base, head = complete_results(), complete_results()
+    for doc in (base, head):
+        doc["benchmarks"][1]["stats"]["rounds"] = 1
+    proc = run(tmp_path, base, head, *EXPECTED_ARGS)
+    assert_invalid(proc)
+    assert "reports 1 round for" in proc.stdout
+    assert "needs at least 3 repeats" in proc.stdout
+
+
+def test_three_rounds_still_earns_a_verdict(tmp_path: Path):
+    """The guard refuses unproven runs, not proven ones."""
+    proc = run(tmp_path, complete_results(), complete_results())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "gate verdict: PASS" in proc.stdout
+
+
+def fixture_corpus(root: Path, files: dict[str, str]) -> Path:
+    """A stand-in for tests/benchmarks/fixtures, nested file included."""
+    root.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    return root
+
+
+def stamp(path: Path, corpus: Path):
+    return subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--stamp-corpus",
+            str(path),
+            "--corpus-root",
+            str(corpus),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_stamped_results_over_one_corpus_pass(tmp_path: Path):
+    """The writer round trip: both sides digest the same tree, so the gate decides."""
+    corpus = fixture_corpus(
+        tmp_path / "corpus", {"a.md": "alpha", "features/b.md": "beta"}
+    )
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.02)
+    for doc in (base, head):
+        del doc["benchmark_corpus"]
+    base_path, head_path = tmp_path / "base.json", tmp_path / "head.json"
+    for path, doc in ((base_path, base), (head_path, head)):
+        path.write_text(json.dumps(doc))
+        stamped = stamp(path, corpus)
+        assert stamped.returncode == 0, stamped.stdout + stamped.stderr
+        assert json.loads(path.read_text())["benchmark_corpus"]["files"] == 2
+    proc = run_files(base_path, head_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "gate verdict: PASS" in proc.stdout
+    assert "base corpus: " in proc.stdout and "head corpus: " in proc.stdout
+
+
+def test_benchmarks_over_different_corpora_are_refused(tmp_path: Path):
+    """A corpus change is a different experiment, never a regression or a pass."""
+    was = fixture_corpus(tmp_path / "was", {"a.md": "alpha"})
+    now = fixture_corpus(tmp_path / "now", {"a.md": "alpha, but changed"})
+    base_path, head_path = tmp_path / "base.json", tmp_path / "head.json"
+    for path, corpus in ((base_path, was), (head_path, now)):
+        path.write_text(json.dumps(results(BASE_MEAN_S)))
+        assert stamp(path, corpus).returncode == 0
+    proc = run_files(base_path, head_path)
+    assert_invalid(proc)
+    assert "corpus change is a different experiment" in proc.stdout
+
+
+def test_benchmark_result_without_corpus_identity_is_refused(tmp_path: Path):
+    """Missing identity is a refusal: an unnamed corpus cannot be compared."""
+    base, head = complete_results(), complete_results()
+    for doc in (base, head):
+        del doc["benchmark_corpus"]
+    proc = run(tmp_path, base, head, *EXPECTED_ARGS)
+    assert_invalid(proc)
+    assert "carries no benchmark_corpus identity" in proc.stdout
+
+
+@pytest.mark.parametrize("case", ["empty-corpus", "eval-file", "absent-file"])
+def test_stamp_refuses_what_it_cannot_identify(tmp_path: Path, case: str):
+    """The writer fails closed too: no corpus or no benchmark rows is exit 2."""
+    corpus = fixture_corpus(tmp_path / "corpus", {"a.md": "alpha"})
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps(results(BASE_MEAN_S)))
+    if case == "empty-corpus":
+        corpus = tmp_path / "empty"
+        corpus.mkdir()
+    elif case == "eval-file":
+        path.write_text(json.dumps({"schema": "indexed.eval.report.v1"}))
+    else:
+        path.unlink()
+    assert_invalid(stamp(path, corpus), "Benchmark corpus identity invalid")
+
+
+def step_block(name: str) -> str:
+    """The YAML block of one workflow step, found by its ``- name:`` line."""
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != f"- name: {name}":
+            continue
+        indent = len(line) - len(line.lstrip())
+        block = [line]
+        for following in lines[index + 1 :]:
+            stripped = len(following) - len(following.lstrip())
+            if following.lstrip().startswith("- name:") and stripped <= indent:
+                break
+            block.append(following)
+        return "\n".join(block)
+    raise AssertionError(f"python-benchmark.yml has no step named {name!r}")
+
+
+def test_ab_gate_step_is_pinned_with_its_failure_path():
+    """Deleting the gate must red a check, not silently stop gating."""
+    block = step_block("Same-job A/B gate (captured base vs merge result)")
+    assert "::error title=Same-job measurement invalid::" in block
+    assert "trap" in block and "exit 2" in block
+    assert 'AB_TOLERANCE: "20"' in block
+    assert 'exit "$status"' in block
+    # Both measured sides are stamped with their own fixture-set identity.
+    assert "--stamp-corpus" in block
+    assert 'measure "$BASE_DIR" "$BASE_SHA"' in block
+    assert 'measure "$MERGE_DIR" "$MERGE_SHA"' in block
+
+
+def test_report_step_keeps_its_advisory_tolerance():
+    """The A/B verdict rests on this being report policy, not a safety boundary."""
+    block = step_block("Run benchmarks")
+    assert "continue-on-error: true" in block
+    assert "cross-branch-tolerance: 1000" in block
+
