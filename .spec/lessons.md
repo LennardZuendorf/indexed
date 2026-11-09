@@ -1436,3 +1436,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   collection's own `updatedTime`) instead of guessing a zone or widening the
   tolerance. Test it cross-process: a same-interpreter `TZ` change can pass
   against the broken code.
+- [time] Making a write offset-aware makes naive/aware MIXING reachable in an
+  existing collection: a v1 collection updated once after the fix holds both
+  shapes, and every later max/compare of those timestamps must order on one axis
+  (legacy naive = UTC) or the upgrade path dies (`index migrate`, #279 B1 round
+  2). Normalise for the comparison, keep the winning writer's string in the
+  manifest, and pin the mixed state with a regression test — the pre-fix state
+  was unreachable, so no old test can catch it.

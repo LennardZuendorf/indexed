@@ -140,6 +140,34 @@ def test_offline_migration_builds_v2_and_keeps_backup(tmp_path: Path) -> None:
     assert not any(".tmp-" in p.name for p in base.iterdir())
 
 
+def test_migration_accepts_mixed_naive_and_aware_modified_times(
+    tmp_path: Path,
+) -> None:
+    """A v1 collection updated after the aware-write fix mixes both shapes (#279 B1).
+
+    Pre-fix ``_latest_modified_time`` compared the parsed values directly and
+    ``index migrate`` died with "can't compare offset-naive and offset-aware
+    datetimes"; the legacy naive doc is now read as UTC for ordering.
+    """
+    base = tmp_path / "cols"
+    _write_v1_collection(
+        base,
+        "c1",
+        [
+            make_doc("legacy-a.txt", ["alpha"], modified_time="2026-01-10T00:00:00"),
+            make_doc("aware.txt", ["beta"], modified_time="2026-03-01T00:00:00+00:00"),
+            make_doc("legacy-c.txt", ["gamma"], modified_time="2026-01-11T00:00:00"),
+        ],
+    )
+
+    with mock_embedding(embed_dim=8):
+        result = migration.migrate("c1", collections_path=str(base))
+
+    assert result.action == "migrate"
+    manifest = json.loads((base / "c1" / "manifest.json").read_text())
+    assert manifest["lastModifiedDocumentTime"] == "2026-03-01T00:00:00+00:00"
+
+
 # --- R7 scenario 2: failed migration leaves v1 intact, no partial v2 ---------
 
 

@@ -242,9 +242,10 @@ The node timestamp is stored **offset-aware in UTC**
 (`datetime.fromtimestamp(mtime, timezone.utc).isoformat()`), so the comparison is
 absolute and independent of the querying process's zone or a DST change. An
 offset-less value is LEGACY (the old writers stored naive local wall time, whose zone
-is unknowable): the guard does not parse it at all and instead compares the file's
-mtime with the manifest's UTC `updatedTime` — a file not newer than the index cannot
-have changed since — which degrades towards *provenance present* rather than dark. A
+is unknowable): the guard does not parse it into an instant and instead compares
+the file's mtime with the manifest's UTC `updatedTime` — a file not newer than the
+index cannot have changed since — which degrades towards *provenance present*
+rather than dark. A
 node with no timestamp takes the same legacy path; a vanished file always omits the
 field. The mtime equality is a heuristic, not a content hash (#279 B1).
 
