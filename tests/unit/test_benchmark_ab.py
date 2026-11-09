@@ -1029,8 +1029,12 @@ def step_block(name: str) -> str:
 
 def trap_handler(block: str) -> tuple[str, str]:
     """The ERR trap's own handler and signal, parsed from one step's run block."""
-    traps = [line.strip() for line in block.splitlines() if line.strip().startswith("trap ")]
-    assert len(traps) == 1, f"expected one trap statement in the gate, found {len(traps)}"
+    traps = [
+        line.strip() for line in block.splitlines() if line.strip().startswith("trap ")
+    ]
+    assert len(traps) == 1, (
+        f"expected one trap statement in the gate, found {len(traps)}"
+    )
     match = re.fullmatch(r"trap '(.+)' (\w+)", traps[0])
     assert match is not None, f"unrecognised trap statement: {traps[0]!r}"
     return match.group(1), match.group(2)
