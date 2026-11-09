@@ -152,26 +152,52 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     return os.path.relpath(absolute, repo).replace(os.sep, "/")
 
 
-def snapshot_is_current(
-    base_path: str, source_id: str, modified_time: str | None
-) -> bool:
-    """True when the file on disk still has the mtime its indexed node recorded.
+_MTIME_TOLERANCE = 1e-3
 
-    ``modified_time`` is the node's indexed ``modified_time`` (ISO 8601, from the
-    files reader). A missing/unparseable value, a vanished file, or a different
-    mtime all answer False: git provenance is only attached when the indexed
-    snapshot provably describes the file as it is now (#279 review, finding 2).
+
+def _parse_iso(value: str | None) -> datetime.datetime | None:
+    """Parse an ISO 8601 string, or ``None`` when it is absent/unparseable."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def snapshot_is_current(
+    base_path: str,
+    source_id: str,
+    modified_time: str | None,
+    indexed_at: str | None = None,
+) -> bool:
+    """True when the file on disk still matches the mtime its indexed node holds.
+
+    ``modified_time`` is written **offset-aware in UTC** by the files reader, so
+    parsing it and taking ``.timestamp()`` is absolute — independent of the query
+    process's zone or a DST change. An offset-less value is LEGACY (the old
+    writers stored naive *local* wall time, whose zone is unknowable — the #279
+    B1 defect): it is judged zone-free against ``indexed_at``, the manifest's UTC
+    ``updatedTime``, because a file not newer than the index cannot have changed
+    since. That degrades towards *provenance present*, as does a node with no
+    timestamp at all. A vanished file always answers False, and the aware mtime
+    equality is a heuristic, not a content hash.
     """
-    if not modified_time:
-        return False
     path = os.path.normpath(os.path.join(base_path, source_id))
     try:
-        recorded = datetime.datetime.fromisoformat(str(modified_time)).timestamp()
         actual = os.path.getmtime(path)
-    except (TypeError, ValueError, OSError):
+    except OSError:
         return False
-    # ``isoformat()`` keeps microseconds; anything beyond that rounding is an edit.
-    return abs(recorded - actual) < 1e-3
+
+    recorded = _parse_iso(modified_time)
+    if recorded is not None and recorded.tzinfo is not None:
+        # ``isoformat()`` keeps microseconds; anything beyond that rounding is an edit.
+        return abs(recorded.timestamp() - actual) < _MTIME_TOLERANCE
+
+    indexed = _parse_iso(indexed_at)
+    if indexed is None or indexed.tzinfo is None:
+        return True
+    return actual <= indexed.timestamp() + _MTIME_TOLERANCE
 
 
 __all__ = [

@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-09
 ---
 
 # Lessons Learned
@@ -1427,3 +1427,12 @@ with `git add`/`git status`, since that's what CI actually runs.
   option-shaped refs, so dropping `--` alone changes nothing; drop the gate too
   and the `--output=` case fails as it should (it even wrote the file, proving
   the option was parsed). A test that cannot be made to fail proves nothing.
+- [time] A timestamp that outlives the writing process must be **offset-aware**.
+  `datetime.fromtimestamp(m)` + `isoformat()` writes naive local wall time; a
+  reader in another zone (or the other side of a DST switch) then shifts it, and
+  no read-side parse can recover the writer's offset. Fix the write site
+  (`fromtimestamp(m, timezone.utc)`), not just the comparison — and for legacy
+  values whose zone is unknowable, judge them against a zone-free anchor (the
+  collection's own `updatedTime`) instead of guessing a zone or widening the
+  tolerance. Test it cross-process: a same-interpreter `TZ` change can pass
+  against the broken code.

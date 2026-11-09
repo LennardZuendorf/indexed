@@ -71,6 +71,9 @@ class _GitContext:
 
     repo: str
     base_path: str
+    # The manifest's UTC ``updatedTime`` — the zone-free yardstick a LEGACY
+    # offset-less node timestamp is judged against (git_meta.snapshot_is_current).
+    indexed_at: Optional[str] = None
     commits: Dict[str, Optional[Dict[str, str]]] = field(default_factory=dict)
 
     def relative(self, source_id: str) -> str:
@@ -98,7 +101,10 @@ class _GitContext:
         meta = node.metadata or {}
         source_id = meta.get("source_id")
         if source_id is None or not git_meta.snapshot_is_current(
-            self.base_path, str(source_id), meta.get("modified_time")
+            self.base_path,
+            str(source_id),
+            meta.get("modified_time"),
+            self.indexed_at,
         ):
             return None
         return self.last_commit(str(source_id))
@@ -118,7 +124,7 @@ def _git_context(manifest: "V2Manifest") -> Optional[_GitContext]:
     repo = git_meta.repo_toplevel(base_path)
     if repo is None:
         return None
-    return _GitContext(repo=repo, base_path=base_path)
+    return _GitContext(repo=repo, base_path=base_path, indexed_at=manifest.updated_time)
 
 
 def search(

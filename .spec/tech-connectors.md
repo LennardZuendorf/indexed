@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Tech Branch: Connectors (`src/indexed/connectors/`)
@@ -147,10 +147,13 @@ Indexing is not the only consumer of git: `search --changed-since` and
   `{commit, short, author, email, committedAt, subject}`. **No blame-by-line in this
   slice**: provenance is document-level, so a file's history is one cheap call, not a
   per-chunk `git blame`.
-- `snapshot_is_current(base_path, source_id, modified_time)` — compares a node's
-  indexed `modified_time` with the file's mtime now (`os.path` + `stat`, no
-  subprocess). `last_commit` answers for the file as it is on disk, so retrieval
-  attaches provenance only while this says the indexed snapshot still describes it.
+- `snapshot_is_current(base_path, source_id, modified_time, indexed_at=None)` — compares
+  a node's indexed `modified_time` with the file's mtime now (`os.path` + `stat`, no
+  subprocess). The stored value is offset-aware UTC, so the comparison is
+  zone-independent; an offset-less (legacy) value is judged instead against the
+  manifest's `updatedTime`, which is zone-free. `last_commit` answers for the file as it
+  is on disk, so retrieval attaches provenance only while this says the indexed
+  snapshot still describes it.
 - `repo_relative(repo, base_path, source_id)` — document ids are base-path-relative
   (`v1_adapter.py:35-36`), git pathspecs are repo-relative; this rebases with `os.path`
   arithmetic only (no symlink resolution, no filesystem probe).

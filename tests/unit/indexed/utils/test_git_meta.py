@@ -122,17 +122,141 @@ def test_repo_relative_keeps_a_space_in_the_path(tmp_path: Path) -> None:
     )
 
 
+def _recorded_mtime(path: Path) -> str:
+    """The ISO value the files reader writes onto a node for ``path``."""
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
+
+    return FilesDocumentReader._read_file_modification_time(str(path)).isoformat()
+
+
 def test_snapshot_is_current_compares_the_recorded_mtime(tmp_path: Path) -> None:
     """Provenance may only ride a snapshot that still matches the file on disk."""
-    from datetime import datetime
+    import time
 
     (tmp_path / "a.txt").write_text("indexed text")
-    current = datetime.fromtimestamp((tmp_path / "a.txt").stat().st_mtime).isoformat()
+    current = _recorded_mtime(tmp_path / "a.txt")
 
+    # Writer convention: offset-aware, so the string is self-describing.
+    assert current.endswith("+00:00")
     assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", current) is True
     assert (
-        git_meta.snapshot_is_current(str(tmp_path), "a.txt", "2000-01-01T00:00:00")
+        git_meta.snapshot_is_current(
+            str(tmp_path), "a.txt", "2000-01-01T00:00:00+00:00"
+        )
         is False
     )
-    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", None) is False
     assert git_meta.snapshot_is_current(str(tmp_path), "gone.txt", current) is False
+
+    # An aware value still bites after a real mtime change (the ``touch`` case).
+    time.sleep(0.01)
+    (tmp_path / "a.txt").touch()
+    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", current) is False
+
+
+def test_snapshot_is_current_judges_legacy_naive_values_against_index_time(
+    tmp_path: Path,
+) -> None:
+    """Offset-less values cannot be zoned, so they are judged by index time.
+
+    The old writers stored naive LOCAL wall time; parsing it in the reader's zone
+    is the #279 B1 defect. The zone-free answer is "not newer than the index".
+    """
+    import datetime
+
+    path = tmp_path / "a.txt"
+    path.write_text("indexed text")
+    legacy = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+    assert legacy.endswith("+00:00") is False  # genuinely offset-less
+
+    indexed_at = datetime.datetime.now(datetime.timezone.utc)
+    assert git_meta.snapshot_is_current(
+        str(tmp_path), "a.txt", legacy, indexed_at.isoformat()
+    )
+    # Missing timestamp takes the same path: degrade towards provenance present.
+    assert git_meta.snapshot_is_current(
+        str(tmp_path), "a.txt", None, indexed_at.isoformat()
+    )
+    # No anchor either: still degrade towards present, never silently dark.
+    assert git_meta.snapshot_is_current(str(tmp_path), "a.txt", legacy)
+
+    # Indexed an hour ago, touched since: the file is newer than the index.
+    past = (indexed_at - datetime.timedelta(hours=1)).isoformat()
+    assert not git_meta.snapshot_is_current(str(tmp_path), "a.txt", legacy, past)
+
+
+def test_snapshot_is_current_is_zone_independent_across_processes(
+    tmp_path: Path,
+) -> None:
+    """The #279 B1 repro: write under one zone, read under another.
+
+    A different TZ in a different PROCESS is what breaks the naive round-trip;
+    a same-interpreter test can pass against the buggy code.
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+
+    path = tmp_path / "a.txt"
+    path.write_text("indexed text")
+
+    writer = (
+        "import json,os,sys\n"
+        "from indexed.connectors.files.files_document_reader import FilesDocumentReader\n"
+        "p=sys.argv[1]\n"
+        "print(json.dumps({'modified_time':"
+        "FilesDocumentReader._read_file_modification_time(p).isoformat(),"
+        "'mtime':os.path.getmtime(p)}))\n"
+    )
+    env = dict(os.environ, TZ="Europe/Stockholm")
+    written = json.loads(
+        subprocess.run(
+            [sys.executable, "-c", writer, str(path)],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        ).stdout
+    )
+
+    reader = (
+        "import datetime,json,os,sys\n"
+        "from indexed.utils import git_meta\n"
+        "d=json.loads(sys.argv[1]); p=sys.argv[2]\n"
+        "recorded=datetime.datetime.fromisoformat(d['modified_time'])\n"
+        "print(json.dumps({"
+        "'current':git_meta.snapshot_is_current(os.path.dirname(p),"
+        "os.path.basename(p),d['modified_time'],d.get('indexed_at')),"
+        "'delta_s':recorded.timestamp()-d['mtime'],"
+        "'aware':recorded.tzinfo is not None}))\n"
+    )
+
+    for read_zone in ("UTC", "America/New_York"):
+        env = dict(os.environ, TZ=read_zone)
+        os.utime(path, (written["mtime"], written["mtime"]))
+        out = json.loads(
+            subprocess.run(
+                [sys.executable, "-c", reader, json.dumps(written), str(path)],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            ).stdout
+        )
+        assert out["aware"] is True
+        assert out["delta_s"] == pytest.approx(0.0, abs=1e-3)
+        assert out["current"] is True
+
+        # ``touch``: content unchanged, mtime moved — provenance must go dark
+        # under the same cross-process read, exactly as it does in one zone.
+        os.utime(path, (written["mtime"] + 5.0, written["mtime"] + 5.0))
+        out = json.loads(
+            subprocess.run(
+                [sys.executable, "-c", reader, json.dumps(written), str(path)],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            ).stdout
+        )
+        assert out["current"] is False

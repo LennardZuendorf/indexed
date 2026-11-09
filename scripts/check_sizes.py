@@ -148,7 +148,13 @@ SRC_LOC_MAX = 32_000
 # Merging main into this branch keeps both sides' new tests, so the union
 # measures 49_621 — the two ceilings above cannot both hold; one measured
 # value with headroom replaces them.
-TEST_LOC_MAX = 49_800
+# Raised from 49_800 by the #279 B1 timezone-guard fix: the cross-process
+# regression (writer and reader in separate processes under different TZ) needs
+# two subprocess probes, and the retrieval-level zone-switch test pins the
+# behavioural contract, not an implementation detail — gate-integrity coverage
+# for a defect that silently disabled the release's central claim; ceiling =
+# measured (49_927) + headroom.
+TEST_LOC_MAX = 50_200
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

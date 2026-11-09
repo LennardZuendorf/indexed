@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -232,11 +232,21 @@ same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving 
 "changed only" request are a defect, not a quiet degrade.
 
 **Provenance never outlives its snapshot.** `git_provenance` is attached only when the
-node's indexed `modified_time` still equals the file's mtime at query time
+node's indexed `modified_time` still describes the file at query time
 (`utils/git_meta.snapshot_is_current` — a stat comparison, no extra subprocess). If the
 file changed or was committed after the collection was indexed, the `git` field is
 omitted rather than crediting a commit that does not contain the returned text;
 re-indexing restores it (#279 review, finding 2).
+
+The node timestamp is stored **offset-aware in UTC**
+(`datetime.fromtimestamp(mtime, timezone.utc).isoformat()`), so the comparison is
+absolute and independent of the querying process's zone or a DST change. An
+offset-less value is LEGACY (the old writers stored naive local wall time, whose zone
+is unknowable): the guard does not parse it at all and instead compares the file's
+mtime with the manifest's UTC `updatedTime` — a file not newer than the index cannot
+have changed since — which degrades towards *provenance present* rather than dark. A
+node with no timestamp takes the same legacy path; a vanished file always omits the
+field. The mtime equality is a heuristic, not a content hash (#279 B1).
 
 Surfaced as `--changed-since` / `--git-provenance` on `indexed index search` and as
 `changed_since` / `git_provenance` on the MCP search tools, whose flattened rows then
