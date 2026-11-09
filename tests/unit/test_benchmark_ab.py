@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1026,11 +1027,22 @@ def step_block(name: str) -> str:
     raise AssertionError(f"python-benchmark.yml has no step named {name!r}")
 
 
+def trap_handler(block: str) -> tuple[str, str]:
+    """The ERR trap's own handler and signal, parsed from one step's run block."""
+    traps = [line.strip() for line in block.splitlines() if line.strip().startswith("trap ")]
+    assert len(traps) == 1, f"expected one trap statement in the gate, found {len(traps)}"
+    match = re.fullmatch(r"trap '(.+)' (\w+)", traps[0])
+    assert match is not None, f"unrecognised trap statement: {traps[0]!r}"
+    return match.group(1), match.group(2)
+
+
 def test_ab_gate_step_is_pinned_with_its_failure_path():
     """Deleting the gate must red a check, not silently stop gating."""
     block = step_block("Same-job A/B gate (captured base vs merge result)")
-    assert "::error title=Same-job measurement invalid::" in block
-    assert "trap" in block and "exit 2" in block
+    handler, signal = trap_handler(block)
+    assert signal == "ERR"
+    assert "::error title=Same-job measurement invalid::" in handler
+    assert handler.rstrip().endswith("; exit 2"), handler
     assert 'AB_TOLERANCE: "20"' in block
     assert 'exit "$status"' in block
     # Both measured sides are stamped with their own fixture-set identity.
