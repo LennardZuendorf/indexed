@@ -1408,18 +1408,18 @@ with `git add`/`git status`, since that's what CI actually runs.
 - **The gate is cheap enough to pay on every version; measure before deciding
   otherwise.** Local, Python 3.13.5: `95 passed, 18 skipped` in 79.97 s with the model
   hidden (wall 83.9 s) vs `113 passed` in 109.77 s with it present (wall 111.6 s) —
-  ~30 s of suite time for 18 tests. In CI (run 42821304362, this change's head) the
-  four jobs landed at 2m47s–3m18s with every version still gating, against a
-  10-minute ceiling; one version alone would have saved ~90 s of matrix and re-opened
-  the hole on the other three.
+  ~30 s of suite time for 18 tests. In CI the four jobs landed at 2m24s–3m18s across the
+  two head runs of this change (42821304362, 42822900060) with every version still
+  gating, against a 10-minute ceiling; one version alone would have saved ~90 s of
+  matrix and re-opened the hole on the other three.
 - **Give the model an explicit `ensure_model` step, and do not `actions/cache` its Hub
   directory.** Two writers share that directory: `ensure_model` (weights) and docling's
   `HybridChunker` tokenizer (configs + tokenizer of the same repo, no weights). An
   actions/cache entry is immutable once saved, so one weightless save — 354,894 B on
   `refs/heads/main`, 2026-11-08, against 87 MB of weights — kept restoring
   "successfully" on every later run while each job re-downloaded (`Fetching 30 files`).
-  The honest alternative costs one 6–10 s `ensure_model` step per job (run
-  42821304362: 6, 6, 7 and 10 s across the matrix, ~5 s of it the download); a stale
+  The honest alternative costs one 6–11 s `ensure_model` step per job (runs 42821304362
+  and 42822900060: 6 s to 11 s across both matrices, ~5 s of it the download); a stale
   key costs a step whose name lies. Download once per job in an explicit step, before
   any test asserts.
 - **The collection-time gate and the runtime cache resolve `home` differently.**

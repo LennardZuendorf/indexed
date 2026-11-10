@@ -174,7 +174,7 @@ size, wheel and twine gates). The suite gates its model-dependent tests on
 `tests/conftest.py::model_available()`, so the job runs
 `ensure_model('all-MiniLM-L6-v2')` before pytest: with the model present ~18 extra
 tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
-instead of skipping. Measured cost is ~30 s of suite time plus a 6–10 s
+instead of skipping. Measured cost is ~30 s of suite time plus a 6–11 s
 `ensure_model` step per job, which is why the gate runs on every version rather
 than one. The Hub model directory is deliberately *not* an `actions/cache` entry:
 docling's chunker tokenizer writes the same directory without weights and a saved
