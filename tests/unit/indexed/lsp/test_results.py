@@ -146,7 +146,9 @@ def test_symbols_match_the_golden_payload() -> None:
 def test_hover_matches_the_golden_markdown() -> None:
     hover = build_hover(RAW_RESULTS, STATUSES, "unified_relevance", now=NOW)
     assert hover is not None
-    expected = (GOLDEN / "hover.md").read_text(encoding="utf-8")
+    # The golden file's final byte belongs to end-of-file-fixer, not to the
+    # renderer: compare the body and leave the trailing newline to the hook.
+    expected = (GOLDEN / "hover.md").read_text(encoding="utf-8").rstrip("\n")
     assert hover["contents"] == {"kind": "markdown", "value": expected}
     # LSP defines Hover.range in the HOVERED document; the top hit may live
     # elsewhere, so claiming a range here would underline unrelated text.

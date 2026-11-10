@@ -1573,3 +1573,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   `initialize` (with the reserved `id: null`) and marking the session
   initialized makes the client's real `initialize` a "second" one, so the
   session can never start. Check for an id before the state machine.
+- **A golden markdown fixture's last byte belongs to the formatter, not the
+  renderer.** `end-of-file-fixer` appends a newline on push, so a byte-exact
+  golden comparison against rendered text fails *only* in CI; compare with
+  `read_text().rstrip("\n")` and let the hook own the final newline.
