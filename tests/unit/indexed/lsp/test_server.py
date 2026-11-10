@@ -10,7 +10,14 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from indexed.lsp import protocol
-from indexed.lsp.server import LanguageServer, hover_query, uri_to_path
+from indexed.lsp.diagnostics import NOT_IN_COLLECTION, SEVERITY_INFORMATION, STALE
+from indexed.lsp.server import (
+    PUBLISH_DIAGNOSTICS,
+    LanguageServer,
+    hover_query,
+    uri_to_path,
+)
+from indexed.utils.fingerprint import file_fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -32,14 +39,19 @@ class FakeBackend:
         owning: Optional[Any] = STATUS,
         raises: Optional[Exception] = None,
         base: Optional[str] = None,
+        digest: Optional[str] = None,
+        digest_raises: Optional[Exception] = None,
     ) -> None:
         self.results = results or {}
         self._statuses = [STATUS] if statuses is None else statuses
         self.owning = owning
         self.raises = raises
         self.base = base
+        self.digest = digest
+        self.digest_raises = digest_raises
         self.searches: List[Dict[str, Any]] = []
         self.owner_queries: List[str] = []
+        self.digest_queries: List[tuple[str, str]] = []
 
     def statuses(self) -> List[Any]:
         return list(self._statuses)
@@ -53,6 +65,12 @@ class FakeBackend:
     def collection_for_path(self, path: str) -> Optional[Any]:
         self.owner_queries.append(path)
         return self.owning
+
+    def indexed_digest(self, collection: str, path: str) -> Optional[str]:
+        self.digest_queries.append((collection, path))
+        if self.digest_raises is not None:
+            raise self.digest_raises
+        return self.digest
 
     def search(
         self,
@@ -95,7 +113,13 @@ def test_initialize_advertises_only_implemented_capabilities() -> None:
     answer = _initialize(_server(FakeBackend()))
     assert answer["result"] == {
         "capabilities": {
-            "textDocumentSync": 0,
+            # Open/close/save only: the server keeps no document state, so it
+            # must not ask for `change` content it would throw away.
+            "textDocumentSync": {
+                "openClose": True,
+                "change": 0,
+                "save": {"includeText": False},
+            },
             "definitionProvider": True,
             "hoverProvider": True,
             "referencesProvider": True,
@@ -103,6 +127,12 @@ def test_initialize_advertises_only_implemented_capabilities() -> None:
         },
         "serverInfo": {"name": "indexed", "version": "9.9.9"},
     }
+
+
+def test_pull_diagnostics_are_not_advertised_because_they_are_not_implemented() -> None:
+    """`diagnosticProvider` is pull diagnostics — a method this server refuses."""
+    capabilities = _initialize(_server(FakeBackend()))["result"]["capabilities"]
+    assert "diagnosticProvider" not in capabilities
 
 
 def test_request_before_initialize_is_refused() -> None:
@@ -523,3 +553,152 @@ def test_uri_to_path_leaves_non_file_uris_alone() -> None:
         uri_to_path("file:///tmp/nope-does-not-exist.py")
         == "/tmp/nope-does-not-exist.py"
     )
+
+
+# -- diagnostics (server → client) -------------------------------------------
+
+#: A client that declared publishDiagnostics support, as every real editor does.
+DIAGNOSTIC_CLIENT = {"capabilities": {"textDocument": {"publishDiagnostics": {}}}}
+
+
+def _diagnostic_server(backend: Any, *, client_supports: bool = True) -> LanguageServer:
+    server = _server(backend)
+    server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": DIAGNOSTIC_CLIENT if client_supports else {"capabilities": {}},
+        }
+    )
+    return server
+
+
+def _notify(server: LanguageServer, method: str, uri: str) -> List[Dict[str, Any]]:
+    """Send a document lifecycle notification; return what the server queued."""
+    answer, exit_requested = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": {"textDocument": {"uri": uri}},
+        }
+    )
+    assert answer is None, "a notification must never be answered"
+    assert exit_requested is False
+    return server.drain_notifications()
+
+
+def test_did_open_publishes_an_empty_array_for_a_healthy_file(tmp_path) -> None:
+    path = tmp_path / "healthy.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    fingerprint = file_fingerprint(str(path))
+    assert fingerprint is not None
+    server = _diagnostic_server(FakeBackend(digest=fingerprint[0]))
+
+    notifications = _notify(server, "textDocument/didOpen", path.as_uri())
+
+    assert notifications == [
+        {
+            "jsonrpc": "2.0",
+            "method": PUBLISH_DIAGNOSTICS,
+            "params": {"uri": path.as_uri(), "diagnostics": []},
+        }
+    ]
+    # Draining is what stops the same notification being sent twice.
+    assert server.drain_notifications() == []
+
+
+def test_a_stale_file_publishes_one_diagnostic_and_a_reindex_clears_it(
+    tmp_path,
+) -> None:
+    path = tmp_path / "stale.py"
+    path.write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    backend = FakeBackend(digest="0000000000000000")
+    server = _diagnostic_server(backend)
+
+    published = _notify(server, "textDocument/didOpen", path.as_uri())
+    assert len(published) == 1
+    params = published[0]["params"]
+    assert params["uri"] == path.as_uri()
+    assert len(params["diagnostics"]) == 1
+    diagnostic = params["diagnostics"][0]
+    assert diagnostic["code"] == STALE
+    assert diagnostic["severity"] == SEVERITY_INFORMATION
+    assert diagnostic["range"] == {
+        "start": {"line": 0, "character": 0},
+        "end": {"line": 2, "character": 0},
+    }
+    assert backend.digest_queries == [("probe", str(path))]
+
+    # The user runs `indexed index update probe`: the recorded digest matches
+    # again, so the next save must clear the diagnostic, not just stay quiet.
+    fingerprint = file_fingerprint(str(path))
+    assert fingerprint is not None
+    backend.digest = fingerprint[0]
+    cleared = _notify(server, "textDocument/didSave", path.as_uri())
+    assert [n["params"]["diagnostics"] for n in cleared] == [[]]
+    assert server.published == set()
+
+
+def test_a_file_no_collection_owns_publishes_the_not_in_collection_diagnostic(
+    tmp_path,
+) -> None:
+    path = tmp_path / "loose.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    backend = FakeBackend(owning=None)
+    server = _diagnostic_server(backend)
+
+    published = _notify(server, "textDocument/didOpen", path.as_uri())
+
+    diagnostics = published[0]["params"]["diagnostics"]
+    assert [d["code"] for d in diagnostics] == [NOT_IN_COLLECTION]
+    assert backend.digest_queries == []
+
+
+def test_a_client_that_did_not_declare_support_gets_no_notification(
+    tmp_path,
+) -> None:
+    path = tmp_path / "stale.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    server = _diagnostic_server(FakeBackend(digest="stale"), client_supports=False)
+
+    assert _notify(server, "textDocument/didOpen", path.as_uri()) == []
+    assert server.published == set()
+
+
+def test_did_close_clears_only_what_was_actually_published(tmp_path) -> None:
+    reported = tmp_path / "stale.py"
+    reported.write_text("value = 1\n", encoding="utf-8")
+    untouched = tmp_path / "other.py"
+    untouched.write_text("value = 2\n", encoding="utf-8")
+    server = _diagnostic_server(FakeBackend(digest="stale"))
+
+    _notify(server, "textDocument/didOpen", reported.as_uri())
+    assert _notify(server, "textDocument/didClose", untouched.as_uri()) == []
+
+    closed = _notify(server, "textDocument/didClose", reported.as_uri())
+    assert closed[0]["params"] == {"uri": reported.as_uri(), "diagnostics": []}
+
+
+def test_document_notifications_before_initialize_publish_nothing(tmp_path) -> None:
+    path = tmp_path / "stale.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    server = _server(FakeBackend(digest="stale"))
+    server.client_publishes_diagnostics = True
+
+    assert _notify(server, "textDocument/didOpen", path.as_uri()) == []
+
+
+def test_a_failing_diagnostics_check_does_not_kill_the_session(tmp_path) -> None:
+    path = tmp_path / "stale.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    server = _diagnostic_server(
+        FakeBackend(digest_raises=RuntimeError("state.json is on fire"))
+    )
+
+    assert _notify(server, "textDocument/didOpen", path.as_uri()) == []
+
+    # The session still answers requests and still exits cleanly.
+    answer, _ = _call(server, "workspace/symbol", {"query": "alpha"})
+    assert answer is not None and "result" in answer
+    assert server.handle({"jsonrpc": "2.0", "method": "exit"}) == (None, True)

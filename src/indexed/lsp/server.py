@@ -1,11 +1,15 @@
 """The LSP stdio server.
 
 A request/response loop over ``Content-Length``-framed JSON-RPC. The server
-advertises only what is implemented and tested — ``textDocumentSync: 0`` (no
-document state), ``workspace/symbol``, ``textDocument/hover``,
-``textDocument/definition`` and ``textDocument/references``; everything else is
-answered with the protocol's ``MethodNotFound`` instead of a plausible-looking
-empty result.
+advertises only what is implemented and tested — ``textDocumentSync`` as
+open/close/save notifications with no document content, ``workspace/symbol``,
+``textDocument/hover``, ``textDocument/definition`` and
+``textDocument/references`` — and answers everything else with the protocol's
+``MethodNotFound`` instead of a plausible-looking empty result.
+
+It also publishes ``textDocument/publishDiagnostics``, but only facts the index
+can prove (see ``diagnostics.py``): a diagnostics channel that fabricates
+warnings is worse than none (issue #241).
 """
 
 from __future__ import annotations
@@ -13,12 +17,13 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
-from typing import Any, BinaryIO, Dict, Optional, Tuple
+from typing import Any, BinaryIO, Dict, List, Optional, Set, Tuple
 
 from loguru import logger
 
 from . import protocol
 from .backend import KnowledgeBackend
+from .diagnostics import build_diagnostics
 from .resolver import (
     IDENTIFIER,
     resolve_definitions,
@@ -29,6 +34,18 @@ from .resolver import (
 from .results import build_hover, build_symbols, uri_to_path
 
 SERVER_NAME = "indexed"
+
+#: The server→client notification this server sends. Published only for facts
+#: the index can prove, and emptied as soon as they stop being true.
+PUBLISH_DIAGNOSTICS = "textDocument/publishDiagnostics"
+
+#: Document lifecycle notifications. Handled, not ignored: they are the trigger
+#: for diagnostics. ``textDocument/didChange`` is *not* in here — the server
+#: advertises ``change: 0`` and reads the file from disk, so there is nothing
+#: per-keystroke to do.
+DOCUMENT_EVENTS = frozenset(
+    {"textDocument/didOpen", "textDocument/didSave", "textDocument/didClose"}
+)
 
 
 class _InvalidParams(Exception):
@@ -44,10 +61,7 @@ IGNORED_METHODS = frozenset(
         "workspace/didChangeConfiguration",
         "workspace/didChangeWatchedFiles",
         "workspace/didChangeWorkspaceFolders",
-        "textDocument/didOpen",
         "textDocument/didChange",
-        "textDocument/didClose",
-        "textDocument/didSave",
         "window/workDoneProgress/cancel",
     }
 )
@@ -112,6 +126,31 @@ def _text_document_position(params: Any, method: str) -> Tuple[str, Dict[str, An
     return uri, position
 
 
+def _document_uri(params: Any) -> Optional[str]:
+    """``textDocument.uri`` from notification params, or ``None`` when malformed."""
+    document = params.get("textDocument") if isinstance(params, dict) else None
+    uri = document.get("uri") if isinstance(document, dict) else None
+    return uri if isinstance(uri, str) and uri else None
+
+
+def _client_publishes_diagnostics(params: Any) -> bool:
+    """Whether the client declared ``textDocument.publishDiagnostics``.
+
+    An undeclared capability defaults to false in LSP, and an unsupported
+    notification is one the client never agreed to receive — so an editor that
+    did not ask gets silence instead of decorations it cannot render. (Every
+    mainstream client declares it; the check exists so we do not assume.)
+    """
+    capabilities = params.get("capabilities") if isinstance(params, dict) else None
+    document = (
+        capabilities.get("textDocument") if isinstance(capabilities, dict) else None
+    )
+    if not isinstance(document, dict):
+        return False
+    declared = document.get("publishDiagnostics")
+    return isinstance(declared, dict) or declared is True
+
+
 class LanguageServer:
     """Stateful JSON-RPC dispatcher for one LSP session."""
 
@@ -125,6 +164,13 @@ class LanguageServer:
         self.server_version = server_version or _server_version()
         self.initialized = False
         self.shutdown_requested = False
+        #: Client declared `textDocument.publishDiagnostics` in `initialize`.
+        self.client_publishes_diagnostics = False
+        #: URIs we currently have published diagnostics for, so `didClose` can
+        #: clear exactly those and nothing else.
+        self.published: Set[str] = set()
+        #: Server→client notifications queued by `handle`, drained by `serve`.
+        self.pending_notifications: List[Dict[str, Any]] = []
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -153,6 +199,8 @@ class LanguageServer:
                 answer, should_exit = self.handle(message)
             if answer is not None:
                 protocol.write_message(writer, answer)
+            for note in self.drain_notifications():
+                protocol.write_message(writer, note)
             if should_exit:
                 return 0 if self.shutdown_requested else 1
 
@@ -190,6 +238,9 @@ class LanguageServer:
                     False,
                 )
             self.initialized = True
+            self.client_publishes_diagnostics = _client_publishes_diagnostics(
+                message.get("params")
+            )
             return protocol.response(request_id, self._capabilities()), False
 
         if not self.initialized:
@@ -221,6 +272,10 @@ class LanguageServer:
                 # the state change still stands (exit after it is clean).
                 return None, False
             return protocol.response(request_id, None), False
+
+        if method in DOCUMENT_EVENTS and not has_id:
+            self._document_event(method, message.get("params"))
+            return None, False
 
         if method in IGNORED_METHODS and not has_id:
             return None, False
@@ -266,7 +321,15 @@ class LanguageServer:
         """Only what is implemented and tested. Nothing is advertised empty."""
         return {
             "capabilities": {
-                "textDocumentSync": 0,
+                # Open/close/save notifications, no document content: the
+                # server reads the file from disk and never holds a buffer, so
+                # asking a client to stream every keystroke would be a promise
+                # (`change`) it does not keep.
+                "textDocumentSync": {
+                    "openClose": True,
+                    "change": 0,
+                    "save": {"includeText": False},
+                },
                 "definitionProvider": True,
                 "hoverProvider": True,
                 "referencesProvider": True,
@@ -274,6 +337,62 @@ class LanguageServer:
             },
             "serverInfo": {"name": SERVER_NAME, "version": self.server_version},
         }
+
+    # -- diagnostics (server → client) ---------------------------------------
+
+    def drain_notifications(self) -> List[Dict[str, Any]]:
+        """Take the queued server→client notifications (and empty the queue).
+
+        ``handle`` stays a pure answer-or-nothing call so it remains testable
+        without a pipe; the transport drains this after each message.
+        """
+        pending, self.pending_notifications = self.pending_notifications, []
+        return pending
+
+    def _document_event(self, method: str, params: Any) -> None:
+        """Publish what the index can prove about one opened/saved/closed file.
+
+        A notification gets no response (JSON-RPC 2.0 §4.1), so a malformed one
+        is dropped rather than answered. A failing check is a debug log, never a
+        dead session: an editor must not lose its language server because a
+        diagnostics read went wrong.
+        """
+        uri = _document_uri(params)
+        if uri is None:
+            return
+        if method == "textDocument/didClose":
+            # Clear only what this session published; a file we never reported
+            # on needs no empty republish.
+            if uri in self.published:
+                self._publish(uri, [])
+            return
+        try:
+            diagnostics = build_diagnostics(self.backend, uri)
+        except Exception as exc:  # noqa: BLE001 - never kill the session
+            logger.opt(exception=exc).debug("LSP diagnostics failed for {}", uri)
+            return
+        self._publish(uri, diagnostics)
+
+    def _publish(self, uri: str, diagnostics: List[Dict[str, Any]]) -> None:
+        """Queue one ``publishDiagnostics``; an empty list clears what we set.
+
+        An empty list is also published for a document this session never
+        decorated, because that is what clears a leftover decoration from a
+        previous session — the message is "this server has nothing to say about
+        this document", which is true either way.
+        """
+        if not self.client_publishes_diagnostics:
+            # The client did not declare support, so it never asked for this.
+            return
+        if diagnostics:
+            self.published.add(uri)
+        else:
+            self.published.discard(uri)
+        self.pending_notifications.append(
+            protocol.notification(
+                PUBLISH_DIAGNOSTICS, {"uri": uri, "diagnostics": diagnostics}
+            )
+        )
 
     # -- request handlers ----------------------------------------------------
 
@@ -348,7 +467,9 @@ def serve(backend: KnowledgeBackend) -> int:
 
 
 __all__ = [
+    "DOCUMENT_EVENTS",
     "IGNORED_METHODS",
+    "PUBLISH_DIAGNOSTICS",
     "SERVER_NAME",
     "SYMBOL_LIMIT",
     "LanguageServer",

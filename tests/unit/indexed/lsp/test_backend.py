@@ -168,3 +168,72 @@ def test_an_unknown_source_type_does_not_break_the_search_config(tmp_path) -> No
     )
     config = backend._source_config(_status(source_type="somethingNew"))
     assert config.type == "localFiles"
+
+
+def _collection(tmp_path, name: str = "probe", base: str = "/repo") -> Any:
+    collection = tmp_path / name
+    collection.mkdir(exist_ok=True)
+    (collection / "manifest.json").write_text(
+        json.dumps({"reader": {"type": "files", "basePath": base}}), encoding="utf-8"
+    )
+    return collection
+
+
+def test_indexed_digest_is_read_from_the_change_tracking_state(tmp_path) -> None:
+    collection = _collection(tmp_path)
+    (collection / "state.json").write_text(
+        json.dumps({"file_hashes": {"src/a.py": "abc123", "src/b.py": "def456"}}),
+        encoding="utf-8",
+    )
+    backend = KnowledgeBackend(str(tmp_path), status_fn=Recorder([_status()]))
+
+    assert backend.indexed_digest("probe", "/repo/src/a.py") == "abc123"
+    # A path the last run did not cover is unknown, not unchanged...
+    assert backend.indexed_digest("probe", "/repo/src/missing.py") is None
+    # ...and neither is a file outside the collection's base path.
+    assert backend.indexed_digest("probe", "/elsewhere/src/a.py") is None
+
+
+def test_indexed_digest_is_unknown_without_a_state_file(tmp_path) -> None:
+    _collection(tmp_path)
+    backend = KnowledgeBackend(str(tmp_path), status_fn=Recorder([_status()]))
+
+    assert backend.indexed_digest("probe", "/repo/src/a.py") is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ["not json at all", "[]", '{"file_hashes": ["a", "b"]}', '{"file_hashes": null}'],
+)
+def test_a_malformed_state_file_is_unknown_not_an_error(tmp_path, payload) -> None:
+    collection = _collection(tmp_path)
+    (collection / "state.json").write_text(payload, encoding="utf-8")
+    backend = KnowledgeBackend(str(tmp_path), status_fn=Recorder([_status()]))
+
+    assert backend.indexed_digest("probe", "/repo/src/a.py") is None
+
+
+def test_indexed_digest_picks_up_a_rewritten_state_immediately(tmp_path) -> None:
+    """No TTL: a reindex must change the answer on the next event."""
+    collection = _collection(tmp_path)
+    state = collection / "state.json"
+    state.write_text(json.dumps({"file_hashes": {"a.py": "old"}}), encoding="utf-8")
+    backend = KnowledgeBackend(str(tmp_path), status_fn=Recorder([_status()]))
+    assert backend.indexed_digest("probe", "/repo/a.py") == "old"
+
+    # A different mtime AND size: any real `indexed index update` rewrites both.
+    state.write_text(
+        json.dumps({"file_hashes": {"a.py": "new-and-longer"}}), encoding="utf-8"
+    )
+    assert backend.indexed_digest("probe", "/repo/a.py") == "new-and-longer"
+
+
+def test_non_string_hashes_are_dropped_rather_than_guessed(tmp_path) -> None:
+    collection = _collection(tmp_path)
+    (collection / "state.json").write_text(
+        json.dumps({"file_hashes": {"a.py": 17, "b.py": "real"}}), encoding="utf-8"
+    )
+    backend = KnowledgeBackend(str(tmp_path), status_fn=Recorder([_status()]))
+
+    assert backend.indexed_digest("probe", "/repo/a.py") is None
+    assert backend.indexed_digest("probe", "/repo/b.py") == "real"

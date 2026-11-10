@@ -13,13 +13,16 @@ updated: 2026-11-10
 | File | Responsibility |
 |------|----------------|
 | `src/indexed/lsp/resolver.py` | The cursor→identifier→chunk path, shared by `definition` and `references`: the one tokenizer, the strict `identifier_at`, the provenance-derived range or file-level fallback, the bounded location builder, and one private `_lookup` the two public resolvers differ only in bounds within. |
-| `src/indexed/lsp/server.py` | Dispatch: adds `textDocument/definition` and `textDocument/references` to the existing handler map and `definitionProvider`/`referencesProvider` to the capabilities. No second server, no second lifecycle. |
+| `src/indexed/lsp/diagnostics.py` | The whole diagnostics contract: at most two facts, both read from index metadata (`collection_for_path`, the last run's `file_hashes`), each anchored on a range measured from the real file. Nothing else can leave this module. |
+| `src/indexed/utils/fingerprint.py` | The one definition of "the same file" (`xxh64` digest + size), used by the change tracker **and** the LSP, so the indexer and the editor can never disagree about which files are unchanged. |
+| `src/indexed/lsp/server.py` | Dispatch: adds `textDocument/definition` and `textDocument/references` to the existing handler map, `definitionProvider`/`referencesProvider` to the capabilities, and the document lifecycle (`didOpen`/`didSave`/`didClose`) plus a server→client notification queue for `publishDiagnostics`. No second server, no second lifecycle. |
 | `src/indexed/lsp/results.py` | Unchanged: LSP ranges (`lsp_range`), URIs (`document_uri`), chunk access. |
 | `src/indexed/utils/provenance.py` | Unchanged: the one locator normaliser. The resolver *asks it* what a hit knows and does not re-derive the rule. |
 
-`resolver.py` sits inside the `indexed/lsp` presentation layer and imports only
-`indexed.utils.provenance` from below plus its own sibling `results.py`; nothing
-below may import it (`scripts/check_imports.py`).
+`resolver.py` and `diagnostics.py` sit inside the `indexed/lsp` presentation
+layer and import only leaf modules from below (`indexed.utils.provenance`,
+`indexed.utils.fingerprint`) plus their own siblings; nothing below may import
+them (`scripts/check_imports.py`).
 
 ## One request, one bounded query
 
@@ -37,7 +40,9 @@ uri ──uri_to_path──▶ path ──identifier_at──▶ word
   (longest prefix wins) — the same seam hover uses, so a keystroke never
   enumerates every collection.
 - The identifier is read from the file on disk at the cursor's line, because the
-  server still advertises `textDocumentSync: 0` and holds no document text.
+  server holds no document text: `textDocumentSync` advertises open/close/save
+  notifications with `change: 0` and `save.includeText: false`, so no buffer is
+  ever streamed to it.
 - `identifier_at` is **strict**: the token under the cursor or nothing. Hover's
   forgiving `word_at` (nearest preceding word, then the line, then the file
   stem) would answer a question the user did not ask.
@@ -111,6 +116,63 @@ same location builder, its own bounds. It did not grow a second lookup path, and
 it kept the same "span-less → whole document, unmeasurable → no location" rule —
 `resolve_references` exists so the *difference* between the two methods is a
 table in one file, not two implementations.
+
+## `publishDiagnostics`: two facts, no opinions
+
+```
+uri ──uri_to_path──▶ path ──isfile?──▶ document_range(path)   (measured, or silence)
+                              │
+                    backend.collection_for_path(path)
+                              │
+              ┌───────────────┴────────────────┐
+        no owner                       owner = collection
+              │                                │
+  not-in-any-collection      backend.indexed_digest(collection, path)
+                                               │
+                             recorded == file_fingerprint(path)? 
+                                    │                 │
+                                 yes → []        no → index-stale
+```
+
+| Signal | How it is proven | When it is **not** reported |
+|---|---|---|
+| `not-in-any-collection` | no collection `manifest.reader.basePath` contains the path (same longest-prefix seam hover/definition use) | never suppressed — but needs a readable local file for the range |
+| `index-stale` | `state.json` → `file_hashes[relpath]` ≠ `file_fingerprint(path)[0]`, i.e. the same comparison `indexed index update` makes | no `state.json`, no readable manifest, no entry for the path, or an unreadable file: **unknown is not stale** |
+
+The fingerprint (`xxh64` + size) lives in `indexed/utils/fingerprint.py` and is
+what the change tracker already records, so "stale" here means exactly what it
+means to the indexer — a second, laxer notion of "changed" would produce
+diagnostics the next `index update` does not clear.
+
+`state.json` lists every indexed file, so it is parsed once per file version and
+cached under `(st_mtime_ns, st_size)`: a burst of saves re-reads nothing, and a
+reindex is picked up on the very next event because the file changed rather than
+a timer expiring.
+
+Publication is a **notification queue** on the server, not a return value:
+`handle` stays a pure answer-or-nothing call, `serve` drains
+`pending_notifications` after each frame and writes them as
+`textDocument/publishDiagnostics`. Consequences enforced by tests: a
+notification is never answered, nothing is published before `initialize`,
+nothing is pushed to a client that did not declare
+`textDocument.publishDiagnostics`, and an exception inside the check is a debug
+log rather than a dead session.
+
+Severity is **Information** for both codes. There is no code path that can emit
+`Error` or `Warning`, because the index has no type or lint information to base
+one on (issue #241).
+
+What it deliberately does **not** claim:
+
+- nothing about *content* — not that the file is correct, not that it is
+  broken, only whether the index's stored version differs;
+- nothing about the collection's `last_indexed_commit`: commits move for files
+  other than the one on screen (and update runs are incremental slices), so a
+  commit mismatch is not evidence about *this* file;
+- nothing about a file the last run did not cover. There is no cheap per-file
+  docstore read (the v2 docstore is one flat JSON of every chunk), so the
+  change-tracking state is the only per-file index fact available without
+  loading the store — and when it has no entry, the honest answer is silence.
 
 ## Testing
 

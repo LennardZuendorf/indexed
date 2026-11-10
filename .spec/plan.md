@@ -48,7 +48,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 19 | GitHub Projects/Issues connector | issues+PRs+Projects v2 indexed; incremental update | ◑ MOSTLY DONE | [features/github-connector/](features/github-connector/) · [#90](https://github.com/LennardZuendorf/indexed/issues/90) — chunk-hash reuse follow-up not yet planned |
 | 20 | retrieval-eval | pinned code/docs/GitHub fixtures, measured dense/rerank evidence, validated reports | IN REVIEW | [features/retrieval-eval/](features/retrieval-eval/) · PR #265; paired public docs remain open |
 | 21 | lsp-tier0 (issue #241) | `indexed lsp` over stdio: honest `initialize`, `workspace/symbol`, `textDocument/hover` with provenance, MethodNotFound for the rest | IN REVIEW | [features/lsp-tier0/](features/lsp-tier0/) · `src/indexed/lsp/`, `src/indexed/cli/lsp.py` |
-| 22 | lsp-tier1 (issue #241) | navigation on the same server: `textDocument/definition` and bounded `textDocument/references` with the file-level degradation rule and one keyed query per request (diagnostics pending) | IN PROGRESS | [features/lsp-tier1/](features/lsp-tier1/) · `src/indexed/lsp/resolver.py` |
+| 22 | lsp-tier1 (issue #241) | navigation on the same server: `textDocument/definition` and bounded `textDocument/references` with the file-level degradation rule and one keyed query per request, plus honest `publishDiagnostics` (only "not in any collection" / "indexed version differs", never a fabricated warning) | IN PROGRESS | [features/lsp-tier1/](features/lsp-tier1/) · `src/indexed/lsp/{resolver,diagnostics}.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)

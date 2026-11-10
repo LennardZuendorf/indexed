@@ -50,6 +50,9 @@ class KnowledgeBackend:
         self._statuses: Optional[List[Any]] = None
         self._statuses_at = 0.0
         self._base_paths: Dict[str, Tuple[Optional[str], float]] = {}
+        self._hash_cache: Dict[
+            str, Tuple[Tuple[int, int], Optional[Dict[str, str]]]
+        ] = {}
 
     # -- engine accessors (lazy so `indexed lsp` startup stays cheap) ---------
 
@@ -112,6 +115,63 @@ class KnowledgeBackend:
             base = os.path.normpath(os.path.abspath(candidate))
         self._base_paths[collection] = (base, now)
         return base
+
+    def indexed_digest(self, collection: str, path: str) -> Optional[str]:
+        """The content digest the last indexing run recorded for ``path``.
+
+        Read from the change tracker's ``state.json`` beside the collection
+        manifest, which the file connector rewrites after every index/update
+        run. It is the *only* per-file fact about the index that can be read
+        without loading the store, and it is exactly what the indexer itself
+        compares against (``utils.fingerprint.file_fingerprint``), so the LSP
+        and the indexer can never disagree about a file.
+
+        ``None`` means **unknown** — no state file (never indexed, or migrated
+        from v1), an unreadable manifest, or a file the run did not cover — and
+        a caller must treat it as "no opinion", never as "unchanged".
+        """
+        hashes = self._recorded_hashes(collection)
+        if hashes is None:
+            return None
+        base = self.base_path(collection)
+        if not base:
+            return None
+        target = os.path.normpath(os.path.abspath(path))
+        digest = hashes.get(os.path.relpath(target, base))
+        return digest if isinstance(digest, str) else None
+
+    def _recorded_hashes(self, collection: str) -> Optional[Dict[str, str]]:
+        """``state.json``'s ``file_hashes``, cached against its own mtime+size.
+
+        Parsed once per version of the file: a state file lists every indexed
+        file, and a burst of saves must not re-parse it per keystroke. Keyed on
+        ``(st_mtime_ns, st_size)`` so a reindex is picked up immediately instead
+        of after a timer.
+        """
+        state_path = Path(self.collections_path) / collection / "state.json"
+        try:
+            stat = state_path.stat()
+        except OSError:
+            return None
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        cached = self._hash_cache.get(collection)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        hashes: Optional[Dict[str, str]] = None
+        try:
+            raw = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = None
+        if isinstance(raw, dict):
+            candidate = raw.get("file_hashes")
+            if isinstance(candidate, dict):
+                hashes = {
+                    key: value
+                    for key, value in candidate.items()
+                    if isinstance(key, str) and isinstance(value, str)
+                }
+        self._hash_cache[collection] = (stamp, hashes)
+        return hashes
 
     def collection_for_path(self, path: str) -> Optional[Any]:
         """The collection whose source root contains ``path`` (longest match wins)."""
