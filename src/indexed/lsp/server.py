@@ -2,9 +2,10 @@
 
 A request/response loop over ``Content-Length``-framed JSON-RPC. The server
 advertises only what is implemented and tested — ``textDocumentSync: 0`` (no
-document state), ``workspace/symbol``, ``textDocument/hover`` and
-``textDocument/definition``; everything else is answered with the protocol's
-``MethodNotFound`` instead of a plausible-looking empty result.
+document state), ``workspace/symbol``, ``textDocument/hover``,
+``textDocument/definition`` and ``textDocument/references``; everything else is
+answered with the protocol's ``MethodNotFound`` instead of a plausible-looking
+empty result.
 """
 
 from __future__ import annotations
@@ -18,7 +19,13 @@ from loguru import logger
 
 from . import protocol
 from .backend import KnowledgeBackend
-from .resolver import IDENTIFIER, resolve_definitions, source_line, word_at
+from .resolver import (
+    IDENTIFIER,
+    resolve_definitions,
+    resolve_references,
+    source_line,
+    word_at,
+)
 from .results import build_hover, build_symbols, uri_to_path
 
 SERVER_NAME = "indexed"
@@ -222,6 +229,7 @@ class LanguageServer:
             "workspace/symbol": self._workspace_symbol,
             "textDocument/hover": self._hover,
             "textDocument/definition": self._definition,
+            "textDocument/references": self._references,
         }.get(method)
         if handler is None:
             if not has_id:
@@ -261,6 +269,7 @@ class LanguageServer:
                 "textDocumentSync": 0,
                 "definitionProvider": True,
                 "hoverProvider": True,
+                "referencesProvider": True,
                 "workspaceSymbolProvider": True,
             },
             "serverInfo": {"name": SERVER_NAME, "version": self.server_version},
@@ -317,6 +326,20 @@ class LanguageServer:
         """
         uri, position = _text_document_position(params, "textDocument/definition")
         return resolve_definitions(self.backend, uri, position) or None
+
+    def _references(self, params: Any) -> Any:
+        """``Location[]`` for the identifier under the cursor.
+
+        Always an array, never ``null``: LSP reads an empty reference list as
+        "none found" and ``null`` as a protocol violation, so the resolver's
+        empty list is passed through as-is. ``context.includeDeclaration`` is
+        accepted and ignored — the index holds chunks, not a symbol table, so
+        there is no declaration bit to filter on, and returning the declaration
+        among the references is the honest choice. The answer is bounded: one
+        keyed query, its best hits (``resolver.REFERENCES_LIMIT``).
+        """
+        uri, position = _text_document_position(params, "textDocument/references")
+        return resolve_references(self.backend, uri, position)
 
 
 def serve(backend: KnowledgeBackend) -> int:

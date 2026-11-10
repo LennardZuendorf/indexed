@@ -167,7 +167,13 @@ SRC_LOC_MAX = 33_300
 # five Tier 0 acceptance points against a real collection — the protocol is the
 # contract, so the transcript IS the regression test; ceiling = measured
 # (51_140) + headroom.
-TEST_LOC_MAX = 51_750
+# Raised from 51_750 by issue #241's LSP Tier 1 `textDocument/references`: the
+# plural slice of the shared resolver (cross-file hits, span-less file-level
+# degradation, the documented result cap, the empty-array-not-null contract and
+# its parameter rejection) — the same protocol-is-the-contract argument as the
+# Tier 0 transcript, on the method that can return many locations; ceiling =
+# measured (51_756) + headroom.
+TEST_LOC_MAX = 52_300
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

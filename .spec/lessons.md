@@ -1601,3 +1601,24 @@ with `git add`/`git status`, since that's what CI actually runs.
   `initialize` assertion in the same change — otherwise a correct feature reds
   the system suite, and the temptation is to loosen the assertion that makes
   capability honesty testable.
+
+## A plural method buys bounds, not completeness (2026-11-10)
+
+- **`references` is `definition` with wider numbers, not a second resolver.**
+  Both are one private `_lookup`; the public functions differ only in bounds and
+  in their empty answer. Two implementations of "where does this name live"
+  would drift the moment one of them learned a new provenance kind.
+- **An empty answer is method-specific, and the protocol decides it.** LSP reads
+  `null` from `textDocument/definition` as "nothing defines this" and `null` from
+  `textDocument/references` as a protocol violation, so the definition handler
+  collapses `[]` to `null` while the references handler passes `[]` through.
+  Do not harmonise the two because they look like the same shape.
+- **Bound the query, then document the cap where the reader is.** There is no
+  LSP field for "partial", so the honest signal is the documented cap
+  (`REFERENCES_LIMIT` 50 / 10 docs / 40 chunks) plus a spec sentence saying the
+  answer is the engine's best matches, not an enumeration. Inventing a
+  `Location` to look complete is the exact failure this feature avoids.
+- **Assert the search bounds in the unit test.** `backend.searches ==
+  [{...,"max_docs": REFERENCES_MAX_DOCS,...}]` is the only thing stopping a
+  later refactor from turning a keystroke into a store scan while every
+  functional test still passes.
