@@ -137,7 +137,11 @@ SRC_LOC_MAX = 31_800
 # Aggregate keeps search golden/locator tests, benchmark/evaluation gate
 # regressions and main's pinned parsing-corpus guard: measured 50_636 lines
 # plus 214 lines of headroom. Source budget stays at 31_800.
-TEST_LOC_MAX = 50_850
+# Raised from 50_850 by #293's rebuild on #297: the union-merge attribute pin
+# and its `check-attr` helper in `tests/unit/test_merge_attributes.py` are 53
+# lines, which do not fit the 25 lines #297's measured 50_825 left; measured
+# 50_878 on the rebuilt head, ceiling = measured + bounded headroom.
+TEST_LOC_MAX = 50_950
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
