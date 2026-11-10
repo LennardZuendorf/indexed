@@ -192,7 +192,10 @@ served by `indexed lsp` over stdio. Tier 0 scope: `workspace/symbol` and
   be reused. stdout belongs to the protocol — log records go to stderr.
 - **Capabilities are the contract**: `initialize` advertises
   `textDocumentSync: 0`, `hoverProvider`, `workspaceSymbolProvider` and nothing
-  else. Anything unimplemented answers `MethodNotFound` (-32601).
+  else. (Tier 1 replaces `textDocumentSync: 0` with open/close/save
+  notifications and adds `definitionProvider`/`referencesProvider` plus pushed
+  diagnostics — see [features/lsp-tier1/tech.md](features/lsp-tier1/tech.md).)
+  Anything unimplemented answers `MethodNotFound` (-32601).
 - **One provenance normaliser**: `utils/provenance.py::build_locator` is the
   only locator builder — `mcp/formatting.py` (the `indexed.search/1` payload)
   and `lsp/results.py` both use it, so no surface can drift into a second

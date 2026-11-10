@@ -82,8 +82,9 @@ def _server_version() -> str:
 def hover_query(uri: str, position: Dict[str, Any]) -> Optional[str]:
     """What to search for when hovering at a position.
 
-    No document text is sent to a server with ``textDocumentSync: 0``, so the
-    context comes from the file on disk — the one the user is looking at.
+    No document text is sent to the server — it advertises open/close/save
+    notifications with no content (``change: 0``) — so the context comes from the
+    file on disk, the one the user is looking at.
     """
     path = uri_to_path(uri)
     if path is None:

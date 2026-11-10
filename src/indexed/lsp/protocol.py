@@ -22,9 +22,10 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 SERVER_NOT_INITIALIZED = -32002
 
-#: Upper bound on one frame's declared body. A language server never receives a
-#: document (``textDocumentSync: 0``), so anything this large is a broken or
-#: hostile peer; refusing beats blocking on a read that will never finish.
+#: Upper bound on one frame's declared body. The server never receives document
+#: text (open/close/save notifications only, ``change: 0``), so anything this
+#: large is a broken or hostile peer; refusing beats blocking on a read that
+#: will never finish.
 MAX_CONTENT_LENGTH = 8 * 1024 * 1024
 
 
