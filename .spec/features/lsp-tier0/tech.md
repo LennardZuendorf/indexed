@@ -3,7 +3,7 @@ type: feature-tech
 feature: lsp-tier0
 sibling: product.md
 parent: ../../plan.md
-updated: 2026-11-02
+updated: 2026-11-10
 ---
 
 # `indexed lsp` — Tier 0 (architecture)

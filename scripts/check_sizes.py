@@ -50,7 +50,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # dispatch, the locator->LSP-range conversion and the collection-ownership
 # seam) plus the `indexed lsp` command — new product surface with its own unit
 # and out-of-process stdio tests, not stealth regrowth; ceiling = measured
-# (32_656) + headroom.
+# (32_705) + headroom.
 SRC_LOC_MAX = 32_900
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
@@ -160,7 +160,7 @@ SRC_LOC_MAX = 32_900
 # payload-builder units plus an out-of-process stdio session that drives all
 # five Tier 0 acceptance points against a real collection — the protocol is the
 # contract, so the transcript IS the regression test; ceiling = measured
-# (51_138) + headroom.
+# (51_140) + headroom.
 TEST_LOC_MAX = 51_750
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
