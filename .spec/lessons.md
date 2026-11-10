@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-10
 ---
 
 # Lessons Learned
@@ -1394,3 +1394,29 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Model-gated system tests in CI (2026-11-10)
+
+- **A green suite with skips is not coverage; read the skip reason.** `tests/system`
+  reported `95 passed, 24 skipped` on every version, and every skip was
+  `tests/conftest.py::model_available()` with no `all-MiniLM-L6-v2` in the job: the
+  lifecycle, parity and out-of-process tests — the ones that assert the committed
+  goldens — were review-only in CI, so a server change that broke one stayed green.
+- **The gate is cheap enough to pay on every version; measure before deciding
+  otherwise.** Local, warm cache: `95 passed, 18 skipped` in 80 s without the model
+  vs `113 passed` in 110 s with it (~30 s for 18 tests). In CI the same change moved
+  the pytest step from 60–88 s to 82–124 s per version and each job from ~1m45s–2m04s
+  to ~2m11s–2m43s — far under the 10-minute ceiling. Gating on one version would have
+  saved ~90 s of matrix time and re-opened the hole on the other three.
+- **A cached model needs an explicit `ensure_model` step, not just `actions/cache`.**
+  On a miss the four matrix jobs would each download mid-suite, racing to fill the
+  same key. Cache first, then `ensure_model('all-MiniLM-L6-v2')` before the suite: a
+  miss becomes one download and the tests never depend on network timing. The key
+  `hf-model-all-MiniLM-L6-v2` is shared with the benchmark and eval workflows, so a
+  warm repo usually restores in seconds.
+- **The collection-time gate and the runtime cache resolve `home` differently.**
+  `model_available()` runs at import against the real `Path.home()`, but the session
+  fixture patches `Path.home()` for the tests, so `is_model_cached()` inside a test
+  looks at the sandbox; loading still works because `huggingface_hub` resolved its
+  cache constants from `$HOME` at import. Do not "fix" the predicate to follow the
+  patched home — the gate answers "is this worth running", not "is the loader warm".

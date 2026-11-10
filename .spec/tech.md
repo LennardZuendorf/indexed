@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-03
+updated: 2026-11-10
 ---
 
 # Tech Spec: indexed
@@ -166,6 +166,18 @@ uv run pytest -q                              # all
 uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
+
+### System Tests in CI
+
+`python-ci.yml` runs `tests/system/` on Python 3.11–3.14 (plus the import-graph,
+size, wheel and twine gates). The suite gates its model-dependent tests on
+`tests/conftest.py::model_available()`, so the job caches
+`all-MiniLM-L6-v2` under the shared key `hf-model-all-MiniLM-L6-v2` and runs
+`ensure_model(...)` before pytest: with the model present ~18 extra tests assert
+the real goldens (lifecycle, MCP parity, out-of-process transcripts) instead of
+skipping. Measured cost is ~30 s of suite time per version, which is why the
+gate runs on every version rather than one. A cache miss costs one download
+before the suite, never four concurrent mid-suite downloads.
 
 ### CI Benchmarking
 
