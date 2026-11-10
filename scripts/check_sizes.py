@@ -38,12 +38,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # Issue #204 adds the eval harness alongside #126's recovery surface.
 # Combined recovery/eval plus review validation and scoped runtime settings
 # measure 31_278 source lines before final docstrings; retain bounded headroom.
-# Raised from 31_600 by git-aware search (#60/#144/#146): the query-time git
-# helper (`utils/git_meta.py`), the `changed_since` node filter and the
-# document-level `git` provenance in `core/v2/retrieval.py`, plus their CLI/MCP
-# plumbing — opt-in, v2-only, no new persisted state, so genuine new surface
-# rather than stealth regrowth; ceiling = measured (31_720) + headroom.
-SRC_LOC_MAX = 32_000
+# Raised from 31_600 twice over: git-aware search (#60/#144/#146) adds the
+# query-time git helper (`utils/git_meta.py`), the `changed_since` node filter
+# and the document-level `git` provenance in `core/v2/retrieval.py` plus their
+# CLI/MCP plumbing; issues #108/#109 add one documented result shape
+# (`protocols/results.py` types it, `mcp/formatting.py` rebuilds it, and
+# `sourceType`/chunk `metadata` are plumbed where they were dropped). Landing
+# #297 on #279's branch keeps BOTH surfaces, so the two branch ceilings
+# (31_800 / 32_000) cannot both hold; the measured union is 32_457 — one
+# measured value with headroom replaces them.
+SRC_LOC_MAX = 32_800
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -132,29 +136,15 @@ SRC_LOC_MAX = 32_000
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-# Raised from 48_600 for the #60/#144/#146 tests: git_meta units, the v2
-# changed-since/provenance cases, the two CLI flags and the git-aware system
-# net; measured 49_084.
-# Raised again by the PR #279 review fixes: every skipped-filter path is now
-# asserted on each surface (retrieval gitFilter, MCP collection_errors, CLI
-# renderer warning, v1 facade stamping) plus the MCP tool forwarding tests that
-# did not exist — defect-guarding coverage, not stealth regrowth; measured
-# 49_497.
-# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
-# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
-# the benchmark wiring so a corpus change is a deliberate, reviewable diff
-# instead of a benchmark gate that reds on spec growth) — gate-integrity
-# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-# Merging main into this branch keeps both sides' new tests, so the union
-# measures 49_621 — the two ceilings above cannot both hold; one measured
-# value with headroom replaces them.
-# Raised from 49_800 by the #279 B1 timezone-guard fix: the cross-process
-# regression (writer and reader in separate processes under different TZ) needs
-# two subprocess probes, and the retrieval-level zone-switch test pins the
-# behavioural contract, not an implementation detail — gate-integrity coverage
-# for a defect that silently disabled the release's central claim; ceiling =
-# measured (49_927) + headroom.
-TEST_LOC_MAX = 50_200
+# Raised from 48_600 twice over: #279's git_meta units, the v2
+# changed-since/provenance cases, the two CLI flags, the skipped-filter
+# assertions on every surface (retrieval gitFilter, MCP collection_errors, CLI
+# renderer warning, v1 facade stamping) and the git-aware system net; #297's
+# search golden/locator tests, benchmark/evaluation gate regressions and main's
+# pinned parsing-corpus guard. Landing #297 on #279's branch keeps BOTH sides'
+# tests, so the two branch ceilings (50_200 / 50_850) cannot both hold; the
+# measured union is 52_245 — one measured value with headroom replaces them.
+TEST_LOC_MAX = 52_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

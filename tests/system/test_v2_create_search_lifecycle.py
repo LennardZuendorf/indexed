@@ -94,15 +94,15 @@ def test_v2_files_lifecycle_create_search_inspect_remove(
     payload = _search(
         "penguin migration survey along the Antarctic coastline", COLLECTION
     )
-    assert payload["results"], "expected at least one search hit"
-    top = payload["results"][0]
-    assert top["document_id"].endswith("needle.txt")
-    assert "penguin" in top["text"].lower()
+    assert payload["documents"], "expected at least one search hit"
+    top = payload["documents"][0]
+    assert top["id"].endswith("needle.txt")
+    assert "penguin" in top["hits"][0]["text"].lower()
 
     # A different query ranks a different document first (known-hit, not just
     # "no error").
     other = _search("vector indexing embeddings retrieval", COLLECTION)
-    assert other["results"][0]["document_id"].endswith("beta.txt")
+    assert other["documents"][0]["id"].endswith("beta.txt")
 
     # --- inspect: engine-aware diagnostics show v2 + model + store (R13) --
     inspected = runner.invoke(
@@ -164,8 +164,8 @@ def test_v2_default_create_and_search_never_touch_the_network(
     assert created.exit_code == 0, created.stdout + created.stderr
 
     payload = _search("penguin migration antarctic coastline", collection)
-    assert payload["results"]
-    assert payload["results"][0]["document_id"].endswith("needle.txt")
+    assert payload["documents"]
+    assert payload["documents"][0]["id"].endswith("needle.txt")
 
     removed = runner.invoke(
         app, ["--local", "--log-level", "ERROR", "remove", collection, "--force"]

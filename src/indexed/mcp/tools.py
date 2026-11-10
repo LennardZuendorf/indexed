@@ -16,7 +16,7 @@ from indexed.config.errors import IndexedError
 from indexed.cli.errors import MCPError, mcp_error_envelope
 from .collection_errors import unresolvable_collection_error
 from .config import resolve_cli_context, resolve_config as _resolve_config
-from .formatting import format_search_results_for_llm
+from .formatting import build_search_payload
 
 # Derived once from the SourceConfig Literal so the set stays in sync with the model.
 _ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset(
@@ -55,11 +55,11 @@ def _run_search(
             score_threshold=search_cfg.score_threshold,
             include_full_text=search_cfg.include_full_text,
             include_all_chunks=search_cfg.include_all_chunks,
-            include_matched_chunks=search_cfg.include_matched_chunks,
+            include_matched_chunks=True,
             collections_path=collections_path,
             **git_kwargs,
         )
-        return format_search_results_for_llm(raw_results, query)
+        return build_search_payload(raw_results, query)
     except IndexedError as e:
         return mcp_error_envelope(e)
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
@@ -90,23 +90,27 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     ) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
 
-        Returns results in an LLM-optimized format with flat structure and direct text access.
-        Results are ranked by relevance with the most relevant chunks first.
+        Returns the documented machine payload (schema ``indexed.search/1``):
+        matched documents, each stating its collection, source type, id, url
+        and score semantics once, with `hits` carrying relevance, raw score, a
+        locator and the chunk text. `locator.kind` is `line_span` (1-based
+        inclusive, code), `page` (PDF/DOCX), `headings` (prose) or `document`
+        (position unknown). See .spec/tech-app.md § Search result contract.
 
         Parameters:
             query (str): The search query text.
             changed_since (Optional[str]): Keep only files changed since this git ref,
                 tag or commit, including uncommitted and untracked changes. A collection
                 the filter cannot be applied to is named in ``collection_errors``.
-            git_provenance (Optional[bool]): Add git_commit/git_author/git_committed_at
-                to each result row, omitted for a file changed since it was indexed
+            git_provenance (Optional[bool]): Add the document-level ``git`` block
+                (commit/short/author/committedAt/subject), omitted for a file
+                changed since it was indexed
                 (defaults to core.v1.search.git_provenance).
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
-            dict: LLM-friendly search results with ranked results containing
-                rank, relevance_score, collection, document_id, document_url,
-                chunk_number, and text fields.
+            dict: ``{schema, query, counts, collections, collection_errors,
+                documents}`` — documents ranked by their best hit.
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
         cli_ctx = resolve_cli_context(ctx)
@@ -131,7 +135,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
 
-        Returns results in the same LLM-optimized format as the general search tool.
+        Returns the same documented payload as the general search tool
+        (schema ``indexed.search/1``), restricted to one collection.
 
         Args:
             collection: Name of the collection to search
@@ -139,8 +144,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             changed_since: Keep only files changed since this git ref, tag or commit
                 (a collection the filter cannot be applied to is named in
                 collection_errors)
-            git_provenance: Add git_commit/git_author/git_committed_at to each result row,
-                omitted for a file changed since it was indexed
+            git_provenance: Add the document-level ``git`` block
+                (commit/short/author/committedAt/subject), omitted for a file
+                changed since it was indexed
                 (defaults to core.v1.search.git_provenance)
             ctx: FastMCP Context (optional, for accessing lifespan state)
 

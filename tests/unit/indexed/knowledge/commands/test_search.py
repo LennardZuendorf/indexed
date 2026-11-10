@@ -1285,6 +1285,59 @@ class TestSearchCommandExecution:
         finally:
             reset_simple_output()
 
+    def test_search_simple_unsearchable_collection_keeps_stdout_parseable(
+        self, monkeypatch
+    ):
+        """The skip notice must not pollute machine stdout.
+
+        A named collection that is present but has no indexers used to print a
+        Rich panel to stdout *before* the JSON body, so `indexed search --json`
+        was not parseable in exactly the case an agent is most likely to hit.
+        The notice now goes to stderr, like the --rerank notice.
+        """
+        from unittest.mock import Mock
+
+        broken_status = Mock()
+        broken_status.name = "broken"
+        broken_status.indexers = []
+
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [broken_status])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+
+        result = runner.invoke(
+            search_cmd.app, ["my-query", "--collection", "broken", "--json"]
+        )
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "error": "No searchable collections available"
+        }
+        assert "unavailable, skipping" in result.stderr
+
+    def test_search_json_retains_skipped_collection_error(self, monkeypatch):
+        good = self._make_status("good")
+        good.source_type = "localFiles"
+        broken = self._make_status("broken")
+        broken.indexers = []
+        monkeypatch.setattr(search_cmd, "status", lambda *a, **kw: [good, broken])
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kw: None)
+        monkeypatch.setattr(
+            search_cmd, "svc_search", lambda *a, **kw: {"good": {"results": []}}
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["collections"] == ["good"]
+        assert payload["collection_errors"] == [
+            {
+                "collection": "broken",
+                "error": "Collection 'broken' is unavailable, skipping",
+            }
+        ]
+        assert "Collection 'broken' is unavailable, skipping" in result.stderr
+
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
         from unittest.mock import Mock, MagicMock
@@ -1503,12 +1556,11 @@ class TestSearchCommandExecution:
             assert result.exit_code == 0
             parsed = json.loads(result.stdout)
             assert parsed["query"] == "my-query"
-            assert parsed["total_collections_searched"] == 1
-            assert parsed["total_documents_found"] == 1
-            assert len(parsed["results"]) == 1
-            assert parsed["results"][0]["text"] == "relevant text"
-            assert parsed["results"][0]["collection"] == "col1"
-            assert parsed["results"][0]["rank"] == 1
+            assert parsed["schema"] == "indexed.search/1"
+            assert parsed["counts"] == {"documents": 1, "hits": 1}
+            doc = parsed["documents"][0]
+            assert doc["collection"] == "col1"
+            assert doc["hits"][0]["text"] == "relevant text"
         finally:
             reset_simple_output()
 

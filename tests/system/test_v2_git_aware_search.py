@@ -97,16 +97,17 @@ def test_changed_since_and_git_provenance(local_workspace, git_corpus: Path) -> 
 
     # --- changed-since HEAD~1: only the second commit's file survives ------
     filtered = _search(QUERY, COLLECTION, "--changed-since", "HEAD~1")
-    assert filtered["results"], "expected at least one hit"
-    assert {row["document_id"] for row in filtered["results"]} == {"beta.txt"}
+    assert filtered["documents"], "expected at least one hit"
+    assert {doc["id"] for doc in filtered["documents"]} == {"beta.txt"}
 
     # --- provenance: the second commit (and its author) is named ----------
     provenanced = _search(QUERY, COLLECTION, "--git-provenance")
-    beta_rows = [r for r in provenanced["results"] if r["document_id"] == "beta.txt"]
-    assert beta_rows, "expected a beta.txt hit"
-    assert beta_rows[0]["git_author"] == "Second Author"
-    assert len(beta_rows[0]["git_commit"]) == 40
-    assert beta_rows[0]["git_committed_at"].startswith("20")
+    beta_docs = [d for d in provenanced["documents"] if d["id"] == "beta.txt"]
+    assert beta_docs, "expected a beta.txt hit"
+    beta_git = beta_docs[0]["git"]
+    assert beta_git["author"] == "Second Author"
+    assert len(beta_git["commit"]) == 40
+    assert beta_git["committedAt"].startswith("20")
 
     # --- the Rich detail card carries the same commit ----------------------
     # The --simple-output invocations above set a process-global flag; clear it
