@@ -1,5 +1,13 @@
 # Core v2 Engine-Routing Fixes Implementation Plan
 
+> **Superseded (2026-10-27) — historical record, not current guidance.** Search
+> output is now one grouped `indexed.search/1` payload built by
+> `build_search_payload` (#252) and documented in
+> [`docs/reference/search-output.md`](../../reference/search-output.md). The flat
+> `rank`/`relevance_score`/`document_id`/`document_url`/`chunk_number` shape quoted
+> below is retired, and `format_search_results_for_llm` — which the steps below call
+> — no longer exists anywhere in `src/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix all 9 correctness/consistency findings from [issue #186](https://github.com/LennardZuendorf/indexed/issues/186) (the PR #162 core-v2 review, third and final batch after #187/#188) — batch-abort contract violation, MCP startup crash, reranking scale/label/stdout bugs, silent config-validation swallowing, one-bad-manifest-breaks-everything, duplicated relevance code, migration status misreporting, and an import-boundary enforcement gap — each behind a regression test, landing as one PR that closes #186.
@@ -917,6 +925,11 @@ from typing import Any, Dict, List
 
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 ```
+
+> **Superseded (2026-10-27):** the flat per-hit shape edited in this step — and the
+> `format_search_results_for_llm` function it edits — was retired by #252; the shipped
+> shape is in [`docs/reference/search-output.md`](../../reference/search-output.md).
+> Read the code below as history, not as an instruction.
 
 In `format_search_results_for_llm`, change the per-collection/per-chunk block (around lines 67-108) from tracking `higher_is_better`/`"_higher_is_better"` to also tracking the raw kind:
 

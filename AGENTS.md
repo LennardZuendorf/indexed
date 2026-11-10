@@ -2,8 +2,7 @@
 
 **indexed** · Python 3.11+ single-package project (`uv`, one wheel `indexed-sh`) ·
 local-first semantic search over files/Jira/Confluence/Outline, served by a Typer **CLI**
-and a FastMCP
-**server**. This is the operating contract for any agent in this repo. The design
+and a FastMCP **server**. This is the operating contract for any agent in this repo. The design
 source of truth is `.spec/`; earned lessons are in `.spec/lessons.md` — read both at
 session start.
 
@@ -70,18 +69,32 @@ spec in the same cycle; a comment is one line of *why*, never an essay; Rich sil
 a bracketed `[dotted.key]` from any `typer.Option(help=...)` string (parsed as a markup
 tag, not printed) — write config keys unbracketed in help text. Dependency
 lock reconciliation can leave metadata stale after temporary resolver
-constraints are removed; run `uv lock` against the final `pyproject.toml`.
-KISS wins.
+constraints are removed; run `uv lock` against the final `pyproject.toml`. KISS wins.
 Evaluation reports reconcile saved rankings, labels, counts and metrics. Capture
 one usable model cache before HOME isolation and use it for checks and loads.
-Scoped evaluation config restores prior overrides and excludes unrelated
-connector/MCP settings from validation.
-Check new fixture files for whitespace before freezing their hashes.
+Scoped evaluation config restores overrides and validates only measured namespaces.
+Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
-Publish saved eval verdicts with environment notes; step success is not a verdict.
+Read saved totals/verdicts; retain environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
+Canonical search retains errors and matched text; rank before rounding.
+Check exceptional CLI exit status before parsing stdout.
+Empty collections may mean all searches failed; inspect collection_errors.
+Freeze hashes after pinned formatting; check branch and HEAD before mutations.
+Read hit paths before document paths; decode local file URLs and fetch remote URLs.
+
+Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
+Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
+Advisory reports must not skip the independently enforced A/B setup and results.
+Integrate reviewed CI gates before timing; verify automatic merges; preserve product bytes.
+Read cached hook entries; set UV_NO_SYNC=1 when hooks use the shared environment.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
 file (multi-tool compatibility).
+Canonicalize only generated eval path prefixes; record harness digests; control test Git evidence.
+Reject equal-missing model snapshots and common instrumentation before comparison.
+Verify invalid-result artifacts through the actual publisher consumer.
+Pin corpus bytes; retain original/refreshed tips; keep AGENTS snapshots outside worktrees.
+Pin uv environments/caches and plan paths; avoid zsh's path; select dist suffixes.

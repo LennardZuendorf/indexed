@@ -13,6 +13,19 @@ on:
   # re-measures the numbers and opens a baseline-only PR. A PR run never writes.
   # See .spec/tech.md § CI Benchmarking and issue #253.
   workflow_dispatch:
+    inputs:
+      accept_cpu_change:
+        # GitHub rotates the ubuntu-latest fleet without asking. When the CPU
+        # fingerprint changes, the refresh otherwise refuses to adopt the new
+        # numbers (see "Summarise drift") and nothing in the repo can re-record
+        # the baseline — every PR then compares against a machine that no
+        # longer exists. This input is the sanctioned repair, and its PR records
+        # both fingerprints so the move is visible in review (#267).
+        description: >-
+          Adopt this runner's numbers even though its CPU fingerprint differs
+          from the committed baseline. Set only after a runner-fleet rotation.
+        type: boolean
+        default: false
 
 # Read-only default; each job below opts into exactly the writes it needs.
 permissions:
@@ -44,17 +57,34 @@ jobs:
         path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
         key: hf-model-all-MiniLM-L6-v2
 
-    # This action does its own checkout at a hardcoded fetch-depth: 2 with no
-    # tags and no input to override it, so `uv sync` below installs the package
-    # as 0.0.0.postN+g<sha> rather than a tag-derived version. Harmless here —
-    # nothing under tests/system or tests/benchmarks asserts a version — but it
-    # is why the "every workflow uses fetch-depth: 0" rule has an exception.
-    #
-    # The `with:` block is anchored and reused verbatim by the refresh job, so
-    # the gate and the refresh can never disagree on tolerances or thresholds.
+    # Capture the event pair before the advisory composite replaces HEAD.
+    - name: Capture benchmark revisions
+      id: revisions
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        MERGE_SHA: ${{ github.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA"; do
+          if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Same-job measurement invalid::missing event revision"
+            exit 2
+          fi
+        done
+        {
+          echo "base=$BASE_SHA"
+          echo "merge=$MERGE_SHA"
+          echo "head=$PR_HEAD_SHA"
+        } >> "$GITHUB_OUTPUT"
+
+    # Historical comparison/publication is advisory. The independent A/B below
+    # owns checkout, interpreter, dependency setup and both result files.
     - name: Run benchmarks
+      id: benchmark
+      continue-on-error: true
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
-      with: &benchmark-inputs
+      with:
         # One interpreter, pinned: numbers from different interpreters are not
         # comparable, and the baseline is written by whichever run refreshes it.
         python-version: "3.14"
@@ -71,7 +101,8 @@ jobs:
           --benchmark-only
           --benchmark-json=benchmark-results.json
           -v
-        cross-branch-tolerance: 20
+        # Report policy only; continue-on-error above is the advisory boundary.
+        cross-branch-tolerance: 1000
         # Inert by design: far beyond any real drift, so a PR run never stages a
         # baseline commit in the first place. It cannot be the guarantee on its
         # own — the action also flags an update when the comparison is skipped
@@ -80,6 +111,119 @@ jobs:
         update-tolerance: 1000
         threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
+
+    - name: Check out captured merge result for A/B
+      id: ab-checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ steps.revisions.outputs.merge }}
+        fetch-depth: 2
+
+    - name: Set up A/B Python
+      id: ab-python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.14"
+
+    - name: Same-job A/B gate (captured base vs merge result)
+      if: "!cancelled() && steps.revisions.outcome == 'success'"
+      env:
+        BASE_SHA: ${{ steps.revisions.outputs.base }}
+        MERGE_SHA: ${{ steps.revisions.outputs.merge }}
+        PR_HEAD_SHA: ${{ steps.revisions.outputs.head }}
+        CHECKOUT_OUTCOME: ${{ steps.ab-checkout.outcome }}
+        PYTHON_OUTCOME: ${{ steps.ab-python.outcome }}
+        AB_TOLERANCE: "20"
+        BASE_DIR: ${{ runner.temp }}/bench-ab-base
+        MERGE_DIR: ${{ runner.temp }}/bench-ab-merge
+        BASE_RESULTS: ${{ runner.temp }}/bench-ab-base.json
+        HEAD_RESULTS: ${{ runner.temp }}/bench-ab-merge.json
+      run: |
+        set -Eeuo pipefail
+        trap 'echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
+        [[ "$CHECKOUT_OUTCOME" == success && "$PYTHON_OUTCOME" == success ]]
+        AB_TESTS=(
+          "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs"
+          "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown"
+          "tests/system/test_search_performance.py::test_searcher_first_search"
+        )
+        EXPECTED_ARGS=()
+        for node in "${AB_TESTS[@]}"; do
+          EXPECTED_ARGS+=(--expected-benchmark "$node")
+        done
+
+        # Fetch immutable objects, never substitute a moving target branch tip.
+        verify_pr_merge() {
+          local parents first wrapper_parents wrapper_tree base_tree revision
+          local -a merge_parents wrapper
+          provenance_invalid() {
+            echo "::error title=Same-job measurement invalid::$1; captured base=$BASE_SHA merge=$MERGE_SHA head=$PR_HEAD_SHA"
+            exit 2
+          }
+          parents=$(git show -s --format=%P "$MERGE_SHA")
+          read -r -a merge_parents <<< "$parents"
+          if [[ "${#merge_parents[@]}" -ne 2 || "${merge_parents[1]:-missing}" != "$PR_HEAD_SHA" ]]; then
+            provenance_invalid "expected two merge parents ending in captured head; actual parents=$parents"
+          fi
+          first=${merge_parents[0]}
+          for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA" "$first"; do
+            if ! git cat-file -e "${revision}^{commit}"; then
+              provenance_invalid "missing commit object=$revision"
+            fi
+          done
+          if [[ "$first" == "$BASE_SHA" ]]; then return; fi
+          wrapper_parents=$(git show -s --format=%P "$first")
+          read -r -a wrapper <<< "$wrapper_parents"
+          if [[ "${#wrapper[@]}" -ne 2 || "${wrapper[1]:-missing}" != "$BASE_SHA" ]]; then
+            provenance_invalid "expected two wrapper parents ending in captured base; wrapper=$first actual parents=$wrapper_parents"
+          fi
+          if ! git cat-file -e "${wrapper[0]}^{commit}"; then
+            provenance_invalid "missing wrapper parent object=${wrapper[0]}"
+          fi
+          wrapper_tree=$(git rev-parse --verify "${first}^{tree}")
+          base_tree=$(git rev-parse --verify "${BASE_SHA}^{tree}")
+          if [[ "$wrapper_tree" != "$base_tree" ]]; then
+            provenance_invalid "wrapper tree differs from captured base; wrapper=$first actual tree=$wrapper_tree expected tree=$base_tree"
+          fi
+          echo "::notice::Verified native-stack wrapper=$first complete tree=$base_tree; measuring original base=$BASE_SHA and merge=$MERGE_SHA"
+        }
+        git fetch --no-tags --depth=3 origin "$BASE_SHA" "$MERGE_SHA"
+        verify_pr_merge
+        python -m pip install uv
+
+        measure() {
+          local directory=$1 revision=$2 output=$3 actual
+          git worktree add --detach "$directory" "$revision"
+          actual=$(git -C "$directory" rev-parse HEAD)
+          [[ "$actual" == "$revision" ]]
+          echo "Measuring revision: $actual in $directory"
+          (
+            cd "$directory"
+            export UV_PROJECT_ENVIRONMENT="$directory/.venv"
+            python -m uv sync --locked
+            python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
+              --benchmark-only --benchmark-json "$output"
+          )
+          # The measured side stamps the digest of ITS OWN fixture tree, using
+          # the gate's script from the merge checkout. Both sides must agree on
+          # it: a corpus change is a different experiment, and an unstamped file
+          # is refused rather than compared (scripts/benchmark_ab.py).
+          python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
+            --stamp-corpus "$output" \
+            --corpus-root "$directory/tests/benchmarks/fixtures"
+        }
+        measure "$BASE_DIR" "$BASE_SHA" "$BASE_RESULTS"
+        measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"
+
+        # Preserve the comparator's distinct regression (1) and invalid (2) exits.
+        status=0
+        python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
+          --base "$BASE_RESULTS" --head "$HEAD_RESULTS" \
+          --tolerance "$AB_TOLERANCE" "${EXPECTED_ARGS[@]}" \
+          --base-label "captured event base @ $BASE_SHA" \
+          --head-label "captured PR merge result @ $MERGE_SHA" \
+          --summary "$GITHUB_STEP_SUMMARY" || status=$?
+        exit "$status"
 
   refresh-baseline:
     # Dispatch-only and main-only. A baseline move is never a side effect of
@@ -100,25 +244,53 @@ jobs:
         path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
         key: hf-model-all-MiniLM-L6-v2
 
-    # Same pin, same inputs as the PR job. The action's update path is
-    # pull_request-only, so this run never pushes anything; its "Save baseline"
-    # step rewrites .benchmarks/baselines/main.json in the workspace and that
-    # rewritten file is the refresh. A >20% slowdown against main's previous
-    # numbers fails the run here instead — that is a regression to investigate,
-    # not a baseline to adopt.
+    # Same pin and same measurement inputs as the PR job, with one deliberate
+    # difference: `cross-branch-tolerance` is live (20) here. This run compares
+    # main against main's own committed baseline on a dispatch that only main
+    # triggers, which is the coarse drift alarm — it is not a PR verdict, and
+    # there is no same-job A/B to take its place. GitHub Actions has no YAML
+    # merge keys, so this block is a copy of the PR job's: change both together.
+    # The action's update path is pull_request-only, so this run never pushes
+    # anything; its "Save baseline" step rewrites .benchmarks/baselines/main.json
+    # in the workspace and that rewritten file is the refresh. A >20% slowdown
+    # against main's previous numbers fails the run here instead — that is a
+    # regression to investigate, not a baseline to adopt.
     - name: Measure main
       uses: lennardzuendorf/pytest-bench-action@415e71e2b6cbd14309df691521a84e44093b8c46 # v1.0.2
-      with: *benchmark-inputs
+      with:
+        python-version: "3.14"
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        setup-command: python -m pip install uv && python -m uv sync
+        pre-benchmark-command: |
+          uv run python -c "
+          from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+          ensure_model('all-MiniLM-L6-v2')
+          print('Model ready')
+          "
+        benchmark-run-command: >
+          uv run pytest tests/system tests/benchmarks
+          --benchmark-only
+          --benchmark-json=benchmark-results.json
+          -v
+        cross-branch-tolerance: 20
+        update-tolerance: 1000
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        override-label: benchmark-override
 
     - name: Summarise drift against main's baseline
       id: drift
       env:
         FILE: .benchmarks/baselines/main.json
         DRIFT_PCT: "5"
+        # Empty on a PR run; only a dispatch can set it. Boolean inputs arrive
+        # as the string "true"/"false" and "" when the event has no inputs.
+        ACCEPT_CPU_CHANGE: ${{ inputs.accept_cpu_change }}
       run: |
         set -euo pipefail
         # The committed file is main's reference; the workspace copy is what
-        # this run just measured.
+        # this run just measured. HEAD is trustworthy here where it is not in the
+        # gate job: the action's update path is PR-only, so nothing in this run
+        # commits a baseline of its own.
         git show "HEAD:$FILE" > "${RUNNER_TEMP}/committed-baseline.json"
         python - <<'PY'
         import json, os, pathlib
@@ -127,16 +299,20 @@ jobs:
         new = json.load(open(os.environ["FILE"]))
         out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
         limit = float(os.environ["DRIFT_PCT"])
+        accept = os.environ.get("ACCEPT_CPU_CHANGE") == "true"
 
         def fingerprint(doc):
             mi, cpu = doc.get("machine_info", {}), doc.get("machine_info", {}).get("cpu", {})
-            return (cpu.get("brand_raw"), cpu.get("arch"), cpu.get("count"), mi.get("system"))
+            return f"{cpu.get('brand_raw')}|{cpu.get('arch')}|{cpu.get('count')}|{mi.get('system')}"
 
-        if fingerprint(old) != fingerprint(new):
+        was_fp, now_fp = fingerprint(old), fingerprint(new)
+        cpu_changed = was_fp != now_fp
+        if cpu_changed and not accept:
             # Adopting another machine's numbers would poison the reference the
-            # gate compares against; the action's own compare gate skips these.
-            print(f"::notice::Hardware changed ({fingerprint(old)} -> {fingerprint(new)}); not refreshing the baseline.")
-            out.write_text("moved=false\n")
+            # gate compares against, so a hardware change is refused unless it
+            # is an explicit, reviewed act (dispatch accept_cpu_change: true).
+            print(f"::notice::Hardware changed ({was_fp} -> {now_fp}); not refreshing the baseline. Re-dispatch with accept_cpu_change: true after a runner-fleet rotation.")
+            out.write_text("moved=false\ncpu_changed=false\n")
             raise SystemExit(0)
 
         def means(doc):
@@ -168,7 +344,31 @@ jobs:
         for pct, name, before, after in sorted(rows, key=lambda r: -abs(r[0]))[:5]:
             print(f"{pct:+7.1f}%  {name}  ({before * 1000:.2f} -> {after * 1000:.2f} ms)")
         print(f"{len(moved)} of {len(rows)} benchmarks moved more than {limit:g}%.")
-        out.write_text("moved=true\n" if moved else "moved=false\n")
+        if cpu_changed:
+            # Named in the job summary AND the refresh PR body: the move is a
+            # measurement to review, never a verdict on this diff.
+            note = [
+                "### Hardware change accepted",
+                "",
+                f"Committed baseline: `{was_fp}`",
+                "",
+                f"This run: `{now_fp}`",
+                "",
+                "The numbers below are a cross-CPU **measurement, not a drift verdict** —",
+                "they cannot say whether code got slower. They exist so the next PR run",
+                "compares like with like again. Accepting them was this dispatch's",
+                "`accept_cpu_change: true`; without it this refresh refuses to move.",
+                "",
+            ]
+            text = "\n".join(note) + "\n"
+            pathlib.Path("cpu-change.md").write_text(text)
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                summary.write("## Baseline refresh: hardware change accepted\n\n" + text)
+            print(f"::warning::Hardware change accepted ({was_fp} -> {now_fp}); adopting these numbers as main's baseline.")
+        out.write_text(
+            f"moved={'true' if moved or cpu_changed else 'false'}\n"
+            f"cpu_changed={'true' if cpu_changed else 'false'}\n"
+        )
         PY
 
     - name: Open a baseline-refresh PR when the numbers moved
@@ -184,8 +384,19 @@ jobs:
         # Detached HEAD or branch: -B works for both.
         git checkout -B "$BRANCH"
         git add "$FILE"
-        git commit -m "chore(benchmark): refresh main baseline"
+        if [ "${{ steps.drift.outputs.cpu_changed }}" = "true" ]; then
+          git commit -m "chore(benchmark): refresh main baseline (new CPU)"
+        else
+          git commit -m "chore(benchmark): refresh main baseline"
+        fi
         git push --force origin "$BRANCH"
+        # A CPU move must be visible in the PR list, not only in the body: it is
+        # the one baseline change nobody should skim past.
+        if [ "${{ steps.drift.outputs.cpu_changed }}" = "true" ]; then
+          TITLE='chore(benchmark): refresh main baseline (new CPU)'
+        else
+          TITLE='chore(benchmark): refresh main baseline'
+        fi
         {
           echo "Re-measures \`main\` and stores the numbers this run produced."
           echo
@@ -193,15 +404,16 @@ jobs:
           echo "make (see \`.spec/tech.md\` § CI Benchmarking). No code change, so no"
           echo "gate decision here is made against numbers this PR writes."
           echo
+          if [ -f cpu-change.md ]; then cat cpu-change.md; fi
           cat drift-table.md
           echo
           echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         } > "${RUNNER_TEMP}/refresh-body.md"
         if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qv '^0$'; then
-          gh pr edit "$BRANCH" --body-file "${RUNNER_TEMP}/refresh-body.md"
-          echo "Refresh PR already open — branch force-pushed and body refreshed."
+          gh pr edit "$BRANCH" --title "$TITLE" --body-file "${RUNNER_TEMP}/refresh-body.md"
+          echo "Refresh PR already open — branch force-pushed and title/body refreshed."
           exit 0
         fi
         gh pr create --base main --head "$BRANCH" \
-          --title "chore(benchmark): refresh main baseline" \
+          --title "$TITLE" \
           --body-file "${RUNNER_TEMP}/refresh-body.md"
