@@ -1420,10 +1420,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   against 87 MB of weights — kept restoring "successfully" on every later run while
   each job re-downloaded (`Fetching 30 files`); and since the next interrupted download
   would re-poison a bumped key, the step is gone rather than re-keyed. The honest
-  alternative costs one `ensure_model` step per job: 4–11 s across the four head runs of
-  this change (42821304362, 42822900060, 42823813619, 42829265736). A stale key costs a
-  step whose name lies. Download once per job in an explicit step, before any test
-  asserts.
+  alternative costs one `ensure_model` step per job: 4–11 s across the head runs of this
+  change (e.g. 42821304362, 42822900060, 42823813619, 42829265736 and 42830239136, whose
+  four ensure steps took 5–10 s). A stale key costs a step whose name lies. Download once
+  per job in an explicit step, before any test asserts.
 - **The collection-time gate and the runtime cache resolve `home` differently.**
   `model_available()` runs at import against the real `Path.home()`, but the session
   fixture patches `Path.home()` for the tests, so `is_model_cached()` inside a test
