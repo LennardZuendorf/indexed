@@ -35,6 +35,10 @@ from tests.conftest import model_available
 
 runner = CliRunner()
 
+#: What a real editor declares. ``publishDiagnostics`` is the one capability the
+#: server checks before pushing anything: an undeclared client gets silence.
+CLIENT_CAPABILITIES = {"textDocument": {"publishDiagnostics": {}}}
+
 pytestmark = pytest.mark.skipif(
     not model_available(),
     reason="Embedding model not cached (requires all-MiniLM-L6-v2)",
@@ -113,6 +117,19 @@ class LspSession:
         self.transcript.append({"client": frame})
         self._send(frame, expect_response=False)
 
+    def expect_notification(self, method: str, timeout: float = 60.0) -> Dict[str, Any]:
+        """Read the next server frame and require it to be notification ``method``.
+
+        A notification has no id and no response, so this is the only way to
+        observe one: read what the server pushed. Anything else here is a real
+        failure — a stray response would mean the server answered a
+        notification, which JSON-RPC 2.0 §4.1 forbids.
+        """
+        message = self._read_frame(timeout=timeout)
+        assert message is not None, f"server closed before sending {method}"
+        assert message.get("method") == method, f"unexpected frame: {message!r}"
+        return message
+
     def _send(self, frame: Dict[str, Any], *, expect_response: bool = True):
         stdin = self.process.stdin
         assert stdin is not None
@@ -165,10 +182,17 @@ def test_lsp_stdio_session_covers_tier_zero(local_workspace, lsp_corpus: Path) -
     session = LspSession(ws.root)
     try:
         # 1. initialize — honest capabilities only.
-        initialized = session.request(1, "initialize", {"capabilities": {}})
+        initialized = session.request(
+            1, "initialize", {"capabilities": CLIENT_CAPABILITIES}
+        )
         result = initialized["result"]
         assert result["capabilities"] == {
-            "textDocumentSync": 0,
+            # Open/close/save only: the server never holds a document.
+            "textDocumentSync": {
+                "openClose": True,
+                "change": 0,
+                "save": {"includeText": False},
+            },
             "definitionProvider": True,
             "hoverProvider": True,
             "referencesProvider": True,
@@ -234,6 +258,40 @@ def test_lsp_stdio_session_covers_tier_zero(local_workspace, lsp_corpus: Path) -
         unsupported = session.request(4, "textDocument/completion", {})
         assert unsupported["error"]["code"] == -32601
         assert "textDocument/completion" in unsupported["error"]["message"]
+
+        # 5. diagnostics — over the wire, and only facts the index can prove.
+        # 5a. a file indexed moments ago is healthy: an EMPTY array, which is
+        # also what clears a previously shown diagnostic.
+        session.notify("textDocument/didOpen", {"textDocument": {"uri": sample_uri}})
+        healthy = session.expect_notification("textDocument/publishDiagnostics")
+        assert healthy["params"] == {"uri": sample_uri, "diagnostics": []}
+
+        # 5b. edit the file AFTER indexing (no reindex): the same save now
+        # reports exactly one stale diagnostic, with a range measured from the
+        # edited file — never a type check, never a lint warning.
+        sample = lsp_corpus / "sample.py"
+        sample.write_text(
+            SAMPLE_PY + "\n\ndef gamma():\n    return 2\n", encoding="utf-8"
+        )
+        session.notify("textDocument/didSave", {"textDocument": {"uri": sample_uri}})
+        stale = session.expect_notification("textDocument/publishDiagnostics")
+        assert stale["params"]["uri"] == sample_uri
+        assert len(stale["params"]["diagnostics"]) == 1
+        diagnostic = stale["params"]["diagnostics"][0]
+        assert diagnostic["code"] == "index-stale"
+        assert diagnostic["source"] == "indexed"
+        assert diagnostic["severity"] == 3  # Information: not an error, not a warning
+        assert diagnostic["range"] == {
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 10, "character": 0},
+        }
+        assert f"`{COLLECTION}`" in diagnostic["message"]
+        assert f"indexed index update {COLLECTION}" in diagnostic["message"]
+
+        # 5c. closing it clears the diagnostic we published.
+        session.notify("textDocument/didClose", {"textDocument": {"uri": sample_uri}})
+        cleared = session.expect_notification("textDocument/publishDiagnostics")
+        assert cleared["params"] == {"uri": sample_uri, "diagnostics": []}
 
         # 1b. shutdown / exit — clean, code 0.
         shutdown = session.request(5, "shutdown")

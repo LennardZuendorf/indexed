@@ -37,7 +37,9 @@ is deferred to Tier 1; in Tier 0 the cross-collection surface is
 - `initialize` advertises only what is implemented and tested:
   `workspace/symbol`, `textDocument/hover`, and `textDocumentSync: 0` (no
   document state). Nothing else is advertised — an honest capability list is
-  the product promise of this surface.
+  the product promise of this surface. (Tier 1 moves `textDocumentSync` to
+  open/close/save notifications so it can publish diagnostics; see
+  [lsp-tier1](features/lsp-tier1/product.md).)
 - `workspace/symbol` answers with hits whose `location.uri` is the document's
   real uri (`file://…` for local sources, percent-encoded) and whose range comes
   from the chunk's own line metadata.
@@ -54,8 +56,10 @@ is deferred to Tier 1; in Tier 0 the cross-collection surface is
 - Not a VS Code extension: the server is client-agnostic; the client snippet in
   the docs site is the human-facing integration, so Neovim/Zed/Helix work with
   no changes.
-- No document sync (`textDocumentSync: 0`). Hover context is read from the file
-  on disk, which is what makes a sync-less Tier 0 honest.
+- No document sync (`textDocumentSync: 0` in Tier 0; Tier 1 advertises
+  open/close/save notifications with `change: 0`, still no content). Hover
+  context is read from the file on disk, which is what keeps a sync-less server
+  honest.
 
 ## Acceptance (all verified by tests)
 

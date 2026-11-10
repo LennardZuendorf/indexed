@@ -48,9 +48,10 @@ Layer position: `indexed/lsp` is a **presentation surface**, a peer of
   (the protocol forbids answering one).
 - `initialize` result: `textDocumentSync: 0` (no document state),
   `hoverProvider: true`, `workspaceSymbolProvider: true`, plus `serverInfo`.
-  No other capability is ever advertised. (Tier 1 adds `definitionProvider`
-  and `referencesProvider` on the same server — see
-  [../lsp-tier1/tech.md](../lsp-tier1/tech.md).)
+  No other capability is ever advertised. (Tier 1 adds `definitionProvider`,
+  `referencesProvider` and `publishDiagnostics` — with `textDocumentSync` moving
+  to open/close/save notifications so the server is told when to publish — on
+  the same server: see [../lsp-tier1/tech.md](../lsp-tier1/tech.md).)
 
 ## Provenance mapping
 

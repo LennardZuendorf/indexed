@@ -57,7 +57,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # derived file-level fallback for span-less sources) plus the dispatch entry and
 # its capability — new product surface, not stealth regrowth; ceiling =
 # measured (32_961) + headroom.
-SRC_LOC_MAX = 33_300
+# Raised from 33_300 by issue #241's LSP Tier 1 `publishDiagnostics`:
+# `lsp/diagnostics.py` is the whole honesty contract for the channel (two
+# provable signals, file-level ranges measured from the file, silence on
+# unknown), `utils/fingerprint.py` hoists the change tracker's own file
+# identity into a leaf so the indexer and the editor cannot disagree about
+# "changed", and `lsp/backend.py` gains the one per-file index read that is
+# affordable — new product surface with its own unit and system tests, not
+# stealth regrowth; ceiling = measured (33_385) + headroom.
+SRC_LOC_MAX = 33_700
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -173,7 +181,12 @@ SRC_LOC_MAX = 33_300
 # its parameter rejection) — the same protocol-is-the-contract argument as the
 # Tier 0 transcript, on the method that can return many locations; ceiling =
 # measured (51_756) + headroom.
-TEST_LOC_MAX = 52_300
+# Raised from 52_300 by issue #241's LSP Tier 1 `publishDiagnostics`: the
+# negative tests ARE the feature here (a type-error file must yield nothing, an
+# unknown fingerprint must yield nothing, a client that did not declare support
+# must receive nothing), plus the stale/healthy/cleared lifecycle over the real
+# stdio session; ceiling = measured (52_253) + headroom.
+TEST_LOC_MAX = 53_100
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

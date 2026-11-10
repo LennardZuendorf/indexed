@@ -11,6 +11,8 @@ from typing import Literal
 
 from loguru import logger
 
+from indexed.utils.fingerprint import file_fingerprint
+
 
 @dataclass
 class FileChange:
@@ -73,18 +75,14 @@ class ChangeTracker:
         """Build a fresh ``IndexState`` snapshot from the current files."""
         import datetime
 
-        import xxhash
-
         hashes: dict[str, str] = {}
         sizes: dict[str, int] = {}
         for fp in file_paths:
             rel = os.path.relpath(fp, self._base_path)
-            try:
-                data = Path(fp).read_bytes()
-                hashes[rel] = xxhash.xxh64(data).hexdigest()
-                sizes[rel] = len(data)
-            except OSError:
-                pass
+            fingerprint = file_fingerprint(fp)
+            if fingerprint is None:
+                continue
+            hashes[rel], sizes[rel] = fingerprint
 
         commit = self._current_git_commit()
 

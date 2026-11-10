@@ -1622,3 +1622,43 @@ with `git add`/`git status`, since that's what CI actually runs.
   [{...,"max_docs": REFERENCES_MAX_DOCS,...}]` is the only thing stopping a
   later refactor from turning a keystroke into a store scan while every
   functional test still passes.
+
+## Diagnostics may only report facts the index already stores (2026-11-10)
+
+- **Ship the negatives as tests, because the feature IS the silence.** Not "a
+  stale file gets a warning" but "nothing unprovable is ever published": a file
+  full of type errors with a matching fingerprint, a path with no `state.json`,
+  a client that never declared `publishDiagnostics` — each has its own test.
+  Without them the next contributor adds a friendly lint-ish hint and nothing
+  goes red.
+- **Compare with the indexer's own equality test, never a second notion of
+  "changed".** The staleness check hashes with `utils/fingerprint.file_fingerprint`,
+  the same function `ChangeTracker.build_state` records, so "stale" means
+  exactly "the next `indexed index update` will re-embed this". A laxer rule
+  (mtime, collection-level `lastModifiedDocumentTime`, `last_indexed_commit`)
+  produces diagnostics the next update does not clear — an editor that keeps
+  nagging after a successful reindex is a liar, and `lastModifiedDocumentTime`
+  is the max over the last run's *slice*, so it cannot speak for one file at all.
+- **`None` means unknown, and unknown is silence.** No state file (never
+  indexed, or migrated from v1) or no entry for that path is not "unchanged"
+  and emphatically not "stale": return no diagnostic, raise nothing.
+- **Severity is part of the honesty, not a styling choice.** Both codes are
+  Information; there is no code path that can emit Error/Warning because the
+  index holds no type or lint information. Record that in the module docstring,
+  where the next implementer will read it, not only in the spec.
+- **A push channel is a capability change, so it changes `textDocumentSync`.**
+  Publishing on open/save needs `{openClose: true, change: 0, save:
+  {includeText: false}}`; asking for `change: 1` would make the client stream
+  the buffers the server refuses to hold. Both capability assertions (unit and
+  out-of-process) have to move in the same change, and `diagnosticProvider`
+  stays unadvertised because pull diagnostics are not implemented.
+- **Notifications need a drain, not a return value.** `handle()` keeps its
+  `(answer, exit)` shape and queues server→client notifications; `serve()`
+  drains them after each frame. Returning notifications from the handler would
+  have broken every existing dispatch test, and answering a notification is a
+  protocol violation.
+- **A per-file docstore read is unaffordable; a `state.json` read is not.**
+  Reaching the v2 docstore costs a heavy import plus the whole flat JSON of
+  every chunk. The change tracker's state file is O(1) stdlib JSON, so cache it
+  on `(st_mtime_ns, st_size)`: a reindex is visible on the next event with no
+  TTL to tune.
