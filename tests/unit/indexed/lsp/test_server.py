@@ -98,6 +98,7 @@ def test_initialize_advertises_only_implemented_capabilities() -> None:
             "textDocumentSync": 0,
             "definitionProvider": True,
             "hoverProvider": True,
+            "referencesProvider": True,
             "workspaceSymbolProvider": True,
         },
         "serverInfo": {"name": "indexed", "version": "9.9.9"},

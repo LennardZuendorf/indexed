@@ -171,6 +171,7 @@ def test_lsp_stdio_session_covers_tier_zero(local_workspace, lsp_corpus: Path) -
             "textDocumentSync": 0,
             "definitionProvider": True,
             "hoverProvider": True,
+            "referencesProvider": True,
             "workspaceSymbolProvider": True,
         }
         assert result["serverInfo"]["name"] == "indexed"

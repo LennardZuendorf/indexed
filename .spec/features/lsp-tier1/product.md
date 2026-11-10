@@ -40,6 +40,19 @@ easier, because "go to definition" is a feature people expect to always work.
 - It is **one keyed, bounded query** against the collection that owns the file,
   so holding "go to definition" down cannot re-scan the store.
 
+## What `textDocument/references` is
+
+- Answers with the locations the index holds for the identifier under the
+  cursor: every chunk the engine returns for that name that literally contains
+  it as a whole token, across the files of the owning collection.
+- **Bounded on purpose** — at most 50 locations, from one keyed query capped at
+  10 documents and 40 chunks. Holding "find references" down cannot turn into a
+  scan of the store, and the answer is the engine's best matches, not a claim to
+  have enumerated every use in the corpus.
+- Same degradation as `definition`: a span-less source resolves to the whole
+  document, and a document the server cannot read yields no location at all.
+- `[]` when nothing is found — an empty reference list is a list, not `null`.
+
 ## What Tier 1 is not
 
 - Not a symbol table. There is no scope resolution and no type information, so a
@@ -60,3 +73,7 @@ easier, because "go to definition" is a feature people expect to always work.
 | 3 | Unknown identifier / unowned file / cursor off an identifier → `null`, and no engine call where nothing is resolvable | `tests/unit/indexed/lsp/test_resolver.py` |
 | 4 | Definition is advertised only because it is implemented; other methods still `MethodNotFound` | `initialize` capabilities + `tests/system/test_lsp_out_of_process.py` |
 | 5 | Out-of-process stdio transcript and golden payload | verification slice of Tier 1 (own card) |
+| 6 | References across files: every whole-token hit in engine order, semantic neighbours (`alphabet`) excluded | `tests/unit/indexed/lsp/test_resolver.py` |
+| 7 | A reference in a span-less source degrades to the whole document, never a fabricated position | `tests/unit/indexed/lsp/test_resolver.py` |
+| 8 | The result cap is enforced (50) and the query stays one keyed search at its documented bounds | `tests/unit/indexed/lsp/test_resolver.py` |
+| 9 | No references returns `[]`, not `null`; bad params return `-32602` | `tests/unit/indexed/lsp/test_resolver.py` |

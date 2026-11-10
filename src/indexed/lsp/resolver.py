@@ -1,7 +1,7 @@
-"""From the identifier under the cursor to the chunks that define it.
+"""From the identifier under the cursor to the chunks that hold it.
 
-One resolver, two LSP methods: ``textDocument/definition`` today and
-``textDocument/references`` next. Both start from the same three facts — the
+One resolver, two LSP methods: ``textDocument/definition`` and
+``textDocument/references``. Both start from the same three facts — the
 cursor's identifier, the ONE collection whose source root owns the file, and one
 keyed engine search — so the two cannot drift into different notions of "where a
 symbol lives".
@@ -45,6 +45,17 @@ DEFINITION_LIMIT = 5
 #: A keystroke must never enumerate the store.
 DEFINITION_MAX_DOCS = 5
 DEFINITION_MAX_CHUNKS = 15
+
+#: Locations one ``textDocument/references`` answer may carry. A reference list
+#: is read as a list — wider than a definition shortlist — but still a list:
+#: past this the panel stops being readable and every span-less hit costs a
+#: document read.
+REFERENCES_LIMIT = 50
+
+#: Search bound for one references request: deeper than a definition because a
+#: reference list wants breadth, but still ONE collection and ONE keyed query.
+REFERENCES_MAX_DOCS = 10
+REFERENCES_MAX_CHUNKS = 40
 
 Location = Dict[str, Any]
 Range = Dict[str, Dict[str, int]]
@@ -214,18 +225,23 @@ def matching_locations(
     return locations
 
 
-def resolve_definitions(
+def _lookup(
     backend: KnowledgeBackend,
     uri: str,
     position: Dict[str, Any],
     *,
-    limit: int = DEFINITION_LIMIT,
+    max_docs: int,
+    max_chunks: int,
+    limit: int,
 ) -> List[Location]:
-    """Definitions for the identifier under a document position.
+    """The one cursor→collection→search→locations path, for both methods.
 
-    Empty for anything the server cannot answer honestly: a non-file URI (no
-    local text to take the cursor's word from), a cursor that is not on an
-    identifier, a file no collection owns, or an index with no matching chunk.
+    Plural on purpose: ``definition`` and ``references`` differ only in their
+    bounds and in what the protocol wants back, so they cannot drift into two
+    notions of where a symbol lives. Empty for anything the server cannot answer
+    honestly: a non-file URI (no local text to take the cursor's word from), a
+    cursor that is not on an identifier, a file no collection owns, or an index
+    with no matching chunk.
     """
     path = uri_to_path(uri)
     if not path:
@@ -237,14 +253,54 @@ def resolve_definitions(
     if status is None:
         return []
     collection = getattr(status, "name", "")
-    results = backend.search(
-        word,
-        collection,
-        max_docs=DEFINITION_MAX_DOCS,
-        max_chunks=DEFINITION_MAX_CHUNKS,
-    )
+    results = backend.search(word, collection, max_docs=max_docs, max_chunks=max_chunks)
     return matching_locations(
         results, word, base_path_for=backend.base_path, limit=limit
+    )
+
+
+def resolve_definitions(
+    backend: KnowledgeBackend,
+    uri: str,
+    position: Dict[str, Any],
+    *,
+    limit: int = DEFINITION_LIMIT,
+) -> List[Location]:
+    """Definitions for the identifier under a document position."""
+    return _lookup(
+        backend,
+        uri,
+        position,
+        max_docs=DEFINITION_MAX_DOCS,
+        max_chunks=DEFINITION_MAX_CHUNKS,
+        limit=limit,
+    )
+
+
+def resolve_references(
+    backend: KnowledgeBackend,
+    uri: str,
+    position: Dict[str, Any],
+    *,
+    limit: int = REFERENCES_LIMIT,
+) -> List[Location]:
+    """Locations the index holds for the identifier under a document position.
+
+    Bounded, and honest about it: one keyed query against the owning collection,
+    its best ``REFERENCES_MAX_CHUNKS`` chunks, and the first ``limit`` whole-token
+    hits. That is a bounded semantic answer, **not** an exhaustive scan of the
+    corpus — the index holds chunks, not a symbol table, so a use site outside
+    the engine's top hits is not found. No location is invented to make the
+    list look complete, and the caller gets the same span-less degradation as
+    ``definition``.
+    """
+    return _lookup(
+        backend,
+        uri,
+        position,
+        max_docs=REFERENCES_MAX_DOCS,
+        max_chunks=REFERENCES_MAX_CHUNKS,
+        limit=limit,
     )
 
 
@@ -253,11 +309,15 @@ __all__ = [
     "DEFINITION_MAX_CHUNKS",
     "DEFINITION_MAX_DOCS",
     "IDENTIFIER",
+    "REFERENCES_LIMIT",
+    "REFERENCES_MAX_CHUNKS",
+    "REFERENCES_MAX_DOCS",
     "chunk_location",
     "document_range",
     "identifier_at",
     "matching_locations",
     "resolve_definitions",
+    "resolve_references",
     "source_line",
     "word_at",
 ]

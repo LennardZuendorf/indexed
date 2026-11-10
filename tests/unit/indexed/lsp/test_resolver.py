@@ -18,11 +18,15 @@ from indexed.lsp import protocol
 from indexed.lsp.resolver import (
     DEFINITION_MAX_CHUNKS,
     DEFINITION_MAX_DOCS,
+    REFERENCES_LIMIT,
+    REFERENCES_MAX_CHUNKS,
+    REFERENCES_MAX_DOCS,
     chunk_location,
     document_range,
     identifier_at,
     matching_locations,
     resolve_definitions,
+    resolve_references,
     word_at,
 )
 from indexed.lsp.server import LanguageServer
@@ -147,6 +151,29 @@ def _definitions(
 ) -> List[Dict[str, Any]]:
     """The resolver called directly, so a test can assert the empty list."""
     return resolve_definitions(backend, uri, position)
+
+
+def _references(server: LanguageServer, uri: str, line: int, character: int):
+    """A ``textDocument/references`` request, with a client context attached."""
+    return server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "textDocument/references",
+            "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": line, "character": character},
+                "context": {"includeDeclaration": True},
+            },
+        }
+    )
+
+
+def _reference_list(
+    backend: Any, uri: str, position: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """The plural resolver called directly, so a test can count past the cap."""
+    return resolve_references(backend, uri, position)
 
 
 # -- the cursor's identifier --------------------------------------------------
@@ -451,3 +478,136 @@ def test_resolve_definitions_ignores_non_file_uris() -> None:
 
     assert _definitions(backend, uri, {"line": 0, "character": 2}) == []
     assert backend.searches == []
+
+
+# -- references: the same lookup, plural -------------------------------------
+
+
+def test_references_across_files_are_all_returned(tmp_path) -> None:
+    cursor = tmp_path / "use.py"
+    cursor.write_text("alpha()\n", encoding="utf-8")
+    first = tmp_path / "a.py"
+    first.write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    second = tmp_path / "b.py"
+    second.write_text("from a import alpha\n", encoding="utf-8")
+    noise = tmp_path / "c.py"
+    noise.write_text("alphabet = 'abc'\n", encoding="utf-8")
+
+    backend = FakeBackend(
+        results=_results(
+            [
+                _hit(
+                    first,
+                    "def alpha():\n    return 1",
+                    {"start_line": 0, "end_line": 1, "file_path": str(first)},
+                ),
+                _hit(
+                    second,
+                    "from a import alpha",
+                    {"start_line": 0, "end_line": 0, "file_path": str(second)},
+                ),
+                # A semantic match, not a reference: "alphabet" is a different
+                # token and gets no location.
+                _hit(
+                    noise,
+                    "alphabet = 'abc'",
+                    {"start_line": 0, "end_line": 0, "file_path": str(noise)},
+                ),
+            ]
+        )
+    )
+    answer, _ = _references(_server(backend), f"file://{cursor}", 0, 2)
+
+    assert answer is not None
+    assert [location["uri"] for location in answer["result"]] == [
+        first.as_uri(),
+        second.as_uri(),
+    ]
+    # Still one keyed, bounded query — its own (wider) bounds, same collection.
+    assert backend.searches == [
+        {
+            "query": "alpha",
+            "collection": "probe",
+            "max_docs": REFERENCES_MAX_DOCS,
+            "max_chunks": REFERENCES_MAX_CHUNKS,
+        }
+    ]
+
+
+def test_references_in_a_spanless_source_are_file_level(tmp_path) -> None:
+    cursor = tmp_path / "use.py"
+    cursor.write_text("see Retrieval\n", encoding="utf-8")
+    guide = tmp_path / "guide.md"
+    guide.write_text("# Retrieval\n\nBody text.\n", encoding="utf-8")
+    backend = FakeBackend(
+        results=_results(
+            [
+                _hit(
+                    guide,
+                    f"{guide}\n# Retrieval\n\nBody text.",
+                    {"headings": ["Retrieval"], "file_path": str(guide)},
+                )
+            ]
+        )
+    )
+    answer, _ = _references(_server(backend), f"file://{cursor}", 0, 6)
+
+    assert answer is not None
+    assert answer["result"] == [
+        {
+            "uri": guide.as_uri(),
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 3, "character": 0},
+            },
+        }
+    ]
+
+
+def test_references_cap_is_enforced(tmp_path) -> None:
+    cursor = tmp_path / "use.py"
+    cursor.write_text("alpha = 1\n", encoding="utf-8")
+    hits = []
+    for index in range(REFERENCES_LIMIT + 2):
+        target = tmp_path / f"r{index}.py"
+        target.write_text("alpha = 1\n", encoding="utf-8")
+        hits.append(
+            _hit(
+                target,
+                "alpha = 1",
+                {"start_line": 0, "end_line": 0, "file_path": str(target)},
+            )
+        )
+
+    # The default cap is the answer's size: the extra hits are never returned,
+    # so the panel cannot grow without bound on a file with many uses.
+    locations = _reference_list(
+        FakeBackend(results=_results(hits)),
+        f"file://{cursor}",
+        {"line": 0, "character": 0},
+    )
+
+    assert len(locations) == REFERENCES_LIMIT
+
+
+def test_no_references_is_an_empty_array_not_null(tmp_path) -> None:
+    cursor = tmp_path / "a.py"
+    cursor.write_text("alpha = 1\n", encoding="utf-8")
+    answer, _ = _references(_server(FakeBackend()), f"file://{cursor}", 0, 2)
+
+    # LSP: null is a protocol violation for references, [] is "none found".
+    assert answer is not None
+    assert answer["result"] == []
+
+
+def test_references_rejects_bad_params() -> None:
+    answer, _ = _server(FakeBackend()).handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "textDocument/references",
+            "params": {"textDocument": {"uri": "file:///a.py"}},
+        }
+    )
+    assert answer is not None
+    assert answer["error"]["code"] == protocol.INVALID_PARAMS
