@@ -1,0 +1,148 @@
+[
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "capabilities": {
+          "textDocument": {
+            "publishDiagnostics": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "textDocumentSync": {
+            "openClose": true,
+            "change": 0,
+            "save": {
+              "includeText": false
+            }
+          },
+          "definitionProvider": true,
+          "hoverProvider": true,
+          "referencesProvider": true,
+          "workspaceSymbolProvider": true
+        },
+        "serverInfo": {
+          "name": "indexed",
+          "version": "<version>"
+        }
+      }
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "initialized",
+      "params": {}
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://<corpus>/sample.py",
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didSave",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://<corpus>/sample.py",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 10,
+                "character": 0
+              }
+            },
+            "severity": 3,
+            "source": "indexed",
+            "code": "index-stale",
+            "message": "The `lsp-probe` collection indexed a different version of this file. Run `indexed index update lsp-probe` to refresh it."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didClose",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://<corpus>/sample.py",
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "shutdown"
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": null
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "exit"
+    }
+  }
+]

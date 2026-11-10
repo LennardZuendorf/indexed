@@ -340,3 +340,315 @@ def test_lsp_reports_an_empty_index_without_inventing_hits(local_workspace) -> N
     finally:
         if session.process.poll() is None:
             session.process.kill()
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 evidence: one checked-in stdio transcript and golden payload per new
+# method. The files under ``lsp_evidence/`` are the acceptance artifacts for
+# ``textDocument/definition``, ``textDocument/references`` and
+# ``publishDiagnostics``; the tests below regenerate the exchange from a real
+# subprocess and fail if it no longer matches what is committed. See
+# ``lsp_evidence/README.md`` for how they were captured and how to refresh them.
+# ---------------------------------------------------------------------------
+
+EVIDENCE_DIR = Path(__file__).parent / "lsp_evidence"
+GOLDEN_DIR = EVIDENCE_DIR / "golden"
+TRANSCRIPT_DIR = EVIDENCE_DIR / "transcripts"
+
+
+def _normalize(value: Any, corpus: Path) -> Any:
+    """Make a recorded session comparable across machines.
+
+    Two things differ on every run and carry no evidence: the fixture's temp
+    path (in every URI) and the package version (in ``serverInfo``). Everything
+    else — ids, methods, ranges, messages — must match the committed file
+    byte for byte, which is the point of committing it.
+    """
+    corpus_uri = corpus.as_uri()
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, str):
+            return node.replace(corpus_uri, "file://<corpus>")
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if isinstance(node, dict):
+            return {key: walk(item) for key, item in node.items()}
+        return node
+
+    normalized = walk(value)
+    for frame in normalized:
+        answer = frame.get("server", {})
+        result = answer.get("result")
+        if isinstance(result, dict) and "serverInfo" in result:
+            result["serverInfo"]["version"] = "<version>"
+    return normalized
+
+
+def _assert_committed(path: Path, actual: Any) -> None:
+    text = json.dumps(actual, indent=2) + "\n"
+    if os.environ.get("INDEXED_LSP_EVIDENCE_UPDATE") == "1":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return
+    assert path.is_file(), f"missing committed evidence: {path}"
+    expected = json.loads(path.read_text(encoding="utf-8"))
+    assert actual == expected, (
+        f"{path.name} no longer matches the server. Re-run with "
+        "INDEXED_LSP_EVIDENCE_UPDATE=1 and review the diff as a behaviour change."
+    )
+
+
+def _close_session(session: LspSession, request_id: int) -> None:
+    session.request(request_id, "shutdown")
+    session.notify("exit")
+    assert session.close() == 0
+
+
+#: Tier 1 capability → the evidence file stem that proves it. Adding a
+#: capability to `initialize` without adding it here (and adding the files)
+#: fails the guard below.
+TIER1_EVIDENCE = {
+    "definitionProvider": "definition",
+    "referencesProvider": "references",
+    "textDocumentSync": "diagnostics",
+}
+
+#: Advertised since Tier 0, proven over stdio by
+#: `test_lsp_stdio_session_covers_tier_zero` (hover markdown, symbol locations).
+TIER0_COVERED = {"hoverProvider", "workspaceSymbolProvider"}
+
+
+def test_every_advertised_capability_has_evidence() -> None:
+    """No capability ships without a committed transcript behind it."""
+    frames = json.loads((TRANSCRIPT_DIR / "diagnostics.json").read_text("utf-8"))
+    answers = [
+        frame["server"] for frame in frames if frame.get("server", {}).get("id") == 1
+    ]
+    assert len(answers) == 1, "the transcript must record exactly one initialize"
+    advertised = answers[0]["result"]["capabilities"]
+
+    assert set(advertised) == set(TIER1_EVIDENCE) | TIER0_COVERED, (
+        "the advertised capability set moved without moving this guard: "
+        f"{sorted(set(advertised))}"
+    )
+    for capability, stem in TIER1_EVIDENCE.items():
+        assert (TRANSCRIPT_DIR / f"{stem}.json").is_file(), (
+            f"{capability} is advertised but has no committed transcript"
+        )
+        assert (GOLDEN_DIR / f"{stem}.json").is_file(), (
+            f"{capability} is advertised but has no golden payload"
+        )
+
+
+def test_lsp_definition_transcript_and_golden(
+    local_workspace, lsp_corpus: Path
+) -> None:
+    """``textDocument/definition`` over stdio: an exact span, then a file-level range."""
+    _create_collection(lsp_corpus)
+    sample, notes = lsp_corpus / "sample.py", lsp_corpus / "notes.md"
+    span_params = {
+        "textDocument": {"uri": sample.as_uri()},
+        "position": {"line": 0, "character": 5},  # inside "alpha"
+    }
+    file_level_params = {
+        "textDocument": {"uri": notes.as_uri()},
+        "position": {"line": 2, "character": 3},  # inside the "Scoring" heading
+    }
+    session = LspSession(local_workspace.root)
+    try:
+        session.request(1, "initialize", {"capabilities": CLIENT_CAPABILITIES})
+        session.notify("initialized", {})
+        span = session.request(2, "textDocument/definition", span_params)["result"]
+        file_level = session.request(3, "textDocument/definition", file_level_params)[
+            "result"
+        ]
+        _close_session(session, 4)
+    finally:
+        if session.process.poll() is None:
+            session.process.kill()
+
+    # Chunk-level, not a symbol table: the chunk carrying "def alpha" comes
+    # first (its own indexed span, lines 0-1), and the chunk that merely calls
+    # alpha (lines 4-5) is also a chunk that mentions the identifier. That
+    # second hit is the documented limitation, frozen here so it cannot drift
+    # silently.
+    assert span == [
+        {
+            "uri": sample.as_uri(),
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 1, "character": 12},
+            },
+        },
+        {
+            "uri": sample.as_uri(),
+            "range": {
+                "start": {"line": 4, "character": 0},
+                "end": {"line": 5, "character": 18},
+            },
+        },
+    ]
+    # Notes.md is a span-less source (heading chunk): the honest answer is the
+    # document's measured extent, never a fabricated 0,0.
+    assert file_level == [
+        {
+            "uri": notes.as_uri(),
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 5, "character": 0},
+            },
+        }
+    ]
+
+    _assert_committed(
+        TRANSCRIPT_DIR / "definition.json", _normalize(session.transcript, lsp_corpus)
+    )
+    _assert_committed(
+        GOLDEN_DIR / "definition.json",
+        _normalize(
+            [
+                {
+                    "method": "textDocument/definition",
+                    "params": span_params,
+                    "result": span,
+                },
+                {
+                    "method": "textDocument/definition",
+                    "params": file_level_params,
+                    "result": file_level,
+                },
+            ],
+            lsp_corpus,
+        ),
+    )
+
+
+def test_lsp_references_transcript_and_golden(
+    local_workspace, lsp_corpus: Path
+) -> None:
+    """``textDocument/references`` over stdio: plural, and ``[]`` never ``null``."""
+    _create_collection(lsp_corpus)
+    sample = lsp_corpus / "sample.py"
+    params = {
+        "textDocument": {"uri": sample.as_uri()},
+        "position": {"line": 0, "character": 5},  # inside "alpha"
+        "context": {"includeDeclaration": True},
+    }
+    session = LspSession(local_workspace.root)
+    try:
+        session.request(1, "initialize", {"capabilities": CLIENT_CAPABILITIES})
+        session.notify("initialized", {})
+        references = session.request(2, "textDocument/references", params)["result"]
+        empty = session.request(
+            3,
+            "textDocument/references",
+            {
+                "textDocument": {"uri": sample.as_uri()},
+                "position": {"line": 2, "character": 0},  # blank line, no token
+                "context": {"includeDeclaration": True},
+            },
+        )["result"]
+        _close_session(session, 4)
+    finally:
+        if session.process.poll() is None:
+            session.process.kill()
+
+    # Every chunk of the file that mentions "alpha" as a whole token: the
+    # declaration chunk first, then the chunk that calls it. Chunks carry no
+    # declaration bit, so includeDeclaration cannot remove the declaration — it
+    # is returned as one of the references.
+    assert [location["range"] for location in references] == [
+        {"start": {"line": 0, "character": 0}, "end": {"line": 1, "character": 12}},
+        {"start": {"line": 4, "character": 0}, "end": {"line": 5, "character": 18}},
+    ]
+    assert all(location["uri"] == sample.as_uri() for location in references)
+    # LSP treats null here as a protocol violation: no references is [].
+    assert empty == []
+
+    _assert_committed(
+        TRANSCRIPT_DIR / "references.json", _normalize(session.transcript, lsp_corpus)
+    )
+    _assert_committed(
+        GOLDEN_DIR / "references.json",
+        _normalize(
+            [
+                {
+                    "method": "textDocument/references",
+                    "params": params,
+                    "result": references,
+                }
+            ],
+            lsp_corpus,
+        ),
+    )
+
+
+def test_lsp_diagnostics_transcript_and_golden(
+    local_workspace, lsp_corpus: Path
+) -> None:
+    """``publishDiagnostics`` over stdio: healthy ``[]``, one provable fact, clear."""
+    _create_collection(lsp_corpus)
+    sample = lsp_corpus / "sample.py"
+    uri = sample.as_uri()
+    session = LspSession(local_workspace.root)
+    steps: list[Dict[str, Any]] = []
+    try:
+        session.request(1, "initialize", {"capabilities": CLIENT_CAPABILITIES})
+        session.notify("initialized", {})
+
+        opened = {"textDocument": {"uri": uri}}
+        session.notify("textDocument/didOpen", opened)
+        steps.append(
+            {
+                "trigger": {"method": "textDocument/didOpen", "params": opened},
+                "published": session.expect_notification(
+                    "textDocument/publishDiagnostics"
+                )["params"],
+            }
+        )
+
+        # Edited AFTER indexing, with no reindex — see lsp_evidence/README.md.
+        sample.write_text(
+            SAMPLE_PY + "\n\ndef gamma():\n    return 2\n", encoding="utf-8"
+        )
+        saved = {"textDocument": {"uri": uri}}
+        session.notify("textDocument/didSave", saved)
+        steps.append(
+            {
+                "trigger": {"method": "textDocument/didSave", "params": saved},
+                "published": session.expect_notification(
+                    "textDocument/publishDiagnostics"
+                )["params"],
+            }
+        )
+
+        session.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
+        steps.append(
+            {
+                "trigger": {
+                    "method": "textDocument/didClose",
+                    "params": {"textDocument": {"uri": uri}},
+                },
+                "published": session.expect_notification(
+                    "textDocument/publishDiagnostics"
+                )["params"],
+            }
+        )
+        _close_session(session, 2)
+    finally:
+        if session.process.poll() is None:
+            session.process.kill()
+
+    healthy, stale, cleared = (step["published"] for step in steps)
+    assert healthy == {"uri": uri, "diagnostics": []}
+    assert cleared == {"uri": uri, "diagnostics": []}
+    assert len(stale["diagnostics"]) == 1
+    assert stale["diagnostics"][0]["code"] == "index-stale"
+    assert stale["diagnostics"][0]["severity"] == 3  # Information, never Error
+
+    # The recorded session is the whole exchange, including the initialize
+    # answer, so a reader can see which capabilities the client declared.
+    _assert_committed(
+        TRANSCRIPT_DIR / "diagnostics.json", _normalize(session.transcript, lsp_corpus)
+    )
+    _assert_committed(GOLDEN_DIR / "diagnostics.json", _normalize(steps, lsp_corpus))
