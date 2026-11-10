@@ -1577,3 +1577,27 @@ with `git add`/`git status`, since that's what CI actually runs.
   renderer.** `end-of-file-fixer` appends a newline on push, so a byte-exact
   golden comparison against rendered text fails *only* in CI; compare with
   `read_text().rstrip("\n")` and let the hook own the final newline.
+
+## Definition must not inherit a symbol's placeholder (2026-11-10)
+
+- **A span-less hit has two different honest answers.** In a symbol list, the
+  `0,0` range `lsp_range` returns for a chunk with no line metadata is harmless
+  — the row still names the document. In a *definition* it is a fabricated
+  position pointing at text the index never read, so the resolver asks
+  `build_locator` what the hit knows and maps anything below `line_span` to a
+  range measured from the document itself. No local document text (a remote
+  Jira/Confluence hit) means **no location**, not a placeholder.
+- **Reuse the decision, not just the helper.** Deriving "does this hit have a
+  line span?" from `start_line`/`end_line` inside the new module would have been
+  a second copy of the provenance rule; asking `build_locator` keeps one place
+  that decides precision, which is what the Tier 0 review already forced.
+- **A cursor→identifier lookup needs two temperaments.** Hover must say
+  *something* about the line under the cursor (nearest preceding word, then the
+  line, then the file stem); definition must name the token under the cursor or
+  answer `null`. Share the tokenizer, not the fallback chain, or "go to
+  definition" starts answering questions nobody asked.
+- **The capability list is asserted verbatim in an out-of-process test.** Adding
+  a method means updating `tests/system/test_lsp_out_of_process.py`'s
+  `initialize` assertion in the same change — otherwise a correct feature reds
+  the system suite, and the temptation is to loosen the assertion that makes
+  capability honesty testable.

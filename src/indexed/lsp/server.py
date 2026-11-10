@@ -1,17 +1,16 @@
 """The LSP stdio server.
 
-A request/response loop over ``Content-Length``-framed JSON-RPC. Tier 0
+A request/response loop over ``Content-Length``-framed JSON-RPC. The server
 advertises only what is implemented and tested — ``textDocumentSync: 0`` (no
-document state), ``workspace/symbol`` and ``textDocument/hover``; everything
-else is answered with the protocol's ``MethodNotFound`` instead of a
-plausible-looking empty result.
+document state), ``workspace/symbol``, ``textDocument/hover`` and
+``textDocument/definition``; everything else is answered with the protocol's
+``MethodNotFound`` instead of a plausible-looking empty result.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
-import re
 import sys
 from typing import Any, BinaryIO, Dict, Optional, Tuple
 
@@ -19,6 +18,7 @@ from loguru import logger
 
 from . import protocol
 from .backend import KnowledgeBackend
+from .resolver import IDENTIFIER, resolve_definitions, source_line, word_at
 from .results import build_hover, build_symbols, uri_to_path
 
 SERVER_NAME = "indexed"
@@ -45,8 +45,6 @@ IGNORED_METHODS = frozenset(
     }
 )
 
-_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-
 #: Symbol palette answers are capped so one query cannot flood a client.
 SYMBOL_LIMIT = 50
 
@@ -60,34 +58,11 @@ def _server_version() -> str:
         return "unknown"
 
 
-def _source_line(path: str, line: int) -> Optional[str]:
-    """The ``line``th line of ``path`` (0-based), read only as far as needed."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
-            for number, text in enumerate(handle):
-                if number == line:
-                    return text.rstrip("\n")
-    except OSError:
-        return None
-    return None
-
-
-def _word_at(text: str, character: int) -> Optional[str]:
-    """The identifier the cursor sits on (or just after), if any."""
-    best: Optional[str] = None
-    for match in _IDENTIFIER.finditer(text):
-        if match.start() <= character <= match.end():
-            return match.group(0)
-        if match.end() <= character:
-            best = match.group(0)
-    return best
-
-
 def hover_query(uri: str, position: Dict[str, Any]) -> Optional[str]:
     """What to search for when hovering at a position.
 
-    No document text is sent to a Tier 0 server (no ``textDocumentSync``), so
-    the context comes from the file on disk — the one the user is looking at.
+    No document text is sent to a server with ``textDocumentSync: 0``, so the
+    context comes from the file on disk — the one the user is looking at.
     """
     path = uri_to_path(uri)
     if path is None:
@@ -102,11 +77,11 @@ def hover_query(uri: str, position: Dict[str, Any]) -> Optional[str]:
     if not isinstance(character, int) or isinstance(character, bool):
         character = 0
 
-    text = _source_line(path, line)
+    text = source_line(path, line)
     if text is not None:
-        word = _word_at(text, character)
+        word = word_at(text, character)
         if word is None:
-            match = _IDENTIFIER.search(text)
+            match = IDENTIFIER.search(text)
             word = match.group(0) if match else None
         if word:
             return word
@@ -114,6 +89,20 @@ def hover_query(uri: str, position: Dict[str, Any]) -> Optional[str]:
         if stripped:
             return stripped[:120]
     return os.path.splitext(os.path.basename(path))[0] or None
+
+
+def _text_document_position(params: Any, method: str) -> Tuple[str, Dict[str, Any]]:
+    """``textDocument.uri`` and ``position`` from request params, or -32602."""
+    if not isinstance(params, dict):
+        raise _InvalidParams(f"{method} requires an object")
+    document = params.get("textDocument")
+    uri = document.get("uri") if isinstance(document, dict) else None
+    if not isinstance(uri, str) or not uri:
+        raise _InvalidParams(f"{method} requires textDocument.uri")
+    position = params.get("position")
+    if not isinstance(position, dict):
+        raise _InvalidParams(f"{method} requires a position")
+    return uri, position
 
 
 class LanguageServer:
@@ -232,6 +221,7 @@ class LanguageServer:
         handler = {
             "workspace/symbol": self._workspace_symbol,
             "textDocument/hover": self._hover,
+            "textDocument/definition": self._definition,
         }.get(method)
         if handler is None:
             if not has_id:
@@ -269,6 +259,7 @@ class LanguageServer:
         return {
             "capabilities": {
                 "textDocumentSync": 0,
+                "definitionProvider": True,
                 "hoverProvider": True,
                 "workspaceSymbolProvider": True,
             },
@@ -299,15 +290,7 @@ class LanguageServer:
         )
 
     def _hover(self, params: Any) -> Any:
-        if not isinstance(params, dict):
-            raise _InvalidParams("textDocument/hover requires an object")
-        document = params.get("textDocument")
-        uri = document.get("uri") if isinstance(document, dict) else None
-        if not isinstance(uri, str) or not uri:
-            raise _InvalidParams("textDocument/hover requires textDocument.uri")
-        position = params.get("position")
-        if not isinstance(position, dict):
-            raise _InvalidParams("textDocument/hover requires a position")
+        uri, position = _text_document_position(params, "textDocument/hover")
 
         query = hover_query(uri, position)
         if not query:
@@ -324,6 +307,16 @@ class LanguageServer:
         collection = getattr(status, "name", "")
         results = self.backend.search(query, collection, max_docs=3, max_chunks=9)
         return build_hover(results, self._status_map(collection), query)
+
+    def _definition(self, params: Any) -> Any:
+        """``Location[]`` for the identifier under the cursor, else ``null``.
+
+        The resolver owns collection scoping and the file-level degradation, so
+        this handler stays a parameter check. ``null`` — not ``[]`` — is LSP's
+        "nothing defines this", and it is what an unknown identifier returns.
+        """
+        uri, position = _text_document_position(params, "textDocument/definition")
+        return resolve_definitions(self.backend, uri, position) or None
 
 
 def serve(backend: KnowledgeBackend) -> int:

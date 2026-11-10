@@ -23,7 +23,7 @@ Local-first semantic search for AI agents. Give Claude Code, Cursor, Codex, and 
 - **Semantic search** — understands meaning, not just keywords, using a LlamaIndex-powered engine with optional cross-encoder reranking
 - **Multiple sources** — local files (25+ formats), Jira, Confluence, Outline Wiki, and GitHub (issues, PRs, Projects v2)
 - **MCP integration** — works with Claude Code, Cursor, Windsurf, Cline, and other MCP-compatible agents
-- **LSP integration** — `indexed lsp` serves the same index to any editor: search it from the symbol palette, hover a file to see what the index knows (VS Code, Neovim, Zed, Helix)
+- **LSP integration** — `indexed lsp` serves the same index to any editor: search it from the symbol palette, hover a file to see what the index knows, jump to the definition the index has seen (VS Code, Neovim, Zed, Helix)
 - **Incremental updates** — keep your index fresh with git-based change tracking
 
 ## Quick Start

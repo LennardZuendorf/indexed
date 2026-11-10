@@ -51,7 +51,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # seam) plus the `indexed lsp` command — new product surface with its own unit
 # and out-of-process stdio tests, not stealth regrowth; ceiling = measured
 # (32_705) + headroom.
-SRC_LOC_MAX = 32_900
+# Raised from 32_900 by issue #241's LSP Tier 1 `textDocument/definition`:
+# `lsp/resolver.py` is the cursor->identifier->chunk path shared with
+# `references` (one tokenizer, one collection-scoped search, the provenance
+# derived file-level fallback for span-less sources) plus the dispatch entry and
+# its capability — new product surface, not stealth regrowth; ceiling =
+# measured (32_961) + headroom.
+SRC_LOC_MAX = 33_300
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
