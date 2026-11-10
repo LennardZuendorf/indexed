@@ -1408,10 +1408,10 @@ with `git add`/`git status`, since that's what CI actually runs.
 - **The gate is cheap enough to pay on every version; measure before deciding
   otherwise.** Local, Python 3.13.5: `95 passed, 18 skipped` in 79.97 s with the model
   hidden (wall 83.9 s) vs `113 passed` in 109.77 s with it present (wall 111.6 s) —
-  ~30 s of suite time for 18 tests. In CI the four jobs landed at 2m24s–3m18s across the
-  two head runs of this change (42821304362, 42822900060) with every version still
-  gating, against a 10-minute ceiling; one version alone would have saved ~90 s of
-  matrix and re-opened the hole on the other three.
+  ~30 s of suite time for 18 tests. In CI the four jobs landed at 2m20s–3m18s across the
+  four head runs of this change (42821304362, 42822900060, 42823813619, 42829265736) with
+  every version still gating, against a 10-minute ceiling; one version alone would have
+  saved ~90 s of matrix and re-opened the hole on the other three.
 - **Give the model an explicit `ensure_model` step, and do not `actions/cache` its Hub
   directory.** A Hub snapshot can be weightless: `is_model_cached()` requires a weight
   file precisely because an interrupted download leaves configs and tokenizer behind
@@ -1420,9 +1420,10 @@ with `git add`/`git status`, since that's what CI actually runs.
   against 87 MB of weights — kept restoring "successfully" on every later run while
   each job re-downloaded (`Fetching 30 files`); and since the next interrupted download
   would re-poison a bumped key, the step is gone rather than re-keyed. The honest
-  alternative costs one `ensure_model` step per job: 6–11 s across runs 42821304362 and
-  42822900060, 8–10 s in run 42823813619. A stale key costs a step whose name lies.
-  Download once per job in an explicit step, before any test asserts.
+  alternative costs one `ensure_model` step per job: 4–11 s across the four head runs of
+  this change (42821304362, 42822900060, 42823813619, 42829265736). A stale key costs a
+  step whose name lies. Download once per job in an explicit step, before any test
+  asserts.
 - **The collection-time gate and the runtime cache resolve `home` differently.**
   `model_available()` runs at import against the real `Path.home()`, but the session
   fixture patches `Path.home()` for the tests, so `is_model_cached()` inside a test
