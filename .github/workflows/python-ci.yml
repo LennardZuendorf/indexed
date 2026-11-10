@@ -65,6 +65,29 @@ jobs:
     - name: Check size gates
       run: uv run python scripts/check_sizes.py
 
+    # The system suite gates 18 of its tests on `tests/conftest.py::model_available()`
+    # — the lifecycle/parity/out-of-process tests that exercise real embeddings
+    # (the LSP evidence transcripts and golden payloads join them once the tier
+    # branch lands). Without a cached model those tests skip, so CI only *reviews*
+    # the goldens: a server behaviour change that breaks one stays green. Measured
+    # locally at ~30 s of extra suite time (80 s → 110 s), which is why they run
+    # on every version rather than on a single one.
+    - name: Cache HuggingFace embedding model
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
+        key: hf-model-all-MiniLM-L6-v2
+
+    - name: Ensure the embedding model is cached
+      # A cache miss must not become four concurrent mid-suite downloads (four
+      # matrix jobs share the key). Download once here, before any test asserts.
+      run: |
+        uv run python -c "
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        ensure_model('all-MiniLM-L6-v2')
+        print('Model ready')
+        "
+
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short
