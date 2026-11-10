@@ -1,0 +1,155 @@
+[
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "capabilities": {
+          "textDocument": {
+            "publishDiagnostics": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "textDocumentSync": {
+            "openClose": true,
+            "change": 0,
+            "save": {
+              "includeText": false
+            }
+          },
+          "definitionProvider": true,
+          "hoverProvider": true,
+          "referencesProvider": true,
+          "workspaceSymbolProvider": true
+        },
+        "serverInfo": {
+          "name": "indexed",
+          "version": "<version>"
+        }
+      }
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "initialized",
+      "params": {}
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "textDocument/definition",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        },
+        "position": {
+          "line": 0,
+          "character": 5
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": [
+        {
+          "uri": "file://<corpus>/sample.py",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 1,
+              "character": 12
+            }
+          }
+        },
+        {
+          "uri": "file://<corpus>/sample.py",
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 0
+            },
+            "end": {
+              "line": 5,
+              "character": 18
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "textDocument/definition",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/notes.md"
+        },
+        "position": {
+          "line": 2,
+          "character": 3
+        }
+      }
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": [
+        {
+          "uri": "file://<corpus>/notes.md",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 5,
+              "character": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "shutdown"
+    }
+  },
+  {
+    "server": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": null
+    }
+  },
+  {
+    "client": {
+      "jsonrpc": "2.0",
+      "method": "exit"
+    }
+  }
+]

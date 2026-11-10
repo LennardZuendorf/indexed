@@ -1662,3 +1662,25 @@ with `git add`/`git status`, since that's what CI actually runs.
   every chunk. The change tracker's state file is O(1) stdlib JSON, so cache it
   on `(st_mtime_ns, st_size)`: a reindex is visible on the next event with no
   TTL to tune.
+
+## Evidence is a committed artifact, not a test run someone remembers (2026-11-10)
+
+- **A transcript that is written to a temp directory is not evidence.** Tier 0's
+  proof was real but disposable: `lsp-transcript.json` landed in `tmp_path` and
+  vanished with the test. The acceptance artifact has to be a file in the repo
+  that the test *compares against on every run* — then a behaviour change shows
+  up as a reviewable diff and a silent regression shows up as a red test.
+- **Normalize only what varies per machine, and say which.** A golden containing
+  an absolute temp path is untestable, but normalizing too much (dropping URIs,
+  rounding ranges) deletes the evidence. Exactly two rewrites are honest here:
+  the fixture corpus URI → `file://<corpus>`, and `serverInfo.version` →
+  `<version>`. Percent-encoding is *not* normalized away — the fixture path has a
+  space and a non-ASCII character precisely so the transcript proves it.
+- **Prove the assertion bites before trusting it.** Edit one character in a
+  committed golden, watch the test fail on the payload diff, restore it. A golden
+  comparison that has never failed is indistinguishable from no comparison.
+- **Golden payload and transcript are different artifacts.** The transcript is
+  the whole session (initialize answer included, so the client capability
+  precondition is visible); the golden is the payload alone, paired with the
+  request that produced it, so a reader can tell which cursor and which file the
+  answer belongs to without reading test source.

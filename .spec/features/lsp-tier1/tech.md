@@ -190,5 +190,19 @@ What it deliberately does **not** claim:
   future edit cannot quietly widen the query.
 - System: the existing out-of-process stdio session asserts the capability set
   verbatim, so `definitionProvider` and `referencesProvider` are proven
-  advertised by a real `initialize` over a pipe. The Tier 1 verification slice
-  adds the transcript and golden payload for the new methods.
+  advertised by a real `initialize` over a pipe.
+- Evidence (`tests/system/lsp_evidence/`): one committed stdio transcript per
+  new method plus golden payloads, both captured from the real subprocess and
+  both asserted on every run. No capability in this diff is advertised without
+  a line in this table:
+
+  | Advertised capability | Unit | Out-of-process evidence |
+  |-----------------------|------|-------------------------|
+  | `definitionProvider` | `test_resolver.py`, `test_server.py` | `transcripts/definition.json` + `golden/definition.json` (exact span, then the span-less file-level range) |
+  | `referencesProvider` | `test_resolver.py`, `test_server.py` | `transcripts/references.json` + `golden/references.json` (two locations, and `[]` — never `null` — for a cursor with no token) |
+  | `textDocumentSync` `{openClose, change: 0, save}` | `test_server.py`, `test_diagnostics.py` | `transcripts/diagnostics.json` + `golden/diagnostics.json` (healthy `[]`, one `index-stale` after an unindexed edit, clear on close) |
+
+  The transcripts are normalized in exactly two places — the fixture's temp path
+  becomes `file://<corpus>` and `serverInfo.version` becomes `<version>` — so
+  everything else in them is a byte-exact contract. `lsp_evidence/README.md`
+  records the corpus, the capture head and the one-line refresh command.

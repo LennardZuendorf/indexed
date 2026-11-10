@@ -1,0 +1,61 @@
+[
+  {
+    "trigger": {
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    },
+    "published": {
+      "uri": "file://<corpus>/sample.py",
+      "diagnostics": []
+    }
+  },
+  {
+    "trigger": {
+      "method": "textDocument/didSave",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    },
+    "published": {
+      "uri": "file://<corpus>/sample.py",
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 10,
+              "character": 0
+            }
+          },
+          "severity": 3,
+          "source": "indexed",
+          "code": "index-stale",
+          "message": "The `lsp-probe` collection indexed a different version of this file. Run `indexed index update lsp-probe` to refresh it."
+        }
+      ]
+    }
+  },
+  {
+    "trigger": {
+      "method": "textDocument/didClose",
+      "params": {
+        "textDocument": {
+          "uri": "file://<corpus>/sample.py"
+        }
+      }
+    },
+    "published": {
+      "uri": "file://<corpus>/sample.py",
+      "diagnostics": []
+    }
+  }
+]
