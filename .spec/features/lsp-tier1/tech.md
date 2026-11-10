@@ -129,7 +129,7 @@ uri ──uri_to_path──▶ path ──isfile?──▶ document_range(path) 
               │                                │
   not-in-any-collection      backend.indexed_digest(collection, path)
                                                │
-                             recorded == file_fingerprint(path)? 
+                             recorded == file_fingerprint(path)?
                                     │                 │
                                  yes → []        no → index-stale
 ```

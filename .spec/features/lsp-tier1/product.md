@@ -118,4 +118,3 @@ easier, because "go to definition" is a feature people expect to always work.
 | 14 | No `state.json` / no entry for the path → no diagnostic (unknown is not "healthy") | `tests/unit/indexed/lsp/test_diagnostics.py`, `tests/unit/indexed/lsp/test_backend.py` |
 | 15 | Out of process over a real pipe: `didOpen` on a healthy file → `[]`, editing after indexing → exactly one stale diagnostic with a measured range, `didClose` → `[]` | `tests/system/test_lsp_out_of_process.py` |
 | 16 | Diagnostics are pushed only to a client that declared `publishDiagnostics`, and never at all before `initialize`; a failing check cannot kill the session | `tests/unit/indexed/lsp/test_server.py` |
-
