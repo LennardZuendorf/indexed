@@ -174,12 +174,15 @@ size, wheel and twine gates). The suite gates its model-dependent tests on
 `tests/conftest.py::model_available()`, so the job runs
 `ensure_model('all-MiniLM-L6-v2')` before pytest: with the model present ~18 extra
 tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
-instead of skipping. Measured cost is ~30 s of suite time plus a 6–11 s
-`ensure_model` step per job, which is why the gate runs on every version rather
-than one. The Hub model directory is deliberately *not* an `actions/cache` entry:
-docling's chunker tokenizer writes the same directory without weights and a saved
-entry can never be replaced under its key, so the cache silently degraded into a
-per-job download (lessons.md § Model-gated system tests in CI).
+instead of skipping. Measured cost is ~30 s of suite time (local: 113 passed in 109.8 s
+with the model vs `95 passed, 18 skipped` in 80.0 s without) plus an `ensure_model`
+step per job — 8–10 s in run 42823813619, 6–11 s across runs 42821304362 and
+42822900060 — which is why the gate runs on every version rather than one. The Hub
+model directory is deliberately *not* an `actions/cache` entry: a snapshot saved from
+an interrupted download holds configs and tokenizer without weights (the state
+`is_model_cached()` rejects), and an entry can never be replaced under its key, so the
+cache silently degraded into a per-job download (lessons.md § Model-gated system tests
+in CI).
 
 ### CI Benchmarking
 

@@ -56,10 +56,10 @@ jobs:
       with:
         python-version: "3.13"
 
-    # No actions/cache for the embedding model: the Hub directory is shared with
-    # docling's chunker tokenizer, so a saved entry can hold configs without
-    # weights and then cannot be replaced under its key. The harness downloads
-    # the weights it needs with retry (see python-ci.yml for the measurement).
+    # No actions/cache for the embedding model: a saved entry cannot be replaced
+    # under its key, and the shared one had been saved from an interrupted
+    # download — configs and tokenizer without weights (see python-ci.yml). The
+    # harness downloads the weights it needs with retry.
 
     - name: Install dependencies
       run: |

@@ -51,10 +51,11 @@ jobs:
       contents: read
       pull-requests: write  # required to post the report comment
     steps:
-    # No actions/cache for the embedding model: docling's chunker tokenizer also
-    # writes that Hub directory (configs + tokenizer, no weights) and a saved
-    # entry cannot be replaced under its key, so the restore was empty while every
-    # run downloaded anyway (see python-ci.yml for the measurement). The action's
+    # No actions/cache for the embedding model: the Hub entry on refs/heads/main
+    # held configs and tokenizer with the weight blob missing (an interrupted
+    # download — the state `is_model_cached()` rejects), and a saved entry cannot
+    # be replaced under its key, so every run restored nothing loadable and
+    # downloaded anyway (see python-ci.yml for the measurement). The action's
     # `pre-benchmark-command` fetches the weights before it measures.
 
     # This action does its own checkout at a hardcoded fetch-depth: 2 with no
