@@ -176,9 +176,9 @@ size, wheel and twine gates). The suite gates its model-dependent tests on
 tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
 instead of skipping. Measured cost is ~30 s of suite time (local: 113 passed in 109.8 s
 with the model vs `95 passed, 18 skipped` in 80.0 s without) plus an `ensure_model`
-step per job — 4–11 s across the head runs of this change (e.g. 42821304362,
-42822900060, 42823813619, 42829265736, 42830239136) — which is why the gate runs on
-every version rather than one. The Hub model directory is deliberately *not* an
+step per job — the order of ten seconds, a ~90 MB download on a cold cache (e.g. runs
+42823813619, 42831876685, 42833818596) — which is why the gate runs on every version
+rather than one. The Hub model directory is deliberately *not* an
 `actions/cache` entry: a snapshot saved from an interrupted download holds configs and
 tokenizer without weights (the state `is_model_cached()` rejects), and an entry can
 never be replaced under its key, so the cache silently degraded into a per-job download
