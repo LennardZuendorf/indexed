@@ -1397,23 +1397,29 @@ with `git add`/`git status`, since that's what CI actually runs.
 
 ## Model-gated system tests in CI (2026-11-10)
 
-- **A green suite with skips is not coverage; read the skip reason.** `tests/system`
-  reported `95 passed, 24 skipped` on every version, and every skip was
+- **A green suite with skips is not coverage; read the skip reason.** `tests/system` on
+  CI reported `95 passed, 24 skipped` per version — run 42809825236, the head of PR
+  #303, which collects 119 tests including its 6 LSP-evidence ones. Every skip was
   `tests/conftest.py::model_available()` with no `all-MiniLM-L6-v2` in the job: the
   lifecycle, parity and out-of-process tests — the ones that assert the committed
   goldens — were review-only in CI, so a server change that broke one stayed green.
+  Name the tree when quoting a skip count: the same gate covers 18 of the 113 tests a
+  `main`-based branch collects, so "24 → 0" is right only for #303's tree.
 - **The gate is cheap enough to pay on every version; measure before deciding
-  otherwise.** Local, warm cache: `95 passed, 18 skipped` in 80 s without the model
-  vs `113 passed` in 110 s with it (~30 s for 18 tests). In CI the same change moved
-  the pytest step from 60–88 s to 82–124 s per version and each job from ~1m45s–2m04s
-  to ~2m11s–2m43s — far under the 10-minute ceiling. Gating on one version would have
-  saved ~90 s of matrix time and re-opened the hole on the other three.
-- **A cached model needs an explicit `ensure_model` step, not just `actions/cache`.**
-  On a miss the four matrix jobs would each download mid-suite, racing to fill the
-  same key. Cache first, then `ensure_model('all-MiniLM-L6-v2')` before the suite: a
-  miss becomes one download and the tests never depend on network timing. The key
-  `hf-model-all-MiniLM-L6-v2` is shared with the benchmark and eval workflows, so a
-  warm repo usually restores in seconds.
+  otherwise.** Local, Python 3.13.5: `95 passed, 18 skipped` in 79.97 s with the model
+  hidden (wall 83.9 s) vs `113 passed` in 109.77 s with it present (wall 111.6 s) —
+  ~30 s of suite time for 18 tests. In CI the jobs landed at 2m35s–3m00s with all four
+  versions still gating, against a 10-minute ceiling; one version alone would have
+  saved ~90 s of matrix and re-opened the hole on the other three.
+- **Give the model an explicit `ensure_model` step, and do not `actions/cache` its Hub
+  directory.** Two writers share that directory: `ensure_model` (weights) and docling's
+  `HybridChunker` tokenizer (configs + tokenizer of the same repo, no weights). An
+  actions/cache entry is immutable once saved, so one weightless save — 354,894 B on
+  `refs/heads/main`, 2026-11-08, against 87 MB of weights — kept restoring
+  "successfully" on every later run while each job re-downloaded (`Fetching 30 files`).
+  The honest alternative costs 4–9 s per job (measured on the ensure step of run
+  42817693513, whose restore was already empty); a stale key costs a step whose name
+  lies. Download once per job in an explicit step, before any test asserts.
 - **The collection-time gate and the runtime cache resolve `home` differently.**
   `model_available()` runs at import against the real `Path.home()`, but the session
   fixture patches `Path.home()` for the tests, so `is_model_cached()` inside a test

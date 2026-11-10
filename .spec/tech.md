@@ -171,13 +171,15 @@ uv run pytest -q --cov=src/indexed --cov-report=html
 
 `python-ci.yml` runs `tests/system/` on Python 3.11–3.14 (plus the import-graph,
 size, wheel and twine gates). The suite gates its model-dependent tests on
-`tests/conftest.py::model_available()`, so the job caches
-`all-MiniLM-L6-v2` under the shared key `hf-model-all-MiniLM-L6-v2` and runs
-`ensure_model(...)` before pytest: with the model present ~18 extra tests assert
-the real goldens (lifecycle, MCP parity, out-of-process transcripts) instead of
-skipping. Measured cost is ~30 s of suite time per version, which is why the
-gate runs on every version rather than one. A cache miss costs one download
-before the suite, never four concurrent mid-suite downloads.
+`tests/conftest.py::model_available()`, so the job runs
+`ensure_model('all-MiniLM-L6-v2')` before pytest: with the model present ~18 extra
+tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
+instead of skipping. Measured cost is ~30 s of suite time plus a 4–9 s download per
+job, which is why the gate runs on every version rather than one. The Hub model
+directory is deliberately *not* an `actions/cache` entry: docling's chunker
+tokenizer writes the same directory without weights and a saved entry can never be
+replaced under its key, so the cache silently degraded into a per-job download
+(lessons.md § Model-gated system tests in CI).
 
 ### CI Benchmarking
 

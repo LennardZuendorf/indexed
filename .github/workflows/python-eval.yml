@@ -56,11 +56,10 @@ jobs:
       with:
         python-version: "3.13"
 
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: the Hub directory is shared with
+    # docling's chunker tokenizer, so a saved entry can hold configs without
+    # weights and then cannot be replaced under its key. The harness downloads
+    # the weights it needs with retry (see python-ci.yml for the measurement).
 
     - name: Install dependencies
       run: |

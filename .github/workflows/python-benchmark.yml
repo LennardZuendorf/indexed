@@ -51,11 +51,11 @@ jobs:
       contents: read
       pull-requests: write  # required to post the report comment
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: docling's chunker tokenizer also
+    # writes that Hub directory (configs + tokenizer, no weights) and a saved
+    # entry cannot be replaced under its key, so the restore was empty while every
+    # run downloaded anyway (see python-ci.yml for the measurement). The action's
+    # `pre-benchmark-command` fetches the weights before it measures.
 
     # This action does its own checkout at a hardcoded fetch-depth: 2 with no
     # tags and no input to override it, so `uv sync` below installs the package
@@ -203,11 +203,8 @@ jobs:
       contents: write       # push the refresh branch
       pull-requests: write  # open the refresh PR
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Same reasoning as the PR job above: the shared model cache key held no
+    # weights, so this job always downloaded the model itself anyway.
 
     # Same pin, same inputs as the PR job. The action's update path is
     # pull_request-only, so this run never pushes anything; its "Save baseline"
