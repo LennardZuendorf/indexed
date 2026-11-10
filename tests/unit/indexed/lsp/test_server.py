@@ -96,6 +96,7 @@ def test_initialize_advertises_only_implemented_capabilities() -> None:
     assert answer["result"] == {
         "capabilities": {
             "textDocumentSync": 0,
+            "definitionProvider": True,
             "hoverProvider": True,
             "workspaceSymbolProvider": True,
         },

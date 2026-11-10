@@ -169,6 +169,7 @@ def test_lsp_stdio_session_covers_tier_zero(local_workspace, lsp_corpus: Path) -
         result = initialized["result"]
         assert result["capabilities"] == {
             "textDocumentSync": 0,
+            "definitionProvider": True,
             "hoverProvider": True,
             "workspaceSymbolProvider": True,
         }
