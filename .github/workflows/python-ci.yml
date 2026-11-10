@@ -79,8 +79,8 @@ jobs:
       # actions/cache entry cannot be replaced once saved under its key. One such
       # weightless save (354,894 B on refs/heads/main, 2026-11-08 — 87 MB of
       # weights missing) restored "successfully" on every later run while each
-      # job silently re-downloaded. The download measured 4–9 s per job (run
-      # 42817693513); a stale key measured confusion.
+      # job silently re-downloaded. The ensure step measured 6–10 s per job (run
+      # 42821304362), ~5 s of it the download; a stale key measured confusion.
       run: |
         uv run python -c "
         from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
