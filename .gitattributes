@@ -4,3 +4,11 @@
 # the upload with "Trailing data" / "Mis-matched data size".
 *.whl  binary
 *.tar.gz  binary
+
+# Append-only ledgers: every branch adds its own dated entries at the end, so
+# a content merge conflicts on adjacent hunks even though both sides are
+# wanted. Union keeps both sides' appended lines instead of red-marking the
+# queue; `scripts/check_sizes.py` still conflicts on purpose (it needs a
+# numeric decision, not a concatenation).
+.spec/lessons.md  merge=union
+.spec/tech.md  merge=union

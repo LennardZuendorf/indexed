@@ -38,7 +38,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # Issue #204 adds the eval harness alongside #126's recovery surface.
 # Combined recovery/eval plus review validation and scoped runtime settings
 # measure 31_278 source lines before final docstrings; retain bounded headroom.
-SRC_LOC_MAX = 31_600
+# Raised from 31_600 twice over: git-aware search (#60/#144/#146) adds the
+# query-time git helper (`utils/git_meta.py`), the `changed_since` node filter
+# and the document-level `git` provenance in `core/v2/retrieval.py` plus their
+# CLI/MCP plumbing; issues #108/#109 add one documented result shape
+# (`protocols/results.py` types it, `mcp/formatting.py` rebuilds it, and
+# `sourceType`/chunk `metadata` are plumbed where they were dropped). Landing
+# #297 on #279's branch keeps BOTH surfaces, so the two branch ceilings
+# (31_800 / 32_000) cannot both hold; the measured union is 32_457 — one
+# measured value with headroom replaces them.
+SRC_LOC_MAX = 32_800
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -127,12 +136,19 @@ SRC_LOC_MAX = 31_600
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
-# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
-# the benchmark wiring so a corpus change is a deliberate, reviewable diff
-# instead of a benchmark gate that reds on spec growth) — gate-integrity
-# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-TEST_LOC_MAX = 48_800
+# Raised from 48_600 twice over: #279's git_meta units, the v2
+# changed-since/provenance cases, the two CLI flags, the skipped-filter
+# assertions on every surface (retrieval gitFilter, MCP collection_errors, CLI
+# renderer warning, v1 facade stamping) and the git-aware system net; #297's
+# search golden/locator tests, benchmark/evaluation gate regressions and main's
+# pinned parsing-corpus guard. Landing #297 on #279's branch keeps BOTH sides'
+# tests, so the two branch ceilings (50_200 / 50_850) cannot both hold; the
+# measured union is 52_245 — one measured value with headroom replaces them.
+# #293's union-merge attribute pin (`tests/unit/test_merge_attributes.py`, 53
+# lines) then rides on top of that union: measured 52_298 on the merged head,
+# which #279's 52_600 still covers with 302 lines of headroom. The ceiling
+# holds unchanged rather than being raised a third time for the same tail.
+TEST_LOC_MAX = 52_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

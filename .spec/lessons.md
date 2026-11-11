@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-03
+updated: 2026-11-10
 ---
 
 # Lessons Learned
@@ -1277,6 +1277,47 @@ with `git add`/`git status`, since that's what CI actually runs.
   expand raw text. Omit whole details with an artifact link when the budget is
   reached. Preserve block separators and keep environment warnings above details.
 
+## Quality gates must measure both sides on one machine (2026-11-02)
+
+- **A committed cross-machine baseline can only be a drift alarm; a PR verdict
+  needs both sides in one job.** Retrieval floats are a function of the machine:
+  the same tree measured 0.8351 MRR on this workstation and 0.8088 on the
+  baseline's arm64 host, and CI's x86_64 run moved hit@5 from 0.818 to 0.909
+  with no code change. No tolerance width survives a 9-point swing — wide enough
+  to absorb it hides a real regression, narrow enough to catch one reds every
+  run. Measure the captured event base and corresponding merge result on one runner;
+  verify parents and keep their frozen environments separate.
+- **Historical tolerance evidence is bounded, not a diagnosed cause.** Three same-tree runs in one job produced spread 0.000 on
+  hit-rate@5 and MRR (identical per-case ranks), within those repeats. The
+  base/head boundary is not: the base runs in its own worktree and venv, and on
+  a diff that cannot move retrieval MRR moved 0.0307 with hit@5 unchanged. A
+  tolerance must cover what the harness does to *unchanged* code across the two
+  sides, not just repeats of one side — write the observed number next to the
+  constant.
+- **The report must name the machine, in the comparator's own shape.** Adding
+  `environment.machine` (`cpu.brand_raw`/arch/count + `system`) in
+  pytest-benchmark's layout lets one `fingerprint()` read both gates' files;
+  `platform.processor()` alone returns the arch on Linux and cannot tell the
+  hosted fleet's CPU models apart.
+- **A schema the gate needs cannot gate its own bootstrap.** The merge base for
+  the PR that adds `environment.machine` was written before the field existed,
+  so strict report-to-report comparison would have exited 2 on the very PR that
+  introduced the guard. The job names its own host once and adopts that
+  fingerprint for a legacy report *only* after the report's `platform` string
+  matches this machine; recorded blocks are validated, never overwritten. Any
+  schema the gate depends on needs a bootstrap path, or the first PR is red for
+  a reason unrelated to its diff.
+- **Two verdicts in one job is the defect to avoid.** The gate's verdict comes
+  from one comparator; the PR comment renders that verdict file and nothing
+  else. A second comparison may still produce the per-case table, but it must
+  not name an outcome, and a missing verdict file renders "unavailable" rather
+  than falling back to a green-sounding line.
+- **Invalid is red, and it says so.** Machine, interpreter, corpus, case-set or
+  configuration mismatch exits 2 with "Same-job measurement invalid — this is a
+  harness bug, not a verdict". Silently passing it is how the old informative
+  job let a halved relevance land; calling it a regression sends someone
+  hunting a diff that never caused it.
+
 ## stdout purity: log records are not payload (2026-11-01)
 
 - **A log sink and a user-output sink are two different streams.** The CLI's
@@ -1295,22 +1336,101 @@ with `git add`/`git status`, since that's what CI actually runs.
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
 
-## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
+## Fixture-ordering leaks poison the shared process (2026-11-03)
 
-- **A performance gate must not read content the project's own workflow keeps
-  growing.** `test_full_connector_pipeline_docs` walked `.spec/` (the live spec
-  tree), so PR #278's three added feature spec files slowed it 9.27 s → 11.79 s
-  (+27.1%, FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
-  workspace, moved +4.1% on the same runners: the gate was measuring the corpus,
-  not the code. The baseline guard then forbids that PR from absorbing the
-  difference, so the red has no in-PR fix. Pin the input set — a frozen copy
-  under `tests/benchmarks/fixtures/parsing_corpus/` plus a `sha256sum` lock and a
-  unit test that owns it. Any repo document a benchmark reads is a latent red for
-  the PR that edits that document.
-- **Freeze the bytes with a lock the pre-commit hooks cannot rewrite.** The
-  `trailing-whitespace` / `end-of-file-fixer` hooks edit tracked files at commit
-  time, so a byte-checked corpus must be excluded from both (as `eval/corpus/`
-  already is) or the next hook run breaks its own lock.
+- **An autouse fixture that consumes `monkeypatch` reorders teardown.** The
+  shared `monkeypatch` fixture is then set up *before* per-test fixtures, so its
+  `undo()` runs last — a test that `monkeypatch.setattr`s an attribute another
+  fixture already patched (e.g. `resolve_collections_context` under the autouse
+  runtime-context patch) restores the **Mock** permanently and every later test
+  in the process fails on a MockCtx / MagicMock config. Autouse fixtures that
+  need env or attribute isolation must build their own `MonkeyPatch()` instance
+  (the `isolate_config_paths` idiom) instead of taking the fixture.
+- **Unit-only CI cannot see cross-suite leaks.** `python-cov.yml` runs
+  `tests/unit/` and `python-ci.yml` runs `tests/system/` in separate processes,
+  so a leak that only bites when both are collected together ships green. Run
+  `uv run pytest` (testpaths=[tests]) before handing off, and guard the
+  teardown invariant where the leak would land.
+
+## One builder for both surfaces (2026-10-26)
+
+- **A payload the CLI and the MCP server both emit must be built by ONE function,
+  typed by ONE contract module, and pinned by ONE hand-written golden file.**
+  #108/#109 had two lookalike shapes (`format_search_results_for_llm` fed both,
+  but the CLI's human view and MCP's dict had already drifted, and v2 dropped
+  chunk `metadata` so a v2 hit could not say where it sits at all). Three
+  surfaces → one test file (`tests/unit/indexed/mcp/test_search_payload_golden.py`)
+  that asserts the builder, the MCP tool and `search --json` all equal the same
+  golden JSON, key order included. Hand-write the golden: a generated fixture
+  cannot disagree with the implementation, which is the only reason to have one.
+- **Provenance is a payload job, not a formatting afterthought.** Locators come
+  from chunk `metadata`; a shape that omits it (v2's `{indexedData}`-only chunk
+  content) silently degrades every hit to "somewhere in this document". When a
+  contract needs a field, check that every engine still CARRIES it before the
+  formatter is written, and assert an honest `kind: "document"` fallback rather
+  than an invented range.
+- **Never trust a converter's field for truthiness: clean before you branch.** The
+  Markdown converter emits `headings: [""]` for whole-file chunks, so `if headings:`
+  chose `kind: "headings"` and then emitted `{"kind": "headings", "headings": []}` —
+  9 of 351 chunks on a real collection. A non-empty INPUT is not a non-empty OUTPUT:
+  trim, drop blanks, and decide the kind from the cleaned list, with unit tests for
+  the degenerate inputs (`[""]`, `["", " Real "]`), not just the happy path.
+- **Document-level facts go on the document.** Grouping hits under their source
+  document and stating collection/type/id/url/score semantics once cuts per-hit
+  keys from seven to four, none of which a consumer must strip. Do not sell it as
+  a token win though: measured on a 16-document/62-hit code corpus the payload
+  went 57_132 B -> 57_526 B (+0.7%), because stripping the `# <path>\n` chunk
+  prefix (-2_363 B) and dropping the repeated `collection`/`document_id`/
+  `document_url` per hit is offset by the per-hit `locator` and the second
+  (raw) score. The value is provenance and actionability; claim size only after
+  measuring, and state the corpus.
+- **A doc that says "branch on `schema`" must document the bodies that lack it.**
+  The contract named `schema` as the key consumers branch on, while the failure
+  body the CLI actually printed (`{"error": …}`) and the escape path (Rich panel on
+  stdout, exit 1/2/3) were undocumented, so a harness had to guess.
+  Write the failure side of every contract in the same section as the success
+  shape, pin each body with a test, and state what the exit code means — including
+  which empty states are exits 0 because an empty store is not a failure.
+
+
+## Canonical search repair (2026-11-02)
+
+- Preserve skipped collection failures in machine results before filtering search
+  configs. The mixed good/broken regression failed with empty `collection_errors`.
+- Fixed machine payloads must request matched chunk content. Respecting a false
+  config value erased known matches; the golden regression exposed zero counts.
+- Rank on full precision, then round emitted scores. Cosine .50004 must precede
+  .50001 even when both display as .5; the regression exposed discovery-order ties.
+- Run entrypoint failures before documenting output streams. A real `StorageError`
+  exits 3 and writes its Rich panel to stdout, so check exit status before JSON.
+- Check optional workflow paths exist before reading them. Direct `cat`/`ls` on
+  the absent `.agents/skills/vibe` cursor returned exit 1 during this repair.
+- For isolated worktree verification, pin the usable HF cache and offline mode;
+  use an external pytest cache, disable rerunfailures when socket access is denied,
+  and use Ruff `--no-cache` on read-only worktrees.
+
+## Search consumer documentation (#255, 2026-11-02)
+
+- Check CLI exit status before JSON parsing. Ordinary logs use stderr, but an
+  escaping typed error prints a Rich panel to stdout. Exit 0 can carry an error.
+- Document each MCP tool's failure boundary separately. Global search reports
+  collection errors; named search checks status first. Typed exceptions retain
+  their concrete class name in the top-level envelope.
+- Resolve a local source from hit locator path, then document path, then a decoded
+  local file URL. Remote URLs require a source/fetch tool, not filesystem Read.
+- A document locator means unknown position, not a title or whole-document chunk.
+  Preserve source-type optionality and describe context stripping conditionally.
+- Discover exact source and test filenames before multi-file reads or check runs.
+  Guessed result, envelope, engine and stdout-test filenames caused avoidable
+  failed commands in this cycle; use `rg --files` before constructing paths.
+
+- Empty `collections` means no collection was searched successfully. Inspect
+  `collection_errors` to distinguish an empty store from all searches failing;
+  preserve concrete exception types when documenting boundary envelopes.
+
+- Run each branch's pinned pre-commit formatter before freezing publication
+  hashes. The shared venv can use a different Ruff version. Accept layout
+  changes only after proving Python AST equivalence; read the owning config.
 
 ## A skipped gate is a red gate (2026-10-31)
 
@@ -1383,6 +1503,40 @@ with `git add`/`git status`, since that's what CI actually runs.
   treat a single run-to-run delta as noise to re-measure; only a repeated,
   same-fingerprint shift is a regression.
 
+## A benchmark gate must measure both sides in one job (2026-11-02)
+
+- **Two numbers from two machines are not a comparison, at any tolerance.** The
+  hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
+  9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
+  compared against a committed baseline reds or greens by which runner it
+  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  repair is structural, not statistical — measure the captured event base and
+  its corresponding merge result back to back on one runner, and compare those two
+  files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
+  drift report. Make its failure advisory, and independently enforce setup and
+  complete measurements in the hard A/B; a finite report tolerance is not a boundary.
+- **Same fingerprint is still not same machine, so compare the best round, not
+  the mean.** Three consecutive runs reported the same node and CPU and
+  disagreed (`test_parse_large_markdown` 690/762/943 ms on an unchanged diff):
+  shared-vCPU tenancy adds time but never removes it. On unchanged code
+  measured both ways locally, means disagreed by 20 % (one slow round in a
+  3-round benchmark), medians by 12 %, minimums by 0.7 % — so the gate compares
+  the minimum and keeps `--stat` as the escape hatch. A real regression moves
+  the minimum too; noise does not.
+- **A harness bug must not spend the verdict.** A machine mismatch inside a
+  same-job A/B, a different interpreter, or two files with no shared rows is
+  not a red PR and not a green one: exit with its own code (2), name it
+  `same-job measurement invalid`, and say it is a bug. Keeping "no verdict"
+  separate from "regressed" is what makes the red mean something — and the
+  committed unit test proves it without a runner (`tests/unit/test_benchmark_ab.py`:
+  +25 % fails, +2 % passes).
+- **A guard around a comparison that no longer decides anything is dead weight
+  with a red exit.** #268's fail-on-skip step was right while a cross-run
+  comparison was the gate and became a random red generator once the A/B took
+  over, so this PR deletes it rather than leaving two gates disagreeing. When
+  superseding a gate, remove the machinery that only enforced honesty about the
+  old one, and say in the spec which issue's step went where.
+
 ## Baseline-refresh repair verification (2026-11-02)
 
 - [ci] A downstream guard must read the same target filename and captured ref
@@ -1394,3 +1548,277 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Git-aware search review fixes (2026-11-08)
+
+- [git] `git diff --name-only <ref> --` compares REF's tree with the **working
+  tree**, so it already covers staged and unstaged edits; the separate `--cached`
+  and plain-diff legs were pure cost (12 → 8 subprocesses per search). Before
+  adding a git leg, prove the existing one cannot see what the new one adds.
+- [git] Query-time provenance must not outlive the snapshot it describes:
+  `git log` answers for the file on disk NOW, so pairing it with text from an
+  older index credits a commit that never contained that text. Guard with the
+  node's recorded `modified_time` (one `stat`, no subprocess) and omit the field
+  when it disagrees — say the rule in the spec and the tool docstring, not only
+  in the test.
+- [tests] A hostile-ref test only bites on the mutation that is the actual
+  bypass. With list argv the `rev-parse --verify` gate is what rejects
+  option-shaped refs, so dropping `--` alone changes nothing; drop the gate too
+  and the `--output=` case fails as it should (it even wrote the file, proving
+  the option was parsed). A test that cannot be made to fail proves nothing.
+- [time] A timestamp that outlives the writing process must be **offset-aware**.
+  `datetime.fromtimestamp(m)` + `isoformat()` writes naive local wall time; a
+  reader in another zone (or the other side of a DST switch) then shifts it, and
+  no read-side parse can recover the writer's offset. Fix the write site
+  (`fromtimestamp(m, timezone.utc)`), not just the comparison — and for legacy
+  values whose zone is unknowable, judge them against a zone-free anchor (the
+  collection's own `updatedTime`) instead of guessing a zone or widening the
+  tolerance. Test it cross-process: a same-interpreter `TZ` change can pass
+  against the broken code.
+- [time] Making a write offset-aware makes naive/aware MIXING reachable in an
+  existing collection: a v1 collection updated once after the fix holds both
+  shapes, and every later max/compare of those timestamps must order on one axis
+  (legacy naive = UTC) or the upgrade path dies (`index migrate`, #279 B1 round
+  2). Normalise for the comparison, keep the winning writer's string in the
+  manifest, and pin the mixed state with a regression test — the pre-fix state
+  was unreachable, so no old test can catch it.
+
+## Benchmark gate repair verification (2026-11-02)
+
+- [validation] Require every selected row on both sides before a verdict. Equal
+  omissions, duplicate normalized IDs and nonfinite values can hide regressions.
+- [ci] Capture the event base and its corresponding merge result before a
+  composite changes HEAD. Fetch exact objects, verify merge parents, and measure
+  each in its own worktree and locked environment; never substitute moving refs.
+- [ci] Advisory failure must not skip the hard gate. Set up the A/B independently
+  and fail absent setup/results; preserve comparator exits 0, 1 and 2.
+- [tests] Exit 2 alone does not prove validation: argparse rejects unknown flags
+  with the same exit. Assert the measurement diagnostic and absence of a verdict.
+- [tests] Stub executables must use the real interpreter path. An env shebang
+  resolved the Python stub recursively and falsely failed valid workflow runs.
+- [types] Use explicit numeric type narrowing before finite checks. Baseline
+  fixture override types before editing; repair inherited diagnostics separately.
+- [workflow] Check optional paths before searching them. The absent vendored
+  vibe directory is an idle cursor, not a reason to guess another path. Quote
+  globs or discover matching files first; zsh rejects unmatched globs.
+- [verification] Use external caches or `--no-cache` for formatter checks in
+  restricted worktrees. Fix stale open-question sections when updating a spec
+  implementation section; otherwise the same spec can claim both states.
+
+## Search CI dependency integration (2026-11-02)
+
+- Integrate the reviewed paired CI gate before judging search performance.
+  Preserve every product and consumer-document byte; measure the complete
+  combined test tree before setting the shared size ceiling. Historical mean
+  failures remain disclosed until the actual integrated paired run completes.
+- Read the cached hook entry before selecting a binary. The pinned ty hook
+  runs `uv check`; set `UV_NO_SYNC=1` with a shared environment. The unscoped
+  hook tried dependency downloads and failed on sandbox DNS; no-sync passed.
+- Executable AST comparisons must exclude attribute documentation strings too.
+  Filtering only each owner's first docstring falsely flagged TypedDict field prose.
+
+## Evaluation stability and repair fixtures (2026-11-02)
+
+- [inputs] Hash evidence at the boundary actually observed. Generated absolute
+  paths changed 77 model inputs and one controlled rank 5 to 6 crossing.
+  Canonicalize only recognized leading context in evaluation; preserve authored
+  body paths and physical metadata. Converter-chunk hashes are not post-engine
+  embedding-input hashes. Same-source equality is not a product-change gate.
+- [bootstrap] Use the existing explicit connector-factory injection on both
+  genuine runners with one common helper. Verify actual side imports and locks.
+  Record the captured harness SHA plus file digests and uncommitted overlay
+  status. Test the pre-policy runner; do not replace its package import path.
+- [validation] Build complete report fixtures before single-field mutations.
+  Validate both reports before fingerprint/headline use. Invalid-result JSON
+  must not call identity formatters on malformed containers. Reject nonfinite
+  tolerance and unrepresentably large measurements at the read boundary.
+- [fixtures] Combining benchmark and eval tests dropped the eval platform import;
+  restore every dependency in the union. Preserve the benchmark CLI's truthful
+  unit label rather than weakening an inherited assertion. Record authoritative
+  RED after fixture corrections. Avoid dataclass field-name shadowing in loops.
+- [baseline] A historical physical-path baseline cannot assert exact canonical
+  rankings. Keep its original bytes and disclose the input-policy difference.
+- [ci] Keep the full CPU brand/arch/core-count/system fingerprint. Refresh PR
+  updates retain `(new CPU)` in their title. Use the action-captured baseline
+  reference and sanitized target filename; never re-fetch after measurement.
+
+- [compatibility] Local report validation accepts mathematically finite integer
+  ranking scores. Keep that contract; apply representability checks at the
+  same-job gate boundary. A broad shared finite-number guard broke an existing
+  local-comparison test and was restored before completion.
+- [typing] Narrow optional import specifications in fixtures. A type-only cast
+  for module file origins preserves measured runtime behavior; retain the actual
+  pre-cast launcher digest when reporting a prior measured pair.
+- [workflow] Scope venv environment variables to each command rather than
+  subshell exports; use a shell array for spread-report paths. Check measured
+  combined test size before reconciling separate-branch ceilings.
+
+- [labels] Audit title-case summary headings after semantic unions; actual SHA
+  labels do not make a stale Git merge-base heading accurate.
+
+- [outputs] A new common launcher must enforce the existing declared-output
+  rule too: lstat rejects symlinks/nonregular paths; exclusive same-directory
+  temporary descriptors and atomic replacement preserve the victim and clean
+  failures. The RED symlink test caught Path.write_text following the target.
+
+- [discovery] Discover actual reader/converter module names before opening
+  guessed converter.py or models.py paths. Those guessed reads failed harmlessly.
+
+- [workflow] Captured-event validation must emit the explicit invalid-measurement
+  diagnostic and exit 2; bare set-e regex failure loses that distinction. After
+  a freeze, obtain coordinator authorization and invalidate/retest affected
+  executable evidence before changing the workflow.
+
+## Retrieval gate identity review corrections (2026-11-02)
+
+- [validation] Validate every consumed cache container before `.get`. Equal
+  missing/malformed selected snapshots and common-harness fields do not prove
+  identity. Require valid revision, policy/config agreement and exact helper
+  hashes. Make mandatory CI instrumentation explicit while preserving local
+  legacy reports deliberately. Active reranking needs its own model identity.
+- [metrics] Errored queries leave headline denominators; a gate must reject
+  either report with errors before comparing those smaller denominators.
+- [cpu] Reading cpuinfo successfully does not establish a model-name line.
+  Apply the processor fallback after scanning, including readable arm64 files.
+- [reporting] Distinguish unavailable measurement phases from comparator-invalid
+  artifacts. Exercise base, head and repeat failures separately, plus read and
+  adoption failures. Do not promise a synthesized verdict after no measurement.
+
+- [fixtures] Scope edits to the intended block in mixed-indent external
+  verification scripts. A global assertion insertion broke the capture block
+  indentation; repair the fixture before accepting its execution evidence.
+
+## Invalid-result publisher contract (2026-11-02)
+
+- [contracts] A producer's valid invalid-result JSON can still be rejected by
+  its consumer. Exercise the actual comparator artifact through the actual
+  renderer, including label-only sides and null tolerance. Validate invalid
+  artifacts separately without weakening measured pass/fail evidence. Escape
+  and bound invalid reasons, and render missing identity as unavailable.
+
+## Provenance fixtures across publication (2026-11-02)
+
+- [fixtures] A provenance test must control whether committed instrumentation
+  matches current bytes. The legacy injection fixture assumed every checkout
+  was uncommitted and failed after publication preparation committed the helper.
+  Exercise matching and mismatching Git blob evidence explicitly while retaining
+  real legacy-runner injection, own-side imports and actual content digests.
+
+## Native path identity in CPU fixtures (2026-11-02)
+
+- [fixtures] Compare mocked filesystem paths as Path objects. Native Windows
+  separators make `str(path) == "/proc/cpuinfo"` miss the intended reader stub;
+  fallback cases can then pass for the wrong filesystem error. Keep normal,
+  unreadable and unparseable cases on the exact intended callback branch.
+
+## Native-stack provenance (2026-11-02)
+
+- A native stack can put an upstream synthetic merge before the captured base.
+  Accept one wrapper only with exactly two parents, captured base second, and
+  complete Git tree identity. Require exactly two outer parents and captured
+  head second. Measure the original captured SHAs; never substitute the wrapper.
+- Fetch depth 3 before inspecting the nested graph. Depth 2 can hide wrapper
+  parents even when their objects exist. Missing objects remain invalid.
+- Capture Git reads before array parsing or comparison so command failures reach
+  the measurement trap. Compare complete tree IDs, including modes and docs.
+- Workflow doubles must model environment names and escape generated source.
+  Benchmark fixtures supply GITHUB_SHA; eval fixtures supply MERGE. A raw
+  newline in a generated Git stub caused a false syntax failure before RED.
+- File hooks can open even unchanged inputs with write access. Run them with
+  scoped worktree write permissions; a denied rb+ open is an environment failure.
+
+
+
+## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
+
+- **A performance gate must not read content the project's own workflow keeps
+  growing.** `test_full_connector_pipeline_docs` walked `.spec/` (the live spec
+  tree), so PR #278's three added feature spec files slowed it 9.27 s → 11.79 s
+  (+27.1%, FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
+  workspace, moved +4.1% on the same runners: the gate was measuring the corpus,
+  not the code. The baseline guard then forbids that PR from absorbing the
+  difference, so the red has no in-PR fix. Pin the input set — a frozen copy
+  under `tests/benchmarks/fixtures/parsing_corpus/` plus a `sha256sum` lock and a
+  unit test that owns it. Any repo document a benchmark reads is a latent red for
+  the PR that edits that document.
+- **Freeze the bytes with a lock the pre-commit hooks cannot rewrite.** The
+  `trailing-whitespace` / `end-of-file-fixer` hooks edit tracked files at commit
+  time, so a byte-checked corpus must be excluded from both (as `eval/corpus/`
+  already is) or the next hook run breaks its own lock.
+
+## Combined PR integration (2026-11-05)
+
+- [history] Refreshed branch heads can preserve bytes while dropping approved
+  ancestry through a rebase. Retain original and refreshed tips explicitly;
+  prove all required ancestors before publication.
+- [verification] Preserve pinned benchmark corpus blobs when merging growing
+  specs. Measure combined test size; a separate branch's ceiling omits the
+  independent track. Keep the inherited failing gate as RED before reconciliation.
+- [tools] Read the supplied absolute plan path. In zsh, use probe_path rather
+  than path: assigning path replaces command lookup. Check optional paths first.
+  Discover workflow/report filenames before reading them. Include hidden ignored
+  artifacts explicitly when searching saved verification evidence.
+- [environment] Set UV_PROJECT_ENVIRONMENT, UV_NO_SYNC and a writable UV_CACHE_DIR
+  on every shared-environment probe. A cache-only retry can create a second local
+  venv; that environment does not establish use of the verified locked runtime.
+- [baseline] Keep the existing spec-drift failure separate from structural
+  validation. The combined tree retains the same historical findings; a new
+  integration report must not silently relabel them as a clean pre-merge check.
+- [rules] Compact duplicate guidance without removing requirements. Keep KISS
+  in existing prose when reducing the active-rules digest to its line ceiling.
+- [artifacts] Keep AGENTS.md snapshots outside the worktree. The size guard
+  discovers even ignored copies, so in-tree merge evidence created an unrelated
+  extra-file failure. Isolate snapshots before recording the size-gate RED.
+- [build] Select wheel and sdist artifacts by their declared suffixes. Python's
+  glob includes uv's .gitignore marker, which is not a third distribution and
+  must not enter the archive count or metadata command.
+- [hooks] Inspect the cached hook manifest before assuming it supplies a binary.
+  The ty 0.0.92 hook runs uv check with an explicit tool version; its environment
+  need not contain a ty executable. Run that exact entry with no-sync routing.
+- [reporting] Read saved coverage totals before stating a percentage. The
+  measured result was 94.06%; an early 94.15% update lacked evidence and needed
+  correction. Capture the JSON totals and bind verification to the exact tree.
+
+## Publication refresh (2026-11-06)
+
+- [integration] An automatic merge can silently restore an obsolete workflow
+  without a textual conflict. Current main's standalone guard displaced the
+  already reviewed paired gate. Restore that exact gate blob, preserve both
+  histories, and prove source/test identity before reusing runtime evidence.
+- [tools] Optional git-config reads return 1 for an unset value; capture their
+  status and apply the default. Use known evidence paths, not guessed skill or
+  report files, and check optional workflow directories before searching them.
+- [identity] Repository test overrides can replace the user's name, email and
+  signing setting. Apply the normal global identity/signing per command and
+  verify the actual SSH signature; do not silently ship test or unsigned commits.
+
+- [publication] Guard both the expected branch and HEAD before each merge.
+  Different branches can share a HEAD, so a revision check alone can commit to
+  the wrong branch. Validate the step range and frozen target tree too.
+- [spec] Audit dates after real merge commits, not only the uncommitted overlay.
+  A newly retained rebase history can expose older updated metadata even when
+  the document's bytes did not change. Refresh the affected dates and rerun the
+  structural audit while retaining unrelated historical drift findings.
+
+## Benchmark A/B gate guards (2026-11-08)
+
+- **A "at least three repeats" promise that lives in the benchmark files is not
+  a guarantee.** `@pytest.mark.benchmark(min_rounds=3)` only shapes a run; the
+  comparator never read `stats.rounds`, so two result files with `rounds: 1`
+  earned `gate verdict: PASS`. Read the proof from the artifact the verdict is
+  computed from, and refuse when it is absent — a guard the consumer does not
+  enforce is documentation.
+- **Same machine, same rows is still not the same experiment: name the corpus.**
+  The eval lane refused differing corpus/case-set digests from the start; the
+  benchmark lane compared two runs over different fixtures as like-for-like.
+  Stamp the input identity in the writer (`--stamp-corpus`, a digest of the
+  measured tree's frozen fixture set) and require agreement on read, with a
+  missing identity as a refusal. Stamp each side from its OWN worktree so a PR
+  that edits the corpus cannot pass by comparing against the base it changed.
+- **Pin the gate itself, or a future edit deletes it silently.** Assert by test
+  that the workflow step exists with its `trap … exit 2` failure path, its
+  tolerance, and its advisory report policy; the comparator's refusals did not
+  previously red anything if the step that calls them disappeared.
+- [tests] A helper that asserts one diagnostic title must take the title as a
+  parameter once a second tool (the stamp writer) fails with its own. Reuse the
+  exit-code and no-verdict assertions, not the message text.

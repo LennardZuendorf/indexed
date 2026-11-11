@@ -3,16 +3,16 @@ type: feature-product
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-10-31
+updated: 2026-11-06
 ---
 
 # Feature: Retrieval Evaluation Baseline — Product
 
 Gives retrieval changes a number. Before this feature every ranking change —
 reranking, hybrid BM25+vector fusion, chunking, graph scoring — shipped on
-"feels better"; after it, each one is compared against a committed baseline of
-hit-rate@k and MRR measured on a pinned corpus and a pinned set of judged
-queries.
+"feels better"; after it, each one is measured on a pinned corpus and judged queries. CI compares the captured
+event base and corresponding merge result in one job; committed reports remain
+historical drift references.
 
 Implements the local measurement scope of
 [issue #204](https://github.com/LennardZuendorf/indexed/issues/204).
@@ -53,8 +53,7 @@ Out (explicitly):
 - LLM judges, faithfulness/relevancy scoring, generated-answer quality.
 - Any claim of generality beyond these fixtures or live GitHub connector
   verification from sanitized snapshots.
-- A hard CI gate on the first delivery. The regression tolerance is chosen from
-  observed variance later, not invented now.
+- Raising the current 0.04 CI threshold without a separate policy decision.
 - Changing the CLI/MCP result envelope. The harness reads the retrieval contract;
   the presentation shape is #109's call.
 
@@ -103,7 +102,8 @@ missing/corrupt collections and malformed results as failures, never misses.
 ### Requirement: honest comparison (R5)
 
 Comparison MUST validate saved evidence and headline arithmetic before comparing. Different
-corpora, judgments or configurations are incomparable. Set no invented tolerance.
+corpora, judgments, full model/score settings or normalization policies are incomparable.
+CI retains the approved 0.04 absolute tolerance for hit-rate@k and MRR.
 
 #### Scenario: missing query
 - **GIVEN** a candidate that omits a baseline query
@@ -113,12 +113,12 @@ corpora, judgments or configurations are incomparable. Set no invented tolerance
 ### Requirement: reproducible local workflow (R6)
 
 The workflow MUST keep metric tests model-free. Document provisioning and offline real-model runs.
-Publish informative CI artifacts and track the separate public-docs pairing.
+Publish CI artifacts and track the separate public-docs pairing.
 
 #### Scenario: failed harness test
 - **GIVEN** valid corpus bytes and a failing harness test
-- **WHEN** informative CI runs
-- **THEN** measurement and artifact publication execute with the failure visible.
+- **WHEN** CI runs
+- **THEN** measurement is blocked and publication shows the failed phase and unavailable reports.
 
 A retrieval PR can state, in its body, "hit@5 0.818 → 0.886, MRR 0.578 → 0.712,
 no case regressed" — and a reviewer can reproduce it with one command.
@@ -127,7 +127,7 @@ no case regressed" — and a reviewer can reproduce it with one command.
 
 CI MUST update one bot comment on same-repository PRs with the verdict, metric
 changes, changed cases, failures, environment notes and a link to the full run.
-Keep results informational. Missing reports MUST appear as unavailable.
+Render the sole same-job comparator verdict. Missing reports MUST appear as unavailable.
 
 #### Scenario: repeated evaluation
 - **GIVEN** an existing evaluation comment on the current PR head
@@ -163,3 +163,14 @@ v2 dense, rerank off, `k=5`, `max_docs=10`:
 - Not a determinism claim about every environment: it claims reproducibility on
   the same model + corpus, and records enough configuration to tell the
   difference when it breaks.
+
+### Requirement: stable evaluator context (R8)
+
+Evaluation MUST normalize only known generated leading code/plaintext paths.
+Both sides use the same captured factory through the existing injection seam.
+Record policy, actual import origins, lock and common-file digests.
+
+#### Scenario: distinct physical roots
+- **GIVEN** identical source and corpus bytes under distinct physical roots
+- **WHEN** the common canonical factory converts the corpus
+- **THEN** generated path context and converter-input digests match while authored text and physical metadata remain intact.
