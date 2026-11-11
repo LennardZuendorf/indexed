@@ -680,6 +680,15 @@ final review of issue #186:
   a per-collection failure inside a batch); `status()`/`inspect()` return plain lists with
   no per-item error slot, so they purely omit it with a logged warning — unchanged.
 
+Bulk updates filter collections by an explicit engine selector before the
+update loop. MCP startup falls back to the default engine when its unused
+selector is invalid. Configuration writes validate before dry-run; v2 resolvers
+propagate validation errors only for their own namespaces. Migration reports
+`backup_purged` only after verifying removal. CLI and MCP share relevance
+conversion while retaining each result's true score kind; reranking redirects
+third-party stdout diagnostics to stderr. These are the shipped issue #186
+contracts, not instructions to reapply its retired implementation plan.
+
 No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
 facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
 `scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented

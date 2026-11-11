@@ -1493,7 +1493,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
   9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
   compared against a committed baseline reds or greens by which runner it
-  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  landed on: #252 succeeded and #268 failed minutes apart on 2026-11-01. The
   repair is structural, not statistical — measure the captured event base and
   its corresponding merge result back to back on one runner, and compare those two
   files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
@@ -1784,3 +1784,14 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [tests] A helper that asserts one diagnostic title must take the title as a
   parameter once a second tool (the stamp writer) fails with its own. Reuse the
   exit-code and no-verdict assertions, not the message text.
+
+### Dependency publication repairs
+**Pattern:** The saved retrieval baseline contained checkout-dependent path text;
+merging current main also joined independent documentation appendices and
+exceeded the agent-guide line ceiling. Requirement IDs ending in a digit plus
+"green" were misread by drift checks as measured test totals.
+**Rule:** Reuse the upstream canonical-input repair, preserve historical baseline
+bytes, measure comparable inputs, and check document unions against size limits.
+Keep requirement coverage explicit without presenting it as a volatile test count.
+**Tags:** dependencies, evaluation, verification, spec
+**Date:** 2026-11-11

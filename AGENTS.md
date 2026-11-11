@@ -83,13 +83,10 @@ Check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
 Freeze hashes after pinned formatting; check branch and HEAD before mutations.
 Read hit paths before document paths; decode local file URLs and fetch remote URLs.
-
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 Verify exact dependency-PR package unions and baseline assertion failures before publishing.
-
 Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
-Advisory reports must not skip the independently enforced A/B setup and results.
-Integrate reviewed CI gates before timing; verify automatic merges; preserve product bytes.
+Advisory reports must not skip the independently enforced A/B setup and results. Integrate reviewed CI gates before timing; verify automatic merges; preserve product bytes.
 Read cached hook entries; set UV_NO_SYNC=1 when hooks use the shared environment.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
@@ -100,3 +97,4 @@ Reject equal-missing model snapshots and common instrumentation before compariso
 Verify invalid-result artifacts through the actual publisher consumer.
 Pin corpus bytes; retain original/refreshed tips; keep AGENTS snapshots outside worktrees.
 Pin uv environments/caches and plan paths; avoid zsh's path; select dist suffixes.
+Check doc unions against line limits; distinguish requirement IDs from measured test totals.
