@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-07-10
+updated: 2026-11-03
 ---
 
 # Tech Branch: Config (`src/indexed/config/`)
@@ -74,10 +74,12 @@ Storage dirs owned by `src/indexed/config/` (`storage.py`). Persistence semantic
 ├── config.toml
 ├── .env                       # credentials (not in git)
 └── data/collections/{name}/
-    ├── manifest.json
-    ├── documents.json
-    ├── chunks.json
-    └── index/
+    ├── manifest.json          # both engines; v2 adds a version + engine block
+    ├── state.json             # files connector only (change-tracker baseline)
+    ├── storage/               # v2 only (LlamaIndex persist): docstore.json,
+    │                          # index_store.json, default__vector_store.json
+    ├── documents/<id>.json    # v1 only
+    └── indexes/               # v1 only
         ├── index_info.json
         ├── index_document_mapping.json
         └── indexer_FAISS_*/indexer   # binary FAISS index

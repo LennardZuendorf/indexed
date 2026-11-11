@@ -532,3 +532,85 @@ def test_empty_search_returns_the_envelope_with_no_documents() -> None:
     assert payload["documents"] == []
     assert payload["counts"] == {"documents": 0, "hits": 0}
     assert payload["collection_errors"] == []
+
+
+# --- git provenance and filters (#279) ---------------------------------------
+
+
+def test_git_provenance_is_a_document_fact_only_when_present() -> None:
+    """``--git-provenance`` states the commit once per document.
+
+    #279 carried the commit as three keys on every flat row; the grouped
+    payload (#297) keeps the same fact where it belongs — on the document,
+    beside the url it describes — and says nothing when git did not answer.
+    """
+    provenance = {
+        "commit": "a" * 40,
+        "short": "a" * 7,
+        "author": "Ann Author",
+        "email": "ann@test.com",
+        "committedAt": "2026-11-03T10:00:00+01:00",
+        "subject": "touch the file",
+    }
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("with-git", 0.9, git=provenance)],
+        }
+    }
+
+    document = build_search_payload(raw, "q")["documents"][0]
+    assert document["git"] == provenance
+    assert not {"git_commit", "git_author", "git_committed_at"} & set(document)
+
+    plain = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("no-git", 0.9)],
+        }
+    }
+    assert "git" not in build_search_payload(plain, "q")["documents"][0]
+
+
+def test_skipped_git_filter_is_reported_not_silent() -> None:
+    """A requested filter a collection could not apply must be visible (#279 review).
+
+    The documents still come back (a git problem never empties a search), but
+    the envelope names the collection and the ref instead of looking like a
+    clean, filtered result set.
+    """
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": False, "reason": "unknown-ref"},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert [doc["id"] for doc in out["documents"]] == ["alpha"]
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "changed_since 'HEAD~1' was not applied: the git ref could "
+            "not be resolved; results are unfiltered",
+        }
+    ]
+
+
+def test_applied_git_filter_adds_no_error() -> None:
+    """A filter that ran leaves ``collection_errors`` exactly as before."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": True},
+        }
+    }
+
+    assert build_search_payload(raw, "q")["collection_errors"] == []

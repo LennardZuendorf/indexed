@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-08
+updated: 2026-11-10
 ---
 
 # Lessons Learned
@@ -1336,6 +1336,22 @@ with `git add`/`git status`, since that's what CI actually runs.
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
 
+## Fixture-ordering leaks poison the shared process (2026-11-03)
+
+- **An autouse fixture that consumes `monkeypatch` reorders teardown.** The
+  shared `monkeypatch` fixture is then set up *before* per-test fixtures, so its
+  `undo()` runs last — a test that `monkeypatch.setattr`s an attribute another
+  fixture already patched (e.g. `resolve_collections_context` under the autouse
+  runtime-context patch) restores the **Mock** permanently and every later test
+  in the process fails on a MockCtx / MagicMock config. Autouse fixtures that
+  need env or attribute isolation must build their own `MonkeyPatch()` instance
+  (the `isolate_config_paths` idiom) instead of taking the fixture.
+- **Unit-only CI cannot see cross-suite leaks.** `python-cov.yml` runs
+  `tests/unit/` and `python-ci.yml` runs `tests/system/` in separate processes,
+  so a leak that only bites when both are collected together ships green. Run
+  `uv run pytest` (testpaths=[tests]) before handing off, and guard the
+  teardown invariant where the leak would land.
+
 ## One builder for both surfaces (2026-10-26)
 
 - **A payload the CLI and the MCP server both emit must be built by ONE function,
@@ -1532,6 +1548,40 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Git-aware search review fixes (2026-11-08)
+
+- [git] `git diff --name-only <ref> --` compares REF's tree with the **working
+  tree**, so it already covers staged and unstaged edits; the separate `--cached`
+  and plain-diff legs were pure cost (12 → 8 subprocesses per search). Before
+  adding a git leg, prove the existing one cannot see what the new one adds.
+- [git] Query-time provenance must not outlive the snapshot it describes:
+  `git log` answers for the file on disk NOW, so pairing it with text from an
+  older index credits a commit that never contained that text. Guard with the
+  node's recorded `modified_time` (one `stat`, no subprocess) and omit the field
+  when it disagrees — say the rule in the spec and the tool docstring, not only
+  in the test.
+- [tests] A hostile-ref test only bites on the mutation that is the actual
+  bypass. With list argv the `rev-parse --verify` gate is what rejects
+  option-shaped refs, so dropping `--` alone changes nothing; drop the gate too
+  and the `--output=` case fails as it should (it even wrote the file, proving
+  the option was parsed). A test that cannot be made to fail proves nothing.
+- [time] A timestamp that outlives the writing process must be **offset-aware**.
+  `datetime.fromtimestamp(m)` + `isoformat()` writes naive local wall time; a
+  reader in another zone (or the other side of a DST switch) then shifts it, and
+  no read-side parse can recover the writer's offset. Fix the write site
+  (`fromtimestamp(m, timezone.utc)`), not just the comparison — and for legacy
+  values whose zone is unknowable, judge them against a zone-free anchor (the
+  collection's own `updatedTime`) instead of guessing a zone or widening the
+  tolerance. Test it cross-process: a same-interpreter `TZ` change can pass
+  against the broken code.
+- [time] Making a write offset-aware makes naive/aware MIXING reachable in an
+  existing collection: a v1 collection updated once after the fix holds both
+  shapes, and every later max/compare of those timestamps must order on one axis
+  (legacy naive = UTC) or the upgrade path dies (`index migrate`, #279 B1 round
+  2). Normalise for the comparison, keep the winning writer's string in the
+  manifest, and pin the mixed state with a regression test — the pre-fix state
+  was unreachable, so no old test can catch it.
 
 ## Benchmark gate repair verification (2026-11-02)
 

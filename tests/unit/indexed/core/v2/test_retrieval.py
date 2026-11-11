@@ -571,3 +571,340 @@ def test_rerank_none_defers_to_config(
         )
 
     assert res["c1"]["scoreKind"] == "rerank"
+
+
+# ── query-time git awareness (#60/#144/#146) ───────────────────────────────
+
+
+def _build_files_at(cols: Path, name: str, docs, base_path: Path) -> None:
+    """Build a v2 collection whose manifest ``basePath`` is ``base_path``."""
+    with mock_embedding(embed_dim=8):
+        ingestion.create(
+            [
+                SourceConfig(
+                    name=name, type="localFiles", base_url_or_path=str(base_path)
+                )
+            ],
+            use_cache=False,
+            connector_factory=make_connector_factory(
+                docs, {"type": "localFiles", "basePath": str(base_path)}
+            ),
+            collections_path=str(cols),
+        )
+
+
+def _commit(repo: Path, *args: str) -> None:
+    from tests.conftest import run_git
+
+    run_git(repo, *args)
+
+
+def _mtime(path: Path) -> str:
+    """The ISO value the files reader records on the node when indexing ``path``."""
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
+
+    return FilesDocumentReader._read_file_modification_time(str(path)).isoformat()
+
+
+def test_changed_since_keeps_only_changed_documents(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "changed.txt").write_text("penguin one")
+    (git_repo / "stale.txt").write_text("walrus one")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "files")
+    (git_repo / "changed.txt").write_text("penguin two")
+    _commit(git_repo, "commit", "-am", "edit penguin")
+
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("changed.txt", ["penguin migration"]),
+        make_doc("stale.txt", ["walrus migration"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD~1",
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["changed.txt"]
+    # An applied filter is reported too, so callers can tell it apart from a skip.
+    assert res["c1"]["gitFilter"] == {"ref": "HEAD~1", "applied": True}
+
+
+def test_changed_since_filters_before_grouping_so_max_docs_still_fills(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The filter runs on NODES, before grouping: a stale doc must not occupy a
+    ``max_docs`` slot and leave the result set short."""
+    for name in ("a.txt", "b.txt", "stale.txt"):
+        (git_repo / name).write_text("one")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "files")
+    for name in ("a.txt", "b.txt"):
+        (git_repo / name).write_text("two")
+    _commit(git_repo, "commit", "-am", "edit two")
+
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),  # first indexed on purpose
+        make_doc("a.txt", ["penguin a"]),
+        make_doc("b.txt", ["penguin b"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    seen: dict[str, set[str]] = {}
+    original = retrieval._group_by_document
+
+    def spy(nodes, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        seen["sources"] = {n.node.metadata["source_id"] for n in nodes}
+        return original(nodes, **kwargs)
+
+    monkeypatch.setattr(retrieval, "_group_by_document", spy)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            max_docs=2,
+            changed_since="HEAD~1",
+        )
+
+    assert seen["sources"] == {"a.txt", "b.txt"}
+    assert len(res["c1"]["results"]) == 2
+
+
+def test_git_provenance_attaches_last_commit(tmp_path: Path, git_repo: Path) -> None:
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+
+    git = res["c1"]["results"][0]["git"]
+    assert git["author"] == "Test"
+    assert git["subject"] == "add penguin"
+    assert git["commit"].startswith(git["short"])
+    assert git["committedAt"].startswith("20")
+
+
+@pytest.mark.parametrize("query_tz", ["UTC", "America/New_York"])
+def test_git_provenance_survives_a_query_zone_switch(
+    tmp_path: Path, git_repo: Path, query_tz: str
+) -> None:
+    """#279 B1: provenance must not depend on the QUERY process's timezone.
+
+    The node timestamp is recorded while this process is in Europe/Stockholm and
+    read back while it is in ``query_tz``. The untouched file keeps its ``git``
+    block; a ``touch`` afterwards drops it under the same zone.
+    """
+    import contextlib
+    import os
+    import time
+
+    @contextlib.contextmanager
+    def _zone(zone: str):
+        previous = os.environ.get("TZ")
+        os.environ["TZ"] = zone
+        time.tzset()
+        try:
+            yield
+        finally:
+            if previous is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = previous
+            time.tzset()
+
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    with _zone("Europe/Stockholm"):
+        recorded = _mtime(tracked)
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin"], modified_time=recorded)],
+        git_repo,
+    )
+
+    with _zone(query_tz), mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+    assert res["c1"]["results"][0]["git"]["subject"] == "add penguin"
+
+    tracked.touch()
+    with _zone(query_tz), mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+    assert "git" not in res["c1"]["results"][0]
+
+
+def test_git_provenance_omits_a_stale_snapshot(tmp_path: Path, git_repo: Path) -> None:
+    """The c2/c3 repro (#279 review, finding 2): index at c2, then commit c3
+    without re-indexing. The row still shows c2's text, so it must NOT be
+    credited to c3's commit."""
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin c2")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "c2 penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin c2"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
+
+    tracked.write_text("penguin c3")
+    _commit(git_repo, "commit", "-am", "c3 penguin")
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+
+    assert "git" not in res["c1"]["results"][0]
+
+
+def test_git_options_attach_nothing_when_not_requested(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "tracked.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("tracked.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    assert "git" not in res["c1"]["results"][0]
+    assert "gitFilter" not in res["c1"]
+
+
+def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
+    cols = tmp_path / "cols"
+    docs = [make_doc("JIRA-1", ["penguin"])]
+    with mock_embedding(embed_dim=8):
+        ingestion.create(
+            [
+                SourceConfig(
+                    name="c1", type="jiraCloud", base_url_or_path="https://acme.test"
+                )
+            ],
+            use_cache=False,
+            connector_factory=make_connector_factory(
+                docs, {"type": "jiraCloud", "baseUrl": "https://acme.test"}
+            ),
+            collections_path=str(cols),
+        )
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD",
+            git_provenance=True,
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["JIRA-1"]
+    assert "git" not in res["c1"]["results"][0]
+    # The filter cannot apply to a non-files reader, and says so instead of
+    # quietly returning unfiltered rows.
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "not-a-files-collection",
+    }
+
+
+def test_changed_since_invalid_ref_skips_the_filter(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "a.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add a")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="no-such-ref",
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "no-such-ref",
+        "applied": False,
+        "reason": "unknown-ref",
+    }
+
+
+def test_git_options_are_noops_outside_a_repo(tmp_path: Path) -> None:
+    """A files collection over a non-repo must not empty results or raise."""
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD",
+            git_provenance=True,
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+    assert "git" not in res["c1"]["results"][0]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "no-git-repository",
+    }

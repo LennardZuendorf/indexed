@@ -209,6 +209,9 @@ indexed index search "authentication flow"
 indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
 indexed index search "authentication flow" --json        # indexed.search/1 payload
+indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
+indexed index search "who wrote this" --git-provenance     # commit + author per file
+# A filter a collection cannot honour warns per collection, never silently
 
 # Manage collections
 indexed index inspect                    # list all collections

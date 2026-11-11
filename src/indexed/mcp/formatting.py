@@ -10,8 +10,9 @@ in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
 contract stays the design record (issues #108/#109).
 
 Shape, in one breath: documents grouped, each stating its collection, source
-type, id, url and score semantics ONCE; each hit carrying only its
-relevance, raw score, locator and text.
+type, id, url, git provenance (when it was asked for and git answered) and
+score semantics ONCE; each hit carrying only its relevance, raw score, locator
+and text.
 
 Grouping was the point. The old flat payload repeated ``collection``,
 ``document_id`` and ``document_url`` on every chunk and said nothing about
@@ -24,6 +25,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from indexed.protocols.results import SEARCH_SCHEMA, Hit, Locator
+from indexed.utils.git_meta import filter_skip_message
 from indexed.utils.relevance import unified_relevance
 
 #: Score kind reported for a v1 collection, which carries no ``scoreKind``
@@ -62,6 +64,18 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
         if not isinstance(collection_data, dict):
             continue
 
+        # A requested changed_since the collection could not honour is reported
+        # here too: unfiltered rows arriving under a "changed only" request are
+        # a defect, not a quiet degrade (#279 review, finding 1).
+        git_filter = collection_data.get("gitFilter")
+        if isinstance(git_filter, dict) and git_filter.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": filter_skip_message(git_filter),
+                }
+            )
+
         searched.append(collection_name)
         raw_score_kind = collection_data.get("scoreKind")
         # A collection is fed by exactly one reader, so its source type is a
@@ -83,6 +97,13 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                 entry["id"] = doc_id
                 if doc_url:
                     entry["url"] = doc_url
+                # Document-level provenance, present only when --git-provenance
+                # found a commit for this file (v2 files collections); absent
+                # otherwise. Facts about the file, so they sit on the document
+                # rather than repeated on every hit (#279 x #297 result shape).
+                git = doc.get("git")
+                if isinstance(git, dict):
+                    entry["git"] = git
                 entry["score_kind"] = score_kind
                 entry["hits"] = []
                 documents[key] = entry  # type: ignore[assignment]
@@ -153,6 +174,10 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc_url = doc.get("url")
     if doc_url and doc_url != (f"file://{doc_path}" if doc_path else None):
         out["url"] = doc_url
+    # Provenance is a fact about the file, stated once beside the url; absent
+    # unless --git-provenance got an answer for the indexed snapshot.
+    if doc.get("git"):
+        out["git"] = doc["git"]
     out["score_kind"] = doc["score_kind"]
     out["hits"] = hits
     return out

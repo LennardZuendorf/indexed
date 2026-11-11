@@ -162,6 +162,61 @@ def test_search_rerank_not_forwarded_to_v1(monkeypatch, tmp_path: Path) -> None:
     assert "rerank" not in captured["kwargs"]
 
 
+def test_search_changed_since_marks_v1_results_unfiltered(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """v1 ignores ``changed_since`` (documented) — so its results must SAY so.
+
+    Otherwise an all-v1 search under ``--changed-since`` is byte-identical to
+    an unfiltered one and the caller cannot tell (#279 review, finding 1).
+    """
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy")
+    captured = {}
+
+    def fake_search(query, **kwargs):
+        captured["kwargs"] = kwargs
+        return {"legacy": {"results": []}}
+
+    monkeypatch.setattr(v1_services, "search", fake_search)
+
+    result = facade.search(
+        "q",
+        configs=[type("Cfg", (), {"name": "legacy"})()],
+        collections_path=str(tmp_path),
+        changed_since="HEAD~1",
+    )
+
+    assert "changed_since" not in captured["kwargs"]
+    assert result["legacy"]["gitFilter"] == {
+        "ref": "HEAD~1",
+        "applied": False,
+        "reason": "v1-engine",
+    }
+
+
+def test_search_without_changed_since_adds_no_git_filter(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy")
+    monkeypatch.setattr(
+        v1_services, "search", lambda query, **kw: {"legacy": {"results": []}}
+    )
+
+    result = facade.search(
+        "q",
+        configs=[type("Cfg", (), {"name": "legacy"})()],
+        collections_path=str(tmp_path),
+    )
+
+    assert "gitFilter" not in result["legacy"]
+
+
 # --- explicit engine="1" confirms and routes to v1 ---------------------------
 
 
