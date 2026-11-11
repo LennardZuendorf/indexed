@@ -97,4 +97,4 @@ Reject equal-missing model snapshots and common instrumentation before compariso
 Verify invalid-result artifacts through the actual publisher consumer.
 Pin corpus bytes; retain original/refreshed tips; keep AGENTS snapshots outside worktrees.
 Pin uv environments/caches and plan paths; avoid zsh's path; select dist suffixes. Rebuild expired temporary evidence from Git.
-Check doc unions against line limits; distinguish requirement IDs from measured test totals. Keep promoted contracts scoped.
+Check doc unions against line limits; distinguish requirement IDs from measured test totals. Keep promoted contracts scoped. Audit project packages; verify advisory patch floors.

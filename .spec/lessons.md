@@ -1810,3 +1810,11 @@ claim about all configuration writes overstated the shipped dry-run contract.
 **Rule:** Carry the producer's branch condition into promoted contract prose.
 **Tags:** spec, review
 **Date:** 2026-11-11
+
+### Audit the installed project, not the isolated audit tool
+**Pattern:** CI's isolated `uv tool run pip-audit` environment reported success
+while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
+**Rule:** Pass the project's actual site-packages directory to the auditor and
+raise stale security floors to the advisory's patched version (here 4.0.1).
+**Tags:** security, dependencies, verification
+**Date:** 2026-11-11
