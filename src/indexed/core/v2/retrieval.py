@@ -223,6 +223,9 @@ def _search_one(
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
         "scoreKind": score_kind,
+        # The reader type is the only true per-hit source discriminator there
+        # is (issue #108/#109); absent when the manifest does not carry one.
+        **({"sourceType": manifest.reader.type} if manifest.reader.type else {}),
         "results": results,
     }
 
@@ -279,7 +282,10 @@ def _group_by_document(
             "score": float(nws.score) if nws.score is not None else 0.0,
         }
         if include_matched_chunks:
-            chunk["content"] = {"indexedData": node.get_content()}
+            # ``metadata`` mirrors v1's chunk content (``{indexedData,
+            # metadata}``): without it a v2 hit cannot say WHERE it sits, and
+            # the two engines would need two result shapes (issue #108/#109).
+            chunk["content"] = {"indexedData": node.get_content(), "metadata": meta}
 
         if source_id not in result:
             if len(result) >= max_docs:
