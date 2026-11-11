@@ -90,8 +90,8 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **FastMCP** | 3.4+, <4 | MCP server |
 | **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.17.3 | Linter + formatter |
-| **ty** | 0.0.95 | Type checker |
+| **ruff** | 0.17.4 | Linter + formatter |
+| **ty** | 0.0.99 | Type checker |
 | **pytest** | 9.2+ | Testing |
 
 ### Package Structure
