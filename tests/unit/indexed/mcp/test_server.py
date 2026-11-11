@@ -378,6 +378,10 @@ class TestCollectionsStatusListResourceFunction:
         mock_status_item.source_type = "files"
         mock_status_item.relative_path = "./docs"
         mock_status_item.disk_size_bytes = 2048
+        mock_status_item.freshness = {
+            "status": "stale",
+            "summary": "stale — 2 files changed since commit abc1234",
+        }
         mock_status.return_value = [mock_status_item]
 
         resource = _get_resource("resource://collections/status")
@@ -389,6 +393,9 @@ class TestCollectionsStatusListResourceFunction:
         assert collections[0]["name"] == "collection1"
         assert collections[0]["number_of_documents"] == 100
         assert collections[0]["number_of_chunks"] == 500
+        # #146 slice 1: the status resource asks for freshness and carries it.
+        assert mock_status.call_args.kwargs["include_freshness"] is True
+        assert collections[0]["freshness"]["status"] == "stale"
 
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")

@@ -136,7 +136,17 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
 
     documents_out = [_finalize_document(doc) for doc in ordered]
 
-    return {
+    # Per-collection index freshness, present only when the caller asked for it
+    # (#146 slice 1). Same `summary` words as `index inspect` — one verdict,
+    # never a second phrasing that could drift.
+    freshness_rows = [
+        {"collection": collection_name, **verdict}
+        for collection_name, collection_data in raw_results.items()
+        if isinstance(collection_data, dict)
+        and isinstance(verdict := collection_data.get("freshness"), dict)
+    ]
+
+    payload: Dict[str, Any] = {
         "schema": SEARCH_SCHEMA,
         "query": query,
         "counts": {"documents": len(documents_out), "hits": len(ranked)},
@@ -144,6 +154,11 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
         "collection_errors": collection_errors,
         "documents": documents_out,
     }
+    # Advisory, opt-in, and additive: absent unless requested, so the shape
+    # #279/#297 pinned is unchanged for every caller that did not ask.
+    if freshness_rows:
+        payload["freshness"] = freshness_rows
+    return payload
 
 
 def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:

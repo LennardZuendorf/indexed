@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Lessons Learned
@@ -1351,6 +1351,21 @@ with `git add`/`git status`, since that's what CI actually runs.
   so a leak that only bites when both are collected together ships green. Run
   `uv run pytest` (testpaths=[tests]) before handing off, and guard the
   teardown invariant where the leak would land.
+## Index freshness must compare bytes, not just `git status` (2026-11-03)
+
+- **A dirty working tree does not make an index stale — the INDEXED BYTES do.**
+  Indexing a tree that has uncommitted edits is normal, and `state.json` is
+  written after that run, so `git diff HEAD` reports changes the index already
+  contains. Freshness therefore re-hashes only the changed paths against
+  `file_hashes`; a HEAD-only comparison would have warned "stale" on every
+  collection indexed from a dirty tree. Without stored hashes, stay
+  conservative (count every changed path) rather than claiming fresh.
+- **A collection with no baseline is `unknown`, never `fresh`.** `state.json`
+  only exists after the files connector's `post_run` on a *successful*
+  create/update; an older or differently-built collection has none. Any
+  "cannot tell" path carries a reason code to the surface, exactly like
+  `gitFilter` — a silent skip would turn "indexed before change tracking" into
+  a false all-clear.
 
 ## One builder for both surfaces (2026-10-26)
 
@@ -1822,3 +1837,21 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [tests] A helper that asserts one diagnostic title must take the title as a
   parameter once a second tool (the stamp writer) fails with its own. Reuse the
   exit-code and no-verdict assertions, not the message text.
+
+## Merging a shape rewrite under an additive feature (2026-11-11)
+
+- **Resolve a behaviour conflict by keeping the newer shape and attaching the
+  additive block — never both code paths.** #146 slice 1's freshness envelope was
+  written against the pre-#279 flat `results` list; merging #279/#297's grouped
+  `documents`/`hits` builder leaves that flat code in the hunk referring to
+  variables the new function no longer has. Keep the grouped builder, append
+  `freshness` only when the caller asked (absent otherwise, so the shape #297
+  pinned for every other caller is byte-identical), and re-point the older side's
+  tests at the merged builder — the rename
+  (`format_search_results_for_llm` → `build_search_payload`) already happened on
+  the trunk, so a test keeping the old name proves nothing.
+- **Merge the trunk that will actually land, once.** A public branch that keeps
+  merging `main` rediscovers the same collisions every time; `dd37069` (#279 +
+  #297) is what the queue merges, so the branch must contain exactly that head and
+  the evidence must be `git merge-tree --write-tree dd37069 <head>` → rc=0. A
+  clean merge against `main` says nothing about the queue's trunk.

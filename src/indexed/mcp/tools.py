@@ -32,6 +32,7 @@ def _run_search(
     *,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
+    include_freshness: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute a search and return formatted results or a graceful error envelope."""
     # Only the requested git keys are splatted: both default to None (off), and
@@ -46,6 +47,10 @@ def _run_search(
         git_kwargs["git_provenance"] = git_provenance
     elif getattr(search_cfg, "git_provenance", False) is True:
         git_kwargs["git_provenance"] = True
+    if include_freshness:
+        # Opt-in: the envelope then carries one freshness verdict per
+        # collection, worded exactly as `index inspect` words it.
+        git_kwargs["include_freshness"] = True
     try:
         raw_results = svc_search(
             query,
@@ -86,6 +91,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         query: str,
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
+        include_freshness: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search all available document collections for semantically similar content.
@@ -106,6 +112,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 (commit/short/author/committedAt/subject), omitted for a file
                 changed since it was indexed
                 (defaults to core.v1.search.git_provenance).
+            include_freshness (Optional[bool]): Add a per-collection ``freshness``
+                verdict (fresh/stale/unknown) to the envelope — how far behind the
+                source working tree each index is.
             ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
 
         Returns:
@@ -123,6 +132,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             collections_path,
             changed_since=changed_since,
             git_provenance=git_provenance,
+            include_freshness=include_freshness,
         )
 
     @mcp.tool
@@ -131,6 +141,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         query: str,
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
+        include_freshness: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
         """Search within a specific document collection using semantic similarity.
@@ -148,6 +159,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 (commit/short/author/committedAt/subject), omitted for a file
                 changed since it was indexed
                 (defaults to core.v1.search.git_provenance)
+            include_freshness: Add a per-collection freshness verdict (fresh/stale/
+                unknown) to the envelope, in the same words `index inspect` uses
             ctx: FastMCP Context (optional, for accessing lifespan state)
 
         Returns:
@@ -198,4 +211,5 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             collections_path,
             changed_since=changed_since,
             git_provenance=git_provenance,
+            include_freshness=include_freshness,
         )

@@ -116,6 +116,35 @@ def _print_git_filter_skips(skips: List[tuple[str, Dict[str, Any]]]) -> None:
         )
 
 
+def _freshness_verdicts(results: Dict[str, Any]) -> List[tuple[str, Dict[str, Any]]]:
+    """Per-collection freshness advisory, present only when ``--freshness`` ran.
+
+    The facade attaches it to each collection result, so this is the same
+    verdict (and the same ``summary`` words) `index inspect` prints.
+    """
+    verdicts: List[tuple[str, Dict[str, Any]]] = []
+    for collection_name, collection_results in results.items():
+        if not isinstance(collection_results, dict):
+            continue
+        verdict = collection_results.get("freshness")
+        if isinstance(verdict, dict):
+            verdicts.append((collection_name, verdict))
+    return verdicts
+
+
+def _print_freshness_advisories(verdicts: List[tuple[str, Dict[str, Any]]]) -> None:
+    """Dim for fresh, a warning for stale/unknown — never a silent stale index."""
+    for collection_name, verdict in verdicts:
+        summary = str(verdict.get("summary") or verdict.get("status") or "")
+        if verdict.get("status") == "fresh":
+            console.print(
+                f"[{get_dim_style()}]{escape(collection_name)}: {escape(summary)}"
+                f"[/{get_dim_style()}]"
+            )
+        else:
+            print_warning(f"{collection_name}: {summary}")
+
+
 def format_search_results(
     query: str,
     results: Dict[str, Any],
@@ -199,6 +228,11 @@ def format_search_results(
     git_skips = _git_filter_skips(results)
     if git_skips:
         _print_git_filter_skips(git_skips)
+        console.print()
+
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
         console.print()
 
     if not all_chunks:
@@ -446,6 +480,11 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
         _print_git_filter_skips(git_skips)
         console.print()
 
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
+        console.print()
+
     # Summary
     console.print()
     if total_results > 0:
@@ -524,6 +563,11 @@ def format_search_results_compact(
     git_skips = _git_filter_skips(results)
     if git_skips:
         _print_git_filter_skips(git_skips)
+        console.print()
+
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
         console.print()
 
     # Summary

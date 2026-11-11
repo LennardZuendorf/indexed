@@ -34,6 +34,7 @@ from indexed.core.errors import (
     UnknownEngineVersionError,
 )
 from indexed.core.versioning import EngineVersion, detect_engine_version
+from indexed.utils import freshness
 
 # Shared types/classes re-exported unchanged from v1 (no routing) — resolved
 # lazily so importing the facade stays cheap. v2 will reuse the same types.
@@ -384,6 +385,53 @@ def _coerce_info(version: EngineVersion, raw: Any) -> Any:
     return [CollectionInfo(**d) for d in raw]
 
 
+def _reader_block(collection_dir: Path) -> Optional[Dict[str, Any]]:
+    """The manifest's ``reader`` block, or ``None`` when it can't be read.
+
+    Read as plain JSON so the facade needs neither engine's models; the two
+    engines' manifests share this block byte-for-byte (see ``V2Manifest``).
+    """
+    try:
+        raw = json.loads((collection_dir / "manifest.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+    reader = raw.get("reader") if isinstance(raw, dict) else None
+    return reader if isinstance(reader, dict) else None
+
+
+def _freshness_for(
+    name: str, collections_path: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """One collection's freshness verdict (issue #146 slice 1), or ``None``.
+
+    Engine-agnostic by construction: the baseline is the files connector's
+    ``state.json`` and the source path comes from the manifest, both of which
+    v1 and v2 collections write. ``None`` means the manifest itself is
+    unreadable (that collection is omitted from every surface anyway); every
+    other "can't tell" path returns a verdict with a reason code.
+    """
+    collection_dir = _collections_base(collections_path) / name
+    reader = _reader_block(collection_dir)
+    if reader is None:
+        return None
+    baseline, hashes = freshness.read_baseline(collection_dir)
+    return freshness.evaluate(
+        reader_type=reader.get("type"),
+        source_path=reader.get("basePath"),
+        baseline_commit=baseline,
+        indexed_hashes=hashes,
+    ).to_dict()
+
+
+def _attach_freshness(entries: Dict[str, Any], collections_path: Optional[str]) -> None:
+    """Add ``freshness`` to every successful per-collection search entry."""
+    for name, entry in entries.items():
+        if isinstance(entry, dict) and "error" not in entry:
+            verdict = _freshness_for(name, collections_path)
+            if verdict is not None:
+                entry["freshness"] = verdict
+
+
 def _configs_for_group(
     configs: Optional[List[Any]], group_names: List[str]
 ) -> List[Any]:
@@ -677,6 +725,7 @@ def search(
     rerank: Optional[bool] = None,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
+    include_freshness: bool = False,
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
@@ -753,6 +802,8 @@ def search(
             _resolve_existing_engine(engine, names, collections_path), configs
         )
         _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        if include_freshness:
+            _attach_freshness(result, collections_path)
         return result
 
     groups, omitted = _group_names_by_engine(names, collections_path)
@@ -763,6 +814,8 @@ def search(
         result = _run(version, _configs_for_group(configs, grp_names))
         result.update({name: {"error": msg} for name, msg in omitted.items()})
         _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        if include_freshness:
+            _attach_freshness(result, collections_path)
         return result
 
     merged: Dict[str, Any] = {}
@@ -770,6 +823,8 @@ def search(
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     merged.update({name: {"error": msg} for name, msg in omitted.items()})
     _surface_preserved(_collections_base(collections_path), merged, preserved_scope)
+    if include_freshness:
+        _attach_freshness(merged, collections_path)
     return merged
 
 
@@ -779,11 +834,12 @@ def status(
     include_index_size: bool = False,
     collections_path: Optional[str] = None,
     engine: Optional[str] = None,
+    include_freshness: bool = False,
 ) -> List[Any]:
     """Collection status, routing/merging per the collection's engine (R2)."""
 
     def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
-        return _coerce_status(
+        statuses = _coerce_status(
             version,
             _engine_impl(version).status(
                 collection_names=names,
@@ -791,6 +847,10 @@ def status(
                 collections_path=collections_path,
             ),
         )
+        if include_freshness:
+            for entry in statuses:
+                entry.freshness = _freshness_for(entry.name, collections_path)
+        return statuses
 
     if collection_names:
         _recover(_collections_base(collections_path), collection_names, strict=True)
@@ -824,7 +884,7 @@ def inspect(
     """Detailed collection inspection, routing/merging per engine (R2)."""
 
     def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
-        return _coerce_info(
+        infos = _coerce_info(
             version,
             _engine_impl(version).inspect(
                 collection_names=names,
@@ -832,6 +892,11 @@ def inspect(
                 collections_path=collections_path,
             ),
         )
+        for info in infos:
+            # Freshness is engine-agnostic reporting, so it is attached HERE
+            # rather than in either engine's inspect (#146 slice 1).
+            info.freshness = _freshness_for(info.name, collections_path)
+        return infos
 
     if collection_names:
         _recover(_collections_base(collections_path), collection_names, strict=True)

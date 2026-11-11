@@ -55,6 +55,84 @@ def _run(repo: str, *args: str) -> str | None:
     return result.stdout
 
 
+def _run_code(repo: str, *args: str) -> int | None:
+    """Run one git command for its EXIT CODE; ``None`` when git could not run.
+
+    ``_run`` folds a non-zero exit into ``None``, which cannot distinguish
+    "git says no" (``merge-base --is-ancestor`` exit 1) from "git is broken".
+    Freshness needs that distinction to report ``unknown`` honestly.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "-c", "core.quotePath=false", *args],
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT,
+            env=_env(),
+        )
+    except Exception:
+        return None
+    return result.returncode
+
+
+def head_commit(repo: str) -> str | None:
+    """Full SHA of HEAD, or ``None`` for an unborn/absent HEAD (or a non-repo)."""
+    out = _run(repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    return out.strip() if out and out.strip() else None
+
+
+def commit_exists(repo: str, commit: str) -> bool:
+    """True when ``commit`` resolves in this repository (guards shallow/pruned)."""
+    return (
+        _run(repo, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
+        is not None
+    )
+
+
+def is_ancestor(repo: str, ancestor: str, descendant: str) -> bool | None:
+    """True/False from ``merge-base --is-ancestor``; ``None`` when git can't answer."""
+    code = _run_code(repo, "merge-base", "--is-ancestor", ancestor, descendant)
+    if code is None:
+        return None
+    return code == 0
+
+
+def commit_count(repo: str, older: str, newer: str) -> int | None:
+    """Commits in ``older..newer``, or ``None`` when git cannot count them."""
+    out = _run(repo, "rev-list", "--count", f"{older}..{newer}")
+    if out is None:
+        return None
+    try:
+        return int(out.strip())
+    except ValueError:
+        return None
+
+
+def is_detached_head(repo: str) -> bool:
+    """True when HEAD is detached (not on a branch); ``False`` when unknown."""
+    code = _run_code(repo, "symbolic-ref", "--quiet", "HEAD")
+    return code == 1
+
+
+def is_shallow_repository(repo: str) -> bool:
+    """True for a shallow clone — its truncated history can't prove ancestry."""
+    out = _run(repo, "rev-parse", "--is-shallow-repository")
+    return bool(out and out.strip() == "true")
+
+
+def ignored_paths(repo: str) -> frozenset[str] | None:
+    """Untracked paths hidden by ``.gitignore`` — invisible to ``git status``.
+
+    A file that was indexed and only LATER ignored still sits in the index;
+    without this list freshness could call such a collection fresh forever.
+    ``None`` when git cannot list them.
+    """
+    out = _run(repo, "ls-files", "--others", "--ignored", "--exclude-standard")
+    if out is None:
+        return None
+    return frozenset(line.strip() for line in out.splitlines() if line.strip())
+
+
 def repo_toplevel(path: str) -> str | None:
     """Absolute repo root containing ``path``, or ``None`` when it is not in one."""
     out = _run(path, "rev-parse", "--show-toplevel")
@@ -202,8 +280,14 @@ def snapshot_is_current(
 
 __all__ = [
     "changed_paths",
+    "commit_count",
+    "commit_exists",
     "filter_skip_message",
+    "head_commit",
+    "is_ancestor",
+    "is_detached_head",
     "is_git_repo",
+    "is_shallow_repository",
     "last_commit",
     "repo_relative",
     "repo_toplevel",
