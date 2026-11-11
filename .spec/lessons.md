@@ -1803,3 +1803,10 @@ that the operating system had removed between sessions.
 artifacts before reusing them; a saved path is not durable verification evidence.
 **Tags:** verification, artifacts
 **Date:** 2026-11-11
+
+### Preserve scope when retiring plans
+**Pattern:** Promoting a key-specific `core.engine` validation rule into a generic
+claim about all configuration writes overstated the shipped dry-run contract.
+**Rule:** Carry the producer's branch condition into promoted contract prose.
+**Tags:** spec, review
+**Date:** 2026-11-11

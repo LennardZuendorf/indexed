@@ -682,7 +682,7 @@ final review of issue #186:
 
 Bulk updates filter collections by an explicit engine selector before the
 update loop. MCP startup falls back to the default engine when its unused
-selector is invalid. Configuration writes validate before dry-run; v2 resolvers
+selector is invalid. Configuration writes to `core.engine` validate before dry-run; v2 resolvers
 propagate validation errors only for their own namespaces. Migration reports
 `backup_purged` only after verifying removal. CLI and MCP share relevance
 conversion while retaining each result's true score kind; reranking redirects
