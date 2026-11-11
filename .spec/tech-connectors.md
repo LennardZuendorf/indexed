@@ -3,7 +3,7 @@ type: branch
 scope: connectors
 parent: tech.md
 covers: connector protocol, implemented connectors, change tracking
-updated: 2026-11-03
+updated: 2026-11-11
 ---
 
 # Tech Branch: Connectors (`src/indexed/connectors/`)
@@ -137,10 +137,12 @@ Indexing is not the only consumer of git: `search --changed-since` and
   `GIT_OBJECT_DIRECTORY`/`GIT_CEILING_DIRECTORIES` and pins `GIT_TERMINAL_PROMPT=0`,
   `LC_ALL=C` — the same hygiene as `change_tracker.py`.
 - `repo_toplevel` / `is_git_repo` — `git rev-parse --show-toplevel`.
-- `changed_paths(repo, ref)` — union of `git diff --name-only <ref> --`, the unstaged and
-  `--cached` diffs, and `git ls-files --others --exclude-standard`, so uncommitted and
-  untracked work counts as "changed". An invalid ref returns `None` (verified up front
-  via `rev-parse --verify <ref>^{commit}`) — a typo must never look like "nothing changed".
+- `changed_paths(repo, ref)` — union of `git diff --name-only <ref> --` (REF's tree vs
+  the **working tree**, so committed, staged and unstaged changes all count) and
+  `git ls-files --others --exclude-standard` for untracked work. Two legs: a plain
+  `git diff` and a `--cached` diff add nothing this one call does not already see.
+  An invalid ref returns `None` (verified up front via
+  `rev-parse --verify <ref>^{commit}`) — a typo must never look like "nothing changed".
 - `head_commit` / `commit_exists` / `is_ancestor` / `is_shallow_repository` /
   `commit_count` / `is_detached_head` — the freshness facts behind
   `utils/freshness.py` (#146 slice 1): the HEAD SHA, whether the indexed commit still
@@ -155,6 +157,13 @@ Indexing is not the only consumer of git: `search --changed-since` and
   `{commit, short, author, email, committedAt, subject}`. **No blame-by-line in this
   slice**: provenance is document-level, so a file's history is one cheap call, not a
   per-chunk `git blame`.
+- `snapshot_is_current(base_path, source_id, modified_time, indexed_at=None)` — compares
+  a node's indexed `modified_time` with the file's mtime now (`os.path` + `stat`, no
+  subprocess). The stored value is offset-aware UTC, so the comparison is
+  zone-independent; an offset-less (legacy) value is judged instead against the
+  manifest's `updatedTime`, which is zone-free. `last_commit` answers for the file as it
+  is on disk, so retrieval attaches provenance only while this says the indexed
+  snapshot still describes it.
 - `repo_relative(repo, base_path, source_id)` — document ids are base-path-relative
   (`v1_adapter.py:35-36`), git pathspecs are repo-relative; this rebases with `os.path`
   arithmetic only (no symlink resolution, no filesystem probe).

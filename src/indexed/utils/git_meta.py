@@ -9,6 +9,7 @@ degrades to ``None``/empty, so a git problem never breaks a search.
 
 from __future__ import annotations
 
+import datetime
 import os
 import subprocess
 
@@ -157,10 +158,11 @@ def changed_paths(repo: str, ref: str) -> frozenset[str] | None:
     if _run(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") is None:
         return None
     paths: set[str] = set()
+    # ``git diff <ref> --`` compares REF's tree with the WORKING TREE, so one
+    # leg covers committed, staged and unstaged changes alike; untracked paths
+    # are the only ones it cannot see. Two legs, not four (#279 review).
     for args in (
         ("diff", "--name-only", ref, "--"),
-        ("diff", "--name-only", "--"),
-        ("diff", "--name-only", "--cached", "--"),
         ("ls-files", "--others", "--exclude-standard"),
     ):
         out = _run(repo, *args)
@@ -228,6 +230,54 @@ def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     return os.path.relpath(absolute, repo).replace(os.sep, "/")
 
 
+_MTIME_TOLERANCE = 1e-3
+
+
+def _parse_iso(value: str | None) -> datetime.datetime | None:
+    """Parse an ISO 8601 string, or ``None`` when it is absent/unparseable."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def snapshot_is_current(
+    base_path: str,
+    source_id: str,
+    modified_time: str | None,
+    indexed_at: str | None = None,
+) -> bool:
+    """True when the file on disk still matches the mtime its indexed node holds.
+
+    ``modified_time`` is written **offset-aware in UTC** by the files reader, so
+    parsing it and taking ``.timestamp()`` is absolute — independent of the query
+    process's zone or a DST change. An offset-less value is LEGACY (the old
+    writers stored naive *local* wall time, whose zone is unknowable — the #279
+    B1 defect): it is judged zone-free against ``indexed_at``, the manifest's UTC
+    ``updatedTime``, because a file not newer than the index cannot have changed
+    since. That degrades towards *provenance present*, as does a node with no
+    timestamp at all. A vanished file always answers False, and the aware mtime
+    equality is a heuristic, not a content hash.
+    """
+    path = os.path.normpath(os.path.join(base_path, source_id))
+    try:
+        actual = os.path.getmtime(path)
+    except OSError:
+        return False
+
+    recorded = _parse_iso(modified_time)
+    if recorded is not None and recorded.tzinfo is not None:
+        # ``isoformat()`` keeps microseconds; anything beyond that rounding is an edit.
+        return abs(recorded.timestamp() - actual) < _MTIME_TOLERANCE
+
+    indexed = _parse_iso(indexed_at)
+    if indexed is None or indexed.tzinfo is None:
+        return True
+    return actual <= indexed.timestamp() + _MTIME_TOLERANCE
+
+
 __all__ = [
     "changed_paths",
     "commit_count",
@@ -241,4 +291,5 @@ __all__ = [
     "last_commit",
     "repo_relative",
     "repo_toplevel",
+    "snapshot_is_current",
 ]

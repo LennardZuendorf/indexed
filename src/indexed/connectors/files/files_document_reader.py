@@ -229,8 +229,11 @@ class FilesDocumentReader:
                     and not self._is_file_gitignored(Path(full_path), gitignore_specs)
                     and (
                         self.start_from_time is None
-                        or self._read_file_modification_time(full_path)
-                        >= self.start_from_time
+                        # ``.timestamp()`` on both sides: the reader's value is
+                        # UTC-aware, a caller's cutoff may be naive local. The
+                        # instants are what this filter is about.
+                        or self._read_file_modification_time(full_path).timestamp()
+                        >= self.start_from_time.timestamp()
                     )
                 ):
                     yield full_path
@@ -281,5 +284,12 @@ class FilesDocumentReader:
 
     @staticmethod
     def _read_file_modification_time(file_path: str) -> datetime.datetime:
+        """The file's mtime as an **offset-aware UTC** datetime.
+
+        Offset-aware on purpose: the value is persisted on the node (via
+        ``isoformat()``) and re-read by a *different* process at query time, so
+        it must be self-describing or a zone/DST change silently shifts it
+        (#279 B1). A naive local value only round-trips inside one zone.
+        """
         mod_time = os.path.getmtime(file_path)
-        return datetime.datetime.fromtimestamp(mod_time)
+        return datetime.datetime.fromtimestamp(mod_time, datetime.timezone.utc)
