@@ -1795,3 +1795,11 @@ bytes, measure comparable inputs, and check document unions against size limits.
 Keep requirement coverage explicit without presenting it as a volatile test count.
 **Tags:** dependencies, evaluation, verification, spec
 **Date:** 2026-11-11
+
+### Resuming verification after temporary-file cleanup
+**Pattern:** A resumed publication tried to reuse a checker under `/private/tmp`
+that the operating system had removed between sessions.
+**Rule:** Reconstruct checks from captured Git objects and inspect current
+artifacts before reusing them; a saved path is not durable verification evidence.
+**Tags:** verification, artifacts
+**Date:** 2026-11-11
