@@ -1055,8 +1055,8 @@ def test_ab_gate_step_is_pinned_with_its_failure_path():
     assert "--stamp-corpus" in block
     # The measured base is the merge commit's own first parent, never the event
     # snapshot: a snapshot that lags the merge GitHub built failed a valid merge
-    # on 2026-11-12 (run 43175675712) and made one PR head conclude two ways six
-    # minutes apart. A native-stack wrapper needs no special case — it is
+    # on 2026-11-12 (run 43175675712: base dca6be3, merge parents
+    # [600f1f3, 6ff5d2c]). A native-stack wrapper needs no special case — it is
     # measured as itself.
     assert 'measure "$BASE_DIR" "$AB_BASE_SHA"' in block
     assert 'measure "$MERGE_DIR" "$MERGE_SHA"' in block

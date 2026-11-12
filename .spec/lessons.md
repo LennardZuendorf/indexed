@@ -1786,10 +1786,13 @@ with `git add`/`git status`, since that's what CI actually runs.
   `Performance Benchmarks`, which is why three PRs were closed as
   "pre-existing" rather than read. Record the verdict as a job output and give
   each outcome its own job check name.
-- **Two consecutive runs on one commit must agree, or the check is measuring
-  CI.** A gate that fails and passes six minutes apart with no code change is
-  reading the runner. Prove determinism by re-running the same run, never by
-  reading one green log.
+- **Prove determinism by re-running one run, never by comparing two heads.**
+  A later green on a different head — one that merged the base branch, say — is
+  a different input and says nothing about an earlier red. The 2026-11-12
+  "benchmark flake" was exactly that: red on `6ff5d2c`, green on `930743ae`,
+  which merged main and so refreshed the payload base. The evidence that counts
+  is two attempts of one run on one merge: `43184196410` measured `4319ee0c` on
+  AMD EPYC 9V74 and then 7763, and concluded PASS both times.
 - **The same shell proof lives in two workflows.** `python-benchmark.yml` and
   `python-eval.yml` each carry `verify_pr_merge`; changing one alone leaves two
   policies behind the same vocabulary. Change both in the same cycle.

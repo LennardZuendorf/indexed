@@ -168,11 +168,10 @@ jobs:
         # against. The event payload's base SHA is an earlier snapshot and lags
         # that build whenever the base branch moves in between, so it cannot
         # decide provenance: on 2026-11-12 run 43175675712 carried base=dca6be3
-        # while its merge's first parent was 600f1f3, and that mismatch failed a
-        # valid merge — two runs of one PR head six minutes apart concluded
-        # differently with no code change. Measuring the first parent keeps both
-        # sides immutable and keeps the delta exactly this PR's change;
-        # substituting the stale snapshot instead charges the branch's
+        # while the merge it measured, 487a1131, had parents [600f1f3, 6ff5d2c],
+        # so the old wrapper proof rejected a valid merge. Measuring the first
+        # parent keeps both sides immutable and keeps the delta exactly this PR's
+        # change; substituting the stale snapshot instead charges the branch's
         # intervening commits to the PR. A native-stack wrapper needs no special
         # case for the same reason: it is measured as itself.
         verify_pr_merge() {
