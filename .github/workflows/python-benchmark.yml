@@ -50,6 +50,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write  # required to post the report comment
+    # The gate records pass/regression/invalid here so the two check names
+    # below can report them separately.
+    outputs:
+      verdict: ${{ steps.abgate.outputs.verdict }}
     steps:
     - name: Cache HuggingFace embedding model
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -125,7 +129,13 @@ jobs:
       with:
         python-version: "3.14"
 
-    - name: Same-job A/B gate (captured base vs merge result)
+    - name: Same-job A/B gate (merge parent vs merge result)
+      # This step records a verdict; it never throws one. A job check named
+      # "Performance Benchmarks" that went red because it compared nothing is
+      # indistinguishable from a real regression (#267, #271), so the verdict
+      # travels to `Benchmark verdict` / `Benchmark verdict: no verdict` below.
+      id: abgate
+      continue-on-error: true
       if: "!cancelled() && steps.revisions.outcome == 'success'"
       env:
         BASE_SHA: ${{ steps.revisions.outputs.base }}
@@ -140,7 +150,7 @@ jobs:
         HEAD_RESULTS: ${{ runner.temp }}/bench-ab-merge.json
       run: |
         set -Eeuo pipefail
-        trap 'echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
+        trap 'echo "verdict=invalid" >> "$GITHUB_OUTPUT"; echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
         [[ "$CHECKOUT_OUTCOME" == success && "$PYTHON_OUTCOME" == success ]]
         AB_TESTS=(
           "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs"
@@ -152,11 +162,24 @@ jobs:
           EXPECTED_ARGS+=(--expected-benchmark "$node")
         done
 
-        # Fetch immutable objects, never substitute a moving target branch tip.
+        # The merge commit is the only immutable statement of what this run
+        # compares: GitHub builds `github.sha` server-side from [base tip, PR
+        # head], so its first parent IS the base that merge was computed
+        # against. The event payload's base SHA is an earlier snapshot and lags
+        # that build whenever the base branch moves in between, so it cannot
+        # decide provenance: on 2026-11-12 run 43175675712 carried base=dca6be3
+        # while its merge's first parent was 600f1f3, and that mismatch failed a
+        # valid merge — two runs of one PR head six minutes apart concluded
+        # differently with no code change. Measuring the first parent keeps both
+        # sides immutable and keeps the delta exactly this PR's change;
+        # substituting the stale snapshot instead charges the branch's
+        # intervening commits to the PR. A native-stack wrapper needs no special
+        # case for the same reason: it is measured as itself.
         verify_pr_merge() {
-          local parents first wrapper_parents wrapper_tree base_tree revision
-          local -a merge_parents wrapper
+          local parents first revision
+          local -a merge_parents
           provenance_invalid() {
+            echo "verdict=invalid" >> "$GITHUB_OUTPUT"
             echo "::error title=Same-job measurement invalid::$1; captured base=$BASE_SHA merge=$MERGE_SHA head=$PR_HEAD_SHA"
             exit 2
           }
@@ -166,27 +189,18 @@ jobs:
             provenance_invalid "expected two merge parents ending in captured head; actual parents=$parents"
           fi
           first=${merge_parents[0]}
-          for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA" "$first"; do
+          for revision in "$first" "$MERGE_SHA" "$PR_HEAD_SHA"; do
             if ! git cat-file -e "${revision}^{commit}"; then
               provenance_invalid "missing commit object=$revision"
             fi
           done
-          if [[ "$first" == "$BASE_SHA" ]]; then return; fi
-          wrapper_parents=$(git show -s --format=%P "$first")
-          read -r -a wrapper <<< "$wrapper_parents"
-          if [[ "${#wrapper[@]}" -ne 2 || "${wrapper[1]:-missing}" != "$BASE_SHA" ]]; then
-            provenance_invalid "expected two wrapper parents ending in captured base; wrapper=$first actual parents=$wrapper_parents"
+          AB_BASE_SHA=$first
+          if [[ "$first" != "$BASE_SHA" ]]; then
+            echo "::notice::Event base=$BASE_SHA is not this merge's first parent; measuring first parent=$first, the base the merge was built on."
           fi
-          if ! git cat-file -e "${wrapper[0]}^{commit}"; then
-            provenance_invalid "missing wrapper parent object=${wrapper[0]}"
-          fi
-          wrapper_tree=$(git rev-parse --verify "${first}^{tree}")
-          base_tree=$(git rev-parse --verify "${BASE_SHA}^{tree}")
-          if [[ "$wrapper_tree" != "$base_tree" ]]; then
-            provenance_invalid "wrapper tree differs from captured base; wrapper=$first actual tree=$wrapper_tree expected tree=$base_tree"
-          fi
-          echo "::notice::Verified native-stack wrapper=$first complete tree=$base_tree; measuring original base=$BASE_SHA and merge=$MERGE_SHA"
+          echo "::notice::Verified PR merge=$MERGE_SHA parents=[$first $PR_HEAD_SHA]; measuring base=$AB_BASE_SHA and merge=$MERGE_SHA"
         }
+        AB_BASE_SHA=$BASE_SHA
         git fetch --no-tags --depth=3 origin "$BASE_SHA" "$MERGE_SHA"
         verify_pr_merge
         python -m pip install uv
@@ -212,18 +226,69 @@ jobs:
             --stamp-corpus "$output" \
             --corpus-root "$directory/tests/benchmarks/fixtures"
         }
-        measure "$BASE_DIR" "$BASE_SHA" "$BASE_RESULTS"
+        measure "$BASE_DIR" "$AB_BASE_SHA" "$BASE_RESULTS"
         measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"
 
-        # Preserve the comparator's distinct regression (1) and invalid (2) exits.
+        # The comparator's exits are the verdict: 1 regression, 2 invalid. They
+        # are recorded for the reporting jobs below, never swallowed — a pass is
+        # written only for exit 0.
         status=0
         python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
           --base "$BASE_RESULTS" --head "$HEAD_RESULTS" \
           --tolerance "$AB_TOLERANCE" "${EXPECTED_ARGS[@]}" \
-          --base-label "captured event base @ $BASE_SHA" \
+          --base-label "merge first parent @ $AB_BASE_SHA" \
           --head-label "captured PR merge result @ $MERGE_SHA" \
           --summary "$GITHUB_STEP_SUMMARY" || status=$?
+        case "$status" in
+          0) echo "verdict=pass" >> "$GITHUB_OUTPUT" ;;
+          1) echo "verdict=regression" >> "$GITHUB_OUTPUT" ;;
+          *) echo "verdict=invalid" >> "$GITHUB_OUTPUT"; status=2 ;;
+        esac
         exit "$status"
+
+  # The gate's verdict, as two checks whose names state the outcome. A red
+  # `Benchmark verdict` therefore always means a measured regression, and a red
+  # `Benchmark verdict: no verdict` always means the run compared nothing
+  # (#267, #271). Only one of the two can be red.
+  verdict:
+    if: >-
+      always() && github.event_name == 'pull_request'
+      && github.event.pull_request.draft != true
+      && (needs.benchmark.outputs.verdict == 'pass'
+      || needs.benchmark.outputs.verdict == 'regression')
+    needs: [benchmark]
+    name: Benchmark verdict
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: A/B regression
+      if: needs.benchmark.outputs.verdict == 'regression'
+      run: |
+        set -euo pipefail
+        echo "::error title=Benchmark regression::the same-job A/B measured this PR's merge result slower than its base beyond tolerance; see the Performance Benchmarks summary."
+        exit 1
+    - name: A/B pass
+      if: needs.benchmark.outputs.verdict == 'pass'
+      run: "echo 'same-job A/B: no regression beyond tolerance.'"
+
+  no-verdict:
+    if: >-
+      always() && github.event_name == 'pull_request'
+      && github.event.pull_request.draft != true
+      && needs.benchmark.outputs.verdict != 'pass'
+      && needs.benchmark.outputs.verdict != 'regression'
+    needs: [benchmark]
+    name: "Benchmark verdict: no verdict"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Refuse to report anything else
+      run: |
+        set -euo pipefail
+        echo "::error title=Benchmark: no verdict::the same-job A/B did not compare, so this PR has no benchmark verdict. This is not a regression and not a pass; the reason is in the Performance Benchmarks job."
+        exit 1
 
   refresh-baseline:
     # Dispatch-only and main-only. A baseline move is never a side effect of

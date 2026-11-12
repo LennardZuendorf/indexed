@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-08
+updated: 2026-11-12
 ---
 
 # Lessons Learned
@@ -1772,3 +1772,24 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [tests] A helper that asserts one diagnostic title must take the title as a
   parameter once a second tool (the stamp writer) fails with its own. Reuse the
   exit-code and no-verdict assertions, not the message text.
+
+## Benchmark provenance and check names (2026-11-12)
+
+- **The event payload's base SHA is not the base the merge was built on.**
+  `pull_request.base.sha` is a snapshot; `github.sha`'s merge commit is built
+  later, and the two disagree whenever the base branch moves in between. Trust
+  the merge commit's own first parent and treat the payload base as a notice.
+  Substituting the snapshot both reds valid comparisons and charges the base
+  branch's intervening commits to the PR.
+- **A red check whose name cannot say what it means is not a gate.** Exit 1
+  (measured regression) and exit 2 (compared nothing) surfaced as the same red
+  `Performance Benchmarks`, which is why three PRs were closed as
+  "pre-existing" rather than read. Record the verdict as a job output and give
+  each outcome its own job check name.
+- **Two consecutive runs on one commit must agree, or the check is measuring
+  CI.** A gate that fails and passes six minutes apart with no code change is
+  reading the runner. Prove determinism by re-running the same run, never by
+  reading one green log.
+- **The same shell proof lives in two workflows.** `python-benchmark.yml` and
+  `python-eval.yml` each carry `verify_pr_merge`; changing one alone leaves two
+  policies behind the same vocabulary. Change both in the same cycle.

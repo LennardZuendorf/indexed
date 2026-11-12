@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import platform
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -1042,7 +1044,7 @@ def trap_handler(block: str) -> tuple[str, str]:
 
 def test_ab_gate_step_is_pinned_with_its_failure_path():
     """Deleting the gate must red a check, not silently stop gating."""
-    block = step_block("Same-job A/B gate (captured base vs merge result)")
+    block = step_block("Same-job A/B gate (merge parent vs merge result)")
     handler, signal = trap_handler(block)
     assert signal == "ERR"
     assert "::error title=Same-job measurement invalid::" in handler
@@ -1051,8 +1053,121 @@ def test_ab_gate_step_is_pinned_with_its_failure_path():
     assert 'exit "$status"' in block
     # Both measured sides are stamped with their own fixture-set identity.
     assert "--stamp-corpus" in block
-    assert 'measure "$BASE_DIR" "$BASE_SHA"' in block
+    # The measured base is the merge commit's own first parent, never the event
+    # snapshot: a snapshot that lags the merge GitHub built failed a valid merge
+    # on 2026-11-12 (run 43175675712) and made one PR head conclude two ways six
+    # minutes apart. A native-stack wrapper needs no special case — it is
+    # measured as itself.
+    assert 'measure "$BASE_DIR" "$AB_BASE_SHA"' in block
     assert 'measure "$MERGE_DIR" "$MERGE_SHA"' in block
+    assert "AB_BASE_SHA=$first" in block
+    assert "wrapper_tree" not in block
+    assert "wrapper_parents" not in block
+    # A pass is recorded only for exit 0; exits 1 and 2 stay distinct.
+    assert 'echo "verdict=pass" >> "$GITHUB_OUTPUT"' in block
+    assert 'echo "verdict=regression" >> "$GITHUB_OUTPUT"' in block
+    assert '*) echo "verdict=invalid" >> "$GITHUB_OUTPUT"' in block
+
+
+def test_ab_verdict_is_two_named_checks():
+    """A red check must say whether it measured a regression or nothing."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "verdict: ${{ steps.abgate.outputs.verdict }}" in text
+    assert 'name: "Benchmark verdict: no verdict"' in text
+    regression = step_block("A/B regression")
+    assert "::error title=Benchmark regression::" in regression
+    no_verdict = step_block("Refuse to report anything else")
+    assert "::error title=Benchmark: no verdict::" in no_verdict
+    assert "not a regression and not a pass" in no_verdict
+
+
+def shell_function(block: str, name: str) -> str:
+    """One bash function's source, de-indented, out of a workflow step block."""
+    lines = block.splitlines()
+    first = next(
+        index
+        for index, line in enumerate(lines)
+        if line.strip().startswith(f"{name}() {{")
+    )
+    indent = len(lines[first]) - len(lines[first].lstrip())
+    last = next(
+        index
+        for index in range(first + 1, len(lines))
+        if lines[index].strip() == "}"
+        and len(lines[index]) - len(lines[index].lstrip()) == indent
+    )
+    return textwrap.dedent("\n".join(lines[first : last + 1]))
+
+
+def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path):
+    """The gate accepts the merge GitHub built even when the base branch moved
+    after the event snapshot, and still refuses a merge that is not this PR's.
+
+    Reproduces run 43175675712 (2026-11-12): payload base ``dca6be3``, merge
+    first parent ``600f1f3``. The old proof called that valid merge "provenance
+    invalid" and reddened the only check that carries a benchmark verdict.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "gate@example.invalid")
+    git("config", "user.name", "gate")
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    # The base branch moves on after the webhook snapshot was taken.
+    (repo / "b.txt").write_text("b", encoding="utf-8")
+    git("add", "b.txt")
+    git("commit", "-qm", "base moved on")
+    moved = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "feature", base)
+    (repo / "c.txt").write_text("c", encoding="utf-8")
+    git("add", "c.txt")
+    git("commit", "-qm", "feature")
+    head = git("rev-parse", "HEAD")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "-m", "merge", "feature")
+    merge = git("rev-parse", "HEAD")
+
+    gate = (
+        shell_function(
+            step_block("Same-job A/B gate (merge parent vs merge result)"),
+            "verify_pr_merge",
+        )
+        + '\nAB_BASE_SHA=$BASE_SHA\nverify_pr_merge\nprintf "%s" "$AB_BASE_SHA"\n'
+    )
+    output = tmp_path / "github-output"
+    output.write_text("", encoding="utf-8")
+
+    def gate_run(**overrides: str) -> subprocess.CompletedProcess[str]:
+        env = {
+            **os.environ,
+            "BASE_SHA": base,
+            "MERGE_SHA": merge,
+            "PR_HEAD_SHA": head,
+            "GITHUB_OUTPUT": str(output),
+            **overrides,
+        }
+        return subprocess.run(
+            ["bash", "-c", gate], cwd=repo, capture_output=True, text=True, env=env
+        )
+
+    accepted = gate_run()
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert "is not this merge's first parent" in accepted.stdout
+    assert [line for line in accepted.stdout.splitlines() if line][-1] == moved
+
+    refused = gate_run(PR_HEAD_SHA=base)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "Same-job measurement invalid" in refused.stdout
+    assert "verdict=invalid" in output.read_text(encoding="utf-8")
 
 
 def test_report_step_keeps_its_advisory_tolerance():
