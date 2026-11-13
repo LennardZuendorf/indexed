@@ -1,10 +1,19 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # Lessons Learned
+
+- Verify workflow fixture paths against the current tree before running them.
+- Pass pytest configuration flags to pytest, not to `uv run`.
+- Build patch inputs from explicit file paths and verify each diff before handoff.
+- Compare reused environment versions with the lock before treating its checks as release evidence.
+- Baseline size limits before adding tests and adjust the documented ceiling only for retained coverage.
+- Separate process-inspection permission errors from test-runner failures.
+- Check model cache weights before treating a restored cache as usable.
+- Isolate each test model cache and record host permission mode and thread settings. Compare failures with the unchanged baseline; use bounded threads for functional checks or diagnosis and run performance budgets exclusively with normal native settings matching the baseline.
 
 Accumulated mistakes and earned defaults. Read at session start.
 
@@ -363,9 +372,9 @@ port is a different origin for credential purposes; fail closed.
 - **Known-hit, not "no error".** Assert a *specific* document is the top hit and that
   a *different* query ranks a *different* document first. That is what proves recall
   and is exactly what the pruned mechanism tests could not assert.
-- **Config isolation patches `Path.home()`**, so the HF model cache can miss on the
-  first model-using test of a session and re-download once into the sandbox. Harmless
-  where the network is available; gate model-dependent specs on `model_available()`.
+- **Config isolation patches `Path.home()`**, so the default HF model cache can
+  change unless an unchanged `HF_HUB_CACHE` or `HF_HOME` takes precedence. Pin the
+  resolved absolute `HF_HUB_CACHE` before model setup and tests that isolate HOME.
 - **Verify red bug-specs fail for the RIGHT reason.** Run them with
   `pytest --runxfail --tb=line` and confirm each fails on a genuine assertion about
   the desired behavior (or the bug's own exception) — never a spurious
@@ -1818,3 +1827,13 @@ while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
 raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
+
+- [verification] Record host permission mode, cache isolation and native thread settings for each run. A two-test baseline invocation crashed in restricted host mode without thread limits and passed with bounded threads; the same tests also passed with normal native thread settings under authorized host access. This does not establish the crash cause. Bounded threads may be used for functional checks or diagnosis; measure performance budgets exclusively under authorized access and normal native settings matching the baseline.
+
+- [verification] Before readiness, the union of functional checks and separately run performance checks must cover every deselected case. Preserve the exact candidate, environment and result for each part.
+
+- [tools] Read the target tool's argument declaration before every distinct tool call; fields accepted by one tool need not be accepted by another.
+
+## Publication refresh (2026-11-13)
+
+- Refresh source heads and expired test environments before publication; pin commit identity and signing explicitly.

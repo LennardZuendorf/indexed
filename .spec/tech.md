@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # Tech Spec: indexed
@@ -167,7 +167,21 @@ uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
 
+### System Tests in CI
+
+The Python 3.11–3.14 system jobs acquire `all-MiniLM-L6-v2` before
+pytest so model-dependent tests can run. Before acquisition, the job resolves the
+model manager cache path to an absolute `HF_HUB_CACHE` and exports it to later
+steps, preserving the selected cache when tests isolate HOME. The workflows do not restore the
+old immutable model cache key, which held a snapshot without weights. Model
+acquisition failure fails setup rather than silently skipping those tests.
+
 ### CI Benchmarking
+
+The advisory benchmark maps use 12 s for `batch_parse`, 20 s for
+`full_connector_pipeline`, and 30 s for its `_mixed` variant. The mixed key
+precedes its substring match. Both jobs use the same map; these caps are
+reporting backstops, while the paired A/B comparison owns the PR verdict.
 
 Performance regressions are caught in CI, not via local scripts. The former
 `.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
