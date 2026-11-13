@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Tech Spec: indexed
@@ -90,9 +90,9 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **FastMCP** | 3.4+, <4 | MCP server |
 | **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.16.2 | Linter + formatter |
-| **ty** | 0.0.58 | Type checker |
-| **pytest** | 9.1+ | Testing |
+| **ruff** | 0.17.4 | Linter + formatter |
+| **ty** | 0.0.99 | Type checker |
+| **pytest** | 9.2+ | Testing |
 
 ### Package Structure
 
@@ -698,6 +698,15 @@ final review of issue #186:
   (the same convention `core/v2/retrieval.py` and v1's `search_service.py` already use for
   a per-collection failure inside a batch); `status()`/`inspect()` return plain lists with
   no per-item error slot, so they purely omit it with a logged warning — unchanged.
+
+Bulk updates filter collections by an explicit engine selector before the
+update loop. MCP startup falls back to the default engine when its unused
+selector is invalid. Configuration writes to `core.engine` validate before dry-run; v2 resolvers
+propagate validation errors only for their own namespaces. Migration reports
+`backup_purged` only after verifying removal. CLI and MCP share relevance
+conversion while retaining each result's true score kind; reranking redirects
+third-party stdout diagnostics to stderr. These are the shipped issue #186
+contracts, not instructions to reapply its retired implementation plan.
 
 No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
 facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
