@@ -1828,6 +1828,16 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
 
+### File settings and local test access (2026-11-12)
+- Persist and restore all reader settings before an update; test the complete manifest round trip and observable strategy behavior.
+- A local socket permission denial in pytest setup is an execution environment failure, not a failed test; rerun with authorized access.
+- Measure the combined test tree and agent guide before changing size ceilings; independent branch headroom does not cover the combined tree.
+- Reformat imported source-branch tests with the current pinned formatter before freezing the integration patch.
+- Isolate temporary Git fixture routing and disable signing and hooks per commit; global signing can require an unavailable agent.
+
+- Run lock-matched checks with authorized access to the configured uv cache; a denied cache lock is an environment failure.
+
+- Give each full suite a separate copied model cache with verified weights; export its absolute HF_HUB_CACHE before HOME isolation.
 - [verification] Record host permission mode, cache isolation and native thread settings for each run. A two-test baseline invocation crashed in restricted host mode without thread limits and passed with bounded threads; the same tests also passed with normal native thread settings under authorized host access. This does not establish the crash cause. Bounded threads may be used for functional checks or diagnosis; measure performance budgets exclusively under authorized access and normal native settings matching the baseline.
 
 - [verification] Before readiness, the union of functional checks and separately run performance checks must cover every deselected case. Preserve the exact candidate, environment and result for each part.
