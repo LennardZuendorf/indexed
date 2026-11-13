@@ -509,3 +509,23 @@ class TestInspectListViewPathRendering:
         assert "/short/path" in result.stdout
         assert "/short/path2" in result.stdout
         assert "/another/short/path" in result.stdout
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _composition_patch_does_not_leak():
+    """Module finalizer guard for the fixture-ordering leak behind `uv run pytest`.
+
+    ``test_inspect_corrupt_collection_reports_unreadable`` monkeypatches an
+    attribute the module-autouse ``_patch_runtime_context`` already patched. If
+    teardown order ever puts the ``monkeypatch`` undo last, that test restores
+    the Mock permanently and every later test in the process fails on a MockCtx
+    / MagicMock config — and CI never sees it, because the unit and system suites
+    run in separate processes there.
+    """
+    yield
+    from indexed.cli import composition
+
+    assert not isinstance(composition.resolve_collections_context, MagicMock), (
+        "resolve_collections_context is still a Mock after this module finished: "
+        "a fixture-ordering leak is poisoning later tests"
+    )

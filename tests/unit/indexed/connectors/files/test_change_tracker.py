@@ -1,75 +1,13 @@
 """Tests for change_tracker — ChangeTracker and IndexState."""
 
 import os
-import subprocess
 from pathlib import Path
-
-import pytest
 
 from indexed.connectors.files.change_tracker import (
     ChangeTracker,
     IndexState,
 )
-
-# Git exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE into hook environments
-# (e.g. the pre-push hook that runs this suite). If inherited, the throwaway
-# repos created below operate on the OUTER repo instead — corrupting its index
-# and making `auto` detect git where there is none. Scrub those vars and pin a
-# clean config (no global/system, no hooks, no signing) so every git call here
-# is fully isolated and deterministic regardless of how pytest was invoked.
-_LEAKED_GIT_VARS = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_PREFIX",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_CEILING_DIRECTORIES",
-)
-
-
-def _git_env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k not in _LEAKED_GIT_VARS}
-    env["GIT_CONFIG_GLOBAL"] = os.devnull
-    env["GIT_CONFIG_SYSTEM"] = os.devnull
-    env["GIT_CONFIG_NOSYSTEM"] = "1"
-    return env
-
-
-def run_git(cwd, *args, check: bool = True) -> subprocess.CompletedProcess:
-    """Run an isolated git command: no inherited GIT_* env, no hooks, no signing."""
-    return subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=test@test.com",
-            "-c",
-            "user.name=Test",
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "core.hooksPath=/dev/null",
-            *args,
-        ],
-        cwd=str(cwd),
-        capture_output=True,
-        check=check,
-        env=_git_env(),
-    )
-
-
-@pytest.fixture(autouse=True)
-def _isolate_git_env(monkeypatch):
-    """Drop inherited GIT_* vars for every test.
-
-    The code under test (ChangeTracker) shells out to git too — if it inherits a
-    leaked GIT_DIR/GIT_INDEX_FILE it operates on the outer repo. Scrubbing the
-    process env keeps both the test setup and the tracker pinned to their own
-    repos.
-    """
-    for var in _LEAKED_GIT_VARS:
-        monkeypatch.delenv(var, raising=False)
+from tests.conftest import run_git
 
 
 class TestIndexState:
@@ -165,16 +103,6 @@ class TestChangeTrackerAuto:
 
 
 class TestChangeTrackerGit:
-    @pytest.fixture
-    def git_repo(self, tmp_path):
-        """Create a real, isolated git repo for testing."""
-        run_git(tmp_path, "init")
-        f = tmp_path / "initial.txt"
-        f.write_text("initial")
-        run_git(tmp_path, "add", ".")
-        run_git(tmp_path, "commit", "-m", "init")
-        return tmp_path
-
     def test_first_run_all_added(self, git_repo):
         tracker = ChangeTracker(str(git_repo), strategy="git")
         f = git_repo / "initial.txt"

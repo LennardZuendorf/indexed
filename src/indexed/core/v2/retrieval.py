@@ -26,8 +26,9 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional
 
 from loguru import logger
 
@@ -37,18 +38,93 @@ from indexed.core.v2._common import (
     resolve_rerank_config,
     resolve_search_config,
 )
+from indexed.utils import git_meta
 
 if TYPE_CHECKING:
     from llama_index.core.base.embeddings.base import BaseEmbedding
     from llama_index.core.schema import NodeWithScore
 
     from indexed.core.v2.config_models import CoreV2RerankConfig
+    from indexed.core.v2.manifest import V2Manifest
     from indexed.protocols import SourceConfig
 
 # Upper bound on retrieved chunks so doc-grouping isn't starved by one dominant
 # document filling the top-k (v1 bug A5). Brute-force cosine at <100k chunks is
 # cheap, so a larger fetch just bounds the worst case.
 _OVERFETCH_CEILING = 10_000
+
+# Readers whose ``source_id`` is a path under ``basePath`` — the only ones a git
+# pathspec can be derived for (both spellings exist in the wild).
+_FILES_READER_TYPES = frozenset({"localFiles", "files"})
+
+# Why a requested ``changed_since`` filter was not applied. A skipped filter is
+# NEVER silent: the collection's result carries these in ``gitFilter`` so the
+# CLI and MCP surfaces can say "these rows are unfiltered" (#279 review).
+_FILTER_NOT_FILES = "not-a-files-collection"
+_FILTER_NO_REPO = "no-git-repository"
+_FILTER_UNKNOWN_REF = "unknown-ref"
+
+
+@dataclass
+class _GitContext:
+    """One collection's repo, resolved once per search (never cached globally)."""
+
+    repo: str
+    base_path: str
+    # The manifest's UTC ``updatedTime`` — the zone-free yardstick a LEGACY
+    # offset-less node timestamp is judged against (git_meta.snapshot_is_current).
+    indexed_at: Optional[str] = None
+    commits: Dict[str, Optional[Dict[str, str]]] = field(default_factory=dict)
+
+    def relative(self, source_id: str) -> str:
+        return git_meta.repo_relative(self.repo, self.base_path, source_id)
+
+    def is_changed(self, node: Any, changed: FrozenSet[str]) -> bool:
+        source_id = (node.metadata or {}).get("source_id")
+        return source_id is not None and self.relative(str(source_id)) in changed
+
+    def last_commit(self, source_id: str) -> Optional[Dict[str, str]]:
+        """Memoized per (repo, path): at most one ``git log`` per admitted doc."""
+        if source_id not in self.commits:
+            self.commits[source_id] = git_meta.last_commit(
+                self.repo, self.relative(source_id)
+            )
+        return self.commits[source_id]
+
+    def provenance(self, node: Any) -> Optional[Dict[str, str]]:
+        """``git`` for ``node``, or ``None`` when its indexed snapshot is stale.
+
+        ``git log`` answers for the file as it is NOW, so attaching it to text
+        from an older index would credit a commit that never contained that
+        text (#279 review, finding 2). The guard is a pure stat comparison.
+        """
+        meta = node.metadata or {}
+        source_id = meta.get("source_id")
+        if source_id is None or not git_meta.snapshot_is_current(
+            self.base_path,
+            str(source_id),
+            meta.get("modified_time"),
+            self.indexed_at,
+        ):
+            return None
+        return self.last_commit(str(source_id))
+
+
+def _git_context(manifest: "V2Manifest") -> Optional[_GitContext]:
+    """Git context for a files collection, or ``None`` when it can't be resolved.
+
+    A non-files reader, a missing ``basePath`` or a non-repo all resolve to
+    ``None``: both query-time git options are files-collections-only by design.
+    """
+    if manifest.reader.type not in _FILES_READER_TYPES:
+        return None
+    base_path = (manifest.reader.model_extra or {}).get("basePath")
+    if not isinstance(base_path, str) or not base_path:
+        return None
+    repo = git_meta.repo_toplevel(base_path)
+    if repo is None:
+        return None
+    return _GitContext(repo=repo, base_path=base_path, indexed_at=manifest.updated_time)
 
 
 def search(
@@ -62,6 +138,8 @@ def search(
     include_matched_chunks: bool = False,
     collections_path: Optional[str] = None,
     rerank: Optional[bool] = None,
+    changed_since: Optional[str] = None,
+    git_provenance: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Search v2 collections; return ``{collection: per-collection-result}``.
 
@@ -69,7 +147,11 @@ def search(
     ``search`` signature/defaults so the facade can route to it unchanged.
     ``rerank``, when not ``None``, overrides ``[core.v2.rerank] enabled`` for
     this call only (CLI ``--rerank``/``--no-rerank``, R2) without touching the
-    stored config.
+    stored config. ``changed_since`` keeps only nodes whose file changed since
+    that git ref (uncommitted work included); ``git_provenance`` attaches the
+    last-touching commit per result document, but only while the indexed
+    snapshot still matches the file on disk. Both apply to files collections
+    only and are no-ops when git can't answer (issues #60/#144/#146).
     """
     if max_docs is None:
         max_docs = resolve_search_config().max_docs
@@ -108,6 +190,8 @@ def search(
                 include_all_chunks=include_all_chunks,
                 embed_cache=embed_cache,
                 rerank_cfg=rerank_cfg,
+                changed_since=changed_since,
+                git_provenance=git_provenance,
             )
         except Exception as exc:  # per-collection failure never aborts the rest
             logger.error(f"Error searching v2 collection {name}: {exc}")
@@ -165,6 +249,8 @@ def _search_one(
     include_all_chunks: bool,
     embed_cache: Dict[str, "BaseEmbedding"],
     rerank_cfg: "CoreV2RerankConfig",
+    changed_since: Optional[str],
+    git_provenance: Optional[bool],
 ) -> Dict[str, Any]:
     from llama_index.core import load_index_from_storage
 
@@ -199,6 +285,35 @@ def _search_one(
     if rerank_cfg.enabled:
         nodes_with_scores = _apply_rerank(nodes_with_scores, query, rerank_cfg)
 
+    # Query-time git awareness: ONE repo resolution per collection shared by both
+    # options, and a git problem skips the feature rather than emptying results —
+    # but the skip is REPORTED in ``gitFilter``, never a silent unfiltered set.
+    git_ctx = (
+        _git_context(manifest)
+        if (changed_since is not None or git_provenance)
+        else None
+    )
+    git_filter: Optional[Dict[str, Any]] = None
+    if changed_since is not None:
+        if manifest.reader.type not in _FILES_READER_TYPES:
+            git_filter = _filter_not_applied(name, changed_since, _FILTER_NOT_FILES)
+        elif git_ctx is None:
+            git_filter = _filter_not_applied(name, changed_since, _FILTER_NO_REPO)
+        else:
+            changed = git_meta.changed_paths(git_ctx.repo, changed_since)
+            if changed is None:
+                git_filter = _filter_not_applied(
+                    name, changed_since, _FILTER_UNKNOWN_REF
+                )
+            else:
+                # Before grouping, so max_docs is filled by survivors, not starved.
+                nodes_with_scores = [
+                    nws
+                    for nws in nodes_with_scores
+                    if git_ctx.is_changed(nws.node, changed)
+                ]
+                git_filter = {"ref": changed_since, "applied": True}
+
     # Full-text/all-chunks reconstruction needs every chunk of a matched doc,
     # not just the retrieved ones — grouped from the docstore by source_id
     # (only built when requested, so the common path pays nothing).
@@ -214,12 +329,13 @@ def _search_one(
         include_full_text=include_full_text,
         include_all_chunks=include_all_chunks,
         docs_by_source=docs_by_source,
+        git_context=git_ctx if git_provenance else None,
     )
     # Reranking REPLACES each NodeWithScore.score with a cross-encoder
     # relevance, so the manifest's cosine score_kind no longer describes it
     # (PR #158 review #8) — report the distinct rerank kind instead.
     score_kind = RERANK_SCORE_KIND if rerank_cfg.enabled else manifest.engine.score_kind
-    return {
+    out: Dict[str, Any] = {
         "collectionName": name,
         "indexerName": manifest.engine.embedding.model,
         "scoreKind": score_kind,
@@ -228,6 +344,25 @@ def _search_one(
         **({"sourceType": manifest.reader.type} if manifest.reader.type else {}),
         "results": results,
     }
+    if git_filter is not None:
+        # Present only when ``changed_since`` was requested: the caller can then
+        # tell a filtered result set from a skipped filter instead of guessing.
+        out["gitFilter"] = git_filter
+    return out
+
+
+def _filter_not_applied(name: str, ref: str, reason: str) -> Dict[str, Any]:
+    """``gitFilter`` status for a requested filter this collection can't honour.
+
+    Logged at WARNING (a visible degrade, not a debug whisper) and carried into
+    the result so ``mcp/formatting.py`` / the CLI renderers can name both the
+    collection and the ref (#279 review, finding 1).
+    """
+    logger.warning(
+        f"changed_since={ref!r} was not applied to collection {name!r} ({reason}); "
+        "its results are unfiltered"
+    )
+    return {"ref": ref, "applied": False, "reason": reason}
 
 
 def _docs_by_source(index: Any) -> Dict[str, List[Any]]:
@@ -257,6 +392,7 @@ def _group_by_document(
     include_full_text: bool = False,
     include_all_chunks: bool = False,
     docs_by_source: Optional[Dict[str, List[Any]]] = None,
+    git_context: Optional[_GitContext] = None,
 ) -> List[Dict[str, Any]]:
     """Group ranked chunk nodes into documents (v1 ``__build_results`` semantics).
 
@@ -265,6 +401,8 @@ def _group_by_document(
     already-admitted document are capped by ``max_chunks``. When requested,
     ``text``/``allChunks`` are attached ON FIRST ADMISSION of a document (v1
     attaches them the same way), reconstructed from ``docs_by_source``.
+    ``git_context`` likewise attaches the document's last-touching commit as
+    ``entry["git"]`` on first admission, and only when git answered.
     """
     result: Dict[str, Dict[str, Any]] = {}
     total_chunks = 0
@@ -296,6 +434,10 @@ def _group_by_document(
                 "path": url,
                 "matchedChunks": [chunk],
             }
+            if git_context is not None:
+                provenance = git_context.provenance(node)
+                if provenance is not None:
+                    entry["git"] = provenance
             _attach_document_content(
                 entry,
                 source_id,

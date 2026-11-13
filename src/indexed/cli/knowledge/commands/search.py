@@ -5,11 +5,11 @@ and delegates all result rendering to ``search_render`` (thin command, fat
 services — issue #119).
 """
 
+import json
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import typer
-from typing import Optional
-
 from rich.markup import escape
 
 from ...utils.logging import is_verbose_mode
@@ -51,6 +51,102 @@ def _load_search_config():
         return CoreV1SearchConfig()
 
 
+def _files_base_path(collections_path: str, name: str) -> str | None:
+    """A v2 files collection's reader ``basePath``, or None (unreadable/other source).
+
+    Read straight off the manifest so the CLI needs no core import — the same
+    block the v2 retrieval path resolves its repo from.
+    """
+    try:
+        raw = json.loads(
+            (Path(collections_path) / name / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return None
+    reader = raw.get("reader")
+    if not isinstance(reader, dict):
+        return None
+    if reader.get("type") not in {"localFiles", "files"}:
+        return None
+    base = reader.get("basePath")
+    return base if isinstance(base, str) and base else None
+
+
+# ``_changed_since_problems`` kinds: a "ref" problem is a broken request (the ref
+# does not resolve) and always fails; a "shape" problem is a collection that
+# cannot carry the filter at all — fatal when the user named that collection,
+# a per-collection warning (the renderers') when searching everything.
+_REF_PROBLEM = "ref"
+_SHAPE_PROBLEM = "shape"
+
+
+def _engine_of(collections_path: str, name: str) -> str | None:
+    """The collection's engine marker ("1"/"2"), or None when it can't be read."""
+    from indexed.core.errors import UnknownEngineVersionError
+    from indexed.core.versioning import detect_engine_version
+
+    try:
+        return detect_engine_version(Path(collections_path) / name)
+    except (ValueError, UnknownEngineVersionError):
+        return None
+
+
+def _changed_since_problems(
+    ref: str, collections_path: str, names: list[str]
+) -> list[tuple[str, str]]:
+    """``(kind, message)`` for every searched collection that cannot honour ``ref``.
+
+    Up-front validation: a typo'd ref — or a files collection with no git repo
+    behind it — must fail loud, never render as "everything changed" /
+    "nothing changed" (``changed_paths`` returns None and retrieval then skips
+    the filter). What stays a warning is the heterogeneous "search everything"
+    case, where a Jira or v1 collection would otherwise veto the whole search.
+    """
+    from indexed.utils import git_meta
+
+    problems: list[tuple[str, str]] = []
+    for name in names:
+        base_path = _files_base_path(collections_path, name)
+        if base_path is None:
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' has no files reader",
+                )
+            )
+            continue
+        repo = git_meta.repo_toplevel(base_path)
+        if repo is None:
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' is not inside a git repository",
+                )
+            )
+            continue
+        if git_meta.changed_paths(repo, ref) is None:
+            problems.append(
+                (
+                    _REF_PROBLEM,
+                    f"--changed-since '{ref}' is not a valid git ref in {repo}",
+                )
+            )
+            continue
+        if _engine_of(collections_path, name) != "2":
+            problems.append(
+                (
+                    _SHAPE_PROBLEM,
+                    f"--changed-since '{ref}' cannot be applied: collection "
+                    f"'{name}' uses the v1 engine (git filtering is v2-only)",
+                )
+            )
+    return problems
+
+
 @app.command()
 def search(
     ctx: typer.Context,
@@ -77,6 +173,23 @@ def search(
         help=(
             "Rerank results with a cross-encoder (v2 collections only; "
             "overrides core.v2.rerank for this search)."
+        ),
+    ),
+    changed_since: Optional[str] = typer.Option(
+        None,
+        "--changed-since",
+        help=(
+            "Only results from files changed since a git ref, tag or commit, "
+            "including uncommitted and untracked changes (v2 files collections)"
+        ),
+    ),
+    git_provenance: Optional[bool] = typer.Option(
+        None,
+        "--git-provenance/--no-git-provenance",
+        # Config key written UNBRACKETED for the same reason as --rerank above.
+        help=(
+            "Show the commit and author that last touched each result file "
+            "(v2 files collections; overrides core.v1.search.git_provenance)"
         ),
     ),
     compact: bool = typer.Option(
@@ -246,6 +359,18 @@ def search(
     score_threshold = search_cfg.score_threshold
     display_limit = effective_max_docs
 
+    # Opt-in query-time git options (v2 files collections only). An omitted
+    # --git-provenance means "configured default", exactly like --limit/--rerank.
+    # Only the requested keys are splatted: the CLI search fakes have fixed
+    # signatures, and --changed-since must stay absent unless asked for.
+    git_kwargs: Dict[str, Any] = {}
+    if changed_since is not None:
+        git_kwargs["changed_since"] = changed_since
+    if git_provenance is not None:
+        git_kwargs["git_provenance"] = git_provenance
+    elif search_cfg.git_provenance:
+        git_kwargs["git_provenance"] = True
+
     if not collections_to_search:
         # A specific collection was named but turned out unsearchable (corrupt
         # manifest / no indexers): that is a failed request, not just "nothing
@@ -262,6 +387,26 @@ def search(
         if named_collection_requested:
             raise typer.Exit(1)
         return
+
+    # A typo'd --changed-since must fail loud: retrieval deliberately treats an
+    # unusable ref (or a collection with no repo behind it) as "skip the
+    # filter", which here would silently unfilter. An unresolvable ref is
+    # always fatal; a collection that cannot carry the filter is fatal when the
+    # user named it, and a per-collection warning (renderers) when searching
+    # every collection, so one Jira collection can't veto the whole search.
+    if changed_since is not None:
+        problems = _changed_since_problems(
+            changed_since, collections_path, collections_to_search
+        )
+        fatal = [msg for kind, msg in problems if kind == _REF_PROBLEM]
+        if not fatal and collection is not None:
+            fatal = [msg for _kind, msg in problems]
+        if fatal:
+            if simple:
+                print_json({"error": fatal[0]})
+            else:
+                print_error(fatal[0])
+            raise typer.Exit(1)
 
     # --rerank was explicitly requested but reranking is v2-only: if none of
     # the collections actually being searched are v2, the flag would
@@ -309,6 +454,7 @@ def search(
                     collections_path=collections_path,
                     **engine_kwargs,
                     **rerank_kwargs,
+                    **git_kwargs,
                 )
                 results.update(result)
     else:
@@ -331,6 +477,7 @@ def search(
                     collections_path=collections_path,
                     **engine_kwargs,
                     **rerank_kwargs,
+                    **git_kwargs,
                 )
                 results.update(result)
                 phased.finish_phase(phase_label)

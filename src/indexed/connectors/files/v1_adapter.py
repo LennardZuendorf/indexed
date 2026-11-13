@@ -41,7 +41,12 @@ class V1FormatAdapter:
                 mtime = Path(abs_path).stat().st_mtime
                 import datetime
 
-                modified_time = datetime.datetime.fromtimestamp(mtime).isoformat()
+                # Offset-aware UTC: the string outlives this process and is
+                # compared against a file mtime by a query process in another
+                # zone (#279 B1).
+                modified_time = datetime.datetime.fromtimestamp(
+                    mtime, datetime.timezone.utc
+                ).isoformat()
             except OSError:
                 modified_time = ""
 
@@ -81,7 +86,12 @@ class V1FormatAdapter:
                 mtime = Path(abs_path).stat().st_mtime
                 import datetime
 
-                modified_time = datetime.datetime.fromtimestamp(mtime).isoformat()
+                # Offset-aware UTC: the string outlives this process and is
+                # compared against a file mtime by a query process in another
+                # zone (#279 B1).
+                modified_time = datetime.datetime.fromtimestamp(
+                    mtime, datetime.timezone.utc
+                ).isoformat()
             except OSError:
                 modified_time = ""
 
