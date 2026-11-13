@@ -172,6 +172,10 @@ json_logs = false
 transport = "stdio"
 host = "127.0.0.1"
 port = 8000
+
+[watch]
+debounce_seconds = 2.0     # quiet period before one update runs
+poll_interval_seconds = 2.0  # seconds between scans of the watched tree
 ```
 
 > **Note:** `[core.v1.indexing]` (`chunk_size`/`chunk_overlap`) and most of
