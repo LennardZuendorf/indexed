@@ -70,3 +70,30 @@ class TestParsingModule:
         doc = module.parse(empty)
         assert doc.chunks == []
         assert doc.metadata.get("error") is not True
+
+    def test_code_chunking_disabled_parses_code_as_plaintext(self):
+        """``code_chunking=False`` must change chunking, not just a flag.
+
+        The same Python fixture yields AST-boundary chunks by default; with
+        AST chunking off it goes through the plaintext parser, so the chunk
+        count, ``source_type`` and metadata all differ.
+        """
+        ast_module = ParsingModule(
+            ocr=False, table_structure=False, max_tokens=512, code_chunking=True
+        )
+        plain_module = ParsingModule(
+            ocr=False, table_structure=False, max_tokens=512, code_chunking=False
+        )
+
+        ast_doc = ast_module.parse(FIXTURES / "sample.py")
+        plain_doc = plain_module.parse(FIXTURES / "sample.py")
+
+        assert {chunk.source_type for chunk in ast_doc.chunks} == {"code"}
+        assert {chunk.source_type for chunk in plain_doc.chunks} == {"plaintext"}
+        assert any("node_type" in chunk.metadata for chunk in ast_doc.chunks)
+        assert all("node_type" not in chunk.metadata for chunk in plain_doc.chunks)
+        assert len(ast_doc.chunks) > len(plain_doc.chunks)
+
+    def test_code_chunking_enabled_is_the_default(self, module: ParsingModule):
+        doc = module.parse(FIXTURES / "sample.py")
+        assert {chunk.source_type for chunk in doc.chunks} == {"code"}
