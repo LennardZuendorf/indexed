@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-11-02
+updated: 2026-11-11
 ---
 
 # Development Plan: indexed
@@ -39,12 +39,12 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 10 | Architecture cleanup (pre-v2) | structural fixes on surviving infra | ◑ MOSTLY DONE | tech.md § Architectural Rules; see below |
 | 11 | Architecture audit remediation | graph fixed, CLI/MCP parity, hygiene, import-graph CI | ✅ DONE | `src/indexed/protocols/`; wiring since folded into `src/indexed/cli/composition.py` (Feature 13) and the graph checker into `scripts/check_imports.py` (Feature 14) |
 | 12 | Critical bugs (non-core) | #123/#124 security + #114/#110 UX fixed, all gates green | ✅ DONE | `connectors/_url_guard.py`, `commands/create.py`, `commands/search.py` |
-| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 green | ✅ DONE | `protocols/models.py`, `core/v1/engine/__init__.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
-| 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 green, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
-| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 green | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder wrapped up 2026-07-19) |
-| 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 green | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
-| 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 green | ✅ DONE | `src/indexed/cli/knowledge/commands/{_create_options,_create_commands,create,_create_helpers,search}.py`, `core/engine.py`, `core/v2/{retrieval,services}`, `config/commands/set.py`, `cli/composition.py`, `README.md`, `cli/knowledge/cli.py` |
-| 18 | Core v2 rendering fixes (issue #187) | all 8 PR #162 review polish findings fixed behind regression tests — R1–R8 green | ✅ DONE | `cli/app.py`, `cli/utils/components/{alerts,theme,cards}.py`, `cli/knowledge/commands/{update_service,search_render,_create_options,inspect}.py`, `connectors/files/schema.py`, `core/engine.py` |
+| 13 | Foundation (architecture & correctness) | every audited bug fixed behind a characterization harness; typed contracts + core-swap facade; read-mostly config; honest CLI/MCP failures — R1–R7 verified | ✅ DONE | `protocols/models.py`, `src/indexed/core/engine.py` (facade), `src/indexed/cli/composition.py`, connector `from_manifest` |
+| 14 | Simplify (codebase reduction) | single package; dead code deleted; CLI/config chrome + process apparatus shrunk — R1,R3,R4,R5 verified, R2 partial (indexer deferred) | ✅ DONE | `src/indexed/` (one package, one wheel `indexed-sh`); `scripts/check_imports.py` + `scripts/check_sizes.py` |
+| 15 | Review remediation (PR #155) | every confirmed PR #155 review defect fixed behind a regression test — R1–R15 verified | ✅ DONE | merged to `main` in PR #155; regression tests in `tests/` (feature folder wrapped up 2026-07-19) |
+| 16 | Core v2 (LlamaIndex engine) | v2 engine + v1/v2 coexistence, routing, migration — R1–R13 verified | ✅ DONE | `src/indexed/core/v2/`, version-dispatching facade `src/indexed/core/engine.py` + `core/versioning.py`; tests `tests/unit/indexed/core/v2/`; migration `core/v2/migration.py` |
+| 17 | Core v2 discoverability (issue #188) | `--engine`/rerank flags surfaced, clean engine error on all 4 surfaces, README + every command's `--help` — R1–R7 verified | ✅ DONE | `src/indexed/cli/knowledge/commands/{_create_options,_create_commands,create,_create_helpers,search}.py`, `core/engine.py`, `core/v2/{retrieval,services}`, `config/commands/set.py`, `cli/composition.py`, `README.md`, `cli/knowledge/cli.py` |
+| 18 | Core v2 rendering fixes (`core-v2-rendering-fixes`, issue #187) | all 8 PR #162 review polish findings fixed behind regression tests — R1–R8 verified | ✅ DONE | `cli/app.py`, `cli/utils/components/{alerts,theme,cards}.py`, `cli/knowledge/commands/{update_service,search_render,_create_options,inspect}.py`, `connectors/files/schema.py`, `core/engine.py` |
 | 19 | GitHub Projects/Issues connector | issues+PRs+Projects v2 indexed; incremental update | ◑ MOSTLY DONE | [features/github-connector/](features/github-connector/) · [#90](https://github.com/LennardZuendorf/indexed/issues/90) — chunk-hash reuse follow-up not yet planned |
 | 20 | retrieval-eval | pinned code/docs/GitHub fixtures, measured dense/rerank evidence, validated reports | IN REVIEW | [features/retrieval-eval/](features/retrieval-eval/) · PR #265; paired public docs remain open |
 | 21 | lsp-tier0 (issue #241) | `indexed lsp` over stdio: honest `initialize`, `workspace/symbol`, `textDocument/hover` with provenance, MethodNotFound for the rest | IN REVIEW | [features/lsp-tier0/](features/lsp-tier0/) · `src/indexed/lsp/`, `src/indexed/cli/lsp.py` |
@@ -192,7 +192,7 @@ a bot push to a branch-protected `main`. See [tech.md](tech.md) § CI
 Benchmarking.
 
 ### 2026-09-03: Feature 18 (Core v2 Rendering Fixes, issue #187) shipped
-**Decision:** Implemented all 5 units (R1–R8 green) via
+**Decision:** Implemented all 5 units (R1–R8 verified) via
 `superpowers:subagent-driven-development` — a fresh implementer subagent per
 unit, a task-scoped spec+quality review after each (all 5 Approved; Minor
 findings deferred to this log), then a final whole-branch review on the most
@@ -243,11 +243,11 @@ functions; a legacy collection with a non-default glob pattern still
 displaying raw regex on `update` until re-created) were deliberately left
 unfixed rather than silently widening the branch past what two full review
 passes had already scoped — recorded here, not fixed ad-hoc. Full gate green
-throughout: ruff/ty/import-graph clean, full suite 1934 passed / 1 skipped,
-93%+ coverage (>85% required).
+throughout: ruff/ty/import-graph clean, full suite verified at delivery,
+coverage above the required threshold.
 
 ### 2026-09-01: Feature 17 (Core v2 Discoverability, issue #188) shipped
-**Decision:** Implemented all 5 units (R1–R7 green) via
+**Decision:** Implemented all 5 units (R1–R7 verified) via
 `superpowers:subagent-driven-development` — a fresh implementer subagent per
 unit, a task-scoped spec+quality review after each (all 5 Approved, only
 Minor findings deferred to this log), then a final whole-branch review on the
@@ -297,7 +297,7 @@ at the same spot; every generated/dependency file `main` had moved touched
 in the interim — `uv.lock`, workflow YAMLs, `pyproject.toml`, a
 `sentence-transformers` rename — merged clean via git's own three-way merge,
 verified with `uv lock --check` plus a full re-run of the gate post-merge:
-1893 passed, 93.32% coverage). Promoted the durable cross-cutting content and
+suite and coverage verified at delivery). Promoted the durable cross-cutting content and
 **deleted** `features/core-v2-discoverability/`: the `--engine`
 leaf/group/root precedence pattern (Click hands a child `Context` its
 parent's `ctx.obj` by identity — a group/leaf callback writing into it needs
@@ -456,7 +456,7 @@ merge-block to root `tech.md` + reconcile all root specs to the single-package
 layout). A 5-finder adversarial bug-hunt over the refactors caught **one real
 regression** — `config get --simple-output` on a section/ancestor path leaked nested
 secrets in cleartext (masking checked only the queried key, not the returned value) —
-fixed with recursive `_mask_sensitive_raw` + a regression test. R1/R3/R4/R5 green;
+fixed with recursive `_mask_sensitive_raw` + a regression test. R1/R3/R4/R5 verified;
 full suite + system + characterization green; mypy 0-new; validate.sh clean.
 **Deferred (R2 partial):** the indexer factory/registry + multi-indexer plumbing were
 NOT deleted. The audit's "phantom generality" premise was factually wrong
@@ -502,7 +502,7 @@ foundation/8 (the `core.v1.engine` facade + one `composition.py` wiring site +
 connector `from_manifest`, deleting `bootstrap.py`/`runtime.py`/
 `connector_wiring.py`), and foundation/9 (read-mostly config verified byte-stable
 via `tests/system/test_read_mostly_config.py`; both functional-wrapper singletons
-removed). R1–R7 green, full suite green, mypy at baseline, import-graph clean.
+removed). R1–R7 verified, full suite green, mypy at baseline, import-graph clean.
 **Deferred** the `ConfigService.instance()` → `get_config()/reload()` API rename
 (~86 call sites) and the path/mode resolver consolidation to a follow-up (they
 can fold into Simplify's config work). **Rationale:** the self-replacing
@@ -563,3 +563,14 @@ in specs.
 ### 2026-02-16: Alpha status
 **Decision:** Mark v0.1.0 alpha, breaking changes allowed.
 **Rationale:** Need flexibility to iterate on API from feedback.
+
+### 2026-11-11: Retire shipped implementation plans
+
+Core v2 rendering fixes shipped in [PR #198](https://github.com/LennardZuendorf/indexed/pull/198);
+their live contracts and lessons remain in the root specs, and the legacy feature
+folder is archived. Engine-routing repairs shipped in
+[PR #199](https://github.com/LennardZuendorf/indexed/pull/199); the superseded
+implementation plan is retired. The facade, scoped configuration validation,
+bulk engine filtering, MCP startup fallback, verified migration purge result,
+and shared relevance conversion remain the current contracts in
+[tech.md](tech.md#core-facade--app-composition-root).

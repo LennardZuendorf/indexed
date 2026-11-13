@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Lessons Learned
@@ -1493,7 +1493,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   hosted fleet alternates CPU models within a day (`AMD EPYC 7763`, `AMD EPYC
   9V74`, `INTEL XEON 8573C` — three fingerprints in three days), so a PR
   compared against a committed baseline reds or greens by which runner it
-  landed on: #252 passed and #268 failed minutes apart on 2026-11-01. The
+  landed on: #252 succeeded and #268 failed minutes apart on 2026-11-01. The
   repair is structural, not statistical — measure the captured event base and
   its corresponding merge result back to back on one runner, and compare those two
   files (`scripts/benchmark_ab.py`). A committed baseline can then only be a
@@ -1532,6 +1532,18 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Dependabot consolidation (2026-11-06)
+
+- [dependencies][verification] Compare the final lockfile with the exact union
+  of captured PR package records, including hashes and metadata; retain source
+  heads as ancestors and synchronize Ruff/ty hook pins with the resolved tools.
+- [verification] Record existing assertion failures before integration. A saved
+  retrieval baseline can fail on unchanged main even when Python/platform match;
+  preserve the observed values and corpus instead of refreshing numbers to pass.
+- [tools] Managed worktrees can need separate write permission for Git and tool
+  caches. Keep UV_CACHE_DIR and RUFF_CACHE_DIR writable; retry permission errors
+  separately from test failures. Use SIGTERM when a CLI harness catches SIGINT.
 
 ## Benchmark gate repair verification (2026-11-02)
 
@@ -1677,6 +1689,8 @@ with `git add`/`git status`, since that's what CI actually runs.
 - File hooks can open even unchanged inputs with write access. Run them with
   scoped worktree write permissions; a denied rb+ open is an environment failure.
 
+
+
 ## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
 
 - **A performance gate must not read content the project's own workflow keeps
@@ -1770,6 +1784,40 @@ with `git add`/`git status`, since that's what CI actually runs.
 - [tests] A helper that asserts one diagnostic title must take the title as a
   parameter once a second tool (the stamp writer) fails with its own. Reuse the
   exit-code and no-verdict assertions, not the message text.
+
+### Dependency publication repairs
+**Pattern:** The saved retrieval baseline contained checkout-dependent path text;
+merging current main also joined independent documentation appendices and
+exceeded the agent-guide line ceiling. Requirement IDs ending in a digit plus
+"green" were misread by drift checks as measured test totals.
+**Rule:** Reuse the upstream canonical-input repair, preserve historical baseline
+bytes, measure comparable inputs, and check document unions against size limits.
+Keep requirement coverage explicit without presenting it as a volatile test count.
+**Tags:** dependencies, evaluation, verification, spec
+**Date:** 2026-11-11
+
+### Resuming verification after temporary-file cleanup
+**Pattern:** A resumed publication tried to reuse a checker under `/private/tmp`
+that the operating system had removed between sessions.
+**Rule:** Reconstruct checks from captured Git objects and inspect current
+artifacts before reusing them; a saved path is not durable verification evidence.
+**Tags:** verification, artifacts
+**Date:** 2026-11-11
+
+### Preserve scope when retiring plans
+**Pattern:** Promoting a key-specific `core.engine` validation rule into a generic
+claim about all configuration writes overstated the shipped dry-run contract.
+**Rule:** Carry the producer's branch condition into promoted contract prose.
+**Tags:** spec, review
+**Date:** 2026-11-11
+
+### Audit the installed project, not the isolated audit tool
+**Pattern:** CI's isolated `uv tool run pip-audit` environment reported success
+while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
+**Rule:** Pass the project's actual site-packages directory to the auditor and
+raise stale security floors to the advisory's patched version (here 4.0.1).
+**Tags:** security, dependencies, verification
+**Date:** 2026-11-11
 
 ## LSP tier 0 surface (#241, 2026-11-09)
 
