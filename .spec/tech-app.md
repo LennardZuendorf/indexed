@@ -131,9 +131,9 @@ just that the flag exists.
 Log records never touch stdout. The CLI wires `bootstrap_logging` to a
 stderr-backed Rich console (`cli/utils/console.py::log_console`), while
 human-facing output and progress displays keep the stdout `console`. Under
-`--simple-output` (and `--json` where the result-shape work adds it) stdout is
-the payload and nothing else, so a `json.loads(stdout)` consumer never has to
-strip a log line — including a WARNING raised mid-command.
+`--simple-output` / `--json`, normal command returns write only the JSON body to
+stdout. A CLI consumer must check exit status before parsing: an escaping error
+uses the stdout console for a non-JSON Rich panel (see the failure contract below).
 
 ---
 
@@ -159,7 +159,7 @@ same `SearchService` + `ConfigService` as the CLI — agent sees what the user s
 `tools.register_tools` registers `search(query)` and
 `search_collection(collection, query)`. Both call `_run_search`, which passes raw
 `core.engine.search` results to `build_search_payload(raw_results, query)`.
-Both return the `indexed.search/1` payload documented below. Collection listing
+Successful searches return the `indexed.search/1` payload below. Collection listing
 and status use resources, not search tools.
 
 ### Resources
@@ -213,16 +213,14 @@ tools `search` / `search_collection`. One typed contract
 (`src/indexed/protocols/results.py`), one builder
 (`indexed.mcp.formatting.build_search_payload`), so the two surfaces cannot drift into
 lookalikes (issues #108/#109). Downstream consumers — the eval harness (#204), the
-`index-use` skill text (#222) — branch on `schema`, never on the presence of a key. The
-LSP server (#241) reads the engine's results directly and reuses only this contract's
-locator vocabulary (`indexed.utils.provenance`), so it cannot drift into a third
-provenance shape.
+`index-use` skill text (#222), the CLI hover payload (#241) — branch on `schema`, never
+on the presence of a key.
 
 ```json
 {
   "schema": "indexed.search/1",
   "query": "how is relevance unified",
-  "counts": {"documents": 2, "hits": 3},
+  "counts": {"documents": 1, "hits": 1},
   "collections": ["indexed-src", "notes-v2"],
   "collection_errors": [{"collection": "jira", "error": "…"}],
   "documents": [
@@ -256,12 +254,15 @@ Rules the shape encodes — each one exists because the old flat payload got it 
   `grep -n` prints — plus the file when the document states no `path`), `page`
   (positive page metadata, when supplied), `headings` (prose:
   Markdown/Jira/Confluence/Outline) or `document` (position genuinely unknown).
-  A range is never invented to fill the field.
+  A range is never invented to fill the field. A document locator may describe
+  a body fragment; it does not imply a whole-document chunk. Multiple distinct
+  locator paths omit document `path` and stay on their respective hits.
   `headings` is never empty: the converters emit `headings: [""]` for whole-file
   chunks, so headings are trimmed and blank ones dropped before the kind is chosen —
   a chunk left with no headings gets `document`, not `{"kind": "headings",
   "headings": []}`.
-- **`relevance` is comparable, `score` is not.** `relevance` is 0–1, higher-is-better,
+- **`relevance` is comparable, `score` is not.** `relevance` is higher-is-better,
+  normally 0–1 but not clamped (squared-L2 distances above 2 yield negatives),
   unified across engines (`indexed.utils.relevance.unified_relevance`); `score` is the
   raw engine number, only comparable within one `score_kind` (`l2_squared` = v1,
   `cosine`/`rerank` = v2).
@@ -272,11 +273,12 @@ Rules the shape encodes — each one exists because the old flat payload got it 
   rather than guessed when the manifest does not say.
 - **No boilerplate to strip on normal returns.** `--json` stdout is only JSON
   (logs and notices — a skipped unsearchable collection, a no-op `--rerank` — go to
-  stderr); the `# <path>\n` context prefix the indexer embeds in code chunks
-  is removed because `locator.path` already carries the path.
-- **Failures never read as emptiness.** `collection_errors` is always present; a failed
-  collection appears there, not as a silent zero. Boundary exceptions return the
-  failure envelope below.
+  stderr). Only an exact leading `# <metadata.file_path>\n` context prefix is
+  stripped when that metadata path is present; other text stays unchanged.
+- **Failures never read as emptiness.** Success payloads carry `collection_errors`.
+  Failed collections reaching the engine appear there; CLI also retains skipped
+  no-indexer statuses when other collections are searched. CLI status omits unreadable
+  manifests; named MCP searches return a top-level error when status is unusable.
 - **Machine payloads always request matched chunk content.** CLI JSON and both MCP
   tools pass `include_matched_chunks=True`, even when the search config sets it to
   false. Text and provenance are required by the fixed payload contract.
@@ -285,8 +287,8 @@ Rules the shape encodes — each one exists because the old flat payload got it 
 
 ### The two bodies: success and failure
 
-A payload either carries `schema: "indexed.search/1"` or it does not, and that is the
-first thing a consumer reads:
+CLI consumers check exit status before parsing stdout; non-zero responses may be
+non-JSON. For exit-zero JSON and MCP results, read `schema` first:
 
 - **`schema` present** → the success shape documented above. Empty `documents`
   means no matched content was returned. `collections` lists successfully searched
@@ -302,20 +304,21 @@ first thing a consumer reads:
 | CLI `search --json -c <name>` — known status with no indexers | `{"error": "No searchable collections available"}` | `1` |
 | CLI `search --json` (all) — no collections exist | `{"error": "No collections found"}` | `0` |
 | CLI `search --json` (all) — collections exist, none searchable | `{"error": "No searchable collections available"}` | `0` |
-| MCP `search` — empty store / nothing searchable | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
+| MCP `search` — empty store | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
 | CLI `search --json` / MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors` | CLI `0`; MCP n/a |
 | MCP `search` / `search_collection` — caught `IndexedError` | `{"error": "…", "type": "<concrete class name>"}` (for example, `StorageError`) | n/a |
 | MCP `search` / `search_collection` — unexpected search/status exception | `{"error": "Internal error: …", "type": "MCPError"}` | n/a |
+| MCP `search_collection` — present on disk, unreadable manifest or no indexers | `{"error": "Collection 'x' exists on disk but has no usable index: …", "type": "MCPError"}` | n/a |
 | MCP `search_collection` — collection unknown on disk | `{"error": "Collection 'x' not found or has no indexers"}` — **no `type`** | n/a |
 
 Two asymmetries are deliberate and must not surprise a harness:
 
 - **MCP has no exit code, and one of its bodies has no `type`.** `search_collection`
   answers an unknown name with the bare `{"error"}` its clients already match on
-  (`mcp/collection_errors.py`). On an error body, absence of `type` identifies
+  (`mcp/collection_errors.py`) and reserves `type` for *present but unusable* — an
+  agent must check `schema` first; on an error body, absence of `type` identifies
   this unknown-name case. Caught `IndexedError` instances preserve their concrete
   class as `type`; unexpected search/status failures use `MCPError`.
-  Branch on `schema` first; `type` is a refinement.
 - **The empty store is a CLI envelope but an MCP success payload.** The CLI says
   `{"error": "No collections found"}`, the MCP tool returns the success shape with
   `collections: []`. Empty `collections` means no collection was searched

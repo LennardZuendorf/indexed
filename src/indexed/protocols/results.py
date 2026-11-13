@@ -1,9 +1,11 @@
 """The documented search-result shape (``indexed.search/1``).
 
-ONE contract for every machine consumer: the CLI's ``indexed search --json``
-and the MCP tools ``search`` / ``search_collection`` both emit exactly this,
-built by one function (``indexed.mcp.formatting.build_search_payload``).
-The user-facing description lives in ``.spec/tech-app.md`` § Search result contract.
+ONE success contract for machine consumers: ``indexed index search --json``
+and the MCP tools ``search`` / ``search_collection`` use one builder
+(``indexed.mcp.formatting.build_search_payload``). CLI consumers check exit
+status before parsing stdout, then branch on ``schema``; MCP has no exit code.
+The user-facing field reference lives in ``docs/reference/search-output.md``;
+the design record in ``.spec/tech-app.md`` § Search result contract.
 
 Design rules (issue #108/#109):
 
@@ -55,7 +57,11 @@ class Hit(TypedDict):
     """One matched chunk."""
 
     relevance: float
-    """0-1, higher is better, comparable across collections and engines."""
+    """Higher is better, comparable across collections and engines.
+
+    Normally 0-1 but not clamped: an ``l2_squared`` hit beyond distance 2 goes
+    negative (see :func:`indexed.utils.relevance.unified_relevance`).
+    """
 
     score: float
     """The raw engine score; only comparable within one ``score_kind``."""
@@ -76,7 +82,8 @@ class DocumentResult(TypedDict):
     id: str
     path: NotRequired[str]
     """The document's source file, stated once so its hits need not repeat
-    it. Present when the hits agree on one path."""
+    it. Present when hit locators supply exactly one distinct path; multiple
+    paths omit this field and remain on the respective hit locators."""
 
     url: NotRequired[str]
     """Where a human/agent opens the whole document. Omitted when unknown or

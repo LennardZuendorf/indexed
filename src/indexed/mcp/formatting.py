@@ -1,10 +1,17 @@
 """The machine-readable search payload (``indexed.search/1``).
 
-This is the ONE result shape for machine consumers: the MCP ``search`` /
-``search_collection`` tools return it, and the CLI prints it byte-for-byte
-under ``indexed search --json`` (``--simple-output`` is the legacy alias).
-The contract is typed in ``indexed.protocols.results`` and documented for
-users in ``.spec/tech-app.md`` § Search result contract (issues #108/#109).
+This is the success result shape for machine consumers: the MCP ``search`` /
+``search_collection`` tools return it, and the CLI emits it under
+``indexed index search --json`` (``--simple-output`` is the legacy alias).
+CLI consumers check exit status before JSON parsing; escaping errors can write
+non-JSON stdout. Normal JSON and MCP responses discriminate on ``schema``.
+The contract is typed in ``indexed.protocols.results`` and documented for users
+in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
+contract stays the design record (issues #108/#109).
+
+Locator and text normalisation is NOT mirrored here: it lives in
+``indexed.utils.provenance``, which the LSP server answers from too (issue
+#241), and is re-exported below so `build_locator` keeps one import path.
 
 Shape, in one breath: documents grouped, each stating its collection, source
 type, id, url and score semantics ONCE; each hit carrying only its
@@ -125,8 +132,9 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     A document's hits nearly always sit in the same file, so repeating an
     absolute path on every hit is exactly the boilerplate this shape exists to
     remove (it measured LARGER than the payload it replaced). The path is
-    stated once on the document and stripped from the hits; a hit whose path
-    genuinely differs keeps its own. Likewise a ``file://`` url that only
+    stated once on the document and stripped from the hits when exactly one
+    distinct locator path exists. Multiple paths omit document ``path`` and
+    stay on their respective locators. Likewise a ``file://`` url that only
     restates the path carries no extra information and is dropped.
     """
     hits: List[Hit] = doc["hits"]

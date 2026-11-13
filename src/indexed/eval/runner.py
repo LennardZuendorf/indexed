@@ -101,10 +101,10 @@ class RunConfig:
 
 
 def _files_connector_factory(corpus_dir: Path):
-    """Real files connector over the pinned corpus (lazy, like composition.py)."""
-    from indexed.connectors.files.connector import FileSystemConnector
+    """Evaluator-only stable context; ordinary product connectors stay unchanged."""
+    from indexed.eval.canonical import CanonicalFactory
 
-    return lambda _config: FileSystemConnector(path=str(corpus_dir))
+    return CanonicalFactory(corpus_dir)
 
 
 def build_collection(
@@ -187,8 +187,25 @@ def _model_cache_hint(model: str, *, engine: str = "2") -> Dict[str, Any]:
     }
 
 
+def _cpu_brand() -> str:
+    """CPU model string, so a report names the machine that produced it.
+
+    ``platform.processor()`` returns the architecture on many Linux builds, and
+    the hosted-runner fleet alternates CPU models under one image (#267). The
+    kernel's own string is the only one that tells those machines apart, and a
+    same-job A/B can only assert identity when both reports carry it.
+    """
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            if line.lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except (OSError, IndexError):
+        pass
+    return platform.processor() or "?"
+
+
 def _environment() -> Dict[str, Any]:
-    """Record interpreter, platform, installed version and measured source provenance."""
+    """Record interpreter, platform, machine, version and measured source provenance."""
     try:
         version = importlib.metadata.version("indexed-sh")
     except importlib.metadata.PackageNotFoundError:  # pragma: no cover - dev tree
@@ -196,6 +213,16 @@ def _environment() -> Dict[str, Any]:
     return {
         "python": sys.version.split()[0],
         "platform": platform.platform(),
+        # Same block shape as pytest-benchmark's machine_info, so the CI gate's
+        # one fingerprint function can read either gate's result file.
+        "machine": {
+            "cpu": {
+                "brand_raw": _cpu_brand(),
+                "arch": platform.machine(),
+                "count": os.cpu_count(),
+            },
+            "system": platform.system(),
+        },
         "indexed_version": version,
         **source_environment(),
     }
@@ -283,6 +310,11 @@ def run_eval(
                     f"{cases_path}: {case.id} {field} documents are not in corpus: {sorted(unknown)}"
                 )
 
+    connector_factory = (
+        connector_factory
+        if connector_factory is not None
+        else _files_connector_factory(corpus_dir)
+    )
     owns_collections = collections_path is None
     workdir: Optional[Path] = None
     if collections_path is None:
@@ -341,9 +373,15 @@ def run_eval(
             **applied_config,
             "embedding_model": embedding_model or applied_config["embedding_model"],
             "score_kind": score_kind,
+            "input_context_policy": getattr(connector_factory, "policy", "custom"),
         },
         "environment": {
             **_environment(),
+            **(
+                {"converter_inputs": connector_factory.evidence()}
+                if hasattr(connector_factory, "evidence")
+                else {}
+            ),
             "embedding_model_cache": _model_cache_hint(
                 embedding_model or applied_config["embedding_model"],
                 engine=config.engine,

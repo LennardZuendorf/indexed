@@ -161,7 +161,11 @@ SRC_LOC_MAX = 32_900
 # five Tier 0 acceptance points against a real collection — the protocol is the
 # contract, so the transcript IS the regression test; ceiling = measured
 # (51_140) + headroom.
-TEST_LOC_MAX = 51_750
+# The merge of #297 (main) into this stack keeps both legitimate test tracks —
+# the LSP stdio session, main's eval/canonical suite and the repaired search
+# golden/locator units — in one tree: measured 52_316 after the hand-merge, so
+# the ceiling moves to measured + headroom rather than dropping either side.
+TEST_LOC_MAX = 52_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
