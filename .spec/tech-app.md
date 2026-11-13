@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), CLI startup perf
-updated: 2026-11-02
+updated: 2026-11-13
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -358,3 +358,5 @@ def __getattr__(name: str):
         return SourceConfig
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 ```
+
+The optional Git line attribution appears as `git` on the matched hit. Optional freshness verdicts appear in the search envelope.

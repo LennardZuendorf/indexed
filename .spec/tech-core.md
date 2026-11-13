@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-29
+updated: 2026-11-13
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -199,6 +199,177 @@ in **[0, 4]** — used directly as the result `score`, **lower means more simila
 (monotonic with cosine; not normalized to 0–1). Threshold filtering
 (`min_score` / `score_threshold`) keeps chunks whose score is **≤** the threshold;
 the configurable range is **[0, 4]** (a sane cutoff is >1.0), not [0, 1].
+
+---
+
+## Search-Time Git Awareness (v2, issues #60/#144/#146)
+
+Four opt-in options on `core.v2.retrieval.search` — query-time only: no new persisted
+state, no re-index, and the v1 engine ignores all of them (its behaviour is unchanged).
+
+| Option | Effect |
+|--------|--------|
+| `changed_since: str` | Keep only result documents whose file changed since that git ref, **including uncommitted and untracked work**. Applied to retrieved nodes after the cosine threshold and before Git and cross-encoder reranking, so `top_n` and `max_docs` fill with eligible survivors. |
+| `git_provenance: bool` | Attach a document-level `git` field — `{commit, short, author, email, committedAt, subject}` (camelCase, additive: absent when not requested). |
+| `git_line_blame: bool` | Attach a **per-chunk** `git` field on each `matchedChunks` entry whose chunk recorded a line span — the commit that last touched THOSE lines, plus `startLine`/`endLine` (1-based, inclusive). Independent of `git_provenance`; absent when git or blame cannot answer. |
+| `git_rerank: GitRerankOptions \| None` | **Re-rank** the candidates by git recency / churn / ownership before grouping, blending those signals into the score (`scoreKind` becomes `git-rerank`). `None` (default) does no git work at all. |
+
+All four are no-ops unless the collection's manifest reader is a files reader
+(`localFiles`/`files` **and** a `basePath`); the repo is resolved ONCE per collection
+via `utils/git_meta.repo_toplevel` (see [tech-connectors](tech-connectors.md) § Query-Time
+Git Helper), node `source_id`s are rebased from base-path-relative to repo-relative, and
+a git failure (not a repo, invalid ref, no history) skips the option — never an empty
+result set and never a raised search. Provenance costs at most one
+`git log -1` per admitted document, memoized per `(repo, path)` within the call.
+
+**Line-level granularity (`git_line_blame`).** A chunk is attributed only when its
+parser recorded the span it came from — `start_line`/`end_line` (0-based, inclusive) in
+the node metadata, which today means the code chunker's chunks
+(`parsing/code_chunker.py`). Everything else (Docling PDF/DOCX chunks, plaintext
+chunks) has no line mapping, so it gets NO line-level field rather than the file's
+whole-file commit wearing a line-level label. The cost is ONE
+`git blame --line-porcelain` per path per collection per search — memoized in
+`_GitContext.blames`, so a multi-chunk document pays a single blame — with each call
+bounded by the helper's 5 s timeout. The bound is therefore
+`min(admitted documents, max_docs)` blame invocations per collection per search
+(default `max_docs` = 10), never `max_docs × chunks`.
+
+Within a span, the commit whose author date is newest is the last touch; equal
+timestamps resolve to the later line, so the answer is deterministic. A span
+containing a working-tree line yields `{"uncommitted": true, "startLine", "endLine"}`
+instead of a commit — the honest answer is that the lines are not committed yet.
+Untracked paths, binary files (a NUL in git's own 8 kB sniff window), out-of-range
+spans (the file shrank after indexing) and blame failures all leave the field absent.
+The field is additive and separate from `entry["git"]`: line-level does not imply
+document-level, and vice versa.
+
+**Git-signal re-rank (`git_rerank`).** After retrieval and the score threshold, and
+BEFORE document grouping (so the groupers see the ranked order), the candidate chunks
+are re-scored as
+`cosine + w_recency·recency + w_churn·churn + w_author·ownership`:
+
+- **recency** — exponential decay on the chunk's newest touch
+  (`0.5 ** (age_days / half_life)`, half-life 30 days), from the chunk's own line span
+  via blame, falling back to the document's newest line when the chunk recorded no
+  span. A working-tree line counts as fresh (1.0).
+- **churn / hotspot** — the document's commit count inside a 90-day window
+  (`git rev-list --count --since=<window> HEAD -- <path>`), scaled to 20 commits. One
+  call per candidate document, memoized next to the blame.
+- **ownership** — `git_rerank_author` (a name/email substring) gives the chunks it last
+  touched a fixed bonus. Unset disables ownership entirely.
+
+A signal git cannot answer contributes NOTHING — no fabricated zero-or-one score — and a
+chunk with no answerable git at all keeps its cosine value untouched. Only the first 50
+candidates are scored (`_GIT_RERANK_WINDOW`); the tail keeps its cosine score and order,
+which bounds the cost at one blame + one `rev-list` per distinct candidate document.
+The pass never touches the embedding or the vector store and persists nothing, so no
+re-index is needed. `scoreKind` becomes `git-rerank` (cosine plus non-negative boosts)
+only when at least one candidate was scored. With `[core.v2.rerank]` enabled too, the
+git pass runs first and the cross-encoder still owns the final score: it replaces every
+blended score, so the git pass only decides which candidates reach the cross-encoder's
+`top_n` and the result kind stays `rerank`.
+
+**A skipped filter is never silent.** Every collection result carries a `gitFilter`
+status when — and only when — `changed_since` was requested:
+`{"ref": <ref>, "applied": true}` after a run, and
+`{"ref": <ref>, "applied": false, "reason": <why>}` when it could not run
+(`unknown-ref`, `no-git-repository`, `not-a-files-collection`, or `v1-engine` — stamped
+by the `core.engine` facade, whose routing is the only place that knows a collection
+went to v1). The skip is logged at WARNING, `mcp/formatting.py` turns it into a
+`collection_errors` entry naming collection and ref, and the CLI renderers print the
+same line via `utils/git_meta.filter_skip_message` — unfiltered rows arriving under a
+"changed only" request are a defect, not a quiet degrade.
+
+**Provenance never outlives its snapshot.** `git_provenance` is attached only when the
+node's indexed `modified_time` still describes the file at query time
+(`utils/git_meta.snapshot_is_current` — a stat comparison, no extra subprocess). If the
+file changed or was committed after the collection was indexed, or is dirty relative to HEAD, the `git` field is
+omitted rather than crediting a commit that does not contain the returned text;
+re-indexing restores it (#279 review, finding 2).
+
+The node timestamp is stored **offset-aware in UTC**
+(`datetime.fromtimestamp(mtime, timezone.utc).isoformat()`), so the comparison is
+absolute and independent of the querying process's zone or a DST change. An
+offset-less value is LEGACY (the old writers stored naive local wall time, whose zone
+is unknowable): the guard does not parse it into an instant and instead compares
+the file's mtime with the manifest's UTC `updatedTime` — a file not newer than the
+index cannot have changed since — which degrades towards *provenance present*
+rather than dark. A
+node with no timestamp takes the same legacy path; a vanished file always omits the
+field. The mtime equality is a heuristic, not a content hash (#279 B1).
+
+A requested **re-rank** that could not run follows the same rule via `gitRerank`:
+`{"applied": true, "scored": <n>}` after a run, and
+`{"applied": false, "reason": <why>}` when the collection cannot carry it
+(`not-a-files-collection`, `no-git-repository`, or `v1-engine`, stamped by the facade),
+rendered by `utils/git_meta.rerank_skip_message` as an MCP `collection_errors` entry and
+a CLI warning. Rows must never look re-ranked when they are not.
+
+The CLI and MCP accept independent filter, document provenance, line blame and
+rerank options. Omitted booleans use `[core.v1.search]` defaults. The grouped
+`indexed.search/1` payload places document provenance on `documents[].git`, line
+blame on each `hits[].git`, and score semantics on `documents[].score_kind`.
+The CLI detail card shows `Last commit` and `Lines commit` when available.
+
+The CLI validates `--changed-since` up front: an unresolvable ref always exits 1, and so
+does naming (`--collection`) a collection that cannot carry the filter — no files reader,
+no git repo behind it, or the v1 engine. When searching EVERY collection, an unfilterable
+one is not fatal (a single Jira collection must not veto the search): it is announced per
+collection, exactly like the MCP `collection_errors` entry.
+
+---
+
+## Index Freshness (files collections, #146 slice 1)
+
+Reporting only: how far behind the source working tree a collection's index is. No
+hooks, no auto-update, no new persisted state — the baseline already exists.
+
+**Baseline ownership.** The files connector's `state.json` (written by
+`ChangeTracker.build_state` in the connector's `post_run`, after a *successful* create or
+update) is the one baseline: `last_indexed_commit` + `file_hashes` +
+`indexed_file_count`, in the collection directory, v1 and v2 alike. Freshness reads it and
+never writes it (`utils/freshness.py::read_baseline`). `utils/freshness.py` holds the
+whole verdict; `utils/git_meta.py` supplies every git fact (timeout-bounded, `GIT_*`-scrubbed,
+stdlib-only).
+
+**Verdicts and reason codes.** `fresh` / `stale` / `unknown`, one per collection, carrying
+a single `summary` line that every surface reuses verbatim (never re-worded downstream).
+
+| Status | Meaning | `reason` |
+|--------|---------|----------|
+| `fresh` | every source file's current bytes hash to what was indexed | — |
+| `stale` | ≥1 source file's bytes differ, or it is gone, or it was never indexed | `source-changed` |
+| `unknown` | the question cannot be answered honestly | one of the codes below |
+
+`unknown` reason codes: `not-a-files-collection`, `no-base-path`, `no-git-repository`
+(non-git source), `no-head` (unborn HEAD), `no-baseline` (state.json missing/pre-dates
+change tracking), `history-missing` (baseline commit absent — shallow/pruned),
+`history-rewritten` (baseline exists but is not an ancestor of HEAD), `git-unavailable`.
+A degraded answer is NEVER a fabricated `fresh` — the same contract `gitFilter` holds.
+
+**Byte comparison, not just `git status`.** Git can only say "differs from HEAD"; a tree
+indexed while dirty is legitimately current. For every changed path inside the source
+directory the current bytes are xxhash-compared against `file_hashes` — without stored
+hashes the code stays conservative and counts every changed path. Committed changes are
+diffed against the baseline commit (ancestry checked first), and `commits_behind` is a real
+`rev-list --count`, `None` when git cannot count.
+
+**Conservative on purpose.** The reader's `includePatterns`/`excludedDirs` are NOT
+re-applied when counting pending paths: a change to a file the collection never indexed
+still reads `stale`. That errs toward a spurious warning, never toward a false `fresh`.
+
+**Surfaces.** `index inspect <name>` gains a `Freshness` row (and a `freshness` object in
+`--simple-output`); `indexed index search --freshness` prints one advisory line per
+collection (dim when fresh, a warning otherwise); the MCP search tools take
+`include_freshness` and the envelope gains a `freshness` list; the MCP collection-status
+resources include the verdict. Freshness is attached by the `core.engine` facade, not by
+either engine's inspect/status, so v1's engine behaviour is untouched and both engines
+report identically. The facade is the only place that resolves manifest reader →
+`basePath`, so CLI/MCP cannot drift from it.
+
+**Out of scope (deferred).** `post-commit`/`post-checkout` hooks and an `install-hooks`
+command (consolidates with the #67 hook proposals); exact behind-commit counts when
+history is missing.
 
 ---
 

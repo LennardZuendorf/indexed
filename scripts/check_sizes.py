@@ -45,7 +45,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
 # `metadata` so a v2 hit can say where it sits — genuine contract surface, not
 # stealth regrowth; ceiling = measured (31_602) + headroom.
-SRC_LOC_MAX = 31_800
+# Git filtering, line blame, reranking and freshness: measured 33_827 plus headroom.
+SRC_LOC_MAX = 34_100
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -137,8 +138,8 @@ SRC_LOC_MAX = 31_800
 # Aggregate keeps search golden/locator tests, benchmark/evaluation gate
 # regressions and main's pinned parsing-corpus guard: measured 50_636 lines
 # plus 214 lines of headroom. Source budget stays at 31_800.
-# CI foundation and file settings regressions: measured 51_196 plus headroom.
-TEST_LOC_MAX = 51_250
+# CI, settings and Git regressions: measured 54_558 plus headroom.
+TEST_LOC_MAX = 54_750
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

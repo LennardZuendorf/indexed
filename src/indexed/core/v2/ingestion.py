@@ -422,19 +422,20 @@ def _read_documents(reader: Any, converter: Any) -> list[dict[str, Any]]:
 
 
 def _latest_modified_time(documents: list[dict[str, Any]], *, default: str) -> str:
-    """Max ``modifiedTime`` across documents (ISO 8601), or ``default`` if none parse."""
-    latest: Optional[datetime] = None
+    """Max ``modifiedTime`` (ISO 8601), or ``default``; naive legacy values rank as UTC.
+    A v1 collection updated after the aware-write fix can mix both shapes, so the
+    order is on absolute instants (#279 B1); the winning writer's string is kept.
+    """
+    latest: tuple[datetime, str] | None = None
     for doc in documents:
-        raw = doc.get("modifiedTime")
-        if not raw:
-            continue
+        raw: str = doc.get("modifiedTime") or ""
         try:
             parsed = datetime.fromisoformat(raw)
-        except (TypeError, ValueError):
+        except ValueError:
             continue
-        if latest is None or parsed > latest:
-            latest = parsed
-    return latest.isoformat() if latest is not None else default
+        parsed = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        latest = max(latest, (parsed, raw)) if latest is not None else (parsed, raw)
+    return latest[1] if latest is not None else default
 
 
 __all__ = ["create", "update"]
