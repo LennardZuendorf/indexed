@@ -1466,3 +1466,24 @@ with `git add`/`git status`, since that's what CI actually runs.
   newline in a generated Git stub caused a false syntax failure before RED.
 - File hooks can open even unchanged inputs with write access. Run them with
   scoped worktree write permissions; a denied rb+ open is an environment failure.
+
+## A benchmark cap must be one main actually meets (2026-11-03)
+
+- **An absolute threshold a healthy `main` already exceeds is worse than no
+  threshold: it spends the report's ❌ on a non-regression and teaches the
+  reader to ignore the column.** `batch_parse` carried a 5 s cap against a
+  5.93 s committed baseline — `main`'s own baseline already failed it — and
+  `full_connector_pipeline` a 10 s cap against 9.27 s, which only a slower
+  runner (10.42 s) tipped over, adding a second ❌ inside a green job whose real
+  gate said PASS. Re-derive only the caps whose old value was within ~1.4× of
+  main's baseline, to ≈2× their baseline mean; caps already carrying ≥5×
+  headroom are left alone.
+  Record the derivation beside the map — an unreviewable number drifts silently
+  as the baseline moves, and a rule that doesn't reproduce its own table gets
+  "fixed" back to the stale value on the next refresh.
+- **A substring-matched cap map is order-sensitive and hides a default.**
+  `threshold-map` resolves on the first `includes` hit in the JSON's own order,
+  so the longer key must precede its prefix, and any unmatched test silently
+  gets 1.0 s — a new multi-second benchmark shows ❌ without a key ever being
+  written. Read the action's source at the pinned SHA for semantics like this;
+  a rendered report shows *which* cap applied, never *why* that one won.

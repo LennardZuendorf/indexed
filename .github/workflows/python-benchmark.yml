@@ -109,7 +109,19 @@ jobs:
         # for a hardware mismatch (exit 3) or when main has no baseline yet, and
         # no tolerance value covers those. `contents: read` above does.
         update-tolerance: 1000
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        # Absolute per-test ceilings, re-derived from main's committed baseline
+        # (`.benchmarks/baselines/main.json`, AMD EPYC 7763) on 2026-11-03:
+        # a cap whose old value was within ~1.4x of main's baseline became ~2x
+        # that mean (rounded up) — batch_parse, full_connector_pipeline and its
+        # _mixed variant. Caps that already had >=5x headroom were left alone.
+        # This column is a blowup backstop — drift between comparable runs is
+        # what `cross-branch-tolerance` gates.
+        # Keys match as substrings in the order written (first hit wins), so
+        # `full_connector_pipeline_mixed` must stay before
+        # `full_connector_pipeline`. An unmatched name gets the action's 1.0 s
+        # default — give any new benchmark slower than that its own entry.
+        # Derivation + per-key table: .spec/tech.md § CI Benchmarking.
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Check out captured merge result for A/B
@@ -267,7 +279,9 @@ jobs:
           -v
         cross-branch-tolerance: 20
         update-tolerance: 1000
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        # Must stay identical to the PR job's map above (same copy, no YAML
+        # merge keys); derivation is documented there.
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Summarise drift against main's baseline
