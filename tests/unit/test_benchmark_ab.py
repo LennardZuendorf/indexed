@@ -1230,6 +1230,31 @@ def test_delta_past_noise_band_still_fails(tmp_path: Path):
     assert "noise band" in proc.stdout
 
 
+def test_band_is_a_share_of_the_capture_not_a_host_dependent_span(tmp_path: Path):
+    """One table must judge the same relative move the same way on any host.
+
+    `band_ms` is measured on one machine, but the base is not: 2.151 ms is 29.8 %
+    of a 7.2 ms benchmark and 16.7 % of a 12.9 ms one. Comparing the band as an
+    absolute span would silently tighten or loosen the gate with the fleet, so
+    the gate compares the share of the capture instead.
+    """
+    table = noise_table(tmp_path, band_ms=2.151, band_pct=29.3)
+    for base_s in (0.007224, 0.012852):
+        base = results(base_s)
+        inside = run(tmp_path, base, results(base_s * 1.25), "--noise-band", str(table))
+        assert inside.returncode == 0, inside.stdout + inside.stderr
+        assert "inside its measured noise band" in inside.stdout
+        # The widened gate is stated, not implied: 29.3 % > the 20 % tolerance.
+        assert "::notice title=Effective threshold::" in inside.stdout
+        assert "gates only past 29.3%" in inside.stdout
+
+        outside = run(
+            tmp_path, base, results(base_s * 1.30), "--noise-band", str(table)
+        )
+        assert outside.returncode == 1, outside.stdout + outside.stderr
+        assert "::error title=Benchmark regression::" in outside.stdout
+
+
 def test_row_missing_from_noise_table_keeps_relative_verdict(tmp_path: Path):
     """An unmeasured benchmark is not silently excused."""
     base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
