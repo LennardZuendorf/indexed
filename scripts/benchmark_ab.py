@@ -1326,11 +1326,12 @@ def main(argv: list[str] | None = None) -> int:
             f"noise band: {args.noise_band} ({len(bands)} row(s), statistic "
             f"{table_stat or result.stat}{provenance})"
         )
-        for row in result.rows:
-            band = bands.get(row.name)
-            if band and band.gate and band.band_pct > tolerance:
+        # Only bands that actually applied: a table ignored for another statistic
+        # or shape must not announce a threshold for rows it never decided.
+        for band in result.bands.values():
+            if band.gate and band.band_pct > tolerance:
                 print(
-                    f"::notice title=Effective threshold::{row.name} gates only "
+                    f"::notice title=Effective threshold::{band.name} gates only "
                     f"past {band.band_pct:.1f}% against the capture (tolerance "
                     f"{tolerance:g}%): its measured band is wider than the "
                     "tolerance, so the band decides that row. Named in "

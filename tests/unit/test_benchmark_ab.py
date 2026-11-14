@@ -1287,6 +1287,7 @@ def test_band_for_another_statistic_is_ignored(tmp_path: Path):
 
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "bands do not apply to other statistics" in proc.stdout
+    assert "Effective threshold" not in proc.stdout
 
 
 @pytest.mark.parametrize(
