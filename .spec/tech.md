@@ -262,7 +262,8 @@ explicit two-worktree setup and is not a fresh performance measurement.
 **Resolution is measured, not assumed.** `scripts/benchmark_noise.json` holds,
 per benchmark, how far unchanged code has been seen to move: `band_ms` is three
 times the population standard deviation of the compared statistic over at least
-three runs sharing one CPU and Python fingerprint, the file records the sample,
+three runs sharing one CPU and Python fingerprint, the file records the sample
+(commits plus one run/artifact URL per result file, via `--source`),
 and `scripts/derive_benchmark_noise.py` regenerates it from result files through
 the gate's own validation. The A/B gate passes the table as `--noise-band`, so a
 row fails only when it beats both `AB_TOLERANCE` and its band — a delta that
@@ -276,11 +277,21 @@ warning when `--stat` selects another. The band is a measurement with a date:
 re-derive it when the fleet or the benchmark corpus moves, and review the diff
 like any other measurement.
 
-The committed table was derived on 2026-11-06 from six repeats on `AMD EPYC
-7763` (main's baseline plus five dependency- or CI-only heads), with
-`test_cli_license` as the single report-only row. The fleet moved to `AMD EPYC
-9V45` on 2026-11-12 (#305) and the table has not been re-derived since, so
-re-measuring the bands on the current fleet is the remaining calibration.
+The committed table was derived on 2026-11-14 from six repeats on `AMD EPYC
+9V74 80-Core` — dependency-only and CI-only heads measured 2026-11-12..14, plus
+the merge this PR's own gate measured — chosen because every one of them sits in
+the same performance cluster. `test_cli_license` remains the one report-only row
+(66 % spread). `test_searcher_first_search` keeps a band (29 %) wider than
+`AB_TOLERANCE`, so that row can only fail past a third; that is the band doing
+its job, not a widened tolerance, and it is named here so the next reader does
+not mistake it for headroom. A seventh same-fingerprint artifact (`2e7802e`,
+2026-11-14) measured about 30 % slower on every row; averaging that host-level
+outlier in would have pushed the two parsing rows' bands past `AB_TOLERANCE` and
+left them unable to fail at all, so it is excluded rather than absorbed. The
+sample block names one artifact URL per file and the gate log prints the
+fingerprint the table was derived on next to the fingerprints it measured, so
+the next fleet rotation shows up as a line a reviewer can compare instead of a
+stale assumption nobody sees.
 
 **The report: everything else, advisory.** The pinned action measures
 `tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift

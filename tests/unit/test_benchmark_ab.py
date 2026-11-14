@@ -1294,6 +1294,12 @@ def test_out_json_and_summary_carry_the_band(tmp_path: Path):
     """The machine-readable result and the job summary both name the band."""
     base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
     table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.30)
+    table_doc = json.loads(table.read_text())
+    table_doc["sample"] = {
+        "measurements": 3,
+        "cpu": "AMD EPYC 9V74 80-Core Processor|X86_64|4|Linux",
+    }
+    table.write_text(json.dumps(table_doc))
     out = tmp_path / "ab.json"
     summary = tmp_path / "summary.md"
 
@@ -1310,12 +1316,36 @@ def test_out_json_and_summary_carry_the_band(tmp_path: Path):
     )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    # The log names the fleet the bands came from: a stale table is visible
+    # here, not only in the one case where it happens to change a verdict.
+    assert "derived on AMD EPYC 9V74 80-Core Processor|X86_64|4|Linux from 3" in (
+        proc.stdout
+    )
     doc = json.loads(out.read_text())
     assert doc["noise_band"]["applied"] is True
     assert doc["noise_band"]["within_noise"] == [FULLNAME.removeprefix("tests/")]
     text = summary.read_text()
     assert "Measured noise band per row" in text
     assert "within noise" in text
+
+
+def test_noise_table_without_a_usable_sample_is_invalid(tmp_path: Path):
+    """A sample block that cannot name its fleet is refused, not half-read."""
+    table = noise_table(tmp_path, band_ms=1.0)
+    table_doc = json.loads(table.read_text())
+    table_doc["sample"] = {"cpu": "AMD EPYC 9V74 80-Core Processor"}
+    table.write_text(json.dumps(table_doc))
+
+    proc = run(
+        tmp_path,
+        results(BASE_MEAN_S),
+        results(BASE_MEAN_S * 1.25),
+        "--noise-band",
+        str(table),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "measurement count" in proc.stdout
 
 
 def test_committed_noise_table_covers_every_selected_row():

@@ -149,3 +149,33 @@ def test_written_table_is_stable_across_runs(tmp_path: Path):
     assert run(tmp_path, *docs, extra=("--out", str(first))).returncode == 0
     assert run(tmp_path, *docs, extra=("--out", str(second))).returncode == 0
     assert first.read_text() == second.read_text()
+
+
+def test_sources_are_recorded_one_per_file(tmp_path: Path):
+    """The sample block names where each file came from, in file order."""
+    out = tmp_path / "noise.json"
+    sources = [
+        f"https://github.com/o/r/actions/runs/{n}/artifacts/{n}" for n in (1, 2, 3)
+    ]
+    extra = ("--out", str(out))
+    for url in sources:
+        extra += ("--source", url)
+
+    proc = run(tmp_path, results(0.009), results(0.010), results(0.011), extra=extra)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(out.read_text())["sample"]["sources"] == sources
+
+
+def test_a_source_count_that_does_not_match_the_files_is_refused(tmp_path: Path):
+    """One URL per file, or the provenance is a guess rather than a record."""
+    proc = run(
+        tmp_path,
+        results(0.009),
+        results(0.010),
+        results(0.011),
+        extra=("--source", "https://github.com/o/r/actions/runs/1"),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "one source per file" in proc.stdout

@@ -16,7 +16,13 @@ changes, and review the diff like any other measurement
 Usage::
 
     python scripts/derive_benchmark_noise.py --out scripts/benchmark_noise.json \
+        --source https://…/actions/runs/<id>/artifacts/<id> \
         .benchmarks/baselines/main.json run-a.json run-b.json ...
+
+The sample block names the fingerprint, the commits and the artifact URLs the
+files came from: the table is a measurement with a date, and a reader has to be
+able to tell when the fleet it was measured on has moved. `--source` is
+positional in the same order as the files, one URL per file.
 
 Exit codes: 0 derived and written, 2 unusable input (no table written).
 """
@@ -111,6 +117,7 @@ def derive(
     sigma_multiplier: float,
     max_band_pct: float,
     minimum: int,
+    sources: list[str] | None = None,
 ) -> dict:
     """Build the committed table from validated repeat measurements."""
     require_repeats(docs, minimum)
@@ -133,6 +140,7 @@ def derive(
             "cpu": fingerprint(docs[0]),
             "python_version": interpreter(docs[0]),
             "commits": [str((doc.get("commit_info") or {}).get("id")) for doc in docs],
+            "sources": list(sources or []),
         },
         "benchmarks": benchmarks,
     }
@@ -150,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--max-band-pct", type=float, default=DEFAULT_MAX_BAND_PCT)
     parser.add_argument("--min-samples", type=int, default=DEFAULT_MIN_SAMPLES)
+    parser.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        metavar="URL",
+        help="run and artifact URL a result file came from; repeat once per file, "
+        "in the same order as the files.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -157,12 +173,18 @@ def main(argv: list[str] | None = None) -> int:
             raise MeasurementInvalid("sigma multiplier must be finite and positive.")
         if not math.isfinite(args.max_band_pct) or args.max_band_pct <= 0:
             raise MeasurementInvalid("max band percent must be finite and positive.")
+        if args.source and len(args.source) != len(args.files):
+            raise MeasurementInvalid(
+                f"{len(args.source)} source URL(s) for {len(args.files)} result "
+                "file(s); name one source per file, in file order."
+            )
         table = derive(
             documents([Path(path) for path in args.files]),
             stat=args.stat,
             sigma_multiplier=args.sigma_multiplier,
             max_band_pct=args.max_band_pct,
             minimum=args.min_samples,
+            sources=args.source,
         )
     except MeasurementInvalid as exc:
         print(f"::error title=Noise band not derived::{exc}")

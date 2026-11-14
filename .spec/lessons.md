@@ -1,11 +1,7 @@
 ---
 type: lessons
 scope: project
-<<<<<<< HEAD
 updated: 2026-11-14
-=======
-updated: 2026-11-13
->>>>>>> 08b3d19
 ---
 
 # Lessons Learned
@@ -1913,4 +1909,30 @@ feature grafted onto it, and say in the PR body which of the branch's hunks were
 dropped as superseded — a whole-file pick in either direction silently changes
 what the gate measures.
 **Tags:** ci, merge, benchmark
+**Date:** 2026-11-14
+
+### A band nobody can date is a band nobody can trust
+**Pattern:** The noise table was derived 2026-11-06 on `AMD EPYC 7763`; six days
+later every run measured 9V74, 9V45 or a Xeon, and the gate loaded the stale
+bands silently — `0` demotions on a healthy PR is indistinguishable from `0`
+demotions because the numbers are wrong. The `sources` were absent from the file
+and the derivation fingerprint was absent from the log, so neither the table nor
+the gate could show its own age.
+**Rule:** Record one run/artifact URL per input file in the sample block
+(`derive_benchmark_noise.py --source`, in file order, refused on a count
+mismatch) and print the fingerprint the table was derived on in the gate log
+next to the fingerprints it measured. Staleness then shows up in every log line
+instead of only in the one case where a demotion would have been wrong.
+**Tags:** ci, benchmark, observability
+**Date:** 2026-11-14
+
+### Repeats cluster into hosts, not into one distribution
+**Pattern:** Seven artifacts sharing one CPU fingerprint differed by 30 % on
+every row: six formed one tight cluster, one (`2e7802e`) was uniformly slower.
+Averaging all seven tripled the parsing bands past `AB_TOLERANCE`, which would
+have left those rows unable to fail at all — a decorative band.
+**Rule:** Derive the band from repeats that sit in one performance cluster and
+name the excluded outlier, its date and its size in the spec; a band wider than
+`AB_TOLERANCE` does not slow the gate down, it switches it off.
+**Tags:** ci, benchmark, measurement
 **Date:** 2026-11-14

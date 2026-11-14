@@ -165,10 +165,34 @@ class Result:
         ]
 
 
-def load_noise_bands(path: Path | None) -> tuple[dict[str, Band], str | None]:
+def band_provenance(doc: dict) -> str | None:
+    """Describe the sample a band table was derived from, for the gate log.
+
+    The table is a measurement of one fleet; printing which one turns a stale
+    band from an invisible assumption into a line a reviewer can check against
+    the fingerprints the same log prints for the measurement itself.
+    """
+    sample = doc.get("sample")
+    if sample is None:
+        return None
+    sample = object_value(sample, "noise band sample")
+    cpu = sample.get("cpu")
+    if not isinstance(cpu, str) or not cpu:
+        raise MeasurementInvalid("noise band table sample has no cpu string.")
+    measurements = sample.get("measurements")
+    if not isinstance(measurements, int) or isinstance(measurements, bool):
+        raise MeasurementInvalid(
+            "noise band table sample has no integer measurement count."
+        )
+    return f"{cpu} from {measurements} measurement(s)"
+
+
+def load_noise_bands(
+    path: Path | None,
+) -> tuple[dict[str, Band], str | None, str | None]:
     """Read the per-benchmark bands measured by derive_benchmark_noise.py."""
     if path is None:
-        return {}, None
+        return {}, None, None
     try:
         doc = object_value(json.loads(path.read_text()), "noise band table")
     except (OSError, ValueError) as exc:
@@ -197,7 +221,7 @@ def load_noise_bands(path: Path | None) -> tuple[dict[str, Band], str | None]:
         bands[benchmark_name(raw_name)] = Band(
             name=raw_name, band_ms=float(band_ms), band_pct=float(band_pct), gate=gate
         )
-    return bands, stat
+    return bands, stat, band_provenance(doc)
 
 
 def apply_noise_bands(
@@ -1236,7 +1260,7 @@ def main(argv: list[str] | None = None) -> int:
         tolerance = args.tolerance
         if tolerance is None:
             tolerance = EVAL_TOLERANCE if result.shape == EVAL_SHAPE else 20.0
-        bands, table_stat = load_noise_bands(
+        bands, table_stat, band_from = load_noise_bands(
             Path(args.noise_band) if args.noise_band else None
         )
     except (OSError, ValueError, OverflowError, MeasurementInvalid) as exc:
@@ -1288,9 +1312,10 @@ def main(argv: list[str] | None = None) -> int:
     for warning in result.warnings:
         print(f"::warning::{warning}")
     if args.noise_band:
+        provenance = f", derived on {band_from}" if band_from else ""
         print(
             f"noise band: {args.noise_band} ({len(bands)} row(s), statistic "
-            f"{table_stat or result.stat})"
+            f"{table_stat or result.stat}{provenance})"
         )
     print(table(result))
     for row in result.within_noise:

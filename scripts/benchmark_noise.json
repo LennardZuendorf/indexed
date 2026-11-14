@@ -5,219 +5,227 @@
   "max_band_pct": 50.0,
   "sample": {
     "measurements": 6,
-    "cpu": "AMD EPYC 7763 64-Core Processor|X86_64|4|Linux",
+    "cpu": "AMD EPYC 9V74 80-Core Processor|X86_64|4|Linux",
     "python_version": "3.13.18",
     "commits": [
-      "96abf064b853f0d63a4920ed222729ebcf986916",
-      "0a99b1f6c1e3791398fa334ade07b17d22bcc5f5",
-      "dd9cb01712d5d75862f425309d2212aea59f7eee",
-      "5faf74037b7249bcfe55c37f8f3a175ee1d66be3",
-      "be96a4ccb8e6c1c760cf5af43e9741764b841e84",
-      "e770e72296a126454253d7aeb12a36f9341c31a7"
+      "dd9eb2dc11dff666e88e3cef4b075a0df8dec3d0",
+      "bb22a6fc8a3e0b0f9c140bb6ae58305156290a32",
+      "69a70e2976a766b81ef546f15580fc77479667f5",
+      "4e032e45ea92f99ecfc3e4591d35e2f64369858e",
+      "55109f4146d66a6d739a7acd59ed09230d218efd",
+      "60ae507d5d5dfa17f508310b5031d0ffb5d068fc"
+    ],
+    "sources": [
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43175621599/artifacts/13923784409",
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43285999265/artifacts/13975681352",
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43385401619/artifacts/14017704950",
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43387253374/artifacts/14019143180",
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43570590496/artifacts/14104368935",
+      "https://github.com/LennardZuendorf/indexed/actions/runs/43577787412/artifacts/14107577345"
     ]
   },
   "benchmarks": {
     "benchmarks/test_e2e_performance.py::test_e2e_create_collection": {
-      "median_ms": 2412.226,
-      "sigma_ms": 43.465,
-      "band_ms": 130.395,
-      "band_pct": 5.4,
+      "median_ms": 2310.926,
+      "sigma_ms": 51.436,
+      "band_ms": 154.309,
+      "band_pct": 6.7,
       "gate": true
     },
     "benchmarks/test_e2e_performance.py::test_e2e_inspect_collections": {
-      "median_ms": 31.371,
-      "sigma_ms": 0.35,
-      "band_ms": 1.051,
-      "band_pct": 3.3,
+      "median_ms": 21.328,
+      "sigma_ms": 0.133,
+      "band_ms": 0.4,
+      "band_pct": 1.9,
       "gate": true
     },
     "benchmarks/test_e2e_performance.py::test_e2e_search_all_collections": {
-      "median_ms": 50.127,
-      "sigma_ms": 0.598,
-      "band_ms": 1.793,
-      "band_pct": 3.6,
+      "median_ms": 38.258,
+      "sigma_ms": 0.192,
+      "band_ms": 0.577,
+      "band_pct": 1.5,
       "gate": true
     },
     "benchmarks/test_e2e_performance.py::test_e2e_search_collection": {
-      "median_ms": 40.432,
-      "sigma_ms": 0.341,
-      "band_ms": 1.023,
-      "band_pct": 2.5,
+      "median_ms": 30.199,
+      "sigma_ms": 0.179,
+      "band_ms": 0.538,
+      "band_pct": 1.8,
       "gate": true
     },
     "benchmarks/test_e2e_performance.py::test_e2e_v2_create": {
-      "median_ms": 2513.667,
-      "sigma_ms": 28.23,
-      "band_ms": 84.689,
-      "band_pct": 3.4,
+      "median_ms": 2354.734,
+      "sigma_ms": 52.162,
+      "band_ms": 156.487,
+      "band_pct": 6.6,
       "gate": true
     },
     "benchmarks/test_e2e_performance.py::test_e2e_v2_search": {
-      "median_ms": 165.134,
-      "sigma_ms": 2.785,
-      "band_ms": 8.356,
-      "band_pct": 5.1,
+      "median_ms": 127.183,
+      "sigma_ms": 1.634,
+      "band_ms": 4.901,
+      "band_pct": 3.9,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_batch_parse_docs_directory": {
-      "median_ms": 5844.983,
-      "sigma_ms": 161.73,
-      "band_ms": 485.189,
-      "band_pct": 8.3,
+      "median_ms": 4223.571,
+      "sigma_ms": 111.995,
+      "band_ms": 335.986,
+      "band_pct": 8.0,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_change_tracking_build_state": {
-      "median_ms": 11.148,
-      "sigma_ms": 0.34,
-      "band_ms": 1.02,
-      "band_pct": 9.1,
+      "median_ms": 8.898,
+      "sigma_ms": 0.076,
+      "band_ms": 0.227,
+      "band_pct": 2.6,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_change_tracking_content_hash": {
-      "median_ms": 9.583,
-      "sigma_ms": 0.216,
-      "band_ms": 0.649,
-      "band_pct": 6.8,
+      "median_ms": 7.743,
+      "sigma_ms": 0.064,
+      "band_ms": 0.193,
+      "band_pct": 2.5,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_file_router_throughput": {
-      "median_ms": 4.78,
-      "sigma_ms": 0.069,
-      "band_ms": 0.206,
-      "band_pct": 4.3,
+      "median_ms": 3.092,
+      "sigma_ms": 0.146,
+      "band_ms": 0.439,
+      "band_pct": 14.2,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_full_connector_pipeline_docs": {
-      "median_ms": 10415.308,
-      "sigma_ms": 496.162,
-      "band_ms": 1488.485,
-      "band_pct": 14.3,
+      "median_ms": 7645.727,
+      "sigma_ms": 241.232,
+      "band_ms": 723.697,
+      "band_pct": 9.5,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_full_connector_pipeline_mixed": {
-      "median_ms": 14822.702,
-      "sigma_ms": 201.867,
-      "band_ms": 605.602,
-      "band_pct": 4.1,
+      "median_ms": 11155.526,
+      "sigma_ms": 189.535,
+      "band_ms": 568.604,
+      "band_pct": 5.1,
       "gate": true
     },
     "benchmarks/test_parsing_performance.py::test_parse_json_plaintext": {
-      "median_ms": 0.092,
-      "sigma_ms": 0.002,
-      "band_ms": 0.006,
-      "band_pct": 6.3,
-      "gate": true
-    },
-    "benchmarks/test_parsing_performance.py::test_parse_large_markdown": {
-      "median_ms": 721.511,
-      "sigma_ms": 17.852,
-      "band_ms": 53.556,
-      "band_pct": 7.4,
-      "gate": true
-    },
-    "benchmarks/test_parsing_performance.py::test_parse_markdown_docs": {
-      "median_ms": 466.813,
-      "sigma_ms": 7.365,
-      "band_ms": 22.096,
-      "band_pct": 4.7,
-      "gate": true
-    },
-    "benchmarks/test_parsing_performance.py::test_parse_png_image": {
-      "median_ms": 1986.01,
-      "sigma_ms": 68.52,
-      "band_ms": 205.559,
-      "band_pct": 10.4,
-      "gate": true
-    },
-    "benchmarks/test_parsing_performance.py::test_parse_python_source": {
-      "median_ms": 23.089,
-      "sigma_ms": 0.439,
-      "band_ms": 1.318,
-      "band_pct": 5.7,
-      "gate": true
-    },
-    "benchmarks/test_parsing_performance.py::test_v1_adapter_conversion": {
-      "median_ms": 0.453,
-      "sigma_ms": 0.011,
-      "band_ms": 0.032,
-      "band_pct": 7.2,
-      "gate": true
-    },
-    "system/test_cli_core.py::test_cli_docs": {
-      "median_ms": 24.944,
-      "sigma_ms": 0.277,
-      "band_ms": 0.83,
+      "median_ms": 0.056,
+      "sigma_ms": 0.001,
+      "band_ms": 0.002,
       "band_pct": 3.3,
       "gate": true
     },
-    "system/test_cli_core.py::test_cli_help": {
-      "median_ms": 26.112,
-      "sigma_ms": 0.416,
-      "band_ms": 1.249,
-      "band_pct": 4.8,
+    "benchmarks/test_parsing_performance.py::test_parse_large_markdown": {
+      "median_ms": 514.125,
+      "sigma_ms": 10.492,
+      "band_ms": 31.477,
+      "band_pct": 6.1,
       "gate": true
     },
-    "system/test_cli_core.py::test_cli_license": {
-      "median_ms": 42.879,
-      "sigma_ms": 17.23,
-      "band_ms": 51.689,
-      "band_pct": 120.5,
-      "gate": false
+    "benchmarks/test_parsing_performance.py::test_parse_markdown_docs": {
+      "median_ms": 337.555,
+      "sigma_ms": 7.178,
+      "band_ms": 21.535,
+      "band_pct": 6.4,
+      "gate": true
     },
-    "system/test_search_performance.py::test_cli_index_search_help": {
-      "median_ms": 32.649,
-      "sigma_ms": 0.417,
-      "band_ms": 1.251,
+    "benchmarks/test_parsing_performance.py::test_parse_png_image": {
+      "median_ms": 1699.872,
+      "sigma_ms": 49.937,
+      "band_ms": 149.812,
+      "band_pct": 8.8,
+      "gate": true
+    },
+    "benchmarks/test_parsing_performance.py::test_parse_python_source": {
+      "median_ms": 16.732,
+      "sigma_ms": 0.146,
+      "band_ms": 0.438,
+      "band_pct": 2.6,
+      "gate": true
+    },
+    "benchmarks/test_parsing_performance.py::test_v1_adapter_conversion": {
+      "median_ms": 0.307,
+      "sigma_ms": 0.004,
+      "band_ms": 0.012,
       "band_pct": 3.8,
       "gate": true
     },
+    "system/test_cli_core.py::test_cli_docs": {
+      "median_ms": 17.02,
+      "sigma_ms": 0.208,
+      "band_ms": 0.625,
+      "band_pct": 3.7,
+      "gate": true
+    },
+    "system/test_cli_core.py::test_cli_help": {
+      "median_ms": 17.632,
+      "sigma_ms": 0.216,
+      "band_ms": 0.648,
+      "band_pct": 3.7,
+      "gate": true
+    },
+    "system/test_cli_core.py::test_cli_license": {
+      "median_ms": 43.606,
+      "sigma_ms": 9.615,
+      "band_ms": 28.844,
+      "band_pct": 66.1,
+      "gate": false
+    },
+    "system/test_search_performance.py::test_cli_index_search_help": {
+      "median_ms": 22.791,
+      "sigma_ms": 0.274,
+      "band_ms": 0.823,
+      "band_pct": 3.6,
+      "gate": true
+    },
     "system/test_search_performance.py::test_cli_search_help": {
-      "median_ms": 32.315,
-      "sigma_ms": 0.321,
-      "band_ms": 0.963,
-      "band_pct": 3.0,
+      "median_ms": 22.708,
+      "sigma_ms": 0.25,
+      "band_ms": 0.75,
+      "band_pct": 3.3,
       "gate": true
     },
     "system/test_search_performance.py::test_faiss_load_legacy_pickle": {
-      "median_ms": 5.0,
-      "sigma_ms": 0.401,
-      "band_ms": 1.203,
-      "band_pct": 24.1,
+      "median_ms": 3.469,
+      "sigma_ms": 0.089,
+      "band_ms": 0.268,
+      "band_pct": 7.7,
       "gate": true
     },
     "system/test_search_performance.py::test_faiss_load_native_mmap": {
-      "median_ms": 1.592,
-      "sigma_ms": 0.128,
-      "band_ms": 0.383,
-      "band_pct": 24.0,
+      "median_ms": 1.048,
+      "sigma_ms": 0.055,
+      "band_ms": 0.164,
+      "band_pct": 15.7,
       "gate": true
     },
     "system/test_search_performance.py::test_orjson_loads_mapping": {
-      "median_ms": 4.197,
-      "sigma_ms": 0.15,
-      "band_ms": 0.451,
-      "band_pct": 10.7,
+      "median_ms": 3.291,
+      "sigma_ms": 0.062,
+      "band_ms": 0.185,
+      "band_pct": 5.6,
       "gate": true
     },
     "system/test_search_performance.py::test_searcher_cached_mapping": {
-      "median_ms": 1.797,
-      "sigma_ms": 0.149,
-      "band_ms": 0.446,
-      "band_pct": 24.8,
+      "median_ms": 1.375,
+      "sigma_ms": 0.036,
+      "band_ms": 0.107,
+      "band_pct": 7.8,
       "gate": true
     },
     "system/test_search_performance.py::test_searcher_first_search": {
-      "median_ms": 9.223,
-      "sigma_ms": 1.224,
-      "band_ms": 3.672,
-      "band_pct": 39.8,
+      "median_ms": 7.336,
+      "sigma_ms": 0.717,
+      "band_ms": 2.151,
+      "band_pct": 29.3,
       "gate": true
     },
     "system/test_search_performance.py::test_stdlib_json_loads_mapping": {
-      "median_ms": 8.034,
-      "sigma_ms": 0.1,
-      "band_ms": 0.3,
-      "band_pct": 3.7,
+      "median_ms": 6.23,
+      "sigma_ms": 0.073,
+      "band_ms": 0.22,
+      "band_pct": 3.5,
       "gate": true
     }
   }
