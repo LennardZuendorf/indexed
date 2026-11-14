@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import platform
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -1042,7 +1044,7 @@ def trap_handler(block: str) -> tuple[str, str]:
 
 def test_ab_gate_step_is_pinned_with_its_failure_path():
     """Deleting the gate must red a check, not silently stop gating."""
-    block = step_block("Same-job A/B gate (captured base vs merge result)")
+    block = step_block("Same-job A/B gate (merge parent vs merge result)")
     handler, signal = trap_handler(block)
     assert signal == "ERR"
     assert "::error title=Same-job measurement invalid::" in handler
@@ -1051,8 +1053,121 @@ def test_ab_gate_step_is_pinned_with_its_failure_path():
     assert 'exit "$status"' in block
     # Both measured sides are stamped with their own fixture-set identity.
     assert "--stamp-corpus" in block
-    assert 'measure "$BASE_DIR" "$BASE_SHA"' in block
+    # The measured base is the merge commit's own first parent, never the event
+    # snapshot: a snapshot that lags the merge GitHub built failed a valid merge
+    # on 2026-11-12 (run 43175675712: base dca6be3, merge parents
+    # [600f1f3, 6ff5d2c]). A native-stack wrapper needs no special case — it is
+    # measured as itself.
+    assert 'measure "$BASE_DIR" "$AB_BASE_SHA"' in block
     assert 'measure "$MERGE_DIR" "$MERGE_SHA"' in block
+    assert "AB_BASE_SHA=$first" in block
+    assert "wrapper_tree" not in block
+    assert "wrapper_parents" not in block
+    # A pass is recorded only for exit 0; exits 1 and 2 stay distinct.
+    assert 'echo "verdict=pass" >> "$GITHUB_OUTPUT"' in block
+    assert 'echo "verdict=regression" >> "$GITHUB_OUTPUT"' in block
+    assert '*) echo "verdict=invalid" >> "$GITHUB_OUTPUT"' in block
+
+
+def test_ab_verdict_is_two_named_checks():
+    """A red check must say whether it measured a regression or nothing."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "verdict: ${{ steps.abgate.outputs.verdict }}" in text
+    assert 'name: "Benchmark verdict: no verdict"' in text
+    regression = step_block("A/B regression")
+    assert "::error title=Benchmark regression::" in regression
+    no_verdict = step_block("Refuse to report anything else")
+    assert "::error title=Benchmark: no verdict::" in no_verdict
+    assert "not a regression and not a pass" in no_verdict
+
+
+def shell_function(block: str, name: str) -> str:
+    """One bash function's source, de-indented, out of a workflow step block."""
+    lines = block.splitlines()
+    first = next(
+        index
+        for index, line in enumerate(lines)
+        if line.strip().startswith(f"{name}() {{")
+    )
+    indent = len(lines[first]) - len(lines[first].lstrip())
+    last = next(
+        index
+        for index in range(first + 1, len(lines))
+        if lines[index].strip() == "}"
+        and len(lines[index]) - len(lines[index].lstrip()) == indent
+    )
+    return textwrap.dedent("\n".join(lines[first : last + 1]))
+
+
+def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path):
+    """The gate accepts the merge GitHub built even when the base branch moved
+    after the event snapshot, and still refuses a merge that is not this PR's.
+
+    Reproduces run 43175675712 (2026-11-12): payload base ``dca6be3``, merge
+    first parent ``600f1f3``. The old proof called that valid merge "provenance
+    invalid" and reddened the only check that carries a benchmark verdict.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "gate@example.invalid")
+    git("config", "user.name", "gate")
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    # The base branch moves on after the webhook snapshot was taken.
+    (repo / "b.txt").write_text("b", encoding="utf-8")
+    git("add", "b.txt")
+    git("commit", "-qm", "base moved on")
+    moved = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "feature", base)
+    (repo / "c.txt").write_text("c", encoding="utf-8")
+    git("add", "c.txt")
+    git("commit", "-qm", "feature")
+    head = git("rev-parse", "HEAD")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "-m", "merge", "feature")
+    merge = git("rev-parse", "HEAD")
+
+    gate = (
+        shell_function(
+            step_block("Same-job A/B gate (merge parent vs merge result)"),
+            "verify_pr_merge",
+        )
+        + '\nAB_BASE_SHA=$BASE_SHA\nverify_pr_merge\nprintf "%s" "$AB_BASE_SHA"\n'
+    )
+    output = tmp_path / "github-output"
+    output.write_text("", encoding="utf-8")
+
+    def gate_run(**overrides: str) -> subprocess.CompletedProcess[str]:
+        env = {
+            **os.environ,
+            "BASE_SHA": base,
+            "MERGE_SHA": merge,
+            "PR_HEAD_SHA": head,
+            "GITHUB_OUTPUT": str(output),
+            **overrides,
+        }
+        return subprocess.run(
+            ["bash", "-c", gate], cwd=repo, capture_output=True, text=True, env=env
+        )
+
+    accepted = gate_run()
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert "is not this merge's first parent" in accepted.stdout
+    assert [line for line in accepted.stdout.splitlines() if line][-1] == moved
+
+    refused = gate_run(PR_HEAD_SHA=base)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "Same-job measurement invalid" in refused.stdout
+    assert "verdict=invalid" in output.read_text(encoding="utf-8")
 
 
 def test_report_step_keeps_its_advisory_tolerance():
@@ -1060,3 +1175,221 @@ def test_report_step_keeps_its_advisory_tolerance():
     block = step_block("Run benchmarks")
     assert "continue-on-error: true" in block
     assert "cross-branch-tolerance: 1000" in block
+
+
+def noise_table(
+    tmp_path: Path,
+    *,
+    band_ms: float,
+    band_pct: float = 30.0,
+    gate: bool = True,
+    stat: str = "min",
+    name: str = FULLNAME,
+) -> Path:
+    """Write a one-row noise band table in the shape the derivation emits."""
+    path = tmp_path / "noise.json"
+    path.write_text(
+        json.dumps(
+            {
+                "stat": stat,
+                "benchmarks": {
+                    name.removeprefix("tests/"): {
+                        "band_ms": band_ms,
+                        "band_pct": band_pct,
+                        "gate": gate,
+                    }
+                },
+            }
+        )
+    )
+    return path
+
+
+def test_delta_inside_noise_band_is_reported_not_gated(tmp_path: Path):
+    """+25 % on a row whose unchanged spread is 30 % is not a verdict."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.30, band_pct=30.0)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "gate verdict: PASS" in proc.stdout
+    assert "inside its measured noise band" in proc.stdout
+    assert "::error title=Benchmark regression::" not in proc.stdout
+
+
+def test_delta_past_noise_band_still_fails(tmp_path: Path):
+    """Falsifiability: the same +25 % fails when it exceeds the measured band."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.10, band_pct=10.0)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "gate verdict: FAIL" in proc.stdout
+    assert "noise band" in proc.stdout
+
+
+def test_band_is_a_share_of_the_capture_not_a_host_dependent_span(tmp_path: Path):
+    """One table must judge the same relative move the same way on any host.
+
+    `band_ms` is measured on one machine, but the base is not: 2.151 ms is 29.8 %
+    of a 7.2 ms benchmark and 16.7 % of a 12.9 ms one. Comparing the band as an
+    absolute span would silently tighten or loosen the gate with the fleet, so
+    the gate compares the share of the capture instead.
+    """
+    table = noise_table(tmp_path, band_ms=2.151, band_pct=29.3)
+    for base_s in (0.007224, 0.012852):
+        base = results(base_s)
+        inside = run(tmp_path, base, results(base_s * 1.25), "--noise-band", str(table))
+        assert inside.returncode == 0, inside.stdout + inside.stderr
+        assert "inside its measured noise band" in inside.stdout
+        # The widened gate is stated, not implied: 29.3 % > the 20 % tolerance.
+        assert "::notice title=Effective threshold::" in inside.stdout
+        assert "gates only past 29.3%" in inside.stdout
+
+        outside = run(
+            tmp_path, base, results(base_s * 1.30), "--noise-band", str(table)
+        )
+        assert outside.returncode == 1, outside.stdout + outside.stderr
+        assert "::error title=Benchmark regression::" in outside.stdout
+
+
+def test_row_missing_from_noise_table_keeps_relative_verdict(tmp_path: Path):
+    """An unmeasured benchmark is not silently excused."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=1.0, name="tests/other.py::test_other")
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "::error title=Benchmark regression::" in proc.stdout
+
+
+def test_report_only_row_never_decides(tmp_path: Path):
+    """A row whose spread exceeds the cap is named, never gated — even at +100 %."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 2)
+    table = noise_table(tmp_path, band_ms=1.0, band_pct=120.0, gate=False)
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "too large to gate; reported only" in proc.stdout
+    assert "gate verdict: PASS" in proc.stdout
+
+
+def test_band_for_another_statistic_is_ignored(tmp_path: Path):
+    """Bands are measured on one statistic; using them for another is refused."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=1000.0, stat="mean")
+
+    proc = run(tmp_path, base, head, "--noise-band", str(table))
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "bands do not apply to other statistics" in proc.stdout
+    assert "Effective threshold" not in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {},
+        {"band_ms": "3", "band_pct": 30.0, "gate": True},
+        {"band_ms": 0, "band_pct": 30.0, "gate": True},
+        {"band_ms": 3.0, "gate": True},
+        {"band_ms": 3.0, "band_pct": 30.0},
+    ],
+)
+def test_malformed_noise_table_is_invalid(tmp_path: Path, entry):
+    table = tmp_path / "noise.json"
+    table.write_text(json.dumps({"stat": "min", "benchmarks": {FULLNAME: entry}}))
+
+    proc = run(
+        tmp_path,
+        results(BASE_MEAN_S),
+        results(BASE_MEAN_S * 1.25),
+        "--noise-band",
+        str(table),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Same-job measurement invalid" in proc.stdout
+
+
+def test_out_json_and_summary_carry_the_band(tmp_path: Path):
+    """The machine-readable result and the job summary both name the band."""
+    base, head = results(BASE_MEAN_S), results(BASE_MEAN_S * 1.25)
+    table = noise_table(tmp_path, band_ms=BASE_MEAN_S * 1000 * 0.30)
+    table_doc = json.loads(table.read_text())
+    table_doc["sample"] = {
+        "measurements": 3,
+        "cpu": "AMD EPYC 9V74 80-Core Processor|X86_64|4|Linux",
+    }
+    table.write_text(json.dumps(table_doc))
+    out = tmp_path / "ab.json"
+    summary = tmp_path / "summary.md"
+
+    proc = run(
+        tmp_path,
+        base,
+        head,
+        "--noise-band",
+        str(table),
+        "--out",
+        str(out),
+        "--summary",
+        str(summary),
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    # The log names the fleet the bands came from: a stale table is visible
+    # here, not only in the one case where it happens to change a verdict.
+    assert "derived on AMD EPYC 9V74 80-Core Processor|X86_64|4|Linux from 3" in (
+        proc.stdout
+    )
+    doc = json.loads(out.read_text())
+    assert doc["noise_band"]["applied"] is True
+    assert doc["noise_band"]["within_noise"] == [FULLNAME.removeprefix("tests/")]
+    text = summary.read_text()
+    assert "Measured noise band per row" in text
+    assert "within noise" in text
+
+
+def test_noise_table_without_a_usable_sample_is_invalid(tmp_path: Path):
+    """A sample block that cannot name its fleet is refused, not half-read."""
+    table = noise_table(tmp_path, band_ms=1.0)
+    table_doc = json.loads(table.read_text())
+    table_doc["sample"] = {"cpu": "AMD EPYC 9V74 80-Core Processor"}
+    table.write_text(json.dumps(table_doc))
+
+    proc = run(
+        tmp_path,
+        results(BASE_MEAN_S),
+        results(BASE_MEAN_S * 1.25),
+        "--noise-band",
+        str(table),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "measurement count" in proc.stdout
+
+
+def test_committed_noise_table_covers_every_selected_row():
+    """CI passes this table; a missing selected row would silently re-open it."""
+    table = json.loads((SCRIPT.parent / "benchmark_noise.json").read_text())
+    bands = table["benchmarks"]
+    for node in (
+        "tests/benchmarks/test_parsing_performance.py::test_parse_markdown_docs",
+        "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown",
+        "tests/system/test_search_performance.py::test_searcher_first_search",
+    ):
+        assert node.removeprefix("tests/") in bands, node
+    assert table["stat"] == "min"
+
+
+def test_ab_gate_passes_the_committed_noise_band():
+    """A flag-less A/B invocation re-opens the run-to-run lottery it closed."""
+    block = step_block("Same-job A/B gate (merge parent vs merge result)")
+    assert '--noise-band "$GITHUB_WORKSPACE/scripts/benchmark_noise.json"' in block, (
+        block
+    )

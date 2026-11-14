@@ -1873,3 +1873,82 @@ while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
 raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
+
+## Benchmark provenance and check names (2026-11-12)
+
+- **The event payload's base SHA is not the base the merge was built on.**
+  `pull_request.base.sha` is a snapshot; `github.sha`'s merge commit is built
+  later, and the two disagree whenever the base branch moves in between. Trust
+  the merge commit's own first parent and treat the payload base as a notice.
+  Substituting the snapshot both reds valid comparisons and charges the base
+  branch's intervening commits to the PR.
+- **A red check whose name cannot say what it means is not a gate.** Exit 1
+  (measured regression) and exit 2 (compared nothing) surfaced as the same red
+  `Performance Benchmarks`, which is why three PRs were closed as
+  "pre-existing" rather than read. Record the verdict as a job output and give
+  each outcome its own job check name.
+- **Prove determinism by re-running one run, never by comparing two heads.**
+  A later green on a different head — one that merged the base branch, say — is
+  a different input and says nothing about an earlier red. The 2026-11-12
+  "benchmark flake" was exactly that: red on `6ff5d2c`, green on `930743ae`,
+  which merged main and so refreshed the payload base. The evidence that counts
+  is two attempts of one run on one merge: `43184196410` measured `4319ee0c` on
+  AMD EPYC 9V74 and then 7763, and concluded PASS both times.
+- **The same shell proof lives in two workflows.** `python-benchmark.yml` and
+  `python-eval.yml` each carry `verify_pr_merge`; changing one alone leaves two
+  policies behind the same vocabulary. Change both in the same cycle.
+
+### Resolve a fork-diverged gate PR by its feature, not its file
+**Pattern:** Two branches created the same `scripts/benchmark_ab.py` from a fork
+point where neither had it, so merging produced an add/add conflict of two whole
+comparators (468 vs 1199 lines). Keeping the branch copy would have deleted the
+corpus stamping, round floor and A/B provenance main has since grown; keeping
+main's copy alone would have deleted the branch's only purpose.
+**Rule:** Resolve such a conflict as main's implementation plus the branch's
+feature grafted onto it, and say in the PR body which of the branch's hunks were
+dropped as superseded — a whole-file pick in either direction silently changes
+what the gate measures.
+**Tags:** ci, merge, benchmark
+**Date:** 2026-11-14
+
+### A band nobody can date is a band nobody can trust
+**Pattern:** The noise table was derived 2026-11-06 on `AMD EPYC 7763`; six days
+later every run measured 9V74, 9V45 or a Xeon, and the gate loaded the stale
+bands silently — `0` demotions on a healthy PR is indistinguishable from `0`
+demotions because the numbers are wrong. The `sources` were absent from the file
+and the derivation fingerprint was absent from the log, so neither the table nor
+the gate could show its own age.
+**Rule:** Record one run/artifact URL per input file in the sample block
+(`derive_benchmark_noise.py --source`, in file order, refused on a count
+mismatch) and print the fingerprint the table was derived on in the gate log
+next to the fingerprints it measured. Staleness then shows up in every log line
+instead of only in the one case where a demotion would have been wrong.
+**Tags:** ci, benchmark, observability
+**Date:** 2026-11-14
+
+### Repeats cluster into hosts, not into one distribution
+**Pattern:** Seven artifacts sharing one CPU fingerprint differed by 30 % on
+every row: six formed one tight cluster, one (`2e7802e`) was uniformly slower.
+Averaging all seven tripled the parsing bands past `AB_TOLERANCE`, which would
+have left those rows unable to fail at all — a decorative band.
+**Rule:** Derive the band from repeats that sit in one performance cluster and
+name the excluded outlier, its date and its size in the spec. A band wider than
+`AB_TOLERANCE` does not disable the row by itself: it raises that row's effective
+threshold to the band, and the gate prints it. Only a spread past the 50 % cap
+makes a row report-only.
+**Tags:** ci, benchmark, measurement
+**Date:** 2026-11-14
+
+### A threshold has to be compared on its own axis
+**Pattern:** The band was measured in milliseconds and the tolerance in percent.
+The same 2.15 ms band was 29.8 % of a 7.2 ms capture and 16.7 % of a 12.9 ms one,
+so a +25 % move on one gated row passed on the derivation host and failed on the
+host that measured the same PR — the gate's threshold moved with the fleet while
+the spec claimed a fixed one.
+**Rule:** When a tolerance is relative, store and compare the band as a share of
+the row's own duration (`band_pct`), keeping the absolute figure only as the raw
+measurement on the derivation host; then prove it with the same delta on two
+bases of different size. A band stored in one unit and compared against a delta
+in another is a bug that only appears on the host you did not test.
+**Tags:** ci, benchmark, measurement
+**Date:** 2026-11-14

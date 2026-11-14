@@ -197,20 +197,33 @@ anything.
 
 **The gate: two measurements, one job, one runner.** Before the report action,
 `Capture benchmark revisions` pins the event's base SHA, PR head SHA and GitHub
-merge-result SHA (`github.sha`). The A/B fetches those exact base and merge
-objects with depth 3 and requires exactly two merge parents, ending in the
-captured PR head. The first parent must be the captured base, or one native-stack
-wrapper with exactly two parents ending in that base and the exact same complete
-Git tree as that base. Tree identity includes every path, mode and content blob.
-Missing objects, extra parents or a changed wrapper tree fail the measurement.
-The wrapper is provenance evidence only: both original captured base and merge
-SHAs remain the measured revisions. Moving target refs cannot replace this pair.
+merge-result SHA (`github.sha`). The A/B requires exactly two merge parents,
+ending in the captured PR head, and fetches the objects it needs with depth 3 —
+the A/B checkout already runs at `fetch-depth: 2`, which brings the merge and
+its first parent, so the explicit fetch covers the payload base and the merge
+even when those differ. The measured base is the merge commit's **own first
+parent** — the commit GitHub built that merge against — never the event
+payload's base SHA, which is an earlier snapshot. When the base branch moves
+between the webhook snapshot and the merge-ref build, the snapshot lags the
+merge and used to fail a valid merge as "provenance invalid": on 2026-11-12 run
+`43175675712` carried payload base `dca6be3` while the merge it measured,
+`487a1131`, had parents `[600f1f3, 6ff5d2c]`, so the old wrapper proof rejected
+a valid merge. The next run on that branch was green because its head,
+`930743ae`, merged main and so carried a payload base that matched its merge's
+first parent — a different head, not a flake. Measuring the first parent keeps
+both sides immutable and keeps the delta exactly the PR's change;
+measuring the stale snapshot instead charges the base branch's intervening
+commits to the PR. A native-stack wrapper therefore needs no special case — it
+is measured as itself. A payload base that differs from the first parent is
+reported as a notice, not a failure; missing objects, a merge that does not
+have exactly two parents, or a second parent that is not the captured PR head
+still fail the measurement.
 
-`Same-job A/B gate` measures the captured base and its corresponding PR merge
-result back to back. Each has a separate detached worktree and venv installed
-from that revision's lock with `uv sync --locked`. Logs and summary name the
-actual measured commits as base and merge result, never as a Git merge base or
-an unmerged head. The gate requires all three selected rows:
+`Same-job A/B gate` measures the merge's first parent and its corresponding PR
+merge result back to back. Each has a separate detached worktree and venv
+installed from that revision's lock with `uv sync --locked`. Logs and summary
+name the actual measured commits as base and merge result, never as a Git merge
+base or an unmerged head. The gate requires all three selected rows:
 `test_searcher_first_search`, `test_parse_markdown_docs`, and
 `test_parse_large_markdown`. Repeatable `--expected-benchmark` arguments pin
 that selected set even if pytest omits a test on both sides. Only the common
@@ -223,7 +236,9 @@ and nonfinite or negative tolerance exit **2** with
 `::error title=Same-job measurement invalid::` and no verdict. The comparator
 prints both validated fingerprints. A valid measurement exits **1** only when
 a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
-(20 %); otherwise it exits **0**. Zero tolerance is valid.
+(20 %) and by more than that benchmark's measured noise band — both as
+percentages of the captured base; otherwise it exits **0**. Zero tolerance is
+valid.
 
 Two guards keep the benchmark lane from deciding on a comparison that measured
 nothing. Each benchmark row must report at least **three rounds** in its own
@@ -245,6 +260,76 @@ up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
 `41407096799` added 40 s to an 8.5-minute report job; that timing predates the
 explicit two-worktree setup and is not a fresh performance measurement.
 
+**Resolution is measured, not assumed.** `scripts/benchmark_noise.json` holds,
+per benchmark, how far unchanged code has been seen to move: three times the
+population standard deviation of the compared statistic over at least three runs
+sharing one CPU and Python fingerprint. It stores that spread twice — `band_ms`
+as the raw measurement on the derivation host, `band_pct` as the same spread
+divided by the row's own median — and `scripts/derive_benchmark_noise.py`
+regenerates both from result files through the gate's own validation: a
+mixed-fingerprint sample is refused, and so is writing the table without one
+`--source` URL per file.
+
+The A/B gate passes the table as `--noise-band` and compares **`band_pct`**: a
+row fails only when it beats `AB_TOLERANCE` *and* moves further than unchanged
+code has been observed to move, both expressed the same way — as a share of the
+row's own duration on the derivation sample for the band, as a share of the
+run's captured base for the delta. The relative axis is load-bearing rather than
+cosmetic. The same 2.15 ms band is 29.8 % of a 7.2 ms capture and 16.7 % of a
+12.9 ms one, so an absolute comparison would make one stored measurement two
+different thresholds depending on which host ran the PR: tight on the fast host
+and loose on the slow one, tracking the fleet instead of the code. As a share,
+one measurement is one threshold everywhere — which assumes what
+`AB_TOLERANCE` already assumes, that a benchmark's noise scales with its own
+duration rather than staying fixed in milliseconds. Where that assumption is
+wrong the row shows it as an implausible share, and the band is re-derived when
+the fleet moves.
+
+A row whose measured spread exceeds the 50 % cap is stored as `gate: false` and
+printed as **report only**: at that signal-to-noise ratio the benchmark has no
+verdict to give, and naming that is honest where a widened tolerance would be
+decorative. The cap is the only route to report-only. A band between the
+tolerance and that cap does not switch the row off — it raises the row's
+effective threshold to the band, which is exactly the resolution the measurement
+has: a row that can resolve a 30 % move has a verdict to give, just a coarser
+one than a row that resolves 6 %. That widening is stated, never implied: the
+gate log prints an `Effective threshold` notice naming each such row and its
+percentage, and the rows are named here. A row missing from the table keeps the
+plain relative verdict, so an unmeasured benchmark is never silently excused, and
+a table derived for one statistic is ignored with a warning when `--stat` selects
+another. The band is a measurement with a date: re-derive it when the fleet or
+the benchmark corpus moves, and review the diff like any other measurement.
+
+The committed table was derived on 2026-11-14 from six repeats on `AMD EPYC
+9V74 80-Core`, CPython 3.13.18, one artifact URL per file in the sample block.
+Its composition, because the sample is what makes the numbers checkable: three
+heads (`dd9eb2d`, `bb22a6f`, `55109f4`) differ from `main` only in dependency
+locks, CI and docs; two (`69a70e2`, `4e032e4`) carry #241's LSP Tier 0
+(`utils/provenance.py`, `utils/relevance.py`, an out-of-process LSP suite); one
+(`60ae507`) is this branch's own head, carrying #286's file-connector changes. So
+the sample is not "every file byte-identical to `main`" — those `src/indexed`
+paths are on this branch too. What holds instead is that the timed rows formed
+one cluster (searcher minimums 7.03–8.92 ms across the six), and that the three
+strictly-clean heads alone would have produced a **wider** searcher band
+(36.1 %, σ 0.861 ms): the mixed sample is the narrower of the two, not a tighter
+one picked on purpose.
+
+Per row: `test_parse_markdown_docs` 21.535 ms / 6.4 %, `test_parse_large_markdown`
+31.477 ms / 6.1 %, and `test_cli_license` a 66.1 % spread — past the cap, so the
+single report-only row. `test_searcher_first_search` is the one worth naming:
+29.3 % (σ 0.717 ms on a 7.336 ms median) is intrinsic to a ~7 ms benchmark whose
+run-to-run spread is already about a tenth of its own duration, and it is wider
+than `AB_TOLERANCE`. It stays gating instead of report-only because 29.3 % is
+still inside the 50 % cap: the row does resolve a 30 % move, the gate simply
+fires there later than on the parsing rows, and every run prints that threshold.
+A seventh same-fingerprint artifact (`2e7802e`, 2026-11-14) measured about 30 %
+slower on every row; averaging that host-level outlier in would have pushed the
+two parsing rows' bands past `AB_TOLERANCE` and left them unable to fail at all,
+so it is excluded rather than absorbed. The gate log prints the fingerprint the
+table was derived on next to the fingerprints it measured, so the next fleet
+rotation shows up as a line a reviewer can compare instead of a stale assumption
+nobody sees.
+
 **The report: everything else, advisory.** The pinned action measures
 `tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift
 against the target branch's committed baseline. The PR invocation has
@@ -253,8 +338,14 @@ since missing names or sufficiently large regressions can still fail it.
 `cross-branch-tolerance: 1000` is report policy, not the safety boundary.
 The required A/B runs after report failure, independently checks checkout and
 Python setup, installs uv, and measures both revisions. Setup failure, failed
-pytest or absent result files fails with exit 2; A/B exits 1 and 2 remain hard
-job failures. The dispatch refresh invocation retains its hard action failure
+pytest or absent result files exits 2. The gate records its exit as a job output
+(`pass`, `regression`, `invalid`) and never makes its own job the verdict: a
+measured regression reds `Benchmark verdict`, a run that compared nothing reds
+`Benchmark verdict: no verdict`, and only one of the two can be red for a given
+commit. So a red `Performance Benchmarks` means the job itself broke, never "the
+benchmarks were fine but the gate refused to look" (#267, #271). A skipped
+comparison is never a pass either: it lands on the no-verdict check with the
+reason in the run. The dispatch refresh invocation retains its hard action failure
 behavior and live tolerance of 20. Committed baselines remain drift references.
 
 `.benchmarks/baselines/` holds the per-branch JSON baselines (the general
@@ -391,11 +482,11 @@ comparison — decides the job).
 
 ### Retrieval Evaluation Gate
 
-`python-eval.yml` measures the captured event base and its corresponding PR
+`python-eval.yml` measures the merge's first parent and its corresponding PR
 merge result in one job. It fetches immutable SHAs with depth 3 and applies the
-same direct-parent or exact same-tree native-stack wrapper proof described in
-CI Benchmarking, then verifies each measured HEAD. The measured base/merge SHAs
-remain unchanged by wrapper acceptance. Each side uses its own detached worktree and
+same proof described in CI Benchmarking — the merge commit's first parent is
+the measured base — then verifies each measured HEAD. Each side uses its own
+detached worktree and
 `uv sync --locked` environment. Dispatch measures its captured revision twice;
 it never resolves a moving branch tip. The common launcher is captured once
 from the merge result and runs by absolute path through each side's own Python.
@@ -774,16 +865,17 @@ Connector readers use this helper — do not duplicate status-code tuples.
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
 7. **CI benchmark runner stability** — the CPU-fingerprint gate handles the
    hostname randomization (see tech.md § CI Benchmarking); `override-label` is
-   configured, a skipped comparison now fails the gate (#267), and a fleet
-   rotation is repairable via `accept_cpu_change`. **Answered, 2026-10-31:** the
+   configured, a skipped cross-run comparison is advisory and cannot make the
+   gate green (#297), and a fleet rotation is repairable via
+   `accept_cpu_change`. **Answered, 2026-10-31:** the
    hosted fleet *does* alternate — four jobs of one PR (same code) landed on
    `AMD EPYC 9V74`, `AMD EPYC 7763` (twice) and `INTEL(R) XEON(R) PLATINUM
    8573C` within an hour, producing two green and two red verdicts from the same
    diff. So a committed cross-run baseline cannot be a stable PR gate, and
    `test_parse_large_markdown` moving +10.4 % and +33.6 % against the same
    baseline on the same CPU model rules out "just raise the tolerance". The
-   implemented design measures the captured event base and corresponding PR
-   merge result back to back in one job, keeping the committed baseline as a
+   implemented design measures the merge's first parent and the corresponding
+   PR merge result back to back in one job, keeping the committed baseline as a
    coarse `main` drift alarm. The comparator and required-row contract are
    described in CI Benchmarking above; hosted acceptance of these repairs is
    separate from local executable verification.
