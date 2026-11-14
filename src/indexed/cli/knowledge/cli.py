@@ -7,7 +7,7 @@ individual commands for flat registration in the main app.
 import webbrowser
 import typer
 
-from .commands import create, search, inspect, update, remove, migrate
+from .commands import create, search, inspect, update, remove, migrate, watch
 from ..utils.console import console
 from ..utils.components.theme import get_success_style, get_secondary_style
 
@@ -17,6 +17,7 @@ app.add_typer(create.app, name="create", help="Create new collections")
 app.command("search")(search.search)
 app.command("inspect")(inspect.inspect_collections)
 app.command("update")(update.update)
+app.command("watch")(watch.watch)
 app.command("remove")(remove.remove)
 app.command("migrate")(migrate.migrate)
 
@@ -45,4 +46,4 @@ def docs() -> None:
         raise typer.Exit(1)
 
 
-__all__ = ["app", "create", "search", "inspect", "update", "remove", "migrate"]
+__all__ = ["app", "create", "search", "inspect", "update", "watch", "remove", "migrate"]
