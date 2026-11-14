@@ -20,16 +20,17 @@ One tech branch doc per `src/indexed/` subpackage:
 
 | Subpackage | Branch doc | Covers |
 |-----------|-----------|--------|
-| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+| `src/indexed/cli/`, `src/indexed/mcp/`, `src/indexed/lsp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server, LSP server |
 | `src/indexed/core/` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
 | `src/indexed/config/` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
 | `src/indexed/connectors/` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
 | `src/indexed/parsing/` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
 
-`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
-separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
-contracts + connector protocols, the leaf) has no separate doc either — covered
-inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
+`src/indexed/utils/` (logging, retry, batching, provenance) is a thin shared
+foundation — no separate doc; helpers are imported by every layer.
+`src/indexed/protocols/` (typed contracts + connector protocols, the leaf) has
+no separate doc either — covered inline below (§ Protocols Subpackage) and in
+tech-core.md / tech-connectors.md.
 
 ---
 
@@ -108,7 +109,8 @@ indexed/
 │   ├── config/                # Config management (ConfigService singleton)
 │   ├── parsing/               # Shared parsing module (Docling, tree-sitter)
 │   ├── protocols/             # Typed contracts + connector protocols — the leaf
-│   └── utils/                 # Shared utilities (logging, retry, batching)
+│   ├── lsp/                   # LSP server (stdio JSON-RPC): symbol palette + hover
+│   └── utils/                 # Shared utilities (logging, retry, batching, provenance)
 └── tests/                     # Test suite
 ```
 
@@ -691,10 +693,10 @@ contracts, not instructions to reapply its retired implementation plan.
 
 No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
 facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
-`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+`scripts/check_imports.py`'s `cli/mcp/lsp ↛ core.v1, core.v2` rule, not merely a documented
 convention. `src/indexed/core/facade_config.py` is part of this facade surface: it holds
 `CoreEngineConfig` ([core] engine, the default-engine selector for NEW collections) plus 7
-lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+lazily re-exported v1 config-model/utility symbols, so files above the facade never import
 `core.v1.*`/`core.v2.*` for those either. `config/commands/` is a separate, pre-existing
 exemption in `check_imports.py` (`_EXEMPT_DIRS`) — same composition-adjacent rationale as
 `config/cli.py` and `cli/composition.py` — so a file there (e.g. `config/commands/

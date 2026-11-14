@@ -45,7 +45,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
 # `metadata` so a v2 hit can say where it sits — genuine contract surface, not
 # stealth regrowth; ceiling = measured (31_602) + headroom.
-SRC_LOC_MAX = 31_800
+# Raised from 31_800 by issue #241's LSP Tier 0 surface: `indexed/lsp/` is a
+# fourth presentation entry point (Content-Length framing, capability-honest
+# dispatch, the locator->LSP-range conversion and the collection-ownership
+# seam) plus the `indexed lsp` command — new product surface with its own unit
+# and out-of-process stdio tests, not stealth regrowth; ceiling = measured
+# (32_705) + headroom.
+SRC_LOC_MAX = 32_900
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -134,10 +140,32 @@ SRC_LOC_MAX = 31_800
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-# Aggregate keeps search golden/locator tests, benchmark/evaluation gate
-# regressions and main's pinned parsing-corpus guard: measured 50_636 lines
-# plus 214 lines of headroom. Source budget stays at 31_800.
-TEST_LOC_MAX = 50_850
+# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
+# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
+# the benchmark wiring so a corpus change is a deliberate, reviewable diff
+# instead of a benchmark gate that reds on spec growth) — gate-integrity
+# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
+# Raised from 48_600 by issues #108/#109: the golden-output suite
+# (`tests/unit/indexed/mcp/test_search_payload_golden.py` + `golden/
+# search_payload.json`) pins ONE hand-written payload across the builder, the
+# MCP tool and `search --json`, and `test_formatting.py` grows the locator/
+# ranking units (line span, page, headings, honest `document` fallback,
+# unified cross-engine relevance) — genuine defect-guarding coverage for a
+# reproduced two-shapes drift, not stealth regrowth; ceiling = measured
+# (49_095 on the post-#265 tree, whose eval suite is already inside main's own
+# 48_600) + headroom.
+# The reviewed #273 paired-gate suite adds 312 lines to the repaired search
+# tree's 49_244: measured union 49_556, preserving both legitimate test tracks.
+# Raised from 49_800 by issue #241's LSP Tier 0 surface: framing, dispatch and
+# payload-builder units plus an out-of-process stdio session that drives all
+# five Tier 0 acceptance points against a real collection — the protocol is the
+# contract, so the transcript IS the regression test; ceiling = measured
+# (51_140) + headroom.
+# The merge of #297 (main) into this stack keeps both legitimate test tracks —
+# the LSP stdio session, main's eval/canonical suite and the repaired search
+# golden/locator units — in one tree: measured 52_316 after the hand-merge, so
+# the ceiling moves to measured + headroom rather than dropping either side.
+TEST_LOC_MAX = 52_600
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
