@@ -136,8 +136,15 @@ SRC_LOC_MAX = 31_800
 # measured 48_284 before final review fixes, with bounded headroom.
 # Aggregate keeps search golden/locator tests, benchmark/evaluation gate
 # regressions and main's pinned parsing-corpus guard: measured 50_636 lines
-# plus 214 lines of headroom. Source budget stays at 31_800.
-TEST_LOC_MAX = 50_850
+# plus 214 lines of headroom (50_850). Raised from 50_850 by the files-connector
+# dead-config fix (#286): whole reader-block round-trip through manifest.json,
+# update-strategy honouring (none vs auto), config→reader threading and
+# AST-vs-plaintext chunk assertions, all red on the pre-fix commit — genuine
+# defect-guarding coverage, not stealth regrowth; measured 51_038 on the merged
+# tree, ceiling = measured + the same 214 headroom. Source budget stays at
+# 31_800 (merged tree measures 31_788).
+TEST_LOC_MAX = 51_252
+
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

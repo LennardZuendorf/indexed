@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-11
+updated: 2026-11-14
 ---
 
 # Tech Spec: indexed
@@ -166,6 +166,23 @@ uv run pytest -q                              # all
 uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
+
+### System Tests in CI
+
+`python-ci.yml` runs `tests/system/` on Python 3.11–3.14 (plus the import-graph,
+size, wheel and twine gates). The suite gates its model-dependent tests on
+`tests/conftest.py::model_available()`, so the job runs
+`ensure_model('all-MiniLM-L6-v2')` before pytest: with the model present ~18 extra
+tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
+instead of skipping. Measured cost is ~30 s of suite time (local: 113 passed in 109.8 s
+with the model vs `95 passed, 18 skipped` in 80.0 s without) plus an `ensure_model`
+step per job — the order of ten seconds, a ~90 MB download on a cold cache (e.g. runs
+42823813619, 42831876685, 42833818596) — which is why the gate runs on every version
+rather than one. The Hub model directory is deliberately *not* an
+`actions/cache` entry: a snapshot saved from an interrupted download holds configs and
+tokenizer without weights (the state `is_model_cached()` rejects), and an entry can
+never be replaced under its key, so the cache silently degraded into a per-job download
+(lessons.md § Model-gated system tests in CI).
 
 ### CI Benchmarking
 

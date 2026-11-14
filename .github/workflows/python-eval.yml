@@ -100,11 +100,10 @@ jobs:
       with:
         python-version: "3.13"
 
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: a saved entry cannot be replaced
+    # under its key, and the shared one had been saved from an interrupted
+    # download — configs and tokenizer without weights (see python-ci.yml). The
+    # harness downloads the weights it needs with retry.
 
     - name: Install dependencies
       run: |

@@ -51,11 +51,12 @@ jobs:
       contents: read
       pull-requests: write  # required to post the report comment
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: the Hub entry on refs/heads/main
+    # held configs and tokenizer with the weight blob missing (an interrupted
+    # download — the state `is_model_cached()` rejects), and a saved entry cannot
+    # be replaced under its key, so every run restored nothing loadable and
+    # downloaded anyway (see python-ci.yml for the measurement). The action's
+    # `pre-benchmark-command` fetches the weights before it measures.
 
     # Capture the event pair before the advisory composite replaces HEAD.
     - name: Capture benchmark revisions
@@ -238,11 +239,8 @@ jobs:
       contents: write       # push the refresh branch
       pull-requests: write  # open the refresh PR
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Same reasoning as the PR job above: the shared model cache key held no
+    # weights, so this job always downloaded the model itself anyway.
 
     # Same pin and same measurement inputs as the PR job, with one deliberate
     # difference: `cross-branch-tolerance` is live (20) here. This run compares

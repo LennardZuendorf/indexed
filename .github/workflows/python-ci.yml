@@ -65,6 +65,30 @@ jobs:
     - name: Check size gates
       run: uv run python scripts/check_sizes.py
 
+    # The system suite gates 18 of its tests on `tests/conftest.py::model_available()`
+    # — the lifecycle/parity/out-of-process tests that exercise real embeddings
+    # (the LSP evidence transcripts and golden payloads join them once the tier
+    # branch lands). Without a cached model those tests skip, so CI only *reviews*
+    # the goldens: a server behaviour change that breaks one stays green. Measured
+    # locally at ~30 s of extra suite time (80 s → 110 s), which is why they run
+    # on every version rather than on a single one.
+    - name: Ensure the embedding model is cached
+      # Download here, before any test asserts — never mid-suite. Deliberately no
+      # actions/cache for the model: the entry on refs/heads/main (354,894 B,
+      # 2026-11-08) held configs and tokenizer with the 87 MB weight blob absent —
+      # the interrupted-download state `is_model_cached()` itself rejects
+      # (model_manager.py:43-46). An actions/cache entry cannot be replaced under
+      # its key, so that save kept restoring "successfully" on every later run
+      # while each job re-downloaded (`Fetching 30 files`). The ensure step
+      # measured 6–11 s per job (runs 42821304362, 42822900060); a stale key
+      # costs a step whose name lies.
+      run: |
+        uv run python -c "
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        ensure_model('all-MiniLM-L6-v2')
+        print('Model ready')
+        "
+
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short

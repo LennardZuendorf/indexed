@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-11
+updated: 2026-11-14
 ---
 
 # Lessons Learned
@@ -1336,6 +1336,24 @@ with `git add`/`git status`, since that's what CI actually runs.
   record mid-command, then assert both halves: the record is *present on
   stderr* (relocated, not swallowed) and stdout still parses.
 
+## Accepted-but-dropped config keys (2026-11-03)
+
+- **A constructor parameter stops at the object that accepts it until something
+  consumes it.** `code_chunking` was a `FileSystemConnector`/`FileSystemConfig`
+  field, passed to nobody, so `--no-code-chunking`-equivalent config did nothing.
+  When adding an option, trace it to the component that *acts* on it (here
+  `ParsingModule`) and assert the behavioural difference — chunk count and
+  `source_type` — not that the value reached an attribute.
+- **`x.get(key, default)` is a promise that somebody writes `key`.** `from_manifest`
+  read `changeTracking` with an `auto` fallback while `get_reader_details()` never
+  wrote it: two halves of one contract, each locally reasonable, silently
+  discarding user intent. For any persisted settings block, test the whole block
+  round-trips (create → manifest → rebuild) rather than the keys individually;
+  per-key tests pass forever once someone hand-writes the fixture.
+- **A fallback that matches the default hides the bug.** Because the missing key
+  defaulted to `auto`, and `auto` is the usual choice, the loss was invisible
+  until a non-default strategy (`mtime`/`none`) was used.
+
 ## One builder for both surfaces (2026-10-26)
 
 - **A payload the CLI and the MCP server both emit must be built by ONE function,
@@ -1532,6 +1550,43 @@ with `git add`/`git status`, since that's what CI actually runs.
   stubbed.
 - [workflow] Check a referenced file exists before reading it; optional missing
   paths must not become unrelated command failures during task setup.
+
+## Model-gated system tests in CI (2026-11-10)
+
+- **A green suite with skips is not coverage; read the skip reason.** `tests/system` on
+  CI reported `95 passed, 24 skipped` per version — run 42809825236, the head of PR
+  #303, which collects 119 tests including its 6 LSP-evidence ones. Every skip was
+  `tests/conftest.py::model_available()` with no `all-MiniLM-L6-v2` in the job: the
+  lifecycle, parity and out-of-process tests — the ones that assert the committed
+  goldens — were review-only in CI, so a server change that broke one stayed green.
+  Name the tree when quoting a skip count: the same gate covers 18 of the 113 tests a
+  `main`-based branch collects, so "24 → 0" is right only for #303's tree.
+- **The gate is cheap enough to pay on every version; measure before deciding
+  otherwise.** Local, Python 3.13.5: `95 passed, 18 skipped` in 79.97 s with the model
+  hidden (wall 83.9 s) vs `113 passed` in 109.77 s with it present (wall 111.6 s) —
+  ~30 s of suite time for 18 tests. In CI the four jobs landed at 2m19s–3m18s across the
+  head runs of this change (e.g. 42821304362, 42822900060, 42823813619, 42829265736,
+  42830239136, 42831876685) with every version still gating, against a 10-minute ceiling;
+  one version alone would have saved ~90 s of matrix and re-opened the hole on the other
+  three.
+- **Give the model an explicit `ensure_model` step, and do not `actions/cache` its Hub
+  directory.** A Hub snapshot can be weightless: `is_model_cached()` requires a weight
+  file precisely because an interrupted download leaves configs and tokenizer behind
+  without them (`model_manager.py:43-46`). An actions/cache entry is immutable once
+  saved, so one such weightless save — 354,894 B on `refs/heads/main`, 2026-11-08,
+  against 87 MB of weights — kept restoring "successfully" on every later run while
+  each job re-downloaded (`Fetching 30 files`); and since the next interrupted download
+  would re-poison a bumped key, the step is gone rather than re-keyed. The honest
+  alternative costs one `ensure_model` step per job — the order of ten seconds, a ~90 MB
+  download on a cold cache (e.g. runs 42823813619, 42831876685, 42833818596). A stale key
+  costs a step whose name lies. Download once per job in an explicit step, before any
+  test asserts.
+- **The collection-time gate and the runtime cache resolve `home` differently.**
+  `model_available()` runs at import against the real `Path.home()`, but the session
+  fixture patches `Path.home()` for the tests, so `is_model_cached()` inside a test
+  looks at the sandbox; loading still works because `huggingface_hub` resolved its
+  cache constants from `$HOME` at import. Do not "fix" the predicate to follow the
+  patched home — the gate answers "is this worth running", not "is the loader warm".
 
 ## Dependabot consolidation (2026-11-06)
 
