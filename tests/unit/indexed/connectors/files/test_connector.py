@@ -141,3 +141,39 @@ def test_from_config_threads_change_tracking_and_code_chunking(tmp_path):
     assert details["changeTracking"] == "mtime"
     assert details["codeChunking"] is False
     assert list(connector.reader._iter_file_paths()) == [str(tmp_path / "note.txt")]
+
+
+def test_disappeared_source_never_becomes_deletions(tmp_path):
+    import shutil
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    shutil.rmtree(source)
+
+    with pytest.raises(OSError):
+        connector.get_changes(state)
+
+
+def test_source_disappearing_during_enumeration_aborts(tmp_path, monkeypatch):
+    import os
+    import shutil
+    from indexed.connectors.files import files_document_reader
+
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    walk = os.walk
+
+    def disappearing_walk(*args, **kwargs):
+        for item in walk(*args, **kwargs):
+            yield item
+            shutil.rmtree(source)
+
+    monkeypatch.setattr(files_document_reader.os, "walk", disappearing_walk)
+    with pytest.raises(OSError):
+        connector.get_changes(state)
