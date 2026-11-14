@@ -63,6 +63,14 @@ def run(tmp_path: Path, *docs: dict, extra: tuple[str, ...] = ()):
     )
 
 
+def out_with_sources(out: Path, count: int) -> tuple[str, ...]:
+    """The arguments of a real derivation: --out plus one --source per file."""
+    extra: tuple[str, ...] = ("--out", str(out))
+    for n in range(count):
+        extra += ("--source", f"https://github.com/o/r/actions/runs/{n}/artifacts/{n}")
+    return extra
+
+
 def test_band_is_three_sigma_of_the_repeats(tmp_path: Path):
     """Three repeats of 9.0, 10.0 and 11.0 ms: sigma 0.816 ms, band 2.449 ms."""
     out = tmp_path / "noise.json"
@@ -71,7 +79,7 @@ def test_band_is_three_sigma_of_the_repeats(tmp_path: Path):
         results(0.009),
         results(0.010),
         results(0.011),
-        extra=("--out", str(out)),
+        extra=out_with_sources(out, 3),
     )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -93,7 +101,7 @@ def test_wide_spread_becomes_report_only(tmp_path: Path):
         results(0.001),
         results(0.010),
         results(0.001),
-        extra=("--out", str(out)),
+        extra=out_with_sources(out, 3),
     )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -146,9 +154,25 @@ def test_written_table_is_stable_across_runs(tmp_path: Path):
     """Re-deriving the same measurements produces the same table."""
     first, second = tmp_path / "a.json", tmp_path / "b.json"
     docs = (results(0.009), results(0.010), results(0.011))
-    assert run(tmp_path, *docs, extra=("--out", str(first))).returncode == 0
-    assert run(tmp_path, *docs, extra=("--out", str(second))).returncode == 0
+    assert run(tmp_path, *docs, extra=out_with_sources(first, 3)).returncode == 0
+    assert run(tmp_path, *docs, extra=out_with_sources(second, 3)).returncode == 0
     assert first.read_text() == second.read_text()
+
+
+def test_writing_the_table_without_sources_is_refused(tmp_path: Path):
+    """A table nobody can date cannot be recognised as stale."""
+    out = tmp_path / "noise.json"
+    proc = run(
+        tmp_path,
+        results(0.009),
+        results(0.010),
+        results(0.011),
+        extra=("--out", str(out)),
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "one --source URL per result file" in proc.stdout
+    assert not out.exists()
 
 
 def test_sources_are_recorded_one_per_file(tmp_path: Path):

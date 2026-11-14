@@ -178,6 +178,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"{len(args.source)} source URL(s) for {len(args.files)} result "
                 "file(s); name one source per file, in file order."
             )
+        if args.out and not args.source:
+            raise MeasurementInvalid(
+                "--out writes the committed table and must say where its files came "
+                "from: name one --source URL per result file, in file order. A table "
+                "nobody can date cannot be recognised as stale."
+            )
         table = derive(
             documents([Path(path) for path in args.files]),
             stat=args.stat,
