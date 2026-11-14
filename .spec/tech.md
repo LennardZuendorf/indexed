@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # Tech Spec: indexed
@@ -180,20 +180,33 @@ anything.
 
 **The gate: two measurements, one job, one runner.** Before the report action,
 `Capture benchmark revisions` pins the event's base SHA, PR head SHA and GitHub
-merge-result SHA (`github.sha`). The A/B fetches those exact base and merge
-objects with depth 3 and requires exactly two merge parents, ending in the
-captured PR head. The first parent must be the captured base, or one native-stack
-wrapper with exactly two parents ending in that base and the exact same complete
-Git tree as that base. Tree identity includes every path, mode and content blob.
-Missing objects, extra parents or a changed wrapper tree fail the measurement.
-The wrapper is provenance evidence only: both original captured base and merge
-SHAs remain the measured revisions. Moving target refs cannot replace this pair.
+merge-result SHA (`github.sha`). The A/B requires exactly two merge parents,
+ending in the captured PR head, and fetches the objects it needs with depth 3 —
+the A/B checkout already runs at `fetch-depth: 2`, which brings the merge and
+its first parent, so the explicit fetch covers the payload base and the merge
+even when those differ. The measured base is the merge commit's **own first
+parent** — the commit GitHub built that merge against — never the event
+payload's base SHA, which is an earlier snapshot. When the base branch moves
+between the webhook snapshot and the merge-ref build, the snapshot lags the
+merge and used to fail a valid merge as "provenance invalid": on 2026-11-12 run
+`43175675712` carried payload base `dca6be3` while the merge it measured,
+`487a1131`, had parents `[600f1f3, 6ff5d2c]`, so the old wrapper proof rejected
+a valid merge. The next run on that branch was green because its head,
+`930743ae`, merged main and so carried a payload base that matched its merge's
+first parent — a different head, not a flake. Measuring the first parent keeps
+both sides immutable and keeps the delta exactly the PR's change;
+measuring the stale snapshot instead charges the base branch's intervening
+commits to the PR. A native-stack wrapper therefore needs no special case — it
+is measured as itself. A payload base that differs from the first parent is
+reported as a notice, not a failure; missing objects, a merge that does not
+have exactly two parents, or a second parent that is not the captured PR head
+still fail the measurement.
 
-`Same-job A/B gate` measures the captured base and its corresponding PR merge
-result back to back. Each has a separate detached worktree and venv installed
-from that revision's lock with `uv sync --locked`. Logs and summary name the
-actual measured commits as base and merge result, never as a Git merge base or
-an unmerged head. The gate requires all three selected rows:
+`Same-job A/B gate` measures the merge's first parent and its corresponding PR
+merge result back to back. Each has a separate detached worktree and venv
+installed from that revision's lock with `uv sync --locked`. Logs and summary
+name the actual measured commits as base and merge result, never as a Git merge
+base or an unmerged head. The gate requires all three selected rows:
 `test_searcher_first_search`, `test_parse_markdown_docs`, and
 `test_parse_large_markdown`. Repeatable `--expected-benchmark` arguments pin
 that selected set even if pytest omits a test on both sides. Only the common
@@ -236,8 +249,14 @@ since missing names or sufficiently large regressions can still fail it.
 `cross-branch-tolerance: 1000` is report policy, not the safety boundary.
 The required A/B runs after report failure, independently checks checkout and
 Python setup, installs uv, and measures both revisions. Setup failure, failed
-pytest or absent result files fails with exit 2; A/B exits 1 and 2 remain hard
-job failures. The dispatch refresh invocation retains its hard action failure
+pytest or absent result files exits 2. The gate records its exit as a job output
+(`pass`, `regression`, `invalid`) and never makes its own job the verdict: a
+measured regression reds `Benchmark verdict`, a run that compared nothing reds
+`Benchmark verdict: no verdict`, and only one of the two can be red for a given
+commit. So a red `Performance Benchmarks` means the job itself broke, never "the
+benchmarks were fine but the gate refused to look" (#267, #271). A skipped
+comparison is never a pass either: it lands on the no-verdict check with the
+reason in the run. The dispatch refresh invocation retains its hard action failure
 behavior and live tolerance of 20. Committed baselines remain drift references.
 
 `.benchmarks/baselines/` holds the per-branch JSON baselines (the general
@@ -374,11 +393,11 @@ comparison — decides the job).
 
 ### Retrieval Evaluation Gate
 
-`python-eval.yml` measures the captured event base and its corresponding PR
+`python-eval.yml` measures the merge's first parent and its corresponding PR
 merge result in one job. It fetches immutable SHAs with depth 3 and applies the
-same direct-parent or exact same-tree native-stack wrapper proof described in
-CI Benchmarking, then verifies each measured HEAD. The measured base/merge SHAs
-remain unchanged by wrapper acceptance. Each side uses its own detached worktree and
+same proof described in CI Benchmarking — the merge commit's first parent is
+the measured base — then verifies each measured HEAD. Each side uses its own
+detached worktree and
 `uv sync --locked` environment. Dispatch measures its captured revision twice;
 it never resolves a moving branch tip. The common launcher is captured once
 from the merge result and runs by absolute path through each side's own Python.
@@ -757,16 +776,17 @@ Connector readers use this helper — do not duplicate status-code tuples.
 6. **Multi-user server mode** — DB instead of JSON files? PostgreSQL + pgvector? SQLite?
 7. **CI benchmark runner stability** — the CPU-fingerprint gate handles the
    hostname randomization (see tech.md § CI Benchmarking); `override-label` is
-   configured, a skipped comparison now fails the gate (#267), and a fleet
-   rotation is repairable via `accept_cpu_change`. **Answered, 2026-10-31:** the
+   configured, a skipped cross-run comparison is advisory and cannot make the
+   gate green (#297), and a fleet rotation is repairable via
+   `accept_cpu_change`. **Answered, 2026-10-31:** the
    hosted fleet *does* alternate — four jobs of one PR (same code) landed on
    `AMD EPYC 9V74`, `AMD EPYC 7763` (twice) and `INTEL(R) XEON(R) PLATINUM
    8573C` within an hour, producing two green and two red verdicts from the same
    diff. So a committed cross-run baseline cannot be a stable PR gate, and
    `test_parse_large_markdown` moving +10.4 % and +33.6 % against the same
    baseline on the same CPU model rules out "just raise the tolerance". The
-   implemented design measures the captured event base and corresponding PR
-   merge result back to back in one job, keeping the committed baseline as a
+   implemented design measures the merge's first parent and the corresponding
+   PR merge result back to back in one job, keeping the committed baseline as a
    coarse `main` drift alarm. The comparator and required-row contract are
    described in CI Benchmarking above; hosted acceptance of these repairs is
    separate from local executable verification.
