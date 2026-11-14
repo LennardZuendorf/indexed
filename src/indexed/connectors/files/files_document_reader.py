@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from indexed.parsing import ParsingModule
     from indexed.parsing.schema import ParsedDocument
 
+from .change_tracker import ChangeStrategy
 from .schema import DEFAULT_EXCLUDED_DIRS
 from .v1_adapter import V1FormatAdapter
 
@@ -61,6 +62,8 @@ class FilesDocumentReader:
         max_tokens: int = 512,
         excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
+        change_tracking: ChangeStrategy = "auto",
+        code_chunking: bool = True,
     ) -> None:
         # Stored expanded + absolute so a later `update` from a different
         # CWD still reads the originally intended directory (foundation/6b
@@ -74,6 +77,12 @@ class FilesDocumentReader:
             excluded_dirs if excluded_dirs is not None else DEFAULT_EXCLUDED_DIRS
         )
         self._respect_gitignore = respect_gitignore
+        # Not read-path concerns, but this reader is the single writer of the
+        # manifest ``reader`` block (engine calls get_reader_details()), so the
+        # connector-owned settings it persists must live here too — otherwise
+        # ``from_manifest`` reads a key nobody ever wrote and silently defaults.
+        self._change_tracking = change_tracking
+        self._code_chunking = code_chunking
 
         # Split include_patterns into positive and negative (! prefix) at init.
         positive = [p for p in self.include_patterns if not p.startswith("!")]
@@ -105,6 +114,7 @@ class FilesDocumentReader:
                 ocr=self._ocr,
                 table_structure=self._table_structure,
                 max_tokens=self._max_tokens,
+                code_chunking=self._code_chunking,
             )
         return self._parsing
 
@@ -172,6 +182,8 @@ class FilesDocumentReader:
             "ocr": self._ocr,
             "tableStructure": self._table_structure,
             "maxChunkTokens": self._max_tokens,
+            "changeTracking": self._change_tracking,
+            "codeChunking": self._code_chunking,
         }
 
     def _iter_file_paths(self) -> Iterator[str]:
