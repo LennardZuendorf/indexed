@@ -3,7 +3,7 @@ type: feature-plan
 feature: core-v2-rendering-fixes
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-09-03
+updated: 2026-11-11
 ---
 
 # Feature: Core v2 Rendering Fixes — Implementation Plan

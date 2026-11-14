@@ -3,7 +3,7 @@ type: feature-product
 feature: core-v2-rendering-fixes
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-09-02
+updated: 2026-11-11
 ---
 
 # Feature: Core v2 Rendering Fixes — Product

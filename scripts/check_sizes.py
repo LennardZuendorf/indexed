@@ -38,7 +38,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # Issue #204 adds the eval harness alongside #126's recovery surface.
 # Combined recovery/eval plus review validation and scoped runtime settings
 # measure 31_278 source lines before final docstrings; retain bounded headroom.
-SRC_LOC_MAX = 31_600
+# Raised from 31_600 by issues #108/#109 (one documented result shape for the
+# CLI machine mode and the MCP envelope): `protocols/results.py` types the
+# contract, `mcp/formatting.py` rebuilds the payload from ONE builder, and the
+# per-hit provenance is plumbed where it was dropped — `sourceType` from
+# `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
+# `metadata` so a v2 hit can say where it sits — genuine contract surface, not
+# stealth regrowth; ceiling = measured (31_602) + headroom.
+SRC_LOC_MAX = 31_800
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -127,18 +134,17 @@ SRC_LOC_MAX = 31_600
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
-# Raised from 48_600 by the files-connector dead-config fix (changeTracking was
-# read but never persisted, codeChunking never reached ParsingModule): whole
-# reader-block round-trip through manifest.json, update-strategy honouring
-# (none vs auto), config→reader threading and AST-vs-plaintext chunk assertions,
-# all red on the pre-fix commit — genuine defect-guarding coverage, not stealth
-# regrowth; ceiling = measured (48_696) + headroom.
-# Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
-# (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
-# the benchmark wiring so a corpus change is a deliberate, reviewable diff
-# instead of a benchmark gate that reds on spec growth) — gate-integrity
-# coverage, not stealth regrowth; ceiling = measured (48_576) + headroom.
-TEST_LOC_MAX = 48_900
+# Aggregate keeps search golden/locator tests, benchmark/evaluation gate
+# regressions and main's pinned parsing-corpus guard: measured 50_636 lines
+# plus 214 lines of headroom (50_850). Raised from 50_850 by the files-connector
+# dead-config fix (#286): whole reader-block round-trip through manifest.json,
+# update-strategy honouring (none vs auto), config→reader threading and
+# AST-vs-plaintext chunk assertions, all red on the pre-fix commit — genuine
+# defect-guarding coverage, not stealth regrowth; measured 51_038 on the merged
+# tree, ceiling = measured + the same 214 headroom. Source budget stays at
+# 31_800 (merged tree measures 31_788).
+TEST_LOC_MAX = 51_252
+
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
