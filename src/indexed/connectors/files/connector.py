@@ -15,7 +15,7 @@ from indexed.protocols import ConnectorMetadata, ConnectorRun, Manifest
 
 from .change_tracker import ChangeTracker, FileChange, IndexState
 from .files_document_converter import FilesDocumentConverter
-from .files_document_reader import FilesDocumentReader
+from .files_document_reader import FilesDocumentReader, default_storage_roots
 from .schema import FileSystemConfig
 
 
@@ -55,6 +55,7 @@ class FileSystemConnector:
         max_chunk_tokens: int = 512,
         excluded_dirs: List[str] | None = None,
         respect_gitignore: bool = True,
+        storage_root: Path | None = None,
     ) -> None:
         config = FileSystemConfig(
             path=path,
@@ -74,6 +75,15 @@ class FileSystemConnector:
         self._fail_fast = config.fail_fast
         self._config = config
 
+        roots = set(default_storage_roots(self._path))
+        if storage_root is not None:
+            root = storage_root.expanduser().resolve()
+            roots.add(
+                root / "data"
+                if root == Path(self._path).expanduser().resolve()
+                else root
+            )
+
         self._reader = FilesDocumentReader(
             base_path=self._path,
             include_patterns=self._include_patterns,
@@ -83,6 +93,7 @@ class FileSystemConnector:
             max_tokens=config.max_chunk_tokens,
             excluded_dirs=config.excluded_dirs or None,
             respect_gitignore=config.respect_gitignore,
+            excluded_paths=roots,
             change_tracking=config.change_tracking,
             code_chunking=config.code_chunking,
         )
@@ -222,6 +233,9 @@ class FileSystemConnector:
             max_chunk_tokens=cfg.max_chunk_tokens,
             excluded_dirs=cfg.excluded_dirs,
             respect_gitignore=cfg.respect_gitignore,
+            storage_root=config_service.resolver.resolve_root(
+                config_service.resolve_storage_mode()
+            ),
         )
 
     @classmethod
@@ -236,8 +250,8 @@ class FileSystemConnector:
         ``reader`` block is restored onto the rebuilt connector (change
         strategy, ocr/table/code-chunking/token budget, exclusions) so an
         update honours the settings the collection was created with instead of
-        silently reverting to ``FileSystemConfig`` defaults; ``config_service``
-        is unused for this source.
+        silently reverting to ``FileSystemConfig`` defaults. ``config_service``
+        supplies the active storage root for traversal exclusions.
         """
         rd = manifest.reader.model_dump(by_alias=True)
         base_path = rd.get("basePath")
@@ -257,6 +271,13 @@ class FileSystemConnector:
             max_chunk_tokens=rd.get("maxChunkTokens", 512),
             excluded_dirs=rd.get("excludedDirs") or None,
             respect_gitignore=rd.get("respectGitignore", True),
+            storage_root=(
+                config_service.resolver.resolve_root(
+                    config_service.resolve_storage_mode()
+                )
+                if isinstance(config_service, ConfigService)
+                else None
+            ),
         )
 
         state = connector.load_state(storage_path)
@@ -279,6 +300,7 @@ class FileSystemConnector:
             max_tokens=cfg.max_chunk_tokens,
             excluded_dirs=cfg.excluded_dirs or None,
             specific_files=specific_files,
+            excluded_paths=connector.reader._excluded_paths,
             respect_gitignore=cfg.respect_gitignore,
             change_tracking=cfg.change_tracking,
             code_chunking=cfg.code_chunking,

@@ -1883,6 +1883,20 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
 
+## Git feature integration (2026-11-12)
+
+- Use the locked environment with the worktree source pinned before baseline checks; a new worktree has no tools until its environment is installed.
+- Compare scan exclusions against the active configured storage root for both full and explicit-file traversal.
+- Update inherited system assertions to the current grouped payload; old flat-row assertions failed despite valid search results.
+
+- Filter eligibility before a cross-encoder truncates candidates; reporting a filter as applied does not prove eligible results survived.
+
+- Git paths require NUL-delimited parsing and literal pathspecs; committed provenance requires a clean tracked file. Author and committer dates are distinct.
+- Mutable spec frontmatter must use normal content merging: union can silently duplicate metadata keys.
+- Read the actual document section boundary before rewriting it; assuming a following heading broke the first scripted edit.
+- Check whitespace in the final diff after removing an attribute block; an extra blank line at end of file fails the patch check.
+- Ref-validation tests must supply a v2 engine fixture; unknown manifests resolve as ineligible before ref checks. Locate a real following test boundary before scripted edits.
+- Tests of a non-Git collection must also supply an eligible v2 engine before asserting the repository diagnostic.
 ### File settings and local test access (2026-11-12)
 - Persist and restore all reader settings before an update; test the complete manifest round trip and observable strategy behavior.
 - A local socket permission denial in pytest setup is an execution environment failure, not a failed test; rerun with authorized access.
@@ -1891,6 +1905,11 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 - Isolate temporary Git fixture routing and disable signing and hooks per commit; global signing can require an unavailable agent.
 
 - Run lock-matched checks with authorized access to the configured uv cache; a denied cache lock is an environment failure.
+
+- Measure cumulative prefix limits after reconciling independent test trees; verify conflict resolution does not truncate files.
+
+- Extend the ConfigService test port when active storage forwarding joins reader settings, and assert the resolved storage is excluded.
+- Check final patch whitespace after slicing a fixture from a larger integration file.
 
 - Give each full suite a separate copied model cache with verified weights; export its absolute HF_HUB_CACHE before HOME isolation.
 - [verification] Record host permission mode, cache isolation and native thread settings for each run. A two-test baseline invocation crashed in restricted host mode without thread limits and passed with bounded threads; the same tests also passed with normal native thread settings under authorized host access. This does not establish the crash cause. Bounded threads may be used for functional checks or diagnosis; measure performance budgets exclusively under authorized access and normal native settings matching the baseline.

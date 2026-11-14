@@ -53,6 +53,7 @@ def _build_collection_rows(
     include_index: bool = False,
     include_created: bool = False,
     engine: "Optional[EngineDescriptor]" = None,
+    include_freshness: bool = False,
 ) -> list[tuple[str, str]]:
     """Build standard info rows for a collection.
 
@@ -77,6 +78,11 @@ def _build_collection_rows(
         rows.append(("Created", format_time(coll.created_time)))
     if coll.updated_time:
         rows.append(("Updated", format_time(coll.updated_time)))
+    verdict = getattr(coll, "freshness", None)
+    if include_freshness and isinstance(verdict, dict):
+        # The verdict's own `summary` is the single wording used by every
+        # surface (search advisory, MCP), so it is never re-worded here.
+        rows.append(("Freshness", str(verdict.get("summary") or verdict.get("status"))))
     return rows
 
 
@@ -182,7 +188,11 @@ def format_collection_detail(
     console.print()
 
     rows = _build_collection_rows(
-        info, include_index=True, include_created=True, engine=engine
+        info,
+        include_index=True,
+        include_created=True,
+        engine=engine,
+        include_freshness=True,
     )
     card = create_detail_card(title=info.name, rows=rows)
     console.print(card)
@@ -216,6 +226,7 @@ def format_collection_json(
         "index_size_bytes": info.index_size_bytes,
         "created_time": info.created_time,
         "updated_time": info.updated_time,
+        "freshness": getattr(info, "freshness", None),
     }
     print_json(output)
 
@@ -238,6 +249,7 @@ def format_collections_json(
             "index_size_bytes": c.index_size_bytes,
             "created_time": c.created_time,
             "updated_time": c.updated_time,
+            "freshness": getattr(c, "freshness", None),
         }
         for c in collections
     ]

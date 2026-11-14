@@ -317,6 +317,31 @@ class TestInspectEngineDiagnostics:
         assert result.exit_code == 0, result.stdout
         assert "v1" in result.stdout
 
+    def test_detail_renders_the_freshness_verdict(self, monkeypatch):
+        """The row prints the verdict's own summary — the same words as the MCP
+        envelope and the search advisory (#146 slice 1)."""
+        coll = _make_collection("docs")
+        coll.freshness = {
+            "status": "stale",
+            "summary": "stale — 2 files changed since commit abc1234",
+        }
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Freshness" in result.stdout
+        assert "2 files changed since commit abc1234" in result.stdout
+
+    def test_detail_without_a_verdict_has_no_freshness_row(self, monkeypatch):
+        coll = _make_collection("docs")
+        monkeypatch.setattr(inspect_cmd, "inspect", lambda *a, **kw: [coll])
+
+        result = runner.invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Freshness" not in result.stdout
+
     def test_simple_output_carries_engine_fields(self, monkeypatch):
         from indexed.cli.utils.simple_output import (
             reset_simple_output,
@@ -509,3 +534,23 @@ class TestInspectListViewPathRendering:
         assert "/short/path" in result.stdout
         assert "/short/path2" in result.stdout
         assert "/another/short/path" in result.stdout
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _composition_patch_does_not_leak():
+    """Module finalizer guard for the fixture-ordering leak behind `uv run pytest`.
+
+    ``test_inspect_corrupt_collection_reports_unreadable`` monkeypatches an
+    attribute the module-autouse ``_patch_runtime_context`` already patched. If
+    teardown order ever puts the ``monkeypatch`` undo last, that test restores
+    the Mock permanently and every later test in the process fails on a MockCtx
+    / MagicMock config — and CI never sees it, because the unit and system suites
+    run in separate processes there.
+    """
+    yield
+    from indexed.cli import composition
+
+    assert not isinstance(composition.resolve_collections_context, MagicMock), (
+        "resolve_collections_context is still a Mock after this module finished: "
+        "a fixture-ordering leak is poisoning later tests"
+    )
