@@ -161,6 +161,32 @@ def test_last_modified_document_time_is_max_across_docs(tmp_path: Path) -> None:
     assert manifest["lastModifiedDocumentTime"] == "2026-03-01T00:00:00+00:00"
 
 
+def test_last_modified_document_time_orders_mixed_naive_and_aware(
+    tmp_path: Path,
+) -> None:
+    """A collection updated after the aware-write fix can mix both shapes (#279 B1).
+
+    Ordering must happen on absolute instants: the naive legacy value is read as
+    UTC, so the offset-aware value is later despite looking earlier on the clock.
+    Pre-fix the comparison raised "can't compare offset-naive and offset-aware
+    datetimes".
+    """
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("legacy", ["x"], modified_time="2026-03-01T00:00:00"),
+        make_doc("aware", ["y"], modified_time="2026-02-28T23:30:00-05:00"),
+    ]
+    with mock_embedding(embed_dim=8):
+        ingestion.create(
+            [_cfg("c1")],
+            use_cache=False,
+            connector_factory=make_connector_factory(docs),
+            collections_path=str(cols),
+        )
+    manifest = json.loads((cols / "c1" / "manifest.json").read_text())
+    assert manifest["lastModifiedDocumentTime"] == "2026-02-28T23:30:00-05:00"
+
+
 def _kill_before_swap(staging, dest):  # noqa: ANN001
     # A BaseException (not Exception) models a hard signal-driven kill: the
     # ingestion swap wrapper catches only ``Exception`` (so a graceful failure

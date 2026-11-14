@@ -16,6 +16,8 @@ alongside them and stub the network at the ``read_documents`` boundary only.
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -119,6 +121,94 @@ def _reset_app_logging_state():
         _ulog._CURRENT_LOG_LEVEL = None
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Isolated temp git repos
+# ---------------------------------------------------------------------------
+
+# Git exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE into hook environments
+# (e.g. the pre-push hook that runs this suite). If inherited, the throwaway
+# repos created below operate on the OUTER repo instead — corrupting its index
+# and making `auto` detect git where there is none. Scrub those vars and pin a
+# clean config (no global/system, no hooks, no signing) so every git call here
+# is fully isolated and deterministic regardless of how pytest was invoked.
+_LEAKED_GIT_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+)
+
+
+def _git_env() -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _LEAKED_GIT_VARS}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+def run_git(
+    cwd: str | Path, *args: str, check: bool = True
+) -> "subprocess.CompletedProcess[str]":
+    """Run an isolated git command: no inherited GIT_* env, no hooks, no signing."""
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
+        cwd=str(cwd),
+        capture_output=True,
+        check=check,
+        text=True,
+        env=_git_env(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env():
+    """Drop inherited GIT_* vars for every test.
+
+    Production code under test shells out to git too — if it inherits a leaked
+    GIT_DIR/GIT_INDEX_FILE it operates on the outer repo. Scrubbing the process
+    env keeps both the test setup and the code pinned to their own repos.
+
+    Uses a private ``MonkeyPatch`` (like ``isolate_config_paths`` above) rather
+    than the ``monkeypatch`` fixture on purpose: an autouse fixture that consumes
+    the shared fixture gets it set up *before* per-test fixtures, which flips
+    teardown order — a test that ``monkeypatch.setattr``s an attribute another
+    fixture already patched (test_inspect.py does exactly that with
+    ``resolve_collections_context``) then restores a Mock permanently, poisoning
+    every later test in the same process.
+    """
+    mp = MonkeyPatch()
+    for var in _LEAKED_GIT_VARS:
+        mp.delenv(var, raising=False)
+    yield
+    mp.undo()
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """A real, isolated git repo with one commit touching ``initial.txt``."""
+    run_git(tmp_path, "init")
+    (tmp_path / "initial.txt").write_text("initial")
+    run_git(tmp_path, "add", ".")
+    run_git(tmp_path, "commit", "-m", "init")
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------

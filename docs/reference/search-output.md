@@ -135,7 +135,7 @@ indexed index search "how is the cache keyed and invalidated" -c docs-demo --jso
 
 Read that payload once and the rest of this page is a field list: document facts
 (`collection`, `source_type`, `id`, `path`/`url`, `score_kind`) stated once per
-document, hits carrying only `relevance`, `score`, `locator` and `text`.
+document, hits carrying `relevance`, `score`, `locator`, `text`, and optional line-level `git` attribution.
 
 ## Top level
 
@@ -231,3 +231,5 @@ payload retains matched text and provenance.
 
 The full failure table is in
 [`.spec/tech-app.md` § Search result contract](../../.spec/tech-app.md#search-result-contract-indexedsearch1).
+
+Git provenance is opt-in. A document may carry a `git` object for its last commit. A hit may independently carry `git` for its recorded line span, including `startLine` and `endLine`; uncommitted lines instead carry `uncommitted: true`. Hits without recorded spans omit it. A requested freshness advisory adds a `freshness` array with one verdict per collection when available. A Git rerank reports `score_kind: "git-rerank"` when applied.
