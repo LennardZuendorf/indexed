@@ -1873,4 +1873,3 @@ while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
 raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
-
