@@ -784,6 +784,12 @@ TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
 `execute_with_retry` re-raises immediately on non-transient HTTP errors (e.g. 404).
 Connector readers use this helper — do not duplicate status-code tuples.
 
+### Spec Ledger Merge Attributes
+
+The mutable `.spec/lessons.md` and `.spec/tech.md` use normal content merging.
+Union merging can silently duplicate frontmatter keys when both sides edit metadata.
+Resolve overlapping ledger additions and frontmatter conflicts explicitly.
+
 ---
 
 ## Open Technical Questions
