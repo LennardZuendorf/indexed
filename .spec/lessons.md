@@ -13,7 +13,6 @@ updated: 2026-11-14
 - Baseline size limits before adding tests and adjust the documented ceiling only for retained coverage.
 - Separate process-inspection permission errors from test-runner failures.
 - Check model cache weights before treating a restored cache as usable.
-- Isolate each test model cache and record host permission mode and thread settings. Compare failures with the unchanged baseline; use bounded threads for functional checks or diagnosis and run performance budgets exclusively with normal native settings matching the baseline.
 
 Accumulated mistakes and earned defaults. Read at session start.
 
@@ -1908,11 +1907,39 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 
 - Measure cumulative prefix limits after reconciling independent test trees; verify conflict resolution does not truncate files.
 
+## Watcher integration (2026-11-12)
+
+- [watcher] Exclude the resolved storage root from polling when it lies inside the source; an update otherwise wakes itself.
+- [tests] Validate imported tests against the current search response contract; older branches can use obsolete result fields.
+- [tools] Check known skill paths before reading them and capture long-running checks in persistent logs with exit markers.
+- [verification] Format the imported changes with the pinned formatter and measure current union sizes before adjusting limits.
+- [types] Resolve storage mode through ConfigService rather than passing a loosely typed context field into the resolver.
+- [watcher] A pre-update scan cannot guard a later inventory traversal; make traversal failures explicit and recheck the source after errors. Validate cadence overrides before starting the loop.
+- [tools] Confirm installed Typer option support before selecting range parameters; use the repository import checker rather than guessing a binary name; avoid unmatched zsh globs when tracing files.
+- [watcher] Match the reader’s effective exclusion replacement semantics; unconditionally adding defaults can hide files the reader indexes.
+- [watcher] Catch up at startup and record the pre-update signature; a later scan can hide an edit made during the update. Retry failures after polling and debounce without requiring a new edit. Bound simulated polling tests so failures cannot hang.
+- [verification] Measure the combined test-size ceiling after adding startup coverage and document the resulting adjustment.
+
+- [integration] Inspect exact conflict block boundaries before combining shared instruction digests; preserve both branches and remeasure size limits.
+
 - Extend the ConfigService test port when active storage forwarding joins reader settings, and assert the resolved storage is excluded.
 - Check final patch whitespace after slicing a fixture from a larger integration file.
 
+- [verification] Give each full suite its own seeded model cache with real weights and an absolute HF_HUB_CACHE; destructive fixtures must not share the seed or the user cache. Verify model availability before launch.
+- [verification] Limit simultaneous full suites to available resources; contention can invalidate timing-sensitive results. Record intentional interruptions separately from test failures.
+
 - Give each full suite a separate copied model cache with verified weights; export its absolute HF_HUB_CACHE before HOME isolation.
+- [coordination] Check report paths and exit markers exist before reading pending reports; an artifact-ready signal and process completion are separate facts.
+- [tools] Syntax-check multiline diagnostics before executing them, or use small saved helpers with explicit arguments.
+- [verification] Bound model-heavy test concurrency to observed device capacity; use a disposable cache per suite, never the user cache.
+
+- [verification] A two-test baseline invocation segfaulted in restricted host mode without thread limits and passed with OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1 and TOKENIZERS_PARALLELISM=false using an isolated cache. The same tests passed with normal native thread settings under authorized host access. The observations do not establish the crash cause; retain host mode, cache and thread settings with each result.
+
+- Isolate each test model cache and record host permission mode and thread settings. Compare failures with the unchanged baseline; use bounded threads for functional checks or diagnosis and run performance budgets exclusively with normal native settings matching the baseline.
+
 - [verification] Record host permission mode, cache isolation and native thread settings for each run. A two-test baseline invocation crashed in restricted host mode without thread limits and passed with bounded threads; the same tests also passed with normal native thread settings under authorized host access. This does not establish the crash cause. Bounded threads may be used for functional checks or diagnosis; measure performance budgets exclusively under authorized access and normal native settings matching the baseline.
+
+- [verification] Run local full and system suites with authorized localhost and worktree access, matching the baseline; report denied socket setup as an environment boundary rather than weakening fixtures.
 
 - [verification] Before readiness, the union of functional checks and separately run performance checks must cover every deselected case. Preserve the exact candidate, environment and result for each part.
 
