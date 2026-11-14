@@ -143,14 +143,17 @@ SRC_LOC_MAX = 31_800
 # defect-guarding coverage, not stealth regrowth; measured 51_038 on the merged
 # tree, ceiling = measured + the same 214 headroom. Source budget stays at
 # 31_800 (merged tree measures 31_788).
-# Raised from 51_252 by the measured-noise-band gate: `test_benchmark_ab.py`
-# gains the band verdicts (inside noise passes, past the band fails, missing and
+# Raised by the gate-determinism fix: `test_benchmark_ab.py` runs the workflow's
+# own `verify_pr_merge` against a real repository whose base branch moves after
+# the event snapshot, so the 2026-11-12 provenance red is proven fixed rather
+# than asserted in text; measured 50_940 on that branch.
+# Raised again by the measured-noise-band gate: `test_benchmark_ab.py` gains the
+# band verdicts (inside noise passes, past the band fails, missing and
 # report-only rows never decide, a table derived for another statistic is
 # ignored, malformed tables are exit 2) and `test_derive_benchmark_noise.py`
 # pins the 3-sigma derivation, so a tolerance cannot be widened without a red
-# test; measured 51_389 on the merged tree, ceiling = measured + 211 headroom.
-TEST_LOC_MAX = 51_600
-
+# test; measured 51_504 on the merged tree, ceiling = measured + 296 headroom.
+TEST_LOC_MAX = 51_800
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

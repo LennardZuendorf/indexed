@@ -1,7 +1,11 @@
 ---
 type: lessons
 scope: project
+<<<<<<< HEAD
 updated: 2026-11-14
+=======
+updated: 2026-11-13
+>>>>>>> 08b3d19
 ---
 
 # Lessons Learned
@@ -1873,6 +1877,30 @@ while the project still installed OAuthLib 4.0.0 with GHSA-3jp2-3mrg-2vxc.
 raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
+
+## Benchmark provenance and check names (2026-11-12)
+
+- **The event payload's base SHA is not the base the merge was built on.**
+  `pull_request.base.sha` is a snapshot; `github.sha`'s merge commit is built
+  later, and the two disagree whenever the base branch moves in between. Trust
+  the merge commit's own first parent and treat the payload base as a notice.
+  Substituting the snapshot both reds valid comparisons and charges the base
+  branch's intervening commits to the PR.
+- **A red check whose name cannot say what it means is not a gate.** Exit 1
+  (measured regression) and exit 2 (compared nothing) surfaced as the same red
+  `Performance Benchmarks`, which is why three PRs were closed as
+  "pre-existing" rather than read. Record the verdict as a job output and give
+  each outcome its own job check name.
+- **Prove determinism by re-running one run, never by comparing two heads.**
+  A later green on a different head — one that merged the base branch, say — is
+  a different input and says nothing about an earlier red. The 2026-11-12
+  "benchmark flake" was exactly that: red on `6ff5d2c`, green on `930743ae`,
+  which merged main and so refreshed the payload base. The evidence that counts
+  is two attempts of one run on one merge: `43184196410` measured `4319ee0c` on
+  AMD EPYC 9V74 and then 7763, and concluded PASS both times.
+- **The same shell proof lives in two workflows.** `python-benchmark.yml` and
+  `python-eval.yml` each carry `verify_pr_merge`; changing one alone leaves two
+  policies behind the same vocabulary. Change both in the same cycle.
 
 ### Resolve a fork-diverged gate PR by its feature, not its file
 **Pattern:** Two branches created the same `scripts/benchmark_ab.py` from a fork
