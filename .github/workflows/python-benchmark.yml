@@ -51,11 +51,12 @@ jobs:
       contents: read
       pull-requests: write  # required to post the report comment
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: the Hub entry on refs/heads/main
+    # held configs and tokenizer with the weight blob missing (an interrupted
+    # download — the state `is_model_cached()` rejects), and a saved entry cannot
+    # be replaced under its key, so every run restored nothing loadable and
+    # downloaded anyway (see python-ci.yml for the measurement). The action's
+    # `pre-benchmark-command` fetches the weights before it measures.
 
     # Capture the event pair before the advisory composite replaces HEAD.
     - name: Capture benchmark revisions
@@ -109,19 +110,7 @@ jobs:
         # for a hardware mismatch (exit 3) or when main has no baseline yet, and
         # no tolerance value covers those. `contents: read` above does.
         update-tolerance: 1000
-        # Absolute per-test ceilings, re-derived from main's committed baseline
-        # (`.benchmarks/baselines/main.json`, AMD EPYC 7763) on 2026-11-03:
-        # a cap whose old value was within ~1.4x of main's baseline became ~2x
-        # that mean (rounded up) — batch_parse, full_connector_pipeline and its
-        # _mixed variant. Caps that already had >=5x headroom were left alone.
-        # This column is a blowup backstop — drift between comparable runs is
-        # what `cross-branch-tolerance` gates.
-        # Keys match as substrings in the order written (first hit wins), so
-        # `full_connector_pipeline_mixed` must stay before
-        # `full_connector_pipeline`. An unmatched name gets the action's 1.0 s
-        # default — give any new benchmark slower than that its own entry.
-        # Derivation + per-key table: .spec/tech.md § CI Benchmarking.
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Check out captured merge result for A/B
@@ -216,14 +205,20 @@ jobs:
             python -m uv run --no-sync pytest "${AB_TESTS[@]}" \
               --benchmark-only --benchmark-json "$output"
           )
+          # The measured side stamps the digest of ITS OWN fixture tree, using
+          # the gate's script from the merge checkout. Both sides must agree on
+          # it: a corpus change is a different experiment, and an unstamped file
+          # is refused rather than compared (scripts/benchmark_ab.py).
+          python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
+            --stamp-corpus "$output" \
+            --corpus-root "$directory/tests/benchmarks/fixtures"
         }
         measure "$BASE_DIR" "$BASE_SHA" "$BASE_RESULTS"
         measure "$MERGE_DIR" "$MERGE_SHA" "$HEAD_RESULTS"
 
         # Preserve the comparator's distinct regression (1) and invalid (2) exits.
-        # The noise band is the measured spread of unchanged code (see
-        # scripts/benchmark_noise.json and .spec/tech.md § CI Benchmarking): a
-        # delta has to beat the relative tolerance *and* that band to fail.
+        # A delta has to beat the relative tolerance AND the measured spread of
+        # unchanged code (scripts/benchmark_noise.json, .spec/tech.md).
         status=0
         python "$GITHUB_WORKSPACE/scripts/benchmark_ab.py" \
           --base "$BASE_RESULTS" --head "$HEAD_RESULTS" \
@@ -248,11 +243,8 @@ jobs:
       contents: write       # push the refresh branch
       pull-requests: write  # open the refresh PR
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Same reasoning as the PR job above: the shared model cache key held no
+    # weights, so this job always downloaded the model itself anyway.
 
     # Same pin and same measurement inputs as the PR job, with one deliberate
     # difference: `cross-branch-tolerance` is live (20) here. This run compares
@@ -284,9 +276,7 @@ jobs:
           -v
         cross-branch-tolerance: 20
         update-tolerance: 1000
-        # Must stay identical to the PR job's map above (same copy, no YAML
-        # merge keys); derivation is documented there.
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Summarise drift against main's baseline

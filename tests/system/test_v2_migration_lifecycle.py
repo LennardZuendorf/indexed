@@ -140,7 +140,7 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
 
     # v1 needle top-hit (the parity baseline).
     v1_hit = _search(NEEDLE_QUERY, collection)
-    assert v1_hit["results"][0]["document_id"].endswith("needle.txt")
+    assert v1_hit["documents"][0]["id"].endswith("needle.txt")
 
     # --- dry-run changes nothing (R7 scenario 1) --------------------------
     before = _fingerprint(coll_dir)
@@ -175,8 +175,8 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
 
     # --- search parity: same needle query tops the migrated v2 (scenario 4)
     v2_hit = _search(NEEDLE_QUERY, collection)
-    assert v2_hit["results"][0]["document_id"].endswith("needle.txt")
-    assert "penguin" in v2_hit["results"][0]["text"].lower()
+    assert v2_hit["documents"][0]["id"].endswith("needle.txt")
+    assert "penguin" in v2_hit["documents"][0]["hits"][0]["text"].lower()
 
     # --- the retained <name>.v1-backup must NOT be discoverable/searchable ---
     # (pre-merge fix): while the backup is still on disk, the all-collections
@@ -191,16 +191,14 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
     assert backup_name not in listed, f"backup surfaced in inspect: {sorted(listed)}"
 
     all_hits = _search_all(NEEDLE_QUERY)
-    hit_collections = {r["collection"] for r in all_hits["results"]}
+    hit_collections = {d["collection"] for d in all_hits["documents"]}
     assert backup_name not in hit_collections, (
         f"backup searched (duplicate hits): {sorted(hit_collections)}"
     )
     # The needle is returned from the migrated v2 collection ONLY — not also
     # from the backup (which would be a duplicate hit).
     needle_collections = {
-        r["collection"]
-        for r in all_hits["results"]
-        if r["document_id"].endswith("needle.txt")
+        d["collection"] for d in all_hits["documents"] if d["id"].endswith("needle.txt")
     }
     assert needle_collections == {collection}, needle_collections
 
@@ -210,7 +208,7 @@ def test_v1_to_v2_migration_lifecycle(local_workspace, files_corpus: Path) -> No
     assert json.loads(purged.stdout)["status"] == "purge-backup"
     assert not backup.exists()
     # The migrated collection still works after the backup is gone.
-    assert _search(NEEDLE_QUERY, collection)["results"][0]["document_id"].endswith(
+    assert _search(NEEDLE_QUERY, collection)["documents"][0]["id"].endswith(
         "needle.txt"
     )
 
@@ -241,4 +239,4 @@ def test_offline_migration_makes_no_network_connections(
     assert json.loads(migrated.stdout)["status"] == "migrate"
 
     payload = _search(NEEDLE_QUERY, collection)
-    assert payload["results"][0]["document_id"].endswith("needle.txt")
+    assert payload["documents"][0]["id"].endswith("needle.txt")

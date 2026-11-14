@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-06
+updated: 2026-11-14
 ---
 
 # Tech Spec: indexed
@@ -90,9 +90,9 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 | **FastMCP** | 3.4+, <4 | MCP server |
 | **Pydantic** | 2.13+ | Validation |
 | **Docling / tree-sitter** | latest | Document & code parsing |
-| **ruff** | 0.16.2 | Linter + formatter |
-| **ty** | 0.0.58 | Type checker |
-| **pytest** | 9.1+ | Testing |
+| **ruff** | 0.17.4 | Linter + formatter |
+| **ty** | 0.0.99 | Type checker |
+| **pytest** | 9.2+ | Testing |
 
 ### Package Structure
 
@@ -167,6 +167,23 @@ uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
 
+### System Tests in CI
+
+`python-ci.yml` runs `tests/system/` on Python 3.11–3.14 (plus the import-graph,
+size, wheel and twine gates). The suite gates its model-dependent tests on
+`tests/conftest.py::model_available()`, so the job runs
+`ensure_model('all-MiniLM-L6-v2')` before pytest: with the model present ~18 extra
+tests assert the real goldens (lifecycle, MCP parity, out-of-process transcripts)
+instead of skipping. Measured cost is ~30 s of suite time (local: 113 passed in 109.8 s
+with the model vs `95 passed, 18 skipped` in 80.0 s without) plus an `ensure_model`
+step per job — the order of ten seconds, a ~90 MB download on a cold cache (e.g. runs
+42823813619, 42831876685, 42833818596) — which is why the gate runs on every version
+rather than one. The Hub model directory is deliberately *not* an
+`actions/cache` entry: a snapshot saved from an interrupted download holds configs and
+tokenizer without weights (the state `is_model_cached()` rejects), and an entry can
+never be replaced under its key, so the cache silently degraded into a per-job download
+(lessons.md § Model-gated system tests in CI).
+
 ### CI Benchmarking
 
 Performance regressions are caught in CI, not via local scripts. The former
@@ -206,45 +223,51 @@ and nonfinite or negative tolerance exit **2** with
 `::error title=Same-job measurement invalid::` and no verdict. The comparator
 prints both validated fingerprints. A valid measurement exits **1** only when
 a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
-(20 %) *and* by more than that benchmark's measured noise band (below);
-otherwise it exits **0**. Zero tolerance is valid.
+(20 %) and by more than that benchmark's measured noise band; otherwise it exits
+**0**. Zero tolerance is valid.
+
+Two guards keep the benchmark lane from deciding on a comparison that measured
+nothing. Each benchmark row must report at least **three rounds** in its own
+result file (`MIN_ROUNDS`); a row with one round, a missing round count or a
+non-integer one is a refusal naming the row and its count, never a pass —
+one round is the runner's mood, not the diff. And every result file must carry
+the fixture-set identity the measuring job stamped into it: `measure()` in the
+A/B step runs `--stamp-corpus <result> --corpus-root
+<worktree>/tests/benchmarks/fixtures`, which hashes every file under that
+worktree's frozen corpus by relative path and content. Both sides must agree
+on the digest (`benchmark_corpus.sha256`); a differing digest is a corpus
+change and therefore a different experiment, and an absent identity is a
+refusal, not a pass. Each side digests its own tree, so a PR that edits the
+corpus cannot be compared against the base it changed.
 
 The selected statistic defaults to the **minimum** (`--stat` can select another
-statistic). An outlier round drags the mean and leaves the minimum alone: run
-`41794588148` recorded `test_parse_large_markdown` at 731 ms minimum, 749 ms
-median and 911 ms mean from three rounds, one of them 1.25 s. Minimums are
-steadier but not stable either — six same-CPU repeats of unchanged code
-(2026-11-06) spread by up to 31 % on the shortest rows — so the minimum is the
-statistic the noise band is measured on, not a tolerance by itself. The earlier
-#271 subset run `41407096799` added 40 s to an 8.5-minute report job; that
-timing predates the explicit two-worktree setup and is not a fresh performance
-measurement.
+statistic). Historical unchanged-code measurements found means disagreeing by
+up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
+`41407096799` added 40 s to an 8.5-minute report job; that timing predates the
+explicit two-worktree setup and is not a fresh performance measurement.
 
 **Resolution is measured, not assumed.** `scripts/benchmark_noise.json` holds,
-per benchmark, the spread of repeat measurements of unchanged code: `band_ms`
-is three times the population standard deviation of the compared statistic over
-at least three runs sharing one CPU and Python fingerprint, and the file records
-the sample. The A/B gate passes it as `--noise-band`, so a row fails only when it
-beats both `AB_TOLERANCE` and its band — a delta that unchanged code has
-produced cannot red a PR. A row whose measured spread exceeds the cap (50 %) is
-marked `gate: false` and printed as **report-only**: at that signal-to-noise
-ratio the benchmark has no verdict to give, and naming that is honest where a
-widened tolerance would be decorative. A row missing from the table keeps the
-plain relative verdict, so an unmeasured benchmark is never silently excused,
-and bands derived for one statistic are ignored (with a warning) when `--stat`
-selects another. `scripts/derive_benchmark_noise.py` regenerates the table from
-result files using the gate's own validation; re-derive it when the fleet or the
-benchmark corpus moves and review the diff like any other measurement.
+per benchmark, how far unchanged code has been seen to move: `band_ms` is three
+times the population standard deviation of the compared statistic over at least
+three runs sharing one CPU and Python fingerprint, the file records the sample,
+and `scripts/derive_benchmark_noise.py` regenerates it from result files through
+the gate's own validation. The A/B gate passes the table as `--noise-band`, so a
+row fails only when it beats both `AB_TOLERANCE` and its band — a delta that
+unchanged code has produced cannot red a PR. A row whose measured spread exceeds
+the 50 % cap is stored as `gate: false` and printed as **report only**: at that
+signal-to-noise ratio the benchmark has no verdict to give, and naming that is
+honest where a widened tolerance would be decorative. A row missing from the
+table keeps the plain relative verdict, so an unmeasured benchmark is never
+silently excused, and a table derived for one statistic is ignored with a
+warning when `--stat` selects another. The band is a measurement with a date:
+re-derive it when the fleet or the benchmark corpus moves, and review the diff
+like any other measurement.
 
-Measured 2026-11-06 from six repeats on `AMD EPYC 7763` (main's committed
-baseline plus five dependency- or CI-only heads): `test_searcher_first_search`
-σ = 1.22 ms → band ±3.67 ms (39.8 % over its 9.22 ms median),
-`test_parse_large_markdown` ±53.56 ms (7.4 %), `test_faiss_load_native_mmap`
-±0.38 ms (24.0 %), and `test_cli_license` ±51.69 ms (120.5 %) as the one
-report-only row. Replayed against `.benchmarks/baselines/main.json`, the five
-rows #292 and the one row #289 got red on all land inside their bands (exit 0),
-while a synthetic 2× on `test_searcher_first_search` (9.35 → 18.69 ms, +100 %)
-still exits 1.
+The committed table was derived on 2026-11-06 from six repeats on `AMD EPYC
+7763` (main's baseline plus five dependency- or CI-only heads), with
+`test_cli_license` as the single report-only row. The fleet moved to `AMD EPYC
+9V45` on 2026-11-12 (#305) and the table has not been re-derived since, so
+re-measuring the bands on the current fleet is the remaining calibration.
 
 **The report: everything else, advisory.** The pinned action measures
 `tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift
@@ -306,21 +329,6 @@ understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
 action.
 
-**Corpora are pinned, never the repo's own docs.**
-`tests/benchmarks/test_parsing_performance.py` measures the parsing pipeline
-over a frozen snapshot committed in
-`tests/benchmarks/fixtures/parsing_corpus/`, not over `.spec/`. Measuring the
-live spec tree coupled the gate to the docs: PR #278 added three feature spec
-files and `test_full_connector_pipeline_docs` went 9.27 s → 11.79 s (+27.1%,
-FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
-workspace, moved +4.1% — the corpus had changed, not the code. A corpus is a
-fixed input set: its bytes are locked by `parsing_corpus.sha256` and enforced by
-`tests/unit/test_benchmark_corpus_pin.py`, and the fixture tree is excluded from
-the trailing-whitespace/end-of-file hooks so a hook run cannot silently break
-that lock. Refreshing the corpus is a deliberate change that calls for a
-baseline refresh afterwards; never point a benchmark at documents the project's
-own workflow keeps growing.
-
 **Why a committed baseline cannot be the gate (#267, #271).** `ubuntu-latest` is
 a heterogeneous fleet. Four jobs of one PR on 2026-10-31 (same code) landed on
 `AMD EPYC 7763`, `AMD EPYC 9V74` and `INTEL(R) XEON(R) PLATINUM 8573C`; two PR
@@ -354,6 +362,21 @@ cannot deadlock on the check it repairs: `.benchmarks/**` is not in this
 workflow's `paths` filter, so the baseline-only refresh PR triggers no benchmark
 run at all, and the guard (below) is the only check it faces.
 
+**Corpora are pinned, never the repo's own docs.**
+`tests/benchmarks/test_parsing_performance.py` measures the parsing pipeline
+over a frozen snapshot committed in
+`tests/benchmarks/fixtures/parsing_corpus/`, not over `.spec/`. Measuring the
+live spec tree coupled the gate to the docs: PR #278 added three feature spec
+files and `test_full_connector_pipeline_docs` went 9.27 s → 11.79 s (+27.1%,
+FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
+workspace, moved +4.1% — the corpus had changed, not the code. A corpus is a
+fixed input set: its bytes are locked by `parsing_corpus.sha256` and enforced by
+`tests/unit/test_benchmark_corpus_pin.py`, and the fixture tree is excluded from
+the trailing-whitespace/end-of-file hooks so a hook run cannot silently break
+that lock. Refreshing the corpus is a deliberate change that calls for a
+baseline refresh afterwards; never point a benchmark at documents the project's
+own workflow keeps growing.
+
 Configured as `cross-branch-tolerance: 1000` on the advisory PR report step
 (its failure is continued because that comparison crosses machines), and
 `cross-branch-tolerance: 20` on the refresh lane (live: there it is main's drift alarm), the inert
@@ -363,51 +386,6 @@ benchmark name substring). GitHub Actions has no YAML merge keys, so the two
 `benchmark-override` label (`override-label`) still waives a *cross-run* report
 regression — the A/B gate has no label waiver and always decides from its
 validated measurements.
-
-**Threshold caps are backstops derived from main's baseline, not the gate.**
-The action resolves a test's cap by the first key whose text is a substring of
-the test name, in the order the JSON lists them (`full_connector_pipeline_mixed`
-must therefore precede `full_connector_pipeline`), and an unmatched name falls
-back to a **1.0 s default**. A cap miss only prints a ❌ row in the report —
-it does not fail the job; `regression-detected` (cross-branch + sequential
-tolerance) is what fails it. So the caps exist to catch a blowup a 20% tolerance
-would technically allow, and every cap must be one a healthy `main` actually
-meets. Re-derived 2026-11-03 from `.benchmarks/baselines/main.json` (AMD
-EPYC 7763): only caps whose old value was at or within ~1.4× of `main`'s
-baseline were re-derived, each set to ≈2× that baseline mean rounded up
-(`batch_parse` 0.84×, `full_connector_pipeline` 1.08×,
-`full_connector_pipeline_mixed` 1.38× → 2.02× / 2.16× / 2.06×); every other
-cap already carried ≥5× headroom and was left alone.
-
-| `threshold-map` key | main baseline | cap | headroom |
-|---|---|---|---|
-| `batch_parse` | 5.9326 s | 12 s | 2.02× |
-| `full_connector_pipeline` (`..._docs`) | 9.2731 s | 20 s | 2.16× |
-| `full_connector_pipeline_mixed` | 14.539 s | 30 s | 2.06× |
-| `parse_png` | 1.8238 s | 10 s | 5.5× |
-| `e2e_v2_create` | 2.5228 s | 30 s | 11.9× |
-| `e2e_create` | 2.3364 s | 30 s | 12.8× |
-| `parse_large` | 0.6900 s | 5 s | 7.2× |
-| `parse_markdown_docs` | 0.4701 s | 3 s | 6.4× |
-| `e2e_v2_search` | 0.1805 s | 5 s | 28× |
-| `e2e_search` | 0.0549 s | 5 s | 91–112× |
-| `inspect` | 0.0346 s | 0.5 s | 14.5× |
-| `help` | 0.0340 s | 0.5 s | 14.7–18.6× |
-
-Why the derivation: before this, `batch_parse` carried a 5 s cap against a
-5.93 s baseline — `main`'s own committed number already failed it — and
-`full_connector_pipeline` a 10 s cap against 9.27 s, so a slower runner
-measuring 10.42 s printed a second ❌ (PR #281's run) inside a *green* job
-whose real gate said PASS. Either way the ❌ column spent its signal on
-something other than a regression, the same failure #280 fixed for corpus
-size. A cap that `main` is at or already exceeds is worse than no cap: it
-teaches reviewers to ignore the column. Consequences: raise a cap only in the
-same cycle as a change that legitimately grows a benchmark's input (a bigger
-pinned corpus, not a slower pipeline) — otherwise a slower number is a
-regression to investigate; a new benchmark whose healthy runtime exceeds 1 s
-needs its own key in the same PR; and when a baseline refresh adopts numbers
-above half a cap, raise that cap in the next code PR (a baseline-only refresh
-PR may not touch this file — see the guard above).
 
 A `concurrency` group (keyed on PR number, else ref; `cancel-in-progress: true`)
 prevents overlapping runs from racing each other.
@@ -432,6 +410,68 @@ hardware mismatch now skips with `comparison-skipped` (or hard-fails if
 Not configured in this repo: `enforce-same-node` (defaults `"false"`; the report
 step leaves a cross-run mismatch a warning, because the A/B — not the cross-run
 comparison — decides the job).
+
+---
+
+### Retrieval Evaluation Gate
+
+`python-eval.yml` measures the captured event base and its corresponding PR
+merge result in one job. It fetches immutable SHAs with depth 3 and applies the
+same direct-parent or exact same-tree native-stack wrapper proof described in
+CI Benchmarking, then verifies each measured HEAD. The measured base/merge SHAs
+remain unchanged by wrapper acceptance. Each side uses its own detached worktree and
+`uv sync --locked` environment. Dispatch measures its captured revision twice;
+it never resolves a moving branch tip. The common launcher is captured once
+from the merge result and runs by absolute path through each side's own Python.
+
+`scripts/eval_ab_run.py` calls the side's existing `run_eval(connector_factory=...)`
+API. It loads only the shared `eval/canonical.py` helper by explicit file path.
+The side retains its own evaluator runner, core, parser, connectors and lock.
+Actual import origins must be inside that side. Reports record full engine and
+harness SHAs, lock digest, common-file digests and whether instrumentation
+matches its captured commit. Local uncommitted instrumentation says so. Report outputs reject nonregular
+paths with `lstat` and use exclusive temporary descriptors plus atomic replacement.
+
+The evaluator-only converter replaces recognized generated leading absolute
+code/plaintext path context with `eval/corpus/<relative path>`. It preserves
+authored body occurrences, headings, chunk boundaries, IDs and physical
+URLs/metadata. The default local evaluator uses the same canonical factory;
+explicit custom factories remain supported. Effective configuration records
+`input_context_policy=eval-corpus-relative-v1` (or `custom`).
+
+`environment.converter_inputs` hashes normalized converter chunks with the
+boundary label `normalized-converter-chunks`. It does not claim to capture
+post-engine embedding inputs. Equal digests are checked during same-source
+stability validation; intentional parser/engine changes may change inputs.
+
+One comparator validates complete saved reports with
+`indexed.eval.report_validation.report_problems` before metrics or fingerprints.
+Both sides require every selected metric, identical query identities/judgments,
+full effective model/score configuration, selected model snapshots, complete
+CPU/system/Python identities and matching common instrumentation. Invalid
+containers, missing evidence, nonfinite/unrepresentable numbers and invalid
+tolerance exit 2 with an invalid-result JSON and no verdict. Regressions exit 1;
+valid within-policy measurements exit 0. The publisher consumes this sole verdict.
+
+The retained policy is **0.04 absolute points** for hit-rate@k and MRR.
+Distractor leakage remains report-only. Historical CI measured 0.0307 MRR
+movement at the two-environment boundary; that observation did not diagnose its
+cause. A later controlled local experiment isolated generated absolute path
+prefixes: changing only 77 inputs moved one relevant rank 5 to 6. Canonical
+context fixes that demonstrated harness cause without a product retrieval
+change or wider tolerance. Bounded local same-source validation is separate
+from hosted acceptance and is not a universal determinism guarantee.
+
+The committed `eval/baseline.json` remains a historical drift reference, with
+its original physical-path context. Exact reproduction requires the same input
+policy and numerical environment. CI compares its two fresh reports instead.
+Machine-block adoption for legacy reports still requires matching the actual
+job platform and never overwrites an explicit recorded machine block.
+
+Both reports and `eval-ab.json` are uploaded. A failed harness blocks
+measurement; the publisher still displays unavailable phases and preserves
+failures. The publisher step alone is advisory. Fork/manual runs retain summary
+and artifacts. Dispatch `variance_repeats` accepts integers 1 through 10.
 
 ---
 
@@ -681,6 +721,15 @@ final review of issue #186:
   a per-collection failure inside a batch); `status()`/`inspect()` return plain lists with
   no per-item error slot, so they purely omit it with a logged warning — unchanged.
 
+Bulk updates filter collections by an explicit engine selector before the
+update loop. MCP startup falls back to the default engine when its unused
+selector is invalid. Configuration writes to `core.engine` validate before dry-run; v2 resolvers
+propagate validation errors only for their own namespaces. Migration reports
+`backup_purged` only after verifying removal. CLI and MCP share relevance
+conversion while retaining each result's true score kind; reranking redirects
+third-party stdout diagnostics to stderr. These are the shipped issue #186
+contracts, not instructions to reapply its retired implementation plan.
+
 No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
 facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
 `scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
@@ -762,3 +811,26 @@ Connector readers use this helper — do not duplicate status-code tuples.
    coarse `main` drift alarm. The comparator and required-row contract are
    described in CI Benchmarking above; hosted acceptance of these repairs is
    separate from local executable verification.
+
+
+Gate identity validation requires a present model's nonempty selected snapshot
+and weights. Active reranking also requires its model name and valid cache;
+an absent inactive reranker remains compatible. Common instrumentation, when
+present, must include a full revision, matching effective normalization policy,
+and exactly two valid SHA256 digests for launcher and canonical helper.
+CI passes `--require-common-harness`; ordinary local/legacy reports may omit
+that instrumentation. Errored queries invalidate the gate rather than reducing
+its metric denominators.
+
+Measurement setup/base/head/repeat failures exit 2 through the shared error
+trap. They do not synthesize a verdict artifact: the publisher shows the failed
+measurement phase and unavailable verdict. Comparator input-read, host-adoption
+and report-validation failures write an explicit invalid-result artifact.
+
+
+The publisher validates comparator-invalid artifacts separately from pass/fail
+artifacts. Early failures may contain label-only sides and null tolerance;
+unknown identity fields render as unavailable, while escaped reasons retain the
+invalid status. Pass/fail still requires complete machine/interpreter sides.
+Invalid reasons are limited to ten displayed entries with bounded text and an
+artifact link for omitted content; invalid artifacts show no gating table.

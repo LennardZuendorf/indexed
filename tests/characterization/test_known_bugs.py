@@ -796,9 +796,9 @@ def test_bug_e10_mcp_surfaces_per_collection_failure() -> None:
     """E10: a per-collection search failure must be surfaced to the LLM, not
     ``continue``d past (an agent sees "0 matches" instead of "index failed"
     today)."""
-    from indexed.mcp.formatting import format_search_results_for_llm
+    from indexed.mcp.formatting import build_search_payload
 
-    out = format_search_results_for_llm(
+    out = build_search_payload(
         {
             "broken": {"error": "index failed"},
             "good": {"collectionName": "good", "results": []},
@@ -852,7 +852,7 @@ def test_bug_e12_cli_search_honors_config_max_docs(local_workspace) -> None:
         "e12",
     )
     payload = json.loads(search.stdout)
-    distinct_docs = {r["document_id"] for r in payload["results"]}
+    distinct_docs = {d["id"] for d in payload["documents"]}
 
     assert len(distinct_docs) <= 3, (
         "CLI search must respect the configured max_docs=3, "

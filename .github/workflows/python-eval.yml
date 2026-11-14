@@ -1,13 +1,27 @@
 name: Retrieval Evaluation
 
-# Measures the retrieval baseline (#204) and compares it against the committed
-# `eval/baseline.json`. Phase 1 is deliberately informative rather than a gate:
-# one baseline run cannot yet separate signal from noise, so the job reports the
-# verdict and the artifacts without blocking a merge. Tighten it into a gate
-# once a tolerance from observed run-to-run variance exists.
+# Gates retrieval quality on the product's actual promise: the right passage in
+# the top k. The verdict comes from two measurements taken back to back in THIS
+# job on THIS runner — the captured event base and corresponding merge result —
+# because a retrieval number carries the machine that produced it. The old job
+# compared one fresh run against the committed `eval/baseline.json` and had to
+# stay informative: the runner is a different interpreter/CPU build from the
+# baseline's arm64 machine, and that alone moved hit@5 from 0.818 to 0.909.
+# Same-job measurement cancels the machine out (see .spec/tech.md § Retrieval
+# evaluation gate and scripts/benchmark_ab.py).
 
 on:
   workflow_dispatch:
+    inputs:
+      variance_repeats:
+        # Tolerance provenance, not a gate input: measure the head tree N times
+        # in one job and print the run-to-run spread. The constant in
+        # scripts/benchmark_ab.py carries the observed number.
+        description: >-
+          Measure the head tree this many times and report the metric spread
+          (1 = gate only).
+        type: number
+        default: 1
   pull_request:
     paths:
       - 'src/indexed/core/**'
@@ -16,7 +30,10 @@ on:
       - 'src/indexed/parsing/**'
       - 'eval/**'
       - 'scripts/build_eval_corpus.py'
+      - 'scripts/benchmark_ab.py'
+      - 'scripts/eval_ab_run.py'
       - 'tests/unit/indexed/eval/**'
+      - 'tests/unit/test_benchmark_ab.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/scripts/**'
@@ -37,35 +54,61 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    # Informative in phase 1 — see the header comment.
-    continue-on-error: true
     env:
-      # The report records this next to the numbers, so a CI artifact can name the
-      # code revision it measured (the runner reads GIT_COMMIT).
-      GIT_COMMIT: ${{ github.sha }}
+      BASE_REPORT: eval-ab-base.json
+      HEAD_REPORT: eval-ab-head.json
+      AB_RESULT: eval-ab.json
+      # Absolute metric points; the derivation lives next to the constant in
+      # scripts/benchmark_ab.py (measured base/head boundary + margin).
+      AB_TOLERANCE: "0.04"
 
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.sha }}
         fetch-depth: 0
         persist-credentials: false
 
+    - name: Capture evaluation revisions
+      id: revisions
+      env:
+        EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        MERGE_SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        BASE_SHA="$EVENT_BASE_SHA"
+        if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+          BASE_SHA="$MERGE_SHA"
+          PR_HEAD_SHA="$MERGE_SHA"
+        fi
+        for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA"; do
+          if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Same-job measurement invalid::missing event revision"
+            exit 2
+          fi
+        done
+        {
+          echo "base=$BASE_SHA"
+          echo "merge=$MERGE_SHA"
+          echo "head=$PR_HEAD_SHA"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Set up Python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: "3.13"
 
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # No actions/cache for the embedding model: a saved entry cannot be replaced
+    # under its key, and the shared one had been saved from an interrupted
+    # download — configs and tokenizer without weights (see python-ci.yml). The
+    # harness downloads the weights it needs with retry.
 
     - name: Install dependencies
       run: |
         python -m pip install uv
-        python -m uv sync --all-groups
+        python -m uv sync --locked --all-groups
 
     - name: Unit tests for the PR report
       run: uv run node --test .github/scripts/eval-comment.test.cjs
@@ -74,27 +117,131 @@ jobs:
       id: corpus
       run: uv run python scripts/build_eval_corpus.py --check
 
-    - name: Unit tests for the harness
+    - name: Unit tests for the harness and the comparator
       id: harness
-      run: uv run pytest tests/unit/indexed/eval -q
-
-    - name: Measure the pinned case set
-      id: measure
-      if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
-      run: uv run indexed-eval run --out eval-report.json
-
-    - name: Compare against the committed baseline
-      id: compare
-      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
-      # Informative on purpose: the runner is a different interpreter/CPU build
-      # from the machine the baseline was measured on, and that alone moves ranks
-      # (observed: hit@5 0.909 on x86_64 CI vs 0.818 on the baseline's arm64).
-      # The verdict and the per-case movement land in eval-compare.json; only a
-      # pinned runner plus an observed tolerance can turn this into a gate.
-      continue-on-error: true
       run: |
-        uv run indexed-eval compare --report eval-report.json --json > eval-compare.json || true
-        uv run indexed-eval compare --report eval-report.json || true
+        uv run pytest tests/unit/indexed/eval -q
+        uv run pytest tests/unit/test_benchmark_ab.py -q
+
+    # Both genuine revisions keep their own frozen dependencies and evaluator.
+    # One common captured launcher injects only the canonical connector factory.
+    - name: Measure captured base and merge result in this job
+      id: measure
+      if: ${{ !cancelled() && steps.corpus.outcome == 'success' && steps.harness.outcome == 'success' && steps.revisions.outcome == 'success' }}
+      env:
+        BASE_SHA: ${{ steps.revisions.outputs.base }}
+        MERGE_SHA: ${{ steps.revisions.outputs.merge }}
+        PR_HEAD_SHA: ${{ steps.revisions.outputs.head }}
+        BASE_DIR: ${{ runner.temp }}/eval-ab-base
+        MERGE_DIR: ${{ runner.temp }}/eval-ab-merge
+        REPEATS: ${{ inputs.variance_repeats || '1' }}
+      run: |
+        set -Eeuo pipefail
+        trap 'echo "::error title=Same-job measurement invalid::A/B setup or measurement did not complete; no verdict."; exit 2' ERR
+        verify_pr_merge() {
+          local parents first wrapper_parents wrapper_tree base_tree revision
+          local -a merge_parents wrapper
+          provenance_invalid() {
+            echo "::error title=Same-job measurement invalid::$1; captured base=$BASE_SHA merge=$MERGE_SHA head=$PR_HEAD_SHA"
+            exit 2
+          }
+          parents=$(git show -s --format=%P "$MERGE_SHA")
+          read -r -a merge_parents <<< "$parents"
+          if [[ "${#merge_parents[@]}" -ne 2 || "${merge_parents[1]:-missing}" != "$PR_HEAD_SHA" ]]; then
+            provenance_invalid "expected two merge parents ending in captured head; actual parents=$parents"
+          fi
+          first=${merge_parents[0]}
+          for revision in "$BASE_SHA" "$MERGE_SHA" "$PR_HEAD_SHA" "$first"; do
+            if ! git cat-file -e "${revision}^{commit}"; then
+              provenance_invalid "missing commit object=$revision"
+            fi
+          done
+          if [[ "$first" == "$BASE_SHA" ]]; then return; fi
+          wrapper_parents=$(git show -s --format=%P "$first")
+          read -r -a wrapper <<< "$wrapper_parents"
+          if [[ "${#wrapper[@]}" -ne 2 || "${wrapper[1]:-missing}" != "$BASE_SHA" ]]; then
+            provenance_invalid "expected two wrapper parents ending in captured base; wrapper=$first actual parents=$wrapper_parents"
+          fi
+          if ! git cat-file -e "${wrapper[0]}^{commit}"; then
+            provenance_invalid "missing wrapper parent object=${wrapper[0]}"
+          fi
+          wrapper_tree=$(git rev-parse --verify "${first}^{tree}")
+          base_tree=$(git rev-parse --verify "${BASE_SHA}^{tree}")
+          if [[ "$wrapper_tree" != "$base_tree" ]]; then
+            provenance_invalid "wrapper tree differs from captured base; wrapper=$first actual tree=$wrapper_tree expected tree=$base_tree"
+          fi
+          echo "::notice::Verified native-stack wrapper=$first complete tree=$base_tree; measuring original base=$BASE_SHA and merge=$MERGE_SHA"
+        }
+        git fetch --no-tags --depth=3 origin "$BASE_SHA" "$MERGE_SHA"
+        [[ "$(git rev-parse HEAD)" == "$MERGE_SHA" ]]
+        if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+          verify_pr_merge
+        fi
+        [[ "$REPEATS" =~ ^[1-9][0-9]*$ && "$REPEATS" -le 10 ]]
+        LAUNCHER="$GITHUB_WORKSPACE/scripts/eval_ab_run.py"
+        [[ -f "$LAUNCHER" ]]
+        measure() {
+          local directory=$1 revision=$2 output=$3
+          git worktree add --detach "$directory" "$revision"
+          [[ "$(git -C "$directory" rev-parse HEAD)" == "$revision" ]]
+          echo "Measuring revision: $revision in $directory"
+          (
+            cd "$directory"
+            unset PYTHONPATH
+            UV_PROJECT_ENVIRONMENT="$directory/.venv" python -m uv sync --locked
+            UV_PROJECT_ENVIRONMENT="$directory/.venv" GIT_COMMIT="$revision" python -m uv run --no-sync python "$LAUNCHER" \
+              --root "$directory" --out "$output" \
+              --harness-revision "$MERGE_SHA" --engine-revision "$revision"
+          )
+        }
+        measure "$BASE_DIR" "$BASE_SHA" "$GITHUB_WORKSPACE/$BASE_REPORT"
+        measure "$MERGE_DIR" "$MERGE_SHA" "$GITHUB_WORKSPACE/$HEAD_REPORT"
+        [[ -s "$BASE_REPORT" && -s "$HEAD_REPORT" ]]
+        {
+          echo "BASE_LABEL=captured event base @ $BASE_SHA"
+          echo "HEAD_LABEL=captured PR merge result @ $MERGE_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            echo "BASE_LABEL=captured dispatch revision @ $BASE_SHA"
+            echo "HEAD_LABEL=captured dispatch revision @ $MERGE_SHA"
+          fi
+        } >> "$GITHUB_ENV"
+        echo "$HEAD_REPORT" > "$RUNNER_TEMP/head-reports.txt"
+        for ((index=2; index<=REPEATS; index++)); do
+          (
+            cd "$MERGE_DIR"
+            unset PYTHONPATH
+            UV_PROJECT_ENVIRONMENT="$MERGE_DIR/.venv" GIT_COMMIT="$MERGE_SHA" python -m uv run --no-sync python "$LAUNCHER" \
+              --root "$MERGE_DIR" --out "$GITHUB_WORKSPACE/eval-ab-head-${index}.json" \
+              --harness-revision "$MERGE_SHA" --engine-revision "$MERGE_SHA"
+          )
+          echo "eval-ab-head-${index}.json" >> "$RUNNER_TEMP/head-reports.txt"
+        done
+
+    # The verdict: two files from this job, nothing else. The comparator prints
+    # both revisions and both fingerprints, and refuses to turn a machine
+    # mismatch into a pass (exit 2, "this is a harness bug, not a verdict").
+    - name: Retrieval gate (captured base vs merge result)
+      id: gate
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' }}
+      run: |
+        HOST_FP=$(uv run --no-sync python scripts/benchmark_ab.py --show-host-fingerprint)
+        echo "job CPU fingerprint: ${HOST_FP}"
+        uv run --no-sync python scripts/benchmark_ab.py \
+          --base "${BASE_REPORT}" \
+          --head "${HEAD_REPORT}" \
+          --tolerance "${AB_TOLERANCE}" \
+          --require-common-harness \
+          --host-fingerprint "${HOST_FP}" \
+          --base-label "${BASE_LABEL}" \
+          --head-label "${HEAD_LABEL}" \
+          --out "${AB_RESULT}" \
+          --summary "${GITHUB_STEP_SUMMARY}"
+
+    - name: Run-to-run spread of the same tree
+      if: ${{ !cancelled() && steps.measure.outcome == 'success' && inputs.variance_repeats > 1 }}
+      run: |
+        mapfile -t reports < "$RUNNER_TEMP/head-reports.txt"
+        uv run --no-sync python scripts/benchmark_ab.py --spread "${reports[@]}"
 
     - name: Upload eval artifacts
       if: always()
@@ -102,8 +249,9 @@ jobs:
       with:
         name: retrieval-eval
         path: |
-          eval-report.json
-          eval-compare.json
+          eval-ab-base.json
+          eval-ab-head*.json
+          eval-ab.json
         if-no-files-found: warn
 
     - name: Publish eval summary and PR comment
@@ -113,7 +261,7 @@ jobs:
       env:
         HARNESS_OUTCOME: ${{ steps.harness.outcome }}
         MEASURE_OUTCOME: ${{ steps.measure.outcome }}
-        COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        GATE_OUTCOME: ${{ steps.gate.outcome }}
       with:
         script: |
           await require('./.github/scripts/eval-comment.cjs').publishReport({
@@ -121,6 +269,6 @@ jobs:
             outcomes: {
               harness: process.env.HARNESS_OUTCOME,
               measure: process.env.MEASURE_OUTCOME,
-              compare: process.env.COMPARE_OUTCOME,
+              gate: process.env.GATE_OUTCOME,
             },
           });

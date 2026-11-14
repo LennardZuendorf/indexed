@@ -34,7 +34,15 @@ def results(min_s: float, *, cpu: str = CPU, python: str = "3.13.18") -> dict:
             {
                 "fullname": NAME,
                 "name": NAME.rsplit("::", 1)[-1],
-                "stats": {"min": min_s, "median": min_s, "mean": min_s},
+                "stats": {
+                    "min": min_s,
+                    "median": min_s,
+                    "mean": min_s,
+                    # The comparator's round floor is part of the derivation: a
+                    # band averaged from one-round files would hide the very
+                    # variance it is supposed to measure.
+                    "rounds": 3,
+                },
             }
         ],
     }
