@@ -236,8 +236,9 @@ and nonfinite or negative tolerance exit **2** with
 `::error title=Same-job measurement invalid::` and no verdict. The comparator
 prints both validated fingerprints. A valid measurement exits **1** only when
 a merge-result duration exceeds the captured base by more than `AB_TOLERANCE`
-(20 %) and by more than that benchmark's measured noise band; otherwise it exits
-**0**. Zero tolerance is valid.
+(20 %) and by more than that benchmark's measured noise band — both as
+percentages of the captured base; otherwise it exits **0**. Zero tolerance is
+valid.
 
 Two guards keep the benchmark lane from deciding on a comparison that measured
 nothing. Each benchmark row must report at least **three rounds** in its own
@@ -260,38 +261,74 @@ up to 20 %, medians by 12 % and minimums by 0.7 %. The earlier #271 subset run
 explicit two-worktree setup and is not a fresh performance measurement.
 
 **Resolution is measured, not assumed.** `scripts/benchmark_noise.json` holds,
-per benchmark, how far unchanged code has been seen to move: `band_ms` is three
-times the population standard deviation of the compared statistic over at least
-three runs sharing one CPU and Python fingerprint, the file records the sample
-(commits plus one run/artifact URL per result file, via `--source`),
-and `scripts/derive_benchmark_noise.py` regenerates it from result files through
-the gate's own validation. The A/B gate passes the table as `--noise-band`, so a
-row fails only when it beats both `AB_TOLERANCE` and its band — a delta that
-unchanged code has produced cannot red a PR. A row whose measured spread exceeds
-the 50 % cap is stored as `gate: false` and printed as **report only**: at that
-signal-to-noise ratio the benchmark has no verdict to give, and naming that is
-honest where a widened tolerance would be decorative. A row missing from the
-table keeps the plain relative verdict, so an unmeasured benchmark is never
-silently excused, and a table derived for one statistic is ignored with a
-warning when `--stat` selects another. The band is a measurement with a date:
-re-derive it when the fleet or the benchmark corpus moves, and review the diff
-like any other measurement.
+per benchmark, how far unchanged code has been seen to move: three times the
+population standard deviation of the compared statistic over at least three runs
+sharing one CPU and Python fingerprint. It stores that spread twice — `band_ms`
+as the raw measurement on the derivation host, `band_pct` as the same spread
+divided by the row's own median — and `scripts/derive_benchmark_noise.py`
+regenerates both from result files through the gate's own validation: a
+mixed-fingerprint sample is refused, and so is writing the table without one
+`--source` URL per file.
+
+The A/B gate passes the table as `--noise-band` and compares **`band_pct`**: a
+row fails only when it beats `AB_TOLERANCE` *and* moves further than unchanged
+code has been observed to move, both expressed the same way — as a share of the
+row's own duration on the derivation sample for the band, as a share of the
+run's captured base for the delta. The relative axis is load-bearing rather than
+cosmetic. The same 2.15 ms band is 29.8 % of a 7.2 ms capture and 16.7 % of a
+12.9 ms one, so an absolute comparison would make one stored measurement two
+different thresholds depending on which host ran the PR: tight on the fast host
+and loose on the slow one, tracking the fleet instead of the code. As a share,
+one measurement is one threshold everywhere — which assumes what
+`AB_TOLERANCE` already assumes, that a benchmark's noise scales with its own
+duration rather than staying fixed in milliseconds. Where that assumption is
+wrong the row shows it as an implausible share, and the band is re-derived when
+the fleet moves.
+
+A row whose measured spread exceeds the 50 % cap is stored as `gate: false` and
+printed as **report only**: at that signal-to-noise ratio the benchmark has no
+verdict to give, and naming that is honest where a widened tolerance would be
+decorative. The cap is the only route to report-only. A band between the
+tolerance and that cap does not switch the row off — it raises the row's
+effective threshold to the band, which is exactly the resolution the measurement
+has: a row that can resolve a 30 % move has a verdict to give, just a coarser
+one than a row that resolves 6 %. That widening is stated, never implied: the
+gate log prints an `Effective threshold` notice naming each such row and its
+percentage, and the rows are named here. A row missing from the table keeps the
+plain relative verdict, so an unmeasured benchmark is never silently excused, and
+a table derived for one statistic is ignored with a warning when `--stat` selects
+another. The band is a measurement with a date: re-derive it when the fleet or
+the benchmark corpus moves, and review the diff like any other measurement.
 
 The committed table was derived on 2026-11-14 from six repeats on `AMD EPYC
-9V74 80-Core` — dependency-only and CI-only heads measured 2026-11-12..14, plus
-the merge this PR's own gate measured — chosen because every one of them sits in
-the same performance cluster. `test_cli_license` remains the one report-only row
-(66 % spread). `test_searcher_first_search` keeps a band (29 %) wider than
-`AB_TOLERANCE`, so that row can only fail past a third; that is the band doing
-its job, not a widened tolerance, and it is named here so the next reader does
-not mistake it for headroom. A seventh same-fingerprint artifact (`2e7802e`,
-2026-11-14) measured about 30 % slower on every row; averaging that host-level
-outlier in would have pushed the two parsing rows' bands past `AB_TOLERANCE` and
-left them unable to fail at all, so it is excluded rather than absorbed. The
-sample block names one artifact URL per file and the gate log prints the
-fingerprint the table was derived on next to the fingerprints it measured, so
-the next fleet rotation shows up as a line a reviewer can compare instead of a
-stale assumption nobody sees.
+9V74 80-Core`, CPython 3.13.18, one artifact URL per file in the sample block.
+Its composition, because the sample is what makes the numbers checkable: three
+heads (`dd9eb2d`, `bb22a6f`, `55109f4`) differ from `main` only in dependency
+locks, CI and docs; two (`69a70e2`, `4e032e4`) carry #241's LSP Tier 0
+(`utils/provenance.py`, `utils/relevance.py`, an out-of-process LSP suite); one
+(`60ae507`) is this branch's own head, carrying #286's file-connector changes. So
+the sample is not "every file byte-identical to `main`" — those `src/indexed`
+paths are on this branch too. What holds instead is that the timed rows formed
+one cluster (searcher minimums 7.03–8.92 ms across the six), and that the three
+strictly-clean heads alone would have produced a **wider** searcher band
+(36.1 %, σ 0.861 ms): the mixed sample is the narrower of the two, not a tighter
+one picked on purpose.
+
+Per row: `test_parse_markdown_docs` 21.535 ms / 6.4 %, `test_parse_large_markdown`
+31.477 ms / 6.1 %, and `test_cli_license` a 66.1 % spread — past the cap, so the
+single report-only row. `test_searcher_first_search` is the one worth naming:
+29.3 % (σ 0.717 ms on a 7.336 ms median) is intrinsic to a ~7 ms benchmark whose
+run-to-run spread is already about a tenth of its own duration, and it is wider
+than `AB_TOLERANCE`. It stays gating instead of report-only because 29.3 % is
+still inside the 50 % cap: the row does resolve a 30 % move, the gate simply
+fires there later than on the parsing rows, and every run prints that threshold.
+A seventh same-fingerprint artifact (`2e7802e`, 2026-11-14) measured about 30 %
+slower on every row; averaging that host-level outlier in would have pushed the
+two parsing rows' bands past `AB_TOLERANCE` and left them unable to fail at all,
+so it is excluded rather than absorbed. The gate log prints the fingerprint the
+table was derived on next to the fingerprints it measured, so the next fleet
+rotation shows up as a line a reviewer can compare instead of a stale assumption
+nobody sees.
 
 **The report: everything else, advisory.** The pinned action measures
 `tests/system` + `tests/benchmarks`, posts its PR comment, and reports drift

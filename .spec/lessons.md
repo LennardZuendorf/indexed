@@ -1932,7 +1932,23 @@ every row: six formed one tight cluster, one (`2e7802e`) was uniformly slower.
 Averaging all seven tripled the parsing bands past `AB_TOLERANCE`, which would
 have left those rows unable to fail at all — a decorative band.
 **Rule:** Derive the band from repeats that sit in one performance cluster and
-name the excluded outlier, its date and its size in the spec; a band wider than
-`AB_TOLERANCE` does not slow the gate down, it switches it off.
+name the excluded outlier, its date and its size in the spec. A band wider than
+`AB_TOLERANCE` does not disable the row by itself: it raises that row's effective
+threshold to the band, and the gate prints it. Only a spread past the 50 % cap
+makes a row report-only.
+**Tags:** ci, benchmark, measurement
+**Date:** 2026-11-14
+
+### A threshold has to be compared on its own axis
+**Pattern:** The band was measured in milliseconds and the tolerance in percent.
+The same 2.15 ms band was 29.8 % of a 7.2 ms capture and 16.7 % of a 12.9 ms one,
+so a +25 % move on one gated row passed on the derivation host and failed on the
+host that measured the same PR — the gate's threshold moved with the fleet while
+the spec claimed a fixed one.
+**Rule:** When a tolerance is relative, store and compare the band as a share of
+the row's own duration (`band_pct`), keeping the absolute figure only as the raw
+measurement on the derivation host; then prove it with the same delta on two
+bases of different size. A band stored in one unit and compared against a delta
+in another is a bug that only appears on the host you did not test.
 **Tags:** ci, benchmark, measurement
 **Date:** 2026-11-14
