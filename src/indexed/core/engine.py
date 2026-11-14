@@ -34,6 +34,7 @@ from indexed.core.errors import (
     UnknownEngineVersionError,
 )
 from indexed.core.versioning import EngineVersion, detect_engine_version
+from indexed.utils import freshness
 
 # Shared types/classes re-exported unchanged from v1 (no routing) — resolved
 # lazily so importing the facade stays cheap. v2 will reuse the same types.
@@ -384,6 +385,53 @@ def _coerce_info(version: EngineVersion, raw: Any) -> Any:
     return [CollectionInfo(**d) for d in raw]
 
 
+def _reader_block(collection_dir: Path) -> Optional[Dict[str, Any]]:
+    """The manifest's ``reader`` block, or ``None`` when it can't be read.
+
+    Read as plain JSON so the facade needs neither engine's models; the two
+    engines' manifests share this block byte-for-byte (see ``V2Manifest``).
+    """
+    try:
+        raw = json.loads((collection_dir / "manifest.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+    reader = raw.get("reader") if isinstance(raw, dict) else None
+    return reader if isinstance(reader, dict) else None
+
+
+def _freshness_for(
+    name: str, collections_path: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """One collection's freshness verdict (issue #146 slice 1), or ``None``.
+
+    Engine-agnostic by construction: the baseline is the files connector's
+    ``state.json`` and the source path comes from the manifest, both of which
+    v1 and v2 collections write. ``None`` means the manifest itself is
+    unreadable (that collection is omitted from every surface anyway); every
+    other "can't tell" path returns a verdict with a reason code.
+    """
+    collection_dir = _collections_base(collections_path) / name
+    reader = _reader_block(collection_dir)
+    if reader is None:
+        return None
+    baseline, hashes = freshness.read_baseline(collection_dir)
+    return freshness.evaluate(
+        reader_type=reader.get("type"),
+        source_path=reader.get("basePath"),
+        baseline_commit=baseline,
+        indexed_hashes=hashes,
+    ).to_dict()
+
+
+def _attach_freshness(entries: Dict[str, Any], collections_path: Optional[str]) -> None:
+    """Add ``freshness`` to every successful per-collection search entry."""
+    for name, entry in entries.items():
+        if isinstance(entry, dict) and "error" not in entry:
+            verdict = _freshness_for(name, collections_path)
+            if verdict is not None:
+                entry["freshness"] = verdict
+
+
 def _configs_for_group(
     configs: Optional[List[Any]], group_names: List[str]
 ) -> List[Any]:
@@ -662,6 +710,33 @@ def _surface_preserved(
         }
 
 
+def _git_rerank_options(enabled: Optional[bool]) -> Any:
+    """v2 git-signal re-rank options from ``[core.v1.search]`` (``None`` = off).
+
+    The weights live in ``[core.v1.search]`` — one search config both the CLI
+    and MCP already bind — so the facade reads them here and neither surface
+    has to reach for a core.v2 type. Defaults apply when the section is not
+    registered, exactly like ``_load_search_config``.
+    """
+    if not enabled:
+        return None
+    from indexed.core.v1.config_models import CoreV1SearchConfig
+    from indexed.core.v2.retrieval import GitRerankOptions
+
+    try:
+        from indexed.config import get_config
+
+        cfg = get_config().bind().get(CoreV1SearchConfig)
+    except Exception:
+        cfg = CoreV1SearchConfig()
+    return GitRerankOptions(
+        recency_weight=cfg.git_rerank_recency_weight,
+        churn_weight=cfg.git_rerank_churn_weight,
+        author=cfg.git_rerank_author,
+        author_weight=cfg.git_rerank_author_weight,
+    )
+
+
 def search(
     query: str,
     configs: Optional[List[Any]] = None,
@@ -675,6 +750,11 @@ def search(
     *,
     engine: Optional[str] = None,
     rerank: Optional[bool] = None,
+    changed_since: Optional[str] = None,
+    git_provenance: Optional[bool] = None,
+    git_line_blame: Optional[bool] = None,
+    git_rerank: Optional[bool] = None,
+    include_freshness: bool = False,
 ) -> Dict[str, Any]:
     """Search collections, routing per the collection's engine (R2).
 
@@ -685,6 +765,10 @@ def search(
     raises ``EngineMismatchError`` before any I/O. ``rerank`` overrides
     ``[core.v2.rerank] enabled`` for this call; it is forwarded only when
     routing to the v2 impl — v1 has no rerank concept and no such param.
+    ``changed_since``/``git_provenance``/``git_line_blame`` are v2-only for the
+    same reason (v1 ignores them entirely, so its behaviour is unchanged).
+    ``git_rerank`` is their scoring counterpart — a bool here, converted to the
+    v2 re-rank options from ``[core.v1.search]`` only when it is on.
 
     A collection with an unrecognized manifest ``version`` marker is dropped
     from ``_group_names_by_engine``'s per-engine groups (a warning is logged),
@@ -699,6 +783,16 @@ def search(
         rerank_kwargs = (
             {"rerank": rerank} if version == "2" and rerank is not None else {}
         )
+        git_kwargs = (
+            {
+                "changed_since": changed_since,
+                "git_provenance": git_provenance,
+                "git_line_blame": git_line_blame,
+                "git_rerank": _git_rerank_options(git_rerank),
+            }
+            if version == "2"
+            else {}
+        )
         out: Dict[str, Any] = _engine_impl(version).search(
             query,
             configs=cfgs,
@@ -710,7 +804,30 @@ def search(
             include_matched_chunks=include_matched_chunks,
             collections_path=collections_path,
             **rerank_kwargs,
+            **git_kwargs,
         )
+        if changed_since is not None and version != "2":
+            # v1 ignores the git options (documented) — say so per collection
+            # instead of handing back silently unfiltered rows (#279 review).
+            for entry in out.values():
+                if isinstance(entry, dict) and "error" not in entry:
+                    entry.setdefault(
+                        "gitFilter",
+                        {
+                            "ref": changed_since,
+                            "applied": False,
+                            "reason": "v1-engine",
+                        },
+                    )
+        if git_rerank and version != "2":
+            # Same rule for the re-rank: an unranked v1 result set under a
+            # requested re-rank says so rather than looking ranked (#144).
+            for entry in out.values():
+                if isinstance(entry, dict) and "error" not in entry:
+                    entry.setdefault(
+                        "gitRerank",
+                        {"applied": False, "reason": "v1-engine"},
+                    )
         return out
 
     names = (
@@ -730,6 +847,8 @@ def search(
             _resolve_existing_engine(engine, names, collections_path), configs
         )
         _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        if include_freshness:
+            _attach_freshness(result, collections_path)
         return result
 
     groups, omitted = _group_names_by_engine(names, collections_path)
@@ -740,6 +859,8 @@ def search(
         result = _run(version, _configs_for_group(configs, grp_names))
         result.update({name: {"error": msg} for name, msg in omitted.items()})
         _surface_preserved(_collections_base(collections_path), result, preserved_scope)
+        if include_freshness:
+            _attach_freshness(result, collections_path)
         return result
 
     merged: Dict[str, Any] = {}
@@ -747,6 +868,8 @@ def search(
         merged.update(_run(grp_version, _configs_for_group(configs, grp_names)))
     merged.update({name: {"error": msg} for name, msg in omitted.items()})
     _surface_preserved(_collections_base(collections_path), merged, preserved_scope)
+    if include_freshness:
+        _attach_freshness(merged, collections_path)
     return merged
 
 
@@ -756,11 +879,12 @@ def status(
     include_index_size: bool = False,
     collections_path: Optional[str] = None,
     engine: Optional[str] = None,
+    include_freshness: bool = False,
 ) -> List[Any]:
     """Collection status, routing/merging per the collection's engine (R2)."""
 
     def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
-        return _coerce_status(
+        statuses = _coerce_status(
             version,
             _engine_impl(version).status(
                 collection_names=names,
@@ -768,6 +892,10 @@ def status(
                 collections_path=collections_path,
             ),
         )
+        if include_freshness:
+            for entry in statuses:
+                entry.freshness = _freshness_for(entry.name, collections_path)
+        return statuses
 
     if collection_names:
         _recover(_collections_base(collections_path), collection_names, strict=True)
@@ -801,7 +929,7 @@ def inspect(
     """Detailed collection inspection, routing/merging per engine (R2)."""
 
     def _run(version: EngineVersion, names: Optional[List[str]]) -> Any:
-        return _coerce_info(
+        infos = _coerce_info(
             version,
             _engine_impl(version).inspect(
                 collection_names=names,
@@ -809,6 +937,11 @@ def inspect(
                 collections_path=collections_path,
             ),
         )
+        for info in infos:
+            # Freshness is engine-agnostic reporting, so it is attached HERE
+            # rather than in either engine's inspect (#146 slice 1).
+            info.freshness = _freshness_for(info.name, collections_path)
+        return infos
 
     if collection_names:
         _recover(_collections_base(collections_path), collection_names, strict=True)

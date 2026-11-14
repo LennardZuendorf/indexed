@@ -93,10 +93,19 @@ def test_filesystem_connector_properties():
 
 
 class _FakeConfigService:
-    """Minimal stand-in for ConfigService — the three calls ``from_config`` makes."""
+    """Configuration port for reader settings and active storage forwarding."""
 
     def __init__(self, cfg):
+        from pathlib import Path
+        from types import SimpleNamespace
+
         self._cfg = cfg
+        self.resolver = SimpleNamespace(
+            resolve_root=lambda _mode: Path(cfg.path) / "active-store"
+        )
+
+    def resolve_storage_mode(self):
+        return "local"
 
     def register(self, config_class, *, path: str) -> None:
         self.registered = (config_class, path)
@@ -122,8 +131,13 @@ def test_from_config_threads_change_tracking_and_code_chunking(tmp_path):
     cfg = FileSystemConfig(
         path=str(tmp_path), change_tracking="mtime", code_chunking=False
     )
+    (tmp_path / "note.txt").write_text("source")
+    storage = tmp_path / "active-store"
+    storage.mkdir()
+    (storage / "index.txt").write_text("internal storage")
     connector = FileSystemConnector.from_config(cast(Any, _FakeConfigService(cfg)))
 
     details = connector.reader.get_reader_details()
     assert details["changeTracking"] == "mtime"
     assert details["codeChunking"] is False
+    assert list(connector.reader._iter_file_paths()) == [str(tmp_path / "note.txt")]

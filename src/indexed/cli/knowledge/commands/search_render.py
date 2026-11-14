@@ -7,7 +7,7 @@ escaping (foundation/6c bug E2) and per-collection failure surfacing
 (foundation/6 E10, CLI twin of the MCP formatting bug).
 """
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Raw Panel needed — free-text excerpt content doesn't fit card components
 from rich.panel import Panel
@@ -26,6 +26,7 @@ from ...utils.components import (
     print_warning,
 )
 from ...utils.components.theme import get_detail_card_width
+from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -35,6 +36,20 @@ class ChunkInfo(TypedDict):
     path: str
     chunk: Dict[str, Any]
     chunk_index: int
+    # Document-level git provenance (v2 files collections + --git-provenance
+    # only); absent means the field is not part of the output at all.
+    git: NotRequired[Dict[str, Any]]
+
+
+def _git_label(git: Dict[str, Any]) -> str:
+    """``<short> <author> <date> <subject>`` — one line for the detail card."""
+    parts = [
+        str(git.get("short") or ""),
+        str(git.get("author") or ""),
+        str(git.get("committedAt") or "")[:10],
+        str(git.get("subject") or ""),
+    ]
+    return " ".join(part for part in parts if part)
 
 
 def _is_content_free(chunk_info: ChunkInfo) -> bool:
@@ -75,6 +90,62 @@ def _print_collection_errors(failed: List[tuple[str, Any]]) -> None:
         # bracket-bearing collection name or error string prints verbatim.
         # Escaping first would leak the backslash into the output.
         print_error(f"Collection '{collection_name!s}' failed: {error!s}")
+
+
+def _git_option_skips(
+    results: Dict[str, Any], key: str
+) -> List[tuple[str, Dict[str, Any]]]:
+    """Collections that requested a git option (``key``) which was NOT applied.
+
+    Retrieval and the v1 facade mark them with ``gitFilter``/``gitRerank``; a
+    skipped option must be announced, never rendered as applied (#279 review,
+    #144).
+    """
+    skips: List[tuple[str, Dict[str, Any]]] = []
+    for collection_name, collection_results in results.items():
+        if not isinstance(collection_results, dict):
+            continue
+        status = collection_results.get(key)
+        if isinstance(status, dict) and status.get("applied") is False:
+            skips.append((collection_name, status))
+    return skips
+
+
+def _print_git_option_skips(
+    skips: List[tuple[str, Dict[str, Any]]], message: Any
+) -> None:
+    """Warn per collection, naming it and why the option had no effect."""
+    for collection_name, status in skips:
+        print_warning(f"Collection '{collection_name!s}': {message(status)}")
+
+
+def _freshness_verdicts(results: Dict[str, Any]) -> List[tuple[str, Dict[str, Any]]]:
+    """Per-collection freshness advisory, present only when ``--freshness`` ran.
+
+    The facade attaches it to each collection result, so this is the same
+    verdict (and the same ``summary`` words) `index inspect` prints.
+    """
+    verdicts: List[tuple[str, Dict[str, Any]]] = []
+    for collection_name, collection_results in results.items():
+        if not isinstance(collection_results, dict):
+            continue
+        verdict = collection_results.get("freshness")
+        if isinstance(verdict, dict):
+            verdicts.append((collection_name, verdict))
+    return verdicts
+
+
+def _print_freshness_advisories(verdicts: List[tuple[str, Dict[str, Any]]]) -> None:
+    """Dim for fresh, a warning for stale/unknown — never a silent stale index."""
+    for collection_name, verdict in verdicts:
+        summary = str(verdict.get("summary") or verdict.get("status") or "")
+        if verdict.get("status") == "fresh":
+            console.print(
+                f"[{get_dim_style()}]{escape(collection_name)}: {escape(summary)}"
+                f"[/{get_dim_style()}]"
+            )
+        else:
+            print_warning(f"{collection_name}: {summary}")
 
 
 def format_search_results(
@@ -137,6 +208,9 @@ def format_search_results(
             matched_chunks = doc.get("matchedChunks", []) or doc.get(
                 "matched_chunks", []
             )
+            git = doc.get("git")
+            if not isinstance(git, dict):
+                git = {}
 
             for i, chunk in enumerate(matched_chunks):
                 all_chunks.append(
@@ -146,11 +220,26 @@ def format_search_results(
                         path=path,
                         chunk=chunk,
                         chunk_index=i + 1,  # 1-indexed for display
+                        git=git,
                     )
                 )
 
     if failed_collections:
         _print_collection_errors(failed_collections)
+        console.print()
+
+    for key, message in (
+        ("gitFilter", filter_skip_message),
+        ("gitRerank", rerank_skip_message),
+    ):
+        skips = _git_option_skips(results, key)
+        if skips:
+            _print_git_option_skips(skips, message)
+            console.print()
+
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
         console.print()
 
     if not all_chunks:
@@ -281,6 +370,22 @@ def _show_top_result_split_cards(
     if chunk_id:
         meta_rows.append(("Match ID", chunk_id))
 
+    # Additive: absent unless git provenance was requested and git answered.
+    git = chunk_info.get("git")
+    if git:
+        meta_rows.append(("Last commit", _git_label(git)))
+    # Additive: per-chunk blame, present only for chunks that recorded a line
+    # span and only when --git-line-blame was requested.
+    line_git = chunk.get("git")
+    if isinstance(line_git, dict):
+        span = ""
+        if line_git.get("startLine") and line_git.get("endLine"):
+            span = f"lines {line_git['startLine']}-{line_git['endLine']}"
+        if line_git.get("uncommitted"):
+            meta_rows.append(("Lines commit", f"uncommitted ({span})"))
+        else:
+            meta_rows.append(("Lines commit", f"{_git_label(line_git)} ({span})"))
+
     meta_card = create_detail_card(title="Top Result Meta", rows=meta_rows)
     console.print(meta_card)
 
@@ -388,6 +493,20 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
         _print_collection_errors(failed_collections)
         console.print()
 
+    for key, message in (
+        ("gitFilter", filter_skip_message),
+        ("gitRerank", rerank_skip_message),
+    ):
+        skips = _git_option_skips(results, key)
+        if skips:
+            _print_git_option_skips(skips, message)
+            console.print()
+
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
+        console.print()
+
     # Summary
     console.print()
     if total_results > 0:
@@ -461,6 +580,20 @@ def format_search_results_compact(
 
     if failed_collections:
         _print_collection_errors(failed_collections)
+        console.print()
+
+    for key, message in (
+        ("gitFilter", filter_skip_message),
+        ("gitRerank", rerank_skip_message),
+    ):
+        skips = _git_option_skips(results, key)
+        if skips:
+            _print_git_option_skips(skips, message)
+            console.print()
+
+    freshness_verdicts = _freshness_verdicts(results)
+    if freshness_verdicts:
+        _print_freshness_advisories(freshness_verdicts)
         console.print()
 
     # Summary
