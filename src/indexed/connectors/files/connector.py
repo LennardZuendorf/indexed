@@ -83,6 +83,8 @@ class FileSystemConnector:
             max_tokens=config.max_chunk_tokens,
             excluded_dirs=config.excluded_dirs or None,
             respect_gitignore=config.respect_gitignore,
+            change_tracking=config.change_tracking,
+            code_chunking=config.code_chunking,
         )
         self._converter = FilesDocumentConverter()
         self._change_tracker = ChangeTracker(
@@ -216,6 +218,7 @@ class FileSystemConnector:
             change_tracking=cfg.change_tracking,
             ocr_enabled=cfg.ocr_enabled,
             table_structure=cfg.table_structure,
+            code_chunking=cfg.code_chunking,
             max_chunk_tokens=cfg.max_chunk_tokens,
             excluded_dirs=cfg.excluded_dirs,
             respect_gitignore=cfg.respect_gitignore,
@@ -229,10 +232,12 @@ class FileSystemConnector:
 
         Loads the change-tracker state from ``storage_path`` and scopes the
         reader to changed files, returning the deletions to prune and a
-        ``post_run`` hook that persists the new state. Runtime settings
-        (ocr/table/max_tokens) come from the connector's own config defaults,
-        matching the previous ``local_files_update_factory`` behavior;
-        ``config_service`` is unused for this source.
+        ``post_run`` hook that persists the new state. Every key in the stored
+        ``reader`` block is restored onto the rebuilt connector (change
+        strategy, ocr/table/code-chunking/token budget, exclusions) so an
+        update honours the settings the collection was created with instead of
+        silently reverting to ``FileSystemConfig`` defaults; ``config_service``
+        is unused for this source.
         """
         rd = manifest.reader.model_dump(by_alias=True)
         base_path = rd.get("basePath")
@@ -246,6 +251,10 @@ class FileSystemConnector:
             include_patterns=rd.get("includePatterns") or ["*"],
             fail_fast=rd.get("failFast", False),
             change_tracking=rd.get("changeTracking", "auto"),
+            ocr_enabled=rd.get("ocr", True),
+            table_structure=rd.get("tableStructure", True),
+            code_chunking=rd.get("codeChunking", True),
+            max_chunk_tokens=rd.get("maxChunkTokens", 512),
             excluded_dirs=rd.get("excludedDirs") or None,
             respect_gitignore=rd.get("respectGitignore", True),
         )
@@ -271,6 +280,8 @@ class FileSystemConnector:
             excluded_dirs=cfg.excluded_dirs or None,
             specific_files=specific_files,
             respect_gitignore=cfg.respect_gitignore,
+            change_tracking=cfg.change_tracking,
+            code_chunking=cfg.code_chunking,
         )
 
         def _save_state() -> None:
