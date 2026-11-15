@@ -7,6 +7,8 @@ test gates on ``model_available()`` and uses the real corpus + model.
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -571,3 +573,829 @@ def test_rerank_none_defers_to_config(
         )
 
     assert res["c1"]["scoreKind"] == "rerank"
+
+
+# ── query-time git awareness (#60/#144/#146) ───────────────────────────────
+
+
+def _build_files_at(cols: Path, name: str, docs, base_path: Path) -> None:
+    """Build a v2 collection whose manifest ``basePath`` is ``base_path``."""
+    with mock_embedding(embed_dim=8):
+        ingestion.create(
+            [
+                SourceConfig(
+                    name=name, type="localFiles", base_url_or_path=str(base_path)
+                )
+            ],
+            use_cache=False,
+            connector_factory=make_connector_factory(
+                docs, {"type": "localFiles", "basePath": str(base_path)}
+            ),
+            collections_path=str(cols),
+        )
+
+
+def _commit(repo: Path, *args: str) -> None:
+    from tests.conftest import run_git
+
+    run_git(repo, *args)
+
+
+def _mtime(path: Path) -> str:
+    """The ISO value the files reader records on the node when indexing ``path``."""
+    from indexed.connectors.files.files_document_reader import FilesDocumentReader
+
+    return FilesDocumentReader._read_file_modification_time(str(path)).isoformat()
+
+
+def test_changed_since_keeps_only_changed_documents(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "changed.txt").write_text("penguin one")
+    (git_repo / "stale.txt").write_text("walrus one")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "files")
+    (git_repo / "changed.txt").write_text("penguin two")
+    _commit(git_repo, "commit", "-am", "edit penguin")
+
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("changed.txt", ["penguin migration"]),
+        make_doc("stale.txt", ["walrus migration"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD~1",
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["changed.txt"]
+    # An applied filter is reported too, so callers can tell it apart from a skip.
+    assert res["c1"]["gitFilter"] == {"ref": "HEAD~1", "applied": True}
+
+
+def test_changed_since_filters_before_grouping_so_max_docs_still_fills(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The filter runs on NODES, before grouping: a stale doc must not occupy a
+    ``max_docs`` slot and leave the result set short."""
+    for name in ("a.txt", "b.txt", "stale.txt"):
+        (git_repo / name).write_text("one")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "files")
+    for name in ("a.txt", "b.txt"):
+        (git_repo / name).write_text("two")
+    _commit(git_repo, "commit", "-am", "edit two")
+
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),  # first indexed on purpose
+        make_doc("a.txt", ["penguin a"]),
+        make_doc("b.txt", ["penguin b"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    seen: dict[str, set[str]] = {}
+    original = retrieval._group_by_document
+
+    def spy(nodes, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        seen["sources"] = {n.node.metadata["source_id"] for n in nodes}
+        return original(nodes, **kwargs)
+
+    monkeypatch.setattr(retrieval, "_group_by_document", spy)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            max_docs=2,
+            changed_since="HEAD~1",
+        )
+
+    assert seen["sources"] == {"a.txt", "b.txt"}
+    assert len(res["c1"]["results"]) == 2
+
+
+@pytest.mark.parametrize("cross_encoder", [False, True])
+def test_changed_since_filters_before_cross_encoder_top_n(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch, cross_encoder: bool
+) -> None:
+    for name in ("unchanged.txt", "changed.txt"):
+        (git_repo / name).write_text("initial")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "baseline")
+    (git_repo / "changed.txt").write_text("updated")
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("unchanged.txt", ["penguin"]), make_doc("changed.txt", ["penguin"])],
+        git_repo,
+    )
+    seen: list[list[str]] = []
+
+    def fake_rerank(nodes, query, cfg):  # noqa: ANN001, ANN202
+        ordered = sorted(
+            nodes, key=lambda n: n.node.metadata["source_id"] != "unchanged.txt"
+        )
+        seen.append([n.node.metadata["source_id"] for n in ordered])
+        return [n.model_copy(update={"score": 0.42}) for n in ordered[: cfg.top_n]]
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=cross_encoder, model="x", top_n=1),
+    )
+    monkeypatch.setattr(retrieval, "_apply_rerank", fake_rerank)
+    with mock_embedding(embed_dim=8):
+        out = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD",
+        )["c1"]
+    assert [doc["id"] for doc in out["results"]] == ["changed.txt"]
+    assert out["gitFilter"] == {"ref": "HEAD", "applied": True}
+    if cross_encoder:
+        assert seen == [["changed.txt"]]
+        assert out["scoreKind"] == "rerank"
+        assert out["results"][0]["matchedChunks"][0]["score"] == pytest.approx(0.42)
+
+
+def test_git_provenance_attaches_last_commit(tmp_path: Path, git_repo: Path) -> None:
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+
+    git = res["c1"]["results"][0]["git"]
+    assert git["author"] == "Test"
+    assert git["subject"] == "add penguin"
+    assert git["commit"].startswith(git["short"])
+    assert git["committedAt"].startswith("20")
+
+
+@pytest.mark.parametrize("query_tz", ["UTC", "America/New_York"])
+def test_git_provenance_survives_a_query_zone_switch(
+    tmp_path: Path, git_repo: Path, query_tz: str
+) -> None:
+    """#279 B1: provenance must not depend on the QUERY process's timezone.
+
+    The node timestamp is recorded while this process is in Europe/Stockholm and
+    read back while it is in ``query_tz``. The untouched file keeps its ``git``
+    block; a ``touch`` afterwards drops it under the same zone.
+    """
+    import contextlib
+    import os
+    import time
+
+    @contextlib.contextmanager
+    def _zone(zone: str):
+        previous = os.environ.get("TZ")
+        os.environ["TZ"] = zone
+        time.tzset()
+        try:
+            yield
+        finally:
+            if previous is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = previous
+            time.tzset()
+
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    with _zone("Europe/Stockholm"):
+        recorded = _mtime(tracked)
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin"], modified_time=recorded)],
+        git_repo,
+    )
+
+    with _zone(query_tz), mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+    assert res["c1"]["results"][0]["git"]["subject"] == "add penguin"
+
+    tracked.touch()
+    with _zone(query_tz), mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+    assert "git" not in res["c1"]["results"][0]
+
+
+def test_git_provenance_omits_a_stale_snapshot(tmp_path: Path, git_repo: Path) -> None:
+    """The c2/c3 repro (#279 review, finding 2): index at c2, then commit c3
+    without re-indexing. The row still shows c2's text, so it must NOT be
+    credited to c3's commit."""
+    tracked = git_repo / "tracked.txt"
+    tracked.write_text("penguin c2")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "c2 penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(
+        cols,
+        "c1",
+        [make_doc("tracked.txt", ["penguin c2"], modified_time=_mtime(tracked))],
+        git_repo,
+    )
+
+    tracked.write_text("penguin c3")
+    _commit(git_repo, "commit", "-am", "c3 penguin")
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_provenance=True,
+        )
+
+    assert "git" not in res["c1"]["results"][0]
+
+
+def test_git_options_attach_nothing_when_not_requested(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "tracked.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("tracked.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    assert "git" not in res["c1"]["results"][0]
+    assert "gitFilter" not in res["c1"]
+
+
+def test_git_options_are_noops_for_a_non_files_reader(tmp_path: Path) -> None:
+    cols = tmp_path / "cols"
+    docs = [make_doc("JIRA-1", ["penguin"])]
+    with mock_embedding(embed_dim=8):
+        ingestion.create(
+            [
+                SourceConfig(
+                    name="c1", type="jiraCloud", base_url_or_path="https://acme.test"
+                )
+            ],
+            use_cache=False,
+            connector_factory=make_connector_factory(
+                docs, {"type": "jiraCloud", "baseUrl": "https://acme.test"}
+            ),
+            collections_path=str(cols),
+        )
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD",
+            git_provenance=True,
+            git_rerank=retrieval.GitRerankOptions(),
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["JIRA-1"]
+    assert "git" not in res["c1"]["results"][0]
+    # The filter cannot apply to a non-files reader, and says so instead of
+    # quietly returning unfiltered rows.
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "not-a-files-collection",
+    }
+    # Same visible skip for the re-rank (#144).
+    assert res["c1"]["gitRerank"] == {
+        "applied": False,
+        "reason": "not-a-files-collection",
+    }
+
+
+def test_changed_since_invalid_ref_skips_the_filter(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "a.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add a")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="no-such-ref",
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "no-such-ref",
+        "applied": False,
+        "reason": "unknown-ref",
+    }
+
+
+def test_git_options_are_noops_outside_a_repo(tmp_path: Path) -> None:
+    """A files collection over a non-repo must not empty results or raise."""
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            changed_since="HEAD",
+            git_provenance=True,
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+    assert "git" not in res["c1"]["results"][0]
+    assert res["c1"]["gitFilter"] == {
+        "ref": "HEAD",
+        "applied": False,
+        "reason": "no-git-repository",
+    }
+
+
+# ── line-level blame (#60) ─────────────────────────────────────────────────
+
+
+def _spanned_doc(doc_id: str, chunks: list[tuple[str, int, int]]) -> dict:
+    """A ConvertedDocument whose chunks carry the code chunker's line spans."""
+    return {
+        "id": doc_id,
+        "url": f"u/{doc_id}",
+        "modifiedTime": "2026-01-10T00:00:00+00:00",
+        "text": " ".join(text for text, _s, _e in chunks),
+        "chunks": [
+            {"indexedData": text, "metadata": {"start_line": start, "end_line": end}}
+            for text, start, end in chunks
+        ],
+    }
+
+
+def _two_region_repo(repo: Path) -> tuple[str, str]:
+    """code.py: c1 writes both regions, c2 rewrites the second one only."""
+    (repo / "code.py").write_text("alpha penguin one\nbeta penguin two\n")
+    _commit(repo, "add", ".")
+    _commit(repo, "commit", "-m", "c1", "--date=2026-01-01T00:00:00+00:00")
+    from tests.conftest import run_git
+
+    first = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    (repo / "code.py").write_text("alpha penguin one\nbeta penguin rewritten\n")
+    _commit(
+        repo,
+        "commit",
+        "-am",
+        "c2",
+        "--author=Second Author <second@test.com>",
+        "--date=2026-01-02T00:00:00+00:00",
+    )
+    return first, run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_git_line_blame_attributes_each_chunk_to_its_own_commit(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    first, second = _two_region_repo(git_repo)
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "code.py", [("alpha penguin one", 0, 0), ("beta penguin two", 1, 1)]
+        )
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    entry = res["c1"]["results"][0]
+    # Line-level only: the document-level contract stays absent unless asked.
+    assert "git" not in entry
+    by_chunk = {chunk["chunkNumber"]: chunk for chunk in entry["matchedChunks"]}
+    assert by_chunk[0]["git"]["commit"] == first
+    assert (by_chunk[0]["git"]["startLine"], by_chunk[0]["git"]["endLine"]) == (1, 1)
+    assert by_chunk[1]["git"]["commit"] == second
+    assert by_chunk[1]["git"]["author"] == "Second Author"
+    assert (by_chunk[1]["git"]["startLine"], by_chunk[1]["git"]["endLine"]) == (2, 2)
+
+
+def test_git_line_blame_marks_uncommitted_lines(tmp_path: Path, git_repo: Path) -> None:
+    _two_region_repo(git_repo)
+    # An uncommitted edit to the second line, still on disk at query time.
+    (git_repo / "code.py").write_text("alpha penguin one\nbeta penguin local only\n")
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "code.py", [("alpha penguin one", 0, 0), ("beta penguin two", 1, 1)]
+        )
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    by_chunk = {
+        chunk["chunkNumber"]: chunk
+        for chunk in res["c1"]["results"][0]["matchedChunks"]
+    }
+    assert "git" in by_chunk[0]
+    # The edited chunk's last touch is the working tree — named, not dressed up
+    # as the committed ancestor it replaced.
+    assert by_chunk[1]["git"]["uncommitted"] is True
+
+
+def test_git_line_blame_omits_the_field_for_chunks_without_a_line_span(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    (git_repo / "plain.txt").write_text("penguin")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "add penguin")
+
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("plain.txt", ["penguin"])], git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    chunk = res["c1"]["results"][0]["matchedChunks"][0]
+    # No span, no answer: a chunk without one never borrows the file-level commit.
+    assert "git" not in chunk
+
+
+def test_git_line_blame_costs_one_blame_call_per_admitted_document(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bound is admitted documents (≤ max_docs), never nodes × chunks."""
+    _two_region_repo(git_repo)  # code.py, two lines, two commits
+    for name in ("alpha.py", "beta.py"):
+        (git_repo / name).write_text(f"{name} walrus one\n{name} walrus two\n")
+    _commit(git_repo, "add", ".")
+    _commit(git_repo, "commit", "-m", "two more files")
+
+    cols = tmp_path / "cols"
+    docs = [
+        _spanned_doc(
+            "alpha.py", [("alpha walrus one", 0, 0), ("alpha walrus two", 1, 1)]
+        ),
+        _spanned_doc("beta.py", [("beta walrus one", 0, 0), ("beta walrus two", 1, 1)]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    calls: list[str] = []
+    original = retrieval.git_meta.blame_lines
+
+    def counting(repo: str, path: str):
+        calls.append(path)
+        return original(repo, path)
+
+    monkeypatch.setattr(retrieval.git_meta, "blame_lines", counting)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "walrus",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            max_docs=1,
+            git_line_blame=True,
+        )
+
+    assert len(res["c1"]["results"]) == 1
+    # One document admitted (two matched chunks of it) → exactly one blame.
+    assert len(calls) == 1
+    assert calls[0] in {"alpha.py", "beta.py"}
+
+
+def test_git_line_blame_omits_the_field_outside_a_repo(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "code.py").write_text("penguin\n")
+
+    cols = tmp_path / "cols"
+    docs = [_spanned_doc("code.py", [("alpha penguin one", 0, 0)])]
+    _build_files_at(cols, "c1", docs, corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_line_blame=True,
+        )
+
+    assert [d["id"] for d in res["c1"]["results"]] == ["code.py"]
+    assert "git" not in res["c1"]["results"][0]["matchedChunks"][0]
+
+
+# ── git-signal re-rank (#144) ──────────────────────────────────────────────
+
+
+def _scored_node(source_id: str, score: float):
+    """One retrieved node with the metadata the re-rank reads."""
+    from llama_index.core.schema import NodeWithScore, TextNode
+
+    return NodeWithScore(
+        node=TextNode(text=f"text of {source_id}", metadata={"source_id": source_id}),
+        score=score,
+    )
+
+
+def _git_ready_repo(repo: Path) -> None:
+    """``stale.txt`` from 2020 and ``recent.txt`` committed now."""
+    (repo / "stale.txt").write_text("penguin stale")
+    _commit(repo, "add", ".")
+    _commit(
+        repo,
+        "commit",
+        "-m",
+        "stale c1",
+        "--date=2020-01-01T00:00:00+00:00",
+    )
+    (repo / "recent.txt").write_text("penguin recent")
+    _commit(repo, "add", "recent.txt")
+    _commit(repo, "commit", "-m", "recent c2")
+
+
+def test_git_rerank_lets_a_recent_chunk_beat_a_closer_stale_one(
+    git_repo: Path,
+) -> None:
+    """The whole point of #144: recency outweighs a small cosine advantage."""
+    _git_ready_repo(git_repo)
+    ctx = retrieval._GitContext(repo=str(git_repo), base_path=str(git_repo))
+    stale = _scored_node("stale.txt", 0.90)
+    recent = _scored_node("recent.txt", 0.86)
+
+    ordered, scored = retrieval._apply_git_rerank(
+        [stale, recent],
+        ctx,
+        retrieval.GitRerankOptions(recency_weight=0.10, churn_weight=0.0),
+        now_epoch=time.time(),
+    )
+
+    assert scored == 2
+    assert [n.node.metadata["source_id"] for n in ordered] == [
+        "recent.txt",
+        "stale.txt",
+    ]
+    # The visible scores carry the boost, so the ranking is explainable.
+    assert ordered[0].score > 0.86 + 0.09
+    assert ordered[1].score == pytest.approx(0.90)
+
+
+def test_git_rerank_author_weight_prefers_that_authors_chunk(git_repo: Path) -> None:
+    (git_repo / "theirs.txt").write_text("penguin their")
+    (git_repo / "mine.txt").write_text("penguin mine")
+    _commit(git_repo, "add", ".")
+    _commit(
+        git_repo,
+        "commit",
+        "-m",
+        "both",
+        "--author=Second Author <second@test.com>",
+    )
+    # ``mine.txt`` last so the unweighted order is theirs, mine; make the
+    # authorship signal the only difference by re-committing ``mine.txt`` alone.
+    (git_repo / "mine.txt").write_text("penguin mine v2")
+    _commit(git_repo, "commit", "-am", "mine again")
+
+    ctx = retrieval._GitContext(repo=str(git_repo), base_path=str(git_repo))
+    ordered, _ = retrieval._apply_git_rerank(
+        [_scored_node("mine.txt", 0.80), _scored_node("theirs.txt", 0.80)],
+        ctx,
+        retrieval.GitRerankOptions(
+            recency_weight=0.0,
+            churn_weight=0.0,
+            author="second@test.com",
+            author_weight=0.2,
+        ),
+        now_epoch=time.time(),
+    )
+
+    assert ordered[0].node.metadata["source_id"] == "theirs.txt"
+    assert ordered[0].score == pytest.approx(1.0)
+    assert ordered[1].score == pytest.approx(0.80)
+
+
+def test_git_rerank_enabled_reorders_and_reports_its_score_kind(
+    tmp_path: Path, git_repo: Path
+) -> None:
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(recency_weight=0.5, churn_weight=0.0),
+        )
+
+    out = res["c1"]
+    assert out["scoreKind"] == GIT_RERANK_KIND
+    assert out["gitRerank"] == {"applied": True, "scored": 2}
+    assert [d["id"] for d in out["results"]] == ["recent.txt", "stale.txt"]
+    scores = [d["matchedChunks"][0]["score"] for d in out["results"]]
+    assert scores[0] > scores[1]
+
+
+def test_git_rerank_runs_before_the_cross_encoder_which_keeps_the_score(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both opt-ins on: git decides ``top_n`` membership, the CE owns the score.
+
+    The git pass must run BEFORE the cross-encoder. The CE replaces every score
+    and truncates, so a blend applied afterwards could neither change membership
+    nor survive in the output — yet the result would still claim
+    ``scoreKind == "rerank"`` (review round 1, finding 1).
+    """
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    seen: list[list[str]] = []
+
+    def fake_rerank(nws, query, cfg):  # noqa: ANN001, ANN202
+        seen.append([n.node.metadata["source_id"] for n in nws])
+        # Mimic SentenceTransformerRerank: keep ``top_n``, replace the score.
+        return [n.model_copy(update={"score": 0.42}) for n in nws[: cfg.top_n]]
+
+    monkeypatch.setattr(
+        retrieval,
+        "resolve_rerank_config",
+        lambda: CoreV2RerankConfig(enabled=True, model="x", top_n=1),
+    )
+    monkeypatch.setattr(retrieval, "_apply_rerank", fake_rerank)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(recency_weight=5.0, churn_weight=0.0),
+        )
+
+    out = res["c1"]
+    # A 5.0 recency bonus swamps any cosine gap: git's order is what the CE sees,
+    # so its ``top_n`` membership is decided by the git pass, as documented.
+    assert seen == [["recent.txt", "stale.txt"]]
+    assert out["gitRerank"] == {"applied": True, "scored": 2}
+    # The cross-encoder owns both the final score and the reported score kind.
+    assert out["scoreKind"] == "rerank"
+    assert [d["id"] for d in out["results"]] == ["recent.txt"]
+    assert out["results"][0]["matchedChunks"][0]["score"] == pytest.approx(0.42)
+
+
+GIT_RERANK_KIND = "git-rerank"
+
+
+def test_git_rerank_off_does_no_git_work_and_leaves_output_unchanged(
+    tmp_path: Path, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _git_ready_repo(git_repo)
+    cols = tmp_path / "cols"
+    docs = [
+        make_doc("stale.txt", ["penguin stale"]),
+        make_doc("recent.txt", ["penguin recent"]),
+    ]
+    _build_files_at(cols, "c1", docs, git_repo)
+
+    with mock_embedding(embed_dim=8):
+        before = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    def _no_git(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("no git work may happen when the re-rank is off")
+
+    for name in ("repo_toplevel", "blame_lines", "recent_commit_count"):
+        monkeypatch.setattr(retrieval.git_meta, name, _no_git)
+
+    with mock_embedding(embed_dim=8):
+        after = retrieval.search(
+            "penguin", configs=[_cfg("c1")], collections_path=str(cols)
+        )
+
+    # Byte-for-byte identical, and no new key on the result.
+    assert json.dumps(after, sort_keys=True) == json.dumps(before, sort_keys=True)
+    assert "gitRerank" not in after["c1"]
+    assert after["c1"]["scoreKind"] == "cosine"
+
+
+def test_git_rerank_skip_is_reported_and_keeps_the_cosine_kind(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("penguin")
+    cols = tmp_path / "cols"
+    _build_files_at(cols, "c1", [make_doc("a.txt", ["penguin"])], corpus)
+
+    with mock_embedding(embed_dim=8):
+        res = retrieval.search(
+            "penguin",
+            configs=[_cfg("c1")],
+            collections_path=str(cols),
+            git_rerank=retrieval.GitRerankOptions(),
+        )
+
+    assert res["c1"]["gitRerank"] == {
+        "applied": False,
+        "reason": "no-git-repository",
+    }
+    # Nothing was blended, so the reported score kind stays honest.
+    assert res["c1"]["scoreKind"] == "cosine"
+    assert [d["id"] for d in res["c1"]["results"]] == ["a.txt"]
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_dirty_indexed_snapshot_omits_document_provenance_but_keeps_line_blame(
+    git_repo: Path, staged: bool
+) -> None:
+    from types import SimpleNamespace
+
+    path = git_repo / "initial.txt"
+    path.write_text("edited\n")
+    if staged:
+        _commit(git_repo, "add", "initial.txt")
+    node = SimpleNamespace(
+        metadata={"source_id": "initial.txt", "modified_time": _mtime(path)}
+    )
+    ctx = retrieval._GitContext(repo=str(git_repo), base_path=str(git_repo))
+    assert ctx.provenance(node) is None
+    assert (
+        retrieval._line_provenance(
+            ctx, "initial.txt", {"start_line": 0, "end_line": 0}
+        )["uncommitted"]
+        is True
+    )

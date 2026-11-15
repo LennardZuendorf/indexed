@@ -14,8 +14,10 @@ import math
 # plain `.get()` defaults a v1 collection out of this set — its sort key
 # stays the raw ascending distance, unchanged. "rerank" is a cross-encoder
 # relevance (also higher-is-better) reported when
-# [core.v2.rerank] enabled=true replaces the cosine score.
-HIGHER_IS_BETTER = frozenset({"cosine", "rerank"})
+# [core.v2.rerank] enabled=true replaces the cosine score. "git-rerank" is
+# cosine plus small non-negative git-signal boosts (#144): still cosine-scaled,
+# never below the cosine it started from, so higher is still better.
+HIGHER_IS_BETTER = frozenset({"cosine", "rerank", "git-rerank"})
 
 
 def unified_relevance(raw_score: float, score_kind: str) -> float:
@@ -23,6 +25,9 @@ def unified_relevance(raw_score: float, score_kind: str) -> float:
 
     - "cosine" (v2, rerank disabled): already a bounded similarity in [0,1] —
       the raw score IS the relevance, unchanged.
+    - "git-rerank" (v2 with the git-signal re-rank on, #144): the same cosine
+      plus at most a few tenths of non-negative git boost, returned as-is — it
+      stays on the cosine scale, so mixed views stay comparable.
     - "rerank" (v2 with [core.v2.rerank] enabled): an UNBOUNDED cross-encoder
       logit (measured -11 to +6) — squashed through a sigmoid so it lands in
       (0,1), comparable to cosine/l2_squared instead of overwhelming or
@@ -33,7 +38,7 @@ def unified_relevance(raw_score: float, score_kind: str) -> float:
     """
     if score_kind == "rerank":
         return 1.0 / (1.0 + math.exp(-raw_score))
-    if score_kind in HIGHER_IS_BETTER:  # "cosine"
+    if score_kind in HIGHER_IS_BETTER:  # "cosine", "git-rerank"
         return raw_score
     return 1.0 - raw_score / 2.0
 

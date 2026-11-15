@@ -89,8 +89,18 @@ def search(
     collections_path: Optional[str] = None,
     *,
     rerank: Optional[bool] = None,
+    changed_since: Optional[str] = None,
+    git_provenance: Optional[bool] = None,
+    git_line_blame: Optional[bool] = None,
+    git_rerank: Any = None,
 ) -> Dict[str, Any]:
-    """Search v2 collections; ``rerank`` overrides ``[core.v2.rerank]`` per call."""
+    """Search v2 collections; ``rerank`` overrides ``[core.v2.rerank]`` per call.
+
+    ``changed_since``/``git_provenance``/``git_line_blame`` are the opt-in
+    query-time git options (v2 files collections only; no-ops elsewhere), and
+    ``git_rerank`` is their scoring counterpart: ``None`` (off) or a
+    ``retrieval.GitRerankOptions`` the facade built from ``[core.v1.search]``.
+    """
     from indexed.core.v2 import retrieval
 
     with _wrap("search"):
@@ -105,6 +115,10 @@ def search(
             include_matched_chunks=include_matched_chunks,
             collections_path=collections_path,
             rerank=rerank,
+            changed_since=changed_since,
+            git_provenance=git_provenance,
+            git_line_blame=git_line_blame,
+            git_rerank=git_rerank,
         )
 
 
