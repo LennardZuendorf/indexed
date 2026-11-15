@@ -1827,11 +1827,36 @@ surviving number fit the merged tree (55_810 vs 58_815 -> merged 58_839; 51_050
 vs 52_600 -> merged 52_431; four repair rounds in six days, each needing a local
 re-measure plus a paragraph of lineage).
 **Rule:** Never store a number that every branch must edit to go green. Gate on
-growth against a ref (`--baseline-ref`, CI passes the PR base and
-`github.event.before` on a push): nothing shared is edited, the verdict depends
+growth against a ref (`--baseline-ref`; CI passes the merge commit's first
+parent on a PR and `github.event.before` on a push): nothing shared is edited,
+the verdict depends
 only on the branch, and the same gate runs before and after merge. Size the
 allowance from measured history (largest legitimate per-merge growth plus a
 margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
+
+## Benchmark provenance and check names (2026-11-12)
+
+- **The event payload's base SHA is not the base the merge was built on.**
+  `pull_request.base.sha` is a snapshot; `github.sha`'s merge commit is built
+  later, and the two disagree whenever the base branch moves in between. Trust
+  the merge commit's own first parent and treat the payload base as a notice.
+  Substituting the snapshot both reds valid comparisons and charges the base
+  branch's intervening commits to the PR.
+- **A red check whose name cannot say what it means is not a gate.** Exit 1
+  (measured regression) and exit 2 (compared nothing) surfaced as the same red
+  `Performance Benchmarks`, which is why three PRs were closed as
+  "pre-existing" rather than read. Record the verdict as a job output and give
+  each outcome its own job check name.
+- **Prove determinism by re-running one run, never by comparing two heads.**
+  A later green on a different head — one that merged the base branch, say — is
+  a different input and says nothing about an earlier red. The 2026-11-12
+  "benchmark flake" was exactly that: red on `6ff5d2c`, green on `930743ae`,
+  which merged main and so refreshed the payload base. The evidence that counts
+  is two attempts of one run on one merge: `43184196410` measured `4319ee0c` on
+  AMD EPYC 9V74 and then 7763, and concluded PASS both times.
+- **The same shell proof lives in two workflows.** `python-benchmark.yml` and
+  `python-eval.yml` each carry `verify_pr_merge`; changing one alone leaves two
+  policies behind the same vocabulary. Change both in the same cycle.

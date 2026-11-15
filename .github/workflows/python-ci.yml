@@ -64,19 +64,28 @@ jobs:
 
     - name: Check size gates
       env:
-        # LOC ceilings are growth against the merge base, never a stored
-        # number: a PR is measured against its base commit, a main/building
-        # push against the commit it replaces (so the ratchet also runs after
-        # merge). Empty (manual dispatch) or the all-zero SHA (new branch)
-        # falls back to the script's legacy absolute ceilings.
-        SIZE_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        EVENT_NAME: ${{ github.event_name }}
+        PUSH_BEFORE: ${{ github.event.before }}
       run: |
-        case "$SIZE_BASELINE_REF" in
-          ""|0000000000000000000000000000000000000000)
-            uv run python scripts/check_sizes.py ;;
-          *)
-            uv run python scripts/check_sizes.py --baseline-ref "$SIZE_BASELINE_REF" ;;
-        esac
+        # LOC ceilings are growth against the base the tree was built on — never
+        # a stored number. On a PR the checkout is the merge commit, so its first
+        # parent IS that base (pull_request.base.sha is only a snapshot the merge
+        # may already have moved past — see .spec/lessons.md, "Benchmark
+        # provenance"). On a push it is the commit being replaced, so the
+        # ratchet also runs after merge.
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          baseline=$(git rev-parse --verify --quiet 'HEAD^1' || true)
+        else
+          baseline="$PUSH_BEFORE"
+        fi
+        if [ -n "$baseline" ] \
+          && [ "$baseline" != "0000000000000000000000000000000000000000" ] \
+          && git rev-parse --verify --quiet "${baseline}^{tree}" >/dev/null; then
+          uv run python scripts/check_sizes.py --baseline-ref "$baseline"
+        else
+          echo "No usable baseline ref ($baseline); using the absolute ceilings."
+          uv run python scripts/check_sizes.py
+        fi
 
     - name: Run System Tests
       run: |

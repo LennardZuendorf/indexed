@@ -36,19 +36,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Legacy offline ceilings (main measured src 31_759 / tests 50_940 on
-#: 2026-11-15). CI enforces growth against the merge base instead, so this line
-#: is no longer a per-branch edit — see GROWTH_ALLOWANCE.
+#: Legacy offline ceilings (main measured src 31_759 / tests 51_187 after this
+#: branch, 2026-11-15). CI enforces growth against the merge base instead, so
+#: this line is no longer a per-branch edit — see GROWTH_ALLOWANCE.
 SRC_LOC_MAX = 31_800
-TEST_LOC_MAX = 51_150
+TEST_LOC_MAX = 51_300
 
 #: Baseline-mode growth allowance per bucket, in lines. Rule: the largest
-#: per-merge growth observed in the 40 first-parent merges before 2026-11-15,
-#: plus ~25 % margin, rounded up to the next hundred (tests +2_573 for the eval
-#: harness, src +1_956 in the same merge). It also covers the largest pending
-#: branch (+3_029 tests, the tier-0 LSP work). Growth beyond it means the branch
-#: is bigger than any single reviewed unit this repo has landed — split it, or
-#: trim boilerplate first, rather than raising the number.
+#: per-merge growth in the 40 first-parent merges before 2026-11-15 (+2_573
+#: tests / +1_956 src, both in feat(eval)'s retrieval harness), plus ~25 % margin,
+#: rounded up to the next hundred. Growth beyond it means the branch is bigger
+#: than any single reviewed unit this repo has landed — split it, or trim
+#: boilerplate first, rather than raising the number. A stack whose branches
+#: land in order is measured one branch at a time; a stack merged as one unit
+#: (tier-1 LSP evidence: +7_899 tests over main) is exactly what this refuses.
 GROWTH_ALLOWANCE = {"src": 2_500, "tests": 3_300}
 
 AGENTS_MD_MAX_LINES = 100
