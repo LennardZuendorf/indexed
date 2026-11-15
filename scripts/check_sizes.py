@@ -4,7 +4,7 @@
 Catches monorepo regrowth after the simplify collapse: a second package dir,
 a second AGENTS.md, a second pyproject.toml (or ``una`` sneaking back in), or
 src/test LOC creeping back toward the old 7-package scale. The LOC ceilings
-are current measured size + headroom (~21.4k src / ~27.7k tests today) — NOT
+are current measured size + bounded headroom — NOT
 the simplify feature's aspirational ~6k/~8k targets, which are out of reach
 without a v2 rewrite or removing shipped functionality (both out of scope).
 This script only guards against regression, it does not chase that target.
@@ -45,8 +45,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
 # `metadata` so a v2 hit can say where it sits — genuine contract surface, not
 # stealth regrowth; ceiling = measured (31_602) + headroom.
-# CI, settings, Git and watcher: 34,444 lines plus bounded headroom.
-SRC_LOC_MAX = 34_650
+# Combined Git, LSP, watcher and settings: 36,244 source lines plus bounded headroom.
+SRC_LOC_MAX = 36_400
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -138,11 +138,16 @@ SRC_LOC_MAX = 34_650
 # Aggregate keeps search golden/locator tests, benchmark/evaluation gate
 # regressions and main's pinned parsing-corpus guard: measured 50_636 lines
 # plus 214 lines of headroom. Source budget stays at 31_800.
-# CI, settings, Git, watcher and cache regressions: measured 55,608, then
-# 55,648 when the final watcher commit landed its tokenizer tests. The
-# enumeration-guard tests that close PR #278's codecov/patch gap bring it to
-# 55,724. Preserve the prior 86-line headroom after the added tests.
-TEST_LOC_MAX = 55_810
+# CI foundation adds workflow contract tests: measured 50_867 plus headroom.
+# Combined editor, benchmark and cache regressions: measured 58,723.
+# Raising the ceiling here to 58,815 kept 92 lines of headroom.
+# Merging PR #278's new head (8bda74f: Git/Settings/CI foundation, watcher
+# tokenizer tests and the enumeration-guard tests that closed its codecov/patch
+# gap) into the LSP evidence branch sums the two legitimate test deltas — the
+# watcher side measured 55,724 in isolation, this side 58,723, and the merged
+# tree measures 58,839. Neither side is stealth regrowth; ceiling = measured
+# + 91 lines of headroom.
+TEST_LOC_MAX = 58_930
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

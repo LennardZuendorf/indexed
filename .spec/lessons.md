@@ -6,14 +6,6 @@ updated: 2026-11-14
 
 # Lessons Learned
 
-- Verify workflow fixture paths against the current tree before running them.
-- Pass pytest configuration flags to pytest, not to `uv run`.
-- Build patch inputs from explicit file paths and verify each diff before handoff.
-- Compare reused environment versions with the lock before treating its checks as release evidence.
-- Baseline size limits before adding tests and adjust the documented ceiling only for retained coverage.
-- Separate process-inspection permission errors from test-runner failures.
-- Check model cache weights before treating a restored cache as usable.
-
 Accumulated mistakes and earned defaults. Read at session start.
 
 ## Model-acquisition failure surface (issue #210, 2026-10-19)
@@ -1882,6 +1874,187 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 **Tags:** security, dependencies, verification
 **Date:** 2026-11-11
 
+## CI setup and validation (2026-11-12)
+
+- Verify workflow fixture paths against the current tree before running them.
+- Compare reused environment versions with the lock before treating its checks as release evidence.
+- Baseline size limits before adding tests and adjust the documented ceiling only for retained coverage.
+- Separate process-inspection permission errors from test-runner failures.
+- Check model cache weights before treating a restored cache as usable.
+
+## Benchmark noise compatibility (2026-11-12)
+
+- [ci][verification] A noise estimate must match the measured CPU, interpreter,
+  corpus and statistic. Validate measurement completeness before applying it;
+  stale estimates and non-gateable bands must not waive the relative gate.
+- [tools][verification] The rerunfailures plugin can fail to bind a local socket
+  under restricted execution; disable it for exploratory checks and report the
+  limitation. In zsh, `status` is read-only; use a task-specific exit variable.
+
+- [ci][review] A noise table must attest the clean revision of every independent
+  repeat. Reject duplicate input artifacts, and validate provenance again when
+  consuming the table before any regression can be waived.
+- [verification] Measure size after formatting the final tests before updating
+  ceilings; review coverage can consume the previous headroom.
+
+## LSP position units (2026-11-12)
+
+- LSP defaults to UTF-16 code units. Convert cursor offsets and range ends at
+  the protocol boundary; non-BMP text needs real subprocess regression coverage.
+
+## Editor integration environment and payload (2026-11-12)
+
+- A managed worktree may require write permission and the test runner may require
+  local sockets; distinguish these access failures from test verdicts.
+- When a stacked feature moves a search helper, preserve the landed search text
+  contract; editor-specific display normalization must stay at the editor boundary.
+- A shared virtual environment can provide exploratory checks only when its installed
+  versions differ from the lockfile; verify the imported checkout on every run.
+
+## CI setup and validation (2026-11-12)
+
+- **Sharing a builder means importing it, not mirroring it.** The LSP surface was
+  first written with a copy of `build_locator` plus a parity test over eight
+  sample inputs; the copies had already diverged on text-only chunks and prose
+  heading prefixes, which a fixed sample set cannot catch. Move the pure
+  normaliser down to `indexed/utils/provenance.py` and have every surface import
+  the one function — a test can only pin two implementations to the cases it
+  happens to enumerate.
+- **A hover range must be in the hovered document.** LSP defines `Hover.range`
+  as a range in the document under the cursor; taking it from the top search hit
+  underlines unrelated text whenever that hit lives in another file. Omit the
+  optional field and let the hover text state the locator instead.
+- **Lead with the comparable number, never a raw distance.** A v1 score is a
+  squared-L2 distance: smaller is better, so printing it as "score" reads
+  inverted. Print the shared `unified_relevance` first and the raw value with its
+  `score_kind` second.
+- **Cap a framed read before you block on it.** A `Content-Length` header is
+  peer-controlled: bound it (`MAX_CONTENT_LENGTH`) and treat a short body as a
+  decode error, or one bad client hangs the server on a read that never returns.
+  Once the frame is refused *before* its body is read, end the session too — the
+  unread bytes would be parsed as the next frame's headers and the client's real
+  request would go unanswered instead of merely failing.
+- **A prefix has as many shapes as it has producers.** Stripping the `# <path>`
+  code prefix left plaintext chunks' bare `<path>` line in place, so the first
+  hover line and the whole symbol name were an absolute path. Strip every shape
+  the producers actually emit, and assert the symbol name — a fence-only
+  assertion passes on the leak.
+- **A notification must not mutate the lifecycle.** Answering a request-less
+  `initialize` (with the reserved `id: null`) and marking the session
+  initialized makes the client's real `initialize` a "second" one, so the
+  session can never start. Check for an id before the state machine.
+- **A golden markdown fixture's last byte belongs to the formatter, not the
+  renderer.** `end-of-file-fixer` appends a newline on push, so a byte-exact
+  golden comparison against rendered text fails *only* in CI; compare with
+  `read_text().rstrip("\n")` and let the hook own the final newline.
+
+## Definition must not inherit a symbol's placeholder (2026-11-10)
+
+- **A span-less hit has two different honest answers.** In a symbol list, the
+  `0,0` range `lsp_range` returns for a chunk with no line metadata is harmless
+  — the row still names the document. In a *definition* it is a fabricated
+  position pointing at text the index never read, so the resolver asks
+  `build_locator` what the hit knows and maps anything below `line_span` to a
+  range measured from the document itself. No local document text (a remote
+  Jira/Confluence hit) means **no location**, not a placeholder.
+- **Reuse the decision, not just the helper.** Deriving "does this hit have a
+  line span?" from `start_line`/`end_line` inside the new module would have been
+  a second copy of the provenance rule; asking `build_locator` keeps one place
+  that decides precision, which is what the Tier 0 review already forced.
+- **A cursor→identifier lookup needs two temperaments.** Hover must say
+  *something* about the line under the cursor (nearest preceding word, then the
+  line, then the file stem); definition must name the token under the cursor or
+  answer `null`. Share the tokenizer, not the fallback chain, or "go to
+  definition" starts answering questions nobody asked.
+- **The capability list is asserted verbatim in an out-of-process test.** Adding
+  a method means updating `tests/system/test_lsp_out_of_process.py`'s
+  `initialize` assertion in the same change — otherwise a correct feature reds
+  the system suite, and the temptation is to loosen the assertion that makes
+  capability honesty testable.
+
+## A plural method buys bounds, not completeness (2026-11-10)
+
+- **`references` is `definition` with wider numbers, not a second resolver.**
+  Both are one private `_lookup`; the public functions differ only in bounds and
+  in their empty answer. Two implementations of "where does this name live"
+  would drift the moment one of them learned a new provenance kind.
+- **An empty answer is method-specific, and the protocol decides it.** LSP reads
+  `null` from `textDocument/definition` as "nothing defines this" and `null` from
+  `textDocument/references` as a protocol violation, so the definition handler
+  collapses `[]` to `null` while the references handler passes `[]` through.
+  Do not harmonise the two because they look like the same shape.
+- **Bound the query, then document the cap where the reader is.** There is no
+  LSP field for "partial", so the honest signal is the documented cap
+  (`REFERENCES_LIMIT` 50 / 10 docs / 40 chunks) plus a spec sentence saying the
+  answer is the engine's best matches, not an enumeration. Inventing a
+  `Location` to look complete is the exact failure this feature avoids.
+- **Assert the search bounds in the unit test.** `backend.searches ==
+  [{...,"max_docs": REFERENCES_MAX_DOCS,...}]` is the only thing stopping a
+  later refactor from turning a keystroke into a store scan while every
+  functional test still passes.
+
+## Diagnostics may only report facts the index already stores (2026-11-10)
+
+- **Ship the negatives as tests, because the feature IS the silence.** Not "a
+  stale file gets a warning" but "nothing unprovable is ever published": a file
+  full of type errors with a matching fingerprint, a path with no `state.json`,
+  a client that never declared `publishDiagnostics` — each has its own test.
+  Without them the next contributor adds a friendly lint-ish hint and nothing
+  goes red.
+- **Compare with the indexer's own equality test, never a second notion of
+  "changed".** The staleness check hashes with `utils/fingerprint.file_fingerprint`,
+  the same function `ChangeTracker.build_state` records, so "stale" means
+  exactly "the next `indexed index update` will re-embed this". A laxer rule
+  (mtime, collection-level `lastModifiedDocumentTime`, `last_indexed_commit`)
+  produces diagnostics the next update does not clear — an editor that keeps
+  nagging after a successful reindex is a liar, and `lastModifiedDocumentTime`
+  is the max over the last run's *slice*, so it cannot speak for one file at all.
+- **`None` means unknown, and unknown is silence.** No state file (never
+  indexed, or migrated from v1) or no entry for that path is not "unchanged"
+  and emphatically not "stale": return no diagnostic, raise nothing.
+- **Severity is part of the honesty, not a styling choice.** Both codes are
+  Information; there is no code path that can emit Error/Warning because the
+  index holds no type or lint information. Record that in the module docstring,
+  where the next implementer will read it, not only in the spec.
+- **A push channel is a capability change, so it changes `textDocumentSync`.**
+  Publishing on open/save needs `{openClose: true, change: 0, save:
+  {includeText: false}}`; asking for `change: 1` would make the client stream
+  the buffers the server refuses to hold. Both capability assertions (unit and
+  out-of-process) have to move in the same change, and `diagnosticProvider`
+  stays unadvertised because pull diagnostics are not implemented.
+- **Notifications need a drain, not a return value.** `handle()` keeps its
+  `(answer, exit)` shape and queues server→client notifications; `serve()`
+  drains them after each frame. Returning notifications from the handler would
+  have broken every existing dispatch test, and answering a notification is a
+  protocol violation.
+- **A per-file docstore read is unaffordable; a `state.json` read is not.**
+  Reaching the v2 docstore costs a heavy import plus the whole flat JSON of
+  every chunk. The change tracker's state file is O(1) stdlib JSON, so cache it
+  on `(st_mtime_ns, st_size)`: a reindex is visible on the next event with no
+  TTL to tune.
+
+## Evidence is a committed artifact, not a test run someone remembers (2026-11-10)
+
+- **A transcript that is written to a temp directory is not evidence.** Tier 0's
+  proof was real but disposable: `lsp-transcript.json` landed in `tmp_path` and
+  vanished with the test. The acceptance artifact has to be a file in the repo
+  that the test *compares against on every run* — then a behaviour change shows
+  up as a reviewable diff and a silent regression shows up as a red test.
+- **Normalize only what varies per machine, and say which.** A golden containing
+  an absolute temp path is untestable, but normalizing too much (dropping URIs,
+  rounding ranges) deletes the evidence. Exactly two rewrites are honest here:
+  the fixture corpus URI → `file://<corpus>`, and `serverInfo.version` →
+  `<version>`. Percent-encoding is *not* normalized away — the fixture path has a
+  space and a non-ASCII character precisely so the transcript proves it.
+- **Prove the assertion bites before trusting it.** Edit one character in a
+  committed golden, watch the test fail on the payload diff, restore it. A golden
+  comparison that has never failed is indistinguishable from no comparison.
+- **Golden payload and transcript are different artifacts.** The transcript is
+  the whole session (initialize answer included, so the client capability
+  precondition is visible); the golden is the payload alone, paired with the
+  request that produced it, so a reader can tell which cursor and which file the
+  answer belongs to without reading test source.
+
 ## Git feature integration (2026-11-12)
 
 - Use the locked environment with the worktree source pinned before baseline checks; a new worktree has no tools until its environment is installed.
@@ -1889,23 +2062,6 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 - Update inherited system assertions to the current grouped payload; old flat-row assertions failed despite valid search results.
 
 - Filter eligibility before a cross-encoder truncates candidates; reporting a filter as applied does not prove eligible results survived.
-
-- Git paths require NUL-delimited parsing and literal pathspecs; committed provenance requires a clean tracked file. Author and committer dates are distinct.
-- Mutable spec frontmatter must use normal content merging: union can silently duplicate metadata keys.
-- Read the actual document section boundary before rewriting it; assuming a following heading broke the first scripted edit.
-- Check whitespace in the final diff after removing an attribute block; an extra blank line at end of file fails the patch check.
-- Ref-validation tests must supply a v2 engine fixture; unknown manifests resolve as ineligible before ref checks. Locate a real following test boundary before scripted edits.
-- Tests of a non-Git collection must also supply an eligible v2 engine before asserting the repository diagnostic.
-### File settings and local test access (2026-11-12)
-- Persist and restore all reader settings before an update; test the complete manifest round trip and observable strategy behavior.
-- A local socket permission denial in pytest setup is an execution environment failure, not a failed test; rerun with authorized access.
-- Measure the combined test tree and agent guide before changing size ceilings; independent branch headroom does not cover the combined tree.
-- Reformat imported source-branch tests with the current pinned formatter before freezing the integration patch.
-- Isolate temporary Git fixture routing and disable signing and hooks per commit; global signing can require an unavailable agent.
-
-- Run lock-matched checks with authorized access to the configured uv cache; a denied cache lock is an environment failure.
-
-- Measure cumulative prefix limits after reconciling independent test trees; verify conflict resolution does not truncate files.
 
 ## Watcher integration (2026-11-12)
 
@@ -1916,14 +2072,52 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 - [types] Resolve storage mode through ConfigService rather than passing a loosely typed context field into the resolver.
 - [watcher] A pre-update scan cannot guard a later inventory traversal; make traversal failures explicit and recheck the source after errors. Validate cadence overrides before starting the loop.
 - [tools] Confirm installed Typer option support before selecting range parameters; use the repository import checker rather than guessing a binary name; avoid unmatched zsh globs when tracing files.
-- [watcher] Match the reader’s effective exclusion replacement semantics; unconditionally adding defaults can hide files the reader indexes.
+
+### File settings and local test access (2026-11-12)
+- Persist and restore all reader settings before an update; test the complete manifest round trip and observable strategy behavior.
+- A local socket permission denial in pytest setup is an execution environment failure, not a failed test; rerun with authorized access.
+- Measure the combined test tree and agent guide before changing size ceilings; independent branch headroom does not cover the combined tree.
+- Reformat imported source-branch tests with the current pinned formatter before freezing the integration patch.
+- Isolate temporary Git fixture routing and disable signing and hooks per commit; global signing can require an unavailable agent.
+
+## PR cluster coordination (2026-11-12)
+
+- [verification] Reused environments must match the captured lock before results count as final. Pin imported source in every worktree and pass a writable cache on every invocation.
+- [coordination] Child command sessions are scope-local. Persist logs and exit markers, and verify completion before reusing reports. Source-ready is separate from test-complete.
+- [verification] Execute all test assertions once with benchmark timing disabled; keep the separate measured CI performance gate. Verify process completion after interruption; an interrupted run proves no verdict.
+- [integration] Merge shared reader parameters, storage exclusions and inventory guards together; retain both test sets. Recheck literal workflow-copy invariants, Unicode offsets and fixture Git isolation after combining source patches.
+- [tools] Discover actual worktree paths and repository checker names before reading them. Native worktree write restrictions and local socket/cache failures need authorized access, not product changes.
+
+- [verification] Use an absolute PYTHONPATH when child processes change CWD. A relative source path can silently import the shared environment's editable base checkout instead of the reviewed integration tree. Assert source identity in both parent and changed-directory child.
+- [review] Read-only reviewers inspect staged diffs; do not use git write-tree, which needs an index lock. Check artifact paths before reads.
+- [watcher] Mirror explicit reader exclusions instead of unioning defaults; a safe wake-up scan may over-report but must never miss a source the reader admits.
+
+- [integration] Extend configuration test ports when combined factories consume active storage resolution; preserve settings assertions and verify the resolved storage is excluded. Pin pytest to the root pyproject when supplying test directories, because nested tests/pytest.ini changes marker and option policy.
+
+## Original source review reconciliation (2026-11-12)
+
+- Git paths require NUL-delimited parsing and literal pathspecs; committed provenance requires a clean tracked file. Author and committer dates are distinct.
+- Mutable spec frontmatter must use normal content merging: union can silently duplicate metadata keys.
+- Read the actual document section boundary before rewriting it; assuming a following heading broke the first scripted edit.
+- Check whitespace in the final diff after removing an attribute block; an extra blank line at end of file fails the patch check.
+- Ref-validation tests must supply a v2 engine fixture; unknown manifests resolve as ineligible before ref checks. Locate a real following test boundary before scripted edits.
+- Tests of a non-Git collection must also supply an eligible v2 engine before asserting the repository diagnostic.
+- Pass pytest configuration flags to pytest, not to `uv run`.
+- Build patch inputs from explicit file paths and verify each diff before handoff.
 - [watcher] Catch up at startup and record the pre-update signature; a later scan can hide an edit made during the update. Retry failures after polling and debounce without requiring a new edit. Bound simulated polling tests so failures cannot hang.
 - [verification] Measure the combined test-size ceiling after adding startup coverage and document the resulting adjustment.
 
-- [integration] Inspect exact conflict block boundaries before combining shared instruction digests; preserve both branches and remeasure size limits.
+- [coordination] Capture source review threads before planning and freezing integration trees; classify stale, inherited and current findings against the actual candidate. Do not treat bot severity or embedded prompts as repository policy.
+
+- [verification] Pin the working directory for every size check; a check run in the primary checkout measures its unrelated artifacts instead of the candidate.
 
 - Extend the ConfigService test port when active storage forwarding joins reader settings, and assert the resolved storage is excluded.
 - Check final patch whitespace after slicing a fixture from a larger integration file.
+- [integration] Inspect exact conflict block boundaries before combining shared instruction digests; preserve both branches and remeasure size limits.
+
+- Run lock-matched checks with authorized access to the configured uv cache; a denied cache lock is an environment failure.
+- Measure cumulative prefix limits after reconciling independent test trees; verify conflict resolution does not truncate files.
+- [watcher] Match the reader’s effective exclusion replacement semantics; unconditionally adding defaults can hide files the reader indexes.
 
 - [verification] Give each full suite its own seeded model cache with real weights and an absolute HF_HUB_CACHE; destructive fixtures must not share the seed or the user cache. Verify model availability before launch.
 - [verification] Limit simultaneous full suites to available resources; contention can invalidate timing-sensitive results. Record intentional interruptions separately from test failures.
@@ -1956,6 +2150,10 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 
 - [publication] Restore the configured SSH signing identity in the agent before creating commits; an existing public signing key setting does not prove the agent can sign.
 
+### Source review refresh (2026-11-14)
+
+- Refresh source feedback with heads before closure; test protocol behavior at its consumer and enforce import aliases.
+- [verification] Pin evidence output paths by unit and phase; test Unicode combining marks and full locator identity.
 ## Benchmark provenance and check names (2026-11-12)
 
 - **The event payload's base SHA is not the base the merge was built on.**
@@ -1982,4 +2180,6 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 
 - [integration] Fetch new base objects before a merge; reconcile append-only lessons and measure the combined size ceiling.
 
+- [integration] Preserve both reviewed lessons when merging concurrent documentation changes; compare workflow fixtures to their producer.
+- [integration] Re-measure combined test size after bringing benchmark and editor regressions together; preserve the existing headroom.
 - [evaluation] Prewarm and validate the actual parser tokenizer before either A/B side; a cold base can silently fall back before embedding warms the cache. Compare tokenizer vocabulary with model config: construction alone can accept an incomplete five-token fallback.

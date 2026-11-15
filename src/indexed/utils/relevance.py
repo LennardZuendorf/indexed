@@ -19,6 +19,10 @@ import math
 # never below the cosine it started from, so higher is still better.
 HIGHER_IS_BETTER = frozenset({"cosine", "rerank", "git-rerank"})
 
+#: The score kind reported for a collection that carries no ``scoreKind`` (v1):
+#: squared-L2 distance over unit vectors — see ``unified_relevance``.
+V1_SCORE_KIND = "l2_squared"
+
 
 def unified_relevance(raw_score: float, score_kind: str) -> float:
     """Map a raw per-engine/per-mode score onto one comparable (0, 1) measure.
@@ -43,4 +47,4 @@ def unified_relevance(raw_score: float, score_kind: str) -> float:
     return 1.0 - raw_score / 2.0
 
 
-__all__ = ["HIGHER_IS_BETTER", "unified_relevance"]
+__all__ = ["HIGHER_IS_BETTER", "V1_SCORE_KIND", "unified_relevance"]
