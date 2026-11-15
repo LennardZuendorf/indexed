@@ -266,6 +266,33 @@ def test_watch_once_runs_a_single_update_pass(monkeypatch, tmp_path: Path):
     assert calls[0][0].name == "docs"
 
 
+def test_watch_stops_cleanly_on_ctrl_c(monkeypatch, tmp_path: Path):
+    """Ctrl-C is the documented stop: one message and exit 0, no traceback."""
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("a")
+    (tmp_path / "collections" / "docs").mkdir(parents=True)
+    (tmp_path / "collections" / "docs" / "manifest.json").write_text(
+        '{"reader": {"type": "localFiles", "basePath": "%s"}}' % corpus
+    )
+    _patch_watch_wiring(
+        monkeypatch,
+        tmp_path,
+        [SimpleNamespace(name="docs", source_type="localFiles", indexers=["default"])],
+    )
+
+    def interrupted(**_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(watch_service, "run_watch_loop", interrupted)
+
+    result = runner.invoke(app, ["--local", "watch", "docs"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Stopped watching." in ANSI_ESCAPE.sub("", result.stdout)
+    assert "Traceback" not in result.stdout
+
+
 def test_watch_rejects_positional_and_option_together(monkeypatch, tmp_path: Path):
     _patch_watch_wiring(monkeypatch, tmp_path, [])
 

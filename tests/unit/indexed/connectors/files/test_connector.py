@@ -175,5 +175,54 @@ def test_source_disappearing_during_enumeration_aborts(tmp_path, monkeypatch):
             shutil.rmtree(source)
 
     monkeypatch.setattr(files_document_reader.os, "walk", disappearing_walk)
-    with pytest.raises(OSError):
+    with pytest.raises(FileNotFoundError):
         connector.get_changes(state)
+
+
+def test_non_directory_source_refuses_to_enumerate(tmp_path):
+    """A file as source must raise, never walk to an empty index.
+
+    An empty walk would classify every indexed document as deleted and empty
+    the collection, so the path is validated before any enumeration.
+    """
+    source_file = tmp_path / "note.txt"
+    source_file.write_text("hello")
+    connector = FileSystemConnector(path=str(source_file))
+
+    with pytest.raises(NotADirectoryError) as excinfo:
+        connector.get_changes()
+
+    assert str(excinfo.value) == connector.reader.base_path
+    assert connector.reader.base_path == str(source_file.resolve())
+
+
+def test_source_replaced_during_enumeration_aborts(tmp_path, monkeypatch):
+    """A tree swapped mid-walk must raise, not diff two different trees.
+
+    Renaming the source and recreating the path keeps it valid while changing
+    the inode, so a reader that only compared paths would return a list of the
+    old tree and the change tracker would diff it against the new one.
+    """
+    import os
+    from indexed.connectors.files import files_document_reader
+
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    walk = os.walk
+
+    def replaced_walk(*args, **kwargs):
+        yield from walk(*args, **kwargs)
+        source.rename(tmp_path / "moved")
+        source.mkdir()
+
+    monkeypatch.setattr(files_document_reader.os, "walk", replaced_walk)
+
+    with pytest.raises(OSError, match="changed during enumeration") as excinfo:
+        connector.get_changes(state)
+
+    # The guard, not an incidental "path vanished" failure.
+    assert not isinstance(excinfo.value, FileNotFoundError)
+    assert connector.reader.base_path in str(excinfo.value)
