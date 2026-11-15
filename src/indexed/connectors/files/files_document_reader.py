@@ -11,6 +11,7 @@ import datetime
 import fnmatch
 import os
 import re
+import stat
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
@@ -80,9 +81,9 @@ class FilesDocumentReader:
         max_tokens: int = 512,
         excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
-        excluded_paths: Iterable[str | Path] | None = None,
         change_tracking: ChangeStrategy = "auto",
         code_chunking: bool = True,
+        excluded_paths: Iterable[str | Path] | None = None,
     ) -> None:
         # Stored expanded + absolute so a later `update` from a different
         # CWD still reads the originally intended directory (foundation/6b
@@ -96,13 +97,13 @@ class FilesDocumentReader:
             excluded_dirs if excluded_dirs is not None else DEFAULT_EXCLUDED_DIRS
         )
         self._respect_gitignore = respect_gitignore
-        self._excluded_paths = self._normalize_excluded_paths(excluded_paths)
         # Not read-path concerns, but this reader is the single writer of the
         # manifest ``reader`` block (engine calls get_reader_details()), so the
         # connector-owned settings it persists must live here too — otherwise
         # ``from_manifest`` reads a key nobody ever wrote and silently defaults.
         self._change_tracking = change_tracking
         self._code_chunking = code_chunking
+        self._excluded_paths = self._normalize_excluded_paths(excluded_paths)
 
         # Split include_patterns into positive and negative (! prefix) at init.
         positive = [p for p in self.include_patterns if not p.startswith("!")]
@@ -262,10 +263,19 @@ class FilesDocumentReader:
                     yield full_path
             return
 
+        initial = os.stat(self.base_path)
+        if not stat.S_ISDIR(initial.st_mode):
+            raise NotADirectoryError(self.base_path)
+
+        def raise_walk_error(error: OSError) -> None:
+            raise error
+
         # Accumulate (gitignore_dir, PathSpec) tuples as we descend.
         gitignore_specs: list[tuple[Path, Any]] = []
 
-        for root, dirs, files in os.walk(self.base_path, topdown=True):
+        for root, dirs, files in os.walk(
+            self.base_path, topdown=True, onerror=raise_walk_error
+        ):
             root_path = Path(root)
 
             # Load .gitignore present in the current directory before pruning.
@@ -309,6 +319,12 @@ class FilesDocumentReader:
                     )
                 ):
                     yield full_path
+
+        final = os.stat(self.base_path)
+        if (initial.st_dev, initial.st_ino) != (final.st_dev, final.st_ino):
+            raise OSError(
+                f"Source directory changed during enumeration: {self.base_path}"
+            )
 
     def _is_file_included(self, file_path: str) -> bool:
         return any(
