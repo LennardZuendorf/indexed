@@ -1099,7 +1099,7 @@ def shell_function(block: str, name: str) -> str:
     return textwrap.dedent("\n".join(lines[first : last + 1]))
 
 
-def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path):
+def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path, monkeypatch):
     """The gate accepts the merge GitHub built even when the base branch moved
     after the event snapshot, and still refuses a merge that is not this PR's.
 
@@ -1107,6 +1107,20 @@ def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path):
     first parent ``600f1f3``. The old proof called that valid merge "provenance
     invalid" and reddened the only check that carries a benchmark verdict.
     """
+    for name in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CEILING_DIRECTORIES",
+        "GIT_CONFIG",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+    ):
+        monkeypatch.delenv(name, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -1116,6 +1130,8 @@ def test_ab_gate_measures_the_merge_first_parent_in_a_real_repo(tmp_path):
         ).stdout.strip()
 
     git("init", "-q", "-b", "main")
+    git("config", "commit.gpgsign", "false")
+    git("config", "core.hooksPath", "/dev/null")
     git("config", "user.email", "gate@example.invalid")
     git("config", "user.name", "gate")
     (repo / "a.txt").write_text("a", encoding="utf-8")

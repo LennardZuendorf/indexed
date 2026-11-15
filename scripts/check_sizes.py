@@ -136,13 +136,11 @@ SRC_LOC_MAX = 31_800
 # measured 48_284 before final review fixes, with bounded headroom.
 # Aggregate keeps search golden/locator tests, benchmark/evaluation gate
 # regressions and main's pinned parsing-corpus guard: measured 50_636 lines
-# plus 214 lines of headroom. Source budget stays at 31_800.
-# Raised by the gate-determinism fix: `test_benchmark_ab.py` now runs the
-# workflow's own `verify_pr_merge` against a real repository whose base branch
-# moves after the event snapshot, so the 2026-11-12 provenance red is proven
-# fixed rather than asserted in text — measured 50_940 on this branch, ceiling =
-# measured + headroom.
-TEST_LOC_MAX = 51_050
+# plus 214 lines of headroom. Reader-setting regressions cover manifest
+# round trips and update behavior; benchmark regressions exercise first-parent
+# provenance when the event base is stale. Both test tracks are retained.
+# Combined tree measures 51_327; preserve the prior 214-line headroom.
+TEST_LOC_MAX = 51_541
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
