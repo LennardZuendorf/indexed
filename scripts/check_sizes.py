@@ -43,13 +43,14 @@ SRC_LOC_MAX = 31_800
 TEST_LOC_MAX = 51_300
 
 #: Baseline-mode growth allowance per bucket, in lines. Rule: the largest
-#: per-merge growth in the 40 first-parent merges before 2026-11-15 (+2_573
-#: tests / +1_956 src, both in feat(eval)'s retrieval harness), plus ~25 % margin,
-#: rounded up to the next hundred. Growth beyond it means the branch is bigger
-#: than any single reviewed unit this repo has landed — split it, or trim
-#: boilerplate first, rather than raising the number. A stack whose branches
-#: land in order is measured one branch at a time; a stack merged as one unit
-#: (tier-1 LSP evidence: +7_899 tests over main) is exactly what this refuses.
+#: per-commit growth on main's 40 first-parent commits before 2026-11-15
+#: (+2_573 tests / +1_956 src, both feat(eval)'s retrieval harness, #265), plus
+#: ~25 % margin, rounded up to the next hundred. Growth beyond it means the
+#: branch is bigger than any single reviewed unit this repo has landed — split
+#: it, or trim boilerplate first, rather than raising the number. A stack whose
+#: branches land in order is measured one branch at a time; a stack merged as
+#: one unit (tier-1 LSP evidence: +7_899 tests over main) is exactly what this
+#: refuses.
 GROWTH_ALLOWANCE = {"src": 2_500, "tests": 3_300}
 
 AGENTS_MD_MAX_LINES = 100
@@ -229,12 +230,21 @@ def check(
         measurements.append("LOC mode: absolute ceilings (legacy offline fallback)")
         measurements.append(f"src/indexed LOC: {src_loc} (max {SRC_LOC_MAX})")
         measurements.append(f"tests LOC: {test_loc} (max {TEST_LOC_MAX})")
+        # Guidance, not a new rule: these constants ratchet main, they are not a
+        # per-branch number, so a branch that trips them re-measures instead.
+        hint = (
+            " (offline ratchet of record, not a per-branch number: on a branch run"
+            " --baseline-ref origin/main instead of raising it; raise only when"
+            " main itself grew)"
+        )
         if src_loc > SRC_LOC_MAX:
             violations.append(
-                f"src/indexed LOC {src_loc} exceeds ceiling {SRC_LOC_MAX}"
+                f"src/indexed LOC {src_loc} exceeds ceiling {SRC_LOC_MAX}{hint}"
             )
         if test_loc > TEST_LOC_MAX:
-            violations.append(f"tests LOC {test_loc} exceeds ceiling {TEST_LOC_MAX}")
+            violations.append(
+                f"tests LOC {test_loc} exceeds ceiling {TEST_LOC_MAX}{hint}"
+            )
     else:
         base_src, base_tests = _baseline_loc(root, baseline_ref)
         measurements.append(f"LOC mode: growth against baseline ref {baseline_ref}")

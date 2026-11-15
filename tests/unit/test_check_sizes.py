@@ -241,6 +241,10 @@ def test_no_arguments_still_uses_the_absolute_ceilings(
     # The same growth is a violation once the (legacy) ceiling is tighter...
     monkeypatch.setattr(gate, "TEST_LOC_MAX", loc_of(repo, "tests/test_smoke.py") - 1)
     assert gate.main([]) == 1
+    err = capsys.readouterr().err
+    # ...and the message steers a branch to the baseline mode, not to bumping
+    # this number (bumping it per branch is the conflict this change removes).
+    assert "--baseline-ref origin/main" in err
     # ...while the baseline mode ignores the constant entirely.
     add_lines(repo, "tests/test_smoke.py", 5)
     commit(repo, "grow")
