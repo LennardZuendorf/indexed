@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # Lessons Learned
@@ -2183,3 +2183,33 @@ raise stale security floors to the advisory's patched version (here 4.0.1).
 - [integration] Preserve both reviewed lessons when merging concurrent documentation changes; compare workflow fixtures to their producer.
 - [integration] Re-measure combined test size after bringing benchmark and editor regressions together; preserve the existing headroom.
 - [evaluation] Prewarm and validate the actual parser tokenizer before either A/B side; a cold base can silently fall back before embedding warms the cache. Compare tokenizer vocabulary with model config: construction alone can accept an incomplete five-token fallback.
+- **Config isolation patches `Path.home()`**, so the HF model cache can miss on the
+  first model-using test of a session and re-download once into the sandbox. Harmless
+  where the network is available; gate model-dependent specs on `model_available()`.
+  The pre-push gate runs pytest + ty + ruff + wheel build; the size gate and the
+  import-graph gate are separate CI steps, so a test-heavy branch silently
+  breaches a LOC ceiling and only learns it from the PR's "Check size gates"
+  step. Run BOTH scripts explicitly in every local gate matrix (and every
+  dispatched task brief) alongside the hook-covered gates; a "green locally"
+  claim that omits them is not evidence the PR is green. Since 2026-11-15 the
+  size gate's CI verdict is growth against the base, so run it the same way
+  locally: `uv run python scripts/check_sizes.py --baseline-ref origin/main`.
+  The fix shape when the allowance is breached is split the branch or trim
+  boilerplate first (one-line docstrings, a shared layout helper, inlined
+  scenario comments — never weaken an assertion or drop a scenario).
+### A shared hand-bumped ceiling is a per-branch edit
+**Pattern:** `TEST_LOC_MAX` was one line in `scripts/check_sizes.py`, so every
+test-adding branch bumped it. Two such branches always conflicted, and neither
+surviving number fit the merged tree (55_810 vs 58_815 -> merged 58_839; 51_050
+vs 52_600 -> merged 52_431; four repair rounds in six days, each needing a local
+re-measure plus a paragraph of lineage).
+**Rule:** Never store a number that every branch must edit to go green. Gate on
+growth against a ref (`--baseline-ref`; CI passes the merge commit's first
+parent on a PR and `github.event.before` on a push): nothing shared is edited,
+the verdict depends
+only on the branch, and the same gate runs before and after merge. Size the
+allowance from measured history (largest legitimate per-merge growth plus a
+margin), state it and its rule in the PR, and keep the old absolute constants
+only as the offline fallback.
+**Tags:** ci, process, gates
+**Date:** 2026-11-15

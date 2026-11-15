@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # Tech Spec: indexed
@@ -841,3 +841,30 @@ unknown identity fields render as unavailable, while escaped reasons retain the
 invalid status. Pass/fail still requires complete machine/interpreter sides.
 Invalid reasons are limited to ten displayed entries with bounded text and an
 artifact link for omitted content; invalid artifacts show no gating table.
+| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
+separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
+contracts + connector protocols, the leaf) has no separate doc either — covered
+inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
+│   └── utils/                 # Shared utilities (logging, retry, batching)
+`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+### Size-Gate CI
+`scripts/check_sizes.py` enforces the structural collapse (one package dir, one
+real `AGENTS.md`, one `pyproject.toml`, no `[tool.una]`) plus src/test LOC. In CI
+the LOC half is **growth against the merge base**, not a stored number:
+```bash
+uv run python scripts/check_sizes.py --baseline-ref <base>   # CI: measured(HEAD) <= measured(base) + allowance
+uv run python scripts/check_sizes.py                        # offline: legacy absolute ceilings
+The workflow passes the merge commit's first parent on a PR (the base the tree
+was actually built on — `base.sha` can already be stale) and
+`github.event.before` on a `main`/`building` push, so the ratchet also runs
+after merge. `GROWTH_ALLOWANCE`
+(src 2_500 / tests 3_300 lines per branch) is the largest per-commit growth over
+the 40 commits on `main` before 2026-11-15 (+2_573 tests / +1_956 src, both #265)
+plus ~25 % margin: exceeding it means the branch is
+bigger than any reviewed unit this repo has landed, so split it rather than
+raising the number. Branches therefore never edit a shared ceiling — the reason
+this replaced the hand-bumped `TEST_LOC_MAX`, which made every test-adding branch
+conflict with every other one.
+```
