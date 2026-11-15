@@ -87,6 +87,27 @@ jobs:
           uv run python scripts/check_sizes.py
         fi
 
+    # Keep model acquisition and tests on the same cache after HOME isolation.
+    - name: Pin model cache
+      run: |
+        uv run python -c "
+        import os
+        from pathlib import Path
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import _get_hf_cache_dir
+        cache = _get_hf_cache_dir().expanduser().resolve()
+        with Path(os.environ['GITHUB_ENV']).open('a') as env:
+            env.write(f'HF_HUB_CACHE={cache}\n')
+        "
+
+    # Fail before the suite if its real embedding model cannot be acquired.
+    - name: Ensure the embedding model is cached
+      run: |
+        uv run python -c "
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        ensure_model('all-MiniLM-L6-v2')
+        print('Model ready')
+        "
+
     - name: Run System Tests
       run: |
         uv run pytest tests/system/ -q --tb=short

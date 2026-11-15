@@ -11,6 +11,8 @@ import datetime
 import fnmatch
 import os
 import re
+import stat
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -20,8 +22,26 @@ if TYPE_CHECKING:
     from indexed.parsing import ParsingModule
     from indexed.parsing.schema import ParsedDocument
 
+from .change_tracker import ChangeStrategy
 from .schema import DEFAULT_EXCLUDED_DIRS
 from .v1_adapter import V1FormatAdapter
+
+
+def default_storage_roots(base_path: str) -> frozenset[Path]:
+    """Absolute storage roots that are never source content.
+
+    Both storage modes live in a directory named ``.indexed``: the local root
+    under the scanned tree (``<base>/.indexed``) and the global root
+    (``~/.indexed``, which may itself sit inside a scanned tree). The files
+    connector must not index them — that is how a collection ended up indexing
+    its own ``.indexed/.gitignore`` (issue #279 follow-up).
+
+    ``base_path`` is expected to be absolute (``normalize_base_path`` guarantees
+    it); the global root is returned as-is so callers compare resolved paths.
+    """
+    from indexed.config.storage import get_global_root
+
+    return frozenset({Path(base_path) / ".indexed", get_global_root()})
 
 
 def normalize_base_path(raw_path: str) -> str:
@@ -61,6 +81,9 @@ class FilesDocumentReader:
         max_tokens: int = 512,
         excluded_dirs: list[str] | None = None,
         respect_gitignore: bool = True,
+        change_tracking: ChangeStrategy = "auto",
+        code_chunking: bool = True,
+        excluded_paths: Iterable[str | Path] | None = None,
     ) -> None:
         # Stored expanded + absolute so a later `update` from a different
         # CWD still reads the originally intended directory (foundation/6b
@@ -74,6 +97,13 @@ class FilesDocumentReader:
             excluded_dirs if excluded_dirs is not None else DEFAULT_EXCLUDED_DIRS
         )
         self._respect_gitignore = respect_gitignore
+        # Not read-path concerns, but this reader is the single writer of the
+        # manifest ``reader`` block (engine calls get_reader_details()), so the
+        # connector-owned settings it persists must live here too — otherwise
+        # ``from_manifest`` reads a key nobody ever wrote and silently defaults.
+        self._change_tracking = change_tracking
+        self._code_chunking = code_chunking
+        self._excluded_paths = self._normalize_excluded_paths(excluded_paths)
 
         # Split include_patterns into positive and negative (! prefix) at init.
         positive = [p for p in self.include_patterns if not p.startswith("!")]
@@ -95,6 +125,44 @@ class FilesDocumentReader:
         except re.error:
             return re.compile(fnmatch.translate(pattern))
 
+    def _normalize_excluded_paths(
+        self, excluded_paths: Iterable[str | Path] | None
+    ) -> frozenset[Path]:
+        """Resolve the absolute-path guard set for this scan.
+
+        Defaults to indexed's own storage roots (``<base>/.indexed`` and
+        ``~/.indexed``). Roots that *contain* the scan root are dropped: if a
+        caller deliberately points a collection inside a storage root, that
+        request wins over the guard.
+        """
+        candidates = (
+            default_storage_roots(self.base_path)
+            if excluded_paths is None
+            else {Path(p) for p in excluded_paths}
+        )
+        base = Path(self.base_path)
+        guarded: set[Path] = set()
+        for candidate in candidates:
+            resolved = Path(candidate).expanduser().resolve()
+            if resolved == base or base.is_relative_to(resolved):
+                continue
+            guarded.add(resolved)
+        return frozenset(guarded)
+
+    def _is_excluded_path(self, path: Path) -> bool:
+        """True when *path* is a guarded storage root or sits inside one."""
+        for root in self._excluded_paths:
+            if path == root or path.is_relative_to(root):
+                return True
+        return False
+
+    def _is_relative_excluded(self, relative_path: str) -> bool:
+        """True when a base-relative path is inside a pruned dir or root."""
+        parts = Path(relative_path).parts[:-1]
+        if any(part in self._excluded_dirs for part in parts):
+            return True
+        return self._is_excluded_path(Path(self.base_path) / relative_path)
+
     @property
     def parsing(self) -> ParsingModule:
         """Lazily create the parsing module."""
@@ -105,6 +173,7 @@ class FilesDocumentReader:
                 ocr=self._ocr,
                 table_structure=self._table_structure,
                 max_tokens=self._max_tokens,
+                code_chunking=self._code_chunking,
             )
         return self._parsing
 
@@ -172,6 +241,8 @@ class FilesDocumentReader:
             "ocr": self._ocr,
             "tableStructure": self._table_structure,
             "maxChunkTokens": self._max_tokens,
+            "changeTracking": self._change_tracking,
+            "codeChunking": self._code_chunking,
         }
 
     def _iter_file_paths(self) -> Iterator[str]:
@@ -186,14 +257,25 @@ class FilesDocumentReader:
                 if not os.path.isfile(full_path):
                     continue
                 relative_path = os.path.relpath(full_path, self.base_path)
+                if self._is_relative_excluded(relative_path):
+                    continue
                 if not self._is_file_negated(relative_path):
                     yield full_path
             return
 
+        initial = os.stat(self.base_path)
+        if not stat.S_ISDIR(initial.st_mode):
+            raise NotADirectoryError(self.base_path)
+
+        def raise_walk_error(error: OSError) -> None:
+            raise error
+
         # Accumulate (gitignore_dir, PathSpec) tuples as we descend.
         gitignore_specs: list[tuple[Path, Any]] = []
 
-        for root, dirs, files in os.walk(self.base_path, topdown=True):
+        for root, dirs, files in os.walk(
+            self.base_path, topdown=True, onerror=raise_walk_error
+        ):
             root_path = Path(root)
 
             # Load .gitignore present in the current directory before pruning.
@@ -229,11 +311,20 @@ class FilesDocumentReader:
                     and not self._is_file_gitignored(Path(full_path), gitignore_specs)
                     and (
                         self.start_from_time is None
-                        or self._read_file_modification_time(full_path)
-                        >= self.start_from_time
+                        # ``.timestamp()`` on both sides: the reader's value is
+                        # UTC-aware, a caller's cutoff may be naive local. The
+                        # instants are what this filter is about.
+                        or self._read_file_modification_time(full_path).timestamp()
+                        >= self.start_from_time.timestamp()
                     )
                 ):
                     yield full_path
+
+        final = os.stat(self.base_path)
+        if (initial.st_dev, initial.st_ino) != (final.st_dev, final.st_ino):
+            raise OSError(
+                f"Source directory changed during enumeration: {self.base_path}"
+            )
 
     def _is_file_included(self, file_path: str) -> bool:
         return any(
@@ -250,6 +341,8 @@ class FilesDocumentReader:
         self, dir_path: Path, gitignore_specs: list[tuple[Path, Any]]
     ) -> bool:
         """Return True if this directory should be excluded before descending."""
+        if self._is_excluded_path(dir_path):
+            return True
         if dir_path.name in self._excluded_dirs:
             return True
         if not self._respect_gitignore:
@@ -281,5 +374,12 @@ class FilesDocumentReader:
 
     @staticmethod
     def _read_file_modification_time(file_path: str) -> datetime.datetime:
+        """The file's mtime as an **offset-aware UTC** datetime.
+
+        Offset-aware on purpose: the value is persisted on the node (via
+        ``isoformat()``) and re-read by a *different* process at query time, so
+        it must be self-describing or a zone/DST change silently shifts it
+        (#279 B1). A naive local value only round-trips inside one zone.
+        """
         mod_time = os.path.getmtime(file_path)
-        return datetime.datetime.fromtimestamp(mod_time)
+        return datetime.datetime.fromtimestamp(mod_time, datetime.timezone.utc)

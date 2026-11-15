@@ -100,11 +100,7 @@ jobs:
       with:
         python-version: "3.13"
 
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Pin and validate one model cache before either measured side parses.
 
     - name: Install dependencies
       run: |
@@ -124,11 +120,68 @@ jobs:
         uv run pytest tests/unit/indexed/eval -q
         uv run pytest tests/unit/test_benchmark_ab.py -q
 
+    - name: Pin retrieval model cache
+      id: model_cache_pin
+      run: |
+        uv run --no-sync python - <<'PYCODE'
+        import os
+        from pathlib import Path
+        home = (Path(os.environ["RUNNER_TEMP"]) / "indexed-eval-hf").resolve()
+        with Path(os.environ["GITHUB_ENV"]).open("a") as env:
+            env.write(f"HF_HOME={home}\nHF_HUB_CACHE={home / 'hub'}\n")
+        PYCODE
+
+    - name: Prepare retrieval model cache
+      id: model_preflight
+      if: ${{ !cancelled() && steps.corpus.outcome == 'success' && steps.harness.outcome == 'success' && steps.revisions.outcome == 'success' && steps.model_cache_pin.outcome == 'success' }}
+      run: |
+        uv run --no-sync python - <<'PYCODE'
+        import json
+        import os
+        from pathlib import Path
+        from docling_core.transforms.chunker import HybridChunker
+        from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
+        from transformers import AutoConfig, AutoTokenizer
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        from indexed.eval.runner import DEFAULT_MODEL
+        from indexed.parsing._model_window import DEFAULT_MODEL_MAX_SEQ_LENGTH, DEFAULT_TOKENIZER_MODEL
+
+        cache = Path(os.environ["HF_HUB_CACHE"])
+        if not cache.is_absolute():
+            raise ValueError("HF_HUB_CACHE must be absolute")
+        snapshots = {DEFAULT_MODEL: ensure_model(DEFAULT_MODEL)}
+        if DEFAULT_TOKENIZER_MODEL != DEFAULT_MODEL:
+            snapshots[DEFAULT_TOKENIZER_MODEL] = ensure_model(DEFAULT_TOKENIZER_MODEL)
+        config = AutoConfig.from_pretrained(DEFAULT_TOKENIZER_MODEL, local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(DEFAULT_TOKENIZER_MODEL, local_files_only=True)
+        declared_vocab = getattr(config, "vocab_size", None)
+        tokenizer_vocab = getattr(tokenizer, "vocab_size", None)
+        actual_vocab = len(tokenizer.get_vocab())
+        if (type(declared_vocab) is not int or declared_vocab <= 0
+                or type(tokenizer_vocab) is not int or tokenizer_vocab != declared_vocab
+                or actual_vocab < declared_vocab):
+            raise ValueError(f"tokenizer vocab incomplete: config={declared_vocab}, tokenizer={tokenizer_vocab}, actual={actual_vocab}")
+        chunker = HybridChunker(tokenizer=HuggingFaceTokenizer(
+            tokenizer=tokenizer, max_tokens=DEFAULT_MODEL_MAX_SEQ_LENGTH
+        ))
+        print(json.dumps({
+            "cache": str(cache.resolve()),
+            "embedding_model": DEFAULT_MODEL,
+            "tokenizer_model": DEFAULT_TOKENIZER_MODEL,
+            "snapshots": snapshots,
+            "tokenizer_revision": getattr(tokenizer, "init_kwargs", {}).get("_commit_hash"),
+            "tokenizer_type": type(tokenizer).__name__,
+            "vocab_size": declared_vocab,
+            "actual_vocab_size": actual_vocab,
+            "chunker_type": type(chunker).__name__,
+        }, sort_keys=True), flush=True)
+        PYCODE
+
     # Both genuine revisions keep their own frozen dependencies and evaluator.
     # One common captured launcher injects only the canonical connector factory.
     - name: Measure captured base and merge result in this job
       id: measure
-      if: ${{ !cancelled() && steps.corpus.outcome == 'success' && steps.harness.outcome == 'success' && steps.revisions.outcome == 'success' }}
+      if: ${{ !cancelled() && steps.corpus.outcome == 'success' && steps.harness.outcome == 'success' && steps.revisions.outcome == 'success' && steps.model_cache_pin.outcome == 'success' && steps.model_preflight.outcome == 'success' }}
       env:
         BASE_SHA: ${{ steps.revisions.outputs.base }}
         MERGE_SHA: ${{ steps.revisions.outputs.merge }}

@@ -20,16 +20,17 @@ One tech branch doc per `src/indexed/` subpackage:
 
 | Subpackage | Branch doc | Covers |
 |-----------|-----------|--------|
-| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+| `src/indexed/cli/`, `src/indexed/mcp/`, `src/indexed/lsp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server, LSP server |
 | `src/indexed/core/` | [tech-core.md](tech-core.md) | engine, embedding, FAISS, persistence, search perf |
 | `src/indexed/config/` | [tech-config.md](tech-config.md) | config resolution, .env hierarchy, storage layout, schema versioning |
 | `src/indexed/connectors/` | [tech-connectors.md](tech-connectors.md) | connector protocol, implemented connectors, change tracking |
 | `src/indexed/parsing/` | [tech-parsing.md](tech-parsing.md) | ParsingModule, Docling, tree-sitter |
 
-`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
-separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
-contracts + connector protocols, the leaf) has no separate doc either — covered
-inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
+`src/indexed/utils/` (logging, retry, batching, provenance) is a thin shared
+foundation — no separate doc; helpers are imported by every layer.
+`src/indexed/protocols/` (typed contracts + connector protocols, the leaf) has
+no separate doc either — covered inline below (§ Protocols Subpackage) and in
+tech-core.md / tech-connectors.md.
 
 ---
 
@@ -103,12 +104,13 @@ indexed/
 ├── src/indexed/
 │   ├── cli/                  # Typer app; composition.py is the single wiring site
 │   ├── mcp/                  # FastMCP server
+│   ├── lsp/                  # LSP server (stdio JSON-RPC): symbol palette + hover
 │   ├── core/                 # Indexing & search engine; facade in core/__init__.py
 │   ├── connectors/           # Source connectors (files/jira/confluence/outline)
 │   ├── config/                # Config management (ConfigService singleton)
 │   ├── parsing/               # Shared parsing module (Docling, tree-sitter)
 │   ├── protocols/             # Typed contracts + connector protocols — the leaf
-│   └── utils/                 # Shared utilities (logging, retry, batching)
+│   └── utils/                 # Shared utilities (logging, retry, batching, provenance)
 └── tests/                     # Test suite
 ```
 
@@ -167,7 +169,21 @@ uv run pytest tests/unit/indexed/core/ -q     # one subpackage
 uv run pytest -q --cov=src/indexed --cov-report=html
 ```
 
+### System Tests in CI
+
+The Python 3.11–3.14 system jobs acquire `all-MiniLM-L6-v2` before
+pytest so model-dependent tests can run. Before acquisition, the job resolves the
+model manager cache path to an absolute `HF_HUB_CACHE` and exports it to later
+steps, preserving the selected cache when tests isolate HOME. The workflows do not restore the
+old immutable model cache key, which held a snapshot without weights. Model
+acquisition failure fails setup rather than silently skipping those tests.
+
 ### CI Benchmarking
+
+The advisory benchmark maps use 12 s for `batch_parse`, 20 s for
+`full_connector_pipeline`, and 30 s for its `_mixed` variant. The mixed key
+precedes its substring match. Both jobs use the same map; these caps are
+reporting backstops, while the paired A/B comparison owns the PR verdict.
 
 Performance regressions are caught in CI, not via local scripts. The former
 `.benchmarks/benchmark_baseline.py` / `benchmark_compare.py` (baseline capture +
@@ -401,6 +417,12 @@ detached worktree and
 `uv sync --locked` environment. Dispatch measures its captured revision twice;
 it never resolves a moving branch tip. The common launcher is captured once
 from the merge result and runs by absolute path through each side's own Python.
+
+Before either side parses, the job pins one absolute Hugging Face cache and
+acquires the embedding and parser tokenizer models. It loads the tokenizer
+locally, verifies its vocabulary against model config, and constructs the
+token-aware HybridChunker; a failure blocks both measurements. The cache and model snapshot identities are logged. Both sides
+inherit the same cache while retaining their own locked dependencies.
 
 `scripts/eval_ab_run.py` calls the side's existing `run_eval(connector_factory=...)`
 API. It loads only the shared `eval/canonical.py` helper by explicit file path.
@@ -710,10 +732,10 @@ contracts, not instructions to reapply its retired implementation plan.
 
 No code above the facade may import `core.v1.*` or `core.v2.*` directly (to mock a
 facade-resolved symbol in tests, patch the facade attribute) — this is now CI-enforced by
-`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+`scripts/check_imports.py`'s `cli/mcp/lsp ↛ core.v1, core.v2` rule, not merely a documented
 convention. `src/indexed/core/facade_config.py` is part of this facade surface: it holds
 `CoreEngineConfig` ([core] engine, the default-engine selector for NEW collections) plus 7
-lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+lazily re-exported v1 config-model/utility symbols, so files above the facade never import
 `core.v1.*`/`core.v2.*` for those either. `config/commands/` is a separate, pre-existing
 exemption in `check_imports.py` (`_EXEMPT_DIRS`) — same composition-adjacent rationale as
 `config/cli.py` and `cli/composition.py` — so a file there (e.g. `config/commands/
@@ -753,29 +775,6 @@ expanded:
 no forbidden edge of their own. Run `python scripts/check_imports.py --self-test`
 to verify a synthetic forbidden edge is still caught.
 
-### Size-Gate CI
-
-`scripts/check_sizes.py` enforces the structural collapse (one package dir, one
-real `AGENTS.md`, one `pyproject.toml`, no `[tool.una]`) plus src/test LOC. In CI
-the LOC half is **growth against the merge base**, not a stored number:
-
-```bash
-uv run python scripts/check_sizes.py --baseline-ref <base>   # CI: measured(HEAD) <= measured(base) + allowance
-uv run python scripts/check_sizes.py                        # offline: legacy absolute ceilings
-```
-
-The workflow passes the merge commit's first parent on a PR (the base the tree
-was actually built on — `base.sha` can already be stale) and
-`github.event.before` on a `main`/`building` push, so the ratchet also runs
-after merge. `GROWTH_ALLOWANCE`
-(src 2_500 / tests 3_300 lines per branch) is the largest per-commit growth over
-the 40 commits on `main` before 2026-11-15 (+2_573 tests / +1_956 src, both #265)
-plus ~25 % margin: exceeding it means the branch is
-bigger than any reviewed unit this repo has landed, so split it rather than
-raising the number. Branches therefore never edit a shared ceiling — the reason
-this replaced the hand-bumped `TEST_LOC_MAX`, which made every test-adding branch
-conflict with every other one.
-
 ### HTTP Retry Policy
 
 Transient HTTP statuses are centralized in `utils/retry.py`:
@@ -786,6 +785,12 @@ TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
 
 `execute_with_retry` re-raises immediately on non-transient HTTP errors (e.g. 404).
 Connector readers use this helper — do not duplicate status-code tuples.
+
+### Spec Ledger Merging
+
+The mutable `.spec/lessons.md` and `.spec/tech.md` use normal content merging.
+Union merging can silently duplicate frontmatter keys when both sides edit metadata.
+Resolve overlapping ledger additions and frontmatter conflicts explicitly.
 
 ---
 
@@ -836,3 +841,30 @@ unknown identity fields render as unavailable, while escaped reasons retain the
 invalid status. Pass/fail still requires complete machine/interpreter sides.
 Invalid reasons are limited to ten displayed entries with bounded text and an
 artifact link for omitted content; invalid artifacts show no gating table.
+| `src/indexed/cli/`, `src/indexed/mcp/` | [tech-app.md](tech-app.md) | CLI architecture, storage-mode, Rich UI, logging, MCP server |
+`src/indexed/utils/` (logging, retry, batching) is a thin shared foundation — no
+separate doc; helpers are imported by every layer. `src/indexed/protocols/` (typed
+contracts + connector protocols, the leaf) has no separate doc either — covered
+inline below (§ Protocols Subpackage) and in tech-core.md / tech-connectors.md.
+│   └── utils/                 # Shared utilities (logging, retry, batching)
+`scripts/check_imports.py`'s `cli/mcp ↛ core.v1, core.v2` rule, not merely a documented
+lazily re-exported v1 config-model/utility symbols, so cli/mcp files never import
+### Size-Gate CI
+`scripts/check_sizes.py` enforces the structural collapse (one package dir, one
+real `AGENTS.md`, one `pyproject.toml`, no `[tool.una]`) plus src/test LOC. In CI
+the LOC half is **growth against the merge base**, not a stored number:
+```bash
+uv run python scripts/check_sizes.py --baseline-ref <base>   # CI: measured(HEAD) <= measured(base) + allowance
+uv run python scripts/check_sizes.py                        # offline: legacy absolute ceilings
+The workflow passes the merge commit's first parent on a PR (the base the tree
+was actually built on — `base.sha` can already be stale) and
+`github.event.before` on a `main`/`building` push, so the ratchet also runs
+after merge. `GROWTH_ALLOWANCE`
+(src 2_500 / tests 3_300 lines per branch) is the largest per-commit growth over
+the 40 commits on `main` before 2026-11-15 (+2_573 tests / +1_956 src, both #265)
+plus ~25 % margin: exceeding it means the branch is
+bigger than any reviewed unit this repo has landed, so split it rather than
+raising the number. Branches therefore never edit a shared ceiling — the reason
+this replaced the hand-bumped `TEST_LOC_MAX`, which made every test-adding branch
+conflict with every other one.
+```

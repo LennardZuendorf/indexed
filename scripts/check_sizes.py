@@ -36,11 +36,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Legacy offline ceilings (main measured src 31_759 / tests 51_187 after this
-#: branch, 2026-11-15). CI enforces growth against the merge base instead, so
-#: this line is no longer a per-branch edit — see GROWTH_ALLOWANCE.
-SRC_LOC_MAX = 31_800
-TEST_LOC_MAX = 51_300
+#: Legacy offline ceilings — current `main` values (src 36_4xx / tests 58_9xx after
+#: the git-aware and LSP tiers landed), plus headroom for this PR's own
+#: `tests/unit/test_check_sizes.py`. CI enforces growth against the merge base
+#: instead (--baseline-ref), so this line is no longer a per-branch edit — see
+#: GROWTH_ALLOWANCE.
+SRC_LOC_MAX = 36_400
+TEST_LOC_MAX = 59_400
 
 #: Baseline-mode growth allowance per bucket, in lines. Rule: the largest
 #: per-commit growth on main's 40 first-parent commits before 2026-11-15

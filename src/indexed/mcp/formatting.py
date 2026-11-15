@@ -10,8 +10,9 @@ in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
 contract stays the design record (issues #108/#109).
 
 Shape, in one breath: documents grouped, each stating its collection, source
-type, id, url and score semantics ONCE; each hit carrying only its
-relevance, raw score, locator and text.
+type, id, url, git provenance (when it was asked for and git answered) and
+score semantics ONCE; each hit carrying only its relevance, raw score, locator
+and text.
 
 Grouping was the point. The old flat payload repeated ``collection``,
 ``document_id`` and ``document_url`` on every chunk and said nothing about
@@ -23,12 +24,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from indexed.protocols.results import SEARCH_SCHEMA, Hit, Locator
-from indexed.utils.relevance import unified_relevance
-
-#: Score kind reported for a v1 collection, which carries no ``scoreKind``
-#: key: squared-L2 distance over unit vectors (see ``unified_relevance``).
-V1_SCORE_KIND = "l2_squared"
+from indexed.protocols.results import SEARCH_SCHEMA, Hit
+from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
+from indexed.utils.provenance import build_locator, chunk_parts, strip_context_prefix
+from indexed.utils.relevance import V1_SCORE_KIND, unified_relevance
 
 #: Precision of emitted floats; ranking retains full precision internally.
 _SCORE_DECIMALS = 4
@@ -46,6 +45,7 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
     """
     collection_errors: List[Dict[str, Any]] = []
     searched: List[str] = []
+    freshness: List[Dict[str, Any]] = []
     # (collection, document key) -> document payload under construction.
     documents: Dict[Tuple[str, str], Dict[str, Any]] = {}
     # Flat ranking list; grouping happens after the sort, so a document's
@@ -61,6 +61,32 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
 
         if not isinstance(collection_data, dict):
             continue
+
+        # A requested changed_since the collection could not honour is reported
+        # here too: unfiltered rows arriving under a "changed only" request are
+        # a defect, not a quiet degrade (#279 review, finding 1).
+        git_filter = collection_data.get("gitFilter")
+        if isinstance(git_filter, dict) and git_filter.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": filter_skip_message(git_filter),
+                }
+            )
+        # Same rule for a requested git re-rank (#144): rows that were not
+        # re-ranked must not look re-ranked.
+        git_rerank = collection_data.get("gitRerank")
+        if isinstance(git_rerank, dict) and git_rerank.get("applied") is False:
+            collection_errors.append(
+                {
+                    "collection": collection_name,
+                    "error": rerank_skip_message(git_rerank),
+                }
+            )
+
+        verdict = collection_data.get("freshness")
+        if isinstance(verdict, dict):
+            freshness.append({"collection": collection_name, **verdict})
 
         searched.append(collection_name)
         raw_score_kind = collection_data.get("scoreKind")
@@ -83,12 +109,19 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                 entry["id"] = doc_id
                 if doc_url:
                     entry["url"] = doc_url
+                # Document-level provenance, present only when --git-provenance
+                # found a commit for this file (v2 files collections); absent
+                # otherwise. Facts about the file, so they sit on the document
+                # rather than repeated on every hit (#279 x #297 result shape).
+                git = doc.get("git")
+                if isinstance(git, dict):
+                    entry["git"] = git
                 entry["score_kind"] = score_kind
                 entry["hits"] = []
                 documents[key] = entry  # type: ignore[assignment]
 
             for chunk_data in doc.get("matchedChunks", []) or []:
-                text, metadata = _chunk_parts(chunk_data)
+                text, metadata = chunk_parts(chunk_data)
                 if not text:
                     continue
                 raw_score = float(chunk_data.get("score", 0.0) or 0.0)
@@ -98,8 +131,11 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     "relevance": round(relevance, _SCORE_DECIMALS),
                     "score": round(raw_score, _SCORE_DECIMALS),
                     "locator": locator,
-                    "text": _strip_context_prefix(text, metadata),
+                    "text": strip_context_prefix(text, metadata),
                 }
+                line_git = chunk_data.get("git")
+                if isinstance(line_git, dict):
+                    hit["git"] = line_git
                 ranked.append((relevance, key, hit))
 
     # Best first. Ties keep discovery order: sort is stable.
@@ -115,7 +151,7 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
 
     documents_out = [_finalize_document(doc) for doc in ordered]
 
-    return {
+    payload = {
         "schema": SEARCH_SCHEMA,
         "query": query,
         "counts": {"documents": len(documents_out), "hits": len(ranked)},
@@ -123,6 +159,9 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
         "collection_errors": collection_errors,
         "documents": documents_out,
     }
+    if freshness:
+        payload["freshness"] = freshness
+    return payload
 
 
 def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,94 +192,13 @@ def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc_url = doc.get("url")
     if doc_url and doc_url != (f"file://{doc_path}" if doc_path else None):
         out["url"] = doc_url
+    # Provenance is a fact about the file, stated once beside the url; absent
+    # unless --git-provenance got an answer for the indexed snapshot.
+    if doc.get("git"):
+        out["git"] = doc["git"]
     out["score_kind"] = doc["score_kind"]
     out["hits"] = hits
     return out
-
-
-def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
-    """Say where a hit sits — and say nothing it does not know.
-
-    Precision order: a line span outranks a page, which outranks a heading
-    path, which outranks the bare document. Sources differ: tree-sitter code
-    chunks carry ``start_line``/``end_line`` (0-based, inclusive) and a
-    ``file_path``; positive ``page`` metadata selects a page locator when
-    supplied; prose converters can supply ``headings``. Without usable position
-    metadata, any chunk (including a body fragment) gets ``kind: "document"``.
-    """
-    meta = metadata or {}
-
-    path = meta.get("file_path") or _path_from_url(doc_url)
-    start, end = meta.get("start_line"), meta.get("end_line")
-    if isinstance(start, int) and isinstance(end, int) and path:
-        # 0-based inclusive on disk -> 1-based inclusive here: what `grep -n`
-        # prints and what every editor shows.
-        return {
-            "kind": "line_span",
-            "path": path,
-            "start_line": start + 1,
-            "end_line": end + 1,
-        }
-
-    page = meta.get("page")
-    if isinstance(page, int) and page > 0:
-        locator: Locator = {"kind": "page", "page": page}
-        if path:
-            locator["path"] = path
-        return locator
-
-    headings = meta.get("headings")
-    if isinstance(headings, list):
-        # Decide the kind AFTER cleaning: the Markdown/Jira converters emit
-        # ``headings: [""]`` for whole-file chunks, and a ``headings`` locator
-        # declaring an empty path would claim a precision the chunk does not
-        # have. An empty cleaning means "position unknown" -> ``document``.
-        cleaned = [h.strip() for h in headings if isinstance(h, str) and h.strip()]
-        if cleaned:
-            return {"kind": "headings", "headings": cleaned}
-
-    return {"kind": "document"}
-
-
-def _chunk_parts(chunk_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    """Pull ``(text, metadata)`` out of a matched chunk's ``content``.
-
-    v1 puts the raw converted chunk there (``{indexedData, metadata}``); v2
-    used to put ``{indexedData}`` only, so v2 hits lost their locator — both
-    engines now carry ``metadata`` when the chunk has any.
-    """
-    content = chunk_data.get("content")
-    if isinstance(content, str):
-        return content, {}
-    if not isinstance(content, dict):
-        return "", {}
-    metadata = content.get("metadata")
-    text = content.get("indexedData") or ""
-    if not isinstance(text, str):
-        text = str(text)
-    return text, metadata if isinstance(metadata, dict) else {}
-
-
-def _strip_context_prefix(text: str, metadata: Dict[str, Any]) -> str:
-    """Drop the ``# <path>\\n`` context prefix code chunks embed in their text.
-
-    The indexer prepends the file path so the embedding sees it; the payload
-    removes only an exact leading prefix matching ``metadata.file_path``.
-    Other text stays unchanged; the source path may be hoisted to the document.
-    """
-    path = metadata.get("file_path")
-    if isinstance(path, str) and path:
-        prefix = f"# {path}\n"
-        if text.startswith(prefix):
-            return text[len(prefix) :]
-    return text
-
-
-def _path_from_url(url: str) -> str:
-    """``file:///a/b.py`` -> ``/a/b.py``; anything else is left alone."""
-    if url.startswith("file://"):
-        return url[len("file://") :]
-    return ""
 
 
 __all__ = ["V1_SCORE_KIND", "build_locator", "build_search_payload"]

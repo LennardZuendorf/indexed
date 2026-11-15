@@ -24,7 +24,7 @@ Version note: bump ``SEARCH_SCHEMA`` on any incompatible change; consumers
 are expected to branch on it rather than guess from the key set.
 """
 
-from typing import List, Literal, NotRequired, TypedDict
+from typing import Any, Dict, List, Literal, NotRequired, TypedDict
 
 #: Schema id emitted in every payload; consumers branch on this.
 SEARCH_SCHEMA = "indexed.search/1"
@@ -68,6 +68,7 @@ class Hit(TypedDict):
 
     locator: Locator
     text: str
+    git: NotRequired[Dict[str, Any]]
 
 
 class DocumentResult(TypedDict):
@@ -88,6 +89,9 @@ class DocumentResult(TypedDict):
     url: NotRequired[str]
     """Where a human/agent opens the whole document. Omitted when unknown or
     when it only restates ``path`` (``file://<path>``)."""
+
+    git: NotRequired[Dict[str, Any]]
+    """Optional last-commit provenance for a current indexed file."""
 
     score_kind: str
     """``l2_squared`` (v1), ``cosine`` or ``rerank`` (v2) — what ``score``
