@@ -3,217 +3,61 @@
 
 Catches monorepo regrowth after the simplify collapse: a second package dir,
 a second AGENTS.md, a second pyproject.toml (or ``una`` sneaking back in), or
-src/test LOC creeping back toward the old 7-package scale. The LOC ceilings
-are current measured size + headroom (~21.4k src / ~27.7k tests today) — NOT
-the simplify feature's aspirational ~6k/~8k targets, which are out of reach
-without a v2 rewrite or removing shipped functionality (both out of scope).
-This script only guards against regression, it does not chase that target.
+src/test LOC creeping back. This script only guards against regression, it does
+not chase the simplify feature's aspirational ~6k/~8k targets, which are out of
+reach without a v2 rewrite or removing shipped functionality (both out of scope).
+
+Two LOC modes:
+
+``--baseline-ref <ref>`` (what CI runs)
+    Measure the *growth* this branch introduces: ``measured(HEAD) <=
+    measured(<ref>) + GROWTH_ALLOWANCE``, per bucket (``src/indexed`` and
+    ``tests``). Nothing shared is edited, so two branches that each add tests
+    can no longer conflict on a ceiling — and the verdict is a function of the
+    branch alone rather than of how much slack an unrelated merge left behind.
+
+no argument (legacy, offline)
+    Compare against the absolute ``SRC_LOC_MAX`` / ``TEST_LOC_MAX`` constants.
+    Kept so the script still runs in a bare copy of the tree, and because it is
+    the hard ratchet of record for an offline reader. CI no longer enforces
+    these, so no branch needs to edit them; prefer the baseline mode locally
+    (``uv run python scripts/check_sizes.py --baseline-ref origin/main``).
+
+The lineage of the absolute ceilings lives in the git history of this file
+(each bump carried the measured size and its justification).
 """
 
 from __future__ import annotations
 
+import argparse
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Raised from 28_100 by issue #210's model-acquisition failure surface: the
-# shared `core/model_acquisition.py` (bounded retry + failure categorization +
-# secret redaction), the `ModelAcquisitionError` diagnostic, and the v1/v2/CLI
-# wiring that turns an unreachable Hub into ONE actionable error — genuine
-# correctness surface (init/create/search used to leak raw retry spam), not
-# stealth regrowth; ceiling = measured (28_397) + headroom.
-# Raised from 28_600 by issue #126's collection-recovery surface: the new
-# `core/recovery.py` (stranded-generation detection, PID-liveness guard,
-# manifest/storage completeness checks, restore-or-quarantine) plus the
-# `engine.py`/`_common.py` open-time wiring and a dedicated error type. This is
-# the recovery path for a crash between the two renames, where a collection
-# currently vanishes while both generations sit in `.trash-*`/`.tmp-*`; genuine
-# data-loss-prevention surface, not stealth regrowth.
-# Raised again by the same issue's review pass: the liveness enum, the durable
-# `quarantine.json` marker and the read-path surfacing in `engine.py` (the
-# Windows/own-pid/recycled-pid/one-shot-marker defects) landed after the bump
-# above and left only 3 lines of headroom — measured 29_297; ceiling = measured
-# + headroom.
-# Issue #204 adds the eval harness alongside #126's recovery surface.
-# Combined recovery/eval plus review validation and scoped runtime settings
-# measure 31_278 source lines before final docstrings; retain bounded headroom.
-# Raised from 31_600 by issues #108/#109 (one documented result shape for the
-# CLI machine mode and the MCP envelope): `protocols/results.py` types the
-# contract, `mcp/formatting.py` rebuilds the payload from ONE builder, and the
-# per-hit provenance is plumbed where it was dropped — `sourceType` from
-# `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
-# `metadata` so a v2 hit can say where it sits — genuine contract surface, not
-# stealth regrowth; ceiling = measured (31_602) + headroom.
+#: Legacy offline ceilings (main measured src 31_759 / tests 50_940 on
+#: 2026-11-15). CI enforces growth against the merge base instead, so this line
+#: is no longer a per-branch edit — see GROWTH_ALLOWANCE.
 SRC_LOC_MAX = 31_800
-# Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
-# no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
-# skips fetching comment text, 5xx retry handling, an actionable error on a
-# missing Projects v2 board, and repo-selector/graphql_url validation —
-# genuine correctness/security fixes from CodeRabbit review, not stealth
-# growth; ceiling = measured (27_897) + headroom.
-# Raised from 26_450 by github-connector (PR #164): the GitHub Projects/Issues
-# connector — `connectors/github/` (GraphQL reader, converter, schema, auth,
-# queries, connector wiring), the `index create github` subcommand, and the
-# registry/composition path-key wiring — genuine new-feature surface, not
-# stealth growth; ceiling = measured (27_610) + headroom.
-# Raised from 26_100 by core-v2-discoverability/issue #188 (#191): group-level
-# `--engine` on `index create` (`_create_options.py`/`_create_commands.py`/
-# `_create_helpers.py`, plus `create.py`/`search.py`/`cli.py`/
-# `composition.py` wiring) and config-key discoverability for
-# `--rerank`/`--no-rerank` — genuine discoverability surface, not stealth
-# regrowth; ceiling = measured (26_235) + headroom.
-# Raised from 25_800 by core-v2/6: opt-in `SentenceTransformerRerank` wiring in
-# `core/v2/retrieval.py` (+ `CoreV2RerankConfig` / `resolve_rerank_config` /
-# registration) and the cross-engine unified-relevance ranking in
-# `mcp/formatting.py` + `cli/.../search_render.py` (R10/R11) — genuine
-# new-feature surface; ceiling = measured (25_857) + headroom.
-# Raised from 25_100 by core-v2/4: the v1->v2 migration service
-# (`core/v2/migration.py`: offline + from-source read, build-aside + validate +
-# backup/atomic-swap/rollback), the facade-exposed `migrate` in `core/engine.py`,
-# and the thin `cli/knowledge/commands/migrate.py` command — genuine new-feature
-# surface (R7); ceiling = measured (25_708) + headroom.
-# Raised from 24_950 by core-v2/3: the v2 incremental `update` path in
-# `core/v2/ingestion.py` (docstore-hash upsert + deletions + build-aside swap +
-# per-doc content hashing shared with create) and the service `update` rewire —
-# genuine new-feature surface; ceiling = measured (25_005) + headroom.
-# Raised from 24_600 by core-v2/2d: R13 engine-aware diagnostics
-# (`EngineDescriptor`/`engine_descriptors` in the facade + inspect display),
-# v2 search parity (`include_full_text`/`include_all_chunks` reconstruction in
-# `core/v2/retrieval.py`), scoreKind-conditional formatter ordering, and the
-# check_imports v2-edge guard — genuine new-feature surface; ceiling = measured
-# (24_786) + headroom.
-# Raised from 23_500 by core-v2/2c, which wires the v2 engine end to end:
-# `core/v2/{persist,ingestion,retrieval,_common}.py` + `core/v2/services/` +
-# the facade's `_engine_impl("2")` branch and per-engine grouping in
-# `core/engine.py` + the CoreV2Error type — genuine new-feature surface, not
-# stealth regrowth; ceiling = measured (24_433) + headroom.
-# Raised from 23_300 by core-v2/2b, which adds the native embedding factory
-# (`core/v2/embedding/local.py`) + vector-store construction/LOAD dispatch
-# (`core/v2/stores.py`) + the UnknownVectorStoreError — genuine new-feature
-# surface, not stealth regrowth; ceiling = measured (23_416) + headroom.
-# Raised from 23_000 by core-v2/2a, which adds the v2 manifest/config-model/
-# adapter package (`core/v2/{__init__,manifest,config_models,adapter}.py`) —
-# genuine new-feature surface (pre-approved in `.spec/lessons.md`'s v1 surface
-# map note), not stealth regrowth; ceiling = measured (23_179) + headroom.
-# Raised from 29_000 after the review-remediation feature added ~90 red->green
-# regression tests (one per confirmed PR #155 defect). That is legitimate
-# defect-guarding coverage, not stealth regrowth; ceiling = measured + headroom.
-# Raised from 43_450 by issue #210's regression tests: the acquisition seam
-# unit suite (categorization, bounded retry, Retry-After, redaction), the v1
-# ensure_model/load_model failure + snapshot-consistency cases, the v2
-# cached-unloadable case, the CLI init nonzero-exit case, and the create
-# typed-error propagation case — genuine defect-guarding coverage for the
-# reproduced gaps (false cached success, retry spam, force-clobber), not
-# stealth regrowth; ceiling = measured (43_883) + headroom.
-# Raised from 44_100 by issue #211's duplicate-Hub-notice regression tests:
-# `tests/system/test_hf_notice_dedup.py` asserts the rendered notice COUNT (one
-# at default WARNING, zero at --quiet, zero when cached) through the real lazy
-# `huggingface_hub` import ordering, and `tests/unit/utils/test_logger.py` gains
-# the `enforce_third_party_policy` (re-attach/re-level/no-op-before-bootstrap/
-# idempotent) and `_drop_redundant_level_prefix` units — genuine
-# defect-guarding coverage for a reproduced double render, not stealth
-# regrowth; ceiling = measured (44_271) + headroom.
-# Raised from 44_450 by issue #112's MCP lifecycle regression suite
-# (`tests/system/test_mcp_lifecycle_freshness.py` drives ONE out-of-process stdio
-# server through an external rebuild and then a corrupt manifest; the unit test
-# pins "unknown" vs "present but unusable") — it consumed the previous headroom
-# exactly, so this restores it rather than adding slack; ceiling = measured
-# (44_450) + headroom.
-# Raised by issue #112 criterion 4 ("CLI and MCP use the same
-# configured storage root in global/local modes, including mixed v1/v2
-# collections"): `tests/system/test_mcp_storage_parity.py` grows from a
-# 27-line local-path assertion into a two-mode regression that builds a real
-# mixed v1/v2 store and drives one live out-of-process stdio server next to the
-# CLI (root identity, collection set/counts, per-engine search provenance) — the
-# last uncovered criterion of the freshness bug, not stealth regrowth.
-# Raised again by issue #126's failure-injection coverage: crash-between-renames,
-# rename1 failure, rollback failure, trash-cleanup failure and partial staging
-# each get a real filesystem fixture, so the recovery path is proven rather than
-# asserted; ceiling = measured + headroom.
-# Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
-# Review adds adversarial artifact/report, provenance and failure-path tests;
-# measured 48_284 before final review fixes, with bounded headroom.
-# Aggregate keeps search golden/locator tests, benchmark/evaluation gate
-# regressions and main's pinned parsing-corpus guard: measured 50_636 lines
-# plus 214 lines of headroom. Source budget stays at 31_800.
-TEST_LOC_MAX = 50_850
-# Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
-# model-cache regression tests: the v1/v2 `is_model_cached` cases for
-# config-only residue, dangling weight symlinks, and active-revision
-# (`refs/main`) semantics, plus the v2 offline/online cache-state wiring —
-# after trimming their docstrings, extracting a shared `_hub_snapshot` helper,
-# and inlining scenario comments; genuine defect-guarding coverage (the check
-# bricked embedding on an interrupted download), not stealth regrowth;
-# ceiling = measured (43_402) + headroom.
-# Raised from 42_800 by merging main (core-v2-engine-routing-fixes, issue #186,
-# PR #199) into the github-connector branch (PR #164/#200): main's own test
-# growth (`tests/unit/indexed/utils/test_relevance.py` + coverage for the
-# `_common.py` resolver re-raise scoping and the search/status/inspect
-# unknown-version-omission split) stayed under main's own ceiling in
-# isolation, but combined with this branch's already-bumped total it exceeds
-# it — neither branch is stealth regrowth on its own, the merge just sums two
-# legitimate deltas; ceiling = measured (43_183) + headroom.
-# Raised from 40_600 by github-connector (PR #164)'s tests: the six-file
-# `tests/unit/indexed/connectors/github/` suite (schema/auth/reader/projects/
-# converter/connector), the `TestCreateGithub` CLI coverage, the github rows in
-# the connector-registry characterization and lifecycle nets, and the final
-# whole-branch-review fix wave's regression tests (manifest endpoint carry-over,
-# real-API org/user probe shape, dedup count parity, final-attempt backoff,
-# GHES `gh --hostname`, registry path keys) — genuine new-feature and
-# defect-guarding coverage; ceiling = measured (42_561) + headroom.
-# Raised from 39_600 by core-v2-rendering-fixes/issue #187's tests: red->green
-# regression coverage for all 8 issue #187 findings (error-panel rendering,
-# terminal-derived detail-card width, Included-Patterns display, the
-# --gitignore/--no-gitignore help-truncation fix, shared content-free search
-# filtering, cosine/rerank score labels, inspect list-view path wrapping,
-# stable engine-group ordering), plus the final-whole-branch-review fix wave's
-# tests (double-escape regression guard, wide-terminal card rendering, row
-# alignment, --compact score labels) and PR-review-response coverage
-# (unsupported-scoreKind guard); genuine defect-guarding coverage, not stealth
-# regrowth; ceiling = measured (40_288) + headroom.
-# Raised from 36_850 by core-v2-discoverability/issue #188 (#191)'s tests: the
-# new `test_v2_create_search_lifecycle.py` system test, and expanded coverage
-# in `test_create.py`/`test_create_helpers.py`/`test_search.py`/
-# `test_knowledge_cli.py`/`test_retrieval.py`/`test_engine_facade*.py`/
-# `test_engine_selector.py` for the group-`--engine` and `--rerank` surfaces —
-# genuine discoverability/regression coverage, not stealth regrowth; ceiling =
-# measured (39_283) + headroom.
-# Raised from 36_400 by core-v2/8's tests: the v2 cloud-connector lifecycle net
-# (`test_lifecycle_cloud_v2.py`: jira/confluence/outline known-hit
-# create→search→update→inspect→remove), the v2 benchmark rows + subprocess
-# v1-vs-v2 budget-ratio test in `test_e2e_performance.py`, and the
-# out-of-process MCP v2 stdio smoke (`test_mcp_v2_out_of_process.py`) — genuine
-# parity/perf coverage (R4/R12); ceiling = measured (36_579) + headroom.
-# Raised from 35_800 by core-v2/6's tests: the rerank suite (disabled lazy-import
-# probe, enabled fake-reranker order/top_n, gated real-CE) in `test_retrieval.py`,
-# the cross-engine unified-relevance + v1-only byte-identical tests in
-# `test_formatting.py` and `test_search.py`, and the rerank config-model/
-# registration tests; ceiling = measured (36_093) + headroom.
-# Raised from 35_200 by core-v2/4's tests: the migration service unit suite
-# (`test_migration.py`: dry-run/offline/failed-validation/rollback/purge/
-# from-source) + the v1->v2 migration CLI system test
-# (`test_v2_migration_lifecycle.py`: search parity + offline no-network);
-# ceiling = measured (35_553) + headroom.
-# Raised from 34_650 by core-v2/3's tests: the v2 incremental-update unit suite
-# (`test_ingestion_update.py`: incrementality/embed-count proof, deletions,
-# empty no-op, build-aside mid-swap failure), the service + facade update tests,
-# and the new v2 files-lifecycle characterization net
-# (`test_lifecycle_files_v2.py`); ceiling = measured (35_073) + headroom.
-# Raised from 33_800 by core-v2/2d's tests: facade `engine_descriptors`,
-# inspect engine-diagnostics, retrieval full-text/all-chunks parity, the
-# store-dispatch integration probe, the scoreKind formatter tests, and the v2
-# create/search CLI system test; ceiling = measured (34_489) + headroom.
-# Raised from 32_800 by core-v2/2c's engine tests (persist crash-safety,
-# ingestion/retrieval/services model-free + KNOWN-HIT model-gated, facade
-# grouping + mixed v1/v2, cache-drift guard); ceiling = measured (33_599) +
-# headroom.
-# Raised from 32_500 by core-v2/2b's model-free wiring + real-model
-# (offline-proof / parity / store-dispatch) tests; ceiling = measured
-# (32_684) + headroom.
+TEST_LOC_MAX = 51_150
+
+#: Baseline-mode growth allowance per bucket, in lines. Rule: the largest
+#: per-merge growth observed in the 40 first-parent merges before 2026-11-15,
+#: plus ~25 % margin, rounded up to the next hundred (tests +2_573 for the eval
+#: harness, src +1_956 in the same merge). It also covers the largest pending
+#: branch (+3_029 tests, the tier-0 LSP work). Growth beyond it means the branch
+#: is bigger than any single reviewed unit this repo has landed — split it, or
+#: trim boilerplate first, rather than raising the number.
+GROWTH_ALLOWANCE = {"src": 2_500, "tests": 3_300}
+
 AGENTS_MD_MAX_LINES = 100
 
 _IGNORED_PARTS = frozenset({".venv", "node_modules", "__pycache__"})
+
+
+class SizeGateError(RuntimeError):
+    """The gate could not reach a verdict (git missing, ref unresolvable)."""
 
 
 def _count_loc(base: Path) -> int:
@@ -228,17 +72,105 @@ def _count_loc(base: Path) -> int:
     return total
 
 
-def _repo_files(pattern: str) -> list[Path]:
-    return [p for p in ROOT.rglob(pattern) if not (_IGNORED_PARTS & set(p.parts))]
+def _repo_files(root: Path, pattern: str) -> list[Path]:
+    return [p for p in root.rglob(pattern) if not (_IGNORED_PARTS & set(p.parts))]
 
 
-def check() -> tuple[list[str], list[str]]:
+def _git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        lines = (result.stderr or result.stdout).strip().splitlines()
+        message = lines[-1] if lines else "no output"
+        raise SizeGateError(f"git {args[0]}: {message}")
+    return result.stdout
+
+
+def _resolve_tree(root: Path, ref: str) -> None:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            f"{ref}^{{tree}}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return
+    if "not a git repository" in (result.stderr or ""):
+        raise SizeGateError(
+            f"{root} is not a git repository; --baseline-ref needs git history"
+        )
+    raise SizeGateError(
+        f"baseline ref {ref!r} is not a tree in {root} "
+        "(fetch full history, or omit --baseline-ref for the absolute ceilings)"
+    )
+
+
+def _blob_lines(blob: bytes) -> int:
+    # Same count as iterating a text file: a final line without a newline counts.
+    return blob.count(b"\n") + (1 if blob and not blob.endswith(b"\n") else 0)
+
+
+def _baseline_loc(root: Path, ref: str) -> tuple[int, int]:
+    """(src/indexed, tests) LOC of the tracked ``.py`` files in ``ref``."""
+    _resolve_tree(root, ref)
+    listing = _git(root, "ls-tree", "-r", "-z", ref, "--", "src/indexed", "tests")
+    entries: list[tuple[str, str]] = []
+    for record in listing.split("\0"):
+        if not record:
+            continue
+        meta, _, path = record.partition("\t")
+        fields = meta.split()
+        if len(fields) == 3 and fields[1] == "blob" and path.endswith(".py"):
+            entries.append((path, fields[2]))
+    if not entries:
+        return 0, 0
+
+    # One process for every blob: `cat-file --batch` answers
+    # "<oid> blob <size>\n<content>\n" per requested object, in order.
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "--batch"],
+        input="".join(f"{sha}\n" for _, sha in entries).encode(),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        lines = (result.stderr or b"").decode(errors="replace").strip().splitlines()
+        message = lines[-1] if lines else "failed to read the baseline blobs"
+        raise SizeGateError(f"git cat-file: {message}")
+
+    data = result.stdout
+    position = 0
+    totals = {"src": 0, "tests": 0}
+    for path, _sha in entries:
+        eol = data.index(b"\n", position)
+        size = int(data[position:eol].split()[2])
+        blob = data[eol + 1 : eol + 1 + size]
+        position = eol + 1 + size + 1
+        totals["src" if path.startswith("src/") else "tests"] += _blob_lines(blob)
+    return totals["src"], totals["tests"]
+
+
+def check(
+    root: Path = ROOT, baseline_ref: str | None = None
+) -> tuple[list[str], list[str]]:
     """Return (violations, measurements) — measurements always printed."""
     violations: list[str] = []
     measurements: list[str] = []
 
     # One package dir: src/indexed/, no packages/, no apps/.
-    src_dir = ROOT / "src"
+    src_dir = root / "src"
     package_dirs = (
         sorted(p.name for p in src_dir.iterdir() if p.is_dir())
         if src_dir.is_dir()
@@ -250,22 +182,22 @@ def check() -> tuple[list[str], list[str]]:
             f"src/ must contain exactly one package dir 'indexed', found {package_dirs}"
         )
     for stale in ("packages", "apps"):
-        if (ROOT / stale).is_dir():
+        if (root / stale).is_dir():
             violations.append(
                 f"'{stale}/' must not exist (monorepo collapsed to one package)"
             )
 
     # One real AGENTS.md at root, <=100 lines.
-    agents_files = [p for p in _repo_files("AGENTS.md") if not p.is_symlink()]
+    agents_files = [p for p in _repo_files(root, "AGENTS.md") if not p.is_symlink()]
     measurements.append(
-        f"AGENTS.md files: {[str(p.relative_to(ROOT)) for p in agents_files]}"
+        f"AGENTS.md files: {[str(p.relative_to(root)) for p in agents_files]}"
     )
-    if agents_files != [ROOT / "AGENTS.md"]:
+    if agents_files != [root / "AGENTS.md"]:
         violations.append(
             f"expected exactly one real AGENTS.md at root, found {[str(p) for p in agents_files]}"
         )
     else:
-        agents_lines = sum(1 for _ in (ROOT / "AGENTS.md").open(encoding="utf-8"))
+        agents_lines = sum(1 for _ in (root / "AGENTS.md").open(encoding="utf-8"))
         measurements.append(f"AGENTS.md lines: {agents_lines}")
         if agents_lines > AGENTS_MD_MAX_LINES:
             violations.append(
@@ -273,15 +205,15 @@ def check() -> tuple[list[str], list[str]]:
             )
 
     # One pyproject.toml (excluding .venv); no [tool.una].
-    pyprojects = _repo_files("pyproject.toml")
+    pyprojects = _repo_files(root, "pyproject.toml")
     measurements.append(
-        f"pyproject.toml files: {[str(p.relative_to(ROOT)) for p in pyprojects]}"
+        f"pyproject.toml files: {[str(p.relative_to(root)) for p in pyprojects]}"
     )
-    if pyprojects != [ROOT / "pyproject.toml"]:
+    if pyprojects != [root / "pyproject.toml"]:
         violations.append(
             f"expected exactly one pyproject.toml, found {[str(p) for p in pyprojects]}"
         )
-    root_pyproject = ROOT / "pyproject.toml"
+    root_pyproject = root / "pyproject.toml"
     if root_pyproject.is_file():
         text = root_pyproject.read_text(encoding="utf-8")
         if "[tool.una]" in text:
@@ -289,22 +221,60 @@ def check() -> tuple[list[str], list[str]]:
                 "pyproject.toml still declares [tool.una] (workspace apparatus)"
             )
 
-    # Src / test LOC ceilings (anti-regrowth headroom, not the fantasy target).
-    src_loc = _count_loc(ROOT / "src" / "indexed")
-    test_loc = _count_loc(ROOT / "tests")
-    measurements.append(f"src/indexed LOC: {src_loc} (max {SRC_LOC_MAX})")
-    measurements.append(f"tests LOC: {test_loc} (max {TEST_LOC_MAX})")
-    if src_loc > SRC_LOC_MAX:
-        violations.append(f"src/indexed LOC {src_loc} exceeds ceiling {SRC_LOC_MAX}")
-    if test_loc > TEST_LOC_MAX:
-        violations.append(f"tests LOC {test_loc} exceeds ceiling {TEST_LOC_MAX}")
+    # Src / test LOC: growth against a baseline ref, else absolute ceilings.
+    src_loc = _count_loc(root / "src" / "indexed")
+    test_loc = _count_loc(root / "tests")
+    if baseline_ref is None:
+        measurements.append("LOC mode: absolute ceilings (legacy offline fallback)")
+        measurements.append(f"src/indexed LOC: {src_loc} (max {SRC_LOC_MAX})")
+        measurements.append(f"tests LOC: {test_loc} (max {TEST_LOC_MAX})")
+        if src_loc > SRC_LOC_MAX:
+            violations.append(
+                f"src/indexed LOC {src_loc} exceeds ceiling {SRC_LOC_MAX}"
+            )
+        if test_loc > TEST_LOC_MAX:
+            violations.append(f"tests LOC {test_loc} exceeds ceiling {TEST_LOC_MAX}")
+    else:
+        base_src, base_tests = _baseline_loc(root, baseline_ref)
+        measurements.append(f"LOC mode: growth against baseline ref {baseline_ref}")
+        buckets = (
+            ("src/indexed", src_loc, base_src, GROWTH_ALLOWANCE["src"]),
+            ("tests", test_loc, base_tests, GROWTH_ALLOWANCE["tests"]),
+        )
+        for name, measured, baseline, allowance in buckets:
+            delta = measured - baseline
+            measurements.append(
+                f"{name} LOC: {measured} ({delta:+d} vs baseline {baseline}, "
+                f"allowance +{allowance})"
+            )
+            if measured > baseline + allowance:
+                violations.append(
+                    f"{name} grew {delta:+d} lines over {baseline_ref} "
+                    f"({baseline} -> {measured}); the per-branch allowance is "
+                    f"+{allowance}. Split the branch, or trim boilerplate first "
+                    "(.spec/lessons.md, 'CI-only gates'), rather than raising "
+                    "GROWTH_ALLOWANCE."
+                )
 
     return violations, measurements
 
 
 def main(argv: list[str]) -> int:
-    del argv
-    violations, measurements = check()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--baseline-ref",
+        metavar="REF",
+        help=(
+            "measure the LOC ceilings as growth against this ref (CI passes the "
+            "PR base); omit for the legacy absolute ceilings"
+        ),
+    )
+    args = parser.parse_args(argv)
+    try:
+        violations, measurements = check(ROOT, args.baseline_ref)
+    except SizeGateError as exc:
+        print(f"Size gate error: {exc}", file=sys.stderr)
+        return 2
     print("Size gate measurements:")
     for line in measurements:
         print(f"  {line}")
