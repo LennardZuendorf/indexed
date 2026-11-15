@@ -443,6 +443,38 @@ def test_code_context_prefix_is_stripped_when_the_locator_already_has_the_path()
     assert payload["documents"][0]["hits"][0]["text"] == "print(1)"
 
 
+def test_plaintext_context_prefix_is_preserved() -> None:
+    """Preserve the canonical search payload for bare path prefixes."""
+    raw = {
+        "coll": {
+            "results": [
+                {
+                    "id": "runbooks/deploy steps.txt",
+                    "url": "file:///runbooks/deploy steps.txt",
+                    "matchedChunks": [
+                        {
+                            "chunkNumber": 1,
+                            "score": 0.5,
+                            "content": {
+                                "indexedData": (
+                                    "/runbooks/deploy steps.txt\nRollback runbook"
+                                ),
+                                "metadata": {"file_path": "/runbooks/deploy steps.txt"},
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    payload = build_search_payload(raw, "q")
+
+    assert (
+        payload["documents"][0]["hits"][0]["text"]
+        == "/runbooks/deploy steps.txt\nRollback runbook"
+    )
+
+
 def test_text_prefix_is_kept_when_no_file_path_is_known() -> None:
     raw = {
         "coll": {

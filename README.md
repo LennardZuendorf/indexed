@@ -23,6 +23,7 @@ Local-first semantic search for AI agents. Give Claude Code, Cursor, Codex, and 
 - **Semantic search** — understands meaning, not just keywords, using a LlamaIndex-powered engine with optional cross-encoder reranking
 - **Multiple sources** — local files (25+ formats), Jira, Confluence, Outline Wiki, and GitHub (issues, PRs, Projects v2)
 - **MCP integration** — works with Claude Code, Cursor, Windsurf, Cline, and other MCP-compatible agents
+- **LSP integration** — `indexed lsp` serves the same index to any editor: search it from the symbol palette, hover a file to see what the index knows, jump to the definition the index has seen, list the places it has seen a name, and get diagnostics that say only what the index can prove — this file is not in any collection, or the index holds an older version of it (VS Code, Neovim, Zed, Helix)
 - **Incremental updates** — keep your index fresh with git-based change tracking
 
 ## Quick Start
@@ -230,6 +231,9 @@ indexed index watch my-project --debounce 5 --poll-interval 1
 # Configuration
 indexed config inspect                   # view config
 indexed config set search.max_docs 20    # set a value
+
+# Editor integration (Language Server Protocol, stdio)
+indexed lsp                              # point your editor's LSP client here
 ```
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).

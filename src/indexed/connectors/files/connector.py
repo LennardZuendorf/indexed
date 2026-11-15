@@ -93,9 +93,9 @@ class FileSystemConnector:
             max_tokens=config.max_chunk_tokens,
             excluded_dirs=config.excluded_dirs or None,
             respect_gitignore=config.respect_gitignore,
-            excluded_paths=roots,
             change_tracking=config.change_tracking,
             code_chunking=config.code_chunking,
+            excluded_paths=roots,
         )
         self._converter = FilesDocumentConverter()
         self._change_tracker = ChangeTracker(
