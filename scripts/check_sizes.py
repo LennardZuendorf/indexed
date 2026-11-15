@@ -140,6 +140,16 @@ SRC_LOC_MAX = 32_900
 # Issue #204 adds eval metric, artifact, runner and CLI regression coverage.
 # Review adds adversarial artifact/report, provenance and failure-path tests;
 # measured 48_284 before final review fixes, with bounded headroom.
+# Merging main (a9363f5: #310's benchmark-gate determinism fix plus #312/#311's
+# dependency floors) into the LSP Tier 0 stack keeps both legitimate test tracks
+# in one tree — the LSP stdio session and this branch's repaired search
+# golden/locator units on one side, main's eval/canonical suite and the
+# `test_benchmark_ab.py` provenance proof on the other. Measured 52,431 on the
+# merged tree, so the ceiling moves to measured + headroom rather than dropping
+# either side; ceiling = measured (52,431) + 199 lines of headroom.
+TEST_LOC_MAX = 52_630
+# The entries below are the two sides' newest pre-merge ceilings, kept verbatim
+# so the lineage of the number stays auditable.
 # Raised from 48_600 by issue #280's pinned-benchmark-corpus guard
 # (`tests/unit/test_benchmark_corpus_pin.py` locks the parsing corpus bytes and
 # the benchmark wiring so a corpus change is a deliberate, reviewable diff
@@ -161,11 +171,17 @@ SRC_LOC_MAX = 32_900
 # five Tier 0 acceptance points against a real collection — the protocol is the
 # contract, so the transcript IS the regression test; ceiling = measured
 # (51_140) + headroom.
-# The merge of #297 (main) into this stack keeps both legitimate test tracks —
+# The merge of #297 (main) into this stack kept both legitimate test tracks —
 # the LSP stdio session, main's eval/canonical suite and the repaired search
-# golden/locator units — in one tree: measured 52_316 after the hand-merge, so
-# the ceiling moves to measured + headroom rather than dropping either side.
-TEST_LOC_MAX = 52_600
+# golden/locator units — in one tree: measured 52_316 after the hand-merge,
+# ceiling 52_600 (measured + headroom).
+# Aggregate keeps search golden/locator tests, benchmark/evaluation gate
+# regressions and main's pinned parsing-corpus guard: measured 50_636 lines
+# plus 214 lines of headroom. Source budget stays at 31_800.
+# Raised by the gate-determinism fix: `test_benchmark_ab.py` now runs the
+# workflow's own `verify_pr_merge` against a real repository whose base branch
+# moves after the event snapshot, so the 2026-11-12 provenance red is proven
+# fixed rather than asserted in text — measured 50_940 on main, ceiling 51_050.
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision
