@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), LSP server (stdio JSON-RPC), CLI startup perf
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -280,10 +280,18 @@ Rules the shape encodes — each one exists because the old flat payload got it 
   (logs and notices — a skipped unsearchable collection, a no-op `--rerank` — go to
   stderr). Only an exact leading `# <metadata.file_path>\n` context prefix is
   stripped when that metadata path is present; other text stays unchanged.
-- **Failures never read as emptiness.** Success payloads carry `collection_errors`.
-  Failed collections reaching the engine appear there; CLI also retains skipped
-  no-indexer statuses when other collections are searched. CLI status omits unreadable
-  manifests; named MCP searches return a top-level error when status is unusable.
+- **`collection_errors` means "not done as asked", not "this collection failed".**
+  Success payloads always carry it. Two states share the field, told apart by
+  `collections`: a **failed** collection (unreachable engine, unreadable manifest,
+  no indexers) is absent from `collections` and contributes no documents; a
+  collection whose requested Git option was **skipped** stays in `collections`
+  with its rows present — a skipped `--changed-since` leaves them unfiltered and a
+  skipped `--git-rerank` leaves them similarity-ordered, both stamped by
+  `gitFilter`/`gitRerank` and turned into an entry by `mcp/formatting.py`. Entries
+  are per request-not-applied, so one collection may have two. CLI also retains
+  skipped no-indexer statuses when other collections are searched; CLI status omits
+  unreadable manifests; named MCP searches return a top-level error when status is
+  unusable.
 - **Machine payloads always request matched chunk content.** CLI JSON and both MCP
   tools pass `include_matched_chunks=True`, even when the search config sets it to
   false. Text and provenance are required by the fixed payload contract.
@@ -296,10 +304,12 @@ CLI consumers check exit status before parsing stdout; non-zero responses may be
 non-JSON. For exit-zero JSON and MCP results, read `schema` first:
 
 - **`schema` present** → the success shape documented above. Empty `documents`
-  means no matched content was returned. `collections` lists successfully searched
-  collections. Empty `collections` means **no collection was searched successfully**;
-  inspect `collection_errors` to distinguish an empty store from all searches failing.
-  Non-empty `collections` with empty `documents` means those collections matched nothing.
+  means no matched content was returned. `collections` lists searched collections
+  (a collection whose requested option was skipped is listed: its rows came back
+  unfiltered, and it also carries a `collection_errors` entry). Empty
+  `collections` means **no collection was searched**; inspect `collection_errors`
+  to distinguish an empty store from all searches failing. Non-empty `collections`
+  with empty `documents` means those collections matched nothing.
 - **`schema` absent** → an error envelope, `error` holding the message. A request that
   failed never reads as "nothing matched".
 
@@ -310,7 +320,9 @@ non-JSON. For exit-zero JSON and MCP results, read `schema` first:
 | CLI `search --json` (all) — no collections exist | `{"error": "No collections found"}` | `0` |
 | CLI `search --json` (all) — collections exist, none searchable | `{"error": "No searchable collections available"}` | `0` |
 | MCP `search` — empty store | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
-| CLI `search --json` / MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors` | CLI `0`; MCP n/a |
+| CLI `search --json` / MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors`, absent from `collections` | CLI `0`; MCP n/a |
+| CLI `search --json` / MCP `search` — a requested Git option cannot apply to a collection (v1 engine, no repo, unknown ref) | success payload with the collection in **both** `collections` and `collection_errors`, its rows returned unfiltered/unranked | CLI `0`; MCP n/a |
+| CLI `search --json -c <v1 collection>` — `--changed-since <ref>` requested | `{"error": "--changed-since '<ref>' cannot be applied: collection '<name>' uses the v1 engine (git filtering is v2-only)"}` | `1` |
 | MCP `search` / `search_collection` — caught `IndexedError` | `{"error": "…", "type": "<concrete class name>"}` (for example, `StorageError`) | n/a |
 | MCP `search` / `search_collection` — unexpected search/status exception | `{"error": "Internal error: …", "type": "MCPError"}` | n/a |
 | MCP `search_collection` — present on disk, unreadable manifest or no indexers | `{"error": "Collection 'x' exists on disk but has no usable index: …", "type": "MCPError"}` | n/a |
