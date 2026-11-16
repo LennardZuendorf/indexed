@@ -397,3 +397,46 @@ class TestFilesDocumentReaderCacheKeyParseSetting:
         assert details1 != details2, (
             "Different table_structure should produce different details dicts"
         )
+
+
+class TestReaderPersistsConnectorSettings:
+    """The reader block must carry the settings ``from_manifest`` reads back.
+
+    ``changeTracking`` and ``codeChunking`` were accepted by the connector and
+    then dropped, so an update silently reverted to ``auto``/AST defaults. These
+    tests pin the write side; ``test_from_manifest`` pins the read side.
+    """
+
+    def test_details_persist_change_tracking_and_code_chunking(self, tmp_path):
+        reader = FilesDocumentReader(
+            base_path=str(tmp_path),
+            change_tracking="mtime",
+            code_chunking=False,
+        )
+
+        details = reader.get_reader_details()
+
+        assert details["changeTracking"] == "mtime"
+        assert details["codeChunking"] is False
+
+    def test_details_default_to_auto_and_ast(self, tmp_path):
+        details = FilesDocumentReader(base_path=str(tmp_path)).get_reader_details()
+
+        assert details["changeTracking"] == "auto"
+        assert details["codeChunking"] is True
+
+    def test_code_chunking_false_yields_plaintext_chunks(self, tmp_path):
+        source = tmp_path / "mod.py"
+        source.write_text("def f():\n    return 1\n\n\ndef g():\n    return 2\n")
+
+        ast_doc = FilesDocumentReader(
+            base_path=str(tmp_path), code_chunking=True
+        ).parsing.parse(source)
+        plain_doc = FilesDocumentReader(
+            base_path=str(tmp_path), code_chunking=False
+        ).parsing.parse(source)
+
+        assert {chunk.source_type for chunk in ast_doc.chunks} == {"code"}
+        assert {chunk.source_type for chunk in plain_doc.chunks} == {"plaintext"}
+        assert all("node_type" not in chunk.metadata for chunk in plain_doc.chunks)
+        assert len(ast_doc.chunks) > len(plain_doc.chunks)

@@ -90,3 +90,139 @@ def test_filesystem_connector_properties():
 
         # Test connector_type property
         assert connector.connector_type == "localFiles"
+
+
+class _FakeConfigService:
+    """Configuration port for reader settings and active storage forwarding."""
+
+    def __init__(self, cfg):
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        self._cfg = cfg
+        self.resolver = SimpleNamespace(
+            resolve_root=lambda _mode: Path(cfg.path) / "active-store"
+        )
+
+    def resolve_storage_mode(self):
+        return "local"
+
+    def register(self, config_class, *, path: str) -> None:
+        self.registered = (config_class, path)
+
+    def bind(self):
+        return self
+
+    def get(self, config_class):
+        return self._cfg
+
+
+def test_from_config_threads_change_tracking_and_code_chunking(tmp_path):
+    """``from_config`` must carry every FileSystemConfig field to the reader.
+
+    ``code_chunking`` stopped at the connector constructor (never reaching the
+    parser) and ``change_tracking`` was never persisted to the manifest, so both
+    were dead config keys. This pins the config → reader → manifest path.
+    """
+    from typing import Any, cast
+
+    from indexed.connectors.files.schema import FileSystemConfig
+
+    cfg = FileSystemConfig(
+        path=str(tmp_path), change_tracking="mtime", code_chunking=False
+    )
+    (tmp_path / "note.txt").write_text("source")
+    storage = tmp_path / "active-store"
+    storage.mkdir()
+    (storage / "index.txt").write_text("internal storage")
+    connector = FileSystemConnector.from_config(cast(Any, _FakeConfigService(cfg)))
+
+    details = connector.reader.get_reader_details()
+    assert details["changeTracking"] == "mtime"
+    assert details["codeChunking"] is False
+    assert list(connector.reader._iter_file_paths()) == [str(tmp_path / "note.txt")]
+
+
+def test_disappeared_source_never_becomes_deletions(tmp_path):
+    import shutil
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    shutil.rmtree(source)
+
+    with pytest.raises(OSError):
+        connector.get_changes(state)
+
+
+def test_source_disappearing_during_enumeration_aborts(tmp_path, monkeypatch):
+    import os
+    import shutil
+    from indexed.connectors.files import files_document_reader
+
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    walk = os.walk
+
+    def disappearing_walk(*args, **kwargs):
+        for item in walk(*args, **kwargs):
+            yield item
+            shutil.rmtree(source)
+
+    monkeypatch.setattr(files_document_reader.os, "walk", disappearing_walk)
+    with pytest.raises(FileNotFoundError):
+        connector.get_changes(state)
+
+
+def test_non_directory_source_refuses_to_enumerate(tmp_path):
+    """A file as source must raise, never walk to an empty index.
+
+    An empty walk would classify every indexed document as deleted and empty
+    the collection, so the path is validated before any enumeration.
+    """
+    source_file = tmp_path / "note.txt"
+    source_file.write_text("hello")
+    connector = FileSystemConnector(path=str(source_file))
+
+    with pytest.raises(NotADirectoryError) as excinfo:
+        connector.get_changes()
+
+    assert str(excinfo.value) == connector.reader.base_path
+    assert connector.reader.base_path == str(source_file.resolve())
+
+
+def test_source_replaced_during_enumeration_aborts(tmp_path, monkeypatch):
+    """A tree swapped mid-walk must raise, not diff two different trees.
+
+    Renaming the source and recreating the path keeps it valid while changing
+    the inode, so a reader that only compared paths would return a list of the
+    old tree and the change tracker would diff it against the new one.
+    """
+    import os
+    from indexed.connectors.files import files_document_reader
+
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "kept.txt").write_text("keep")
+    connector = FileSystemConnector(path=str(source), change_tracking="content_hash")
+    state = connector.build_state()
+    walk = os.walk
+
+    def replaced_walk(*args, **kwargs):
+        yield from walk(*args, **kwargs)
+        source.rename(tmp_path / "moved")
+        source.mkdir()
+
+    monkeypatch.setattr(files_document_reader.os, "walk", replaced_walk)
+
+    with pytest.raises(OSError, match="changed during enumeration") as excinfo:
+        connector.get_changes(state)
+
+    # The guard, not an incidental "path vanished" failure.
+    assert not isinstance(excinfo.value, FileNotFoundError)
+    assert connector.reader.base_path in str(excinfo.value)

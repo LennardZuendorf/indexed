@@ -1,0 +1,26 @@
+[
+  {
+    "name": "def unified_relevance(raw_score, score_kind):",
+    "kind": 12,
+    "location": {
+      "uri": "file:///repo/src/indexed/utils/relevance.py",
+      "range": {
+        "start": {"line": 20, "character": 0},
+        "end": {"line": 22, "character": 14}
+      }
+    },
+    "containerName": "indexed-src"
+  },
+  {
+    "name": "Scoring",
+    "kind": 3,
+    "location": {
+      "uri": "file:///repo/docs/notes.md",
+      "range": {
+        "start": {"line": 0, "character": 0},
+        "end": {"line": 0, "character": 0}
+      }
+    },
+    "containerName": "indexed-src"
+  }
+]
