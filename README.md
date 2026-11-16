@@ -243,7 +243,7 @@ For the full CLI reference and configuration guide, see the [documentation](http
 `indexed lsp` is a stdio server over the **same storage as the CLI**. Start it from the
 project root; a workspace `.indexed` store needs `indexed --local lsp`. VS Code has no
 built-in hook, so register the command in a generic LSP client extension's `settings.json`:
-`{"indexed": {"command": "indexed", "args": ["lsp"]}}` Neovim 0.11+:
+`{"indexed": {"command": "indexed", "args": ["lsp"]}}`; Neovim 0.11+:
 `vim.lsp.start({ name = "indexed", cmd = { "indexed", "lsp" } })`; Zed and Helix take the
 same command and args. Diagnostics are `not-in-any-collection` and `index-stale` —
 severity Information, source `indexed`. There is no per-keystroke sync
