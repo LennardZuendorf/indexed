@@ -321,14 +321,16 @@ non-JSON. For exit-zero JSON and MCP results, read `schema` first:
 | CLI `search --json` (all) — collections exist, none searchable | `{"error": "No searchable collections available"}` | `0` |
 | MCP `search` — empty store | *success* payload, `collections: []`, `documents: []`, `counts` zeroed | n/a (tool result) |
 | CLI `search --json` / MCP `search` — one collection fails, others answer | success payload with that collection in `collection_errors`, absent from `collections` | CLI `0`; MCP n/a |
-| CLI `search --json` / MCP `search` — a requested Git option cannot apply to a collection (v1 engine, no repo, unknown ref) | success payload with the collection in **both** `collections` and `collection_errors`, its rows returned unfiltered/unranked | CLI `0`; MCP n/a |
-| CLI `search --json -c <v1 collection>` — `--changed-since <ref>` requested | `{"error": "--changed-since '<ref>' cannot be applied: collection '<name>' uses the v1 engine (git filtering is v2-only)"}` | `1` |
+| CLI `search --json` (all collections) — a requested Git option cannot apply to one of them (v1 engine, no Git repository behind it) | success payload with that collection in **both** `collections` and `collection_errors`, its rows returned unfiltered/unranked | `0` |
+| MCP `search` / `search_collection` — same, plus a `changed_since` ref that does not resolve (MCP has no ref pre-check) | success payload with the collection in **both** `collections` and `collection_errors`, its rows returned unfiltered/unranked | n/a (tool result) |
+| CLI `search --json -c <name>` — `--changed-since <ref>` requested on a named collection that cannot carry the filter (v1 engine, not inside a Git repository, no files reader) | `{"error": "--changed-since '<ref>' cannot be applied: collection '<name>' uses the v1 engine (git filtering is v2-only)"}` — the clause after the colon names the actual cause | `1` |
+| CLI `search --json` (`-c` named, or every collection) — `--changed-since <ref>` where the ref does not resolve in the collection's repository | `{"error": "--changed-since '<ref>' is not a valid git ref in <repo>"}` | `1` |
 | MCP `search` / `search_collection` — caught `IndexedError` | `{"error": "…", "type": "<concrete class name>"}` (for example, `StorageError`) | n/a |
 | MCP `search` / `search_collection` — unexpected search/status exception | `{"error": "Internal error: …", "type": "MCPError"}` | n/a |
 | MCP `search_collection` — present on disk, unreadable manifest or no indexers | `{"error": "Collection 'x' exists on disk but has no usable index: …", "type": "MCPError"}` | n/a |
 | MCP `search_collection` — collection unknown on disk | `{"error": "Collection 'x' not found or has no indexers"}` — **no `type`** | n/a |
 
-Two asymmetries are deliberate and must not surprise a harness:
+Three asymmetries are deliberate and must not surprise a harness:
 
 - **MCP has no exit code, and one of its bodies has no `type`.** `search_collection`
   answers an unknown name with the bare `{"error"}` its clients already match on
@@ -338,18 +340,27 @@ Two asymmetries are deliberate and must not surprise a harness:
   class as `type`; unexpected search/status failures use `MCPError`.
 - **The empty store is a CLI envelope but an MCP success payload.** The CLI says
   `{"error": "No collections found"}`, the MCP tool returns the success shape with
-  `collections: []`. Empty `collections` means no collection was searched
-  successfully; inspect `collection_errors` to distinguish an empty store from all
-  searches failing. Empty `documents` with non-empty `collections` means those
-  collections matched nothing.
+  `collections: []`. Empty `collections` means no collection was searched (nothing
+  exists, or nothing was searchable); inspect `collection_errors` to distinguish an
+  empty store from all searches failing. Empty `documents` with non-empty
+  `collections` means those collections matched nothing.
+- **The CLI pre-validates `--changed-since`; MCP does not.** Before searching, the
+  CLI resolves the ref against every collection it is about to search and treats an
+  unresolvable one as fatal, whether or not `-c` named a collection
+  (`_changed_since_problems` in `cli/knowledge/commands/search.py`); the MCP tools
+  reach the engine with the ref unvalidated, so the same request returns a success
+  payload with the collection in both arrays, rows unfiltered. Never infer "the ref
+  is valid" from an MCP success payload.
 
 **Errors that escape the command** (`ConfigurationError`, `StorageError`, … raised
 before a payload exists) go to the CLI's top-level handler. It prints a Rich error
 panel to **stdout** and exits with the mapped code (`1`, `2` for config, `3` for
 storage). This exceptional stdout is not JSON. Check the exit code before parsing
 stdout; a non-zero exit is a failed request. An `error` body reports a failure or
-an empty store, while empty `collections` means no collection was searched
-successfully. Inspect `collection_errors` for partial or all-collection failures.
+an empty store, while empty `collections` means no collection was searched.
+`collection_errors` lists requests that were not carried out as asked: failed
+collections (absent from `collections`) and skipped per-collection Git options
+(present in `collections`, rows unfiltered).
 The search bodies above are pinned:
 `tests/unit/indexed/mcp/test_search_payload_golden.py` (CLI and MCP envelopes),
 `tests/unit/indexed/mcp/test_tools_collection_errors.py` (unknown vs unusable

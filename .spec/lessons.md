@@ -1426,7 +1426,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   Guessed result, envelope, engine and stdout-test filenames caused avoidable
   failed commands in this cycle; use `rg --files` before constructing paths.
 
-- Empty `collections` means no collection was searched successfully. Inspect
+- Empty `collections` means no collection was searched. Inspect
   `collection_errors` to distinguish an empty store from all searches failing;
   preserve concrete exception types when documenting boundary envelopes.
 
@@ -2225,5 +2225,11 @@ and enumerate the states it can carry, then document the discriminator a reader
 actually branches on (`collections` membership here). Add a captured payload for
 each state; if a new field is the only honest fix, that is a schema decision —
 decide it explicitly, never let page and payload disagree.
+**Also:** one field described in three places (reference page, spec table, the
+`index-use` skill agents load) must be fixed in all three in the same commit — a
+contract corrected only in the reference page leaves the agent-facing surface
+teaching the old reading. And state each surface's own outcome separately: the CLI
+pre-validates a git ref and exits 1, MCP hands it to the engine and gets a skip, so
+one row claiming "CLI 0" for both is wrong until it is split.
 **Tags:** docs, contract, payload, dogfood
 **Date:** 2026-11-16

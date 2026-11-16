@@ -46,7 +46,11 @@ their best hit:
 - `schema` — `indexed.search/1`. Branch on it; an `error` string with no `schema`
   means the search failed, not that nothing matched
 - `counts` — `{documents, hits}`; `collections` — what was searched;
-  `collection_errors` — collections that failed (always present, `[]` when none)
+  `collection_errors` — requests not carried out as asked (always present, `[]`
+  when everything was applied). Read `collections` to tell the two states apart: a
+  collection in **both** arrays was searched and a requested Git option was
+  skipped, so its rows are unfiltered/unranked — use them, don't discard them;
+  only a collection absent from `collections` failed and contributed nothing
 - `documents[]` — each states `collection`, optional `source_type`, `id`, optional `path` /
   `url` and `score_kind` once
 - `documents[].hits[]` — `relevance` (higher is better, comparable across
@@ -58,7 +62,9 @@ their best hit:
   `page` (1-based, only when page metadata is supplied), `headings` (heading path),
   or `document` (position unknown, including body fragments)
 
-Global `search` reports individual collection failures in `collection_errors`.
+Global `search` reports failed collections **and** skipped per-collection Git
+options in `collection_errors`; `collections` membership tells them apart (present
+= searched, rows unfiltered; absent = failed).
 Named `search_collection` can instead return a top-level `error` without `schema`:
 a present but unusable collection includes `type: "MCPError"`; an unknown name
 has no `type`. Caught `IndexedError` types preserve their concrete class name.

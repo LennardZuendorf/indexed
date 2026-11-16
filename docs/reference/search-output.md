@@ -217,10 +217,10 @@ empty store from all searches failing. A collection that appears in **both**
 arrays was searched — the entry says a requested option was not applied to it, so
 its rows are a superset of what you asked for, not a failure.
 
-MCP has no exit code. Read `schema` first. Global `search` reports per-collection
-failures and skipped Git options in `collection_errors`, including unreadable
-manifests. Named
-`search_collection` resolves status first: a collection present on disk with an
+MCP has no exit code. Read `schema` first. Both MCP search tools report
+per-collection failures and skipped Git options in `collection_errors`, including
+unreadable manifests. Named `search_collection` resolves status first: a collection
+present on disk with an
 unreadable manifest or no indexers returns a top-level `{"error": "…", "type":
 "MCPError"}`; an unknown name returns `{"error": "Collection 'x' not found or has
 no indexers"}` without `type`. Neither body has a success schema. If a boundary
@@ -253,11 +253,21 @@ apart:
 
 Entries are per request that was not applied, not per collection: asking for both
 options on a collection that can honour neither yields two entries for that name.
-CLI and MCP `search` report it identically; the CLI human view prints the same
-line as a warning panel.
+CLI and MCP `search` render the skip line identically; the CLI human view prints
+the same line as a warning panel.
 
-Captured from a real run: a v1 collection `v1demo` and a v2 collection `demo`
-over the same clean git checkout, so nothing had changed since `HEAD`.
+One asymmetry follows from where the check lives: the CLI resolves the ref before
+searching and refuses the whole request when it does not resolve
+(`{"error": "--changed-since '<ref>' is not a valid git ref in <repo>"}`, exit
+`1`) — naming a collection does not change that. The MCP tools hand the ref to the
+engine unvalidated, so the same request there returns a success payload with the
+collection in both arrays and its rows unfiltered. A skipped filter therefore never
+means "the ref was fine".
+
+Captured from a real run: a v1 collection `v1demo` and a v2 collection `demo` over
+the same clean git checkout, so nothing had changed since `HEAD`. The counts depend
+on how the fixture chunks; the `collections` and `collection_errors` arrays are the
+contract.
 
 ```console
 $ indexed index search "retry" --json --changed-since HEAD
