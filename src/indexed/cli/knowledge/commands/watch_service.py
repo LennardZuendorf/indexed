@@ -147,6 +147,76 @@ def signature_for(
     return WatchSignature(files=count, digest=digest.hexdigest())
 
 
+@dataclass(frozen=True)
+class WatchTarget:
+    """A resolved ``localFiles`` watch scope: what to scan, what to prune.
+
+    Built once per watch session so the CLI command and the MCP server share
+    one description of "what does this collection read from" instead of two
+    copies that can drift.
+    """
+
+    collection: str
+    base_path: str
+    excluded_dirs: tuple[str, ...] = ()
+    respect_gitignore: bool = True
+    excluded_paths: tuple[Path, ...] = ()
+
+    def scan(self) -> WatchSignature | None:
+        """Fingerprint the tree; ``None`` keeps the data-loss gate intact."""
+        return signature_for(
+            self.base_path,
+            excluded_dirs=self.excluded_dirs,
+            respect_gitignore=self.respect_gitignore,
+            excluded_paths=self.excluded_paths,
+        )
+
+
+def resolve_watch_target(
+    collection: str,
+    collections_path: str | Path,
+    *,
+    config_service: Any = None,
+) -> WatchTarget | None:
+    """Resolve ``collection``'s watch scope, or ``None`` when it cannot be watched.
+
+    ``None`` covers both "no usable source path" and "not a directory" — callers
+    report their own refusal message. The active storage root is pruned so a
+    collection's own writes never wake its watcher (only relevant when the
+    source tree contains the storage root; harmless otherwise).
+    """
+    from indexed.cli.knowledge.commands.update_service import (
+        _read_manifest_reader_config,
+    )
+
+    reader_cfg = _read_manifest_reader_config(collection, str(collections_path))
+    base_path = str(reader_cfg.get("basePath") or "")
+    if not base_path or not Path(base_path).is_dir():
+        return None
+
+    excluded_paths: tuple[Path, ...] = ()
+    if config_service is not None:
+        try:
+            storage_root = config_service.resolver.resolve_root(
+                config_service.resolve_storage_mode()
+            ).resolve()
+            excluded_paths = (
+                (storage_root / "data",)
+                if storage_root == Path(base_path).resolve()
+                else (storage_root,)
+            )
+        except Exception:  # noqa: BLE001 — an unresolvable root only costs extra scans
+            excluded_paths = ()
+
+    return WatchTarget(
+        collection=collection,
+        base_path=base_path,
+        excluded_dirs=tuple(reader_cfg.get("excludedDirs") or ()),
+        respect_gitignore=bool(reader_cfg.get("respectGitignore", True)),
+        excluded_paths=excluded_paths,
+    )
+
+
 def run_watch_loop(
     *,
     scan: Callable[[], WatchSignature | None],
@@ -248,7 +318,9 @@ def run_watch_loop(
 
 __all__ = [
     "WatchSignature",
+    "WatchTarget",
     "iter_watched_files",
+    "resolve_watch_target",
     "signature_for",
     "run_watch_loop",
 ]

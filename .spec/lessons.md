@@ -2291,3 +2291,15 @@ embedder warms the cache. This is what a user sees when it happens.
 notes told the releaser to run it.
 **Tags:** cli, release, verification
 **Date:** 2026-11-16
+### Gate a long-lived server's background work before the import
+**Pattern:** adding an opt-in watcher to a server lifespan invites importing the
+loop module at server-module scope, so every start pays the import even when the
+feature is off — and "off behaves exactly as before" stops being checkable.
+**Rule:** make the off-path a single config attribute read: import the
+watcher/engine modules inside the enabled branch, plan the watch scope once at
+startup (never re-plan while serving), run one `asyncio.to_thread(run_watch_loop)`
+per collection with a shared `threading.Event` for shutdown, and pin
+`collections_path` so a long-lived process can only write the store its tools
+read. Assert the off-path in a test by `sys.modules` membership plus thread
+count, not by a wall-clock threshold.
+**Tags:** mcp, concurrency, tests
