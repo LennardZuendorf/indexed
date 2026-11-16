@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # Lessons Learned
@@ -2213,3 +2213,16 @@ margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
+
+## Model downloads: prefetch the load set, not the repository (2026-11-16)
+
+- **An unfiltered `snapshot_download` is a ~10x size bug.** `indexed init` left
+  889 MB in a clean HF cache to pre-download a model whose first `index create`
+  needs 88 MB, because the repository also ships ONNX, OpenVINO, TF, Rust and
+  torch-`.bin` variants nothing loads. Pass `allow_patterns` mirroring the files
+  the loader actually opens, and freeze that list in a test against the file set
+  a real first `index create` downloads — a pattern list nobody measures rots.
+- **A size optimization must never become a correctness gate.** Keep the weights
+  check as the only verdict: when the filtered snapshot carries no weights
+  (custom repo publishing only `pytorch_model.bin`), retry once with the full
+  snapshot before calling the download corrupt.

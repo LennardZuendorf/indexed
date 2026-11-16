@@ -1,5 +1,7 @@
 """Tests for model_manager — HuggingFace cache-aware model management."""
 
+import fnmatch
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -317,6 +319,77 @@ class TestResolveSnapshotPath:
                 _resolve_snapshot_path("broken-model")
 
 
+def _allow_patterns() -> list[str]:
+    """The module's download allow-list (the embedder's own file set)."""
+    from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+        _MODEL_ALLOW_PATTERNS,
+    )
+
+    return _MODEL_ALLOW_PATTERNS
+
+
+# Every path a first `index create` puts in a clean HF cache for
+# sentence-transformers/all-MiniLM-L6-v2 (measured 2026-11-16: 88 MB total),
+# plus the pooling config that lives one level down. `indexed init` exists to
+# leave exactly this cache behind — not the 889 MB full repository snapshot.
+_MEASURED_LOADED_FILES = (
+    "1_Pooling/config.json",
+    "README.md",
+    "config.json",
+    "config_sentence_transformers.json",
+    "model.safetensors",
+    "modules.json",
+    "sentence_bert_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.txt",
+)
+
+# Runtime variants in the same repository that no Indexed code path loads.
+_UNUSED_VARIANTS = (
+    "onnx/model.onnx",
+    "onnx/model_qint8_avx512.onnx",
+    "openvino/openvino_model.xml",
+    "tf_model.h5",
+    "rust_model.ot",
+    "pytorch_model.bin",
+    "data_config.json",
+    "train_script.py",
+)
+
+
+def _matches_any(path: str, patterns: list[str]) -> bool:
+    """Hub's pattern semantics: fnmatch over the repo-relative path."""
+    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+
+class TestDownloadAllowPatterns:
+    def test_covers_the_files_a_first_create_downloads(self):
+        """The allow-list must match every file the embedder really loads."""
+        missing = [
+            f for f in _MEASURED_LOADED_FILES if not _matches_any(f, _allow_patterns())
+        ]
+        assert missing == []
+
+    def test_excludes_runtime_variants_nobody_loads(self):
+        """ONNX / OpenVINO / TF / Rust / torch-.bin variants stay out."""
+        leaked = [f for f in _UNUSED_VARIANTS if _matches_any(f, _allow_patterns())]
+        assert leaked == []
+
+    def test_weights_are_fetched_in_a_form_the_predicate_accepts(self):
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            _WEIGHT_FILES,
+        )
+
+        assert any(_matches_any(w, _allow_patterns()) for w in _WEIGHT_FILES)
+
+    def test_patterns_are_non_empty_strings(self):
+        patterns = _allow_patterns()
+        assert patterns
+        assert all(isinstance(p, str) and p for p in patterns)
+
+
 def _weighted_snapshot(base: Path, model_name: str = "all-MiniLM-L6-v2") -> Path:
     """A bare snapshot holding weights (no refs/main, not under a cache dir)."""
     snap = base / "snapshot" / f"models--sentence-transformers--{model_name}"
@@ -351,7 +424,8 @@ class TestEnsureModel:
             ) as mock_dl:
                 path = ensure_model("all-MiniLM-L6-v2", force=False)
                 mock_dl.assert_called_once_with(
-                    repo_id="sentence-transformers/all-MiniLM-L6-v2"
+                    repo_id="sentence-transformers/all-MiniLM-L6-v2",
+                    allow_patterns=_allow_patterns(),
                 )
                 assert path == str(snap)
 
@@ -445,6 +519,42 @@ class TestEnsureModel:
 
         assert excinfo.value.category == "corrupt"
         assert "indexed init --force" in str(excinfo.value)
+
+    def test_falls_back_to_full_snapshot_when_filtered_set_has_no_weights(
+        self, tmp_path
+    ):
+        """A repo publishing only an unprefetched variant must still initialize.
+
+        The allow-list is bandwidth, not a correctness gate: when the filtered
+        snapshot carries no weights, retry once without patterns instead of
+        calling a perfectly downloadable custom model corrupt.
+        """
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            ensure_model,
+        )
+
+        filtered = tmp_path / "filtered"
+        filtered.mkdir()
+        (filtered / "config.json").write_text("{}")  # no weights yet
+        full = _weighted_snapshot(tmp_path)
+
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path / "empty",
+            ),
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=[str(filtered), str(full)],
+            ) as mock_dl,
+        ):
+            path = ensure_model("custom-org/bin-only-model", force=False)
+
+        assert path == str(full)
+        assert mock_dl.call_count == 2
+        first, second = (call.kwargs for call in mock_dl.call_args_list)
+        assert first["allow_patterns"] == _allow_patterns()
+        assert "allow_patterns" not in second  # last resort: whole repository
 
 
 class TestLoadModel:

@@ -45,6 +45,28 @@ _ST_ORG = "sentence-transformers"
 # download leaves config/tokenizer files without weights.
 _WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
 
+# The files the embedder actually loads for the default backend: safetensors
+# weights, the transformers tokenizer, the sentence-transformers pooling
+# config and the model/ST configs. Without an allow-list `snapshot_download`
+# also fetches the ONNX, OpenVINO, TF, Rust and torch-`.bin` variants nobody
+# loads — a 889 MB cache to get the 88 MB this list covers (a first
+# `index create` downloads exactly these). The ONNX export is an optional
+# acceleration that both engines survive without, so it is not pre-fetched:
+# `load_model` attempts it from the cached snapshot and falls back to torch.
+_MODEL_ALLOW_PATTERNS = [
+    "1_Pooling/*",
+    "README.md",
+    "config.json",
+    "config_sentence_transformers.json",
+    "model.safetensors",
+    "modules.json",
+    "sentence_bert_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.txt",
+]
+
 
 def _snapshot_has_weights(snapshot: Path) -> bool:
     """True when ``snapshot`` holds a real weights file.
@@ -133,7 +155,9 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
     """Ensure a model is present in the HuggingFace cache.
 
     If already cached and force=False, returns immediately (no network call).
-    If not cached or force=True, downloads via huggingface_hub.
+    If not cached or force=True, downloads via huggingface_hub — the
+    embedder's own file set (``_MODEL_ALLOW_PATTERNS``), not the whole
+    repository with every runtime variant.
 
     Returns:
         The local path to the snapshot directory.
@@ -153,17 +177,37 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
     repo_id = _model_repo_id(model_name)
     cache_dir = _get_hf_cache_dir()
     path = acquire_with_retry(
-        lambda: snapshot_download(repo_id=repo_id),
+        lambda: snapshot_download(
+            repo_id=repo_id, allow_patterns=_MODEL_ALLOW_PATTERNS
+        ),
         model_name=model_name,
         action="download",
         cache_dir=cache_dir,
         cache_state=lambda: describe_cache_state(model_name),
     )
 
+    snapshot = Path(path) if path else None
+    if snapshot is None or not _snapshot_has_weights(snapshot):
+        # The allow-list is a bandwidth optimization, never a correctness
+        # gate: a repo that publishes only a variant we do not pre-fetch
+        # (a lone pytorch_model.bin, say) must still initialize, so fall back
+        # to the full snapshot before declaring the download corrupt.
+        logger.debug(
+            f"Filtered snapshot of '{model_name}' has no weights; "
+            f"retrying with the full repository snapshot."
+        )
+        path = acquire_with_retry(
+            lambda: snapshot_download(repo_id=repo_id),
+            model_name=model_name,
+            action="download",
+            cache_dir=cache_dir,
+            cache_state=lambda: describe_cache_state(model_name),
+        )
+        snapshot = Path(path) if path else None
+
     # A "successful" call that left no weights is an honest failure, never a
     # false cached success (the download can finish with an empty/partial
     # snapshot on a flaky connection).
-    snapshot = Path(path) if path else None
     if snapshot is None or not _snapshot_has_weights(snapshot):
         raise ModelAcquisitionError(
             model_name,

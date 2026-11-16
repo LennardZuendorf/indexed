@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -81,6 +81,18 @@ single source for both `is_model_cached` and `_resolve_snapshot_path`, and
 `local_files_only=True` — so "cached" always means "loadable offline" and a
 config-only residue can never be reported as a false cached success. refs/main
 names the active revision; with none, the first weights-bearing snapshot wins.
+
+**Pre-download is the load set, not the repository.** `ensure_model` passes
+`_MODEL_ALLOW_PATTERNS` to `snapshot_download` — safetensors weights, the
+transformers tokenizer, `1_Pooling/*` and the model/ST configs — because the
+unfiltered repository also publishes ONNX, OpenVINO, TF, Rust and torch-`.bin`
+variants no Indexed path loads (measured 2026-11-16 on a clean `HF_HOME`:
+889 MB for the full snapshot vs 88 MB for this set, which is exactly what a
+first `index create` downloads). The ONNX export is never required: v2 embeds
+through LlamaIndex/torch, and v1 attempts ONNX from the cached snapshot and
+falls back to torch. The allow-list is bandwidth, never a correctness gate — a
+repo publishing only an unprefetched variant (a lone `pytorch_model.bin`)
+retries once without patterns, and a still-weightless result raises as corrupt.
 
 ### Acquisition failure surface (issue #210)
 
