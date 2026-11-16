@@ -2226,3 +2226,20 @@ only as the offline fallback.
   check as the only verdict: when the filtered snapshot carries no weights
   (custom repo publishing only `pytorch_model.bin`), retry once with the full
   snapshot before calling the download corrupt.
+- **Weights are necessary, not sufficient — verify with the loader's own
+  registry.** A filter keyed to one model's layout (`1_Pooling/*`) fetched root
+  weights but not a `2_Dense` head, so the weights predicate passed, `init`
+  reported success, and every load raised `corrupt` with a `--force` remedy
+  that rebuilt the same broken snapshot. Filter on payload shapes
+  (`*/config.json`, `*/model.safetensors`), then read `modules.json` from the
+  downloaded snapshot and fetch `<path>/*` for any module dir still missing.
+- **A referenced-but-absent directory can be normal, so the retry must be
+  one-shot and the absence must stay harmless.** `2_Normalize` is referenced by
+  the default model and holds no files in any repo; treating that as a gap
+  makes every cold init re-download the full 889 MB repository, and treating it
+  as corruption bricks the cache. After one targeted fetch, absence means "the
+  repo has nothing there" and the snapshot is complete.
+- **A cache probe cannot be verified by the probe's own predicate.** Reproduce
+  a custom-model init through `is_model_cached` → `ensure_model` → `load_model`
+  (the reviewer used a real `distiluse-base-multilingual-cased-v2` layout): the
+  load is what distinguishes a saved byte from a broken cache.

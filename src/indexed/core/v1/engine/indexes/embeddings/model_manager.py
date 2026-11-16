@@ -12,6 +12,7 @@ for downloaded models. This module provides:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from functools import lru_cache
@@ -45,26 +46,47 @@ _ST_ORG = "sentence-transformers"
 # download leaves config/tokenizer files without weights.
 _WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
 
+# Files a transformers tokenizer class loads from. A repo ships the one its
+# tokenizer type needs, so every variant is allow-listed: a list that knows
+# only `tokenizer.json` would leave a sentencepiece-only repo unloadable while
+# still counting as cached.
+_TOKENIZER_FILES = (
+    "merges.txt",
+    "sentencepiece.bpe.model",
+    "spiece.model",
+    "spm.model",
+    "tokenizer.json",
+    "tokenizer.model",
+    "vocab.json",
+    "vocab.txt",
+)
+
 # The files the embedder actually loads for the default backend: safetensors
-# weights, the transformers tokenizer, the sentence-transformers pooling
-# config and the model/ST configs. Without an allow-list `snapshot_download`
-# also fetches the ONNX, OpenVINO, TF, Rust and torch-`.bin` variants nobody
-# loads — a 889 MB cache to get the 88 MB this list covers (a first
-# `index create` downloads exactly these). The ONNX export is an optional
-# acceleration that both engines survive without, so it is not pre-fetched:
-# `load_model` attempts it from the cached snapshot and falls back to torch.
+# weights, the tokenizer, the sentence-transformers module payloads and the
+# model/ST configs. Without an allow-list `snapshot_download` also fetches the
+# ONNX, OpenVINO, TF, Rust and torch-`.bin` variants nobody loads — a 889 MB
+# cache to get the 88 MB this list covers (a first `index create` downloads
+# exactly these). The ONNX export is an optional acceleration that both
+# engines survive without, so it is not pre-fetched: `load_model` attempts it
+# from the cached snapshot and falls back to torch.
+#
+# Module directories are named per model (`1_Pooling`, `2_Dense`, ...), so the
+# list matches their payload shapes rather than one model's layout: a Dense
+# head missing from a multilingual model is a load failure, not a saved byte.
+# Payloads that fit no shape here are fetched on demand from the repo's own
+# `modules.json` (see `_missing_module_dirs`).
 _MODEL_ALLOW_PATTERNS = [
-    "1_Pooling/*",
-    "README.md",
     "config.json",
     "config_sentence_transformers.json",
     "model.safetensors",
     "modules.json",
     "sentence_bert_config.json",
     "special_tokens_map.json",
-    "tokenizer.json",
     "tokenizer_config.json",
-    "vocab.txt",
+    *_TOKENIZER_FILES,
+    "*/config.json",
+    "*/model.safetensors",
+    "*/pytorch_model.bin",
 ]
 
 
@@ -75,6 +97,55 @@ def _snapshot_has_weights(snapshot: Path) -> bool:
     completed the blob) counts as absent — never as a loadable snapshot.
     """
     return any((snapshot / w).exists() for w in _WEIGHT_FILES)
+
+
+def _referenced_module_dirs(snapshot: Path) -> list[str]:
+    """Module directories the repo's own ``modules.json`` names.
+
+    ``modules.json`` is the registry sentence-transformers loads from, so it —
+    not a list hardcoded here — says which directories the loader will open.
+    The root Transformer module uses an empty path and is skipped.
+    """
+    modules_file = snapshot / "modules.json"
+    if not modules_file.is_file():
+        return []
+    try:
+        entries = json.loads(modules_file.read_text())
+    except (OSError, ValueError):
+        # An unreadable registry is a broken repository, not a filtered
+        # download: a wider snapshot cannot fix it, so do not retry.
+        return []
+    if not isinstance(entries, list):
+        return []
+
+    paths: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        if isinstance(path, str):
+            path = path.strip().strip("/")
+            if path and path != ".":
+                paths.append(path)
+    return paths
+
+
+def _missing_module_dirs(snapshot: Path) -> list[str]:
+    """Referenced module directories the filtered snapshot does not hold."""
+    return [p for p in _referenced_module_dirs(snapshot) if not (snapshot / p).is_dir()]
+
+
+def _tokenizer_missing(snapshot: Path) -> bool:
+    """True when the repo declares a tokenizer but no artifact landed.
+
+    ``tokenizer_config.json`` is the repo's own statement that it ships a
+    tokenizer; ``_TOKENIZER_FILES`` covers every artifact the transformers
+    tokenizer classes load from. This firing means the repo uses a layout the
+    filter cannot name — the one case the full snapshot is still justified.
+    """
+    if not (snapshot / "tokenizer_config.json").exists():
+        return False
+    return not any((snapshot / f).exists() for f in _TOKENIZER_FILES)
 
 
 def _get_hf_cache_dir() -> Path:
@@ -157,7 +228,8 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
     If already cached and force=False, returns immediately (no network call).
     If not cached or force=True, downloads via huggingface_hub — the
     embedder's own file set (``_MODEL_ALLOW_PATTERNS``), not the whole
-    repository with every runtime variant.
+    repository with every runtime variant — and then proves that set is
+    complete before reporting success.
 
     Returns:
         The local path to the snapshot directory.
@@ -176,17 +248,24 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
 
     repo_id = _model_repo_id(model_name)
     cache_dir = _get_hf_cache_dir()
-    path = acquire_with_retry(
-        lambda: snapshot_download(
-            repo_id=repo_id, allow_patterns=_MODEL_ALLOW_PATTERNS
-        ),
-        model_name=model_name,
-        action="download",
-        cache_dir=cache_dir,
-        cache_state=lambda: describe_cache_state(model_name),
-    )
+    patterns = list(_MODEL_ALLOW_PATTERNS)
 
-    snapshot = Path(path) if path else None
+    def download(allow_patterns: list[str] | None) -> Path | None:
+        def call() -> str:
+            if allow_patterns is None:
+                return snapshot_download(repo_id=repo_id)
+            return snapshot_download(repo_id=repo_id, allow_patterns=allow_patterns)
+
+        path = acquire_with_retry(
+            call,
+            model_name=model_name,
+            action="download",
+            cache_dir=cache_dir,
+            cache_state=lambda: describe_cache_state(model_name),
+        )
+        return Path(path) if path else None
+
+    snapshot = download(patterns)
     if snapshot is None or not _snapshot_has_weights(snapshot):
         # The allow-list is a bandwidth optimization, never a correctness
         # gate: a repo that publishes only a variant we do not pre-fetch
@@ -196,14 +275,31 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
             f"Filtered snapshot of '{model_name}' has no weights; "
             f"retrying with the full repository snapshot."
         )
-        path = acquire_with_retry(
-            lambda: snapshot_download(repo_id=repo_id),
-            model_name=model_name,
-            action="download",
-            cache_dir=cache_dir,
-            cache_state=lambda: describe_cache_state(model_name),
-        )
-        snapshot = Path(path) if path else None
+        snapshot = download(None) or snapshot
+    else:
+        missing = _missing_module_dirs(snapshot)
+        if missing:
+            # Module payloads are named per model, so the allow-list can miss
+            # one. Ask the repo for everything under each module its own
+            # modules.json names: a directory the repo fills lands here, while
+            # one it leaves empty (a parameterless module such as 2_Normalize)
+            # stays absent — that is the loader's normal case, not a gap, and
+            # a full-snapshot download would not create it either.
+            logger.debug(
+                f"Filtered snapshot of '{model_name}' lacks module dirs "
+                f"{missing}; fetching them from the repository."
+            )
+            snapshot = download(patterns + [f"{p}/*" for p in missing]) or snapshot
+
+        if _tokenizer_missing(snapshot):
+            # The repo declares a tokenizer but none of the artifacts the
+            # transformers tokenizer classes read landed: only a layout the
+            # filter cannot name does that, so one full snapshot is justified.
+            logger.debug(
+                f"Filtered snapshot of '{model_name}' has no tokenizer artifacts; "
+                f"retrying with the full repository snapshot."
+            )
+            snapshot = download(None) or snapshot
 
     # A "successful" call that left no weights is an honest failure, never a
     # false cached success (the download can finish with an empty/partial
@@ -218,8 +314,8 @@ def ensure_model(model_name: str = DEFAULT_MODEL, force: bool = False) -> str:
             cause="download completed without model weights",
         )
 
-    logger.info(f"Model cached at: {path}")
-    return path
+    logger.info(f"Model cached at: {snapshot}")
+    return str(snapshot)
 
 
 def _resolve_snapshot_path(model_name: str) -> str:

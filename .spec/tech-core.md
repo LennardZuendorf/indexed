@@ -84,15 +84,38 @@ names the active revision; with none, the first weights-bearing snapshot wins.
 
 **Pre-download is the load set, not the repository.** `ensure_model` passes
 `_MODEL_ALLOW_PATTERNS` to `snapshot_download` — safetensors weights, the
-transformers tokenizer, `1_Pooling/*` and the model/ST configs — because the
-unfiltered repository also publishes ONNX, OpenVINO, TF, Rust and torch-`.bin`
-variants no Indexed path loads (measured 2026-11-16 on a clean `HF_HOME`:
-889 MB for the full snapshot vs 88 MB for this set, which is exactly what a
-first `index create` downloads). The ONNX export is never required: v2 embeds
-through LlamaIndex/torch, and v1 attempts ONNX from the cached snapshot and
-falls back to torch. The allow-list is bandwidth, never a correctness gate — a
-repo publishing only an unprefetched variant (a lone `pytorch_model.bin`)
-retries once without patterns, and a still-weightless result raises as corrupt.
+tokenizer artifacts, the sentence-transformers module payloads and the
+model/ST configs — because the unfiltered repository also publishes ONNX,
+OpenVINO, TF, Rust and torch-`.bin` variants no Indexed path loads (measured
+2026-11-16 on a clean `HF_HOME`: 889 MB for the full snapshot vs 88 MB for this
+set, which is exactly what a first `index create` downloads). The ONNX export
+is never required: v2 embeds through LlamaIndex/torch, and v1 attempts ONNX
+from the cached snapshot and falls back to torch.
+
+**The filter is bandwidth, never a correctness gate.** Weights are necessary
+but not sufficient, so `ensure_model` proves the filtered snapshot is complete
+before reporting success, using the repo's own declarations rather than a
+hardcoded model shape:
+
+- Module directories are named per model (`1_Pooling`, `2_Dense`, …), so the
+  allow-list matches their payload shapes (`*/config.json`,
+  `*/model.safetensors`, `*/pytorch_model.bin`) instead of one model's layout.
+  A multilingual model whose Dense head was filtered out used to pass the
+  weights-only predicate, so `init` said "setup complete" and every load raised
+  `corrupt`, with a `--force` remedy that rebuilt the same snapshot.
+- A referenced module dir the filter still missed is fetched from the repo by
+  its own `modules.json` (`<path>/*`, one retry). A directory that stays absent
+  after that has no files in the repo — a parameterless module such as
+  `2_Normalize` — which is the loader's normal case, so it is never a failure
+  and never triggers a full-snapshot download.
+- Every transformers tokenizer artifact class is allow-listed
+  (`tokenizer.json`, `vocab.txt`/`vocab.json`+`merges.txt`,
+  `sentencepiece.bpe.model`, `spiece.model`, `spm.model`, `tokenizer.model`);
+  a repo that declares `tokenizer_config.json` yet lands none of them gets one
+  full-snapshot retry.
+- A filtered snapshot with no weights at all (custom repo publishing only
+  `pytorch_model.bin`) retries once without patterns; a still-weightless result
+  raises as corrupt.
 
 ### Acquisition failure surface (issue #210)
 
