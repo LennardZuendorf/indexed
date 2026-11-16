@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # Lessons Learned
@@ -2213,3 +2213,22 @@ margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
+
+## Version surface in a dynamic-version repo (2026-11-16)
+
+- **A documented version command must exist in the shipped CLI.** The release
+  checklist's post-publish check (`uvx --from indexed-sh indexed --version`) was
+  impossible to pass: no root option exposed the version, so a user could only
+  ask `uv pip show indexed-sh` or the LSP's `serverInfo`. With
+  `dynamic = ["version"]` (hatch-vcs) there is no in-tree string to read, so the
+  honest source is `importlib.metadata.version("indexed-sh")` — read it in the
+  root callback, print the bare version, exit before config/storage/model work.
+- **A post-publish check is only evidence when run against installed metadata.**
+  An editable checkout and a wheel both answer the same dist name, but only the
+  wheel proves what a user downloads; exercise the flag from a wheel-installed
+  environment, not just `uv run`.
+
+**Pattern:** `indexed --version` exited 2 ("No such option") while the release
+notes told the releaser to run it.
+**Tags:** cli, release, verification
+**Date:** 2026-11-16

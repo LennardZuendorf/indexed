@@ -173,6 +173,10 @@ uv tool install indexed-sh
 
 This installs `indexed` as a global CLI tool from [PyPI](https://pypi.org/project/indexed-sh/).
 
+```bash
+indexed --version   # prints the installed version, e.g. 0.0.11
+```
+
 <details>
 <summary>Alternative: run without installing</summary>
 
