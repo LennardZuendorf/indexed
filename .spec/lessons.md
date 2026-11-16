@@ -1426,7 +1426,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   Guessed result, envelope, engine and stdout-test filenames caused avoidable
   failed commands in this cycle; use `rg --files` before constructing paths.
 
-- Empty `collections` means no collection was searched successfully. Inspect
+- Empty `collections` means no collection was searched. Inspect
   `collection_errors` to distinguish an empty store from all searches failing;
   preserve concrete exception types when documenting boundary envelopes.
 
@@ -2213,3 +2213,23 @@ margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
+### Document a payload field by the states its producers emit
+**Pattern:** `docs/reference/search-output.md` described `collection_errors` as
+"failures only, and a collection named there is absent from `collections`", while
+`mcp/formatting.py` deliberately writes a *skipped* git option into the same array
+and keeps the collection in `collections` with its rows. Both behaviours were
+spec'd and tested; only the user-facing page named one state, so an agent reading
+it would discard rows the server kept on purpose (dogfood M4).
+**Rule:** before documenting a machine contract, grep every producer of the field
+and enumerate the states it can carry, then document the discriminator a reader
+actually branches on (`collections` membership here). Add a captured payload for
+each state; if a new field is the only honest fix, that is a schema decision —
+decide it explicitly, never let page and payload disagree.
+**Also:** one field described in three places (reference page, spec table, the
+`index-use` skill agents load) must be fixed in all three in the same commit — a
+contract corrected only in the reference page leaves the agent-facing surface
+teaching the old reading. And state each surface's own outcome separately: the CLI
+pre-validates a git ref and exits 1, MCP hands it to the engine and gets a skip, so
+one row claiming "CLI 0" for both is wrong until it is split.
+**Tags:** docs, contract, payload, dogfood
+**Date:** 2026-11-16
