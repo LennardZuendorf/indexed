@@ -8,7 +8,17 @@ from typing import List, Literal
 from pydantic import BaseModel, Field, field_validator
 
 # Directories always pruned during traversal (VCS metadata, build artefacts, env dirs).
+#
+# ``.indexed`` is indexed's own storage convention: ``./.indexed`` (local mode)
+# and ``~/.indexed`` (global mode) both carry config, collections and caches —
+# never source content. Pruning it by name keeps a collection from indexing its
+# own index (issue #279 follow-up); a *legitimate* source directory literally
+# named ``.indexed`` is therefore skipped unless the caller passes an explicit
+# ``excluded_dirs`` list without it. The reader additionally prunes the resolved
+# storage roots by absolute path, so this holds even when the name list is
+# overridden.
 DEFAULT_EXCLUDED_DIRS: List[str] = [
+    ".indexed",
     ".git",
     ".hg",
     ".svn",

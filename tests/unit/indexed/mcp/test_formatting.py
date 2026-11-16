@@ -443,6 +443,38 @@ def test_code_context_prefix_is_stripped_when_the_locator_already_has_the_path()
     assert payload["documents"][0]["hits"][0]["text"] == "print(1)"
 
 
+def test_plaintext_context_prefix_is_preserved() -> None:
+    """Preserve the canonical search payload for bare path prefixes."""
+    raw = {
+        "coll": {
+            "results": [
+                {
+                    "id": "runbooks/deploy steps.txt",
+                    "url": "file:///runbooks/deploy steps.txt",
+                    "matchedChunks": [
+                        {
+                            "chunkNumber": 1,
+                            "score": 0.5,
+                            "content": {
+                                "indexedData": (
+                                    "/runbooks/deploy steps.txt\nRollback runbook"
+                                ),
+                                "metadata": {"file_path": "/runbooks/deploy steps.txt"},
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    payload = build_search_payload(raw, "q")
+
+    assert (
+        payload["documents"][0]["hits"][0]["text"]
+        == "/runbooks/deploy steps.txt\nRollback runbook"
+    )
+
+
 def test_text_prefix_is_kept_when_no_file_path_is_known() -> None:
     raw = {
         "coll": {
@@ -532,3 +564,172 @@ def test_empty_search_returns_the_envelope_with_no_documents() -> None:
     assert payload["documents"] == []
     assert payload["counts"] == {"documents": 0, "hits": 0}
     assert payload["collection_errors"] == []
+
+
+# --- git provenance and filters (#279) ---------------------------------------
+
+
+def test_git_provenance_is_a_document_fact_only_when_present() -> None:
+    """``--git-provenance`` states the commit once per document.
+
+    #279 carried the commit as three keys on every flat row; the grouped
+    payload (#297) keeps the same fact where it belongs — on the document,
+    beside the url it describes — and says nothing when git did not answer.
+    """
+    provenance = {
+        "commit": "a" * 40,
+        "short": "a" * 7,
+        "author": "Ann Author",
+        "email": "ann@test.com",
+        "committedAt": "2026-11-03T10:00:00+01:00",
+        "subject": "touch the file",
+    }
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("with-git", 0.9, git=provenance)],
+        }
+    }
+
+    document = build_search_payload(raw, "q")["documents"][0]
+    assert document["git"] == provenance
+    assert not {"git_commit", "git_author", "git_committed_at"} & set(document)
+
+    plain = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("no-git", 0.9)],
+        }
+    }
+    assert "git" not in build_search_payload(plain, "q")["documents"][0]
+
+
+def test_git_line_blame_adds_git_only_when_present() -> None:
+    doc = _doc("with-lines", 0.9)
+    line_git = {"commit": "b" * 40, "startLine": 12, "endLine": 30}
+    doc["matchedChunks"][0]["git"] = line_git
+    raw = {"c1": {"scoreKind": "cosine", "results": [doc]}}
+    hit = build_search_payload(raw, "q")["documents"][0]["hits"][0]
+    assert hit["git"] == line_git
+    doc["matchedChunks"][0].pop("git")
+    hit = build_search_payload(raw, "q")["documents"][0]["hits"][0]
+    assert "git" not in hit
+
+
+def test_skipped_git_filter_is_reported_not_silent() -> None:
+    """A requested filter a collection could not apply must be visible (#279 review).
+
+    The documents still come back (a git problem never empties a search), but
+    the envelope names the collection and the ref instead of looking like a
+    clean, filtered result set.
+    """
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": False, "reason": "unknown-ref"},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert [doc["id"] for doc in out["documents"]] == ["alpha"]
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "changed_since 'HEAD~1' was not applied: the git ref could "
+            "not be resolved; results are unfiltered",
+        }
+    ]
+
+
+def test_applied_git_filter_adds_no_error() -> None:
+    """A filter that ran leaves ``collection_errors`` exactly as before."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "gitFilter": {"ref": "HEAD~1", "applied": True},
+        }
+    }
+
+    assert build_search_payload(raw, "q")["collection_errors"] == []
+
+
+def test_skipped_git_rerank_becomes_a_collection_error() -> None:
+    """A re-rank that could not run must not present rows as re-ranked (#144)."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "gitRerank": {"applied": False, "reason": "no-git-repository"},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "git re-ranking was not applied: no git repository could be "
+            "resolved for the collection; results are ordered by similarity only",
+        }
+    ]
+
+
+def test_applied_git_rerank_adds_no_error_and_ranks_on_its_score() -> None:
+    """An applied re-rank is silent, and its blended score is the rank basis."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "git-rerank",
+            "results": [_doc("alpha", 0.95), _doc("beta", 0.99)],
+            "gitRerank": {"applied": True, "scored": 2},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert out["collection_errors"] == []
+    assert [r["id"] for r in out["documents"]] == ["beta", "alpha"]
+    assert {r["score_kind"] for r in out["documents"]} == {"git-rerank"}
+
+
+def test_freshness_verdicts_reach_the_envelope() -> None:
+    """#146 slice 1: the advisory travels with its summary words, per collection."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "cosine",
+            "results": [_doc("alpha", 0.9)],
+            "freshness": {
+                "status": "stale",
+                "reason": "source-changed",
+                "filesChanged": 2,
+                "summary": "stale — 2 files changed since commit abc1234",
+            },
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert out["freshness"] == [
+        {
+            "collection": "c1",
+            "status": "stale",
+            "reason": "source-changed",
+            "filesChanged": 2,
+            "summary": "stale — 2 files changed since commit abc1234",
+        }
+    ]
+
+
+def test_no_freshness_key_when_the_advisory_was_not_requested() -> None:
+    raw = {"c1": {"collectionName": "c1", "scoreKind": "cosine", "results": []}}
+
+    assert "freshness" not in build_search_payload(raw, "q")

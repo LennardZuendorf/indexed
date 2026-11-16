@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-07-10
+updated: 2026-11-14
 ---
 
 # Tech Branch: Config (`src/indexed/config/`)
@@ -74,10 +74,13 @@ Storage dirs owned by `src/indexed/config/` (`storage.py`). Persistence semantic
 ├── config.toml
 ├── .env                       # credentials (not in git)
 └── data/collections/{name}/
-    ├── manifest.json
-    ├── documents.json
-    ├── chunks.json
-    └── index/
+    ├── manifest.json          # both engines; v2 adds a version + engine block
+    ├── state.json             # files connector only (change-tracker baseline;
+    │                          #  also read by index freshness, tech-core § Index Freshness)
+    ├── storage/               # v2 only (LlamaIndex persist): docstore.json,
+    │                          # index_store.json, default__vector_store.json
+    ├── documents/<id>.json    # v1 only
+    └── indexes/               # v1 only
         ├── index_info.json
         ├── index_document_mapping.json
         └── indexer_FAISS_*/indexer   # binary FAISS index
@@ -153,6 +156,15 @@ max_docs = 10
 max_chunks = 30
 include_matched_chunks = true
 min_score = 0.0
+# Query-time git signals on v2 files collections (all off by default; nothing
+# is persisted, so enabling them never requires a re-index).
+git_provenance = false        # last-touching commit per result file
+git_line_blame = false        # the commit that last touched each chunk's lines
+git_rerank = false            # re-rank by recency + churn (+ author, if set)
+git_rerank_recency_weight = 0.10
+git_rerank_churn_weight = 0.05
+# git_rerank_author = "lennard@zuendorf.me"   # name/email substring; unset = off
+git_rerank_author_weight = 0.05
 
 [mcp]
 log_level = "INFO"
@@ -160,6 +172,10 @@ json_logs = false
 transport = "stdio"
 host = "127.0.0.1"
 port = 8000
+
+[watch]
+debounce_seconds = 2.0     # quiet period before one update runs
+poll_interval_seconds = 2.0  # seconds between scans of the watched tree
 ```
 
 > **Note:** `[core.v1.indexing]` (`chunk_size`/`chunk_overlap`) and most of

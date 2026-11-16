@@ -63,7 +63,50 @@ jobs:
       run: uv run python scripts/check_imports.py
 
     - name: Check size gates
-      run: uv run python scripts/check_sizes.py
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PUSH_BEFORE: ${{ github.event.before }}
+      run: |
+        # LOC ceilings are growth against the base the tree was built on — never
+        # a stored number. On a PR the checkout is the merge commit, so its first
+        # parent IS that base (pull_request.base.sha is only a snapshot the merge
+        # may already have moved past — see .spec/lessons.md, "Benchmark
+        # provenance"). On a push it is the commit being replaced, so the
+        # ratchet also runs after merge.
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          baseline=$(git rev-parse --verify --quiet 'HEAD^1' || true)
+        else
+          baseline="$PUSH_BEFORE"
+        fi
+        if [ -n "$baseline" ] \
+          && [ "$baseline" != "0000000000000000000000000000000000000000" ] \
+          && git rev-parse --verify --quiet "${baseline}^{tree}" >/dev/null; then
+          uv run python scripts/check_sizes.py --baseline-ref "$baseline"
+        else
+          echo "No usable baseline ref ($baseline); using the absolute ceilings."
+          uv run python scripts/check_sizes.py
+        fi
+
+    # Keep model acquisition and tests on the same cache after HOME isolation.
+    - name: Pin model cache
+      run: |
+        uv run python -c "
+        import os
+        from pathlib import Path
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import _get_hf_cache_dir
+        cache = _get_hf_cache_dir().expanduser().resolve()
+        with Path(os.environ['GITHUB_ENV']).open('a') as env:
+            env.write(f'HF_HUB_CACHE={cache}\n')
+        "
+
+    # Fail before the suite if its real embedding model cannot be acquired.
+    - name: Ensure the embedding model is cached
+      run: |
+        uv run python -c "
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import ensure_model
+        ensure_model('all-MiniLM-L6-v2')
+        print('Model ready')
+        "
 
     - name: Run System Tests
       run: |

@@ -15,6 +15,7 @@ import typer
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
 CONFIG_PANEL = "Configuration Management"
 MCP_PANEL = "MCP Server"
+LSP_PANEL = "Language Server (LSP)"
 RESOURCES_PANEL = "Resources"
 
 
@@ -26,6 +27,7 @@ def register_commands(app: typer.Typer) -> None:
     from indexed.config import cli as config
     from .debug import debug as debug_command
     from .init import init as init_command
+    from .lsp import lsp as lsp_command
 
     app.command(
         "init",
@@ -65,6 +67,11 @@ def register_commands(app: typer.Typer) -> None:
         "index update", rich_help_panel=KNOWLEDGE_PANEL, help="Update a Collection"
     )(knowledge.update.update)
     app.command(
+        "index watch",
+        rich_help_panel=KNOWLEDGE_PANEL,
+        help="Watch a local Collection and update it as files change",
+    )(knowledge.watch.watch)
+    app.command(
         "index remove",
         rich_help_panel=KNOWLEDGE_PANEL,
         help="Remove one or more Collections",
@@ -80,6 +87,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command("search", hidden=True)(knowledge.search.search)
     app.command("inspect", hidden=True)(knowledge.inspect.inspect_collections)
     app.command("update", hidden=True)(knowledge.update.update)
+    app.command("watch", hidden=True)(knowledge.watch.watch)
     app.command("remove", hidden=True)(knowledge.remove.remove)
     app.command("migrate", hidden=True)(knowledge.migrate.migrate)
 
@@ -121,6 +129,12 @@ def register_commands(app: typer.Typer) -> None:
     app.command(
         "mcp inspect", rich_help_panel=MCP_PANEL, help="Inspect MCP Server Capabilities"
     )(mcp.inspect)
+
+    app.command(
+        "lsp",
+        rich_help_panel=LSP_PANEL,
+        help="Serve the Index Over the Language Server Protocol (stdio)",
+    )(lsp_command)
 
     app.add_typer(
         info.app,

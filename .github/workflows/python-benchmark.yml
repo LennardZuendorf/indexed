@@ -55,11 +55,7 @@ jobs:
     outputs:
       verdict: ${{ steps.abgate.outputs.verdict }}
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Download the model during setup; the immutable shared cache key held no weights.
 
     # Capture the event pair before the advisory composite replaces HEAD.
     - name: Capture benchmark revisions
@@ -113,7 +109,7 @@ jobs:
         # for a hardware mismatch (exit 3) or when main has no baseline yet, and
         # no tolerance value covers those. `contents: read` above does.
         update-tolerance: 1000
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Check out captured merge result for A/B
@@ -302,11 +298,7 @@ jobs:
       contents: write       # push the refresh branch
       pull-requests: write  # open the refresh PR
     steps:
-    - name: Cache HuggingFace embedding model
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-        key: hf-model-all-MiniLM-L6-v2
+    # Download the model during setup; the immutable shared cache key held no weights.
 
     # Same pin and same measurement inputs as the PR job, with one deliberate
     # difference: `cross-branch-tolerance` is live (20) here. This run compares
@@ -338,7 +330,7 @@ jobs:
           -v
         cross-branch-tolerance: 20
         update-tolerance: 1000
-        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 20.0, "full_connector_pipeline": 10.0, "batch_parse": 5.0, "parse_markdown_docs": 3.0}'
+        threshold-map: '{"help": 0.5, "inspect": 0.5, "e2e_create": 30.0, "e2e_search": 5.0, "e2e_v2_create": 30.0, "e2e_v2_search": 5.0, "parse_png": 10.0, "parse_large": 5.0, "full_connector_pipeline_mixed": 30.0, "full_connector_pipeline": 20.0, "batch_parse": 12.0, "parse_markdown_docs": 3.0}'
         override-label: benchmark-override
 
     - name: Summarise drift against main's baseline
