@@ -16,12 +16,9 @@ from .utils.components import (
 
 def _pkg_version(name: str) -> str:
     """Return installed version of *name*, or 'not installed'."""
-    from importlib.metadata import PackageNotFoundError, version
+    from indexed.utils.version import installed_version
 
-    try:
-        return version(name)
-    except PackageNotFoundError:
-        return "not installed"
+    return installed_version(name, fallback="not installed")
 
 
 # External runtime dependencies surfaced in `indexed debug`. All internal code

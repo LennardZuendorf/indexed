@@ -11,50 +11,90 @@ dependency, exactly like the Docling/tree-sitter imports elsewhere in this
 package, not "core engine" code — and hardcodes that model's known
 ``max_seq_length``. This constant MUST be kept in sync with
 ``SentenceEmbedder``'s default model.
+
+First run on a clean machine: the tokenizer lives in the same HF repository as
+the embedding model, but parsing happens BEFORE the embedder that would
+download it, so a cache-only load misses. One tokenizer-only download follows;
+when that is impossible too, the failure is cached and logged ONCE at WARNING.
+The full contract is in ``.spec/tech-parsing.md`` § Token window.
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Any
 
 from loguru import logger
 
+from indexed.utils.logger import enforce_third_party_policy
+
 # Must match `SentenceEmbedder`'s default model name
 # (core.v1.engine.indexes.embeddings.sentence_embeder.SentenceEmbedder).
 DEFAULT_TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# The model's real max_seq_length (from its `sentence_bert_config.json`) —
-# NOT the underlying BERT tokenizer's own `model_max_length` (512). Must be
-# kept in sync with `SentenceEmbedder.max_seq_length` for the default model.
+# The model's real max_seq_length (from its `sentence_bert_config.json`) — NOT
+# the underlying BERT tokenizer's own `model_max_length` (512). Must be kept
+# in sync with `SentenceEmbedder.max_seq_length` for the default model.
 DEFAULT_MODEL_MAX_SEQ_LENGTH = 256
+
+_OFFLINE_ENV_VARS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+_OFFLINE_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _hub_offline() -> bool:
+    """True when the environment forbids Hub network access (both HF vars)."""
+    env = (os.environ.get(var, "") for var in _OFFLINE_ENV_VARS)
+    return any(value.strip().lower() in _OFFLINE_TRUTHY for value in env)
+
+
+def _load_tokenizer() -> Any:
+    """Load the tokenizer from the cache, else download it once (see module)."""
+    from transformers import AutoTokenizer
+
+    # This import is often the process's FIRST Hub user, so re-assert the
+    # single-sink policy here or the Hub notice prints twice (#211).
+    enforce_third_party_policy("huggingface_hub")
+
+    try:
+        return AutoTokenizer.from_pretrained(
+            DEFAULT_TOKENIZER_MODEL, local_files_only=True
+        )
+    except Exception:
+        if _hub_offline():
+            raise
+        logger.info("Downloading tokenizer for {} (one-time)", DEFAULT_TOKENIZER_MODEL)
+        return AutoTokenizer.from_pretrained(DEFAULT_TOKENIZER_MODEL)
 
 
 @lru_cache(maxsize=1)
-def _get_tokenizer() -> Any:
-    """Lazily load the default model's tokenizer (heavy; cached for process lifetime)."""
-    from transformers import AutoTokenizer
+def _get_tokenizer() -> Any | None:
+    """Load the tokenizer once per process; ``None`` when unavailable.
 
-    return AutoTokenizer.from_pretrained(DEFAULT_TOKENIZER_MODEL, local_files_only=True)
+    The ``None`` is cached on purpose: without it every chunk retried the load
+    and logged its own traceback — 40+ stack dumps on a clean first run.
+    """
+    try:
+        return _load_tokenizer()
+    except Exception as exc:
+        logger.warning(
+            "Tokenizer for {} unavailable ({}); chunks fall back to a character-count"
+            " estimate. Run `indexed init` to download the model up front.",
+            DEFAULT_TOKENIZER_MODEL,
+            type(exc).__name__,
+        )
+        logger.debug("Tokenizer load failed: {}", exc)
+        return None
 
 
 def count_tokens(text: str) -> int:
-    """Return the real token count of *text* under the default embedding tokenizer.
-
-    Falls back to a conservative character estimate if the tokenizer can't be
-    loaded (e.g. offline with no cached model) so parsing never crashes.
-    """
+    """Real token count of *text*, or a char-based estimate without a tokenizer."""
     if not text:
         return 0
-    try:
-        return len(_get_tokenizer().encode(text, add_special_tokens=False))
-    except Exception:
-        logger.opt(exception=True).warning(
-            "Tokenizer unavailable for {}; falling back to char-count "
-            "estimate (bug A1 may resurface if chunkers stay on this path)",
-            DEFAULT_TOKENIZER_MODEL,
-        )
+    tokenizer = _get_tokenizer()
+    if tokenizer is None:
         return len(text) // 3 + 1
+    return len(tokenizer.encode(text, add_special_tokens=False))
 
 
 def effective_max_tokens(requested: int) -> int:
@@ -65,29 +105,29 @@ def effective_max_tokens(requested: int) -> int:
 def get_markdown_chunker() -> Any:
     """Build the token-aware chunker for Docling documents (markdown / rich docs).
 
-    Uses docling's ``HybridChunker`` wired to the default embedding model's own
-    tokenizer, capped at its real ``max_seq_length`` — this is the token-aware
-    chunker the ``DoclingParser`` docstring already claimed but the code never
-    used (bug A1). Falls back to the old heading-only ``HierarchicalChunker``
-    if the tokenizer can't be loaded, so parsing still degrades gracefully
-    rather than crashing.
+    ``HybridChunker`` wired to the default model's own tokenizer and capped at
+    its real ``max_seq_length`` — the token-aware chunker this package always
+    claimed but never used (bug A1). Without a tokenizer it degrades to the
+    heading-only ``HierarchicalChunker``; ``_get_tokenizer`` logged why.
     """
-    try:
-        from docling_core.transforms.chunker import HybridChunker
-        from docling_core.transforms.chunker.tokenizer.huggingface import (
-            HuggingFaceTokenizer,
-        )
+    tokenizer = _get_tokenizer()
+    if tokenizer is not None:
+        try:
+            from docling_core.transforms.chunker import HybridChunker
+            from docling_core.transforms.chunker.tokenizer.huggingface import (
+                HuggingFaceTokenizer,
+            )
 
-        tokenizer = HuggingFaceTokenizer(
-            tokenizer=_get_tokenizer(), max_tokens=DEFAULT_MODEL_MAX_SEQ_LENGTH
-        )
-        return HybridChunker(tokenizer=tokenizer)
-    except Exception:
-        logger.opt(exception=True).warning(
-            "Token-aware HybridChunker unavailable (tokenizer failed to "
-            "load); falling back to unbounded HierarchicalChunker — "
-            "markdown chunks may exceed the model window (bug A1)"
-        )
-        from docling_core.transforms.chunker import HierarchicalChunker
+            hf_tokenizer = HuggingFaceTokenizer(
+                tokenizer=tokenizer, max_tokens=DEFAULT_MODEL_MAX_SEQ_LENGTH
+            )
+            return HybridChunker(tokenizer=hf_tokenizer)
+        except Exception as exc:
+            logger.debug(
+                "HybridChunker unavailable ({}); using HierarchicalChunker",
+                type(exc).__name__,
+            )
 
-        return HierarchicalChunker()
+    from docling_core.transforms.chunker import HierarchicalChunker
+
+    return HierarchicalChunker()

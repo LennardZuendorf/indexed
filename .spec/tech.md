@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # Tech Spec: indexed
@@ -505,6 +505,11 @@ drift, so nothing has to be written back. Still no `sync_version.py`.
 `uv.lock`'s root-package entry simply omits the `version` field (uv reports the
 change as `indexed-sh v0.0.5 -> (dynamic)`; no such token is written to the
 file), so the lock does not churn per commit.
+
+Because no version string lives in the repo, the only way to ask a build what it
+is at runtime is the installed metadata — surfaced to users as
+`indexed --version` (see [tech-app.md](tech-app.md) § Version flag), which is
+what the release checklist's post-publish step runs.
 
 Off-tag builds use the `post-release` scheme (`raw-options` in
 `[tool.hatch.version]`), yielding `<last-tag>.post<N>+g<sha>` — e.g.
