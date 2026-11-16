@@ -1,5 +1,8 @@
 """Tests for model_manager — HuggingFace cache-aware model management."""
 
+import fnmatch
+import json
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -317,12 +320,180 @@ class TestResolveSnapshotPath:
                 _resolve_snapshot_path("broken-model")
 
 
+def _allow_patterns() -> list[str]:
+    """The module's download allow-list (the embedder's own file set)."""
+    from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+        _MODEL_ALLOW_PATTERNS,
+    )
+
+    return _MODEL_ALLOW_PATTERNS
+
+
+# Every path a first `index create` puts in a clean HF cache for
+# sentence-transformers/all-MiniLM-L6-v2 (measured 2026-11-16: 88 MB total),
+# plus the pooling config that lives one level down. `indexed init` exists to
+# leave exactly this cache behind — not the 889 MB full repository snapshot.
+_MEASURED_LOADED_FILES = (
+    "1_Pooling/config.json",
+    "config.json",
+    "config_sentence_transformers.json",
+    "model.safetensors",
+    "modules.json",
+    "sentence_bert_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.txt",
+)
+
+# Tokenizer artifacts for other tokenizer classes: a repo ships the one its
+# tokenizer needs, and a filter that only knows tokenizer.json/vocab.txt
+# leaves a sentencepiece-only repo cached-but-unloadable.
+_OTHER_TOKENIZER_ARTIFACTS = (
+    "merges.txt",
+    "sentencepiece.bpe.model",
+    "spiece.model",
+    "spm.model",
+    "tokenizer.model",
+    "vocab.json",
+)
+
+# Module payload shapes: sentence-transformers module dirs are named per model
+# (1_Pooling, 2_Dense, ...), so the filter must cover any of them, not just
+# the default model's layout.
+_MODULE_PAYLOADS = (
+    "1_Pooling/config.json",
+    "2_Dense/config.json",
+    "2_Dense/model.safetensors",
+    "2_Dense/pytorch_model.bin",
+)
+
+# Runtime variants in the same repository that no Indexed code path loads.
+_UNUSED_VARIANTS = (
+    "onnx/model.onnx",
+    "onnx/model_qint8_avx512.onnx",
+    "openvino/openvino_model.xml",
+    "tf_model.h5",
+    "rust_model.ot",
+    "pytorch_model.bin",
+    "data_config.json",
+    "train_script.py",
+    "README.md",  # documentation only: no code path reads it
+)
+
+
+def _matches_any(path: str, patterns: list[str]) -> bool:
+    """Hub's pattern semantics: fnmatch over the repo-relative path."""
+    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+
+class TestDownloadAllowPatterns:
+    def test_covers_the_files_a_first_create_downloads(self):
+        """The allow-list must match every file the embedder really loads."""
+        missing = [
+            f for f in _MEASURED_LOADED_FILES if not _matches_any(f, _allow_patterns())
+        ]
+        assert missing == []
+
+    def test_excludes_runtime_variants_nobody_loads(self):
+        """ONNX / OpenVINO / TF / Rust / torch-.bin variants stay out."""
+        leaked = [f for f in _UNUSED_VARIANTS if _matches_any(f, _allow_patterns())]
+        assert leaked == []
+
+    def test_weights_are_fetched_in_a_form_the_predicate_accepts(self):
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            _WEIGHT_FILES,
+        )
+
+        assert any(_matches_any(w, _allow_patterns()) for w in _WEIGHT_FILES)
+
+    def test_covers_every_tokenizer_artifact_class(self):
+        """A sentencepiece-only repo must not come back cached-but-unloadable."""
+        missing = [
+            f
+            for f in _OTHER_TOKENIZER_ARTIFACTS
+            if not _matches_any(f, _allow_patterns())
+        ]
+        assert missing == []
+
+    def test_covers_module_payloads_under_any_module_name(self):
+        """The filter follows module payload shapes, not one model's layout."""
+        missing = [
+            f for f in _MODULE_PAYLOADS if not _matches_any(f, _allow_patterns())
+        ]
+        assert missing == []
+
+    def test_patterns_are_non_empty_strings(self):
+        patterns = _allow_patterns()
+        assert patterns
+        assert all(isinstance(p, str) and p for p in patterns)
+
+
 def _weighted_snapshot(base: Path, model_name: str = "all-MiniLM-L6-v2") -> Path:
     """A bare snapshot holding weights (no refs/main, not under a cache dir)."""
     snap = base / "snapshot" / f"models--sentence-transformers--{model_name}"
     snap.mkdir(parents=True)
     (snap / "model.safetensors").write_bytes(b"\x00" * 8)
     return snap
+
+
+def _snapshot_with(base: Path, files: dict[str, str | bytes]) -> Path:
+    """A snapshot laid out exactly like the hub's: one symlink-free file tree."""
+    snap = base / "snapshot"
+    for rel, content in files.items():
+        target = snap / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            target.write_bytes(content)
+        else:
+            target.write_text(content)
+    return snap
+
+
+def _modules_json(*paths: str) -> str:
+    return json.dumps(
+        [
+            {"idx": i, "name": str(i), "path": path, "type": "module"}
+            for i, path in enumerate(paths)
+        ]
+    )
+
+
+class TestSnapshotLoadSet:
+    """The registry the loader reads, not a hardcoded model shape, decides."""
+
+    @pytest.mark.parametrize(
+        ("modules", "expected"),
+        [
+            (None, []),  # no modules.json: nothing to verify against
+            ("not json", []),  # unreadable registry is the repo's bug
+            ('{"modules": []}', []),  # wrong shape
+            (
+                '[{"path": ""}, {"path": "/"}, {"path": "1_Pooling"},'
+                ' {"path": "2_Dense/"}, {"path": 3}, "x"]',
+                ["1_Pooling", "2_Dense"],
+            ),
+        ],
+    )
+    def test_referenced_module_dirs(self, tmp_path, modules, expected):
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            _referenced_module_dirs,
+        )
+
+        if modules is not None:
+            (tmp_path / "modules.json").write_text(modules)
+        assert _referenced_module_dirs(tmp_path) == expected
+
+    def test_tokenizer_artifacts(self, tmp_path):
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            _tokenizer_missing,
+        )
+
+        assert _tokenizer_missing(tmp_path) is False  # no tokenizer declared
+        (tmp_path / "tokenizer_config.json").write_text("{}")
+        assert _tokenizer_missing(tmp_path) is True  # declared, nothing landed
+        (tmp_path / "vocab.txt").write_text("x")
+        assert _tokenizer_missing(tmp_path) is False
 
 
 class TestEnsureModel:
@@ -351,7 +522,8 @@ class TestEnsureModel:
             ) as mock_dl:
                 path = ensure_model("all-MiniLM-L6-v2", force=False)
                 mock_dl.assert_called_once_with(
-                    repo_id="sentence-transformers/all-MiniLM-L6-v2"
+                    repo_id="sentence-transformers/all-MiniLM-L6-v2",
+                    allow_patterns=_allow_patterns(),
                 )
                 assert path == str(snap)
 
@@ -445,6 +617,178 @@ class TestEnsureModel:
 
         assert excinfo.value.category == "corrupt"
         assert "indexed init --force" in str(excinfo.value)
+
+    def test_falls_back_to_full_snapshot_when_filtered_set_has_no_weights(
+        self, tmp_path
+    ):
+        """A repo publishing only an unprefetched variant must still initialize.
+
+        The allow-list is bandwidth, not a correctness gate: when the filtered
+        snapshot carries no weights, retry once without patterns instead of
+        calling a perfectly downloadable custom model corrupt.
+        """
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            ensure_model,
+        )
+
+        filtered = tmp_path / "filtered"
+        filtered.mkdir()
+        (filtered / "config.json").write_text("{}")  # no weights yet
+        full = _weighted_snapshot(tmp_path)
+
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path / "empty",
+            ),
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=[str(filtered), str(full)],
+            ) as mock_dl,
+        ):
+            path = ensure_model("custom-org/bin-only-model", force=False)
+
+        assert path == str(full)
+        assert mock_dl.call_count == 2
+        first, second = (call.kwargs for call in mock_dl.call_args_list)
+        assert first["allow_patterns"] == _allow_patterns()
+        assert "allow_patterns" not in second  # last resort: whole repository
+
+    def test_fetches_the_module_dirs_the_repo_modules_json_names(self, tmp_path):
+        """A multi-module model gets its head, not just root weights.
+
+        ``distiluse-base-multilingual-cased-v2`` and ``LaBSE`` ship root
+        weights plus a ``2_Dense`` head. A filter that matched only the
+        default model's ``1_Pooling`` left the head out — root weights made
+        the cache predicate pass, so init said "setup complete" and every load
+        raised "corrupt", with a --force remedy that rebuilt the same
+        snapshot. The repo's own modules.json names the missing directory, so
+        it is fetched before success is reported.
+        """
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            ensure_model,
+        )
+
+        registry = _modules_json("", "1_Pooling", "2_Dense")
+        filtered = _snapshot_with(
+            tmp_path / "filtered",
+            {
+                "model.safetensors": b"\x00" * 8,
+                "modules.json": registry,
+                "1_Pooling/config.json": "{}",
+                "tokenizer.json": "{}",
+                "tokenizer_config.json": "{}",
+            },
+        )
+        completed = _snapshot_with(
+            tmp_path / "completed",
+            {
+                "model.safetensors": b"\x00" * 8,
+                "modules.json": registry,
+                "1_Pooling/config.json": "{}",
+                "2_Dense/config.json": "{}",
+                "2_Dense/model.safetensors": b"\x00" * 4,
+                "tokenizer.json": "{}",
+                "tokenizer_config.json": "{}",
+            },
+        )
+
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path / "empty",
+            ),
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=[str(filtered), str(completed)],
+            ) as mock_dl,
+        ):
+            path = ensure_model("custom-org/distiluse-like", force=False)
+
+        assert path == str(completed)
+        assert (Path(path) / "2_Dense" / "model.safetensors").exists()
+        assert mock_dl.call_count == 2
+        first, second = (call.kwargs for call in mock_dl.call_args_list)
+        assert first["allow_patterns"] == _allow_patterns()
+        assert second["allow_patterns"] == _allow_patterns() + ["2_Dense/*"]
+
+    def test_parameterless_module_dir_is_not_a_gap(self, tmp_path):
+        """2_Normalize holds no files: no full re-download, no false corrupt.
+
+        The default model's modules.json names ``2_Normalize``, which no
+        repository populates. Treating an absent module dir as a gap would
+        either loop (the full snapshot has no such dir either) or reject the
+        cache for every user; the repo answered "no files there" when the
+        module pattern matched nothing, and the snapshot is complete.
+        """
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            ensure_model,
+        )
+
+        snapshot = _snapshot_with(
+            tmp_path / "filtered",
+            {
+                "model.safetensors": b"\x00" * 8,
+                "modules.json": _modules_json("", "1_Pooling", "2_Normalize"),
+                "1_Pooling/config.json": "{}",
+                "vocab.txt": "x",
+                "tokenizer_config.json": "{}",
+            },
+        )
+
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path / "empty",
+            ),
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=[str(snapshot), str(snapshot)],
+            ) as mock_dl,
+        ):
+            assert ensure_model("all-MiniLM-L6-v2", force=False) == str(snapshot)
+
+        assert mock_dl.call_count == 2
+        first, second = (call.kwargs for call in mock_dl.call_args_list)
+        assert first["allow_patterns"] == _allow_patterns()
+        # Still filtered: the full 889 MB repository is never the answer here.
+        assert second["allow_patterns"] == _allow_patterns() + ["2_Normalize/*"]
+
+    def test_declared_tokenizer_without_artifacts_falls_back(self, tmp_path):
+        """A tokenizer layout the filter cannot name still gets one retry."""
+        from indexed.core.v1.engine.indexes.embeddings.model_manager import (
+            ensure_model,
+        )
+
+        filtered = _snapshot_with(
+            tmp_path / "filtered",
+            {"model.safetensors": b"\x00" * 8, "tokenizer_config.json": "{}"},
+        )
+        full = _snapshot_with(
+            tmp_path / "full",
+            {
+                "model.safetensors": b"\x00" * 8,
+                "tokenizer_config.json": "{}",
+                "tokenizer/tokenizer.json": "{}",
+            },
+        )
+
+        with (
+            patch(
+                "indexed.core.v1.engine.indexes.embeddings.model_manager._get_hf_cache_dir",
+                return_value=tmp_path / "empty",
+            ),
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=[str(filtered), str(full)],
+            ) as mock_dl,
+        ):
+            assert ensure_model("custom-org/exotic-tokenizer", force=False) == str(full)
+
+        assert mock_dl.call_count == 2
+        first, second = (call.kwargs for call in mock_dl.call_args_list)
+        assert first["allow_patterns"] == _allow_patterns()
+        assert "allow_patterns" not in second
 
 
 class TestLoadModel:
