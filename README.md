@@ -265,9 +265,11 @@ of watching.
 If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
 an error and **keeps the last good index** instead of updating against an empty tree; it
 resumes when the path returns. Three consecutive failed updates end the command with a
-non-zero exit code. If the source path is already gone or unreadable when the command
-starts, it refuses up front with **exit 2** — updating against an unreachable source
-would empty the collection.
+non-zero exit code. If the source path is already missing when the command starts,
+it refuses up front with **exit 2** — updating against an unreachable source would
+empty the collection. A directory that exists but cannot be read is not caught by
+that check: the first update pass fails (`Permission denied`, non-zero exit) and
+the last good index is kept.
 
 Tune the cadence with `--debounce` / `--poll-interval` (seconds; both default to 2.0), or
 in config:
