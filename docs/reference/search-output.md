@@ -149,8 +149,8 @@ re-rank and freshness are all off by default, so none of them appears in it.
 | `query` | string | The query as submitted. |
 | `counts.documents` | int | Number of entries in `documents`. |
 | `counts.hits` | int | Total hits across all documents. |
-| `collections` | string[] | Collections that were searched **successfully**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". |
-| `collection_errors` | object[] | Always present, `[]` when nothing failed. Each entry is `{"collection": "<name>", "error": "<message>"}`. A collection that reached the engine and failed appears here and is absent from `collections`. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI omits unreadable manifests from both arrays. MCP `search` enumerates by manifest presence and reports those failures here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
+| `collections` | string[] | Collections that were **searched**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". A collection whose *requested option* was skipped is still listed here, because it was searched and its documents are in the payload; it then also appears in `collection_errors`. |
+| `collection_errors` | object[] | Always present, `[]` when every request was carried out as asked. Each entry is `{"collection": "<name>", "error": "<message>"}` and means **something was not done as asked** — which is not the same as "this collection failed". Read `collections` to tell the two states apart: a collection that **failed** is absent from `collections` and contributes no documents; a collection whose requested Git option was **skipped** is in `collections` with its documents present, just unfiltered/unranked (see [Requests that were not carried out](#requests-that-were-not-carried-out)). Entries are per request-not-applied, so one collection can have more than one. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI resolves `collections` through status, so a collection with an unreadable manifest is omitted from both arrays. MCP `search` enumerates every collection directory, so a collection it cannot search is reported here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
 | `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; full-precision ties keep discovery order. Ranking happens before output scores are rounded. |
 | `freshness` | object[], optional | One verdict per successfully searched collection, present **only** when freshness was requested (`include_freshness` / `--freshness`). Omitted — not `[]` — otherwise. See [`freshness[]`](#freshness). |
 
@@ -398,20 +398,25 @@ stdout guarantee applies to normal command returns, not this escape path.
 Exit 0 alone does not mean success. An empty CLI store returns
 `{"error": "No collections found"}` with exit 0. After the exit check, parse the
 JSON and branch on `schema`; an error body has no success schema. In a success
-payload, inspect `collection_errors` for partial failures and `collections` to
-see what was searched. Empty `documents` with non-empty `collections` means
-nothing matched in those collections. Empty `collections` means no collection was
-searched successfully; inspect `collection_errors` to distinguish an empty store
-from all searches failing.
+payload, inspect `collection_errors` for requests that were not carried out and
+`collections` to see what was searched. Empty `documents` with non-empty
+`collections` means nothing matched in those collections. Empty `collections`
+means no collection was searched; inspect `collection_errors` to distinguish an
+empty store from all searches failing. A collection that appears in **both**
+arrays was searched — the entry says a requested option was not applied to it, so
+its rows are a superset of what you asked for, not a failure.
 
-MCP has no exit code. Read `schema` first. Global `search` reports per-collection
-failures in `collection_errors`, including unreadable manifests. Named
-`search_collection` resolves status first: a collection present on disk with an
-unreadable manifest or no indexers returns a top-level `{"error": "…", "type":
-"MCPError"}`; an unknown name returns `{"error": "Collection 'x' not found or has
-no indexers"}` without `type`. Neither body has a success schema. If a boundary
-catches an `IndexedError`, `type` preserves its concrete class name, such as
-`StorageError`; unexpected search/status exceptions are wrapped as `MCPError`.
+MCP has no exit code. Read `schema` first. Both MCP search tools report skipped
+Git options in `collection_errors`. Global `search` also puts a collection it
+could not search — including one whose manifest cannot be read — in
+`collection_errors`; such a collection is absent from `collections`. Named
+`search_collection` resolves status first instead: a collection present on disk
+with an unreadable manifest or no indexers returns a top-level `{"error": "…",
+"type": "MCPError"}`; an unknown name returns `{"error": "Collection 'x' not
+found or has no indexers"}` without `type`. Neither body has a success schema. If
+a boundary catches an `IndexedError`, `type` preserves its concrete class name,
+such as `StorageError`; unexpected search/status exceptions are wrapped as
+`MCPError`.
 
 `--json` ignores `--compact` / `--no-content`; those shape the human view only.
 CLI JSON and both MCP search tools always request matched chunk content, even
@@ -438,3 +443,81 @@ degradation is named in `collection_errors`; a requested document or hit `git`
 block that git cannot answer is simply absent, exactly as the two `git` block
 sections describe; and a requested freshness advisory never disappears — it
 degrades to `unknown` with a reason code.
+
+## Requests that were not carried out
+
+`collection_errors` answers "was everything I asked for actually done?", not just
+"did a collection fail?" Two states share the field, and `collections` tells them
+apart:
+
+- **Failed** — the collection could not be searched. It is absent from
+  `collections` and contributes no documents (see Failures).
+- **Option skipped** — the collection *was* searched and its documents are in
+  `documents`, but a per-collection Git option could not be applied to it: a
+  `--changed-since` filter leaves its rows unfiltered, a `--git-rerank` leaves
+  them ordered by similarity only. The collection stays in `collections`, and the
+  entry names the ref and the reason.
+
+Entries are per request that was not applied, not per collection: asking for both
+options on a collection that can honour neither yields two entries for that name.
+CLI and MCP `search` render the skip line identically; the CLI human view prints
+the same line as a warning panel.
+
+One asymmetry follows from where the check lives: the CLI resolves the ref before
+searching and refuses the whole request when it does not resolve
+(`{"error": "--changed-since '<ref>' is not a valid git ref in <repo>"}`, exit
+`1`) — naming a collection does not change that. The MCP tools hand the ref to the
+engine unvalidated, so the same request there returns a success payload with the
+collection in both arrays and its rows unfiltered. A skipped filter therefore never
+means "the ref was fine".
+
+Captured from a real run: a v1 collection `v1demo` and a v2 collection `demo` over
+the same clean git checkout, so nothing had changed since `HEAD`. The counts depend
+on how the fixture chunks; the `collections` and `collection_errors` arrays are the
+contract.
+
+```console
+$ indexed index search "retry" --json --changed-since HEAD
+{
+  "schema": "indexed.search/1",
+  "query": "retry",
+  "counts": {
+    "documents": 4,
+    "hits": 15
+  },
+  "collections": [
+    "v1demo",
+    "demo"
+  ],
+  "collection_errors": [
+    {
+      "collection": "v1demo",
+      "error": "changed_since 'HEAD' was not applied: git filtering applies to v2 collections only; results are unfiltered"
+    }
+  ],
+  "documents": [ … ]
+}
+$ echo $?
+0
+```
+
+`documents` is elided here: it held all four `v1demo` documents
+(`README.md`, `docs/retry.md`, `src/cache.py`, `src/retry.py`), because `v1demo`
+could not be filtered, while `demo` was filtered and matched nothing.
+
+So: a collection named in `collection_errors` **and** listed in `collections` was
+searched, and its rows are a superset of what you asked for — keep them, and
+narrow client-side if the request was strict. Only a collection named in
+`collection_errors` and **absent** from `collections` failed outright.
+
+Naming such a collection explicitly is the other case: the request is refused
+before searching, not partially answered.
+
+```console
+$ indexed index search "retry" -c v1demo --json --changed-since HEAD
+{
+  "error": "--changed-since 'HEAD' cannot be applied: collection 'v1demo' uses the v1 engine (git filtering is v2-only)"
+}
+$ echo $?
+1
+```

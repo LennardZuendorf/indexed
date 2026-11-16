@@ -117,11 +117,16 @@ class SearchPayload(TypedDict):
     query: str
     counts: Counts
     collections: List[str]
-    """Collections that were searched successfully."""
+    """Collections that were searched. A collection whose requested git option
+    was skipped is still listed — its rows came back unfiltered — and also
+    carries a ``collection_errors`` entry."""
 
     collection_errors: List[CollectionError]
-    """Always present, empty when nothing failed — a failed collection must
-    read as "this collection failed", never as "no matches"."""
+    """Always present, empty when every request was carried out as asked. An
+    entry means *something was not done as asked*, not necessarily "this
+    collection failed": a failed collection is absent from ``collections``,
+    while a skipped git filter/re-rank leaves the collection in ``collections``
+    with its rows unfiltered or similarity-ordered."""
 
     documents: List[DocumentResult]
 
