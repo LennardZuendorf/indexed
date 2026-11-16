@@ -142,7 +142,14 @@ SRC_LOC_MAX = 31_800
 # moves after the event snapshot, so the 2026-11-12 provenance red is proven
 # fixed rather than asserted in text — measured 50_940 on this branch, ceiling =
 # measured + headroom.
-TEST_LOC_MAX = 51_050
+# Raised by the clean-first-run fix (M2): `test_model_window.py` pins the
+# tokenizer acquisition contract that produced 40+ tracebacks on a cold cache —
+# download-exactly-once, offline-skip, one-warning-with-no-bug-id, and the
+# token-aware/fallback chunker choice — through fake `transformers`/`docling_core`
+# modules, so no test needs the real Hub or a 88 MB model. Genuine
+# defect-guarding coverage for a reproduced first-run failure, not stealth
+# regrowth; ceiling = measured (51_138) + headroom.
+TEST_LOC_MAX = 51_200
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

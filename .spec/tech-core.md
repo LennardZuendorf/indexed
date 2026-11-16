@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-10-29
+updated: 2026-11-16
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -81,6 +81,13 @@ single source for both `is_model_cached` and `_resolve_snapshot_path`, and
 `local_files_only=True` — so "cached" always means "loadable offline" and a
 config-only residue can never be reported as a false cached success. refs/main
 names the active revision; with none, the first weights-bearing snapshot wins.
+
+**Ordering: parsing needs a tokenizer before this acquisition runs.** On a clean
+install `index create` parses (and chunk-counts) every document before the
+embedder downloads the repository, so parsing fetches the tokenizer alone on a
+cache miss and caches that outcome — see `tech-parsing.md` § Token window &
+tokenizer acquisition. `indexed init` runs this whole acquisition up front
+(weights + tokenizer), so nothing after it needs the network.
 
 ### Acquisition failure surface (issue #210)
 
