@@ -2,6 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import Mock, patch
+import re
 import sys
 import pytest
 from typer.testing import CliRunner
@@ -175,8 +176,12 @@ class TestVersionFlag:
         result = runner.invoke(app, ["--help"])
 
         assert result.exit_code == 0
-        assert "--version" in result.stdout
-        assert "Show the installed version" in result.stdout
+        # Rich styles each option's leading `--` as its own span, so a
+        # colour-emitting run (CI, FORCE_COLOR) never contains the literal
+        # flag name. Strip the escapes first, as the other help assertions do.
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "--version" in clean
+        assert "installed version" in clean
 
     def test_uninstalled_distribution_still_exits_zero(self):
         """A bare source tree answers 'unknown' instead of a traceback."""

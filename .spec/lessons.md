@@ -2227,6 +2227,9 @@ only as the offline fallback.
   An editable checkout and a wheel both answer the same dist name, but only the
   wheel proves what a user downloads; exercise the flag from a wheel-installed
   environment, not just `uv run`.
+- **Help-text assertions must strip ANSI before matching.** Rich styles each
+  option's leading `--` as its own span, so `"--version" in result.stdout`
+  passes on a plain local run and fails wherever colour is on (CI, FORCE_COLOR).
 
 **Pattern:** `indexed --version` exited 2 ("No such option") while the release
 notes told the releaser to run it.
