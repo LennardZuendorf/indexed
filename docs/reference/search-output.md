@@ -433,4 +433,3 @@ nine reason codes above ([`freshness[]`](#freshness)). A git re-rank reports
 none of this is requested, the payload is exactly the core shape documented
 above — and when one of them is requested but unavailable, the degradation is
 named, never hidden.
-
