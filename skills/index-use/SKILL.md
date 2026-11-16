@@ -63,8 +63,8 @@ their best hit:
   or `document` (position unknown, including body fragments)
 
 Global `search` reports failed collections **and** skipped per-collection Git
-options in `collection_errors`; `collections` membership tells them apart (present
-= searched, rows unfiltered; absent = failed).
+options in `collection_errors`; `collections` membership tells them apart — present
+means searched with unfiltered rows, absent means failed.
 Named `search_collection` can instead return a top-level `error` without `schema`:
 a present but unusable collection includes `type: "MCPError"`; an unknown name
 has no `type`. Caught `IndexedError` types preserve their concrete class name.
