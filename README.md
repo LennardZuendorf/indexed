@@ -95,15 +95,28 @@ Indexed exposes a Model Context Protocol server for AI agent integration.
 
 ### Claude Code (CLI, VS Code, JetBrains)
 
-Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin:
+Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin.
+One command registers the MCP server and installs the `index-use` skill, which
+teaches Claude to reach for semantic search instead of Grep/Glob:
 
 ```bash
-claude mcp add indexed -- indexed mcp run
+indexed install claude-code             # ~/.claude.json + ~/.claude/skills/index-use
+indexed install claude-code --dry-run   # print the config, write nothing
+indexed install claude-code --home /data/agent-home  # collections in /data/agent-home/.indexed
 ```
 
-This adds indexed to your project's `.mcp.json`. You can also manage servers via `/mcp` in the VS Code chat panel.
+It writes a *user-scope* server (available in every project) using the absolute
+path of the running `indexed` executable, preserves any other servers already in
+`~/.claude.json`, and is safe to run twice. Restart Claude Code, then use
+`/index-use`.
 
-To add manually, create or edit `.mcp.json` in your project root:
+Manual alternative (registers the server only — no skill):
+
+```bash
+claude mcp add indexed -s user -- indexed mcp run
+```
+
+To add it per project instead, create or edit `.mcp.json` in your project root:
 
 ```json
 {
@@ -115,6 +128,9 @@ To add manually, create or edit `.mcp.json` in your project root:
   }
 }
 ```
+
+The installed skill documents the `indexed.search/1` result shape; the full
+contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
 
 ### Cursor / Windsurf / Other Agents
 

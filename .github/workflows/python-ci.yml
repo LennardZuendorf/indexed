@@ -9,6 +9,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/python-ci.yml'
       - 'tests/system/**'
+      - 'skills/**'
   push:
     branches: [ "main", "building" ]
 
@@ -117,6 +118,32 @@ jobs:
 
     - name: Validate wheel with PyPI's archive validator
       run: uv run python scripts/validate_wheel.py dist/*.whl
+
+    - name: Installer smoke (Claude Code, temp HOME)
+      # Exercises `indexed install claude-code` the way a user does, and covers
+      # what the unit tests cannot see: the index-use skill must be inside the
+      # built wheel, or the command works from a checkout and fails installed.
+      run: |
+        set -euo pipefail
+        unzip -l dist/*.whl | grep -q 'indexed/skills/index-use/SKILL.md'
+        home="$(mktemp -d)"
+        HOME="$home" uv run indexed install claude-code --dry-run
+        test ! -e "$home/.claude.json"
+        HOME="$home" uv run indexed install claude-code
+        first="$(cat "$home/.claude.json")"
+        HOME="$home" uv run indexed install claude-code
+        test "$(cat "$home/.claude.json")" = "$first"
+        test -s "$home/.claude/skills/index-use/SKILL.md"
+        uv run python - "$home/.claude.json" <<'PY'
+        import json
+        import sys
+
+        entry = json.load(open(sys.argv[1]))["mcpServers"]["indexed"]
+        assert entry["type"] == "stdio", entry
+        assert entry["args"] == ["mcp", "run"], entry
+        assert entry["command"].startswith("/"), entry
+        print("installer smoke ok:", entry["command"])
+        PY
 
     - name: Check distribution metadata (twine)
       # validate_wheel.py (above) checks the archive/zip bytes; twine check
