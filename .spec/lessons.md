@@ -1426,7 +1426,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   Guessed result, envelope, engine and stdout-test filenames caused avoidable
   failed commands in this cycle; use `rg --files` before constructing paths.
 
-- Empty `collections` means no collection was searched successfully. Inspect
+- Empty `collections` means no collection was searched. Inspect
   `collection_errors` to distinguish an empty store from all searches failing;
   preserve concrete exception types when documenting boundary envelopes.
 
@@ -2213,3 +2213,93 @@ margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
+
+## Model downloads: prefetch the load set, not the repository (2026-11-16)
+
+- **An unfiltered `snapshot_download` is a ~10x size bug.** `indexed init` left
+  889 MB in a clean HF cache to pre-download a model whose first `index create`
+  needs 88 MB, because the repository also ships ONNX, OpenVINO, TF, Rust and
+  torch-`.bin` variants nothing loads. Pass `allow_patterns` mirroring the files
+  the loader actually opens, and freeze that list in a test against the file set
+  a real first `index create` downloads — a pattern list nobody measures rots.
+- **A size optimization must never become a correctness gate.** Keep the weights
+  check as the only verdict: when the filtered snapshot carries no weights
+  (custom repo publishing only `pytorch_model.bin`), retry once with the full
+  snapshot before calling the download corrupt.
+- **Weights are necessary, not sufficient — verify with the loader's own
+  registry.** A filter keyed to one model's layout (`1_Pooling/*`) fetched root
+  weights but not a `2_Dense` head, so the weights predicate passed, `init`
+  reported success, and every load raised `corrupt` with a `--force` remedy
+  that rebuilt the same broken snapshot. Filter on payload shapes
+  (`*/config.json`, `*/model.safetensors`), then read `modules.json` from the
+  downloaded snapshot and fetch `<path>/*` for any module dir still missing.
+- **A referenced-but-absent directory can be normal, so the retry must be
+  one-shot and the absence must stay harmless.** `2_Normalize` is referenced by
+  the default model and holds no files in any repo; treating that as a gap
+  makes every cold init re-download the full 889 MB repository, and treating it
+  as corruption bricks the cache. After one targeted fetch, absence means "the
+  repo has nothing there" and the snapshot is complete.
+- **A cache probe cannot be verified by the probe's own predicate.** Reproduce
+  a custom-model init through `is_model_cached` → `ensure_model` → `load_model`
+  (the reviewer used a real `distiluse-base-multilingual-cased-v2` layout): the
+  load is what distinguishes a saved byte from a broken cache.
+- Empty `collections` means no collection was searched successfully. Inspect
+## Clean first run on a cold cache (M2, 2026-11-16)
+The `[evaluation]` bullet above found the same shape from the benchmark side: a
+cold parser tokenizer silently falls back to `HierarchicalChunker` before the
+embedder warms the cache. This is what a user sees when it happens.
+
+- **A helper called per chunk must cache its FAILURE, not just its success.**
+  `count_tokens` runs once per chunk and per line, and `lru_cache` does not
+  memoize exceptions — so a single missing tokenizer retried the load and
+  logged its own traceback on every call: 40+ stack dumps, then a success
+  banner. The fix is an explicit `None` result cached for the process plus ONE
+  warning; the cause string stays one level down at DEBUG.
+- **Parsing runs before the embedding model is acquired, so parsing cannot
+  assume the cache the embedder will populate.** A cache-only tokenizer load
+  (`local_files_only=True`, correct for warm runs) misses on every fresh
+  install. Fall back to a real download of the tokenizer alone, guarded by
+  `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, so a cold first run is still
+  token-aware and an offline run is not made slower by a doomed request.
+- **User-facing text never carries internal bug ids.** "(bug A1)" in a WARNING
+  means nothing to a user and reads as an unfinished product; say what
+  degraded and what to run (`indexed init`).
+- **The first Hub call in a process is whichever code path reaches the network
+  first.** In `index create` that is now the parser's tokenizer fetch, not the
+  embedder — so `enforce_third_party_policy("huggingface_hub")` has to run at
+  that lazy `transformers` import too, or the Hub notice prints twice (#211).
+- **Prove the fix on the exact reproduction: empty HOME + empty `HF_HOME`, a
+  warm second run, and an offline cold run.** Count the evidence (tracebacks,
+  bug-id strings, stderr lines) instead of skimming it; a green banner hid 2018
+  stderr lines in the original finding.
+## Version surface in a dynamic-version repo (2026-11-16)
+- **A documented version command must exist in the shipped CLI.** The release
+  checklist's post-publish check (`uvx --from indexed-sh indexed --version`) was
+  impossible to pass: no root option exposed the version, so a user could only
+  ask `uv pip show indexed-sh` or the LSP's `serverInfo`. With
+  `dynamic = ["version"]` (hatch-vcs) there is no in-tree string to read, so the
+  honest source is `importlib.metadata.version("indexed-sh")` — read it in the
+  root callback, print the bare version, exit before config/storage/model work.
+- **A post-publish check is only evidence when run against installed metadata.**
+  An editable checkout and a wheel both answer the same dist name, but only the
+  wheel proves what a user downloads; exercise the flag from a wheel-installed
+  environment, not just `uv run`.
+- **Help-text assertions must strip ANSI before matching.** Rich styles each
+  option's leading `--` as its own span, so `"--version" in result.stdout`
+  passes on a plain local run and fails wherever colour is on (CI, FORCE_COLOR).
+**Pattern:** `indexed --version` exited 2 ("No such option") while the release
+notes told the releaser to run it.
+**Tags:** cli, release, verification
+**Date:** 2026-11-16
+### Gate a long-lived server's background work before the import
+**Pattern:** adding an opt-in watcher to a server lifespan invites importing the
+loop module at server-module scope, so every start pays the import even when the
+feature is off — and "off behaves exactly as before" stops being checkable.
+**Rule:** make the off-path a single config attribute read: import the
+watcher/engine modules inside the enabled branch, plan the watch scope once at
+startup (never re-plan while serving), run one `asyncio.to_thread(run_watch_loop)`
+per collection with a shared `threading.Event` for shutdown, and pin
+`collections_path` so a long-lived process can only write the store its tools
+read. Assert the off-path in a test by `sys.modules` membership plus thread
+count, not by a wall-clock threshold.
+**Tags:** mcp, concurrency, tests

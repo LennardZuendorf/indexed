@@ -3,7 +3,7 @@ type: feature-tech
 feature: file-watcher
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Feature: File Watcher — Architecture
@@ -26,12 +26,45 @@ all stay in one place.
 | Layer | File | Role |
 |---|---|---|
 | Command | `cli/knowledge/commands/watch.py` | resolve collection + manifest reader config, validate, run the loop |
-| Service | `cli/knowledge/commands/watch_service.py` | tree fingerprint, exclusion walk, `run_watch_loop` |
+| Service | `cli/knowledge/commands/watch_service.py` | `WatchTarget` (resolved scope), tree fingerprint, exclusion walk, `run_watch_loop` |
 | Config | `cli/watch_config.py` | `[watch] debounce_seconds`, `poll_interval_seconds` |
+| MCP | `mcp/watch.py` | lifespan-scoped supervisor: plan once at startup, one thread per collection |
 
 Registered as `index watch` (plus the flat hidden alias `watch`) in
 `cli/_app_setup.py` and `cli/knowledge/cli.py`; the model is registered at
 `register_app_config` (path `watch`), never at import time.
+
+## MCP server wiring (slice 2)
+
+`FastMCP`'s `lifespan` (`mcp/server.py`) is the only hook. After config
+resolution it checks `[mcp] watch_enabled`; when false the branch ends at one
+attribute read — `mcp/watch.py`, the engine and `watch_service` are all imported
+*inside* the enabled branch, so a default server's cold start and behaviour are
+untouched (the CLI's <1s start never touches this path at all).
+
+When true, `mcp/watch.py`:
+
+1. plans **once**: `core.engine.status(collections_path=...)`, keep
+   `source_type == "localFiles"` entries with an indexer, and
+   `watch_service.resolve_watch_target` each one. A non-directory source is
+   skipped with a warning — same data-loss gate, applied before any thread
+   exists;
+2. starts one `asyncio.to_thread(run_watch_loop)` per collection, sharing one
+   `threading.Event` as the stop signal, so the blocking update never runs on
+   the event loop;
+3. on lifespan exit sets the event and `await`s the tasks. The loops notice the
+   event on their next poll tick or at the end of an in-flight update, so a
+   shutdown never abandons a half-written collection.
+
+The plan is not re-run while the server lives: collections created after
+startup are watched only after the next restart (documented in
+[product.md](product.md) § MCP server mode). Each loop's `apply_update` is the
+same `clear_overlay()` + `core.engine.update([SourceConfig], manifest_factory=
+wiring_kwargs_for_update(cli_ctx))` the CLI watcher runs, with
+`collections_path` pinned to the lifespan's `cli_context.collections_path` so
+the watcher can only ever write the store the tools read. A loop ending non-zero
+(three consecutive update failures, vanished source) is logged and leaves the
+server serving the last good index — it never takes the server down.
 
 ## Why polling, not inotify
 
@@ -84,3 +117,13 @@ period even without a new edit. On a signature change it waits for a full quiet
 - `tests/system/test_watch_live_edit.py` — real corpus, real files connector,
   real v2 ingestion (embedding mocked): a file written while the loop runs
   becomes a document and is searchable, with no manual `index update`.
+- `tests/system/test_mcp_watch_freshness.py` — out-of-process stdio server with
+  `[mcp] watch_enabled = true`: a file written after startup is searchable
+  through the same session (no restart, no manual update); with the gate off a
+  live edit is not picked up and a collection created mid-run stays outside the
+  scope until the next server start.
+- `tests/unit/indexed/mcp/test_watch.py` — gate off imports no watcher module
+  and starts no thread; the plan covers `localFiles` only and skips
+  missing/unindexable sources; the plan runs exactly once per start; stop joins
+  the threads; `resolve_watch_target(...).scan()` is `None` once the source
+  directory disappears.

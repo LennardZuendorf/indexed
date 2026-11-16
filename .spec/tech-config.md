@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Tech Branch: Config (`src/indexed/config/`)
@@ -172,6 +172,11 @@ json_logs = false
 transport = "stdio"
 host = "127.0.0.1"
 port = 8000
+# Opt-in freshness for localFiles collections while the server runs (off by
+# default: no watcher, no extra thread, unchanged startup).
+watch_enabled = false
+watch_debounce_seconds = 2.0        # quiet period before one update runs
+watch_poll_interval_seconds = 2.0   # seconds between scans of the source tree
 
 [watch]
 debounce_seconds = 2.0     # quiet period before one update runs

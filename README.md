@@ -32,15 +32,25 @@ Local-first semantic search for AI agents. Give Claude Code, Cursor, Codex, and 
 # 1. Install indexed globally
 uv tool install indexed-sh
 
-# 2. Create a collection from local files
+# 2. One-time setup: fetch the embedding model
+indexed init
+
+# 3. Create a collection from local files
 indexed index create files --collection my-project --path ./src
 
-# 3. Search your collection
+# 4. Search your collection
 indexed index search "your query"
 
-# 4. Or take the machine payload (the MCP tools return the same object)
+# 5. Or take the machine payload (the MCP tools return the same object)
 indexed index search "your query" --json
 ```
+
+**What the first run downloads.** Indexed fetches the embedding model
+`sentence-transformers/all-MiniLM-L6-v2` — ~90 MB of weights plus its tokenizer —
+into the HuggingFace cache (`~/.cache/huggingface`, override with `HF_HOME`).
+Skipping `indexed init` only moves that download into the first `index create`;
+after that every command reads from the cache and works offline
+(`HF_HUB_OFFLINE=1`).
 
 On success, `--json` prints one object with a `schema` id, documents grouped, and
 a locator per hit. Check the CLI exit code before parsing stdout; escaping errors
@@ -189,6 +199,22 @@ uv tool install indexed-sh
 
 This installs `indexed` as a global CLI tool from [PyPI](https://pypi.org/project/indexed-sh/).
 
+```bash
+indexed --version   # prints the installed version, e.g. 0.0.11
+```
+
+Then run the one-time setup, which creates `~/.indexed`, validates your config,
+and fetches the default embedding model into the HuggingFace cache:
+
+```bash
+indexed init
+```
+
+`indexed init` downloads the model repository's full snapshot (~890 MB: weights,
+tokenizer, and the ONNX/TF/OpenVINO variants kept for the optional backends), so
+no command has to fetch later. It is idempotent, and skipping it is safe — the
+first `index create` downloads the ~90 MB the embedder actually loads.
+
 <details>
 <summary>Alternative: run without installing</summary>
 
@@ -213,6 +239,9 @@ uv run indexed --help
 ## Usage
 
 ```bash
+# Setup
+indexed init                              # one-time model download + data dirs
+
 # Create collections (Jira/Confluence auto-detect Cloud vs Server from --url)
 indexed index create files --collection my-project --path ./src
 indexed index create jira --collection jira-issues --url https://your-domain.atlassian.net
@@ -227,9 +256,9 @@ indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
 indexed index search "authentication flow" --json        # indexed.search/1 payload
 indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
-indexed index search "who wrote this" --git-provenance     # commit + author per file
-indexed index search "who wrote these lines" --git-line-blame  # per-chunk line blame
-indexed index search "what changed lately" --git-rerank    # rank by recency + churn
+indexed index search "who wrote this" --git-provenance     # v2 files collections only
+indexed index search "who wrote these lines" --git-line-blame  # v2 files collections only
+indexed index search "what changed lately" --git-rerank    # v2 files collections only
 indexed index search "auth" --freshness                    # warn if the index is behind
 # A filter a collection cannot honour warns per collection, never silently
 
@@ -245,8 +274,8 @@ indexed index watch my-project           # Ctrl-C to stop
 indexed index watch my-project --debounce 5 --poll-interval 1
 
 # Configuration
-indexed config inspect                   # view config
-indexed config set search.max_docs 20    # set a value
+indexed config list                              # resolved configuration
+indexed config set core.v1.search.max_docs 20    # set a value
 
 # Editor integration (Language Server Protocol, stdio)
 indexed lsp                              # point your editor's LSP client here
@@ -254,27 +283,69 @@ indexed lsp                              # point your editor's LSP client here
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
 
+### Editor setup (LSP)
+
+`indexed lsp` is a stdio server over the **same storage as the CLI**. Start it from the
+project root; a workspace `.indexed` store needs `indexed --local lsp`. VS Code has no
+built-in hook, so register the command in a generic LSP client extension's `settings.json`:
+`{"indexed": {"command": "indexed", "args": ["lsp"]}}`; Neovim 0.11+:
+`vim.lsp.start({ name = "indexed", cmd = { "indexed", "lsp" } })`; Zed and Helix take the
+same command and args. Diagnostics are `not-in-any-collection` and `index-stale` —
+severity Information, source `indexed`. There is no per-keystroke sync
+(`textDocumentSync.change: 0`): the server reads the file from disk, by design.
+Definition returns at most 5 locations (a whole-file range when the source has no line
+span); references at most 50.
+
 ### Watching a collection
 
-`indexed index watch <collection>` first runs an incremental update to catch up, then
-polls the source directory and updates once a burst of edits goes quiet, so edits, new files and
-deletions show up in search without a manual `index update`. It only works for `files`
-collections (remote sources have no local change signal) and it is **opt-in**: nothing
-starts it except typing the command, it runs in the foreground, and Ctrl-C is the off
-switch — no daemon, no service, no config flag.
+`indexed index watch <collection>` (or `-c/--collection`) first runs an incremental update
+to catch up, then polls the source directory and updates once a burst of edits goes quiet,
+so edits, new files and deletions show up in search without a manual `index update`. It
+only works for `files` collections (remote sources have no local change signal) — any
+other source type is refused with **exit 2** — and it is **opt-in**: nothing starts it
+except typing the command, it runs in the foreground, and Ctrl-C is the off switch — no
+daemon, no service, no config flag. `--once` runs a single update pass and exits instead
+of watching.
 
 If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
 an error and **keeps the last good index** instead of updating against an empty tree; it
 resumes when the path returns. Three consecutive failed updates end the command with a
-non-zero exit code.
+non-zero exit code. If the source path is already missing when the command starts,
+it refuses up front with **exit 2** — updating against an unreachable source would
+empty the collection. A directory that exists but cannot be read is not caught by
+that check: the first update pass fails (`Permission denied`, non-zero exit) and
+the last good index is kept.
 
-Tune the cadence with `--debounce` / `--poll-interval`, or in config:
+Tune the cadence with `--debounce` / `--poll-interval` (seconds; both default to 2.0), or
+in config:
 
 ```toml
 [watch]
 debounce_seconds = 2.0
 poll_interval_seconds = 2.0
 ```
+
+#### Keeping an MCP server fresh
+
+An MCP server is long-lived, so there is no per-collection command to run. Turn the same
+watcher on for the server with an opt-in switch (default off — nothing changes if you
+don't):
+
+```toml
+[mcp]
+watch_enabled = true
+watch_debounce_seconds = 2.0
+watch_poll_interval_seconds = 2.0
+```
+
+With it on, `indexed-mcp run` watches **every `localFiles` collection that exists at
+startup**: an edit, new file or deletion shows up in `search` within roughly one poll plus
+one debounce period, with no restart and no manual `index update`. A collection created
+*while the server is running* is not watched — the set is fixed at startup, so restart the
+server and it is picked up (the startup catch-up pass also indexes edits made while it was
+not watched). Remote collections (Jira, Confluence, Outline, GitHub) are never watched.
+Same caveats as the CLI: the server is a single writer per collection, and a source
+directory that disappears keeps the last good index rather than emptying the collection.
 
 ## Roadmap
 
