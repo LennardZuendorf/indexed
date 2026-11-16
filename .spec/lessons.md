@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # Lessons Learned
@@ -2213,23 +2213,33 @@ margin), state it and its rule in the PR, and keep the old absolute constants
 only as the offline fallback.
 **Tags:** ci, process, gates
 **Date:** 2026-11-15
-### Document a payload field by the states its producers emit
-**Pattern:** `docs/reference/search-output.md` described `collection_errors` as
-"failures only, and a collection named there is absent from `collections`", while
-`mcp/formatting.py` deliberately writes a *skipped* git option into the same array
-and keeps the collection in `collections` with its rows. Both behaviours were
-spec'd and tested; only the user-facing page named one state, so an agent reading
-it would discard rows the server kept on purpose (dogfood M4).
-**Rule:** before documenting a machine contract, grep every producer of the field
-and enumerate the states it can carry, then document the discriminator a reader
-actually branches on (`collections` membership here). Add a captured payload for
-each state; if a new field is the only honest fix, that is a schema decision —
-decide it explicitly, never let page and payload disagree.
-**Also:** one field described in three places (reference page, spec table, the
-`index-use` skill agents load) must be fixed in all three in the same commit — a
-contract corrected only in the reference page leaves the agent-facing surface
-teaching the old reading. And state each surface's own outcome separately: the CLI
-pre-validates a git ref and exits 1, MCP hands it to the engine and gets a skip, so
-one row claiming "CLI 0" for both is wrong until it is split.
-**Tags:** docs, contract, payload, dogfood
-**Date:** 2026-11-16
+
+## Model downloads: prefetch the load set, not the repository (2026-11-16)
+
+- **An unfiltered `snapshot_download` is a ~10x size bug.** `indexed init` left
+  889 MB in a clean HF cache to pre-download a model whose first `index create`
+  needs 88 MB, because the repository also ships ONNX, OpenVINO, TF, Rust and
+  torch-`.bin` variants nothing loads. Pass `allow_patterns` mirroring the files
+  the loader actually opens, and freeze that list in a test against the file set
+  a real first `index create` downloads — a pattern list nobody measures rots.
+- **A size optimization must never become a correctness gate.** Keep the weights
+  check as the only verdict: when the filtered snapshot carries no weights
+  (custom repo publishing only `pytorch_model.bin`), retry once with the full
+  snapshot before calling the download corrupt.
+- **Weights are necessary, not sufficient — verify with the loader's own
+  registry.** A filter keyed to one model's layout (`1_Pooling/*`) fetched root
+  weights but not a `2_Dense` head, so the weights predicate passed, `init`
+  reported success, and every load raised `corrupt` with a `--force` remedy
+  that rebuilt the same broken snapshot. Filter on payload shapes
+  (`*/config.json`, `*/model.safetensors`), then read `modules.json` from the
+  downloaded snapshot and fetch `<path>/*` for any module dir still missing.
+- **A referenced-but-absent directory can be normal, so the retry must be
+  one-shot and the absence must stay harmless.** `2_Normalize` is referenced by
+  the default model and holds no files in any repo; treating that as a gap
+  makes every cold init re-download the full 889 MB repository, and treating it
+  as corruption bricks the cache. After one targeted fetch, absence means "the
+  repo has nothing there" and the snapshot is complete.
+- **A cache probe cannot be verified by the probe's own predicate.** Reproduce
+  a custom-model init through `is_model_cached` → `ensure_model` → `load_model`
+  (the reviewer used a real `distiluse-base-multilingual-cased-v2` layout): the
+  load is what distinguishes a saved byte from a broken cache.
