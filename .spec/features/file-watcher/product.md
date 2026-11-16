@@ -3,7 +3,7 @@ type: feature-product
 feature: file-watcher
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Feature: File Watcher — Product
@@ -12,6 +12,10 @@ Keeps **one** named collection fresh while you work: `indexed index watch
 <collection>` first runs an incremental update to catch up, then polls the collection's source
 tree and updates once a burst of edits goes quiet, so search results follow
 the files without a manual `index update`.
+
+The MCP server has the same freshness as an opt-in mode: `[mcp] watch_enabled =
+true` keeps the server's `localFiles` collections fresh while it runs, so an
+agent's searches follow local edits without a restart.
 
 Resolves [issue #67](https://github.com/LennardZuendorf/indexed/issues/67) — the
 file-watching half. Git-hook triggered reindexing stays out of scope (the issue's
@@ -42,6 +46,35 @@ costs **one** update, not one per file.
 - Cadence is tunable: `--debounce`/`--poll-interval` flags, or `[watch]
   debounce_seconds` / `poll_interval_seconds` (default 2.0s each).
 
+## MCP server mode (opt-in)
+
+`indexed-mcp run` has no command to type per collection — an agent connects to a
+long-lived server — so there the watcher needs a switch. It is off by default:
+
+```toml
+[mcp]
+watch_enabled = false            # opt in: keep localFiles collections fresh
+watch_debounce_seconds = 2.0     # quiet period before one update runs
+watch_poll_interval_seconds = 2.0
+```
+
+- **On:** the server watches every `localFiles` collection that **exists at
+  startup**, one poller each, using the same loop and the same update path as
+  `index watch`. An edit, add or delete reaches search within roughly one poll
+  plus one debounce period — no `index update`, no client reconnect, no server
+  restart.
+- **Collections created after startup are not watched.** The set is fixed when
+  the server starts, so nothing grows behind you; restart the server and the
+  new collection is included (its opening catch-up pass also covers edits made
+  while it was not watched). This is the deliberate answer to the issue's
+  "what happens to collections created later" question.
+- **Off:** no watcher, no extra thread, no extra import — startup and behaviour
+  are exactly the un-watched server's.
+- **Remote collections** (Jira/Confluence/Outline/GitHub) are never watched:
+  they have no local change signal.
+- The server and a manual `index update` are still single-writer by contract;
+  two writers on one collection is the same documented limitation as the CLI.
+
 ## Failure behaviour (documented, not incidental)
 
 - **The watched source path disappears** (unmounted drive, renamed directory,
@@ -61,6 +94,7 @@ costs **one** update, not one per file.
 ## Non-goals
 
 - Git-hook driven reindexing, background services, systemd units.
-- Watching *all* collections at once, or collections created after startup.
 - Watching remote connectors (they have no local change signal).
 - Inotify-level latency: the poll interval is the latency floor.
+- Re-planning the MCP watch set while the server runs: new collections join on
+  the next restart (see above), never silently mid-session.

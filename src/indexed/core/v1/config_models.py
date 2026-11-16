@@ -200,6 +200,23 @@ class MCPConfig(BaseModel):
     include_index_size: bool = Field(
         default=False, description="Include index size in MCP responses"
     )
+    watch_enabled: bool = Field(
+        default=False,
+        description=(
+            "Watch localFiles collections for source changes while the server runs "
+            "(opt-in; off keeps startup and behaviour unchanged)"
+        ),
+    )
+    watch_debounce_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        description="Quiet period after the last observed change before one update runs",
+    )
+    watch_poll_interval_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        description="Seconds between scans of a watched source tree",
+    )
 
 
 class PerformanceConfig(BaseModel):

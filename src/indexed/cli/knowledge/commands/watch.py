@@ -5,7 +5,6 @@ runs in the foreground, and it dies with the process. Only ``localFiles``
 collections can be watched — the other connectors have no local source tree.
 """
 
-from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
@@ -141,27 +140,19 @@ def watch(
         )
         raise typer.Exit(2)
 
-    reader_cfg = _read_manifest_reader_config(collection, collections_path)
-    base_path = str(reader_cfg.get("basePath") or "")
-    if not base_path or not Path(base_path).is_dir():
+    target = watch_service.resolve_watch_target(
+        collection, collections_path, config_service=config_service
+    )
+    if target is None:
+        reader_cfg = _read_manifest_reader_config(collection, collections_path)
+        base_path = str(reader_cfg.get("basePath") or "")
         print_error(
             f"Source path '{base_path or '<unset>'}' of '{collection}' is not a "
             "directory — refusing to watch: an unreachable source would empty the "
             "collection on the next update."
         )
         raise typer.Exit(2)
-
-    excluded_dirs = tuple(reader_cfg.get("excludedDirs") or ())
-    respect_gitignore = bool(reader_cfg.get("respectGitignore", True))
-    storage_root = config_service.resolver.resolve_root(
-        config_service.resolve_storage_mode()
-    ).resolve()
-    # If the source itself is the storage root, retain its ordinary files.
-    excluded_storage = (
-        storage_root / "data"
-        if storage_root == Path(base_path).resolve()
-        else storage_root
-    )
+    base_path = target.base_path
 
     if not coll_status.indexers:
         print_error(f"Collection '{collection}' has no indexers configured")
@@ -177,12 +168,7 @@ def watch(
         update_wiring["engine"] = engine_flag
 
     def scan() -> "watch_service.WatchSignature | None":
-        return watch_service.signature_for(
-            base_path,
-            excluded_dirs=excluded_dirs,
-            respect_gitignore=respect_gitignore,
-            excluded_paths=(excluded_storage,),
-        )
+        return target.scan()
 
     def apply_update() -> None:
         # Clean overlay per pass, mirroring run_update_loop (R3): the manifest

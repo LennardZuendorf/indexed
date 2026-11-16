@@ -66,12 +66,33 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[LifespanState, None]:
         # config.toml (or an invalid [core] engine value) must not crash
         # server startup — this field has no consumer yet (issue #186).
         engine = "1"
-    yield {
-        "mcp_config": mcp_config,
-        "search_config": search_config,
-        "cli_context": cli_context,
-        "engine": engine,
-    }
+
+    # Opt-in freshness (issue #67 slice 2). With the gate off this branch costs
+    # one attribute read and imports nothing: the watcher module and the
+    # engine/connector imports it needs stay inside the enabled path.
+    watchers = None
+    if getattr(mcp_config, "watch_enabled", False):
+        from indexed.cli.composition import wiring_kwargs_for_update
+
+        from .watch import start_watchers_if_enabled
+
+        update_wiring = wiring_kwargs_for_update(cli_context)
+        watchers = await start_watchers_if_enabled(
+            mcp_config,
+            collections_path=cli_context.collections_path,
+            config_service=config_service,
+            manifest_factory=update_wiring["manifest_factory"],
+        )
+    try:
+        yield {
+            "mcp_config": mcp_config,
+            "search_config": search_config,
+            "cli_context": cli_context,
+            "engine": engine,
+        }
+    finally:
+        if watchers is not None:
+            await watchers.stop()
 
 
 mcp = FastMCP("Indexed MCP Server", lifespan=lifespan)
