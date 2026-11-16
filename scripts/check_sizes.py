@@ -45,7 +45,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # `manifest.reader.type` in the v1 searcher and v2 retrieval, plus v2 chunk
 # `metadata` so a v2 hit can say where it sits — genuine contract surface, not
 # stealth regrowth; ceiling = measured (31_602) + headroom.
-SRC_LOC_MAX = 31_800
+# Raised from 31_800 by #222 (one-command Claude Code install): `cli/install.py`
+# resolves the running `indexed` executable, merges a user-scope MCP entry into
+# `~/.claude.json` (other servers preserved, atomic write) and installs the
+# index-use skill — a new user-facing command, not stealth regrowth;
+# ceiling = measured (32_027) + headroom.
+SRC_LOC_MAX = 32_200
 # Raised from 27_800 by github-connector (PR #164/#200) code-review fixes:
 # no-comment GraphQL query variants (`queries.py`) so `include_comments=False`
 # skips fetching comment text, 5xx retry handling, an actionable error on a
@@ -142,7 +147,11 @@ SRC_LOC_MAX = 31_800
 # moves after the event snapshot, so the 2026-11-12 provenance red is proven
 # fixed rather than asserted in text — measured 50_940 on this branch, ceiling =
 # measured + headroom.
-TEST_LOC_MAX = 51_050
+# Raised by #222's installer proof: `test_install_command.py` runs the command
+# against a faked HOME and asserts the generated Claude Code config parses,
+# preserves unrelated keys, is idempotent and carries the shipped skill
+# verbatim; ceiling = measured + headroom.
+TEST_LOC_MAX = 51_200
 # Raised from 43_400 by fix/embedding-cache-check (PR #215)'s weights-aware
 # model-cache regression tests: the v1/v2 `is_model_cached` cases for
 # config-only residue, dangling weight symlinks, and active-revision

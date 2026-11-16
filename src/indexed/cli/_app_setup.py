@@ -22,6 +22,7 @@ def register_commands(app: typer.Typer) -> None:
     """Register every subcommand and sub-Typer onto ``app`` (idempotent-ish;
     call exactly once at ``app.py`` import time)."""
     from . import info, knowledge
+    from . import install as install_cmd
     from .. import mcp
     from indexed.config import cli as config
     from .debug import debug as debug_command
@@ -32,6 +33,19 @@ def register_commands(app: typer.Typer) -> None:
         rich_help_panel="Setup",
         help="Initialize Indexed: download models and create directories",
     )(init_command)
+
+    app.add_typer(
+        install_cmd.app,
+        name="install",
+        help="Install Indexed Integrations For Coding Agents",
+        rich_help_panel="Setup",
+        hidden=True,
+    )
+    app.command(
+        "install claude-code",
+        rich_help_panel="Setup",
+        help="Register MCP Server And Skill With Claude Code",
+    )(install_cmd.claude_code)
 
     app.add_typer(
         knowledge.app,
