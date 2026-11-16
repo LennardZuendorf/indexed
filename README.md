@@ -211,9 +211,9 @@ indexed index search "bug reports" --collection jira-issues
 indexed index search "why was this refactored" --rerank   # v2 collections only
 indexed index search "authentication flow" --json        # indexed.search/1 payload
 indexed index search "recent work" --changed-since HEAD~5  # v2 files collections
-indexed index search "who wrote this" --git-provenance     # commit + author per file
-indexed index search "who wrote these lines" --git-line-blame  # per-chunk line blame
-indexed index search "what changed lately" --git-rerank    # rank by recency + churn
+indexed index search "who wrote this" --git-provenance     # v2 files collections only
+indexed index search "who wrote these lines" --git-line-blame  # v2 files collections only
+indexed index search "what changed lately" --git-rerank    # v2 files collections only
 indexed index search "auth" --freshness                    # warn if the index is behind
 # A filter a collection cannot honour warns per collection, never silently
 
@@ -229,8 +229,8 @@ indexed index watch my-project           # Ctrl-C to stop
 indexed index watch my-project --debounce 5 --poll-interval 1
 
 # Configuration
-indexed config inspect                   # view config
-indexed config set search.max_docs 20    # set a value
+indexed config list                              # resolved configuration
+indexed config set core.v1.search.max_docs 20    # set a value
 
 # Editor integration (Language Server Protocol, stdio)
 indexed lsp                              # point your editor's LSP client here
@@ -238,21 +238,39 @@ indexed lsp                              # point your editor's LSP client here
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
 
+### Editor setup (LSP)
+
+`indexed lsp` is a stdio server over the **same storage as the CLI**. Start it from the
+project root; a workspace `.indexed` store needs `indexed --local lsp`. VS Code has no
+built-in hook, so register the command in a generic LSP client extension's `settings.json`:
+`{"indexed": {"command": "indexed", "args": ["lsp"]}}` Neovim 0.11+:
+`vim.lsp.start({ name = "indexed", cmd = { "indexed", "lsp" } })`; Zed and Helix take the
+same command and args. Diagnostics are `not-in-any-collection` and `index-stale` —
+severity Information, source `indexed`. There is no per-keystroke sync
+(`textDocumentSync.change: 0`): the server reads the file from disk, by design.
+Definition returns at most 5 locations (a whole-file range when the source has no line
+span); references at most 50.
+
 ### Watching a collection
 
-`indexed index watch <collection>` first runs an incremental update to catch up, then
-polls the source directory and updates once a burst of edits goes quiet, so edits, new files and
-deletions show up in search without a manual `index update`. It only works for `files`
-collections (remote sources have no local change signal) and it is **opt-in**: nothing
-starts it except typing the command, it runs in the foreground, and Ctrl-C is the off
-switch — no daemon, no service, no config flag.
+`indexed index watch <collection>` (or `-c/--collection`) first runs an incremental update
+to catch up, then polls the source directory and updates once a burst of edits goes quiet,
+so edits, new files and deletions show up in search without a manual `index update`. It
+only works for `files` collections (remote sources have no local change signal) — any
+other source type is refused with **exit 2** — and it is **opt-in**: nothing starts it
+except typing the command, it runs in the foreground, and Ctrl-C is the off switch — no
+daemon, no service, no config flag. `--once` runs a single update pass and exits instead
+of watching.
 
 If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
 an error and **keeps the last good index** instead of updating against an empty tree; it
 resumes when the path returns. Three consecutive failed updates end the command with a
-non-zero exit code.
+non-zero exit code. If the source path is already gone or unreadable when the command
+starts, it refuses up front with **exit 2** — updating against an unreachable source
+would empty the collection.
 
-Tune the cadence with `--debounce` / `--poll-interval`, or in config:
+Tune the cadence with `--debounce` / `--poll-interval` (seconds; both default to 2.0), or
+in config:
 
 ```toml
 [watch]
