@@ -32,15 +32,25 @@ Local-first semantic search for AI agents. Give Claude Code, Cursor, Codex, and 
 # 1. Install indexed globally
 uv tool install indexed-sh
 
-# 2. Create a collection from local files
+# 2. One-time setup: fetch the embedding model
+indexed init
+
+# 3. Create a collection from local files
 indexed index create files --collection my-project --path ./src
 
-# 3. Search your collection
+# 4. Search your collection
 indexed index search "your query"
 
-# 4. Or take the machine payload (the MCP tools return the same object)
+# 5. Or take the machine payload (the MCP tools return the same object)
 indexed index search "your query" --json
 ```
+
+**What the first run downloads.** Indexed fetches the embedding model
+`sentence-transformers/all-MiniLM-L6-v2` — ~90 MB of weights plus its tokenizer —
+into the HuggingFace cache (`~/.cache/huggingface`, override with `HF_HOME`).
+Skipping `indexed init` only moves that download into the first `index create`;
+after that every command reads from the cache and works offline
+(`HF_HUB_OFFLINE=1`).
 
 On success, `--json` prints one object with a `schema` id, documents grouped, and
 a locator per hit. Check the CLI exit code before parsing stdout; escaping errors
@@ -173,6 +183,18 @@ uv tool install indexed-sh
 
 This installs `indexed` as a global CLI tool from [PyPI](https://pypi.org/project/indexed-sh/).
 
+Then run the one-time setup, which creates `~/.indexed`, validates your config,
+and fetches the default embedding model into the HuggingFace cache:
+
+```bash
+indexed init
+```
+
+`indexed init` downloads the model repository's full snapshot (~890 MB: weights,
+tokenizer, and the ONNX/TF/OpenVINO variants kept for the optional backends), so
+no command has to fetch later. It is idempotent, and skipping it is safe — the
+first `index create` downloads the ~90 MB the embedder actually loads.
+
 <details>
 <summary>Alternative: run without installing</summary>
 
@@ -197,6 +219,9 @@ uv run indexed --help
 ## Usage
 
 ```bash
+# Setup
+indexed init                              # one-time model download + data dirs
+
 # Create collections (Jira/Confluence auto-detect Cloud vs Server from --url)
 indexed index create files --collection my-project --path ./src
 indexed index create jira --collection jira-issues --url https://your-domain.atlassian.net

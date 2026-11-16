@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-16
+updated: 2026-11-15
 ---
 
 # Lessons Learned
@@ -2243,3 +2243,32 @@ only as the offline fallback.
   a custom-model init through `is_model_cached` → `ensure_model` → `load_model`
   (the reviewer used a real `distiluse-base-multilingual-cased-v2` layout): the
   load is what distinguishes a saved byte from a broken cache.
+- Empty `collections` means no collection was searched successfully. Inspect
+## Clean first run on a cold cache (M2, 2026-11-16)
+The `[evaluation]` bullet above found the same shape from the benchmark side: a
+cold parser tokenizer silently falls back to `HierarchicalChunker` before the
+embedder warms the cache. This is what a user sees when it happens.
+
+- **A helper called per chunk must cache its FAILURE, not just its success.**
+  `count_tokens` runs once per chunk and per line, and `lru_cache` does not
+  memoize exceptions — so a single missing tokenizer retried the load and
+  logged its own traceback on every call: 40+ stack dumps, then a success
+  banner. The fix is an explicit `None` result cached for the process plus ONE
+  warning; the cause string stays one level down at DEBUG.
+- **Parsing runs before the embedding model is acquired, so parsing cannot
+  assume the cache the embedder will populate.** A cache-only tokenizer load
+  (`local_files_only=True`, correct for warm runs) misses on every fresh
+  install. Fall back to a real download of the tokenizer alone, guarded by
+  `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`, so a cold first run is still
+  token-aware and an offline run is not made slower by a doomed request.
+- **User-facing text never carries internal bug ids.** "(bug A1)" in a WARNING
+  means nothing to a user and reads as an unfinished product; say what
+  degraded and what to run (`indexed init`).
+- **The first Hub call in a process is whichever code path reaches the network
+  first.** In `index create` that is now the parser's tokenizer fetch, not the
+  embedder — so `enforce_third_party_policy("huggingface_hub")` has to run at
+  that lazy `transformers` import too, or the Hub notice prints twice (#211).
+- **Prove the fix on the exact reproduction: empty HOME + empty `HF_HOME`, a
+  warm second run, and an offline cold run.** Count the evidence (tracebacks,
+  bug-id strings, stderr lines) instead of skimming it; a green banner hid 2018
+  stderr lines in the original finding.

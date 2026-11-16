@@ -3,7 +3,7 @@ type: branch
 scope: core
 parent: tech.md
 covers: engine components, embedding strategy, FAISS indexing, persistence, search performance
-updated: 2026-11-16
+updated: 2026-11-15
 ---
 
 # Tech Branch: Core Engine (`src/indexed/core/`)
@@ -437,3 +437,9 @@ batch query embedding.
 ### Memory
 
 Idle ~80MB; indexing ~400MB; search ~250MB (embedding model + index).
+**Ordering: parsing needs a tokenizer before this acquisition runs.** On a clean
+install `index create` parses (and chunk-counts) every document before the
+embedder downloads the repository, so parsing fetches the tokenizer alone on a
+cache miss and caches that outcome — see `tech-parsing.md` § Token window &
+tokenizer acquisition. `indexed init` runs this whole acquisition up front
+(weights + tokenizer), so nothing after it needs the network.
