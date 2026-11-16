@@ -1426,7 +1426,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   Guessed result, envelope, engine and stdout-test filenames caused avoidable
   failed commands in this cycle; use `rg --files` before constructing paths.
 
-- Empty `collections` means no collection was searched successfully. Inspect
+- Empty `collections` means no collection was searched. Inspect
   `collection_errors` to distinguish an empty store from all searches failing;
   preserve concrete exception types when documenting boundary envelopes.
 
