@@ -146,7 +146,7 @@ document, hits carrying `relevance`, `score`, `locator`, `text`, and optional li
 | `counts.documents` | int | Number of entries in `documents`. |
 | `counts.hits` | int | Total hits across all documents. |
 | `collections` | string[] | Collections that were **searched**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". A collection whose *requested option* was skipped is still listed here, because it was searched and its documents are in the payload; it then also appears in `collection_errors`. |
-| `collection_errors` | object[] | Always present, `[]` when every request was carried out as asked. Each entry is `{"collection": "<name>", "error": "<message>"}` and means **something was not done as asked** — which is not the same as "this collection failed". Read `collections` to tell the two states apart: a collection that **failed** is absent from `collections` and contributes no documents; a collection whose requested Git option was **skipped** is in `collections` with its documents present, just unfiltered/unranked (see [Requests that were not carried out](#requests-that-were-not-carried-out)). Entries are per request-not-applied, so one collection can have more than one. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI omits unreadable manifests from both arrays. MCP `search` enumerates by manifest presence and reports those failures here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
+| `collection_errors` | object[] | Always present, `[]` when every request was carried out as asked. Each entry is `{"collection": "<name>", "error": "<message>"}` and means **something was not done as asked** — which is not the same as "this collection failed". Read `collections` to tell the two states apart: a collection that **failed** is absent from `collections` and contributes no documents; a collection whose requested Git option was **skipped** is in `collections` with its documents present, just unfiltered/unranked (see [Requests that were not carried out](#requests-that-were-not-carried-out)). Entries are per request-not-applied, so one collection can have more than one. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI resolves `collections` through status, so a collection with an unreadable manifest is omitted from both arrays. MCP `search` enumerates every collection directory, so a collection it cannot search is reported here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
 | `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; full-precision ties keep discovery order. Ranking happens before output scores are rounded. |
 
 ## Document object
@@ -217,15 +217,17 @@ empty store from all searches failing. A collection that appears in **both**
 arrays was searched — the entry says a requested option was not applied to it, so
 its rows are a superset of what you asked for, not a failure.
 
-MCP has no exit code. Read `schema` first. Both MCP search tools report
-per-collection failures and skipped Git options in `collection_errors`, including
-unreadable manifests. Named `search_collection` resolves status first: a collection
-present on disk with an
-unreadable manifest or no indexers returns a top-level `{"error": "…", "type":
-"MCPError"}`; an unknown name returns `{"error": "Collection 'x' not found or has
-no indexers"}` without `type`. Neither body has a success schema. If a boundary
-catches an `IndexedError`, `type` preserves its concrete class name, such as
-`StorageError`; unexpected search/status exceptions are wrapped as `MCPError`.
+MCP has no exit code. Read `schema` first. Both MCP search tools report skipped
+Git options in `collection_errors`. Global `search` also puts a collection it
+could not search — including one whose manifest cannot be read — in
+`collection_errors`; such a collection is absent from `collections`. Named
+`search_collection` resolves status first instead: a collection present on disk
+with an unreadable manifest or no indexers returns a top-level `{"error": "…",
+"type": "MCPError"}`; an unknown name returns `{"error": "Collection 'x' not
+found or has no indexers"}` without `type`. Neither body has a success schema. If
+a boundary catches an `IndexedError`, `type` preserves its concrete class name,
+such as `StorageError`; unexpected search/status exceptions are wrapped as
+`MCPError`.
 
 `--json` ignores `--compact` / `--no-content`; those shape the human view only.
 CLI JSON and both MCP search tools always request matched chunk content, even
