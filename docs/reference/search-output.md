@@ -294,7 +294,7 @@ because it has no results here.
 | `collection` | string | The collection this verdict is about. |
 | `status` | string | One of the three verdict words below. |
 | `reason` | string, null | Reason code; `null` exactly when `status` is `fresh`, set whenever it is `stale` or `unknown`. |
-| `baseline` | string, null | The 7-character commit the index was built from; `null` when no baseline was recorded or the baseline was unusable. |
+| `baseline` | string, null | The 7-character commit the index was built from. `null` when no baseline could be read at all: a non-files collection, a source directory that is not recorded (or not readable), no git repository, no `HEAD`, or no baseline recorded. A baseline that *is* recorded is echoed even when the verdict is `unknown` because that commit is missing from history — that is how a caller sees which commit git could not place. |
 | `head` | string, null | The 7-character current `HEAD`; `null` when git could not resolve one. |
 | `filesChanged` | int, null | How many files lie between the index and the working tree. Populated only when the verdict is `stale`; `null` when git did not count them, never a plausible-looking `0`. |
 | `commitsBehind` | int, null | Commits between `baseline` and `head`. `0` when the baseline *is* `HEAD`; `null` when git could not count. |
@@ -347,7 +347,7 @@ none changes its shape.
 | `changed_since` | `string` | Keep only files changed since this git ref, tag or commit, including uncommitted and untracked changes. | **No filter** — the whole collection is searched. |
 | `git_provenance` | `bool` | Adds the document [`git` block](#document-git-block). | The configured default, `[core.v1.search] git_provenance`. |
 | `git_line_blame` | `bool` | Adds the hit [`git` block](#hit-git-block). | The configured default, `[core.v1.search] git_line_blame`. |
-| `git_rerank` | `bool` | Re-ranks by git recency, churn and author signals; hits then report `score_kind: "git-rerank"`. | The configured default, `[core.v1.search] git_rerank`. |
+| `git_rerank` | `bool` | Re-ranks by git recency, churn and author signals; documents then report `score_kind: "git-rerank"`. | The configured default, `[core.v1.search] git_rerank`. |
 | `include_freshness` | `bool` | Adds the [`freshness[]`](#freshness) array. | No `freshness` array — this kwarg has no configured default. |
 
 **Omitting a kwarg means "use the configured default", not `false`.** The three
@@ -363,11 +363,13 @@ indistinguishable, and neither yields a `freshness` array.
 
 One more rule, because a requested option can degrade: **an option that cannot be
 honoured is named, never silently ignored.** A `changed_since` a collection cannot
-serve (`no-git-repository`, `not-a-files-collection`, `unknown-ref`) or a
-`git_rerank` that could not run (`no-git-repository`,
-`not-a-files-collection`) adds that collection to `collection_errors` with a
-one-line reason while its rows stay unfiltered or unranked. Unfiltered rows never
-read as filtered, unranked rows never read as re-ranked.
+serve (`no-git-repository`, `not-a-files-collection`, `unknown-ref`,
+`v1-engine`) or a `git_rerank` that could not run (`no-git-repository`,
+`not-a-files-collection`, `v1-engine`) adds that collection to
+`collection_errors` with a one-line reason while its rows stay unfiltered or
+unranked. `v1-engine` is the common case: v1 is the default engine, so a default
+store answering a git option reports it. Unfiltered rows never read as filtered,
+unranked rows never read as re-ranked.
 
 Scope note: the two tools search and report. Neither watches files, and the
 payload carries no answer-faithfulness or answer-quality score — `relevance`,
@@ -431,5 +433,8 @@ nine reason codes above ([`freshness[]`](#freshness)). A git re-rank reports
 `score_kind: "git-rerank"` only when it actually scored candidates, and its
 `relevance` is the blended cosine returned as-is (so it may exceed 1.0). When
 none of this is requested, the payload is exactly the core shape documented
-above — and when one of them is requested but unavailable, the degradation is
-named, never hidden.
+above. When a requested `changed_since` or `git_rerank` cannot be honoured, the
+degradation is named in `collection_errors`; a requested document or hit `git`
+block that git cannot answer is simply absent, exactly as the two `git` block
+sections describe; and a requested freshness advisory never disappears — it
+degrades to `unknown` with a reason code.
