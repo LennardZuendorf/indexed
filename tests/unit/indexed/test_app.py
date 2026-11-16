@@ -1,6 +1,8 @@
 """Tests for main app entry point and initialization."""
 
+from importlib.metadata import PackageNotFoundError
 from unittest.mock import Mock, patch
+import re
 import sys
 import pytest
 from typer.testing import CliRunner
@@ -143,6 +145,60 @@ class TestAppCommands:
         """Should have mcp command."""
         result = runner.invoke(app, ["mcp", "--help"])
         assert result.exit_code == 0
+
+
+class TestVersionFlag:
+    """`indexed --version` answers "which build am I running?".
+
+    The release checklist's post-publish step parses this output verbatim, so
+    the contract is: bare version on stdout, one line, exit 0.
+    """
+
+    def test_prints_installed_version(self):
+        """Output is the installed distribution's version, not a hand-kept string."""
+        from importlib.metadata import version as dist_version
+
+        result = runner.invoke(app, ["--version"])
+
+        assert result.exit_code == 0
+        assert result.stdout.strip() == dist_version("indexed-sh")
+
+    def test_prints_bare_version_on_one_line(self):
+        """No `indexed, version X` prefix and no banner — scriptable as-is."""
+        result = runner.invoke(app, ["--version"])
+
+        lines = result.stdout.strip().splitlines()
+        assert len(lines) == 1
+        assert not lines[0].startswith("indexed")
+
+    def test_help_lists_the_flag(self):
+        """A user who does not know the flag exists must be able to find it."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        # Rich styles each option's leading `--` as its own span, so a
+        # colour-emitting run (CI, FORCE_COLOR) never contains the literal
+        # flag name. Strip the escapes first, as the other help assertions do.
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "--version" in clean
+        assert "installed version" in clean
+
+    def test_uninstalled_distribution_still_exits_zero(self):
+        """A bare source tree answers 'unknown' instead of a traceback."""
+        with patch(
+            "importlib.metadata.version",
+            side_effect=PackageNotFoundError("indexed-sh"),
+        ):
+            result = runner.invoke(app, ["--version"])
+
+        assert result.exit_code == 0
+        assert result.stdout.strip() == "unknown"
+
+    def test_callback_is_a_noop_without_the_flag(self):
+        """The eager callback must not print or exit on every other invocation."""
+        from indexed.cli.app import _version_callback
+
+        assert _version_callback(False) is None
 
 
 class TestMainFunction:

@@ -59,6 +59,23 @@ typer.rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {get_accent_style()}
 
 _help_console = Console(theme=Theme(get_help_theme_styles()))
 
+
+def _version_callback(value: bool) -> None:
+    """Print the installed distribution version and exit (``--version``).
+
+    Bare version only (``0.0.11``), no prefix: the release checklist and any
+    script compare it verbatim, and typer's default ``<prog>, version <v>``
+    text would need trimming by every caller. Eager, so it answers before any
+    other option is validated and long before the command tree resolves.
+    """
+    if not value:
+        return
+    from indexed.utils.version import installed_version
+
+    typer.echo(installed_version())
+    raise typer.Exit()
+
+
 app = typer.Typer(
     add_completion=True,
     help="Index Institutional Knowledge and Make it Available for AI Agents and LLMs!",
@@ -71,6 +88,14 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def _init_app(
     ctx: typer.Context,
+    show_version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show the installed version and exit",
+        is_eager=True,
+        callback=_version_callback,
+        rich_help_panel="Usage Options",
+    ),
     local: bool = typer.Option(
         False,
         "--local",

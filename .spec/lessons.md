@@ -2272,3 +2272,22 @@ embedder warms the cache. This is what a user sees when it happens.
   warm second run, and an offline cold run.** Count the evidence (tracebacks,
   bug-id strings, stderr lines) instead of skimming it; a green banner hid 2018
   stderr lines in the original finding.
+## Version surface in a dynamic-version repo (2026-11-16)
+- **A documented version command must exist in the shipped CLI.** The release
+  checklist's post-publish check (`uvx --from indexed-sh indexed --version`) was
+  impossible to pass: no root option exposed the version, so a user could only
+  ask `uv pip show indexed-sh` or the LSP's `serverInfo`. With
+  `dynamic = ["version"]` (hatch-vcs) there is no in-tree string to read, so the
+  honest source is `importlib.metadata.version("indexed-sh")` — read it in the
+  root callback, print the bare version, exit before config/storage/model work.
+- **A post-publish check is only evidence when run against installed metadata.**
+  An editable checkout and a wheel both answer the same dist name, but only the
+  wheel proves what a user downloads; exercise the flag from a wheel-installed
+  environment, not just `uv run`.
+- **Help-text assertions must strip ANSI before matching.** Rich styles each
+  option's leading `--` as its own span, so `"--version" in result.stdout`
+  passes on a plain local run and fails wherever colour is on (CI, FORCE_COLOR).
+**Pattern:** `indexed --version` exited 2 ("No such option") while the release
+notes told the releaser to run it.
+**Tags:** cli, release, verification
+**Date:** 2026-11-16
