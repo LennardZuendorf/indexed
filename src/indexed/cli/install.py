@@ -154,11 +154,37 @@ def _print_path(label: str, value: object) -> None:
     console.print(render_user_text(value, style=dim), soft_wrap=True)
 
 
-def _print_preview(config_path: Path, merged: dict[str, Any], skill_path: Path) -> None:
+def backup_file(path: Path) -> Optional[Path]:
+    """Copy `path` beside itself as `<name>.bak` before it is overwritten."""
+    if not path.exists():
+        return None
+    backup = path.with_name(path.name + ".bak")
+    shutil.copy2(path, backup)
+    return backup
+
+
+def _print_preview(
+    config_path: Path,
+    entry: dict[str, Any],
+    skill_path: Path,
+    existing_server: Optional[dict[str, Any]],
+) -> None:
     dim = get_dim_style()
     console.print(f"[{dim}]Would write:[/{dim}]")
     _print_path("Config", config_path)
-    console.print(render_user_text(json.dumps(merged, indent=2)), soft_wrap=True)
+    command = entry.get("command")
+    args = entry.get("args") or []
+    line = " ".join(str(part) for part in [command, *args])
+    _print_path(f"Server ({SERVER_NAME})", line)
+    if existing_server is not None and existing_server != entry:
+        print_warning(
+            f"An existing mcpServers.{SERVER_NAME} entry would be replaced "
+            f"(a .bak copy of {config_path.name} is kept)."
+        )
+    console.print(
+        f"[{dim}]Other keys in that file — projects, credentials, other servers — "
+        f"are preserved and are deliberately not printed here.[/{dim}]"
+    )
     _print_path("Skill", skill_path)
     console.print(
         f"[{dim}]Preview only - nothing was written (drop --dry-run to apply).[/{dim}]"
@@ -177,6 +203,11 @@ def claude_code(
         "--home",
         help="HOME the MCP server runs with; collections live in HOME/.indexed "
         "(default: your HOME).",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Replace an existing mcpServers.indexed entry that points elsewhere.",
     ),
 ) -> None:
     """Register the indexed MCP server and skill with Claude Code.
@@ -209,21 +240,39 @@ def claude_code(
         print_error(str(exc))
         raise typer.Exit(1) from exc
 
+    servers = existing.get("mcpServers")
+    existing_server = servers.get(SERVER_NAME) if isinstance(servers, dict) else None
+    if existing_server is not None and existing_server != entry and not force:
+        print_error(
+            f"{config_path} already registers an mcpServers.{SERVER_NAME} entry "
+            "that points somewhere else."
+        )
+        _print_path("Existing", json.dumps(existing_server))
+        _print_path("Wanted", json.dumps(entry))
+        print_warning(
+            "Refusing to overwrite it. Re-run with --force to replace it "
+            "(a .bak copy of the file is kept)."
+        )
+        raise typer.Exit(1)
+
     merged = merge_server_entry(existing, SERVER_NAME, entry)
 
     if dry_run:
-        _print_preview(config_path, merged, skill_path)
+        _print_preview(config_path, entry, skill_path, existing_server)
         return
 
     config_changed = merged != existing
     skill_written = False
     try:
         if config_changed:
+            backup_file(config_path)
             write_config(config_path, merged)
-        if (
+        skill_differs = (
             not skill_path.is_file()
             or skill_path.read_text(encoding="utf-8") != skill_text
-        ):
+        )
+        if skill_differs:
+            backup_file(skill_path)
             skill_path.parent.mkdir(parents=True, exist_ok=True)
             skill_path.write_text(skill_text, encoding="utf-8")
             skill_written = True

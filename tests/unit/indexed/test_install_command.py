@@ -55,10 +55,41 @@ class TestClaudeCodeInstall:
 
         assert result.exit_code == 0
         output = _strip_ansi(result.output)
-        assert "mcpServers" in output
+        assert "Server (indexed)" in output
         assert "nothing was written" in output
         assert not (fake_home / ".claude.json").exists()
         assert not (fake_home / ".claude").exists()
+
+    def test_dry_run_never_prints_the_rest_of_the_users_config(self, fake_home: Path):
+        """--dry-run is a preview of the *change*, not a dump of the user's file.
+
+        ~/.claude.json holds an oauth account block and per-project history; echoing
+        the merged document to a terminal (or a CI log) leaks both.
+        """
+        (fake_home / ".claude.json").write_text(
+            json.dumps(
+                {
+                    "oauthAccount": {"emailAddress": "secret@example.test"},
+                    "projects": {
+                        "/home/secret-project": {"history": ["private prompt"]}
+                    },
+                    "mcpServers": {"other": {"command": "keep-me"}},
+                }
+            )
+        )
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--dry-run"])
+
+        assert result.exit_code == 0
+        output = _strip_ansi(result.output)
+        assert "secret@example.test" not in output
+        assert "private prompt" not in output
+        assert "keep-me" not in output
+        assert "Server (indexed)" in output
+        # and nothing was written
+        assert json.loads((fake_home / ".claude.json").read_text())["mcpServers"] == {
+            "other": {"command": "keep-me"}
+        }
 
     def test_registers_mcp_server(self, fake_home: Path):
         result = runner.invoke(_get_app(), ["install", "claude-code"])
@@ -70,6 +101,37 @@ class TestClaudeCodeInstall:
         assert entry["args"] == ["mcp", "run"]
         assert Path(entry["command"]).is_absolute()
         assert "env" not in entry
+
+    def test_refuses_to_replace_a_different_existing_entry(self, fake_home: Path):
+        """A different mcpServers.indexed is someone else's config, not ours to clobber."""
+        config_path = fake_home / ".claude.json"
+        original = {
+            "mcpServers": {"indexed": {"command": "/old/indexed", "args": ["mcp"]}}
+        }
+        config_path.write_text(json.dumps(original))
+
+        result = runner.invoke(_get_app(), ["install", "claude-code"])
+
+        assert result.exit_code == 1
+        assert "--force" in _strip_ansi(result.output)
+        assert json.loads(config_path.read_text()) == original
+        assert not (fake_home / ".claude").exists()
+
+    def test_force_replaces_the_entry_and_keeps_a_backup(self, fake_home: Path):
+        config_path = fake_home / ".claude.json"
+        original = {
+            "mcpServers": {"indexed": {"command": "/old/indexed", "args": ["mcp"]}}
+        }
+        config_path.write_text(json.dumps(original))
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--force"])
+
+        assert result.exit_code == 0
+        entry = json.loads(config_path.read_text())["mcpServers"]["indexed"]
+        assert entry["args"] == ["mcp", "run"]
+        backup = config_path.with_name(config_path.name + ".bak")
+        assert backup.is_file()
+        assert json.loads(backup.read_text()) == original
 
     def test_installs_index_use_skill(self, fake_home: Path):
         result = runner.invoke(_get_app(), ["install", "claude-code"])
