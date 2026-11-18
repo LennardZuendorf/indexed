@@ -192,11 +192,11 @@ watch_debounce_seconds = 2.0
 watch_poll_interval_seconds = 2.0
 ```
 
-With it on, `indexed-mcp run` watches **every `localFiles` collection that exists at
-startup**: an edit, new file or deletion shows up in `search` within roughly one poll
+With it on, `indexed-mcp run` plans a watcher for **every `localFiles` collection that exists
+at startup**: an edit, new file or deletion shows up in `search` within roughly one poll
 (`watch_poll_interval_seconds`), one quiet period (`watch_debounce_seconds`) and the update
-pass itself — with no restart and no manual `index update`. A startup catch-up pass also
-indexes edits made while the collection was not watched.
+pass itself — with no manual `index update` and no server restart. A startup catch-up pass
+also indexes edits made while the collection was not watched.
 
 The watched set is fixed at startup: a collection created *while the server is running* is
 not watched, and is picked up on the next restart — the set is never re-planned behind you.
@@ -204,8 +204,11 @@ Remote collections (Jira, Confluence, Outline, GitHub) are never watched: only l
 have a change signal.
 
 Its cost is one background thread per watched collection, held for the lifetime of the
-server, so the price grows with the number of `localFiles` collections served. Same caveats
-as the CLI: the server is a single writer per collection, and a source directory that
+server. Those threads come from the event loop's default pool, which is capped at
+`min(32, CPU count + 4)`: collections past that cap wait without refreshing instead of
+starting. A watcher that fails three update passes in a row also stops for that collection —
+the server keeps serving the last good index, and only a restart starts it again. Same
+caveats as the CLI: the server is a single writer per collection, and a source directory that
 disappears keeps the last good index rather than emptying the collection.
 
 ## Supported Sources
