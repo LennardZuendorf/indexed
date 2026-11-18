@@ -46,7 +46,7 @@ indexed index search "your query" --json
 ```
 
 **What the first run downloads.** Indexed fetches the embedding model
-`sentence-transformers/all-MiniLM-L6-v2` — ~90 MB of weights plus its tokenizer —
+`sentence-transformers/all-MiniLM-L6-v2` — about 88 MB of weights and tokenizer —
 into the HuggingFace cache (`~/.cache/huggingface`, override with `HF_HOME`).
 Skipping `indexed init` only moves that download into the first `index create`;
 after that every command reads from the cache and works offline
@@ -210,10 +210,16 @@ and fetches the default embedding model into the HuggingFace cache:
 indexed init
 ```
 
-`indexed init` downloads the model repository's full snapshot (~890 MB: weights,
-tokenizer, and the ONNX/TF/OpenVINO variants kept for the optional backends), so
-no command has to fetch later. It is idempotent, and skipping it is safe — the
-first `index create` downloads the ~90 MB the embedder actually loads.
+`indexed init` fetches only the files the embedder loads — the safetensors
+weights, the tokenizer, and the configs the sentence-transformers modules read —
+about 88 MB on a clean cache. It does not fetch the repository's other exports
+(ONNX, OpenVINO, TF, the torch `.bin`), so setup stays bounded to the model files
+that loading actually reads. It is idempotent.
+
+Skipping it is safe, and it defers nothing beyond that download: the first
+`index create` fetches the same ~88 MB at that moment instead. Neither path ever
+pulls the whole repository, and after that one download every command reads the
+cache and works offline.
 
 <details>
 <summary>Alternative: run without installing</summary>
@@ -240,7 +246,7 @@ uv run indexed --help
 
 ```bash
 # Setup
-indexed init                              # one-time model download + data dirs
+indexed init                              # one-time model fetch (~88 MB) + data dirs
 
 # Create collections (Jira/Confluence auto-detect Cloud vs Server from --url)
 indexed index create files --collection my-project --path ./src
