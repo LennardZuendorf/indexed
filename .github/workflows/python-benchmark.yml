@@ -470,6 +470,46 @@ jobs:
           echo "Refresh PR already open — branch force-pushed and title/body refreshed."
           exit 0
         fi
-        gh pr create --base main --head "$BRANCH" \
-          --title "$TITLE" \
-          --body-file "${RUNNER_TEMP}/refresh-body.md"
+        # GITHUB_TOKEN cannot open a PR while the repository setting "Allow
+        # GitHub Actions to create and approve pull requests" is off, whatever
+        # `permissions:` this job grants. Capture the attempt instead of letting
+        # `set -e` end the step on GitHub's raw GraphQL error: the branch is
+        # already pushed, so the red run has to say what to do with it.
+        PR_ERR="${RUNNER_TEMP}/pr-create.err"
+        if PR_URL=$(gh pr create --base main --head "$BRANCH" \
+            --title "$TITLE" \
+            --body-file "${RUNNER_TEMP}/refresh-body.md" 2>"$PR_ERR"); then
+          echo "Refresh PR: $PR_URL"
+          exit 0
+        fi
+        SHA=$(git rev-parse HEAD)
+        RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        {
+          echo "## Baseline refresh: measured and pushed, but the PR was NOT created"
+          echo
+          echo "\`$BRANCH\` is pushed at \`$SHA\`. The baseline move exists; only the"
+          echo "pull request does not, because \`gh pr create\` failed below."
+          echo
+          echo "Open it by hand from a checkout of this repository:"
+          echo
+          echo '```'
+          echo "gh pr create --base main --head $BRANCH --title '$TITLE' --body-file ${RUNNER_TEMP}/refresh-body.md"
+          echo '```'
+          echo
+          echo "The body file lives in this runner's temp dir, which dies with it —"
+          echo "if it is gone, save the copy below as \`refresh-body.md\` and pass that."
+          echo
+          echo "<details><summary>refresh-body.md</summary>"
+          echo
+          cat "${RUNNER_TEMP}/refresh-body.md"
+          echo
+          echo "</details>"
+          echo
+          echo "### gh pr create stderr"
+          echo
+          echo '```'
+          cat "$PR_ERR"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "::error title=Baseline refresh PR not opened::$BRANCH is pushed at $SHA, but no PR exists: this repository does not allow GitHub Actions to create pull requests (Settings > Actions > General > Workflow permissions > \"Allow GitHub Actions to create and approve pull requests\"). Open it with the command in the step summary. Run: $RUN_URL"
+        exit 1
