@@ -1244,7 +1244,7 @@ def test_refresh_pr_creation_is_guarded_and_fails_loudly():
     assert "::error title=Baseline refresh PR not opened::" in error
     assert "Allow GitHub Actions to create and approve pull requests" in error
     assert "Run: $RUN_URL" in error
-    assert 'actions/runs/$GITHUB_RUN_ID' in guard
+    assert "actions/runs/$GITHUB_RUN_ID" in guard
     # The paste-ready command, the body it needs, and the refusal verbatim.
     assert "gh pr create --base main --head $BRANCH --title '$TITLE'" in guard
     assert "--body-file ${RUNNER_TEMP}/refresh-body.md" in guard
@@ -1269,9 +1269,7 @@ def test_refresh_pr_guard_prints_the_pushed_commit_and_a_usable_command(
     bin_dir.mkdir()
     gh = bin_dir / "gh"
     gh.write_text(
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' '{GRAPHQL_REFUSAL}' >&2\n"
-        "exit 1\n",
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{GRAPHQL_REFUSAL}' >&2\nexit 1\n",
         encoding="utf-8",
     )
     gh.chmod(0o755)
