@@ -371,9 +371,13 @@ unranked. `v1-engine` is the common case: v1 is the default engine, so a default
 store answering a git option reports it. Unfiltered rows never read as filtered,
 unranked rows never read as re-ranked.
 
-Scope note: the two tools search and report. Neither watches files, and the
-payload carries no answer-faithfulness or answer-quality score — `relevance`,
-`score`, provenance and freshness are the whole of it.
+Scope note: the two tools search and report. Neither call watches files — a search answers
+from whatever the server had already indexed, and cannot itself refresh a collection. The
+server those tools run in **can** keep its collections fresh between calls, but only if it
+was configured to: that is opt-in, off by default, and limited to `localFiles` collections —
+see [Keeping an MCP server fresh](../../README.md#keeping-an-mcp-server-fresh). What the
+payload carries is unchanged either way: no answer-faithfulness or answer-quality score —
+`relevance`, `score`, provenance and freshness are the whole of it.
 
 ## Failures
 

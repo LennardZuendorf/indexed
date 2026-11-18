@@ -179,6 +179,38 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 indexed mcp run --transport http --port 8000
 ```
 
+### Keeping an MCP server fresh
+
+An MCP server is long-lived, so there is no per-collection command to run. Turn the
+[`index watch`](#watching-a-collection) watcher on for the server with an opt-in switch
+(**off by default** — nothing changes if you don't set it):
+
+```toml
+[mcp]
+watch_enabled = true
+watch_debounce_seconds = 2.0
+watch_poll_interval_seconds = 2.0
+```
+
+With it on, `indexed-mcp run` plans a watcher for **every `localFiles` collection that exists
+at startup**: an edit, new file or deletion shows up in `search` within roughly one poll
+(`watch_poll_interval_seconds`), one quiet period (`watch_debounce_seconds`) and the update
+pass itself — with no manual `index update` and no server restart. A startup catch-up pass
+also indexes edits made while the collection was not watched.
+
+The watched set is fixed at startup: a collection created *while the server is running* is
+not watched, and is picked up on the next restart — the set is never re-planned behind you.
+Remote collections (Jira, Confluence, Outline, GitHub) are never watched: only local files
+have a change signal.
+
+Its cost is one background thread per watched collection, held for the lifetime of the
+server. Those threads come from the event loop's default pool, which is capped at
+`min(32, CPU count + 4)`: collections past that cap wait without refreshing instead of
+starting. A watcher that fails three update passes in a row also stops for that collection —
+the server keeps serving the last good index, and only a restart starts it again. Same
+caveats as the CLI: the server is a single writer per collection, and a source directory that
+disappears keeps the last good index rather than emptying the collection.
+
 ## Supported Sources
 
 | Source | Description |
@@ -331,27 +363,10 @@ debounce_seconds = 2.0
 poll_interval_seconds = 2.0
 ```
 
-#### Keeping an MCP server fresh
-
-An MCP server is long-lived, so there is no per-collection command to run. Turn the same
-watcher on for the server with an opt-in switch (default off — nothing changes if you
-don't):
-
-```toml
-[mcp]
-watch_enabled = true
-watch_debounce_seconds = 2.0
-watch_poll_interval_seconds = 2.0
-```
-
-With it on, `indexed-mcp run` watches **every `localFiles` collection that exists at
-startup**: an edit, new file or deletion shows up in `search` within roughly one poll plus
-one debounce period, with no restart and no manual `index update`. A collection created
-*while the server is running* is not watched — the set is fixed at startup, so restart the
-server and it is picked up (the startup catch-up pass also indexes edits made while it was
-not watched). Remote collections (Jira, Confluence, Outline, GitHub) are never watched.
-Same caveats as the CLI: the server is a single writer per collection, and a source
-directory that disappears keeps the last good index rather than emptying the collection.
+Serving the same collections to a long-lived MCP server, where a per-collection command has
+nowhere to run? The server takes the same watcher behind an opt-in `[mcp]` switch — see
+[Keeping an MCP server fresh](#keeping-an-mcp-server-fresh) for the keys, the startup-scope
+rule and its cost.
 
 ## Roadmap
 
