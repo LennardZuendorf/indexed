@@ -9,6 +9,16 @@ updates:
     commit-message:
       prefix: "build(deps)"
       prefix-development: "build(deps-dev)"
+    # Skip proposals the resolver cannot satisfy: mcp 2.0 renames FastMCP ->
+    # MCPServer and swaps httpx for httpx2 (pyproject.toml:37-38), fastmcp 4.x
+    # requires mcp 2.x, and docling-slim caps typer at <0.28.0.
+    ignore:
+      - dependency-name: "mcp"
+        versions: [">=2.0.0"]
+      - dependency-name: "fastmcp"
+        versions: [">=4.0.0"]
+      - dependency-name: "typer"
+        versions: [">=0.28.0"]
     groups:
       ml-and-parsing:
         patterns:
