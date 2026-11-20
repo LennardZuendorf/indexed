@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-16
+updated: 2026-11-20
 ---
 
 # Tech Spec: indexed
@@ -82,7 +82,7 @@ connectors → [tech-connectors.md](tech-connectors.md); config → [tech-config
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| **Python** | 3.11+ | Language runtime |
+| **Python** | 3.11–3.14 | Language runtime |
 | **uv** | 0.5+ | Package manager |
 | **FAISS** | latest | Vector similarity search |
 | **sentence-transformers** | latest | Embedding generation |

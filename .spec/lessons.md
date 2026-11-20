@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-15
+updated: 2026-11-20
 ---
 
 # Lessons Learned
@@ -2303,3 +2303,15 @@ per collection with a shared `threading.Event` for shutdown, and pin
 read. Assert the off-path in a test by `sys.modules` membership plus thread
 count, not by a wall-clock threshold.
 **Tags:** mcp, concurrency, tests
+### Bound `requires-python` by the wheels the dependency set ships
+**Pattern:** `requires-python = ">=3.11.5"` + "Python 3.11+" in the README claimed
+3.15 support, but `onnxruntime` published no `cp315` wheel (1.32.0 stops at
+`cp314`), so the newest stable interpreter got a resolver wall instead of an
+honest "not supported".
+**Rule:** an open floor is a claim about every future interpreter — prove it with
+`uv tool install --python <X.Y>` on a real `<X.Y>` interpreter, and cap at the
+newest one that resolves (`>=3.11.5,<3.15`), with a comment naming the condition
+that lifts the cap (here: an `onnxruntime` `cp315` wheel). Before capping, query
+PyPI for the missing ABI tag; a newly published wheel turns the answer into
+"document support and prove the install".
+**Tags:** packaging, install, verification
