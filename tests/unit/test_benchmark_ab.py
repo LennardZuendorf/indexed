@@ -21,7 +21,8 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_ab.py"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = REPO_ROOT / "scripts" / "benchmark_ab.py"
 
 FULLNAME = "tests/benchmarks/test_parsing_performance.py::test_parse_large_markdown"
 BASE_MEAN_S = 0.690
@@ -1191,3 +1192,121 @@ def test_report_step_keeps_its_advisory_tolerance():
     block = step_block("Run benchmarks")
     assert "continue-on-error: true" in block
     assert "cross-branch-tolerance: 1000" in block
+
+
+REFRESH_STEP = "Open a baseline-refresh PR when the numbers moved"
+GRAPHQL_REFUSAL = (
+    "pull request create failed: GraphQL: GitHub Actions is not permitted to "
+    "create or approve pull requests (createPullRequest)"
+)
+
+
+def refresh_guard(block: str) -> str:
+    """The PR-handoff guard's own shell, de-indented, out of the step block."""
+    lines = block.splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith('PR_ERR="')
+        ),
+        None,
+    )
+    assert start is not None, "the refresh step has no captured-stderr guard"
+    return textwrap.dedent("\n".join(lines[start:]))
+
+
+def test_refresh_pr_creation_is_guarded_and_fails_loudly():
+    """A pushed baseline whose PR cannot open must say so, and go red.
+
+    Run 42828035019 measured ``main``, pushed ``chore/benchmark-baseline-refresh``
+    and then let ``set -e`` end the step on GitHub's raw GraphQL refusal: branch
+    pushed, nothing said. The call now happens inside a command substitution, so
+    its failure is a branch in this step rather than the end of it.
+    """
+    block = step_block(REFRESH_STEP)
+    lines = block.splitlines()
+    calls = [
+        index
+        for index, line in enumerate(lines)
+        if "gh pr create" in line and "echo " not in line
+    ]
+    assert calls, "the refresh step never attempts gh pr create"
+    attempt = lines[calls[0]].strip()
+    assert attempt.startswith("if PR_URL=$(gh pr create --base main --head"), attempt
+    guard = "\n".join(lines[calls[0] :])
+    # stderr captured, not inherited; the guard is the `else` of that attempt.
+    assert '2>"$PR_ERR"); then' in guard
+    # The guard writes the summary and only then exits non-zero.
+    assert '>> "$GITHUB_STEP_SUMMARY"' in guard
+    assert guard.index('>> "$GITHUB_STEP_SUMMARY"') < guard.index("exit 1")
+    error = next(line for line in lines if line.strip().startswith('echo "::error'))
+    assert "::error title=Baseline refresh PR not opened::" in error
+    assert "Allow GitHub Actions to create and approve pull requests" in error
+    assert "Run: $RUN_URL" in error
+    assert "actions/runs/$GITHUB_RUN_ID" in guard
+    # The paste-ready command, the body it needs, and the refusal verbatim.
+    assert "gh pr create --base main --head $BRANCH --title '$TITLE'" in guard
+    assert "--body-file ${RUNNER_TEMP}/refresh-body.md" in guard
+    assert 'cat "${RUNNER_TEMP}/refresh-body.md"' in guard
+    assert 'cat "$PR_ERR"' in guard
+
+
+def test_refresh_pr_guard_prints_the_pushed_commit_and_a_usable_command(
+    tmp_path: Path,
+):
+    """Executed, not read: the guard runs against a stub that refuses like GitHub."""
+    guard = refresh_guard(step_block(REFRESH_STEP))
+    body = tmp_path / "refresh-body.md"
+    body.write_text(
+        "Re-measures `main` and stores the numbers this run produced.\n\n"
+        "| Benchmark | Baselines | This run | Change |\n",
+        encoding="utf-8",
+    )
+    summary = tmp_path / "summary.md"
+    summary.write_text("", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{GRAPHQL_REFUSAL}' >&2\nexit 1\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    title = "chore(benchmark): refresh main baseline (new CPU)"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "BRANCH": "chore/benchmark-baseline-refresh",
+        "TITLE": title,
+        "RUNNER_TEMP": str(tmp_path),
+        "GITHUB_STEP_SUMMARY": str(summary),
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "LennardZuendorf/indexed",
+        "GITHUB_RUN_ID": "42828035019",
+    }
+    proc = subprocess.run(
+        ["bash", "-c", "set -euo pipefail\n" + guard],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    # The refusal is reported in the summary; the annotation names the setting.
+    assert GRAPHQL_REFUSAL not in proc.stdout
+    assert "::error title=Baseline refresh PR not opened::" in proc.stdout
+    assert "Allow GitHub Actions to create and approve pull requests" in proc.stdout
+    assert "actions/runs/42828035019" in proc.stdout
+    text = summary.read_text(encoding="utf-8")
+    assert "measured and pushed, but the PR was NOT created" in text
+    assert "chore/benchmark-baseline-refresh" in text
+    assert re.search(r"`[0-9a-f]{40}`", text), text
+    assert (
+        "gh pr create --base main --head chore/benchmark-baseline-refresh "
+        f"--title '{title}' --body-file {tmp_path}/refresh-body.md"
+    ) in text
+    # The body is reproduced, because the runner's copy dies with the runner.
+    assert "Re-measures `main` and stores the numbers this run produced." in text
+    assert GRAPHQL_REFUSAL in text

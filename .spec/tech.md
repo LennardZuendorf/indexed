@@ -317,7 +317,16 @@ action's update path is
 pull_request-only, its "Save baseline" step only rewrites the file in the
 workspace. If that differs from `main`'s copy, the job force-pushes it to
 `chore/benchmark-baseline-refresh` and opens (or updates) one PR changing
-nothing but the baseline. A >20% slowdown against `main`'s previous numbers
+nothing but the baseline. When the repository forbids Actions from opening pull
+requests (`GITHUB_TOKEN` cannot, whatever `permissions:` the job grants — the
+setting is *Actions → General → Workflow permissions → "Allow GitHub Actions to
+create and approve pull requests"*), the push still stands and the handoff fails
+loudly instead of dying on GitHub's raw GraphQL error: the step summary names
+the pushed branch and commit, carries a paste-ready `gh pr create` line, the
+body file's contents (the runner's copy dies with it) and the captured stderr,
+and the step annotates `::error::` with that setting and the run URL before
+exiting 1. A silent success would leave a pushed baseline nobody knows to
+review. A >20% slowdown against `main`'s previous numbers
 fails the run before that step — adopt numbers only once a slowdown is
 understood as expected. Nothing refreshes on `push` to `main`: one refresh PR
 per merge would be noise, so moving the baseline stays a deliberate maintainer
