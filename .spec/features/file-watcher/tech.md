@@ -3,7 +3,7 @@ type: feature-tech
 feature: file-watcher
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-16
+updated: 2026-11-20
 ---
 
 # Feature: File Watcher — Architecture
@@ -55,6 +55,14 @@ When true, `mcp/watch.py`:
 3. on lifespan exit sets the event and `await`s the tasks. The loops notice the
    event on their next poll tick or at the end of an in-flight update, so a
    shutdown never abandons a half-written collection.
+
+Before step 2 the lifespan calls `parsing._model_window.prewarm_tokenizer()`
+(#335). The catch-up update parses files in its worker thread and the first
+`search` loads the embedder on the main thread; both need `transformers`, and
+losing that first-import race used to cache a tokenizer-less chunker for the
+whole process (every chunk sized by `len(text) // 3`). Warming the tokenizer
+before any watcher exists makes the import order structural, not lucky. With
+the gate off the branch is still one attribute read — no warming, no import.
 
 The plan is not re-run while the server lives: collections created after
 startup are watched only after the next restart (documented in
@@ -126,4 +134,5 @@ period even without a new edit. On a signature change it waits for a full quiet
   and starts no thread; the plan covers `localFiles` only and skips
   missing/unindexable sources; the plan runs exactly once per start; stop joins
   the threads; `resolve_watch_target(...).scan()` is `None` once the source
-  directory disappears.
+  directory disappears; with the gate on the tokenizer warm-up precedes
+  `start_watchers_if_enabled` and the serving window (#335).

@@ -22,6 +22,8 @@ The full contract is in ``.spec/tech-parsing.md`` § Token window.
 from __future__ import annotations
 
 import os
+import threading
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -41,6 +43,13 @@ DEFAULT_MODEL_MAX_SEQ_LENGTH = 256
 _OFFLINE_ENV_VARS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
 _OFFLINE_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
+# A concurrent first import of ``transformers`` leaves one thread looking at a
+# half-initialised module ("cannot import name 'AutoTokenizer'", issue #335:
+# a search racing the watcher catch-up). Serialise our own first import and
+# give the other thread one more chance before declaring the install broken.
+_IMPORT_LOCK = threading.Lock()
+_IMPORT_RETRY_SECONDS = 0.1
+
 
 def _hub_offline() -> bool:
     """True when the environment forbids Hub network access (both HF vars)."""
@@ -48,13 +57,27 @@ def _hub_offline() -> bool:
     return any(value.strip().lower() in _OFFLINE_TRUTHY for value in env)
 
 
-def _load_tokenizer() -> Any:
-    """Load the tokenizer from the cache, else download it once (see module)."""
-    from transformers import AutoTokenizer
+def _import_auto_tokenizer() -> Any:
+    """Import ``AutoTokenizer``, retrying once on ``ImportError`` (issue #335)."""
+    with _IMPORT_LOCK:
+        try:
+            from transformers import AutoTokenizer
+        except ImportError:
+            # Another thread was first-importing ``transformers``: by the time
+            # it finishes, the same import succeeds (a missing package fails
+            # again and keeps its own error).
+            time.sleep(_IMPORT_RETRY_SECONDS)
+            from transformers import AutoTokenizer
 
     # This import is often the process's FIRST Hub user, so re-assert the
     # single-sink policy here or the Hub notice prints twice (#211).
     enforce_third_party_policy("huggingface_hub")
+    return AutoTokenizer
+
+
+def _load_tokenizer() -> Any:
+    """Load the tokenizer from the cache, else download it once (see module)."""
+    AutoTokenizer = _import_auto_tokenizer()
 
     try:
         return AutoTokenizer.from_pretrained(
@@ -67,6 +90,17 @@ def _load_tokenizer() -> Any:
         return AutoTokenizer.from_pretrained(DEFAULT_TOKENIZER_MODEL)
 
 
+def prewarm_tokenizer() -> bool:
+    """Load the tokenizer on the calling thread; return whether it is usable.
+
+    The MCP server warms this before starting watcher threads: the process's
+    first ``transformers`` import then finishes on one thread instead of racing
+    a search, which used to cache the degraded ``None`` for the whole process
+    (issue #335).
+    """
+    return _get_tokenizer() is not None
+
+
 @lru_cache(maxsize=1)
 def _get_tokenizer() -> Any | None:
     """Load the tokenizer once per process; ``None`` when unavailable.
@@ -76,6 +110,19 @@ def _get_tokenizer() -> Any | None:
     """
     try:
         return _load_tokenizer()
+    except ImportError as exc:
+        # `_load_tokenizer` already retried once, so this is not the
+        # first-import race (#335): `transformers` itself cannot be imported.
+        # The model is irrelevant here, so don't send the user to `indexed init`.
+        logger.warning(
+            "Tokenizer for {} unavailable ({}); chunks fall back to a"
+            " character-count estimate. `transformers` failed to import;"
+            " the model cache is not the cause.",
+            DEFAULT_TOKENIZER_MODEL,
+            type(exc).__name__,
+        )
+        logger.debug("Tokenizer load failed: {}", exc)
+        return None
     except Exception as exc:
         logger.warning(
             "Tokenizer for {} unavailable ({}); chunks fall back to a character-count"

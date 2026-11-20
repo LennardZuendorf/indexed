@@ -145,6 +145,12 @@ def test_lifespan_with_gate_off_never_imports_the_watcher(
     """The lifespan's off-path adds no import and no watcher start."""
     import indexed.mcp.server as server_module
 
+    prewarmed: list[str] = []
+    monkeypatch.setattr(
+        "indexed.parsing._model_window.prewarm_tokenizer",
+        lambda: prewarmed.append("prewarm") or True,
+        raising=False,
+    )
     _forget_watch_service()
     cli_context = MagicMock(collections_path=Path("/nonexistent/collections"))
     monkeypatch.setattr(server_module, "get_config", lambda: MagicMock())
@@ -163,6 +169,54 @@ def test_lifespan_with_gate_off_never_imports_the_watcher(
 
     asyncio.run(scenario())
     assert WATCH_SERVICE_MODULE not in sys.modules
+    # No watcher ⇒ no worker thread to race ⇒ no eager tokenizer load.
+    assert prewarmed == []
+
+
+def test_lifespan_warms_the_tokenizer_before_starting_watchers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#335: the first ``transformers`` import happens before any watcher thread."""
+    import indexed.mcp.server as server_module
+    import indexed.mcp.watch as watch_module
+    import indexed.parsing._model_window as model_window
+
+    events: list[str] = []
+    stop = AsyncMock()
+
+    def fake_prewarm() -> bool:
+        events.append("prewarm")
+        return True
+
+    async def fake_start(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        events.append("start")
+        return SimpleNamespace(stop=stop)
+
+    monkeypatch.setattr(model_window, "prewarm_tokenizer", fake_prewarm)
+    monkeypatch.setattr(watch_module, "start_watchers_if_enabled", fake_start)
+    cli_context = MagicMock(collections_path=Path("/tmp/collections"))
+    monkeypatch.setattr(server_module, "get_config", lambda: MagicMock())
+    monkeypatch.setattr(server_module, "register_app_config", lambda _cs: None)
+    monkeypatch.setattr(server_module, "resolve_cli_context", lambda _ctx: cli_context)
+    monkeypatch.setattr(
+        server_module,
+        "_get_config",
+        lambda model_cls: (
+            MCPConfig(watch_enabled=True) if model_cls is MCPConfig else MagicMock()
+        ),
+    )
+    monkeypatch.setattr(server_module, "resolve_engine_selector", lambda *_: "1")
+
+    async def scenario() -> None:
+        async with server_module.lifespan(MagicMock()):
+            # A search is served only after the lifespan yields; the ordering
+            # assertion is that the warm-up already ran by then.
+            events.append("serving")
+
+    asyncio.run(scenario())
+
+    assert events == ["prewarm", "start", "serving"]
+    stop.assert_awaited_once()
 
 
 def test_lifespan_starts_and_stops_watchers_when_enabled(
@@ -172,6 +226,12 @@ def test_lifespan_starts_and_stops_watchers_when_enabled(
     import indexed.mcp.server as server_module
     import indexed.mcp.watch as watch_module
 
+    # The real warm-up would load `transformers`; only the wiring is under test.
+    monkeypatch.setattr(
+        "indexed.parsing._model_window.prewarm_tokenizer",
+        lambda: True,
+        raising=False,
+    )
     cli_context = MagicMock(collections_path=Path("/tmp/collections"))
     stop = AsyncMock()
     handle = SimpleNamespace(stop=stop)
