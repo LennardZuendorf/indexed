@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-15
+updated: 2026-11-20
 ---
 
 # Lessons Learned
@@ -2303,3 +2303,25 @@ per collection with a shared `threading.Event` for shutdown, and pin
 read. Assert the off-path in a test by `sys.modules` membership plus thread
 count, not by a wall-clock threshold.
 **Tags:** mcp, concurrency, tests
+## A first import shared with a worker thread (issue #335, 2026-11-20)
+**Pattern:** a server lifespan that hands work to `asyncio.to_thread` races the
+request path for whichever module both touch first; caching a failure turns one
+lost race into a process-wide degradation.
+- **Serialise the first import where it happens, not only at the caller.**
+  `_load_tokenizer` sat behind `lru_cache`, so the single `ImportError` it saw
+  from a half-initialised `transformers` was memoised as `None` and every chunk
+  in that session was sized by `len(text) // 3`. A module-level `threading.Lock`
+  plus one retry on `ImportError` keeps the cache successful-or-genuinely-broken;
+  prewarming at the entry point (before any worker thread exists) makes the
+  import order structural instead of lucky. Fix both: the order for this server,
+  the lock/retry for any future thread.
+- **A false remedy is worse than the warning.** "Run `indexed init`" is correct
+  for a missing model and wrong for a broken `transformers` install — branch the
+  user-facing text on the exception class (`ImportError` ⇒ the model cache is not
+  the cause), keep the one-line WARNING in both cases, and keep the cause at
+  DEBUG.
+- **A race is proved by ordering, not by a sleep.** Pin prewarm → watchers →
+  serving with an event list in a unit test; reproduce the timing-dependent half
+  with a fake module that fails the attribute exactly once.
+**Tags:** parsing, mcp, concurrency, tests
+**Date:** 2026-11-20

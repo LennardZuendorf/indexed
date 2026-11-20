@@ -73,8 +73,15 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[LifespanState, None]:
     watchers = None
     if getattr(mcp_config, "watch_enabled", False):
         from indexed.cli.composition import wiring_kwargs_for_update
+        from indexed.parsing._model_window import prewarm_tokenizer
 
         from .watch import start_watchers_if_enabled
+
+        # The catch-up update runs in a worker thread while the first search
+        # may first-import `transformers` on this one; the loser of that race
+        # used to cache a degraded tokenizer for the whole process (#335).
+        # Warm it here, before any watcher thread exists.
+        prewarm_tokenizer()
 
         update_wiring = wiring_kwargs_for_update(cli_context)
         watchers = await start_watchers_if_enabled(

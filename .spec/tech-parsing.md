@@ -3,7 +3,7 @@ type: branch
 scope: parsing
 parent: tech.md
 covers: ParsingModule, FileRouter, Docling, tree-sitter CodeChunker, ParsedDocument output
-updated: 2026-11-16
+updated: 2026-11-20
 ---
 
 # Tech Branch: Parsing (`src/indexed/parsing/`)
@@ -52,6 +52,19 @@ every line re-attempted the load, and a clean first run printed 40+ tracebacks.
 `transformers` is imported lazily inside the load, and that import is often the
 process's first Hub user — `enforce_third_party_policy("huggingface_hub")` runs
 right after it, or the Hub's one-time notice prints twice (raw + Loguru, #211).
+
+**The first import is serialised and retried once.** Two threads can first-import
+`transformers` at the same time — the MCP watcher's catch-up runs in
+`asyncio.to_thread` while the first `search` loads the embedder (#335). The
+losing thread then sees a half-initialised module, so `_import_auto_tokenizer`
+holds a module-level `threading.Lock` and retries the import once on
+`ImportError` after a short settle delay — the other thread has normally
+finished by then. A persistent `ImportError` means the install itself is broken:
+it keeps the one-line WARNING but must not blame the model cache with "run
+`indexed init`", which cannot fix it. The MCP server also calls
+`prewarm_tokenizer()` before it starts watchers, so the first import happens on
+the main thread by construction (see `features/file-watcher/tech.md` § MCP
+server wiring).
 
 `indexed init` downloads the whole repository (weights + tokenizer) up front, so
 after it every command — including `index create` — runs fully offline.
