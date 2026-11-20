@@ -7,10 +7,10 @@ resolution-markers = [
     "python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.14' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'darwin'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version < '3.12' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
@@ -2053,16 +2053,16 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-huggingface"
-version = "0.8.0"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "llama-index-core" },
     { name = "sentence-transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/53/ab/a027dbe85998649526b06439fe9ce0591928a1f9593de3f59ea835a06f2e/llama_index_embeddings_huggingface-0.8.0.tar.gz", hash = "sha256:02f34df13e3b83e9169fcfdf624b6fbe906fce75b7448cdf69800babc281a9a6", size = 8792, upload-time = "2026-08-31T15:52:21.699Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/12/b7e2a2f15c49bb7b7a9ef6940809568e8945a494d52ea63875b02e7441cd/llama_index_embeddings_huggingface-0.9.0.tar.gz", hash = "sha256:d03e1450605b30e923c4be724cdcb2f3814fad92d1ab79950ec1171e0c97e181", size = 8790, upload-time = "2026-11-14T02:07:08.331Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/78/8c7ae872f7935b1264655134b8e434c1e54b561479824a1f6897c0c97e0d/llama_index_embeddings_huggingface-0.8.0-py3-none-any.whl", hash = "sha256:aca52e036371a86b0135f239d15916fbe2a5d66aa4267242bee1f2bef2da74c1", size = 8904, upload-time = "2026-08-31T15:52:20.876Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/04/2e712be6d327fba62b5bc72bbf6ca1b94b04a41318ccc279b828ceec0a4a/llama_index_embeddings_huggingface-0.9.0-py3-none-any.whl", hash = "sha256:3e9af8a669a6a977f88353e7a9c19eca88d66f2a13e91c8716f8df09422a7278", size = 8902, upload-time = "2026-11-14T02:07:07.52Z" },
 ]
 
 [[package]]
