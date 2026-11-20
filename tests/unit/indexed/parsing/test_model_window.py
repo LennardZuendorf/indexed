@@ -35,6 +35,38 @@ def _install_transformers(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None
     monkeypatch.setitem(sys.modules, "transformers", module)
 
 
+class _RacingTransformers(types.ModuleType):
+    """A fake ``transformers`` whose ``AutoTokenizer`` import fails first.
+
+    Reproduces the half-initialised module a thread sees when another thread is
+    first-importing ``transformers`` (issue #335): the attribute is missing on
+    the first ``failures`` accesses and present afterwards.
+    """
+
+    def __init__(self, failures: int) -> None:
+        super().__init__("transformers")
+        self.failures = failures
+        self.attempts = 0
+
+    def __getattr__(self, name: str) -> Any:
+        if name != "AutoTokenizer":
+            raise AttributeError(name)
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise ImportError("cannot import name 'AutoTokenizer' from 'transformers'")
+        return types.SimpleNamespace(from_pretrained=lambda *a, **kw: _FakeTokenizer())
+
+
+def _install_racing_transformers(
+    monkeypatch: pytest.MonkeyPatch, *, failures: int
+) -> _RacingTransformers:
+    module = _RacingTransformers(failures)
+    monkeypatch.setitem(sys.modules, "transformers", module)
+    # The retry's settle delay is real time; the fake module needs none of it.
+    monkeypatch.setattr(mw, "_IMPORT_RETRY_SECONDS", 0, raising=False)
+    return module
+
+
 def _install_fake_docling(monkeypatch: pytest.MonkeyPatch) -> type:
     """Install a fake docling_core chunker package; return the fallback class."""
 
@@ -150,6 +182,39 @@ class TestTokenizerLoad:
         assert mw.count_tokens("abcdef") == len("abcdef") // 3 + 1
         assert calls == [{"local_files_only": True}]
         assert len(logs.at("WARNING")) == 1
+
+
+class TestConcurrentFirstImport:
+    """Issue #335: a first import racing another thread must not stick."""
+
+    def test_import_error_once_is_retried_and_the_tokenizer_cached(
+        self, monkeypatch: pytest.MonkeyPatch, logs: Any
+    ) -> None:
+        """Red before the fix: ``None`` was cached after the first ImportError."""
+        module = _install_racing_transformers(monkeypatch, failures=1)
+
+        assert mw._get_tokenizer() is not None
+        # One failure, one retry — and the success is what the cache keeps.
+        assert module.attempts == 2
+        assert mw.count_tokens("abc") == 3
+        assert module.attempts == 2
+        assert logs.at("WARNING") == []
+
+    def test_persistent_import_error_is_not_blamed_on_the_model_cache(
+        self, monkeypatch: pytest.MonkeyPatch, logs: Any
+    ) -> None:
+        """A broken ``transformers`` keeps the WARNING but not the init advice."""
+        module = _install_racing_transformers(monkeypatch, failures=99)
+
+        assert mw.count_tokens("abcdef") == len("abcdef") // 3 + 1
+        # Exactly one retry, then give up (the failure is still cached once).
+        assert module.attempts == 2
+        warnings = logs.at("WARNING")
+        assert len(warnings) == 1, warnings
+        assert "character-count estimate" in warnings[0]
+        # The model is on disk; re-running `indexed init` cannot fix the import.
+        assert "indexed init" not in warnings[0]
+        assert any("AutoTokenizer" in record for record in logs.at("DEBUG"))
 
 
 class TestDegradation:
