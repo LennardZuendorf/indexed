@@ -217,6 +217,28 @@ class TestConcurrentFirstImport:
         assert any("AutoTokenizer" in record for record in logs.at("DEBUG"))
 
 
+class TestPrewarm:
+    """The MCP lifespan's warm-up (#335) loads on the calling thread."""
+
+    def test_prewarm_loads_and_reports_a_usable_tokenizer(
+        self, monkeypatch: pytest.MonkeyPatch, logs: Any
+    ) -> None:
+        _install_transformers(monkeypatch, lambda name, **kw: _FakeTokenizer())
+
+        assert mw.prewarm_tokenizer() is True
+        assert logs.at("WARNING") == []
+        # The warm-up populated the cache the chunkers then use.
+        assert mw.count_tokens("ab") == 2
+
+    def test_prewarm_reports_false_without_raising(
+        self, monkeypatch: pytest.MonkeyPatch, logs: Any
+    ) -> None:
+        _install_transformers(monkeypatch, _raiser)
+
+        assert mw.prewarm_tokenizer() is False
+        assert len(logs.at("WARNING")) == 1
+
+
 class TestDegradation:
     def test_unavailable_tokenizer_warns_once_without_traceback(
         self, monkeypatch: pytest.MonkeyPatch, logs: Any
