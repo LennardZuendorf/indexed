@@ -5,7 +5,7 @@
 ### One local knowledge base per project. Code, docs, issues, wikis — one MCP, zero cloud.
 
 [![License: Sustainable Use](https://img.shields.io/badge/License-Sustainable%20Use-blue)](#license)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#)
+[![Python 3.11–3.14](https://img.shields.io/badge/Python-3.11%E2%80%933.14-3776AB?logo=python&logoColor=white)](#)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-5A45FF)](#mcp-integration)
 
 [![Python Full Test Suite with Coverage](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-cov.yml) [![Python Build and System Tests](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-ci.yml) [![Python Performance Benchmarks](https://github.com/LennardZuendorf/indexed/actions/workflows/python-benchmark.yml/badge.svg)](https://github.com/LennardZuendorf/indexed/actions/workflows/python-benchmark.yml) [![codecov](https://codecov.io/gh/LennardZuendorf/indexed/graph/badge.svg?token=6P99FW1Z1A)](https://codecov.io/gh/LennardZuendorf/indexed)
@@ -223,7 +223,9 @@ disappears keeps the last good index rather than emptying the collection.
 
 ## Installation
 
-Requires **Python 3.11+** and **[uv](https://docs.astral.sh/uv/)**.
+Requires **Python 3.11–3.14** and **[uv](https://docs.astral.sh/uv/)**. The upper
+bound is temporary: `onnxruntime` publishes no `cp315` wheel yet, so a 3.15
+interpreter cannot resolve the dependency set.
 
 ```bash
 uv tool install indexed-sh

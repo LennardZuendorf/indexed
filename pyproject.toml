@@ -27,7 +27,9 @@ classifiers = [
     "Topic :: Software Development",
     "License :: Other/Proprietary License"
 ]
-requires-python = ">=3.11.5"
+# <3.15: onnxruntime has no cp315 wheel (1.32.0 tops out at cp314), so 3.15 cannot
+# resolve. Lift the cap when onnxruntime publishes one.
+requires-python = ">=3.11.5,<3.15"
 # Floors track the versions the suite runs against, so a fresh resolve can't
 # drop to an untested combination. mcp >=1.28.1 is a security floor.
 dependencies = [
