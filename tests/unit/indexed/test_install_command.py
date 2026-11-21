@@ -206,6 +206,38 @@ class TestClaudeCodeInstall:
         assert config_path.read_text() == "{not json"
         assert not (fake_home / ".claude").exists()
 
+    def test_invalid_config_reason_survives_a_narrow_terminal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """#357: on the recovery path the reason must stay readable at 80 columns.
+
+        Rendering the whole failure as one paragraph folded a long path into the
+        JSON parser's reason, so at 80 columns neither ``<path>`` nor
+        ``Expecting property name enclosed in double quotes`` appeared on a line.
+        The one fact the user needs — what is wrong with the file — has to survive
+        a standard terminal width, and the path has to stay copyable.
+        """
+        long_home = tmp_path / ("a-very-long-home-directory-name-" * 2)
+        long_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: long_home)
+        monkeypatch.setattr(install_module.console, "width", 80)
+        config_path = long_home / ".claude.json"
+        config_path.write_text("{not json")
+
+        result = runner.invoke(_get_app(), ["install", "claude-code"])
+
+        lines = _strip_ansi(result.output).splitlines()
+        assert result.exit_code == 1
+        assert any(
+            "Expecting property name enclosed in double quotes" in line
+            for line in lines
+        ), "the JSON parser's reason was folded across lines"
+        assert any(str(config_path) in line for line in lines), (
+            "the config path was folded across lines"
+        )
+        assert config_path.read_text() == "{not json"
+        assert not (long_home / ".claude").exists()
+
     def test_missing_skill_payload_is_an_actionable_error(
         self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
     ):
