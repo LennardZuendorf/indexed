@@ -1,43 +1,40 @@
 ---
 type: entrypoint
 scope: product
-children: []
-updated: 2026-09-09
+children: [product-readiness.md]
+updated: 2026-11-21
 ---
 
 # Product Spec: indexed
 
-**indexed** builds a local, privacy-first knowledge base per project — pulling code,
-docs, issues, and wikis into searchable collections, indexed with a LlamaIndex-powered
-engine and exposed to AI agents via MCP (Model Context Protocol).
+Indexed gives developers and agents searchable project context across code,
+documentation, issues and other development evidence. Indexing and ranking run
+locally. Connectors fetch configured sources, and model preparation downloads the
+files needed for local inference.
 
-**Core principle:** All processing happens locally. No data sent to third parties.
-
-**Status:** v0.1.0 Alpha
+**Status:** [Alpha v0.0.11](https://github.com/LennardZuendorf/indexed/releases/tag/v0.0.11)
 
 ---
 
 ## Vision
 
-A single semantic index over one source is easy — every RAG toolkit does that. What's
-hard, and what indexed is *for*, is that no one source has all the answers. Code alone
-doesn't explain why a decision was made; a Jira ticket alone doesn't show what shipped;
-git history alone doesn't say whether it's still true today.
+A developer can ask why code exists, find the issue or wiki page that explains
+it, and follow the result to the relevant symbol or change. Developers and
+agents in the same project search the same repository-selected collections.
+Multiple projects can use the same index data.
 
-**Shipped today:** indexed connects to files, Jira, Confluence, Outline, and GitHub, and
-indexes each as its own searchable collection (§ Features below) — parallel semantic
-indexes, queried together or one at a time.
+The current release searches local files, Jira, Confluence, Outline and GitHub
+through CLI and MCP. It includes Git provenance, local watching, editor
+navigation and a Claude Code installer.
 
-**Where this is going:** one merged knowledge graph per project — repo, docs, issues, git
-history, connected codebases, and accumulated lessons/memory tied together as one
-structure, not five indexes you have to query separately. Structural relationships
-first (a PR closing an issue, a file importing another file, a commit touching a path),
-graph-aware retrieval on top (follow a hit to what it's linked to, not just its nearest
-neighbors), then optional local-model-driven merging across sources. This generalizes
-past code — the same graph shape works for a second brain, a documentation set, or any
-knowledge base that's really several sources pretending to be one. See
-[plan.md](plan.md) Decision Log (2026-07-18) for the seam this was designed against
-(Core v2's pluggable store) and § Features below for what's shipped vs. planned.
+The readiness target is shared global collections with a repo definition,
+measured merged search over GitHub issues, a local Markdown wiki and code,
+searchable Git history and development sources, code graph traversal, a full
+language server for supported languages, and plugin setup across the target
+agent clients. Clear documentation and product copy make these workflows
+usable from a clean install. See the [readiness product requirements](product-readiness.md)
+for user workflows and acceptance criteria, and the [plan](plan.md#readiness-milestones)
+for baseline coverage, issue ownership and sequence.
 
 ---
 
@@ -66,7 +63,7 @@ What indexed is **not**:
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
-| **GitHub Issues/PRs/Projects** | ◑ Mostly shipped | Index issues, PR threads, and Projects v2 boards ([plan.md](plan.md) Feature 19 — chunk-hash reuse follow-up not yet planned) |
+| **GitHub Issues/PRs/Projects** | ✅ Shipped | Index issues, PRs and Projects v2 items with bounded conversation and field coverage |
 | Google Drive | 📋 Planned | Index Google Docs, Sheets, Slides |
 | Notion | 📋 Planned | Index Notion pages and databases |
 | Slack | 📋 Planned | Index Slack messages and threads |
@@ -89,10 +86,11 @@ Direction, not yet shipped — see § Vision above.
 | **Semantic Search** | ✅ Shipped | Natural language queries via vector similarity |
 | **Cross-Collection** | ✅ Shipped | Search across all collections simultaneously |
 | **Single Collection** | ✅ Shipped | Target specific collection for focused results |
-| **Relevance Scoring** | ✅ Shipped | FAISS squared-L2 ranking (lower = closer match) |
+| **Relevance Scoring** | ✅ Shipped | Comparable relevance alongside the original score and its kind |
 | **Result Limits** | ✅ Shipped | Configurable max results per query |
 | **Multiple Formats** | ✅ Shipped | Table, card, compact, JSON output |
-| **Reranking (v2)** | ✅ Shipped | `--rerank`/`--no-rerank` — cross-encoder rerank, v2 collections only |
+| **Reranking (v2)** | ✅ Shipped | Optional cross-encoder for v2 collections. Prepare the separate reranker model for offline use. |
+| **Git-aware search** | ✅ Shipped | Changed-since filtering, provenance, line blame, freshness and optional Git-signal ranking |
 | Filters | 📋 Planned | Filter by date, source type, metadata |
 | Boolean Operators | 📋 Planned | AND, OR, NOT query composition |
 | Phrase Search | 📋 Planned | Exact phrase matching |
@@ -101,7 +99,7 @@ Direction, not yet shipped — see § Vision above.
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Tools** | ✅ Shipped | `search`, `list_collections`, `collection_status` |
+| **Tools** | ✅ Shipped | `search` and `search_collection` |
 | **Resources** | ✅ Shipped | Collection listings and status endpoints |
 | **Stdio Transport** | ✅ Shipped | For Claude Desktop, Cline |
 | **HTTP Transport** | ✅ Shipped | Network-accessible server |
@@ -120,7 +118,10 @@ Direction, not yet shipped — see § Vision above.
 | **Inspect** | ✅ Shipped | `indexed index inspect` |
 | **Remove** | ✅ Shipped | `indexed index remove` |
 | **Config Management** | ✅ Shipped | `get`, `set`, `validate` commands |
-| **System Info** | ✅ Shipped | `indexed info` |
+| **System Info** | ✅ Shipped | `indexed info` and `indexed --version` |
+| **Local watching** | ✅ Shipped | Foreground CLI watcher and opt-in MCP watching for eligible collections present at startup |
+| **Editor navigation** | ✅ Shipped | `indexed lsp` provides workspace symbols, hover, bounded definition and references, and informational diagnostics |
+| **Claude Code setup** | ✅ Shipped | `indexed install claude-code` registers MCP and installs the `index-use` skill |
 | **Engine Selection** | ✅ Shipped | `--engine v1/v2` on `index create` (root, group, and leaf flags) — new collections only |
 | **Migrate to v2** | ✅ Shipped | `indexed index migrate` — dry-run/backup/rollback-safe v1→v2 conversion |
 | Interactive TUI | 📋 Planned | Full-screen interactive mode |
@@ -162,8 +163,8 @@ Direction, not yet shipped — see § Vision above.
 
 ### Privacy First
 
-- Never send data externally
-- All embedding generation local
+- Keep indexing, embedding and ranking local
+- Fetch configured remote sources and requested model files
 - Credentials stored in .env (not config)
 - No telemetry or analytics
 
@@ -205,10 +206,10 @@ Direction, not yet shipped — see § Vision above.
 
 ### First-Time Setup
 
-1. Install: `uv sync`
-2. Verify: `uv run indexed --help`
-3. Create first collection: `indexed index create --type files --name docs`
-4. Search: `indexed index search "query"`
+1. Install with `uv tool install indexed-sh`.
+2. Prepare the default model with `indexed init`.
+3. Create a collection with `indexed index create files --collection docs --path ./docs`.
+4. Run `indexed index search "query"`.
 
 **Critical:** This must work in <5 minutes.
 
@@ -238,7 +239,7 @@ Direction, not yet shipped — see § Vision above.
 
 2. **Embedding model updates** — What's the migration path when updating models? Automatic re-index? Versioning strategy?
 
-3. **Real-time updates** — Should collections auto-update when source data changes? Webhook integration? Polling?
+3. **Remote source freshness** — What update cadence or change signals should remote connectors support?
 
 4. **Cloud offering** — Is there demand for optional hosted service? Conflicts with privacy-first positioning but may serve different market.
 

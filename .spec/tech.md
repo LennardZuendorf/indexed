@@ -1,8 +1,8 @@
 ---
 type: entrypoint
 scope: tech
-children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-20
+children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md, tech-readiness.md]
+updated: 2026-11-21
 ---
 
 # Tech Spec: indexed
@@ -11,6 +11,9 @@ High-level architecture summary. Cross-cutting concerns + per-component pointers
 Component internals live in the branch docs below.
 
 **For product decisions (what/why), see [product.md](product.md).**
+
+The [readiness technical contracts](tech-readiness.md) define the target
+invariants shared by the six milestones.
 
 ---
 
