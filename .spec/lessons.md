@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # Lessons Learned
@@ -2338,3 +2338,31 @@ that lifts the cap (here: an `onnxruntime` `cp315` wheel). Before capping, query
 PyPI for the missing ABI tag; a newly published wheel turns the answer into
 "document support and prove the install".
 **Tags:** packaging, install, verification
+
+### Track release delivery and spec wrap-up independently
+
+**Pattern:** A released feature marked `DONE` in the root sequence triggered pre-merge drift errors while its legacy feature folder still awaited promotion and archival.
+**Rule:** Record published evidence and pending spec wrap-up separately. Reserve the completed feature state for the verified promotion and folder lifecycle.
+**Tags:** spec, release, verification
+**Date:** 2026-11-20
+
+### Validate the issue hierarchy against GitHub before publication
+
+**Pattern:** A multiline heading matcher consumed issue titles and their body text together, so the draft manifest failed validation before any of its issue writes.
+**Rule:** Match Markdown heading titles within one line. Verify the exact planned issue membership and current parent IDs before editing the tracker. Read back the native sub-issue relationships by ID after applying them. GitHub milestone counters can lag; verify membership against the issue list and each issue’s milestone ID.
+**Tags:** github, roadmap, verification
+**Date:** 2026-11-21
+
+### Verify the active GitHub branch rules
+
+**Pattern:** The classic branch-protection endpoint returned HTTP 404 even though repository rulesets still applied to main.
+**Rule:** Read the effective rules for the exact branch before publication. Check the commit identity and signing settings separately from the branch rules, especially in a worktree that inherits test defaults.
+**Tags:** github, publication, verification
+**Date:** 2026-11-21
+
+### Reproduce host-specific test failures against clean main
+
+**Pattern:** A documentation-only PR encountered the macOS MCP watcher catch-up failure while the same revision passed the hosted Linux system checks.
+**Rule:** Run the failing case against the exact clean base with a lock-matched environment and dedicated cache. Compare the runtime, fixture and workflow trees before attributing failures to the PR. Keep the inherited failure visible in the verification report.
+**Tags:** verification, mcp, publication
+**Date:** 2026-11-21

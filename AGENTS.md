@@ -76,12 +76,12 @@ Scoped evaluation config restores overrides and validates only measured namespac
 Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
-Read saved totals/verdicts; retain environment notes; step success is not a verdict.
+Read saved totals/verdicts; retain environment notes; step success is not a verdict. Read back issue parents and milestone IDs.
 Bound formatted comments after escaping and link omitted details to artifacts.
 Canonical search retains errors and matched text; rank before rounding.
 Check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
-Freeze hashes after pinned formatting; check branch and HEAD before mutations.
+Freeze hashes after pinned formatting; check branch and HEAD before mutations. Read effective branch rules before publishing. Reproduce host-specific failures on clean main.
 Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 Verify exact dependency-PR package unions and baseline assertion failures before publishing.
