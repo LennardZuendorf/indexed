@@ -3,7 +3,7 @@ type: branch
 scope: app
 parent: tech.md
 covers: CLI command architecture, storage-mode resolution, Rich UI, logging, MCP server (tools/resources/transports), LSP server (stdio JSON-RPC), CLI startup perf
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # Tech Branch: App (`src/indexed/cli/`, `src/indexed/mcp/`)
@@ -138,6 +138,17 @@ unbracketed (`core.v1.search.max_docs`, not `[core.v1.search.max_docs]`) as
 `--limit` and `--rerank` both do. A test asserting a `--help` string names a
 config key must assert the key text itself appears in rendered output, not
 just that the flag exists.
+
+### Narrow terminals
+
+Panels wrap at the live terminal width (60–120 chars). A **failure message is
+not one paragraph**: a long path followed by the actionable reason folds the
+reason mid-phrase at 80 columns, which is exactly the case a user has to act
+on — the reason stops being readable and stops being greppable. Render the
+failure as a short static headline in the panel plus one detail line per fact
+(`_print_path` uses `soft_wrap=True`, so the path and the reason stay on one
+line and stay copyable). The installer's unreadable-config path carries its
+parts on a `ConfigFileError` rather than in one flat string (#357).
 
 ---
 

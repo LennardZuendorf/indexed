@@ -94,6 +94,23 @@ def merge_server_entry(
     return merged
 
 
+class ConfigFileError(ValueError):
+    """An unreadable existing config, with the path and the reason kept apart.
+
+    One flat message (``"<path> is not valid JSON: <reason>"``) is rendered as a
+    single paragraph, so a long path folds the parser's reason across lines — at
+    80 columns the only actionable part of the failure stops being readable and
+    stops being greppable (#357). Carrying the parts separately lets the command
+    print each one on its own unbroken line.
+    """
+
+    def __init__(self, path: Path, headline: str, reason: str) -> None:
+        super().__init__(f"{path} {headline}: {reason}")
+        self.path = path
+        self.headline = headline
+        self.reason = reason
+
+
 def read_config(path: Path) -> dict[str, Any]:
     """Parse an existing config file, or return an empty one."""
     if not path.exists():
@@ -101,9 +118,13 @@ def read_config(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+        raise ConfigFileError(path, "is not valid JSON", str(exc)) from exc
     if not isinstance(data, dict):
-        raise ValueError(f"{path} does not hold a JSON object")
+        raise ConfigFileError(
+            path,
+            "does not hold a JSON object",
+            f"the top-level value is a {type(data).__name__}",
+        )
     return data
 
 
@@ -236,7 +257,16 @@ def claude_code(
     try:
         existing = read_config(config_path)
         skill_text = read_skill_text()
-    except (ValueError, FileNotFoundError, OSError) as exc:
+    except ConfigFileError as exc:
+        # The reason is the only actionable part of this failure: print it (and
+        # the path) on their own unbroken lines rather than folding both into the
+        # panel paragraph, where an 80-column terminal used to split the reason
+        # mid-phrase (#357).
+        print_error(f"Claude Code config {exc.headline}")
+        _print_path("File", exc.path)
+        _print_path("Reason", exc.reason)
+        raise typer.Exit(1) from exc
+    except (FileNotFoundError, OSError) as exc:
         print_error(str(exc))
         raise typer.Exit(1) from exc
 
