@@ -734,7 +734,7 @@ class TestReviewRegressions:
         result = runner.invoke(_get_app(), ["install", "opencode"])
 
         assert result.exit_code == 1
-        assert "points somewhere else" in _strip_ansi(result.output)
+        assert "already registers" in _strip_ansi(result.output)
 
     def test_removal_keeps_a_comment_between_servers(self, config_dir: Path):
         config_dir.mkdir(parents=True)
