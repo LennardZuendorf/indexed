@@ -3,7 +3,7 @@ type: feature-tech
 feature: file-watcher
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-20
+updated: 2026-11-22
 ---
 
 # Feature: File Watcher — Architecture
@@ -51,7 +51,8 @@ When true, `mcp/watch.py`:
    exists;
 2. starts one `asyncio.to_thread(run_watch_loop)` per collection, sharing one
    `threading.Event` as the stop signal, so the blocking update never runs on
-   the event loop;
+   the event loop, plus one `threading.Lock` and one `threading.Event` that
+   gate the *opening* catch-up pass (see below);
 3. on lifespan exit sets the event and `await`s the tasks. The loops notice the
    event on their next poll tick or at the end of an in-flight update, so a
    shutdown never abandons a half-written collection.
@@ -63,6 +64,23 @@ losing that first-import race used to cache a tokenizer-less chunker for the
 whole process (every chunk sized by `len(text) // 3`). Warming the tokenizer
 before any watcher exists makes the import order structural, not lucky. With
 the gate off the branch is still one attribute read — no warming, no import.
+
+The tokenizer warm-up covers one module, not the whole update path: the first
+catch-up pass also pulls LlamaIndex and the embedder in, from a worker thread,
+and every collection catches up at once on startup. `watch.warm_shared_stack()`
+therefore runs once per server under a gate (`WatcherHandle.first_pass_gate` /
+`stack_warm`) before the first pass runs: one owner for the cold import, and a
+thread that waited on the gate runs its own pass ungated as soon as the flag is
+set, so every pass after the warm-up is independent. The flag records one
+*attempt*, not one success — a broken collection must not queue every other
+collection's retries behind the gate, and the pass itself is where a broken
+install surfaces (the warm-up failure is DEBUG). A thread that lost the
+concurrent import got a half-initialised `llama_index` module, which stays in
+`sys.modules` and fails every later pass of that process — a permanent stale
+collection, which the macOS system test saw as a restart that never caught up.
+The warm-up imports `llama_index.embeddings.huggingface`, the module that logged
+the partially initialized `BaseEmbedding`, which pulls `llama_index.core`,
+`transformers` and `sentence-transformers` — the cold stack of both engines.
 
 The plan is not re-run while the server lives: collections created after
 startup are watched only after the next restart (documented in
@@ -135,4 +153,6 @@ period even without a new edit. On a signature change it waits for a full quiet
   missing/unindexable sources; the plan runs exactly once per start; stop joins
   the threads; `resolve_watch_target(...).scan()` is `None` once the source
   directory disappears; with the gate on the tokenizer warm-up precedes
-  `start_watchers_if_enabled` and the serving window (#335).
+  `start_watchers_if_enabled` and the serving window (#335); the cold stack is
+  warmed exactly once, no pass starts before it, a failed warm-up and a failed
+  collection both leave the other collections running (#358).
