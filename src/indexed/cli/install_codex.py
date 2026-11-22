@@ -1138,6 +1138,7 @@ def codex(
         hooks_path=hooks_path,
         config_path=config_path,
         manifest_path=manifest_path,
+        manifest=_planned_manifest(changes),
     )
 
     print_success("Codex is set up for indexed")
@@ -1158,10 +1159,44 @@ def codex(
     )
 
 
+def _planned_manifest(changes: Sequence[base.Change]) -> dict[str, Any]:
+    """The manifest document this install plan wrote, as data."""
+    for change in changes:
+        if change.label != "Manifest" or not change.text:
+            continue
+        try:
+            data = json.loads(change.text)
+        except json.JSONDecodeError:  # pragma: no cover - defensive
+            return {}
+        return data if isinstance(data, dict) else {}
+    return {}
+
+
+def _manifest_with_trust(
+    manifest: Optional[dict[str, Any]], manifest_path: Path, key: str
+) -> dict[str, Any]:
+    """The written manifest plus this trust key, dropping nothing it recorded."""
+    document = dict(manifest) if isinstance(manifest, dict) else {}
+    if not document:
+        document = base.read_config(manifest_path)
+    document["trust_state"] = key
+    return document
+
+
 def _record_hook_trust(
-    *, hooks_path: Path, config_path: Path, manifest_path: Path
+    *,
+    hooks_path: Path,
+    config_path: Path,
+    manifest_path: Path,
+    manifest: Optional[dict[str, Any]] = None,
 ) -> str:
-    """Ask Codex for our hook's hash and record the trust key; say what happened."""
+    """Ask Codex for our hook's hash and record the trust key; say what happened.
+
+    ``manifest`` is the document the install plan just wrote. The trust state is
+    merged into it (rather than into a fresh re-read) so a write here can never
+    drop what the plan recorded, ``config_tail`` in particular — that is what
+    lets ``--remove`` restore the user's file byte for byte.
+    """
     hooks_doc = base.read_config(hooks_path)
     index = our_group_index(hooks_doc)
     if index is None:
@@ -1172,14 +1207,16 @@ def _record_hook_trust(
     if trusted_hash is None:
         return "unavailable"
     try:
-        text = config_path.read_text(encoding="utf-8")
+        # Raw read/write: this is the last writer of config.toml, and a text-mode
+        # round trip here would translate a CRLF file to LF after the splice
+        # above carefully preserved it.
+        text = read_text_raw(config_path)
         updated = merge_trust_block(text, key, trusted_hash, config_path)
+        document = _manifest_with_trust(manifest, manifest_path, key)
         # No second .bak here: `apply_changes` already backed up the file the
         # user had, and a second copy would overwrite that with our own write.
-        base.write_text_atomic(config_path, updated)
-        manifest = base.read_config(manifest_path)
-        manifest["trust_state"] = key
-        base.write_text_atomic(manifest_path, base.dump_config(manifest))
+        write_text_raw_atomic(config_path, updated)
+        base.write_text_atomic(manifest_path, base.dump_config(document))
     except (OSError, base.ConfigFileError, CodexConfigError):
         return "failed"
     return "trusted"

@@ -253,6 +253,17 @@ jobs:
           'args = ["keep-me"]' > "$home/.codex/config.toml"
         printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "keep-hook.sh", "timeout": 10}]}]}}' \
           > "$home/.codex/hooks.json"
+        # A Windows-edited file: every write that touches it has to keep the
+        # bytes it did not own, CRLF included, or the removal assertion below
+        # fails. Written through Python because printf cannot emit a bare CR
+        # portably.
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        path = Path(sys.argv[1]) / ".codex/config.toml"
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        PY
         cp "$home/.codex/config.toml" "$home/config.before.toml"
         cp "$home/.codex/hooks.json" "$home/hooks.before.json"
 
