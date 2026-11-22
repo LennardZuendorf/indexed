@@ -227,8 +227,17 @@ jobs:
       # the installed hook answers Codex's PreToolUse contract.
       run: |
         set -euo pipefail
-        unzip -l dist/*.whl | grep -q 'indexed/installers/codex/index-use.SKILL.md'
-        unzip -l dist/*.whl | grep -q 'indexed/installers/codex/indexed-nudge.sh'
+        # `unzip -l | grep -q` trips pipefail on SIGPIPE once the archive is big
+        # enough, so match against the listing held in a variable instead.
+        wheel_listing="$(unzip -l dist/*.whl)"
+        case "$wheel_listing" in
+          *indexed/installers/codex/index-use.SKILL.md*) ;;
+          *) echo "codex skill payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        case "$wheel_listing" in
+          *indexed/installers/codex/indexed-nudge.sh*) ;;
+          *) echo "codex hook payload is missing from the wheel" >&2; exit 1 ;;
+        esac
         home="$(mktemp -d)"
         mkdir -p "$home/.codex"
         # Foreign configuration this installer must never drop, comments included.

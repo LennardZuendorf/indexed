@@ -40,8 +40,10 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import threading
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -132,9 +134,56 @@ def read_skill_text() -> str:
 
 
 def installed_hook_text(home_override: Optional[Path]) -> str:
-    """The hook script as installed, with its collections root baked in."""
+    """The hook script as installed, with its collections root baked in.
+
+    The root is inserted as shell-quoted data: a `--home` containing `$`, a
+    backtick or `$(…)` must be a literal path, not something the hook expands
+    when it runs (with `set -u`, an unexpected `$name` would abort the hook).
+    """
     root = base.collections_root(home_override)
-    return base.read_payload(HOOK_PAYLOAD).replace(COLLECTIONS_PLACEHOLDER, str(root))
+    return base.read_payload(HOOK_PAYLOAD).replace(
+        COLLECTIONS_PLACEHOLDER, shlex.quote(str(root))
+    )
+
+
+def read_text_raw(path: Path) -> str:
+    """Read a file without newline translation, so CRLF stays CRLF."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def write_text_raw_atomic(path: Path, text: str) -> None:
+    """`base.write_text_atomic`, but the bytes written are exactly `text`.
+
+    Text mode would translate every `\\n` to the platform's newline, turning a
+    CRLF config into CRCRLF on Windows; the contract here is the user's file
+    comes back unchanged.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        os.replace(tmp_name, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(tmp_name).unlink()
+        raise
+
+
+def foreign_skill_text(path: Path, ours: str) -> Optional[str]:
+    """Text of an existing skill file this installer did not write, or None."""
+    if not path.is_file():
+        return None
+    try:
+        existing = read_text_raw(path)
+    except OSError:
+        return None
+    if existing == ours or base._frontmatter_name(existing) == SKILL_NAME:
+        return None
+    return existing
 
 
 def build_server_entry(command: list[str], home: Optional[Path]) -> dict[str, Any]:
@@ -202,131 +251,224 @@ def render_trust_table(key: str, trusted_hash: str) -> list[str]:
     ]
 
 
+# A table header, with an optional inline comment, and either `[a]` or `[[a]]`.
+# A multiline string that happens to contain a line starting with `[` is the one
+# shape line scanning cannot see; every edit is re-parsed afterwards and refused
+# if a foreign key would disappear (`_guard_foreign_keys`), so a mis-read can
+# only make the command stop, never delete somebody else's table.
+_TABLE_LINE = re.compile(r"^\s*\[\[?(?P<key>[^\[\]]+)\]\]?\s*(?:#.*)?$")
+
+
 def _table_key(line: str) -> Optional[str]:
-    """The key of a ``[table]`` header line, or None for anything else."""
-    stripped = line.strip()
-    if not stripped.startswith("[") or stripped.startswith("[["):
+    """The key of a table header line (inline comments allowed), or None."""
+    match = _TABLE_LINE.match(line)
+    if match is None:
         return None
-    if not stripped.endswith("]"):
-        return None
-    return re.sub(r"\s+", "", stripped[1:-1])
+    return re.sub(r"\s+", "", match.group("key"))
 
 
 def _in_table(key: str, target: str) -> bool:
     return key == target or key.startswith(target + ".")
 
 
-def _block_bounds(lines: Sequence[str], target: str) -> Optional[tuple[int, int]]:
-    """Line range ``[start, end)`` covering `target` and its sub-tables.
+@dataclass(frozen=True)
+class _Span:
+    """Character range of one table block inside the file's original text."""
 
-    The range ends after the last table header or key/value line, never at the
-    next header: a comment a user left directly above *their* next table belongs
-    to them, and deleting our block must not take it along.
+    start: int
+    end: int
+
+
+def _line_ending(text: str) -> str:
+    """The newline style the file already uses (`\r\n` files stay CRLF)."""
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _is_ignorable(line: str) -> bool:
+    """A blank or comment-only line: it belongs to whatever comes next."""
+    return not line.strip() or line.lstrip().startswith("#")
+
+
+def _table_span(text: str, target: str) -> Optional[_Span]:
+    """The exact character span of `target` and its sub-tables.
+
+    Offsets, not reconstructed lines: everything outside the span is copied
+    verbatim, so line endings survive an install/remove round trip. The span
+    stops after the block's last key/value line, so a comment the user wrote
+    above *their* next table stays theirs.
     """
+    offset = 0
+    entries: list[tuple[int, str, Optional[str]]] = []
+    for raw in text.splitlines(keepends=True):
+        entries.append((offset, raw.rstrip("\r\n"), _table_key(raw)))
+        offset += len(raw)
     start = None
-    for index, line in enumerate(lines):
-        key = _table_key(line)
+    end = len(entries)
+    for index, (_offset, _line, key) in enumerate(entries):
         if key is None:
             continue
         if _in_table(key, target):
             if start is None:
                 start = index
         elif start is not None:
-            return start, _last_meaningful(lines, start, index)
+            end = index
+            break
     if start is None:
         return None
-    return start, _last_meaningful(lines, start, len(lines))
-
-
-def _last_meaningful(lines: Sequence[str], start: int, end: int) -> int:
-    """`end` trimmed back over trailing blank and comment-only lines."""
-    while end > start + 1 and (
-        not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")
-    ):
+    while end > start + 1 and _is_ignorable(entries[end - 1][1]):
         end -= 1
-    return end
+    if start > 0 and entries[start - 1][1].strip().startswith(SERVER_MARKER):
+        start -= 1
+    start_offset = entries[start][0]
+    end_offset = entries[end][0] if end < len(entries) else len(text)
+    return _Span(start_offset, end_offset)
 
 
-def _block_start_with_marker(lines: Sequence[str], start: int) -> int:
-    """Include the marker comment line directly above a block, if present."""
-    if start > 0 and lines[start - 1].strip().startswith(SERVER_MARKER):
-        return start - 1
-    return start
+def _render_block(lines: list[str], text: str) -> str:
+    eol = _line_ending(text)
+    return eol.join(lines) + eol
 
 
-def _trim_trailing_blanks(lines: list[str], start: int, end: int) -> int:
-    while end > start and not lines[end - 1].strip():
-        end -= 1
-    return end
+def _tail_state(text: str) -> dict[str, Any]:
+    """The file's exact trailing newline run, recorded so removal can restore it.
+
+    `"\\n"` for the usual file, `""` for one with no final newline, `"\\r\\n\\r\\n"`
+    for a CRLF file ending in a blank line — whatever it was, it comes back.
+    """
+    return {"suffix": text[len(text.rstrip("\r\n")) :]}
 
 
-def _collapse_seam(lines: list[str], index: int) -> list[str]:
-    """Remove one of two blank lines meeting where a block was deleted."""
-    if (
-        0 < index < len(lines)
-        and not lines[index - 1].strip()
-        and not lines[index].strip()
-    ):
-        return lines[:index] + lines[index + 1 :]
-    return lines
-
-
-def merge_server_block(text: str, entry: dict[str, Any]) -> str:
-    """`text` with our server table set, every other byte preserved."""
-    lines = text.splitlines()
-    bounds = _block_bounds(lines, SERVER_TABLE)
-    rendered = render_server_table(entry)
-    if bounds is None:
-        body = text.rstrip("\n")
-        separator = "\n\n" if body else ""
-        return f"{body}{separator}" + "\n".join(rendered) + "\n"
-    start, end = bounds
-    start = _block_start_with_marker(lines, start)
-    end = _trim_trailing_blanks(lines, start, end)
-    out = lines[:start] + rendered + lines[end:]
-    return "\n".join(out).rstrip("\n") + "\n"
-
-
-def remove_server_block(text: str) -> str:
-    """`text` without our server table (marker included), nothing else lost."""
-    lines = text.splitlines()
-    bounds = _block_bounds(lines, SERVER_TABLE)
-    if bounds is None:
+def _restore_tail(text: str, tail: Optional[dict[str, Any]]) -> str:
+    """Put the recorded trailing newline run back after our block is gone."""
+    if not isinstance(tail, dict) or "suffix" not in tail:
         return text
-    start, end = bounds
-    start = _block_start_with_marker(lines, start)
-    end = _trim_trailing_blanks(lines, start, end)
-    out = _collapse_seam(lines[:start] + lines[end:], start)
-    body = "\n".join(out).strip("\n")
-    return f"{body}\n" if body else ""
+    suffix = tail["suffix"]
+    if not isinstance(suffix, str):
+        return text
+    return text.rstrip("\r\n") + suffix
 
 
-def merge_trust_block(text: str, key: str, trusted_hash: str) -> str:
+def _append_block(text: str, lines: list[str]) -> str:
+    eol = _line_ending(text)
+    rendered = _render_block(lines, text)
+    if not text.strip():
+        return rendered
+    body = text
+    if not body.endswith(("\n", "\r")):
+        body += eol
+    if not body.endswith(eol + eol):
+        body += eol
+    return body + rendered
+
+
+def _remove_block(text: str, target: str) -> str:
+    span = _table_span(text, target)
+    if span is None:
+        return text
+    return text[: span.start] + text[span.end :]
+
+
+def _leaf_paths(data: Any, prefix: str = "") -> set[str]:
+    """Every leaf key path in a parsed TOML document."""
+    if not isinstance(data, dict):
+        return {prefix} if prefix else set()
+    paths: set[str] = set()
+    for key, value in data.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            paths |= _leaf_paths(value, path)
+        else:
+            paths.add(path)
+    return paths
+
+
+def _guard_foreign_keys(
+    before: str, after: str, allowed: Sequence[str], path: Path
+) -> None:
+    """Refuse an edit that would drop a key from someone else's table.
+
+    The editor splices text at computed offsets; this is the independent check
+    that the splice did what the offsets claimed. A block that could not be
+    identified unambiguously (a multiline string containing a table header, an
+    exotic quoting style) fails here instead of taking a foreign key with it.
+    """
+    if not before.strip():
+        return
+    original = _leaf_paths(tomllib.loads(before))
+    try:
+        updated = _leaf_paths(tomllib.loads(after)) if after.strip() else set()
+    except tomllib.TOMLDecodeError as exc:  # pragma: no cover - defensive
+        raise CodexConfigError(
+            path, "could not be edited safely", f"the result would not parse: {exc}"
+        ) from exc
+    missing = {
+        key
+        for key in original - updated
+        if not any(key == item or key.startswith(item + ".") for item in allowed)
+    }
+    if missing:  # pragma: no cover - defensive
+        raise CodexConfigError(
+            path,
+            "could not be edited safely",
+            "the edit would drop " + ", ".join(sorted(missing)),
+        )
+
+
+def merge_server_block(text: str, entry: dict[str, Any], path: Path) -> str:
+    """`text` with our server table set, every other byte preserved."""
+    span = _table_span(text, SERVER_TABLE)
+    rendered = render_server_table(entry)
+    if span is None:
+        updated = _append_block(text, rendered)
+    else:
+        block = _render_block(rendered, text)
+        updated = text[: span.start] + block + text[span.end :]
+        if not updated.endswith(("\n", "\r")):
+            updated += _line_ending(text)
+    _guard_foreign_keys(text, updated, [SERVER_TABLE], path)
+    return updated
+
+
+def remove_server_block(text: str, path: Path) -> str:
+    """`text` without our server table (marker included), nothing else lost.
+
+    The trailing newline run is restored by the caller once every owned block is
+    gone (`_restore_tail`), so a removal that also takes the trust table back
+    cannot over-trim between the two deletions.
+    """
+    updated = _remove_block(text, SERVER_TABLE)
+    if updated == text:
+        return text
+    if updated.strip():
+        _guard_foreign_keys(text, updated, [SERVER_TABLE], path)
+    return updated
+
+
+def merge_trust_block(text: str, key: str, trusted_hash: str, path: Path) -> str:
     """`text` with one `hooks.state` entry for our hook, nothing else touched."""
-    lines = text.splitlines()
     target = re.sub(r"\s+", "", f"{TRUST_PREFIX}{_toml_string(key)}")
     rendered = render_trust_table(key, trusted_hash)
-    bounds = _block_bounds(lines, target)
-    if bounds is None:
-        body = text.rstrip("\n")
-        separator = "\n\n" if body else ""
-        return f"{body}{separator}" + "\n".join(rendered) + "\n"
-    start, end = bounds
-    out = lines[:start] + rendered + lines[end:]
-    return "\n".join(out).rstrip("\n") + "\n"
+    span = _table_span(text, target)
+    if span is None:
+        updated = _append_block(text, rendered)
+    else:
+        block = _render_block(rendered, text)
+        updated = text[: span.start] + block + text[span.end :]
+        if not updated.endswith(("\n", "\r")):
+            updated += _line_ending(text)
+    _guard_foreign_keys(text, updated, [f"{TRUST_PREFIX}{key}"], path)
+    return updated
 
 
-def remove_trust_block(text: str, key: str) -> str:
+def remove_trust_block(text: str, key: str, path: Path) -> str:
     """`text` without the `hooks.state` entry for `key`, nothing else lost."""
-    lines = text.splitlines()
     target = re.sub(r"\s+", "", f"{TRUST_PREFIX}{_toml_string(key)}")
-    bounds = _block_bounds(lines, target)
-    if bounds is None:
+    updated = _remove_block(text, target)
+    if updated == text:
         return text
-    start, end = bounds
-    out = _collapse_seam(lines[:start] + lines[end:], start)
-    body = "\n".join(out).strip("\n")
-    return f"{body}\n" if body else ""
+    if updated.strip():
+        _guard_foreign_keys(text, updated, [f"{TRUST_PREFIX}{key}"], path)
+    return updated
 
 
 # --------------------------------------------------------------------------- #
@@ -594,6 +736,30 @@ def _prune_emptied(path: Path) -> None:
         current = current.parent
 
 
+def _apply_changes(changes: Sequence[base.Change]) -> None:
+    """`base.apply_changes`, but `config.toml` keeps its exact newline bytes.
+
+    Every other artifact is JSON or a script, where text-mode writing is
+    harmless; the user's TOML is the one file that must come back unchanged,
+    CRLF and missing final newline included.
+    """
+    base.apply_changes([change for change in changes if change.label != "Config"])
+    for change in changes:
+        if change.label != "Config" or change.action in ("unchanged", "skipped"):
+            continue
+        if change.action == "removed":
+            if change.keep_backup:
+                base.backup_file(change.path)
+            with contextlib.suppress(FileNotFoundError):
+                change.path.unlink()
+            _prune_emptied(change.path.parent)
+            continue
+        if change.text is None:  # pragma: no cover - defensive
+            continue
+        base.backup_file(change.path)
+        write_text_raw_atomic(change.path, change.text)
+
+
 # --------------------------------------------------------------------------- #
 # Planning
 # --------------------------------------------------------------------------- #
@@ -616,6 +782,7 @@ def _manifest(
     skill_path: Path,
     hook_path: Path,
     trust: Optional[str],
+    config_tail: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     return {
         "schema": INSTALL_SCHEMA,
@@ -629,6 +796,9 @@ def _manifest(
             "matcher": HOOK_MATCHER,
         },
         "trust_state": trust,
+        # What appending our block had to add at EOF, so `--remove` can take
+        # exactly that back and return the user's file byte for byte.
+        "config_tail": config_tail or {},
     }
 
 
@@ -645,11 +815,25 @@ def _plan_install(
     hook_text: str,
     skill_text: str,
     entry: dict[str, Any],
+    previous_manifest: Optional[dict[str, Any]] = None,
 ) -> list[base.Change]:
     """Every artifact an install writes, with what would change about each."""
     merged_hooks = merge_hook_group(hooks_doc, build_hook_group(hook_path))
-    merged_config = merge_server_block(config_text, entry)
-    manifest = _manifest(config_path, hooks_path, skill_path, hook_path, None)
+    merged_config = merge_server_block(config_text, entry, config_path)
+    # The tail is recorded by the run that first appended the block and carried
+    # forward by every upgrade, or `--remove` could no longer restore the file.
+    previous_tail = (
+        previous_manifest.get("config_tail")
+        if isinstance(previous_manifest, dict)
+        else None
+    )
+    if isinstance(previous_tail, dict) and previous_tail.get("suffix") is not None:
+        tail = previous_tail
+    elif _table_span(config_text, SERVER_TABLE) is None:
+        tail = _tail_state(config_text)
+    else:
+        tail = None
+    manifest = _manifest(config_path, hooks_path, skill_path, hook_path, None, tail)
     if not config_path.is_file():
         config_action = "created"
     elif merged_config != config_text:
@@ -686,11 +870,15 @@ def _plan_removal(
     elif not base.server_entry_is_ours(ours_server):
         changes.append(base.Change("Config", config_path, "skipped"))
     else:
-        remaining = remove_server_block(config_text)
+        tail = manifest.get("config_tail") if isinstance(manifest, dict) else None
+        remaining = remove_server_block(config_text, config_path)
         trust_values = _trust_keys_to_remove(hooks_doc, hooks_path, manifest)
         for key in trust_values:
-            remaining = remove_trust_block(remaining, key)
-        if not remaining.strip() or read_toml_text(remaining) == {}:
+            remaining = remove_trust_block(remaining, key, config_path)
+        remaining = _restore_tail(remaining, tail)
+        # A file that held only comments is still the user's file: only a file
+        # we left truly empty is ours to delete.
+        if not remaining.strip():
             changes.append(base._deletion("Config", config_path))
         else:
             changes.append(
@@ -732,13 +920,6 @@ def _plan_removal(
         else base.Change("Manifest", manifest_path, "unchanged")
     )
     return changes
-
-
-def read_toml_text(text: str) -> dict[str, Any]:
-    try:
-        return tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
-        return {}
 
 
 def _trust_keys_to_remove(
@@ -817,9 +998,7 @@ def codex(
     manifest_path = codex_manifest_path()
 
     try:
-        config_text = (
-            config_path.read_text(encoding="utf-8") if config_path.is_file() else ""
-        )
+        config_text = read_text_raw(config_path) if config_path.is_file() else ""
         existing = read_toml(config_path)
         hooks_existed = hooks_path.is_file()
         hooks_doc = base.read_config(hooks_path)
@@ -827,6 +1006,7 @@ def codex(
         skill_text = "" if remove else read_skill_text()
         hook_text = "" if remove else installed_hook_text(home_override)
         foreign_hook = base.foreign_hook_script(hook_path, hook_text)
+        foreign_skill = None if remove else foreign_skill_text(skill_path, skill_text)
     except CodexConfigError as exc:
         print_error(f"Codex config {exc.headline}")
         _print_path("File", exc.path)
@@ -867,7 +1047,7 @@ def codex(
             )
             return
         try:
-            base.apply_changes(changes)
+            _apply_changes(changes)
         except OSError as exc:
             print_error(f"Could not update Codex configuration: {exc}")
             raise typer.Exit(1) from exc
@@ -906,6 +1086,19 @@ def codex(
         )
         raise typer.Exit(1)
 
+    if foreign_skill is not None and not force:
+        # A user's own skill directory named index-use is theirs: without this
+        # check a routine upgrade silently replaces the file they wrote.
+        print_error(f"{skill_path} already exists and was not written by indexed.")
+        _print_path(
+            "First line", foreign_skill.splitlines()[0] if foreign_skill else ""
+        )
+        print_warning(
+            "Refusing to replace it. Re-run with --force to install over it "
+            "(a .bak copy of the file is kept)."
+        )
+        raise typer.Exit(1)
+
     changes = _plan_install(
         config_text=config_text,
         config_path=config_path,
@@ -918,6 +1111,7 @@ def codex(
         hook_text=hook_text,
         skill_text=skill_text,
         entry=entry,
+        previous_manifest=manifest,
     )
 
     if dry_run:
@@ -935,7 +1129,7 @@ def codex(
         return
 
     try:
-        base.apply_changes(changes)
+        _apply_changes(changes)
     except OSError as exc:
         print_error(f"Could not write Codex configuration: {exc}")
         raise typer.Exit(1) from exc
@@ -979,7 +1173,7 @@ def _record_hook_trust(
         return "unavailable"
     try:
         text = config_path.read_text(encoding="utf-8")
-        updated = merge_trust_block(text, key, trusted_hash)
+        updated = merge_trust_block(text, key, trusted_hash, config_path)
         # No second .bak here: `apply_changes` already backed up the file the
         # user had, and a second copy would overwrite that with our own write.
         base.write_text_atomic(config_path, updated)

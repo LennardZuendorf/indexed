@@ -16,6 +16,7 @@ Two Codex-specific properties are load-bearing here:
 
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -335,6 +336,30 @@ class TestForeignOwnership:
         assert _config_text(fake_home) == "model = ["
         assert not (fake_home / ".codex/hooks.json").exists()
 
+    def test_refuses_to_replace_a_hand_written_skill(self, fake_home: Path):
+        skill_dir = fake_home / ".codex/skills/index-use"
+        skill_dir.mkdir(parents=True)
+        mine = "---\nname: my-own-index-notes\ndescription: mine\n---\n"
+        (skill_dir / "SKILL.md").write_text(mine, encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "codex"])
+
+        assert result.exit_code == 1
+        assert "--force" in _strip_ansi(result.output)
+        assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == mine
+
+    def test_force_replaces_a_hand_written_skill(self, fake_home: Path):
+        skill_dir = fake_home / ".codex/skills/index-use"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: mine\n---\n", encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "codex", "--force"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        assert text == codex_module.read_skill_text()
+        assert (skill_dir / "SKILL.md.bak").is_file()
+
 
 class TestUpgradeAndRemove:
     def test_upgrade_rewrites_owned_artifacts_and_keeps_foreign_config(
@@ -377,6 +402,16 @@ class TestUpgradeAndRemove:
         assert _config_text(seeded_home) == FOREIGN_CONFIG
         assert _hooks(seeded_home) == FOREIGN_HOOKS
 
+    def test_remove_after_a_re_run_still_restores_the_file(self, seeded_home: Path):
+        """The second install must not lose what the first recorded about EOF."""
+        runner.invoke(_get_app(), ["install", "codex"])
+        runner.invoke(_get_app(), ["install", "codex"])
+
+        result = runner.invoke(_get_app(), ["install", "codex", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert _config_text(seeded_home) == FOREIGN_CONFIG
+
     def test_second_remove_is_a_no_op(self, seeded_home: Path):
         runner.invoke(_get_app(), ["install", "codex"])
         runner.invoke(_get_app(), ["install", "codex", "--remove"])
@@ -408,14 +443,35 @@ class TestUpgradeAndRemove:
         assert not (fake_home / ".codex/config.toml").exists()
         assert not (fake_home / ".codex/hooks.json").exists()
 
+    def test_remove_keeps_a_comment_only_config(self, fake_home: Path):
+        """A file that only holds the user's notes is not ours to delete."""
+        (fake_home / ".codex").mkdir()
+        (fake_home / ".codex/config.toml").write_text(
+            "# my personal notes\n", encoding="utf-8"
+        )
+        runner.invoke(_get_app(), ["install", "codex"])
+
+        result = runner.invoke(_get_app(), ["install", "codex", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert _config_text(fake_home) == "# my personal notes\n"
+
 
 class TestTomlEditing:
     """The text surgery the whole lifecycle rests on, without the CLI in the way."""
 
     ENTRY = {"command": "/usr/bin/indexed", "args": ["mcp", "run"]}
+    PATH = Path("/home/x/.codex/config.toml")
+
+    def _merge(self, text: str, entry: dict | None = None) -> str:
+        return codex_module.merge_server_block(text, entry or self.ENTRY, self.PATH)
+
+    def _remove(self, text: str, tail: dict | None = None) -> str:
+        removed = codex_module.remove_server_block(text, self.PATH)
+        return codex_module._restore_tail(removed, tail)
 
     def test_merge_appends_and_preserves_comments(self):
-        merged = codex_module.merge_server_block(FOREIGN_CONFIG, self.ENTRY)
+        merged = self._merge(FOREIGN_CONFIG)
 
         assert "# The TUI section" in merged
         assert "# Trailing comment at end of file" in merged
@@ -423,10 +479,8 @@ class TestTomlEditing:
         assert tomllib.loads(merged)["mcp_servers"]["other"]["args"] == ["keep-me"]
 
     def test_merge_replaces_only_our_block(self):
-        once = codex_module.merge_server_block(FOREIGN_CONFIG, self.ENTRY)
-        twice = codex_module.merge_server_block(
-            once, {"command": "/other/indexed", "args": ["mcp", "run"]}
-        )
+        once = self._merge(FOREIGN_CONFIG)
+        twice = self._merge(once, {"command": "/other/indexed", "args": ["mcp", "run"]})
 
         assert twice.count("[mcp_servers.indexed]") == 1
         assert "/other/indexed" in twice
@@ -434,13 +488,13 @@ class TestTomlEditing:
         assert "# The TUI section" in twice
 
     def test_merge_round_trips_through_removal(self):
-        merged = codex_module.merge_server_block(FOREIGN_CONFIG, self.ENTRY)
-        removed = codex_module.remove_server_block(merged)
+        tail = codex_module._tail_state(FOREIGN_CONFIG)
+        merged = self._merge(FOREIGN_CONFIG)
 
-        assert removed == FOREIGN_CONFIG
+        assert self._remove(merged, tail) == FOREIGN_CONFIG
 
     def test_merge_writes_the_env_sub_table(self):
-        merged = codex_module.merge_server_block(
+        merged = self._merge(
             "",
             {
                 "command": "/usr/bin/indexed",
@@ -454,42 +508,108 @@ class TestTomlEditing:
         }
 
     def test_remove_on_a_missing_block_changes_nothing(self):
-        assert codex_module.remove_server_block(FOREIGN_CONFIG) == FOREIGN_CONFIG
+        assert self._remove(FOREIGN_CONFIG) == FOREIGN_CONFIG
 
     def test_removal_keeps_a_comment_above_the_users_next_table(self):
         """A comment below our block belongs to whatever the user wrote next."""
-        merged = codex_module.merge_server_block(FOREIGN_CONFIG, self.ENTRY)
+        merged = self._merge(FOREIGN_CONFIG)
         with_foreign = merged + (
             "\n# my own server, added after indexed\n"
             '[mcp_servers.playwright]\ncommand = "npx"\nargs = ["-y", "mcp"]\n'
         )
 
-        removed = codex_module.remove_server_block(with_foreign)
+        removed = self._remove(with_foreign)
 
         assert "# my own server, added after indexed" in removed
         assert "[mcp_servers.playwright]" in removed
         assert "[mcp_servers.indexed]" not in removed
         assert "# The TUI section" in removed
 
+    def test_header_with_an_inline_comment_ends_our_block(self):
+        """`[mcp_servers.other] # keep` is still a table header (TOML allows it)."""
+        merged = self._merge(FOREIGN_CONFIG)
+        with_foreign = merged + (
+            '\n[mcp_servers.other2]  # keep this one\ncommand = "npx"\n'
+        )
+
+        removed = self._remove(with_foreign)
+
+        assert "[mcp_servers.other2]  # keep this one" in removed
+        assert 'command = "npx"' in removed
+        assert "[mcp_servers.indexed]" not in removed
+
+    def test_array_of_tables_ends_our_block(self):
+        """`[[section]]` after our block is a boundary, not part of it."""
+        merged = self._merge(FOREIGN_CONFIG)
+        with_foreign = merged + '\n[[skills.config]]\nname = "x"\nenabled = false\n'
+
+        removed = self._remove(with_foreign)
+
+        assert "[[skills.config]]" in removed
+        assert 'name = "x"' in removed
+        assert "[mcp_servers.indexed]" not in removed
+
+    def test_crlf_round_trips_byte_for_byte(self):
+        original = FOREIGN_CONFIG.replace("\n", "\r\n")
+        tail = codex_module._tail_state(original)
+
+        merged = self._merge(original)
+        removed = self._remove(merged, tail)
+
+        assert "\r\n" in merged and "\n" not in merged.replace("\r\n", "")
+        assert removed == original
+
+    def test_a_file_without_a_final_newline_round_trips(self):
+        original = 'model = "gpt-6"'  # no trailing newline
+        tail = codex_module._tail_state(original)
+
+        merged = self._merge(original)
+        removed = self._remove(merged, tail)
+
+        assert removed == original
+
+    def test_trailing_blank_lines_round_trip(self):
+        original = 'model = "gpt-6"\n\n\n'
+        tail = codex_module._tail_state(original)
+
+        merged = self._merge(original)
+        removed = self._remove(merged, tail)
+
+        assert removed == original
+
+    def test_a_comment_only_file_is_not_mistaken_for_empty(self):
+        original = "# my personal notes\n"
+
+        merged = self._merge(original)
+        removed = self._remove(merged, codex_module._tail_state(original))
+
+        assert removed == original
+
     def test_trust_block_round_trips(self):
         key = "/home/x/.codex/hooks.json:pre_tool_use:1:0"
-        once = codex_module.merge_trust_block(FOREIGN_CONFIG, key, "sha256:abc")
-        twice = codex_module.merge_trust_block(once, key, "sha256:def")
+        once = codex_module.merge_trust_block(
+            FOREIGN_CONFIG, key, "sha256:abc", self.PATH
+        )
+        twice = codex_module.merge_trust_block(once, key, "sha256:def", self.PATH)
 
         assert twice.count("[hooks.state.") == 1
         assert "sha256:def" in twice
         assert tomllib.loads(twice)["hooks"]["state"][key] == {
             "trusted_hash": "sha256:def"
         }
-        assert codex_module.remove_trust_block(twice, key) == FOREIGN_CONFIG
+        removed = codex_module.remove_trust_block(twice, key, self.PATH)
+        removed = codex_module._restore_tail(
+            removed, codex_module._tail_state(FOREIGN_CONFIG)
+        )
+        assert removed == FOREIGN_CONFIG
 
     def test_trust_block_removal_keeps_other_trust_entries(self):
         ours = "/home/x/.codex/hooks.json:pre_tool_use:1:0"
         theirs = "/home/x/.codex/hooks.json:pre_tool_use:0:0"
         text = f'[hooks.state."{theirs}"]\ntrusted_hash = "sha256:keep"\n'
 
-        merged = codex_module.merge_trust_block(text, ours, "sha256:abc")
-        removed = codex_module.remove_trust_block(merged, ours)
+        merged = codex_module.merge_trust_block(text, ours, "sha256:abc", self.PATH)
+        removed = codex_module.remove_trust_block(merged, ours, self.PATH)
 
         assert tomllib.loads(removed)["hooks"]["state"][theirs] == {
             "trusted_hash": "sha256:keep"
@@ -502,11 +622,24 @@ class TestTomlEditing:
             '\n# mine\n[mcp_servers.playwright]\ncommand = "npx"\n'
         )
 
-        removed = codex_module.remove_trust_block(text, key)
+        removed = codex_module.remove_trust_block(text, key, self.PATH)
 
         assert "# mine" in removed
         assert "[mcp_servers.playwright]" in removed
         assert "hooks.state" not in removed
+
+    def test_an_edit_that_would_drop_a_foreign_key_is_refused(self, tmp_path: Path):
+        """The independent guard: if the splice loses a key, stop, never delete."""
+        broken = '[mcp_servers.indexed]\ncommand = "/usr/bin/indexed"\nargs = ["mcp", "run"]\n'
+        foreign = '[mcp_servers.other]\ncommand = "/bin/echo"\n'
+        path = tmp_path / "config.toml"
+
+        with pytest.raises(codex_module.CodexConfigError) as excinfo:
+            codex_module._guard_foreign_keys(
+                broken + foreign, broken, ["mcp_servers.indexed"], path
+            )
+
+        assert "mcp_servers.other" in excinfo.value.reason
 
 
 def _run_hook(home: Path, payload: dict, env_extra: dict | None = None) -> str:
@@ -584,3 +717,23 @@ class TestHookScript:
         )
 
         assert "grep -rn foo ." in log.read_text(encoding="utf-8")
+
+    def test_a_home_with_shell_metacharacters_stays_literal(self, fake_home: Path):
+        """`--home '/tmp/$data'` must be a path, not something the hook expands."""
+        weird = fake_home / "$data`cmd`(1)"
+        result = runner.invoke(_get_app(), ["install", "codex", "--home", str(weird)])
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        # The collections root this install points at, created for the hook.
+        (weird / ".indexed/data/collections/demo").mkdir(parents=True)
+
+        hook = (fake_home / ".codex/indexed/indexed-nudge.sh").read_text(
+            encoding="utf-8"
+        )
+        assert (
+            f"INDEXED_COLLECTIONS_DEFAULT={shlex.quote(str(weird / '.indexed/data/collections'))}"
+            in hook
+        )
+
+        out = _run_hook(fake_home, self._payload("rg -n retry src/", fake_home))
+
+        assert "mcp__indexed__search" in out

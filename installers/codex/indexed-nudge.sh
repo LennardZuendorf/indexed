@@ -15,9 +15,11 @@ set -uo pipefail
 
 payload=$(cat 2>/dev/null || true)
 
-# The collections root this install points at (`--home` is baked in here); an
+# The collections root this install points at (`--home` is baked in here as
+# shell-quoted data, so a path with $ or backticks stays literal); an
 # INDEXED_COLLECTIONS_HOME in the environment still wins.
-INDEXED_COLLECTIONS_HOME="${INDEXED_COLLECTIONS_HOME:-{{COLLECTIONS_ROOT}}}"
+INDEXED_COLLECTIONS_DEFAULT={{COLLECTIONS_ROOT}}
+INDEXED_COLLECTIONS_HOME="${INDEXED_COLLECTIONS_HOME:-$INDEXED_COLLECTIONS_DEFAULT}"
 
 # Codex passes the session cwd in the hook payload; fall back to the process cwd.
 project=""
