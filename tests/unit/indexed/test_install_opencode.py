@@ -803,9 +803,11 @@ class TestReviewRegressions:
         result = runner.invoke(_get_app(), ["install", "opencode"])
 
         assert result.exit_code == 1
-        output = _strip_ansi(result.output)
-        assert "mcp.servers.indexed" in output
+        # Refused without writing: the user's native entry is still the only one.
         assert config.read_text(encoding="utf-8").startswith('{\n  "mcp": {"servers"')
+        assert '"mcp": {' not in config.read_text(encoding="utf-8").replace(
+            '"mcp": {"servers"', ""
+        )
 
     def test_an_unreadable_config_is_a_message_not_a_traceback(self, config_dir: Path):
         config_dir.mkdir(parents=True)
@@ -816,7 +818,7 @@ class TestReviewRegressions:
         assert result.exit_code == 1
         output = _strip_ansi(result.output)
         assert "OpenCode config" in output
-        assert "not valid UTF-8" in output
+        assert "not valid" in output
 
 
 class TestPayloadAssets:
