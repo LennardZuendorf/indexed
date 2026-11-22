@@ -220,6 +220,120 @@ jobs:
         print("removal smoke ok")
         PY
 
+    - name: Installer smoke (Codex, temp HOME)
+      # Codex's config is hand-edited TOML and its hooks live in hooks.json, so
+      # this checks what the unit tests cannot see: the payloads are inside the
+      # wheel, the installer edits text without re-serialising the document, and
+      # the installed hook answers Codex's PreToolUse contract.
+      run: |
+        set -euo pipefail
+        # `unzip -l | grep -q` trips pipefail on SIGPIPE once the archive is big
+        # enough, so match against the listing held in a variable instead.
+        wheel_listing="$(unzip -l dist/*.whl)"
+        case "$wheel_listing" in
+          *indexed/installers/codex/index-use.SKILL.md*) ;;
+          *) echo "codex skill payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        case "$wheel_listing" in
+          *indexed/installers/codex/indexed-nudge.sh*) ;;
+          *) echo "codex hook payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        home="$(mktemp -d)"
+        mkdir -p "$home/.codex"
+        # Foreign configuration this installer must never drop, comments included.
+        printf '%s\n' \
+          '# hand-written, do not reformat' \
+          'model = "gpt-6"' \
+          '' \
+          '[projects."/home/someone/secret-project"]' \
+          'trust_level = "trusted"' \
+          '' \
+          '[mcp_servers.other]' \
+          'command = "/bin/echo"' \
+          'args = ["keep-me"]' > "$home/.codex/config.toml"
+        printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "keep-hook.sh", "timeout": 10}]}]}}' \
+          > "$home/.codex/hooks.json"
+        cp "$home/.codex/config.toml" "$home/config.before.toml"
+        cp "$home/.codex/hooks.json" "$home/hooks.before.json"
+
+        HOME="$home" uv run indexed install codex --dry-run
+        test ! -e "$home/.codex/indexed/indexed-nudge.sh"
+        HOME="$home" uv run indexed install codex
+        first="$(cat "$home/.codex/config.toml")"
+        HOME="$home" uv run indexed install codex
+        test "$(cat "$home/.codex/config.toml")" = "$first"
+        test -s "$home/.codex/skills/index-use/SKILL.md"
+        test -x "$home/.codex/indexed/indexed-nudge.sh"
+
+        # The installed hook answers the JSON Codex expects, and only where
+        # indexed actually has collections.
+        mkdir -p "$home/.indexed/data/collections/demo"
+        hook_out="$(printf '{"hook_event_name": "PreToolUse", "cwd": "%s", "tool_name": "Bash", "tool_input": {"command": "rg -n retry src/"}}' "$home" \
+          | HOME="$home" "$home/.codex/indexed/indexed-nudge.sh")"
+        printf '%s' "$hook_out" | uv run python -c '
+        import json, sys
+        payload = json.load(sys.stdin)["hookSpecificOutput"]
+        assert payload["hookEventName"] == "PreToolUse", payload
+        assert "permissionDecision" not in payload, "a nudge hook must not decide permissions"
+        assert "mcp__indexed__search" in payload["additionalContext"], payload
+        print("codex hook ok")
+        '
+        # A non-search command gets nothing.
+        test -z "$(printf '{"hook_event_name": "PreToolUse", "cwd": "%s", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}}' "$home" \
+          | HOME="$home" "$home/.codex/indexed/indexed-nudge.sh")"
+
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        import tomllib
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = tomllib.loads((home / ".codex/config.toml").read_text())
+        entry = config["mcp_servers"]["indexed"]
+        assert entry["args"] == ["mcp", "run"], entry
+        assert Path(entry["command"]).is_absolute(), entry
+        assert config["mcp_servers"]["other"] == {
+            "command": "/bin/echo",
+            "args": ["keep-me"],
+        }, "foreign server lost"
+        assert config["projects"]["/home/someone/secret-project"]["trust_level"] == "trusted"
+        assert config["model"] == "gpt-6", "foreign top-level key dropped"
+        assert "# hand-written, do not reformat" in (home / ".codex/config.toml").read_text()
+
+        hooks = json.loads((home / ".codex/hooks.json").read_text())
+        groups = hooks["hooks"]["PreToolUse"]
+        assert groups[0]["hooks"][0]["command"] == "keep-hook.sh", "foreign hook group lost"
+        ours = [group for group in groups if "indexed-nudge.sh" in json.dumps(group)]
+        assert len(ours) == 1, f"expected exactly one installed hook group, got {ours}"
+        print("codex installer smoke ok:", entry["command"])
+        PY
+
+        HOME="$home" uv run indexed install codex --remove
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        for gone in (
+            ".codex/indexed/indexed-nudge.sh",
+            ".codex/skills/index-use/SKILL.md",
+            ".codex/indexed-install.json",
+        ):
+            assert not (home / gone).exists(), f"removal left {gone} behind"
+        # config.toml is edited as text, so the user's file comes back byte for
+        # byte; hooks.json is a JSON document we merge into, so the promise there
+        # is the same content, not the same bytes.
+        assert (home / ".codex/config.toml").read_bytes() == (home / "config.before.toml").read_bytes(), (
+            "removal did not restore config.toml"
+        )
+        assert json.loads((home / ".codex/hooks.json").read_text()) == json.loads(
+            (home / "hooks.before.json").read_text()
+        ), "removal did not restore hooks.json"
+        print("codex removal smoke ok")
+        PY
+
     - name: Check distribution metadata (twine)
       # validate_wheel.py (above) checks the archive/zip bytes; twine check
       # validates the METADATA long_description renders on PyPI. --strict makes

@@ -123,6 +123,11 @@ packages = ["src/indexed"]
 # Same reason for the PreToolUse hook: it ships as a real .sh file so the
 # installed command copies bytes a user can read, not a string buried in Python.
 "installers/claude-code/indexed-suggest-mcp.sh" = "indexed/installers/claude-code/indexed-suggest-mcp.sh"
+# Codex reads the same skill root but its own skill text (it has no Grep/Glob
+# tool and no `$ARGUMENTS`, so the Claude payload would mislead it), plus its
+# own nudge hook that reads the Bash command line.
+"installers/codex/index-use.SKILL.md" = "indexed/installers/codex/index-use.SKILL.md"
+"installers/codex/indexed-nudge.sh" = "indexed/installers/codex/indexed-nudge.sh"
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src/indexed", "skills", "installers"]

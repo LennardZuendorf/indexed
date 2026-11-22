@@ -117,7 +117,7 @@ indexed install claude-code --home /data/agent-home  # collections in /data/agen
 ```
 
 It writes a *user-scope* server (available in every project) using the absolute
-path of the running `indexed` executable, and touches four files:
+path of the running `indexed` executable, and touches five files:
 
 | Path | What it owns |
 | --- | --- |
@@ -125,6 +125,7 @@ path of the running `indexed` executable, and touches four files:
 | `~/.claude/skills/index-use/SKILL.md` | the `index-use` skill |
 | `~/.claude/hooks/indexed-suggest-mcp.sh` | the nudge hook script |
 | `~/.claude/settings.json` | the `PreToolUse` group that runs that hook |
+| `~/.claude/indexed-install.json` | the manifest: what was installed, by which version |
 
 Everything else in those files — other servers, other hooks, `projects`,
 credentials — is preserved, and each rewritten file keeps a `.bak` beside it.
@@ -158,6 +159,66 @@ To add it per project instead, create or edit `.mcp.json` in your project root:
     }
   }
 }
+```
+
+The installed skill documents the `indexed.search/1` result shape; the full
+contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
+
+### Codex CLI
+
+One command registers the MCP server, installs the `index-use` skill and adds a
+`PreToolUse` hook that nudges Codex away from shell `grep`/`rg` toward semantic
+search:
+
+```bash
+indexed install codex             # server + skill + hook
+indexed install codex --dry-run   # print the plan, write nothing
+indexed install codex --remove    # undo exactly what it installed
+indexed install codex --home /data/agent-home  # collections in /data/agent-home/.indexed
+```
+
+It writes a *user-scope* server (available in every project) using the absolute
+path of the running `indexed` executable, into `~/.codex` — or `$CODEX_HOME`
+when you set one:
+
+| Path | What it owns |
+| --- | --- |
+| `~/.codex/config.toml` | the `mcp_servers.indexed` table |
+| `~/.codex/skills/index-use/SKILL.md` | the `index-use` skill |
+| `~/.codex/hooks.json` | the `PreToolUse` group that runs the nudge hook |
+| `~/.codex/indexed/indexed-nudge.sh` | the nudge hook script |
+| `~/.codex/indexed-install.json` | the manifest: what was installed, by which version |
+
+`config.toml` is hand-edited TOML, so the installer edits it as *text*: only its
+own table block is ever written or deleted, and everything else — comments,
+spacing, `projects`, other servers — stays byte for byte. (This is deliberate:
+`codex mcp add` re-serialises the whole `[mcp_servers]` region and drops the
+comments inside it.) Files the command rewrote keep a `.bak` beside them, and
+running it twice upgrades in place rather than duplicating. `--remove` deletes
+only the artifacts above, only ones it recognises as its own, and puts the rest
+of `config.toml` back exactly as it was.
+
+Codex does not run a hook until it is trusted. Rather than forge that state, the
+installer asks Codex for the hash it computed (`codex app-server` → `hooks/list`)
+and records it in `config.toml` — the same write Codex's TUI makes when you
+approve a hook. If `codex` is not on `PATH`, the install still completes and says
+the hook needs a one-time approval.
+
+Codex has no Grep/Glob tool: it searches through the shell. So the installed hook
+watches `Bash` (and the platform equivalents), and when the command line looks
+like a recursive text search while indexed has collections, it adds a reminder
+pointing at `mcp__indexed__search`. It is silent for anything else — non-search
+commands, commands already using `indexed`, machines with no collections — and
+it never approves, blocks or prompts. Set `INDEXED_HOOK_LOG=/path/to/log` to
+trace its firings.
+
+Restart Codex; the `index-use` skill is listed and the nudge hook runs on shell
+search commands.
+
+Manual alternative (registers the server only — no skill, no hook):
+
+```bash
+codex mcp add indexed -- indexed mcp run
 ```
 
 The installed skill documents the `indexed.search/1` result shape; the full

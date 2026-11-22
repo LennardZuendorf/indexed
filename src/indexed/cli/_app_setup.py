@@ -26,6 +26,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import info, knowledge
     from . import storage as storage_cmd
     from . import install as install_cmd
+    from . import install_codex as install_codex_cmd
     from .. import mcp
     from indexed.config import cli as config
     from .debug import debug as debug_command
@@ -50,6 +51,11 @@ def register_commands(app: typer.Typer) -> None:
         rich_help_panel="Setup",
         help="Register MCP Server And Skill With Claude Code",
     )(install_cmd.claude_code)
+    app.command(
+        "install codex",
+        rich_help_panel="Setup",
+        help="Register MCP Server And Skill With Codex",
+    )(install_codex_cmd.codex)
 
     app.add_typer(
         knowledge.app,
