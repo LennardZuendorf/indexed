@@ -3,7 +3,7 @@ type: product-topic
 parent: product.md
 scope: product
 covers: milestone requirements, acceptance evidence, readiness
-updated: 2026-11-21
+updated: 2026-11-22
 ---
 
 # Indexed readiness requirements
@@ -27,14 +27,14 @@ A developer can index a collection once, select it from several repositories and
 | Requirement | Observable behavior |
 | --- | --- |
 | Shared storage | Multiple projects can reference one collection. Selecting it or moving a checkout leaves the existing index data reusable. |
-| Repository selection | A versioned, committable repo definition selects collections by stable identity. The developer can inspect the resolved project and selected collections. Credentials are supplied separately. |
+| Repository selection | Indexed writes a versioned `indexed.config.toml` at the Git worktree root. The file selects collections by stable ID. The developer can inspect the resolved project and selection. Engine settings and credentials use their existing configuration. |
 | Request isolation | CLI, MCP and LSP resolve the same project selection. Concurrent MCP requests from separate projects each use their own selection, even if a collection update runs at the same time. A present but malformed definition or an unresolved collection reference produces an actionable result without widening scope. |
-| Existing data | A developer can preview, complete and roll back migration of local collections. Conflicts and incomplete migrations have explicit recovery paths. |
-| Checkout differences | Sharing a collection preserves the revision of the indexed evidence. A different checkout exposes the mismatch when opening or interpreting that evidence. |
+| Existing data | A developer explicitly previews and starts migration of local collections. Indexed copies and verifies the data before registration and preserves the original for rollback. Conflicts and interruptions have explicit recovery paths. |
+| Checkout differences | A shared local Files or Git collection preserves the indexed snapshot. Use Git provenance when available. A different checkout exposes a mismatch when opening evidence. Remote connectors keep their existing source identity and freshness behavior. |
 
 **Acceptance.** Use two clones or worktrees at different revisions, a second project with an overlapping selection, and two concurrent MCP clients. Prove reuse of the same collection data, distinct scopes, and correct behavior for missing or renamed collections. Exercise an existing v1 and v2 local collection through migration and rollback. Verify that an interrupted or repeated migration preserves the original data until the verified outcome is known.
 
-The feature design settles profile discovery, precedence when a profile is absent, and the migration experience for explicit local storage.
+The feature design settles how CLI, MCP and LSP supply the workspace, how requests behave without a profile, and how to present migration and rollback.
 
 ## Merged Project Search
 

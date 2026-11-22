@@ -3,7 +3,7 @@ type: tech-topic
 parent: tech.md
 scope: technical
 covers: proposed readiness contracts for scope, provenance, evidence, installation and verification
-updated: 2026-11-21
+updated: 2026-11-22
 ---
 
 # Technical contracts for Indexed readiness
@@ -16,14 +16,14 @@ These target contracts constrain designs across the milestones. The existing beh
 
 - Resolve repository selection and caller overrides at the application boundary using the shared config and composition layers. Carry the resolved scope into the engine operation. A long-lived MCP server must resolve new requests independently, including concurrent requests. A concurrent update can change visible data only within the request's resolved collection scope. A change that invalidates an evidence reference produces a stale outcome.
 - Keep collection identity independent of checkout location. Resolve stable collection IDs through the selected store and preserve engine routing by manifest. Treat missing selection, invalid selection, unavailable collection and scoped success as separate cases.
-- A repo definition contains versioned, portable selection data. Persist credentials through the established secret mechanism. Reject unsupported versions and ambiguous IDs before resolution can broaden a search.
+- Indexed owns writes to `indexed.config.toml` at the Git worktree root. Read the file into one validated, typed selection DTO before resolving collection IDs. An unsupported version, invalid selection or missing registered collection produces an explicit error. Keep engine settings and credentials in their existing configuration.
 - Treat promotion of existing local data to the shared store as a recoverable operation. Verify completeness before making a migrated collection visible. Design for collisions, interruption, resumption and rollback with the old collection readable until the transition succeeds.
 
 Owning surfaces include [Configuration](tech-config.md), [App composition](tech-app.md) and the [core facade](../src/indexed/core/engine.py).
 
 ## Stable evidence and bounded consumers
 
-- The source and collection establish an evidence identity. Carry a source document or commit, the indexed revision or generation when available, and the supported location granularity. Resolve local locations against that identity and detect revision mismatches. A checkout path is a location, independent of stable evidence identity.
+- The source and collection establish an evidence identity. Carry a source document or commit, the indexed revision or generation when available, and the supported location granularity. Resolve local locations against that identity and detect revision mismatches. A checkout path is a location, independent of stable evidence identity. Shared workspace snapshot and checkout matching apply to local Files and Git collections. Use Git provenance where available and preserve the remote connectors' existing identity and freshness contracts.
 - Use the shared machine payload as the compatibility baseline for CLI and MCP. Extend it compatibly or publish an explicit version change with migration guidance. Preserve raw score semantics and partial collection errors through fusion and reranking. Keep ranking evidence separate from outcome reporting.
 - Expand and traverse only against the resolved scope and a valid result reference. Bound requested or returned chunks, depth, node and edge counts and response size. Expose truncation and stale, unresolved or out-of-scope references as distinct outcomes. Protect ranges and local paths at the resolution boundary.
 - Convert locations at protocol boundaries. An editor range uses its negotiated position encoding and describes the documents and revisions from which it was derived. Feed CLI, MCP and LSP from the same evidence identity.
