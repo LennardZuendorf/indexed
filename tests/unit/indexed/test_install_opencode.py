@@ -729,12 +729,14 @@ class TestReviewRegressions:
     def test_an_explicit_null_entry_is_not_a_missing_entry(self, config_dir: Path):
         config_dir.mkdir(parents=True)
         config = _config(config_dir)
-        config.write_text('{\n  "mcp": {"indexed": null}\n}\n', encoding="utf-8")
+        original = '{\n  "mcp": {"indexed": null}\n}\n'
+        config.write_text(original, encoding="utf-8")
 
         result = runner.invoke(_get_app(), ["install", "opencode"])
 
         assert result.exit_code == 1
-        assert "already registers" in _strip_ansi(result.output)
+        # Refused, not silently replaced: the user's null is still there.
+        assert config.read_text(encoding="utf-8") == original
 
     def test_removal_keeps_a_comment_between_servers(self, config_dir: Path):
         config_dir.mkdir(parents=True)
