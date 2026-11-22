@@ -106,21 +106,42 @@ Indexed exposes a Model Context Protocol server for AI agent integration.
 ### Claude Code (CLI, VS Code, JetBrains)
 
 Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin.
-One command registers the MCP server and installs the `index-use` skill, which
-teaches Claude to reach for semantic search instead of Grep/Glob:
+One command registers the MCP server, installs the `index-use` skill and adds a
+`PreToolUse` hook that nudges Claude away from Grep/Glob toward semantic search:
 
 ```bash
-indexed install claude-code             # ~/.claude.json + ~/.claude/skills/index-use
-indexed install claude-code --dry-run   # print the config, write nothing
+indexed install claude-code             # server + skill + hook
+indexed install claude-code --dry-run   # print the plan, write nothing
+indexed install claude-code --remove    # undo exactly what it installed
 indexed install claude-code --home /data/agent-home  # collections in /data/agent-home/.indexed
 ```
 
 It writes a *user-scope* server (available in every project) using the absolute
-path of the running `indexed` executable, preserves any other servers already in
-`~/.claude.json`, and is safe to run twice. Restart Claude Code, then use
-`/index-use`.
+path of the running `indexed` executable, and touches four files:
 
-Manual alternative (registers the server only — no skill):
+| Path | What it owns |
+| --- | --- |
+| `~/.claude.json` | the `mcpServers.indexed` entry |
+| `~/.claude/skills/index-use/SKILL.md` | the `index-use` skill |
+| `~/.claude/hooks/indexed-suggest-mcp.sh` | the nudge hook script |
+| `~/.claude/settings.json` | the `PreToolUse` group that runs that hook |
+
+Everything else in those files — other servers, other hooks, `projects`,
+credentials — is preserved, and each rewritten file keeps a `.bak` beside it.
+Safe to run twice: an existing install is upgraded in place, never duplicated.
+`--remove` deletes only the artifacts above (and only ones it recognises as its
+own) and prunes the directories it emptied.
+
+The hook is silent unless indexed actually has collections (the collections root
+this install points at, or a `.indexed/collections.json` workspace pointer), so it
+costs nothing on a machine that does not use indexed. It only *adds context* to
+Grep/Glob calls — it never approves, blocks or prompts, so your permission rules
+and directory prompts behave exactly as before. Set
+`INDEXED_HOOK_LOG=/path/to/log` to trace its firings.
+
+Restart Claude Code, then use `/index-use`.
+
+Manual alternative (registers the server only — no skill, no hook):
 
 ```bash
 claude mcp add indexed -s user -- indexed mcp run

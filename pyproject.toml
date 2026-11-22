@@ -120,9 +120,12 @@ packages = ["src/indexed"]
 # real user (`uv tool install indexed-sh` has no repo root to fall back to).
 [tool.hatch.build.targets.wheel.force-include]
 "skills/index-use" = "indexed/skills/index-use"
+# Same reason for the PreToolUse hook: it ships as a real .sh file so the
+# installed command copies bytes a user can read, not a string buried in Python.
+"installers/claude-code/indexed-suggest-mcp.sh" = "indexed/installers/claude-code/indexed-suggest-mcp.sh"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/indexed", "skills"]
+only-include = ["src/indexed", "skills", "installers"]
 
 [dependency-groups]
 dev = [

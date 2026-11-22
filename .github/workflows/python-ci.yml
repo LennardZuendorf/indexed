@@ -10,6 +10,7 @@ on:
       - '.github/workflows/python-ci.yml'
       - 'tests/system/**'
       - 'skills/**'
+      - 'installers/**'
   push:
     branches: [ "main", "building" ]
 
@@ -125,28 +126,98 @@ jobs:
 
     - name: Installer smoke (Claude Code, temp HOME)
       # Exercises `indexed install claude-code` the way a user does, and covers
-      # what the unit tests cannot see: the index-use skill must be inside the
-      # built wheel, or the command works from a checkout and fails installed.
+      # what the unit tests cannot see: the index-use skill and the hook script
+      # must be inside the built wheel, or the command works from a checkout and
+      # fails installed. The lifecycle is checked end to end — install, upgrade,
+      # remove — against a config that already holds another tool's keys.
       run: |
         set -euo pipefail
         unzip -l dist/*.whl | grep -q 'indexed/skills/index-use/SKILL.md'
+        unzip -l dist/*.whl | grep -q 'indexed/installers/claude-code/indexed-suggest-mcp.sh'
         home="$(mktemp -d)"
+        mkdir -p "$home/.claude"
+        # Foreign configuration this installer must never drop.
+        printf '%s\n' '{"numStartups": 5, "mcpServers": {"other": {"command": "keep-me"}}}' \
+          > "$home/.claude.json"
+        printf '%s\n' '{"model": "opus", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "keep.sh"}]}]}}' \
+          > "$home/.claude/settings.json"
+
         HOME="$home" uv run indexed install claude-code --dry-run
-        test ! -e "$home/.claude.json"
+        test ! -e "$home/.claude/hooks/indexed-suggest-mcp.sh"
         HOME="$home" uv run indexed install claude-code
         first="$(cat "$home/.claude.json")"
         HOME="$home" uv run indexed install claude-code
         test "$(cat "$home/.claude.json")" = "$first"
         test -s "$home/.claude/skills/index-use/SKILL.md"
-        uv run python - "$home/.claude.json" <<'PY'
+        test -x "$home/.claude/hooks/indexed-suggest-mcp.sh"
+
+        # The installed hook answers with the JSON Claude Code expects, and only
+        # where indexed actually has collections.
+        mkdir -p "$home/.indexed/data/collections/demo"
+        hook_out="$(HOME="$home" "$home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{"tool_name": "Grep"}')"
+        printf '%s' "$hook_out" | uv run python -c '
+        import json, sys
+        payload = json.load(sys.stdin)["hookSpecificOutput"]
+        assert payload["hookEventName"] == "PreToolUse", payload
+        assert "permissionDecision" not in payload, "a nudge hook must not decide permissions"
+        assert "mcp__indexed__search" in payload["additionalContext"], payload
+        print("hook ok")
+        '
+        # A machine with no collections gets no output (and never a broken hook).
+        silent_home="$(mktemp -d)"
+        HOME="$silent_home" uv run indexed install claude-code
+        test -z "$(HOME="$silent_home" "$silent_home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{}')"
+
+        uv run python - "$home" <<'PY'
         import json
         import sys
+        from pathlib import Path
 
-        entry = json.load(open(sys.argv[1]))["mcpServers"]["indexed"]
+        home = Path(sys.argv[1])
+        config = json.loads((home / ".claude.json").read_text())
+        entry = config["mcpServers"]["indexed"]
         assert entry["type"] == "stdio", entry
         assert entry["args"] == ["mcp", "run"], entry
         assert entry["command"].startswith("/"), entry
+        assert config["numStartups"] == 5, "foreign .claude.json key was dropped"
+        assert config["mcpServers"]["other"] == {"command": "keep-me"}, "foreign server lost"
+
+        settings = json.loads((home / ".claude/settings.json").read_text())
+        assert settings["model"] == "opus", "foreign settings key was dropped"
+        assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "keep.sh", (
+            "foreign PreToolUse group lost"
+        )
+        ours = [
+            group
+            for group in settings["hooks"]["PreToolUse"]
+            if "indexed-suggest-mcp.sh" in json.dumps(group)
+        ]
+        assert len(ours) == 1, f"expected exactly one installed hook group, got {ours}"
         print("installer smoke ok:", entry["command"])
+        PY
+
+        HOME="$home" uv run indexed install claude-code --remove
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = json.loads((home / ".claude.json").read_text())
+        assert "indexed" not in config["mcpServers"], "removal left our server behind"
+        assert config["numStartups"] == 5, "removal dropped a foreign .claude.json key"
+        assert config["mcpServers"]["other"] == {"command": "keep-me"}
+
+        settings = json.loads((home / ".claude/settings.json").read_text())
+        assert settings["model"] == "opus", "removal dropped a foreign settings key"
+        assert "indexed-suggest-mcp.sh" not in json.dumps(settings)
+        for gone in (
+            ".claude/hooks/indexed-suggest-mcp.sh",
+            ".claude/skills/index-use/SKILL.md",
+            ".claude/indexed-install.json",
+        ):
+            assert not (home / gone).exists(), f"removal left {gone} behind"
+        print("removal smoke ok")
         PY
 
     - name: Check distribution metadata (twine)
