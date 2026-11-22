@@ -44,6 +44,15 @@ def migrate(
         help="What to do when the shared store already has a collection with the "
         "same name: abort (default), adopt (identical copy), or rename",
     ),
+    verify: Optional[str] = typer.Option(
+        None,
+        "--verify",
+        help="How to decide two collections are identical: structural (default: "
+        "manifest + file names and sizes, fast, does NOT compare content) or hash "
+        "(streamed SHA-256 of every file; reads the whole index, refuses on any "
+        "mismatch). With --on-collision adopt, hash never deletes a local copy "
+        "unless its content matches",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose (INFO) logging"
     ),
@@ -57,11 +66,14 @@ def migrate(
     stable id and leaves a pointer file in ``./.indexed/collections.json``, so
     a second project can point at the same data instead of building a copy.
     ``--dry-run`` reports collisions and affected data; an interrupted run
-    resumes where it stopped; ``--rollback`` puts everything back.
+    resumes where it stopped; ``--rollback`` puts everything back. ``--verify``
+    defaults to ``structural`` (file names and sizes, not content); pass
+    ``--verify hash`` to compare every byte before anything is deleted.
 
     Examples:
         indexed storage migrate --dry-run
         indexed storage migrate
+        indexed storage migrate --verify hash
         indexed storage migrate --rollback
     """
     from . import _migration as service
@@ -76,10 +88,10 @@ def migrate(
 
     try:
         if rollback:
-            report = service.rollback(workspace)
+            report = service.rollback(workspace, verify=verify)
         else:
             report = service.migrate(
-                workspace, dry_run=dry_run, on_collision=on_collision
+                workspace, dry_run=dry_run, on_collision=on_collision, verify=verify
             )
     except Exception as exc:  # typed StorageError subclasses carry the remedy
         if simple:

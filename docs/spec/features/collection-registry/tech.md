@@ -31,7 +31,7 @@ updated: 2026-11-22
 ]}
 
 ~/.indexed/data/registry-migration-<sha8>.json  # journal, one per workspace
-{"version": "1", "workspace": "/abs/project", "started_at": ..., "completed_at": ...,
+{"version": "1", "workspace": "/abs/project", "verify": "structural"|"hash", "started_at": ..., "completed_at": ...,
  "steps": [{"name", "engine", "source", "target", "action": "move"|"adopt",
             "fingerprint", "id", "state": "planned|moved|registered|linked|rolled_back"}]}
 
@@ -62,9 +62,17 @@ updated: 2026-11-22
   copy (target without `manifest.json`) is discarded and retried from the intact
   source.
 - **Adopt deletes; it never duplicates.** `--on-collision adopt` is only
-  offered when the structural fingerprints match (manifest bytes + sorted file
-  list with sizes — cheap on a multi-GB index, and enough to answer "same
-  collection?"). Rollback of an adopt step re-materialises the local copy from
+  offered when the fingerprints match. `--verify structural` (the default) is
+  manifest bytes + sorted file list with sizes — cheap on a multi-GB index, but
+  two collections with the same names and sizes and different bytes are
+  indistinguishable, and adopt then deletes the local one (it logs one line
+  saying the structural check justified it). `--verify hash` adds a SHA-256 per
+  file, streamed in 1 MiB chunks: a mismatch is a `conflict` naming the files
+  that differ, adopt never deletes a local copy it has not matched, and a
+  `move` is re-hashed at the target against the journaled print before it is
+  registered. The mode is journaled (`"verify"`); a resume keeps it and refuses
+  a different explicit `--verify` while steps are pending. Rollback of an adopt
+  step re-materialises the local copy from
   the shared one, which is byte-identical by construction, and leaves the shared
   collection (and its other workspace links) untouched.
 - **Dry run is read-only by construction.** `plan()` never writes; the CLI's

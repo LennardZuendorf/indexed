@@ -2446,3 +2446,9 @@ state is never touched.
 **Rule:** Split by heading with a script that reads the committed source. Prove nothing was lost by comparing normalized non-blank line multisets before and after. Keep hubs to links, put each topic in a kind-folder note of at most 60 lines with `applies:` or `code:` set, and repoint prose `§` references to the note that now holds the section.
 **Tags:** spec, docs
 **Date:** 2026-11-22
+
+### Structural fingerprints do not justify deleting data (2026-11-22)
+**Pattern:** `storage migrate` compared collections by manifest bytes plus file names and sizes, so `--on-collision adopt` deleted a local copy that merely had the same shape as the shared one.
+**Rule:** Any destructive step needs a check that sees the thing it destroys. Offer a streamed content hash (`--verify hash`), keep the cheap check as the stated default, and log which check justified each delete. Prove the gap with a same-name, same-size, different-bytes fixture that fails on main.
+**Tags:** migration, verification, storage
+**Date:** 2026-11-22

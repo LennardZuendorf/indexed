@@ -122,3 +122,255 @@ def test_real_migration_refuses_collisions_before_touching_data(
 
     assert (local / "docs" / "manifest.json").is_file()
     assert not registry.path.exists()
+
+
+# --- --verify=structural|hash -------------------------------------------------
+
+
+def _same_shape_pair(
+    workspace: Path, registry: CollectionRegistry
+) -> tuple[Path, Path]:
+    """Local + shared 'docs': identical names and sizes, different bytes."""
+    local = _fake_collection(
+        workspace / ".indexed" / "data" / "collections", "docs", body="aaaa"
+    )
+    shared = _fake_collection(
+        registry.global_root / "data" / "collections", "docs", body="bbbb"
+    )
+    for name in ("documents.json", "manifest.json"):
+        assert (local / name).stat().st_size == (shared / name).stat().st_size
+    assert (local / "documents.json").read_bytes() != (
+        shared / "documents.json"
+    ).read_bytes()
+    return local, shared
+
+
+def test_structural_verify_cannot_tell_same_size_collections_apart(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    """Documents the weakness: structural calls them identical and adopts."""
+    _same_shape_pair(workspace, registry)
+
+    report = _migration.plan(
+        workspace, on_collision="adopt", registry=registry, verify="structural"
+    )
+
+    assert [item.action for item in report.collections] == ["adopt"]
+
+
+def test_hash_verify_refuses_same_size_collections_and_names_the_file(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    local, shared = _same_shape_pair(workspace, registry)
+
+    report = _migration.plan(workspace, registry=registry, verify="hash")
+    assert [item.action for item in report.collections] == ["conflict"]
+    assert "documents.json" in (report.collections[0].collision or "")
+
+    with pytest.raises(_migration.MigrationError, match="documents.json"):
+        _migration.migrate(workspace, registry=registry, verify="hash")
+    assert (local / "documents.json").is_file()
+    assert not registry.path.exists()
+
+
+def test_adopt_with_hash_never_deletes_a_mismatching_local_copy(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    local, shared = _same_shape_pair(workspace, registry)
+
+    with pytest.raises(_migration.MigrationError, match="documents.json"):
+        _migration.migrate(
+            workspace, on_collision="adopt", registry=registry, verify="hash"
+        )
+
+    assert (local / "documents.json").read_text() == '{"body": "aaaa"}'
+    assert (shared / "documents.json").read_text() == '{"body": "bbbb"}'
+
+
+def test_adopt_reconcile_with_hash_keeps_a_source_that_drifted(
+    tmp_path: Path,
+) -> None:
+    """Resume path: the journaled print matches the target but not the source."""
+    source = _fake_collection(tmp_path / "local", "docs", body="aaaa")
+    target = _fake_collection(tmp_path / "shared", "docs", body="bbbb")
+    step = {
+        "name": "docs",
+        "source": str(source),
+        "target": str(target),
+        "state": "planned",
+    }
+    journaled = _migration.fingerprint_collection(target, "hash")
+
+    with pytest.raises(_migration.MigrationError, match="differ"):
+        _migration._reconcile(
+            step, action="adopt", fingerprint=journaled, verify="hash"
+        )
+
+    assert source.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("verify", "justification"),
+    [("structural", "structural"), ("hash", "content hash")],
+)
+def test_adopting_an_identical_copy_logs_which_check_justified_the_delete(
+    workspace: Path,
+    registry: CollectionRegistry,
+    caplog: pytest.LogCaptureFixture,
+    verify: str,
+    justification: str,
+) -> None:
+    from indexed.config.collections_registry import WorkspacePointers
+
+    local = _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+    _fake_collection(registry.global_root / "data" / "collections", "docs")
+
+    with caplog.at_level("INFO", logger=_migration.logger.name):
+        _migration.migrate(
+            workspace, on_collision="adopt", registry=registry, verify=verify
+        )
+
+    assert not local.exists()
+    lines = [
+        r.getMessage() for r in caplog.records if "Removed local" in r.getMessage()
+    ]
+    assert len(lines) == 1
+    assert justification in lines[0]
+    assert WorkspacePointers(workspace).resolve("docs")
+
+
+def test_hash_verify_checks_the_moved_bytes_against_the_planned_content(
+    workspace: Path, registry: CollectionRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+    real_move = _migration._move_dir
+
+    def corrupting_move(source: Path, target: Path) -> None:
+        real_move(source, target)
+        (target / "documents.json").write_text(json.dumps({"body": "garbage"[:7]}))
+
+    monkeypatch.setattr(_migration, "_move_dir", corrupting_move)
+    # "payload" and "garbage" are both 7 bytes: only a content check sees it.
+    with pytest.raises(_migration.MigrationError, match="documents.json|content"):
+        _migration.migrate(workspace, registry=registry, verify="hash")
+    assert not registry.path.exists()
+
+
+def test_structural_verify_misses_the_same_corruption(
+    workspace: Path, registry: CollectionRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+    real_move = _migration._move_dir
+
+    def corrupting_move(source: Path, target: Path) -> None:
+        real_move(source, target)
+        (target / "documents.json").write_text(json.dumps({"body": "garbage"[:7]}))
+
+    monkeypatch.setattr(_migration, "_move_dir", corrupting_move)
+    report = _migration.migrate(workspace, registry=registry)
+    assert report.action == "migrate"
+
+
+def test_unknown_verify_mode_is_refused(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    with pytest.raises(_migration.MigrationError, match="Unknown verify mode"):
+        _migration.plan(workspace, registry=registry, verify="md5")
+
+
+def test_resume_cannot_switch_verify_mode(
+    workspace: Path, registry: CollectionRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+
+    def boom(source: Path, target: Path) -> None:
+        raise OSError("killed")
+
+    monkeypatch.setattr(_migration, "_move_dir", boom)
+    with pytest.raises(OSError):
+        _migration.migrate(workspace, registry=registry, verify="hash")
+    monkeypatch.undo()
+
+    with pytest.raises(_migration.MigrationError, match="--verify=hash"):
+        _migration.migrate(workspace, registry=registry, verify="structural")
+    # no flag -> the journal's mode is used, and the run completes
+    assert _migration.migrate(workspace, registry=registry).resumed
+
+
+def test_hashing_reads_in_bounded_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "blob.bin"
+    path.write_bytes(b"x" * 10_000)
+    monkeypatch.setattr(_migration, "HASH_CHUNK_BYTES", 1024)
+    reads: list[int] = []
+    real_open = Path.open
+
+    def spying_open(self: Path, *args, **kwargs):
+        handle = real_open(self, *args, **kwargs)
+        if self != path:
+            return handle
+
+        class Spy:
+            def __enter__(self_inner):
+                handle.__enter__()
+                return self_inner
+
+            def __exit__(self_inner, *exc):
+                return handle.__exit__(*exc)
+
+            def read(self_inner, size: int = -1):
+                reads.append(size)
+                return handle.read(size)
+
+        return Spy()
+
+    monkeypatch.setattr(Path, "open", spying_open)
+    _migration._hash_file(path)
+    assert reads and all(0 < size <= 1024 for size in reads)
+
+
+def test_hash_verify_peak_memory_stays_bounded_on_a_large_file(
+    tmp_path: Path,
+) -> None:
+    """A whole-file read of 512 MiB would add >=512 MiB of peak RSS."""
+    import subprocess
+    import sys
+    import textwrap
+
+    collection = _fake_collection(tmp_path, "big")
+    with (collection / "index.faiss").open("wb") as handle:
+        handle.truncate(512 * 1024 * 1024)  # sparse; reads back as zeros
+    script = textwrap.dedent(
+        f"""
+        import resource, sys
+        from pathlib import Path
+        from indexed.cli.storage.commands import _migration
+        before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        _migration.fingerprint_collection(Path({str(collection)!r}), "hash")
+        after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        scale = 1 if sys.platform == "darwin" else 1024
+        print((after - before) * scale)
+        """
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    assert int(done.stdout.strip()) < 64 * 1024 * 1024
+
+
+def test_cli_help_and_validation_state_the_verify_default() -> None:
+    from typer.testing import CliRunner
+
+    from indexed.cli.app import app
+
+    runner = CliRunner()
+    helped = runner.invoke(app, ["storage", "migrate", "--help"])
+    flat = " ".join(helped.output.split())
+    assert "--verify" in flat
+    assert "structural (default" in flat
+    assert "does NOT compare content" in flat
+
+    refused = runner.invoke(app, ["storage", "migrate", "--verify", "md5"])
+    assert refused.exit_code == 1
+    assert "Unknown verify mode" in " ".join(refused.output.split())
