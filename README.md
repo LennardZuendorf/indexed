@@ -132,9 +132,12 @@ Safe to run twice: an existing install is upgraded in place, never duplicated.
 `--remove` deletes only the artifacts above (and only ones it recognises as its
 own) and prunes the directories it emptied.
 
-The hook is silent unless indexed actually has collections (`$HOME/.indexed/data/collections`
-or a `.indexed/collections.json` workspace pointer), so it costs nothing in repos
-that do not use indexed. Set `INDEXED_HOOK_LOG=/path/to/log` to trace its firings.
+The hook is silent unless indexed actually has collections (the collections root
+this install points at, or a `.indexed/collections.json` workspace pointer), so it
+costs nothing on a machine that does not use indexed. It only *adds context* to
+Grep/Glob calls — it never approves, blocks or prompts, so your permission rules
+and directory prompts behave exactly as before. Set
+`INDEXED_HOOK_LOG=/path/to/log` to trace its firings.
 
 Restart Claude Code, then use `/index-use`.
 

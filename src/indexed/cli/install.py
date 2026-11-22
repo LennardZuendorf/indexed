@@ -31,7 +31,7 @@ import tempfile
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import typer
 
@@ -61,6 +61,9 @@ INSTALL_SCHEMA = 1
 HOOK_MARKER = "indexed-install-hook"
 HOOK_MATCHER = "Grep|Glob"
 MANIFEST_NAME = "indexed-install.json"
+# Replaced with the collections root at install time, so `--home` reaches the
+# hook as well as the MCP server entry.
+COLLECTIONS_PLACEHOLDER = "{{COLLECTIONS_ROOT}}"
 
 app = typer.Typer(help="Install indexed integrations for coding agents")
 
@@ -155,8 +158,42 @@ def read_skill_text() -> str:
 
 
 def read_hook_text() -> str:
-    """The PreToolUse nudge hook payload."""
+    """The PreToolUse nudge hook payload, with the collections root unresolved."""
     return read_payload(HOOK_PAYLOAD)
+
+
+def collections_root(home_override: Optional[Path]) -> Path:
+    """Where the collections this install points at live."""
+    return (home_override or Path.home()) / ".indexed" / "data" / "collections"
+
+
+def installed_hook_text(home_override: Optional[Path]) -> str:
+    """The hook script as installed, with its collections root baked in.
+
+    The hook cannot read the MCP entry's env, so `--home` has to reach it in the
+    file itself, or a `--home` install would nudge only where the *user's* HOME
+    happens to have collections.
+    """
+    root = collections_root(home_override)
+    return read_hook_text().replace(COLLECTIONS_PLACEHOLDER, str(root))
+
+
+def foreign_hook_script(path: Path, ours: str) -> Optional[str]:
+    """The text of an existing hook script this installer did not write, or None.
+
+    A hand-written file sitting at our path belongs to the user: install refuses
+    to replace it without ``--force`` (removal already leaves unmarked files
+    alone), so installing never silently activates a file someone else owns.
+    """
+    if not path.is_file():
+        return None
+    try:
+        existing = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if HOOK_MARKER in existing or existing == ours:
+        return None
+    return existing
 
 
 # --------------------------------------------------------------------------- #
@@ -254,24 +291,36 @@ def server_entry_is_ours(entry: object) -> bool:
     """True when an ``mcpServers.indexed`` entry points at this CLI.
 
     Used by ``--remove``: a user who registered *their own* server named
-    ``indexed`` (a different command) keeps it.
+    ``indexed`` (a different command, or a different program that merely ends in
+    "indexed") keeps it. Both shapes ``resolve_cli_command`` can produce are
+    recognised — the console script and the ``python -m`` fallback — so a
+    removal never leaves a registration behind that an install created.
     """
     if not isinstance(entry, dict):
         return False
     command = entry.get("command")
     args = entry.get("args")
-    if not isinstance(command, str):
+    if not isinstance(command, str) or not isinstance(args, list):
         return False
-    if Path(command).name != "indexed" and not command.endswith("indexed"):
-        return False
-    return args in (["mcp", "run"], ["mcp"])
+    if args == ["mcp", "run"] and Path(command).name == "indexed":
+        return True
+    return args == ["-m", "indexed.cli.app", "mcp", "run"] and (
+        Path(command).name.startswith("python")
+    )
 
 
 def build_hook_group(hook_path: Path) -> dict[str, Any]:
-    """The PreToolUse group that runs our nudge hook for Grep/Glob."""
+    """The PreToolUse group that runs our nudge hook for Grep/Glob.
+
+    Commands go through ``shlex.quote``: Claude Code runs them in a shell, so a
+    home directory with a space in it would otherwise be split into a broken
+    command (and would stop matching as ours on the next run).
+    """
     return {
         "matcher": HOOK_MATCHER,
-        "hooks": [{"type": "command", "command": str(hook_path), "timeout": 10}],
+        "hooks": [
+            {"type": "command", "command": shlex.quote(str(hook_path)), "timeout": 10}
+        ],
     }
 
 
@@ -290,12 +339,14 @@ def _hook_command(group: object) -> str:
 
 
 def hook_group_is_ours(group: object) -> bool:
-    """True when a PreToolUse group runs the script this installer owns.
+    """True when a PreToolUse group runs the script *this* install owns.
 
-    Matched on the script's basename (after unquoting) rather than marker text,
-    so a group the user re-pointed elsewhere, or added with a different matcher,
-    is left for them.
+    Matched on the full installed path (after unquoting) plus our matcher, not on
+    the script's basename: a team directory with a same-named script, or a group
+    the user re-pointed or re-scoped, is left for them.
     """
+    if not isinstance(group, dict) or group.get("matcher") != HOOK_MATCHER:
+        return False
     command = _hook_command(group)
     if not command:
         return False
@@ -303,7 +354,9 @@ def hook_group_is_ours(group: object) -> bool:
         parts = shlex.split(command)
     except ValueError:
         return False
-    return bool(parts) and Path(parts[0]).name == HOOK_SCRIPT_NAME
+    if len(parts) != 1:
+        return False
+    return Path(parts[0]).expanduser() == claude_hook_path()
 
 
 def merge_hook_group(existing: dict[str, Any], group: dict[str, Any]) -> dict[str, Any]:
@@ -570,7 +623,8 @@ def claude_code(
         settings_existed = settings_path.is_file()
         settings = read_config(settings_path)
         skill_text = "" if remove else read_skill_text()
-        hook_text = "" if remove else read_hook_text()
+        hook_text = "" if remove else installed_hook_text(home_override)
+        foreign_hook = foreign_hook_script(hook_path, hook_text)
     except ConfigFileError as exc:
         # The reason is the only actionable part of this failure: print it (and
         # the path) on their own unbroken lines rather than folding both into the
@@ -629,6 +683,15 @@ def claude_code(
         _print_path("Wanted", json.dumps(entry))
         print_warning(
             "Refusing to overwrite it. Re-run with --force to replace it "
+            "(a .bak copy of the file is kept)."
+        )
+        raise typer.Exit(1)
+
+    if foreign_hook is not None and not force:
+        print_error(f"{hook_path} already exists and was not written by indexed.")
+        _print_path("First line", foreign_hook.splitlines()[0] if foreign_hook else "")
+        print_warning(
+            "Refusing to replace it. Re-run with --force to install over it "
             "(a .bak copy of the file is kept)."
         )
         raise typer.Exit(1)
@@ -753,11 +816,19 @@ def _plan_removal(
         )
 
     changes.append(
-        _owned_file_removal("Hook script", hook_path, HOOK_MARKER, keep_backup=False)
+        _owned_file_removal(
+            "Hook script",
+            hook_path,
+            lambda text: HOOK_MARKER in text,
+            keep_backup=False,
+        )
     )
     changes.append(
         _owned_file_removal(
-            "Skill", skill_path, f"name: {SKILL_NAME}", keep_backup=False
+            "Skill",
+            skill_path,
+            lambda text: _frontmatter_name(text) == SKILL_NAME,
+            keep_backup=False,
         )
     )
     changes.append(
@@ -768,17 +839,39 @@ def _plan_removal(
     return changes
 
 
+def _frontmatter_name(text: str) -> Optional[str]:
+    """The ``name:`` value of a skill's YAML frontmatter, or None.
+
+    Compared as a whole value: a skill called ``index-use-custom`` lives in its
+    own directory and must survive a removal.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        key, separator, value = line.partition(":")
+        if separator and key.strip() == "name":
+            return value.strip().strip("\"'")
+    return None
+
+
 def _owned_file_removal(
-    label: str, path: Path, marker: str, *, keep_backup: bool = True
+    label: str,
+    path: Path,
+    is_ours: Callable[[str], bool],
+    *,
+    keep_backup: bool = True,
 ) -> Change:
-    """Plan a file deletion only when the file carries our marker."""
+    """Plan a file deletion only when its content says the file is ours."""
     if not path.is_file():
         return Change(label, path, "unchanged")
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return Change(label, path, "skipped")
-    if marker not in text:
+    if not is_ours(text):
         return Change(label, path, "skipped")
     return _deletion(label, path, keep_backup=keep_backup)
 

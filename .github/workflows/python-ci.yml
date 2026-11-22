@@ -155,12 +155,14 @@ jobs:
         import json, sys
         payload = json.load(sys.stdin)["hookSpecificOutput"]
         assert payload["hookEventName"] == "PreToolUse", payload
-        assert "mcp__indexed__search" in payload["permissionDecisionReason"], payload
+        assert "permissionDecision" not in payload, "a nudge hook must not decide permissions"
+        assert "mcp__indexed__search" in payload["additionalContext"], payload
         print("hook ok")
         '
         # A machine with no collections gets no output (and never a broken hook).
         silent_home="$(mktemp -d)"
-        test -z "$(HOME="$silent_home" "$home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{}')"
+        HOME="$silent_home" uv run indexed install claude-code
+        test -z "$(HOME="$silent_home" "$silent_home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{}')"
 
         uv run python - "$home" <<'PY'
         import json

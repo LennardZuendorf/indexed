@@ -21,6 +21,8 @@ from indexed.cli import install as install_module
 
 runner = CliRunner()
 
+pytestmark = pytest.mark.unit
+
 # Present in both user files before any install, and asserted after every
 # install, upgrade and removal below.
 FOREIGN_SETTINGS = {
@@ -130,8 +132,9 @@ class TestHookInstall:
         text = hook.read_text(encoding="utf-8")
         assert text.startswith("#!/usr/bin/env bash")
         assert install_module.HOOK_MARKER in text
-        # The installed copy is the shipped payload, not a paraphrase.
-        assert text == install_module.read_hook_text()
+        # The installed copy is the shipped payload with this install's
+        # collections root baked in, not a paraphrase.
+        assert text == install_module.installed_hook_text(None)
 
     def test_registers_the_hook_in_settings(self, fake_home: Path):
         result = runner.invoke(_get_app(), ["install", "claude-code"])
@@ -224,9 +227,12 @@ class TestInstalledHookBehaviour:
         payload = json.loads(stdout)  # the hook's stdout must stay valid JSON
         output = payload["hookSpecificOutput"]
         assert output["hookEventName"] == "PreToolUse"
-        assert output["permissionDecision"] == "allow"
-        assert "mcp__indexed__search" in output["permissionDecisionReason"]
-        assert "Grep" in output["permissionDecisionReason"]
+        # Context only: the hook must never decide permissions for a user-scope
+        # tool, or every Grep/Glob (including one outside the project) is
+        # auto-approved.
+        assert "permissionDecision" not in output
+        assert "mcp__indexed__search" in output["additionalContext"]
+        assert "Grep" in output["additionalContext"]
 
     def test_nudges_when_the_workspace_has_a_pointer(
         self, fake_home: Path, tmp_path: Path
@@ -240,7 +246,7 @@ class TestInstalledHookBehaviour:
         stdout = self._run_hook(fake_home, {"tool_name": "Glob"}, project)
 
         output = json.loads(stdout)["hookSpecificOutput"]
-        assert "mcp__indexed__search" in output["permissionDecisionReason"]
+        assert "mcp__indexed__search" in output["additionalContext"]
 
     def test_silent_when_nothing_is_indexed(self, fake_home: Path, tmp_path: Path):
         runner.invoke(_get_app(), ["install", "claude-code"])
@@ -284,7 +290,7 @@ class TestInstalledHookBehaviour:
 
         assert completed.returncode == 0, completed.stderr
         output = json.loads(completed.stdout)["hookSpecificOutput"]
-        assert "mcp__indexed__search" in output["permissionDecisionReason"]
+        assert "mcp__indexed__search" in output["additionalContext"]
 
 
 class TestUpgrade:
@@ -442,3 +448,157 @@ class TestRemoval:
         runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
 
         assert skill.is_file()
+
+    def test_remove_keeps_a_skill_whose_name_only_starts_the_same(
+        self, fake_home: Path
+    ):
+        """`index-use-custom` is a different skill, not a prefix of ours."""
+        skill = fake_home / ".claude/skills/index-use/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("---\nname: index-use-custom\n---\n", encoding="utf-8")
+
+        runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
+
+        assert skill.is_file(), "a substring match deleted someone else's skill"
+
+    def test_remove_keeps_a_server_that_merely_ends_in_indexed(self, fake_home: Path):
+        """`my-indexed mcp run` is a different program with the same tail."""
+        config_path = fake_home / ".claude.json"
+        original = {
+            "mcpServers": {
+                "indexed": {
+                    "type": "stdio",
+                    "command": "/usr/local/bin/my-indexed",
+                    "args": ["mcp", "run"],
+                }
+            }
+        }
+        config_path.write_text(json.dumps(original), encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
+
+        assert result.exit_code == 0
+        assert (
+            json.loads(config_path.read_text())["mcpServers"]
+            == (original["mcpServers"])
+        )
+
+    def test_remove_cleans_up_the_python_module_fallback(self, fake_home: Path):
+        """`resolve_cli_command` can register `python -m indexed.cli.app mcp run`."""
+        config_path = fake_home / ".claude.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "indexed": {
+                            "type": "stdio",
+                            "command": "/usr/bin/python3",
+                            "args": ["-m", "indexed.cli.app", "mcp", "run"],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
+
+        assert result.exit_code == 0
+        # The entry was ours, so it is gone (and with it the file that held
+        # nothing else).
+        if config_path.exists():
+            assert "indexed" not in json.loads(config_path.read_text()).get(
+                "mcpServers", {}
+            )
+        assert "not ours" not in _strip_ansi(result.output)
+
+    def test_remove_keeps_a_hook_group_pointing_at_another_script(
+        self, fake_home: Path
+    ):
+        """Same basename, different location: a team install, not ours."""
+        settings_path = fake_home / ".claude/settings.json"
+        settings_path.parent.mkdir(parents=True)
+        foreign_group = {
+            "matcher": "Grep|Glob",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"/opt/team/bin/{install_module.HOOK_SCRIPT_NAME}",
+                }
+            ],
+        }
+        settings_path.write_text(
+            json.dumps({"hooks": {"PreToolUse": [foreign_group]}}), encoding="utf-8"
+        )
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
+
+        assert result.exit_code == 0
+        assert json.loads(settings_path.read_text())["hooks"]["PreToolUse"] == [
+            foreign_group
+        ]
+
+
+class TestOwnershipEdges:
+    def test_refuses_to_replace_a_hand_written_hook_script(self, fake_home: Path):
+        hook = fake_home / f".claude/hooks/{install_module.HOOK_SCRIPT_NAME}"
+        hook.parent.mkdir(parents=True)
+        hook.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "claude-code"])
+
+        assert result.exit_code == 1
+        assert "--force" in _strip_ansi(result.output)
+        assert hook.read_text() == "#!/bin/sh\necho mine\n"
+        assert not (fake_home / ".claude.json").exists()
+
+    def test_force_replaces_a_hand_written_hook_script(self, fake_home: Path):
+        hook = fake_home / f".claude/hooks/{install_module.HOOK_SCRIPT_NAME}"
+        hook.parent.mkdir(parents=True)
+        hook.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "claude-code", "--force"])
+
+        assert result.exit_code == 0
+        assert install_module.HOOK_MARKER in hook.read_text(encoding="utf-8")
+        backup = hook.with_name(hook.name + ".bak")
+        assert backup.read_text() == "#!/bin/sh\necho mine\n"
+
+    def test_home_override_reaches_the_hook(self, fake_home: Path):
+        """`--home` moves the collections; the hook has to look there."""
+        override = fake_home / "elsewhere"
+
+        result = runner.invoke(
+            _get_app(), ["install", "claude-code", "--home", str(override)]
+        )
+
+        assert result.exit_code == 0
+        hook = fake_home / f".claude/hooks/{install_module.HOOK_SCRIPT_NAME}"
+        text = hook.read_text(encoding="utf-8")
+        assert str(override / ".indexed/data/collections") in text
+        assert install_module.COLLECTIONS_PLACEHOLDER not in text
+
+    def test_hook_and_removal_survive_a_home_with_a_space(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A space in the home directory must not break the shell command."""
+        home = tmp_path / "Jane Doe"
+        home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        first = runner.invoke(_get_app(), ["install", "claude-code"])
+        assert first.exit_code == 0
+        group = _settings(home)["hooks"]["PreToolUse"][0]
+        assert group["hooks"][0]["command"].startswith("'"), (
+            "the command was not shell-quoted"
+        )
+
+        second = runner.invoke(_get_app(), ["install", "claude-code"])
+        assert second.exit_code == 0
+        assert len(_settings(home)["hooks"]["PreToolUse"]) == 1, (
+            "the hook was re-added because its quoted command was not recognised"
+        )
+
+        removed = runner.invoke(_get_app(), ["install", "claude-code", "--remove"])
+        assert removed.exit_code == 0
+        assert not (home / ".claude/settings.json").exists()
