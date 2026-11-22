@@ -2357,6 +2357,14 @@ import had a third importer nobody had counted.
   keep going, and let each pass import the stack itself, where a broken install
   has to surface anyway. One attempt per process is enough: a failed import has
   already poisoned `sys.modules`, so retrying buys nothing.
+- **A job whose runner never starts is not evidence.** Adding a macOS job to
+  cover the platform #358 was found on produced nothing here: `macos-14`
+  (arm64) was rejected outright ("configuration ... is not supported") and
+  `macos-13` sat queued for 30 minutes without a runner being assigned. Check
+  that the platform actually runs *before* promising its coverage — a job that
+  stays pending forever is a permanently yellow check, which trains people to
+  ignore the ones that mean something. Say "unverified here, here is what closes
+  it" instead.
 **Tags:** concurrency, mcp, imports, tests
 **Date:** 2026-11-22
 
