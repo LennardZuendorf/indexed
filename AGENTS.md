@@ -1,6 +1,6 @@
 # AGENTS.md — indexed Engineering Guide
 
-**indexed** · Python 3.11+ single-package project (`uv`, one wheel `indexed-sh`) ·
+**indexed** · Python 3.11–3.14 single-package project (`uv`, one wheel `indexed-sh`) ·
 local-first semantic search over files/Jira/Confluence/Outline, served by a Typer **CLI**
 and a FastMCP **server**. This is the operating contract for any agent in this repo. The design
 source of truth is `docs/spec/`; earned lessons are in `docs/spec/lessons.md` — read both at
