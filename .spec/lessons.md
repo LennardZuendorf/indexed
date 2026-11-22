@@ -2431,5 +2431,12 @@ state is never touched.
   echoes hook output; proof is the rollout jsonl / next request body
   (`content_item_kinds: ["hooks.additional_context"]`) or the hook's own
   `INDEXED_HOOK_LOG` trace.
+- **Every write to the user's file must use the raw helpers — including the
+  last, small one.** The trust-hash write was the one edit that read and wrote
+  `config.toml` in text mode, so `install` silently turned a CRLF file into LF
+  after the block splice had preserved it, and `--remove` could not restore the
+  bytes. Tests that exercise the merge helpers in isolation never reach a later
+  write, so the lifecycle test must run the *command* with the trust lookup
+  stubbed to succeed, then compare bytes around install/upgrade/remove.
 
 **Tags:** installers, codex, hooks, toml
