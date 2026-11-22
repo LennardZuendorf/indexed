@@ -2363,3 +2363,28 @@ that lifts the cap (here: an `onnxruntime` `cp315` wheel). Before capping, query
 PyPI for the missing ABI tag; a newly published wheel turns the answer into
 "document support and prove the install".
 **Tags:** packaging, install, verification
+
+### A migration journal records intent, never fact — reconcile it from disk
+**Pattern:** the local→global migration writes each step's state after the data
+move. Kill the process between `shutil.move` and that write and the journal says
+`planned` while the bytes are already at the target. Re-running from the journal
+alone would then move a missing source (or, on a cross-device `shutil.move`,
+retry over a half-copied target).
+**Rule:** every resumable step must reconcile its recorded state against the
+filesystem before acting (source/target present, target's structural fingerprint
+matches or is a partial copy to discard), and the journal must only ever supply
+names/targets/ids. Prove it by injecting the fault *inside* the move: run the
+real move, raise, then resume and assert one copy and one registry record. A
+mutation that skips reconciliation must turn that test red.
+**Tags:** migration, durability, testing
+
+### A session-scoped HOME sandbox needs per-test cleanup of the global store
+**Pattern:** `tests/conftest.py` patches `Path.home()` once per session, so a
+collection one system test migrates into `~/.indexed` is still there when the
+next test runs — and the second test's migration correctly reports it as a
+collision, failing for the harness's reason rather than the product's.
+**Rule:** any test that writes the global store cleans up what it created
+(registry file, per-workspace journals, and the collection directories that were
+not there at setup), scoped to a snapshot taken at fixture entry so unrelated
+state is never touched.
+**Tags:** testing, isolation

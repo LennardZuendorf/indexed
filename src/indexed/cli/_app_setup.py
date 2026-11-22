@@ -14,6 +14,7 @@ import typer
 
 KNOWLEDGE_PANEL = "Knowledge / Index Management"
 CONFIG_PANEL = "Configuration Management"
+STORAGE_PANEL = "Shared Collection Store"
 MCP_PANEL = "MCP Server"
 LSP_PANEL = "Language Server (LSP)"
 RESOURCES_PANEL = "Resources"
@@ -23,6 +24,7 @@ def register_commands(app: typer.Typer) -> None:
     """Register every subcommand and sub-Typer onto ``app`` (idempotent-ish;
     call exactly once at ``app.py`` import time)."""
     from . import info, knowledge
+    from . import storage as storage_cmd
     from . import install as install_cmd
     from .. import mcp
     from indexed.config import cli as config
@@ -124,6 +126,19 @@ def register_commands(app: typer.Typer) -> None:
     app.command(
         "config validate", rich_help_panel=CONFIG_PANEL, help="Validate Configuration"
     )(config.validate)
+
+    app.add_typer(
+        storage_cmd.app,
+        name="storage",
+        help="Manage The Shared Collection Store",
+        rich_help_panel=STORAGE_PANEL,
+        hidden=True,
+    )
+    app.command(
+        "storage migrate",
+        rich_help_panel=STORAGE_PANEL,
+        help="Move Local Collections Into The Shared Store (Or Roll Back)",
+    )(storage_cmd.migrate)
 
     app.add_typer(
         mcp.app,

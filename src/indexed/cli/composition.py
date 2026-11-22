@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Type
 
 from indexed.config import ConfigService, StorageMode, get_config, reload
+from indexed.config.collections_registry import WorkspacePointers
 from indexed.config.errors import ConfigurationError
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
@@ -209,13 +210,22 @@ def resolve_collections_context(
     register_app_config(config_service)
     mode = config_service.resolve_storage_mode()
     resolver = config_service.resolver
+    # A workspace that migrated its collections into the shared store holds a
+    # pointer file; honor it here so CLI and MCP read (and write) the same
+    # collections the pointer names, instead of an empty local directory
+    # (#346). A pointer whose root has disappeared is ignored — the workspace
+    # falls back to its own storage rather than failing every command.
+    collections_path = resolver.get_collections_path(mode)
+    shared_root = WorkspacePointers(workspace or Path.cwd()).shared_root()
+    if shared_root is not None:
+        collections_path = shared_root
     # ``connector_registry`` is intentionally omitted: CliContext builds it
     # lazily on first access so commands that never need connectors skip the
     # import cost (startup <1s). Create-time wiring still gets it via the
     # ``connector_factory`` closure.
     return CliContext(
         mode=mode,
-        collections_path=resolver.get_collections_path(mode),
+        collections_path=collections_path,
         caches_path=resolver.get_caches_path(mode),
         config_service=config_service,
     )

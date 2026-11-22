@@ -317,9 +317,21 @@ indexed index watch my-project --debounce 5 --poll-interval 1
 indexed config list                              # resolved configuration
 indexed config set core.v1.search.max_docs 20    # set a value
 
+# Share one collection between projects (stable id in ~/.indexed)
+indexed storage migrate --dry-run         # report collisions and affected data
+indexed storage migrate                   # move this project's collections to the shared store
+indexed storage migrate --on-collision adopt  # reuse an identical copy instead of keeping a second
+indexed storage migrate --rollback        # put this project's collections back
+
 # Editor integration (Language Server Protocol, stdio)
 indexed lsp                              # point your editor's LSP client here
 ```
+
+`indexed storage migrate` gives a collection a stable id in the global store and
+leaves a pointer in `./.indexed/collections.json`, so a second project reads the
+same index instead of rebuilding it. It journals every step, so an interrupted
+run resumes where it stopped, and `--rollback` restores the original local
+collection.
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
 
