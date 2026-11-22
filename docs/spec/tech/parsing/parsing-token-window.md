@@ -1,37 +1,14 @@
 ---
-type: branch
-scope: parsing
-parent: tech.md
-covers: ParsingModule, FileRouter, Docling, tree-sitter CodeChunker, ParsedDocument output
-updated: 2026-11-20
+type: tech
+updated: 2026-11-22
+applies: "src/indexed/parsing/**"
 ---
 
-# Tech Branch: Parsing (`src/indexed/parsing/`)
-
-Reusable parsing module shared across connectors (Files, Confluence, Outline).
-Lazy-loaded to keep CLI startup fast.
-
-**Parent: [tech.md](tech.md).** Consumed by [tech-connectors.md](tech-connectors.md).
-
----
-
-## Components
-
-| Component | Role |
-|-----------|------|
-| **FileRouter** | Map file extension → parsing strategy (Docling, AST, plaintext, fallback) |
-| **DoclingParser** | PDF/DOCX/PPTX/HTML/images via Docling, OCR (RapidOCR default) |
-| **CodeChunker** | AST-aware code chunking via tree-sitter (Python, TS, JS, Java, Rust, Go, C, C++) — splits at function/class/method boundaries |
-| **PlaintextParser** | Markdown via Docling (structure-aware); other text via paragraph splitting |
-| **ParsingModule** | Facade routing files to the correct parser; `code_chunking=False` sends code extensions to `PlaintextParser` (paragraph windows) instead of `CodeChunker` (AST boundaries) |
-
----
-
-## Token window & tokenizer acquisition
+# Token window & tokenizer acquisition
 
 `_model_window.py` is the parsing package's whole view of the embedding model's
 window: `DEFAULT_MODEL_MAX_SEQ_LENGTH = 256` (must track the embedder's default
-model, see `tech-core.md` § Model cache contract) and the tokenizer those
+model, see [Model cache contract](../core/core-model-cache-contract.md)) and the tokenizer those
 chunkers count with (`sentence-transformers/all-MiniLM-L6-v2`).
 
 **Parsing runs before the embedder's model acquisition**, so on a clean install
@@ -68,13 +45,3 @@ server wiring).
 
 `indexed init` downloads the whole repository (weights + tokenizer) up front, so
 after it every command — including `index create` — runs fully offline.
-
----
-
-## Output
-
-Framework-free `ParsedDocument` containing `ParsedChunk` objects:
-- raw text
-- contextualized text (heading/path prefix for embedding)
-- metadata
-- content hashes

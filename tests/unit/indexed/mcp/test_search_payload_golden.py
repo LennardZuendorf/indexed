@@ -268,7 +268,7 @@ def test_cli_json_stdout_is_parseable_with_no_human_chrome(monkeypatch) -> None:
 #
 # A failed request is NOT the success payload with empty lists — a consumer must
 # be able to tell the two apart without guessing. Both surfaces document their
-# failure body (``docs/spec/tech-app.md`` § Search result contract): the CLI prints
+# failure body (``docs/spec/tech/app/app-search-result-contract.md``): the CLI prints
 # ``{"error": str}`` and exits non-zero; MCP returns ``{"error": str, "type": str}``
 # so an agent can branch on the class (e.g. ``MCPError``) rather than the prose.
 
@@ -337,7 +337,7 @@ def test_mcp_empty_store_is_the_success_shape_with_no_collections() -> None:
     """An empty store is NOT an error envelope on MCP (the CLI reports one): the
     tool returns the success payload with `collections: []`, which is how a
     consumer tells "nothing was searched" from "searched, nothing matched"
-    (docs/spec/tech-app.md § The two bodies)."""
+    (docs/spec/tech/app/app-search-result-bodies.md)."""
     with (
         patch.object(tools_module, "svc_search", return_value={}),
         patch.object(server_module, "_get_config", return_value=_search_config()),

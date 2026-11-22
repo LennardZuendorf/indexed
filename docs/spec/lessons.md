@@ -2440,3 +2440,9 @@ state is never touched.
   stubbed to succeed, then compare bytes around install/upgrade/remove.
 
 **Tags:** installers, codex, hooks, toml
+
+### Layered spec rework (2026-11-22)
+**Pattern:** Moving the root to docs/spec left `vibe-spec root` reporting `flat`: root `tech-<topic>.md` files and 900-line hubs were still there. A move is not a rework.
+**Rule:** Split by heading with a script that reads the committed source. Prove nothing was lost by comparing normalized non-blank line multisets before and after. Keep hubs to links, put each topic in a kind-folder note of at most 60 lines with `applies:` or `code:` set, and repoint prose `§` references to the note that now holds the section.
+**Tags:** spec, docs
+**Date:** 2026-11-22

@@ -5,7 +5,7 @@ Reads two measurement files taken back to back on one runner — the captured ev
 and corresponding PR merge result — and turns their ratio into the gate's
 only verdict. No committed baseline is read here: a cross-run number carries the
 machine that produced it, so it can report drift but cannot decide a PR
-(docs/spec/tech.md § CI Benchmarking).
+(docs/spec/tech/ci-benchmarking/README.md).
 
 Two shapes are accepted, because both gates answer the same question:
 

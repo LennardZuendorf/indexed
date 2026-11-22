@@ -17,7 +17,7 @@ all stay in one place.
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
 **Plan:** [plan.md](plan.md)
-**App spec:** [../../tech-app.md](../../tech-app.md) · **Config:** [../../tech-config.md](../../tech-config.md)
+**App spec:** [../../tech/app/README.md](../../tech/app/README.md) · **Config:** [../../tech/config/README.md](../../tech/config/README.md)
 
 ---
 
