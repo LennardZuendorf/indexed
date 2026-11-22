@@ -260,7 +260,7 @@ Accumulated mistakes and earned defaults. Read at session start.
 - Lazy-load heavy ML imports inside functions, never at module top level.
 - Coverage is measured on installed packages — run `uv run pytest -q --cov=src`
   from project root.
-- Spec drift is the main failure mode — update `.spec/` in the same cycle as code.
+- Spec drift is the main failure mode — update `docs/spec/` in the same cycle as code.
 
 ---
 
@@ -853,7 +853,7 @@ with `git add`/`git status`, since that's what CI actually runs.
   silently dispatched to the default/requested engine, build-aside-and-swapped the
   whole collection directory, and destroyed the other engine's index — no error, no
   warning beyond a generic "already exists, overwrite?" prompt that never mentions
-  engines. `.spec/tech.md` already documented the correct contract ("an explicit
+  engines. `docs/spec/tech.md` already documented the correct contract ("an explicit
   selector may only confirm [the manifest] or fail with `EngineMismatchError`");
   the code just didn't implement it for `create`, and no test exercised `create`
   against an *existing* collection with a conflicting/absent engine to catch it.
@@ -947,7 +947,7 @@ with `git add`/`git status`, since that's what CI actually runs.
 
 - **A spec written before a package-layout collapse drifts in specific,
   checkable ways — verify each claim against the real tree instead of
-  trusting the file list.** `.spec/features/github-connector/{plan,tech}.md`
+  trusting the file list.** `docs/spec/features/github-connector/{plan,tech}.md`
   (authored pre-Simplify, 2026-06-24) still pointed at
   `packages/indexed-connectors/...`/`packages/indexed-core/...` (single
   package `src/indexed/` since Feature 14), instructed adding `github` to a
@@ -958,8 +958,8 @@ with `git add`/`git status`, since that's what CI actually runs.
   + each connector's own `from_manifest`). Two research passes against the
   real tree caught this before implementation started, corrected it in the
   plan document's own "Corrections to the spec" table, and this task (Task 9)
-  propagated the fix back into `.spec/` itself — a spec correction is only
-  real once it lands in `.spec/`, not just in a superseding plan file.
+  propagated the fix back into `docs/spec/` itself — a spec correction is only
+  real once it lands in `docs/spec/`, not just in a superseding plan file.
 - **The same "path-key defaults to `url`" assumption was hardcoded in three
   separate places, and got caught one site at a time instead of all at
   once.** `create.py:210` (the CLI's config-override write) was the only site
@@ -1749,7 +1749,7 @@ with `git add`/`git status`, since that's what CI actually runs.
 ## Benchmark corpora are pinned, never the repo's own docs (2026-11-03)
 
 - **A performance gate must not read content the project's own workflow keeps
-  growing.** `test_full_connector_pipeline_docs` walked `.spec/` (the live spec
+  growing.** `test_full_connector_pipeline_docs` walked `docs/spec/` (the live spec
   tree), so PR #278's three added feature spec files slowed it 9.27 s → 11.79 s
   (+27.1%, FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
   workspace, moved +4.1% on the same runners: the gate was measuring the corpus,

@@ -3,7 +3,7 @@ type: feature-product
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-11-06
+updated: 2026-11-22
 ---
 
 # Feature: Retrieval Evaluation Baseline — Product
@@ -22,7 +22,7 @@ Consumed by [issue #205](https://github.com/LennardZuendorf/indexed/issues/205).
 **Parent:** [../../product.md](../../product.md)
 **Architecture:** [tech.md](tech.md)
 **Plan:** [plan.md](plan.md)
-**Runbook:** [../../../eval/README.md](../../../eval/README.md)
+**Runbook:** [../../../../eval/README.md](../../../../eval/README.md)
 
 ---
 
@@ -137,7 +137,7 @@ Render the sole same-job comparator verdict. Missing reports MUST appear as unav
 ## Current measured fixture baseline
 
 The current expanded fixture experiment is recorded in
-[../../../eval/experiment.json](../../../eval/experiment.json): dense and
+[../../../../eval/experiment.json](../../../../eval/experiment.json): dense and
 dense-plus-rerank both hit all answerable cases at k=5; MRR is 0.808772 and
 0.828947, with four and three unanswerable distractor leaks. These are local
 fixture measurements, not a claim of general retrieval quality.

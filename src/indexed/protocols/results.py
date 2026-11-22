@@ -5,7 +5,7 @@ and the MCP tools ``search`` / ``search_collection`` use one builder
 (``indexed.mcp.formatting.build_search_payload``). CLI consumers check exit
 status before parsing stdout, then branch on ``schema``; MCP has no exit code.
 The user-facing field reference lives in ``docs/reference/search-output.md``;
-the design record in ``.spec/tech-app.md`` § Search result contract.
+the design record in ``docs/spec/tech-app.md`` § Search result contract.
 
 Design rules (issue #108/#109):
 

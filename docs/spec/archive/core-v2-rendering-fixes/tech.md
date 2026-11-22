@@ -3,7 +3,7 @@ type: feature-tech
 feature: core-v2-rendering-fixes
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-11
+updated: 2026-11-22
 ---
 
 # Feature: Core v2 Rendering Fixes — Architecture
@@ -73,7 +73,7 @@ made escape backslashes print visibly for any message containing `[`
 — `print_error(format_cli_error(exc))` — since a `Text()` sink is markup-safe
 by construction. The same pattern was found and fixed in a second, pre-existing
 call site (`search_render.py`'s `_print_collection_errors`), outside this
-feature's original 8 findings. See `.spec/plan.md`'s 2026-09-03 Decision Log
+feature's original 8 findings. See `docs/spec/plan.md`'s 2026-09-03 Decision Log
 entry for the full story.
 
 ### R2 — detail cards hardcoded to 60 columns (CONFIRMED)

@@ -3,7 +3,7 @@ type: feature-plan
 feature: retrieval-eval
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-11-06
+updated: 2026-11-22
 ---
 
 # Retrieval Evaluation Baseline — Delivery Plan
@@ -11,7 +11,7 @@ updated: 2026-11-06
 **Parent:** [../../plan.md](../../plan.md)
 **Requirements:** [product.md](product.md)
 **Architecture:** [tech.md](tech.md)
-**Runbook:** [../../../eval/README.md](../../../eval/README.md)
+**Runbook:** [../../../../eval/README.md](../../../../eval/README.md)
 
 The local measurement harness originated in PR #265. PR #274 adds the
 same-job gate and evaluator stability repair alongside the #273 benchmark

@@ -2,7 +2,7 @@
 type: entrypoint
 scope: tech
 children: [tech-app.md, tech-core.md, tech-config.md, tech-connectors.md, tech-parsing.md]
-updated: 2026-11-20
+updated: 2026-11-22
 ---
 
 # Tech Spec: indexed
@@ -368,7 +368,7 @@ run at all, and the guard (below) is the only check it faces.
 **Corpora are pinned, never the repo's own docs.**
 `tests/benchmarks/test_parsing_performance.py` measures the parsing pipeline
 over a frozen snapshot committed in
-`tests/benchmarks/fixtures/parsing_corpus/`, not over `.spec/`. Measuring the
+`tests/benchmarks/fixtures/parsing_corpus/`, not over `docs/spec/`. Measuring the
 live spec tree coupled the gate to the docs: PR #278 added three feature spec
 files and `test_full_connector_pipeline_docs` went 9.27 s → 11.79 s (+27.1%,
 FAIL) while `test_full_connector_pipeline_mixed`, which builds its own
@@ -802,7 +802,7 @@ Connector readers use this helper — do not duplicate status-code tuples.
 
 ### Spec Ledger Merging
 
-The mutable `.spec/lessons.md` and `.spec/tech.md` use normal content merging.
+The mutable `docs/spec/lessons.md` and `docs/spec/tech.md` use normal content merging.
 Union merging can silently duplicate frontmatter keys when both sides edit metadata.
 Resolve overlapping ledger additions and frontmatter conflicts explicitly.
 
@@ -882,3 +882,10 @@ raising the number. Branches therefore never edit a shared ceiling — the reaso
 this replaced the hand-bumped `TEST_LOC_MAX`, which made every test-adding branch
 conflict with every other one.
 ```
+
+### Spec-Root CI
+
+`scripts/check_spec_root.py` (workflow `Spec Root`, job `spec-root`, no path filter) asserts
+`docs/spec/` exists with the core specs, the legacy dot-directory is gone, and no tracked
+file outside the hash-locked eval/benchmark captures names it. The spec skill falls back
+to a legacy root when `docs/spec/` is absent, so without this gate a half-migration stays green.

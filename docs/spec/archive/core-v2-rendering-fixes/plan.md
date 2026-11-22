@@ -3,7 +3,7 @@ type: feature-plan
 feature: core-v2-rendering-fixes
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-11-11
+updated: 2026-11-22
 ---
 
 # Feature: Core v2 Rendering Fixes — Implementation Plan
@@ -206,15 +206,15 @@ python scripts/check_imports.py
 ## Compound
 
 On completion: add a `## Feature 18: Core v2 rendering fixes (issue #187)` row to
-root `.spec/plan.md`'s Feature Sequence table; fold any load-bearing pattern
+root `docs/spec/plan.md`'s Feature Sequence table; fold any load-bearing pattern
 (e.g. "detail-card width must derive from the terminal, never hardcode") into
-`.spec/lessons.md`; retire this feature folder once merged, per the precedent set
+`docs/spec/lessons.md`; retire this feature folder once merged, per the precedent set
 when `review-remediation` was retired into root tech specs.
 
 **Done (2026-09-03):** Feature 18 row + Decision Log entry added to root
-`.spec/plan.md`; 5 lessons folded into `.spec/lessons.md` § "Core v2 rendering
+`docs/spec/plan.md`; 5 lessons folded into `docs/spec/lessons.md` § "Core v2 rendering
 fixes". Feature folder NOT yet retired — retirement happens after this branch
-merges, per the review-remediation precedent (`.spec/plan.md`'s 2026-07-09
+merges, per the review-remediation precedent (`docs/spec/plan.md`'s 2026-07-09
 decision).
 
 ## Final outcome (2026-09-03)

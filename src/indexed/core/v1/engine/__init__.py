@@ -8,7 +8,7 @@ changes (the core-swap seam).
 
 Resolution is lazy (module ``__getattr__``): importing ``core.v1.engine`` stays
 cheap, and the first facade access warms the services package in the correct
-order (avoiding the cold-import cycle documented in ``.spec/lessons.md``).
+order (avoiding the cold-import cycle documented in ``docs/spec/lessons.md``).
 """
 
 from typing import TYPE_CHECKING, Any

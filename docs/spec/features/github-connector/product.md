@@ -3,7 +3,7 @@ type: feature-product
 feature: github-connector
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-09-07
+updated: 2026-11-22
 ---
 
 # Feature: GitHub Projects & Issues Connector — Product
@@ -31,7 +31,7 @@ Resolves [issue #90](https://github.com/LennardZuendorf/indexed/issues/90).
 
 | | |
 |---|---|
-| **Owns** | `src/indexed/connectors/github/` (connector, GraphQL reader, converter, schema, auth resolver); rows for `github` in `src/indexed/connectors/registry.py` (`CONNECTOR_REGISTRY`/`NAMESPACE_REGISTRY`/`PATH_KEY_REGISTRY`); config namespace `sources.github`; the `create github` CLI subcommand in `src/indexed/cli/knowledge/commands/`; `.spec/features/github-connector/`; tests under `tests/unit/indexed/connectors/github/`. |
+| **Owns** | `src/indexed/connectors/github/` (connector, GraphQL reader, converter, schema, auth resolver); rows for `github` in `src/indexed/connectors/registry.py` (`CONNECTOR_REGISTRY`/`NAMESPACE_REGISTRY`/`PATH_KEY_REGISTRY`); config namespace `sources.github`; the `create github` CLI subcommand in `src/indexed/cli/knowledge/commands/`; `docs/spec/features/github-connector/`; tests under `tests/unit/indexed/connectors/github/`. |
 | **Does not own** | Engine/FAISS/persistence (core), the `ParsingModule` itself (parsing), `ConfigService` internals (config), CLI command files beyond wiring the new source type, the Jira/Confluence/Outline connectors. |
 
 ---
