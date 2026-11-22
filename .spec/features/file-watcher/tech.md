@@ -51,8 +51,7 @@ When true, `mcp/watch.py`:
    exists;
 2. starts one `asyncio.to_thread(run_watch_loop)` per collection, sharing one
    `threading.Event` as the stop signal, so the blocking update never runs on
-   the event loop, plus one `threading.Lock` and one `threading.Event` that
-   gate the *opening* catch-up pass (see below);
+   the event loop;
 3. on lifespan exit sets the event and `await`s the tasks. The loops notice the
    event on their next poll tick or at the end of an in-flight update, so a
    shutdown never abandons a half-written collection.
@@ -65,22 +64,28 @@ whole process (every chunk sized by `len(text) // 3`). Warming the tokenizer
 before any watcher exists makes the import order structural, not lucky. With
 the gate off the branch is still one attribute read — no warming, no import.
 
-The tokenizer warm-up covers one module, not the whole update path: the first
-catch-up pass also pulls LlamaIndex and the embedder in, from a worker thread,
-and every collection catches up at once on startup. `watch.warm_shared_stack()`
-therefore runs once per server under a gate (`WatcherHandle.first_pass_gate` /
-`stack_warm`) before the first pass runs: one owner for the cold import, and a
-thread that waited on the gate runs its own pass ungated as soon as the flag is
-set, so every pass after the warm-up is independent. The flag records one
-*attempt*, not one success — a broken collection must not queue every other
-collection's retries behind the gate, and the pass itself is where a broken
-install surfaces (the warm-up failure is DEBUG). A thread that lost the
-concurrent import got a half-initialised `llama_index` module, which stays in
-`sys.modules` and fails every later pass of that process — a permanent stale
-collection, which the macOS system test saw as a restart that never caught up.
+The tokenizer warm-up covers one module, not the whole update path, and the
+first `search` is not the only other importer: FastMCP runs each sync tool on
+its own thread, so the *search handler* can be importing `llama_index` at the
+same moment as a catch-up pass. `watch.warm_shared_stack()` therefore runs
+inside `start_watchers_if_enabled`, synchronously, **before the first watcher
+task is created**: from then on `sys.modules` is populated, and no thread —
+watcher or tool — can observe a half-built module. Warming from inside the
+first pass (as #361 did, under a `threading.Lock`) serialised the watchers
+against each other but not against the tool thread, so the search handler still
+lost the import and reported `cannot import name 'BaseEmbedding' from partially
+initialized module 'llama_index.core.base.embeddings.base'`, or deadlocked on
+`_ModuleLock` with two collections. A half-initialised module stays in
+`sys.modules` and fails every later call in that process, which the macOS
+system test saw as a restart that never caught up.
+
 The warm-up imports `llama_index.embeddings.huggingface`, the module that logged
 the partially initialized `BaseEmbedding`, which pulls `llama_index.core`,
 `transformers` and `sentence-transformers` — the cold stack of both engines.
+It is an optimisation, never a failure mode: a failed warm-up logs one warning
+and each pass then imports the stack itself, where a broken install surfaces.
+Its cost is paid at startup (the lifespan has not yielded, so no tool is served
+yet), not on the first search.
 
 The plan is not re-run while the server lives: collections created after
 startup are watched only after the next restart (documented in

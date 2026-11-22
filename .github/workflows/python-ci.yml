@@ -110,6 +110,10 @@ jobs:
         "
 
     - name: Run System Tests
+      env:
+        # A skipped system test proves nothing; the model is cached above, so
+        # demand it here rather than letting the live proofs quietly not run.
+        INDEXED_REQUIRE_LIVE_MODEL: "1"
       run: |
         uv run pytest tests/system/ -q --tb=short
 
