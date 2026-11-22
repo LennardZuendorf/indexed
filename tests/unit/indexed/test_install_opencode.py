@@ -318,20 +318,17 @@ class TestJsonSplice:
         assert json.loads(strip_jsonc(merged))["mcp"]["indexed"] == ENTRY
 
     def test_removal_after_a_trailing_comma_keeps_the_content(self):
-        """A JSONC trailing comma is legal input; the content is what comes back.
+        """A JSONC trailing comma is legal input, and it comes back too.
 
-        Insertion has to keep the file valid, so it reuses the existing separator;
-        removal then takes that separator with it, which drops the trailing comma
-        (still valid JSONC, same document). Files the host writes have no trailing
-        comma, so this is the one shape that is not byte-exact, and it is only
-        ever a comma.
+        Insertion keeps the user's comma as a separator and carries its own, so
+        removal can take exactly what it added and leave the original bytes.
         """
         original = '{\n  "a": 1,\n}\n'
         merged = self._merge(original)
 
         removed = self._remove(merged, prune=True)
 
-        assert removed == '{\n  "a": 1\n}\n'
+        assert removed == original
         assert json.loads(strip_jsonc(removed)) == {"a": 1}
 
     def test_malformed_json_is_refused(self):
@@ -527,8 +524,12 @@ class TestCrlfLifecycle:
         _assert_foreign_config_intact(text)
 
     def test_remove_restores_the_original_bytes(self, seeded: Path):
-        runner.invoke(_get_app(), ["install", "opencode"])
-        runner.invoke(_get_app(), ["install", "opencode"])
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+        installed = _config(seeded).read_bytes()
+        assert b'"indexed"' in installed, (
+            "install wrote nothing to assert removal against"
+        )
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
 
         result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
 
@@ -671,6 +672,149 @@ class TestRefusalsAreMessages:
 
         assert result.exit_code == 1
         assert "is not valid JSON" in _strip_ansi(result.output)
+
+
+class TestReviewRegressions:
+    """Findings from review that were real bugs in an earlier revision."""
+
+    ENTRY_TEXT = (
+        '{"type": "local", "command": ["/usr/bin/indexed", "mcp", "run"], '
+        '"enabled": true}'
+    )
+
+    def test_a_comment_inside_a_created_mcp_object_keeps_the_file(
+        self, config_dir: Path
+    ):
+        config_dir.mkdir(parents=True)
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+        config = _config(config_dir)
+        text = config.read_text(encoding="utf-8").replace(
+            '"mcp": {', '"mcp": {\n    // keep: local venv'
+        )
+        config.write_text(text, encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert config.is_file(), "--remove deleted a file that still had a comment"
+        assert "// keep: local venv" in config.read_text(encoding="utf-8")
+
+    def test_removal_never_deletes_a_config_file_it_did_not_create(
+        self, config_dir: Path
+    ):
+        config_dir.mkdir(parents=True)
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+        _config(config_dir).unlink()
+        user_config = config_dir / "opencode.jsonc"
+        user_config.write_text("{}\n", encoding="utf-8")
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert user_config.is_file(), "--remove deleted the user's own config"
+
+    def test_a_duplicate_key_of_any_type_is_refused(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        body = '{\n  "mcp": {"indexed": ' + self.ENTRY_TEXT + '},\n  "mcp": null\n}\n'
+        config = _config(config_dir)
+        config.write_text(body, encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--force"])
+
+        assert result.exit_code == 1
+        assert "duplicate key" in _strip_ansi(result.output)
+        assert config.read_text(encoding="utf-8") == body
+
+    def test_an_explicit_null_entry_is_not_a_missing_entry(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        config = _config(config_dir)
+        config.write_text('{\n  "mcp": {"indexed": null}\n}\n', encoding="utf-8")
+
+        result = runner.invoke(_get_app(), ["install", "opencode"])
+
+        assert result.exit_code == 1
+        assert "points somewhere else" in _strip_ansi(result.output)
+
+    def test_removal_keeps_a_comment_between_servers(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        config = _config(config_dir)
+        config.write_text(
+            "{\n"
+            '  "mcp": {\n'
+            f'    "indexed": {self.ENTRY_TEXT},\n'
+            "    // keep me\n"
+            '    "z": {}\n'
+            "  }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        text = config.read_text(encoding="utf-8")
+        assert "// keep me" in text
+        assert '"z"' in text
+        assert '"indexed"' not in text
+
+    def test_a_trailing_comma_object_round_trips_byte_for_byte(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        config = _config(config_dir)
+        original = b'{\n  "mcp": {\n    "a": {},\n  }\n}\n'
+        config.write_bytes(original)
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert config.read_bytes() == original
+
+    def test_blank_config_bytes_are_restored(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        config = _config(config_dir)
+        config.write_bytes(b" \r\n")
+        assert runner.invoke(_get_app(), ["install", "opencode"]).exit_code == 0
+
+        result = runner.invoke(_get_app(), ["install", "opencode", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert config.read_bytes() == b" \r\n"
+
+    def test_the_windows_launcher_is_recognised_as_ours(self):
+        assert server_entry_is_ours(
+            {
+                "type": "local",
+                "command": ["C:\\Python\\Scripts\\indexed.exe", "mcp", "run"],
+            }
+        )
+
+    def test_a_foreign_v2_nested_entry_is_refused(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        config = _config(config_dir)
+        config.write_text(
+            '{\n  "mcp": {"servers": {"indexed": {"type": "local", '
+            '"command": ["/opt/other-agent/bin/serve", "--mcp"]}}}\n}\n',
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(_get_app(), ["install", "opencode"])
+
+        assert result.exit_code == 1
+        output = _strip_ansi(result.output)
+        assert "mcp.servers.indexed" in output
+        assert config.read_text(encoding="utf-8").startswith('{\n  "mcp": {"servers"')
+
+    def test_an_unreadable_config_is_a_message_not_a_traceback(self, config_dir: Path):
+        config_dir.mkdir(parents=True)
+        _config(config_dir).write_bytes(b'{"mcp": {"x": "\xff\xfe"}}')
+
+        result = runner.invoke(_get_app(), ["install", "opencode"])
+
+        assert result.exit_code == 1
+        output = _strip_ansi(result.output)
+        assert "OpenCode config" in output
+        assert "not valid UTF-8" in output
 
 
 class TestPayloadAssets:

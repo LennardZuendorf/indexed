@@ -455,14 +455,16 @@ jobs:
         timeout 120 opencode service start >/dev/null 2>&1 || true
         listed=""
         while [ "$SECONDS" -lt "$deadline" ]; do
-          listed="$(timeout 120 opencode mcp list 2>/dev/null || true)"
-          case "$listed" in
-            *"✓ indexed"*) break ;;
-          esac
+          # A non-zero exit is not a listing: retry rather than parse an error.
+          if listed="$(timeout 120 opencode mcp list 2>/dev/null)"; then
+            case "$listed" in
+              *"✓ indexed "*|*"✓ indexed") break ;;
+            esac
+          fi
           sleep 5
         done
         case "$listed" in
-          *"✓ indexed"*) ;;
+          *"✓ indexed "*|*"✓ indexed") ;;
           *)
             echo "opencode did not list the indexed server:" >&2
             printf '%s\n' "$listed" >&2

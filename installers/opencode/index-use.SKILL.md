@@ -17,9 +17,9 @@ Code Mode is on by default, so the MCP tools are not directly callable — write
 the calls inside the `execute` tool:
 
 ```js
-const results = await tools.indexed.search({ query: "where are retries implemented" })
-// One collection:
-const one = await tools.indexed.search_collection({ collection: "<name>", query: "..." })
+return await tools.indexed.search({ query: "where are retries implemented" })
+// One collection: return the call too, or `execute` hands the model nothing.
+return await tools.indexed.search_collection({ collection: "<name>", query: "..." })
 ```
 
 On a `codemode: false` install the flat tools are directly callable instead:

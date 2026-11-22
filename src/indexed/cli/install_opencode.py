@@ -170,8 +170,13 @@ def installed_plugin_text(home_override: Optional[Path]) -> str:
 
 def read_text_raw(path: Path) -> str:
     """Read a file without newline translation, so CRLF stays CRLF."""
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        return handle.read()
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            return handle.read()
+    except UnicodeDecodeError as exc:
+        raise OpenCodeConfigError(
+            path, "could not be read", "the file is not valid UTF-8"
+        ) from exc
 
 
 def write_text_raw_atomic(path: Path, text: str) -> None:
@@ -406,6 +411,11 @@ class _JsoncScanner:
             key_start = self.index
             key = self._scan_string()
             key_end = self.index
+            if any(existing.key == key for existing in members):
+                # Which member is "ours" would be a guess (and `json.loads`
+                # takes the last one), so refuse any duplicate key, whatever
+                # its value type. A duplicate object path is caught in _record.
+                self._fail("duplicate key " + ".".join(path + (key,)))
             self._skip_trivia()
             if self._peek() != ":":
                 self._fail("expected ':' after an object key")
@@ -695,10 +705,11 @@ def insert_member(
         )
         return text[: last.value_end] + addition + text[last.value_end :]
     if obj.trailing_comma is not None:
-        # Insert after the comma: it already separates our member, so adding a
-        # second one would leave a double comma.
+        # Insert after the comma and keep a real comma after our member, so the
+        # user's trailing comma survives removal as a separator rather than
+        # being consumed by the insert.
         at = obj.trailing_comma + 1
-        addition = eol + indent + rendered
+        addition = eol + indent + rendered + ","
     else:
         at = last.value_end
         addition = "," + eol + indent + rendered
@@ -763,7 +774,17 @@ def delete_member(
         return text[: member.key_start] + text[end:]
     position = obj.members.index(member)
     if position < len(obj.members) - 1:
-        return text[: member.key_start] + text[obj.members[position + 1].key_start :]
+        # Remove our member and the comma that followed it, not the run up to
+        # the next key: anything a human wrote in between (a comment, a blank
+        # line) belongs to the next member and must survive.
+        limit = obj.members[position + 1].key_start
+        comma = text.find(",", member.value_end, limit)
+        end = comma + 1 if comma != -1 else limit
+        return text[: member.key_start] + text[end:]
+    if obj.trailing_comma is not None and member.comma_before is not None:
+        # Our member was appended after an existing trailing comma and carries
+        # its own: keep the user's comma and drop only what the insert added.
+        return text[: member.comma_before + 1] + text[obj.trailing_comma + 1 :]
     if member.comma_before is None:  # pragma: no cover - unreachable when valid
         return text[: member.key_start] + text[member.value_end :]
     return text[: member.comma_before] + text[member.value_end :]
@@ -870,11 +891,14 @@ def build_server_entry(command: list[str], home: Optional[Path]) -> dict[str, An
 def server_entry_is_ours(entry: object) -> bool:
     """True when a `mcp.indexed` entry is the one this installer writes.
 
-    Matched on the command, not on the key: a user's own server that happens to
-    be called `indexed` (a wrapper script, a second binary) keeps its name, and
-    `--remove` leaves it. Both shapes `resolve_cli_command` can produce are
-    recognised — the console script and the `python -m` fallback — so an upgrade
-    still matches after the interpreter moves.
+    Matched on the command, not on the key: `--remove` leaves a user's own
+    server that is called `indexed` but runs something else. The command shape
+    is what identifies us, so a *different* binary whose file name is
+    `indexed` (another virtualenv's launcher) does read as ours — the config
+    `.bak` is the recovery path for that, and the alternative (forgetting our
+    own entry after an upgrade) is worse. Both shapes `resolve_cli_command` can
+    produce are recognised — the console script and the `python -m` fallback —
+    so an upgrade still matches after the interpreter moves.
     """
     if not isinstance(entry, dict) or entry.get("type") != "local":
         return False
@@ -884,10 +908,12 @@ def server_entry_is_ours(entry: object) -> bool:
     parts = [part for part in command if isinstance(part, str)]
     if len(parts) != len(command):
         return False
-    binary = Path(parts[0]).name
-    if binary == "indexed" and parts[1:] == ["mcp", "run"]:
+    # Both separators, because a Windows path is a single POSIX file name: the
+    # installer writes `indexed.exe` there and `shutil.which` returns that path.
+    binary = parts[0].replace("\\", "/").rsplit("/", 1)[-1]
+    if binary.lower() in {"indexed", "indexed.exe"} and parts[1:] == ["mcp", "run"]:
         return True
-    return binary.startswith("python") and parts[1:] == [
+    return binary.lower().startswith("python") and parts[1:] == [
         "-m",
         "indexed.cli.app",
         "mcp",
@@ -945,8 +971,13 @@ def remove_server_entry(text: str, path: Path, *, prune_container: bool) -> str:
         rescanned = _scan_or_raise(updated, path)
         container = rescanned.objects.get((CONTAINER_KEY,))
         if container is not None and not container.members:
-            allowed.append((CONTAINER_KEY,))
-            updated = delete_member(updated, rescanned, (), CONTAINER_KEY)
+            # Only prune an object that holds nothing but whitespace now: a
+            # comment the user added inside it is their text, and deleting the
+            # whole object would take it (and then the file) with it.
+            body = updated[container.start + 1 : container.end - 1]
+            if not body.strip():
+                allowed.append((CONTAINER_KEY,))
+                updated = delete_member(updated, rescanned, (), CONTAINER_KEY)
     guard_edit(text, updated, allowed, path)
     return updated
 
@@ -1028,6 +1059,10 @@ def foreign_file(
         existing = read_text_raw(path)
     except OSError:
         return None
+    except OpenCodeConfigError:
+        # Not valid UTF-8: treat the file as someone else's rather than
+        # overwriting something we cannot read.
+        return f"{path}: not a UTF-8 text file"
     if existing == ours or is_ours(existing):
         return None
     return existing
@@ -1092,7 +1127,9 @@ def _apply_changes(changes: Sequence[base.Change]) -> None:
     unchanged, CRLF and a missing final newline included. It is also the one file
     written exactly once per run — there is no trust step to make a second pass.
     """
-    base.apply_changes([change for change in changes if change.label != "Config"])
+    base.apply_changes(
+        [change for change in changes if change.label not in ("Config", "Manifest")]
+    )
     for change in changes:
         if change.label != "Config" or change.action in ("unchanged", "skipped"):
             continue
@@ -1107,6 +1144,9 @@ def _apply_changes(changes: Sequence[base.Change]) -> None:
             continue
         base.backup_file(change.path)
         write_text_raw_atomic(change.path, change.text)
+    # The manifest goes last: if a config write failed, the record of what was
+    # installed must still be there for a retry to finish the job.
+    base.apply_changes([change for change in changes if change.label == "Manifest"])
     for change in changes:
         if change.action == "removed":
             _prune_emptied(change.path.parent)
@@ -1174,6 +1214,11 @@ def _plan_install(
         merged += line_ending(merged)
 
     previous = _config_meta(previous_manifest) if previous_manifest else {}
+    if previous.get("file") not in (None, str(config_path)):
+        # The manifest describes a different document (the user renamed or
+        # replaced their config): its `created`/`was_empty` flags say nothing
+        # about this file, and reusing them would let `--remove` delete it.
+        previous = {}
     created = bool(previous.get("created")) or not had_file
     was_empty = bool(previous.get("was_empty")) or (
         had_file and not config_text.strip()
@@ -1189,6 +1234,9 @@ def _plan_install(
         skill_path=skill_path,
         plugin_path=plugin_path,
     )
+    # Blank is not the same as empty: `--remove` must put back the bytes that
+    # were there, and `" \r\n"` cannot be rebuilt from a boolean.
+    manifest["config"]["blank"] = config_text if was_empty else ""
     if not had_file:
         config_action = "created"
     elif merged != config_text:
@@ -1216,14 +1264,21 @@ def _plan_removal(
     """Every artifact a removal touches, with what would change about each."""
     changes: list[base.Change] = []
     container = document.get(CONTAINER_KEY)
-    existing = container.get(SERVER_NAME) if isinstance(container, dict) else None
+    has_existing = isinstance(container, dict) and SERVER_NAME in container
+    existing = (
+        container[SERVER_NAME] if isinstance(container, dict) and has_existing else None
+    )
 
-    if existing is None:
+    if not has_existing:
         changes.append(base.Change("Config", config_path, "unchanged"))
     elif not server_entry_is_ours(existing):
         changes.append(base.Change("Config", config_path, "skipped"))
     else:
         meta = _config_meta(manifest)
+        if meta.get("file") not in (None, str(config_path)):
+            # Flags recorded for another document must not authorise deleting
+            # this one; without a matching manifest, only our key is removed.
+            meta = {}
         remaining = remove_server_entry(
             config_text,
             config_path,
@@ -1236,7 +1291,7 @@ def _plan_removal(
                 # nothing left in it is ours to take away again.
                 target = None
             elif meta.get("was_empty"):
-                target = ""
+                target = meta.get("blank", "")
         if target is None:
             changes.append(base._deletion("Config", config_path))
         else:
@@ -1419,11 +1474,12 @@ def opencode(
         return
 
     container = document.get(CONTAINER_KEY)
+    has_existing = isinstance(container, dict) and SERVER_NAME in container
     existing_server = (
-        container.get(SERVER_NAME) if isinstance(container, dict) else None
+        container[SERVER_NAME] if isinstance(container, dict) and has_existing else None
     )
 
-    if existing_server is not None and not server_entry_is_ours(existing_server):
+    if has_existing and not server_entry_is_ours(existing_server):
         if not force:
             print_error(
                 f"{config_path} already registers a {SERVER_KEY} entry "
@@ -1436,6 +1492,25 @@ def opencode(
                 "(a .bak copy of the file is kept)."
             )
             raise typer.Exit(1)
+
+    # v2 also reads `mcp.servers.<name>`, which this installer never writes. A
+    # foreign entry there takes precedence over the flat one, so adding ours and
+    # reporting success would register a server the host does not use.
+    nested_servers = container.get("servers") if isinstance(container, dict) else None
+    nested = (
+        nested_servers.get(SERVER_NAME) if isinstance(nested_servers, dict) else None
+    )
+    if nested is not None and not server_entry_is_ours(nested):
+        print_error(
+            f"{config_path} registers mcp.servers.{SERVER_NAME}, which this "
+            "installer does not own."
+        )
+        _print_path("Existing", json.dumps(nested))
+        print_warning(
+            "OpenCode reads that entry before the flat one. Remove or rename it "
+            "(it is not ours to edit), then re-run."
+        )
+        raise typer.Exit(1)
 
     if foreign_skill is not None:
         # A user's own skill directory named index-use is theirs, and the host

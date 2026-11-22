@@ -53,14 +53,24 @@ function trace(event, fields) {
 }
 
 // Whether indexed has anything to search. Memoised per process and re-checked
-// when the working directory changes: half the check is cwd-relative (a project
-// can carry its own `.indexed/collections.json`), and `context` fires on every
-// model round-trip, so an uncached filesystem walk would be paid per turn.
-let cached = { cwd: null, hasCollections: false }
+// when the working directory changes or the memo ages out: half the check is
+// cwd-relative (a project can carry its own `.indexed/collections.json`) and
+// `context` fires on every model round-trip, so an uncached filesystem walk
+// would be paid per turn — but a long session must still notice a collection
+// created (or deleted) after it started.
+//
+// The directory is the plugin's own process cwd: the `context` payload on
+// v2.3.2 carries no session directory (its keys are sessionID/model/system/
+// messages/options/agent/tools), and `setup` runs once per plugin instance. A
+// wrong directory only costs one omitted nudge line, never a wrong edit.
+const CACHE_TTL_MS = 30000
+let cached = { cwd: null, hasCollections: false, at: 0 }
 
 function hasCollections() {
   const cwd = safeCwd()
-  if (cached.cwd === cwd) return cached.hasCollections
+  if (cached.cwd === cwd && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.hasCollections
+  }
   let found = false
   try {
     // An explicit INDEXED_COLLECTIONS_HOME wins over the baked-in root, so a
@@ -83,7 +93,7 @@ function hasCollections() {
   } catch (_) {
     found = false
   }
-  cached = { cwd, hasCollections: found }
+  cached = { cwd, hasCollections: found, at: Date.now() }
   return found
 }
 
