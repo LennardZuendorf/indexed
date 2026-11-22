@@ -2327,27 +2327,36 @@ lost race into a process-wide degradation.
 **Date:** 2026-11-20
 
 ## Warm one import, then N workers still race the next one (#358, 2026-11-22)
-**Pattern:** a prewarm at the entry point fixes exactly the module it names.
+**Pattern:** a prewarm at the entry point fixes exactly the module it names, and
+a gate between the workers only orders *those* workers.
 The MCP server warmed `transformers` before starting watchers (#335), but the
 first catch-up pass pulls LlamaIndex and the embedder in from the worker thread
 too, and N collections catch up at once — so the class of bug survived the fix.
+The follow-up fix gated the watchers against each other and still lost the race
+to the *search handler*: FastMCP runs every sync tool on its own thread, so the
+import had a third importer nobody had counted.
 - **A losing import is not a slow import, it is a poisoned process.** A
   half-initialised module stays in `sys.modules`, so every later pass in that
   process fails too; the collection never catches up and the symptom is a
   timeout, not a delay. When a system test times out on a restart, look for
-  "partially initialized module" in the log before suspecting slowness.
-- **Warm the deepest module the worker needs, under a gate, not one worker's
-  pass.** Importing `llama_index.embeddings.huggingface` pulls the whole cold
-  stack, and a `threading.Lock` + `threading.Event` around that single warm-up
-  gives the import one owner without depending on which collection's pass runs
-  first. Warming "as a side effect of the first pass" looks simpler and is
-  wrong: a pass can return early or raise before it touches the import, and then
-  the flag lies.
-- **The gate's release must not depend on a worker's success.** Set the warm
-  flag in `finally`, log a failed warm-up at DEBUG and let the pass report the
-  real error — otherwise one broken collection serialises every other
-  collection's retries behind the gate. One attempt per process is enough: a
-  failed import has already poisoned `sys.modules`, so retrying buys nothing.
+  "partially initialized module" (or `deadlock detected by _ModuleLock`) in the
+  log before suspecting slowness.
+- **Ordering beats mutual exclusion: import before the threads exist, not
+  between them.** Every gate is scoped to the workers it knows about, and the
+  next importer is always one you forgot — a tool thread, a signal handler, a
+  third collection. Doing the import synchronously on the thread that *creates*
+  the workers makes the race unrepresentable, because after that call there is
+  nothing left to import. If a design needs a lock to make an import safe, ask
+  who else can import it; usually the answer is "restructure the startup", not
+  "add the other thread to the lock".
+- **Warm the deepest module, not the module that logged the error.** Importing
+  `llama_index.embeddings.huggingface` pulls the whole cold stack that
+  `llama_index.core.base.embeddings.base` complained about; warming the leaf
+  named in the traceback leaves its parents still racy.
+- **A failed warm-up must never become a new failure mode.** Log one warning,
+  keep going, and let each pass import the stack itself, where a broken install
+  has to surface anyway. One attempt per process is enough: a failed import has
+  already poisoned `sys.modules`, so retrying buys nothing.
 **Tags:** concurrency, mcp, imports, tests
 **Date:** 2026-11-22
 
