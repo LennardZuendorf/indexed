@@ -45,4 +45,4 @@ updated: 2026-11-16
 | missing source path is never an update | `watch_service.resolve_watch_target` returns `None` before a thread starts (skipped with a warning); `test_missing_source_directory_is_never_a_signature` |
 | reuse `signature_for`/`run_watch_loop`, no fork | `mcp/watch.py` calls `run_watch_loop`; both CLI and MCP scan through `WatchTarget.scan()` |
 | clean shutdown on lifespan exit | `WatcherHandle.stop()` sets the shared event and joins the tasks; `test_startup_scope_is_fixed_and_stop_joins_the_threads` + the system test's session close |
-| docs: on/off and new-collection behaviour | [product.md](product.md) § MCP server mode, [../../tech-config.md](../../tech-config.md) `[mcp]`, README § Watching a collection |
+| docs: on/off and new-collection behaviour | [product.md](product.md) § MCP server mode, [../../tech/config/README.md](../../tech/config/README.md) `[mcp]`, README § Watching a collection |

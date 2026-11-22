@@ -428,7 +428,7 @@ when MCP search config sets `include_matched_chunks = false`. The canonical
 payload retains matched text and provenance.
 
 The full failure table is in
-[`docs/spec/tech-app.md` § Search result contract](../spec/tech-app.md#search-result-contract-indexedsearch1).
+[`docs/spec/tech/app/app-search-result-contract.md`](../spec/tech/app/app-search-result-contract.md).
 
 ## The optional extras, in one paragraph
 

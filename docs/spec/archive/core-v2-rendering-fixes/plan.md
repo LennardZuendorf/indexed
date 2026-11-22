@@ -220,7 +220,7 @@ decision).
 ## Final outcome (2026-09-03)
 
 All 8 requirements shipped; full Decision Log entry at
-[../../plan.md](../../plan.md#decision-log). Two notes for anyone reading this
+[../../decisions/README.md](../../decisions/README.md). Two notes for anyone reading this
 plan's unit descriptions against the final diff:
 
 - **R4 (Unit 3) resolved as planned:** the Open Question above was resolved as

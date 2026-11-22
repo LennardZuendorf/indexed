@@ -22,7 +22,7 @@ endpoint/host carry-forward both live entirely inside `GitHubConnector.from_mani
 **Parent:** [../../tech.md](../../tech.md)
 **Requirements:** [product.md](product.md)
 **Plan:** [plan.md](plan.md)
-**Connectors spec:** [../../tech-connectors.md](../../tech-connectors.md) · **Parsing:** [../../tech-parsing.md](../../tech-parsing.md)
+**Connectors spec:** [../../tech/connectors/README.md](../../tech/connectors/README.md) · **Parsing:** [../../tech/parsing/README.md](../../tech/parsing/README.md)
 
 ---
 

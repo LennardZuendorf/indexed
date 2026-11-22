@@ -7,8 +7,8 @@ name: Retrieval Evaluation
 # compared one fresh run against the committed `eval/baseline.json` and had to
 # stay informative: the runner is a different interpreter/CPU build from the
 # baseline's arm64 machine, and that alone moved hit@5 from 0.818 to 0.909.
-# Same-job measurement cancels the machine out (see docs/spec/tech.md § Retrieval
-# evaluation gate and scripts/benchmark_ab.py).
+# Same-job measurement cancels the machine out (see docs/spec/tech/retrieval-eval-gate/README.md
+# and scripts/benchmark_ab.py).
 
 on:
   workflow_dispatch:
@@ -195,7 +195,7 @@ jobs:
         # Same proof as python-benchmark.yml: the merge commit is the immutable
         # statement of what is compared, so its first parent is the measured
         # base. The event payload's base SHA is an earlier snapshot and can lag
-        # the merge GitHub actually built. See docs/spec/tech.md § CI Benchmarking.
+        # the merge GitHub actually built. See docs/spec/tech/ci-benchmarking/README.md.
         verify_pr_merge() {
           local parents first revision
           local -a merge_parents

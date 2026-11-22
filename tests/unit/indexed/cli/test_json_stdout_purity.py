@@ -1,6 +1,6 @@
 """Machine stdout purity: a log record must never enter the JSON payload.
 
-`docs/spec/tech-app.md` (§ Logging Strategy) and the search-output contract reserve
+`docs/spec/tech/app/app-logging-strategy.md` and the search-output contract reserve
 stdout for command results: under `--simple-output` (and, once the result-shape
 work lands, `--json`) stdout holds the payload and nothing else. The notices
 half is guarded inside the search command; the log half is decided by the sink
