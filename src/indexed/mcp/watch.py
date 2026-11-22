@@ -4,7 +4,9 @@ The server otherwise serves whatever was on disk at the last ``index update``.
 With ``[mcp] watch_enabled = true`` it also keeps the local collections that
 existed at startup fresh: one reused ``run_watch_loop`` per collection, each on
 its own thread (``asyncio.to_thread``) so a blocking update never stalls the
-event loop.
+event loop. The opening catch-up pass of every collection is serialised behind
+one gate so the process's first LlamaIndex/embedder import has exactly one
+owner; every pass after that is independent (#358).
 
 Scope is fixed at startup on purpose. A collection created while the server
 runs is picked up on the next restart — the set is never re-planned behind the
@@ -30,17 +32,25 @@ from loguru import logger
 
 @dataclass
 class WatcherHandle:
-    """The watcher tasks of one running server, and their stop signal."""
+    """The watcher tasks of one running server, and their shared signals."""
 
     stop_event: threading.Event = field(default_factory=threading.Event)
     tasks: list[asyncio.Task[None]] = field(default_factory=list)
+    # One gate and one flag for the *opening* catch-up pass of every watcher
+    # (issue #358). The first pass is the process's first heavy import —
+    # LlamaIndex and the embedder — so exactly one thread runs it; a thread
+    # that lost that race used to get a half-initialised module, which stays in
+    # ``sys.modules`` and fails every later pass for the whole process.
+    first_pass_gate: threading.Lock = field(default_factory=threading.Lock)
+    stack_warm: threading.Event = field(default_factory=threading.Event)
 
     async def stop(self) -> None:
         """Stop every loop and wait for its in-flight update to finish.
 
         The loops poll with a short sleep and re-check the event, so this
-        returns in roughly one poll interval plus at most one running update —
-        never a hard kill that would abandon a half-written collection.
+        returns in roughly one poll interval plus at most one running update
+        (plus, on startup, the single pass holding the opening gate) — never a
+        hard kill that would abandon a half-written collection.
         """
         self.stop_event.set()
         if self.tasks:
@@ -112,12 +122,14 @@ def _watch_one(
     debounce_seconds: float,
     poll_interval_seconds: float,
     stop_event: threading.Event,
+    first_pass_gate: threading.Lock,
+    stack_warm: threading.Event,
 ) -> None:
     """Run one collection's loop to completion (this is the thread body)."""
     from indexed.cli.knowledge.commands import watch_service
     from indexed.core.engine import update as run_update
 
-    def apply_update() -> None:
+    def run_pass() -> None:
         # Clean overlay per pass, mirroring ``index update``/``index watch``:
         # the manifest factory re-applies this collection's stored settings.
         config_service.clear_overlay()
@@ -126,6 +138,32 @@ def _watch_one(
             collections_path=collections_path,
             manifest_factory=manifest_factory,
         )
+
+    def apply_update() -> None:
+        """Apply one pass, letting the opening one warm the stack alone (#358).
+
+        Every collection that existed at startup runs its catch-up immediately,
+        so with N collections N threads entered LlamaIndex's lazy import (and
+        the embedder load) at the same instant. Serialising only the first pass
+        gives the process one owner of that import; once the stack is warm the
+        loops are independent again, and a thread waiting here waits at most one
+        update pass — never a hard block on the loop.
+        """
+        if stack_warm.is_set():
+            run_pass()
+            return
+        with first_pass_gate:
+            already_warm = stack_warm.is_set()
+            if not already_warm:
+                try:
+                    run_pass()
+                finally:
+                    # The gate serialises the first *attempt*, not the first
+                    # success: one broken collection must not queue every other
+                    # collection's retries behind it.
+                    stack_warm.set()
+        if already_warm:
+            run_pass()
 
     def info(message: str) -> None:
         logger.info(f"collection watch [{target.collection}]: {message}")
@@ -187,6 +225,8 @@ async def start_watchers_if_enabled(
                     debounce_seconds=float(mcp_config.watch_debounce_seconds),
                     poll_interval_seconds=float(mcp_config.watch_poll_interval_seconds),
                     stop_event=handle.stop_event,
+                    first_pass_gate=handle.first_pass_gate,
+                    stack_warm=handle.stack_warm,
                 )
             )
         )

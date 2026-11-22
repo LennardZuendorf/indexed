@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-20
+updated: 2026-11-22
 ---
 
 # Lessons Learned
@@ -2325,6 +2325,29 @@ lost race into a process-wide degradation.
   with a fake module that fails the attribute exactly once.
 **Tags:** parsing, mcp, concurrency, tests
 **Date:** 2026-11-20
+
+## Warm one import, then N workers still race the next one (#358, 2026-11-22)
+**Pattern:** a prewarm at the entry point fixes exactly the module it names.
+The MCP server warmed `transformers` before starting watchers (#335), but the
+first catch-up pass pulls LlamaIndex and the embedder in from the worker thread
+too, and N collections catch up at once — so the class of bug survived the fix.
+- **A losing import is not a slow import, it is a poisoned process.** A
+  half-initialised module stays in `sys.modules`, so every later pass in that
+  process fails too; the collection never catches up and the symptom is a
+  timeout, not a delay. When a system test times out on a restart, look for
+  "partially initialized module" in the log before suspecting slowness.
+- **Prefer a one-time gate over enumerating the modules to prewarm.** A
+  `threading.Lock` + `threading.Event` around the *opening* pass of the first
+  worker gives the first import one owner without listing the stack, without
+  tracking the update path's lazy imports in a second place, and without
+  serialising the fleet afterwards. Enumerating modules works until the update
+  path gains an import.
+- **A gate needs a re-check under the lock and a bounded wait.** Release the
+  others with an event (so later passes are ungated), and say in the docstring
+  what a blocked thread waits for — one update pass — because it also sets the
+  shutdown bound.
+**Tags:** concurrency, mcp, imports, tests
+**Date:** 2026-11-22
 
 ### Bound `requires-python` by the wheels the dependency set ships
 **Pattern:** `requires-python = ">=3.11.5"` + "Python 3.11+" in the README claimed

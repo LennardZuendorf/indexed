@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -120,6 +121,141 @@ def test_startup_scope_is_fixed_and_stop_joins_the_threads(
         assert all(task.done() for task in handle.tasks)
 
     asyncio.run(scenario())
+
+
+def test_opening_catch_up_passes_never_overlap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#358: one collection owns the process's first heavy import.
+
+    Every collection that existed at startup catches up immediately, so two
+    collections used to enter LlamaIndex's lazy import (and the embedder load)
+    at the same instant; the thread that lost got a half-initialised module,
+    which stays in ``sys.modules`` and fails every later pass of that process —
+    the macOS system test read that as "catch-up never finished". The barrier
+    only releases when *both* opening passes are inside the update, so it times
+    out on a serialised fleet: the test is deterministic in both directions
+    instead of racing a sleep.
+    """
+    import indexed.core.engine as engine_module
+    import indexed.mcp.watch as watch_module
+
+    together = threading.Barrier(2)
+    overlapped = threading.Event()
+    passes: list[str] = []
+
+    def fake_update(configs, **_kwargs):
+        passes.append(configs[0].name)
+        try:
+            together.wait(timeout=0.5)  # both passes inside ⇒ they overlapped
+            overlapped.set()
+        except threading.BrokenBarrierError:  # alone ⇒ serialised, as required
+            pass
+
+    def fake_loop(*, apply_update, stop, **_kwargs):
+        apply_update()
+        stop.wait(5)
+        return 0
+
+    targets = [
+        (
+            SimpleNamespace(collection=f"local-{i}", scan=lambda: None),
+            SimpleNamespace(name=f"local-{i}"),
+        )
+        for i in (1, 2)
+    ]
+    monkeypatch.setattr(watch_module, "_plan_targets", lambda *_: targets)
+    monkeypatch.setattr(engine_module, "update", fake_update)
+    monkeypatch.setattr(
+        "indexed.cli.knowledge.commands.watch_service.run_watch_loop", fake_loop
+    )
+
+    async def scenario() -> None:
+        handle = await watch_module.start_watchers_if_enabled(
+            MCPConfig(watch_enabled=True),
+            collections_path=tmp_path,
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            manifest_factory=None,
+        )
+        assert isinstance(handle, WatcherHandle)
+        await handle.stop()
+
+    started = time.monotonic()
+    asyncio.run(scenario())
+
+    assert sorted(passes) == ["local-1", "local-2"], (
+        f"both collections must still catch up on startup: {passes!r}"
+    )
+    assert not overlapped.is_set(), (
+        "two opening catch-up passes ran at the same time — the first heavy "
+        "import has no single owner (issue #358)"
+    )
+    # Serialising the opening pass must not serialise the fleet: the wait is
+    # one barrier timeout, not one update per collection.
+    assert time.monotonic() - started < 3.0
+
+
+def test_a_broken_collection_does_not_gate_the_fleet(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#358: the gate guards the first import, not one collection's failure.
+
+    A collection whose update raises must not keep the gate (and therefore the
+    other collections' passes) for its own retries: the first attempt sets the
+    warm flag even when it fails.
+    """
+    import indexed.core.engine as engine_module
+    import indexed.mcp.watch as watch_module
+
+    passes: list[str] = []
+    both_ran = threading.Event()
+
+    def fake_update(configs, **_kwargs):
+        passes.append(configs[0].name)
+        if len(passes) == 2:
+            both_ran.set()
+        if configs[0].name == "broken":
+            raise RuntimeError("collection is unreadable")
+
+    def fake_loop(*, apply_update, stop, **_kwargs):
+        try:
+            apply_update()
+        except RuntimeError:
+            pass
+        stop.wait(5)
+        return 0
+
+    targets = [
+        (
+            SimpleNamespace(collection=name, scan=lambda: None),
+            SimpleNamespace(name=name),
+        )
+        for name in ("broken", "healthy")
+    ]
+    monkeypatch.setattr(watch_module, "_plan_targets", lambda *_: targets)
+    monkeypatch.setattr(engine_module, "update", fake_update)
+    monkeypatch.setattr(
+        "indexed.cli.knowledge.commands.watch_service.run_watch_loop", fake_loop
+    )
+
+    async def scenario() -> bool:
+        handle = await watch_module.start_watchers_if_enabled(
+            MCPConfig(watch_enabled=True),
+            collections_path=tmp_path,
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            manifest_factory=None,
+        )
+        assert isinstance(handle, WatcherHandle)
+        await asyncio.to_thread(both_ran.wait, 5.0)
+        warm = handle.stack_warm.is_set()
+        await handle.stop()
+        return warm
+
+    assert asyncio.run(scenario()) is True, (
+        "a failed opening pass must still mark the stack warm, or every later "
+        "pass of every collection queues behind this collection's retries"
+    )
+    assert sorted(passes) == ["broken", "healthy"], passes
 
 
 def test_missing_source_directory_is_never_a_signature(tmp_path: Path) -> None:
