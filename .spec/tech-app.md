@@ -74,10 +74,12 @@ Host differences are load-bearing, not cosmetic:
 - **Codex**: TOML config (`~/.codex/config.toml`) edited as **text** — only the
   `[mcp_servers.indexed]` block and the hook-trust table are rewritten, so the
   user's comments and spacing survive byte for byte (`codex mcp add` cannot do
-  this). Hooks live in `hooks.json`, matched on the shell tool name, and Codex
-  runs no hook until it is trusted: the installer reads the hash Codex computed
-  back from `hooks/list` and records it in `hooks.state` instead of inventing
-  one.
+  this). Every write to that file, the trust-hash one included, goes through the
+  raw (newline-preserving) helpers, so a CRLF file still comes back byte for
+  byte after `--remove`. Hooks live in `hooks.json`, matched on the shell tool
+  name, and Codex runs no hook until it is trusted: the installer reads the hash
+  Codex computed back from `hooks/list` and records it in `hooks.state` instead
+  of inventing one.
 
 Both hooks only ever emit `additionalContext` — no `permissionDecision` — and
 are silent when indexed has no collections, so they cannot change a user's

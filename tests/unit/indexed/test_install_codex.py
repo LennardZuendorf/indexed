@@ -457,6 +457,77 @@ class TestUpgradeAndRemove:
         assert _config_text(fake_home) == "# my personal notes\n"
 
 
+class TestCrlfLifecycle:
+    """A Windows-editor CRLF config must come back byte for byte.
+
+    The helper-level `test_crlf_round_trips_byte_for_byte` cannot see the trust
+    write, which is a second, later edit of the same file. These tests run the
+    command end to end, with the Codex hash lookup stubbed to succeed, so every
+    write that touches config.toml is in scope.
+    """
+
+    ORIGINAL = (
+        "# hand-written, CRLF file\r\n"
+        'model = "gpt-6"\r\n'
+        "\r\n"
+        "[mcp_servers.playwright]\r\n"
+        'command = "npx"\r\n'
+        'args = ["y", "@playwright/mcp"]\r\n'
+    )
+
+    def _seed(self, home: Path) -> Path:
+        (home / ".codex").mkdir()
+        config = home / ".codex/config.toml"
+        config.write_bytes(self.ORIGINAL.encode("utf-8"))
+        return config
+
+    def test_install_keeps_every_crlf_and_the_trust_write_is_in_scope(
+        self, fake_home: Path, stub_trust: list[str]
+    ):
+        config = self._seed(fake_home)
+
+        result = runner.invoke(_get_app(), ["install", "codex"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert stub_trust, "the trust write must run, or this test proves nothing"
+        text = config.read_bytes().decode("utf-8")
+        assert "\n" not in text.replace("\r\n", ""), "install introduced bare LF"
+        assert text.count("\r\n") > self.ORIGINAL.count("\r\n")
+        parsed = tomllib.loads(text)
+        assert parsed["model"] == "gpt-6"
+        assert parsed["mcp_servers"]["playwright"] == {
+            "command": "npx",
+            "args": ["y", "@playwright/mcp"],
+        }
+        assert "indexed" in parsed["mcp_servers"]
+        assert parsed["hooks"]["state"], "trust was not recorded"
+
+    def test_remove_restores_the_original_bytes(self, fake_home: Path):
+        config = self._seed(fake_home)
+        runner.invoke(_get_app(), ["install", "codex"])
+
+        result = runner.invoke(_get_app(), ["install", "codex", "--remove"])
+
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert config.read_bytes() == self.ORIGINAL.encode("utf-8")
+
+    def test_upgrade_on_crlf_keeps_the_file_restorable(self, fake_home: Path):
+        """A second install rewrites the trust block; that write must stay raw."""
+        config = self._seed(fake_home)
+        assert runner.invoke(_get_app(), ["install", "codex"]).exit_code == 0
+
+        upgraded = runner.invoke(_get_app(), ["install", "codex"])
+
+        assert upgraded.exit_code == 0, _strip_ansi(upgraded.output)
+        text = config.read_bytes().decode("utf-8")
+        assert "\n" not in text.replace("\r\n", ""), "upgrade introduced bare LF"
+        assert tomllib.loads(text)["hooks"]["state"]
+
+        result = runner.invoke(_get_app(), ["install", "codex", "--remove"])
+        assert result.exit_code == 0, _strip_ansi(result.output)
+        assert config.read_bytes() == self.ORIGINAL.encode("utf-8")
+
+
 class TestTomlEditing:
     """The text surgery the whole lifecycle rests on, without the CLI in the way."""
 
