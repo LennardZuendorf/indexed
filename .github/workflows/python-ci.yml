@@ -150,7 +150,7 @@ jobs:
         # The installed hook answers with the JSON Claude Code expects, and only
         # where indexed actually has collections.
         mkdir -p "$home/.indexed/data/collections/demo"
-        hook_out="$("$home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{"tool_name": "Grep"}')"
+        hook_out="$(HOME="$home" "$home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{"tool_name": "Grep"}')"
         printf '%s' "$hook_out" | uv run python -c '
         import json, sys
         payload = json.load(sys.stdin)["hookSpecificOutput"]
