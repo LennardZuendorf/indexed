@@ -6,7 +6,7 @@ This is the success result shape for machine consumers: the MCP ``search`` /
 CLI consumers check exit status before JSON parsing; escaping errors can write
 non-JSON stdout. Normal JSON and MCP responses discriminate on ``schema``.
 The contract is typed in ``indexed.protocols.results`` and documented for users
-in ``docs/reference/search-output.md``; ``.spec/tech-app.md`` § Search result
+in ``docs/reference/search-output.md``; ``docs/spec/tech-app.md`` § Search result
 contract stays the design record (issues #108/#109).
 
 Shape, in one breath: documents grouped, each stating its collection, source
@@ -101,7 +101,7 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
             doc_url = doc.get("url") or ""
             key = (collection_name, doc_id)
             if key not in documents:
-                # Key order is the documented one (.spec/tech-app.md § Search
+                # Key order is the documented one (docs/spec/tech-app.md § Search
                 # result contract): document facts first, hits last.
                 entry: Dict[str, Any] = {"collection": collection_name}
                 if source_type:

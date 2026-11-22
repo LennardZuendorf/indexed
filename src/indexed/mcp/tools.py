@@ -113,7 +113,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         and score semantics once, with `hits` carrying relevance, raw score, a
         locator and the chunk text. `locator.kind` is `line_span` (1-based
         inclusive, code), `page` (PDF/DOCX), `headings` (prose) or `document`
-        (position unknown). See .spec/tech-app.md § Search result contract.
+        (position unknown). See docs/spec/tech-app.md § Search result contract.
 
         Parameters:
             query (str): The search query text.

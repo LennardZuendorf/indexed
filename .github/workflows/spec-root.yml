@@ -1,0 +1,32 @@
+name: Spec Root
+
+# The spec skill names docs/spec and falls back to a legacy flat root when that
+# is absent, so a repo that never moved stayed green. This gate makes the root
+# explicit. No path filter: a PR that re-creates the legacy directory or points
+# a file back at it may touch nothing the other workflows watch.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [ "main", "building" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-root-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  spec-root:
+    name: spec-root
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    # Standard library only: no dependency install for a path check.
+    - name: Spec root is docs/spec and nothing points at the legacy root
+      run: python3 scripts/check_spec_root.py

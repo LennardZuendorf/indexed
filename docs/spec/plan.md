@@ -296,7 +296,7 @@ import-graph clean, full suite 93.30% coverage (>85% required).
 
 ### 2026-09-02: Feature 17 (Core v2 Discoverability) shipped; folder wrapped up
 **Decision:** Merge PR #191's branch into `main`-tracking state (conflict was
-narrow — `.spec/lessons.md` only, both sides had appended new dated entries
+narrow — `docs/spec/lessons.md` only, both sides had appended new dated entries
 at the same spot; every generated/dependency file `main` had moved touched
 in the interim — `uv.lock`, workflow YAMLs, `pyproject.toml`, a
 `sentence-transformers` rename — merged clean via git's own three-way merge,
@@ -484,7 +484,7 @@ prevent regrowth rather than assert a number a rewrite would be needed to hit.
 
 ### 2026-07-09: Retire the Foundation feature spec
 **Decision:** Feature 13 Foundation is DONE/merged (PR #153), so its
-`.spec/features/foundation/` folder is retired. The still-owed architectural rules
+`docs/spec/features/foundation/` folder is retired. The still-owed architectural rules
 were promoted into root tech specs — typed data contracts and the corrected connector
 protocol/`from_manifest` into [tech.md](tech.md) § Protocols Package +
 [tech-core.md](tech-core.md) § Typed Data Contracts; the `core.v1.engine` facade +

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-UNION_LEDGERS = (".spec/lessons.md", ".spec/tech.md")
+UNION_LEDGERS = ("docs/spec/lessons.md", "docs/spec/tech.md")
 NORMAL_MERGE = "scripts/check_sizes.py"
 
 
@@ -47,8 +47,8 @@ def test_size_ceiling_keeps_normal_merge() -> None:
 def test_divergent_frontmatter_reports_conflict(git_repo: Path) -> None:
     from tests.conftest import run_git
 
-    spec = git_repo / ".spec"
-    spec.mkdir()
+    spec = git_repo / "docs" / "spec"
+    spec.mkdir(parents=True)
     ledger = spec / "tech.md"
     ledger.write_text("---\nupdated: 2026-01-01\n---\n")
     (git_repo / ".gitattributes").write_text((REPO_ROOT / ".gitattributes").read_text())

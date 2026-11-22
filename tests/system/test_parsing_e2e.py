@@ -34,8 +34,8 @@ def parsing_module() -> ParsingModule:
 
 @pytest.fixture(scope="module")
 def spec_dir() -> Path:
-    """Real .spec/ directory from the project."""
-    d = PROJECT_ROOT / ".spec"
+    """Real docs/spec/ directory from the project."""
+    d = PROJECT_ROOT / "docs" / "spec"
     assert d.is_dir(), f"{d} does not exist"
     return d
 
@@ -65,7 +65,7 @@ class TestParsingModuleE2E:
     """Exercise ParsingModule.parse() on real project files."""
 
     def test_parse_spec_markdown(self, parsing_module: ParsingModule, spec_dir: Path):
-        """Parse a real .spec/ markdown file with headings and structure."""
+        """Parse a real docs/spec/ markdown file with headings and structure."""
         target = spec_dir / "tech.md"
         assert target.exists()
 
@@ -127,7 +127,7 @@ class TestFileSystemConnectorE2E:
     """Exercise the full connector pipeline on real project directories."""
 
     def test_connector_reads_spec_directory(self, spec_dir: Path):
-        """Full pipeline: connector reads .spec/ and produces v1 docs."""
+        """Full pipeline: connector reads docs/spec/ and produces v1 docs."""
         connector = FileSystemConnector(
             path=str(spec_dir),
             include_patterns=[r".*\.md$"],
@@ -135,7 +135,7 @@ class TestFileSystemConnectorE2E:
 
         # Read via v1 compat path
         docs = list(connector.reader.read_all_documents())
-        assert len(docs) >= 5  # .spec has 6 md files
+        assert len(docs) >= 5  # docs/spec has 6 md files
 
         for doc in docs:
             assert "fileRelativePath" in doc

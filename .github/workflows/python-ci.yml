@@ -72,7 +72,7 @@ jobs:
         # LOC ceilings are growth against the base the tree was built on — never
         # a stored number. On a PR the checkout is the merge commit, so its first
         # parent IS that base (pull_request.base.sha is only a snapshot the merge
-        # may already have moved past — see .spec/lessons.md, "Benchmark
+        # may already have moved past — see docs/spec/lessons.md, "Benchmark
         # provenance"). On a push it is the commit being replaced, so the
         # ratchet also runs after merge.
         if [ "$EVENT_NAME" = "pull_request" ]; then

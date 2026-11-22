@@ -61,7 +61,7 @@ def test_core_v2_config_binds_with_defaults_and_overlay_overrides():
 
     # Register only the two specs under test (not the full app registry via
     # register_app_config) so bind() validates only core.v2.*, per
-    # .spec/lessons.md's "ConfigService.set_overlay() is the right tool for
+    # docs/spec/lessons.md's "ConfigService.set_overlay() is the right tool for
     # config-dependent unit tests" — bind() otherwise also (re)validates
     # every other registered path (e.g. sources.files) against whatever the
     # shared sandboxed config.toml happens to hold at this point in the full

@@ -2,7 +2,7 @@
 
 Chunkers must never emit a chunk that tokenizes to more than the embedding
 model's real window — see the chunk-size invariant in
-``.spec/tech-core.md``. The embedder that owns the
+``docs/spec/tech-core.md``. The embedder that owns the
 authoritative value (``core.v1...SentenceEmbedder.max_seq_length``) lives in
 the core engine package, which this package must not import (see this
 package's ``CLAUDE.md``: "MUST NOT import core engine"). So this module loads
@@ -16,7 +16,7 @@ First run on a clean machine: the tokenizer lives in the same HF repository as
 the embedding model, but parsing happens BEFORE the embedder that would
 download it, so a cache-only load misses. One tokenizer-only download follows;
 when that is impossible too, the failure is cached and logged ONCE at WARNING.
-The full contract is in ``.spec/tech-parsing.md`` § Token window.
+The full contract is in ``docs/spec/tech-parsing.md`` § Token window.
 """
 
 from __future__ import annotations

@@ -93,7 +93,7 @@ AI agents search your codebase on demand with grep — fast for small repos, but
 
 Indexed pre-computes a semantic search index over your code, docs, and project tools, then exposes it via MCP. The result: instant, relevant context retrieval without the token overhead.
 
-- **Not just search.** A single index over one source is the easy part — every RAG toolkit does that. The hard, useful part is that no single source has the answer: code doesn't explain *why*, a ticket doesn't show *what shipped*, history doesn't say *if it's still true*. Indexed's direction is one merged knowledge base per project — code, docs, issues, and wikis tied together, not five indexes you query separately. See [`.spec/product.md`](.spec/product.md) § Vision for where this is headed (structural graph relationships, graph-aware retrieval, optional local-model-driven merging).
+- **Not just search.** A single index over one source is the easy part — every RAG toolkit does that. The hard, useful part is that no single source has the answer: code doesn't explain *why*, a ticket doesn't show *what shipped*, history doesn't say *if it's still true*. Indexed's direction is one merged knowledge base per project — code, docs, issues, and wikis tied together, not five indexes you query separately. See [`docs/spec/product.md`](docs/spec/product.md) § Vision for where this is headed (structural graph relationships, graph-aware retrieval, optional local-model-driven merging).
 - **Not just code.** Index Markdown, PDFs, DOCX, PPTX, images, and 25+ formats via Docling. AST-aware code chunking via tree-sitter.
 - **Not just local files.** Native Jira, Confluence, Outline Wiki, and GitHub connectors pull tickets, pages, issues, and PRs into your index.
 - **Not cloud-dependent.** Runs entirely on your machine. Local embedding models, FAISS or LlamaIndex-managed vector storage. No API keys required.
@@ -529,7 +529,7 @@ rule and its cost.
 Indexed today runs parallel semantic indexes per source. The direction is one merged
 knowledge graph per project — code, docs, issues, git history, connected codebases, and
 accumulated lessons/memory as one structure instead of several. See
-[`.spec/product.md`](.spec/product.md) § Vision and § Knowledge Graph for what's shipped
+[`docs/spec/product.md`](docs/spec/product.md) § Vision and § Knowledge Graph for what's shipped
 vs. planned.
 
 ## Documentation
@@ -568,7 +568,7 @@ uv run indexed-eval compare --report /tmp/report.json
 See [`eval/README.md`](eval/README.md) for provenance, the metric definitions and
 the measured baseline.
 
-See [`AGENTS.md`](AGENTS.md) and [`.spec/tech.md`](.spec/tech.md) for architecture details.
+See [`AGENTS.md`](AGENTS.md) and [`docs/spec/tech.md`](docs/spec/tech.md) for architecture details.
 
 ## License
 
