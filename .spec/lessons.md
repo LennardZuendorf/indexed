@@ -2405,3 +2405,31 @@ collision, failing for the harness's reason rather than the product's.
 not there at setup), scoped to a snapshot taken at fixture entry so unrelated
 state is never touched.
 **Tags:** testing, isolation
+
+## Coding-agent host installers (issue #349, 2026-11-22)
+
+- **One module per host, and the shared one does not grow.** `install.py` owns the
+  Claude Code lifecycle; `install_codex.py` owns Codex and only *imports* the
+  shared helpers. A host card that edits the previous host's module makes every
+  host PR a merge conflict.
+- **A host's own config writer is not byte-preserving — edit user config as
+  text.** `codex mcp add` re-serialises the whole `[mcp_servers]` region (drops
+  comments, re-quotes, sorts keys) and `mcp remove` does not undo it. The
+  installer edits the TOML text: replace only our table block, end the block at
+  its last key line so a user's comment above *their* next table survives.
+- **Never forge host trust state; ask the host for the hash it computed.**
+  Codex does not run an untrusted hook, and trust lives in
+  `[hooks.state."<path>:<event>:<group>:<handler>"]` keyed by a sha256 of the
+  handler. Read it back through the host's own `hooks/list` (`codex app-server`),
+  match on the hook *key* — every hook in one `hooks.json` shares the file path —
+  and degrade to "approve once in the TUI" when the binary is absent.
+- **Match the host's tool naming before writing a skill.** Codex names MCP tools
+  `mcp__<server>__<tool>` like Claude Code, but it has no Grep/Glob tool: its
+  shell tool arrives at hooks as `Bash` with `tool_input.command`, so a nudge
+  hook greps the command line and its matcher is a full-string tool-name regex.
+- **A hook is proven by an artifact, not by stdout.** `codex exec --json` never
+  echoes hook output; proof is the rollout jsonl / next request body
+  (`content_item_kinds: ["hooks.additional_context"]`) or the hook's own
+  `INDEXED_HOOK_LOG` trace.
+
+**Tags:** installers, codex, hooks, toml
