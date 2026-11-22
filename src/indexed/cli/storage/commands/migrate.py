@@ -54,10 +54,11 @@ def migrate(
     """Share one index between projects instead of copying it.
 
     ``migrate`` moves this project's collections into ``~/.indexed`` under a
-    stable id and leaves a pointer file in ``./.indexed/collections.json``, so
-    a second project can point at the same data instead of building a copy.
-    ``--dry-run`` reports collisions and affected data; an interrupted run
-    resumes where it stopped; ``--rollback`` puts everything back.
+    stable id and records that id in a committed ``indexed.toml`` at the Git
+    worktree root, so a second clone or project selects the same data instead of
+    building a copy. ``--dry-run`` reports collisions and affected data; an
+    interrupted run resumes where it stopped; ``--rollback`` puts everything
+    back.
 
     Examples:
         indexed storage migrate --dry-run

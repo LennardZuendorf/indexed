@@ -17,7 +17,16 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, get_args
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    get_args,
+)
 
 from indexed.protocols.models import SourceConfig
 
@@ -41,11 +50,18 @@ class KnowledgeBackend:
         *,
         search_fn: Optional[Callable[..., Dict[str, Any]]] = None,
         status_fn: Optional[Callable[..., List[Any]]] = None,
+        selected_names: Optional[Sequence[str]] = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.collections_path = str(collections_path)
         self._search_fn = search_fn
         self._status_fn = status_fn
+        #: A workspace definition's selection: ``None`` means "every collection
+        #: in the store" (unchanged behaviour). Filtering happens in the cached
+        #: snapshot so ownership, hover and diagnostics all see one scope.
+        self._selected_names: Optional[Tuple[str, ...]] = (
+            None if selected_names is None else tuple(selected_names)
+        )
         self._clock = clock
         self._statuses: Optional[List[Any]] = None
         self._statuses_at = 0.0
@@ -80,6 +96,13 @@ class KnowledgeBackend:
         if self._statuses is not None and now - self._statuses_at < STATUS_TTL_SECONDS:
             return self._statuses
         self._statuses = list(self.status_fn(collections_path=self.collections_path))
+        if self._selected_names is not None:
+            selected = set(self._selected_names)
+            self._statuses = [
+                status
+                for status in self._statuses
+                if getattr(status, "name", None) in selected
+            ]
         self._statuses_at = now
         return self._statuses
 

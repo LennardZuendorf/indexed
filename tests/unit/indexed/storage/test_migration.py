@@ -32,6 +32,8 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A workspace whose descriptors are stubbed to the fake manifests on disk."""
     project = tmp_path / "proj"
     (project / ".indexed" / "data" / "collections").mkdir(parents=True)
+    # The definition migrate writes belongs at a Git worktree root (#344).
+    (project / ".git").mkdir()
     monkeypatch.setattr(
         _migration,
         "_describe_local",
@@ -120,5 +122,65 @@ def test_real_migration_refuses_collisions_before_touching_data(
     with pytest.raises(_migration.MigrationError, match="on-collision"):
         _migration.migrate(workspace, registry=registry)
 
+    # Nothing moved, nothing was registered.
     assert (local / "docs" / "manifest.json").is_file()
     assert not registry.path.exists()
+
+
+# --- the committed definition (#344) -----------------------------------------
+
+
+def test_migrate_writes_the_definition_at_the_git_root(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    """The selection, not a pointer, is what the repository keeps."""
+    _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+
+    report = _migration.migrate(workspace, registry=registry)
+
+    assert report.action == "migrate"
+    definition = workspace / "indexed.toml"
+    assert definition.is_file()
+    record = registry.find("docs")
+    assert record is not None
+    assert record.id in definition.read_text(encoding="utf-8")
+    # The pointer is legacy: this run must not create one.
+    assert not (workspace / ".indexed" / "collections.json").exists()
+
+
+def test_migrate_writes_the_definition_above_a_nested_workspace(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    """Running from a subdirectory still defines the repository, not the subdir."""
+    nested = workspace / "src" / "pkg"
+    _fake_collection(nested / ".indexed" / "data" / "collections", "docs")
+
+    _migration.migrate(nested, registry=registry)
+
+    assert (workspace / "indexed.toml").is_file()
+    assert not (nested / "indexed.toml").exists()
+
+
+def test_migrate_refuses_a_directory_outside_git(
+    tmp_path: Path, registry: CollectionRegistry
+) -> None:
+    """A definition must belong to a repository, so this fails with the remedy."""
+    project = tmp_path / "plain"
+    _fake_collection(project / ".indexed" / "data" / "collections", "docs")
+
+    with pytest.raises(_migration.MigrationError, match="not inside a Git worktree"):
+        _migration.migrate(project, registry=registry)
+
+
+def test_rollback_removes_its_entry_then_deletes_the_definition(
+    workspace: Path, registry: CollectionRegistry
+) -> None:
+    _fake_collection(workspace / ".indexed" / "data" / "collections", "docs")
+    _migration.migrate(workspace, registry=registry)
+    definition = workspace / "indexed.toml"
+    assert definition.is_file()
+
+    _migration.rollback(workspace, registry=registry)
+
+    # The entry was the only one, so the file goes with it.
+    assert not definition.exists()
