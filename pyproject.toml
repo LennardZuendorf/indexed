@@ -128,6 +128,11 @@ packages = ["src/indexed"]
 # own nudge hook that reads the Bash command line.
 "installers/codex/index-use.SKILL.md" = "indexed/installers/codex/index-use.SKILL.md"
 "installers/codex/indexed-nudge.sh" = "indexed/installers/codex/indexed-nudge.sh"
+# OpenCode reaches MCP tools through Code Mode (`tools.indexed.search` inside
+# `execute`), so it needs its own skill text, and its nudge is a JS plugin the
+# host imports from `<config>/plugins` rather than a shell hook.
+"installers/opencode/index-use.SKILL.md" = "indexed/installers/opencode/index-use.SKILL.md"
+"installers/opencode/indexed-nudge.js" = "indexed/installers/opencode/indexed-nudge.js"
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src/indexed", "skills", "installers"]

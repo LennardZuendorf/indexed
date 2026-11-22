@@ -224,6 +224,66 @@ codex mcp add indexed -- indexed mcp run
 The installed skill documents the `indexed.search/1` result shape; the full
 contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
 
+### OpenCode
+
+Same four commands, against OpenCode's own config dir (`$OPENCODE_CONFIG_DIR`,
+else `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`):
+
+```bash
+indexed install opencode             # server + skill + context nudge
+indexed install opencode --dry-run   # print the plan, write nothing
+indexed install opencode --remove    # undo exactly what it installed
+indexed install opencode --home /data/agent-home  # collections in /data/agent-home/.indexed
+```
+
+| Path | What it owns |
+| --- | --- |
+| `opencode.json` (or `opencode.jsonc`) | the `mcp.indexed` server entry |
+| `skills/index-use/SKILL.md` | the `index-use` skill |
+| `plugins/indexed-nudge.js` | the context nudge plugin |
+| `indexed-install.json` | the manifest: what was installed, by which version |
+
+The server goes under the flat `mcp.indexed` key. This build normalises that into
+`mcp.servers` in memory, and public opencode 1.x only understands the flat form,
+so one file serves both. Tested against opencode v2.3.2
+(`@opencode/cli@2.3.2`); the plugin API it uses is the 2.x one.
+
+The config is hand-edited JSONC, and OpenCode never rewrites it — no command, not
+even loading a server, touches the bytes. So the installer splices *text*: only
+the `indexed` member is written or deleted, and comments, key order, indentation
+and CRLF endings all survive. `--remove` puts the file back byte for byte, and
+prunes the `mcp` block only if this install created it. Each file the command
+rewrites has a `.bak` of its previous contents beside it (last write only), and
+a second run upgrades in place rather than duplicating.
+
+There is no hook-trust gate on this host: a plugin is a bare `.js` file in
+`plugins/`, which OpenCode imports and calls `setup()` on with no prompt, no hash
+and no approval marker. So there is nothing to approve after installing, and the
+command writes each file exactly once. The plugin registers one
+`session.hook("context")` handler and only ever appends a paragraph to the system
+prompt — it registers no permission or tool hook, so it cannot allow, deny or
+rewrite a tool call. It is silent when indexed has no collections, and every
+filesystem read is wrapped, so a broken install cannot break a session. Set
+`INDEXED_HOOK_LOG=/path/to/log` to append one JSON line per firing.
+
+Code Mode is on by default in OpenCode, so the skill teaches
+`await tools.indexed.search({ query: "..." })` (and
+`tools.indexed.search_collection({...})`) inside the `execute` tool, with the
+flat `indexed_search` named for `codemode: false` installs. The skill text is
+advertised from `skills/index-use/SKILL.md`; the directory name is the skill id.
+
+Restart OpenCode; the `index-use` skill is advertised and the nudge plugin loads
+from `plugins/`.
+
+Manual alternative (registers the server only — no skill, no plugin):
+
+```bash
+opencode mcp add --global indexed -- indexed mcp run
+```
+
+The installed skill documents the `indexed.search/1` result shape; the full
+contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
+
 ### Cursor / Windsurf / Other Agents
 
 Add to your agent's MCP configuration file:

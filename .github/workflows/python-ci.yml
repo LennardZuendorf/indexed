@@ -345,6 +345,163 @@ jobs:
         print("codex removal smoke ok")
         PY
 
+    - name: Installer smoke (OpenCode, temp HOME)
+      # One leg only: this downloads and runs the real host, so a 4-way matrix
+      # would install and exercise it four times per PR for no extra coverage.
+      if: matrix.python-version == '3.13'
+      # OpenCode's config is hand-edited JSONC that the host never rewrites, and
+      # its plugin needs no trust gate, so this checks what the unit tests cannot
+      # see: the payloads are inside the wheel, the installer splices text rather
+      # than re-serialising the document (comments, key order and CRLF survive),
+      # and the real host reads the entry and loads the plugin.
+      run: |
+        set -euo pipefail
+        # `unzip -l | grep -q` trips pipefail on SIGPIPE once the archive is big
+        # enough, so match against the listing held in a variable instead.
+        wheel_listing="$(unzip -l dist/*.whl)"
+        case "$wheel_listing" in
+          *indexed/installers/opencode/index-use.SKILL.md*) ;;
+          *) echo "opencode skill payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        case "$wheel_listing" in
+          *indexed/installers/opencode/indexed-nudge.js*) ;;
+          *) echo "opencode plugin payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+
+        home="$(mktemp -d)"
+        # OPENCODE_CONFIG_DIR is the host's own isolation lever; the XDG dirs keep
+        # its state and managed service inside the same throwaway tree.
+        export OPENCODE_CONFIG_DIR="$home/config/opencode"
+        export XDG_CONFIG_HOME="$home/config"
+        export XDG_DATA_HOME="$home/data"
+        export XDG_STATE_HOME="$home/state"
+        export XDG_CACHE_HOME="$home/cache"
+        export OPENCODE_DISABLE_AUTOUPDATE=1
+        mkdir -p "$OPENCODE_CONFIG_DIR/plugins"
+        # Foreign configuration this installer must never drop, comments included.
+        printf '%s\n' \
+          '{' \
+          '  // hand-written, do not reformat' \
+          '  "myForeignKey": {"nested": [1, 2, 3]},' \
+          '  "provider": {"ollama-cloud": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "http://127.0.0.1:11434/v1"}}},' \
+          '  "mcp": {"foreignServer": {"type": "local", "command": ["/bin/echo", "keep-me"]}}' \
+          '}' > "$OPENCODE_CONFIG_DIR/opencode.json"
+        printf '%s\n' 'export default { id: "someone-elses", setup() {} }' \
+          > "$OPENCODE_CONFIG_DIR/plugins/their-plugin.js"
+        # A Windows-edited file: every write that touches it has to keep the bytes
+        # it did not own, CRLF included, or the removal assertion below fails.
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        path = Path(sys.argv[1]) / "config/opencode/opencode.json"
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        PY
+        cp "$OPENCODE_CONFIG_DIR/opencode.json" "$home/config.before.json"
+
+        uv run indexed install opencode --dry-run
+        test ! -e "$OPENCODE_CONFIG_DIR/skills/index-use/SKILL.md"
+        uv run indexed install opencode
+        first="$(cat "$OPENCODE_CONFIG_DIR/opencode.json")"
+        uv run indexed install opencode
+        test "$(cat "$OPENCODE_CONFIG_DIR/opencode.json")" = "$first"
+        test -s "$OPENCODE_CONFIG_DIR/skills/index-use/SKILL.md"
+        test -s "$OPENCODE_CONFIG_DIR/plugins/indexed-nudge.js"
+        # Every line still ends CRLF: no LF-only line was introduced.
+
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = home / "config/opencode/opencode.json"
+        raw = config.read_bytes()
+        # Byte-level CRLF assertion: a text-mode write produces `\r\r\n` (which a
+        # per-line `grep -c $'\r'` cannot tell from a clean file) or bare `\n`.
+        assert b"\r\r\n" not in raw, "a text-mode write doubled the CR"
+        assert b"\n" not in raw.replace(b"\r\n", b""), "install introduced bare LF"
+        text = raw.decode("utf-8")
+        assert "// hand-written, do not reformat" in text, "the comment was dropped"
+        assert '"foreignServer"' in text, "foreign mcp entry lost"
+        # JSONC: drop the comment line, then parse what the host would see.
+        data = json.loads(
+            "\n".join(
+                line for line in text.splitlines() if not line.lstrip().startswith("//")
+            )
+        )
+        entry = data["mcp"]["indexed"]
+        assert entry["type"] == "local", entry
+        assert entry["command"][-2:] == ["mcp", "run"], entry
+        assert Path(entry["command"][0]).is_absolute(), entry
+        assert data["mcp"]["foreignServer"]["command"] == ["/bin/echo", "keep-me"], (
+            "foreign server lost"
+        )
+        assert data["myForeignKey"] == {"nested": [1, 2, 3]}, "foreign top-level key lost"
+        assert "ollama-cloud" in data["provider"], "foreign provider block lost"
+        print("opencode installer smoke ok:", entry["command"][0])
+        PY
+
+        # The real host: it must read our flat `mcp.indexed`, connect to it, and
+        # load the plugin from the plugins dir with no registration and no trust
+        # prompt. The service is per state root, so it is started explicitly and
+        # `mcp list` is polled (it is eventually consistent — a cold service
+        # answers "No MCP servers configured" once). Every host call is
+        # time-boxed: a hung TUI-less service must fail the step, not the job.
+        npm i -g @opencode/cli@2.3.2
+        # Wall-clock bound: a host that never answers must fail this step, not
+        # burn the leg. `SECONDS` is bash's, and `timeout` bounds each call.
+        deadline=$((SECONDS + 300))
+        timeout 120 opencode service start >/dev/null 2>&1 || true
+        listed=""
+        while [ "$SECONDS" -lt "$deadline" ]; do
+          listed="$(timeout 120 opencode mcp list 2>/dev/null || true)"
+          case "$listed" in
+            *"✓ indexed"*) break ;;
+          esac
+          sleep 5
+        done
+        case "$listed" in
+          *"✓ indexed"*) ;;
+          *)
+            echo "opencode did not list the indexed server:" >&2
+            printf '%s\n' "$listed" >&2
+            exit 1
+            ;;
+        esac
+        printf '%s\n' "$listed"
+        # Capture then match: `opencode | grep -q` exits on the first match and
+        # the host then dies of SIGPIPE, which pipefail turns into a red step.
+        plugins="$(timeout 120 opencode plugin list 2>/dev/null || true)"
+        case "$plugins" in
+          *indexed-nudge*) ;;
+          *)
+            echo "opencode did not load the indexed plugin:" >&2
+            printf '%s\n' "$plugins" >&2
+            exit 1
+            ;;
+        esac
+
+        uv run indexed install opencode --remove
+        cmp "$OPENCODE_CONFIG_DIR/opencode.json" "$home/config.before.json"
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = home / "config/opencode"
+        for gone in (
+            "skills/index-use/SKILL.md",
+            "plugins/indexed-nudge.js",
+            "indexed-install.json",
+        ):
+            assert not (config / gone).exists(), f"removal left {gone} behind"
+        assert (config / "plugins/their-plugin.js").is_file(), (
+            "removal took a foreign plugin"
+        )
+        print("opencode removal smoke ok")
+        PY
+
     - name: Check distribution metadata (twine)
       # validate_wheel.py (above) checks the archive/zip bytes; twine check
       # validates the METADATA long_description renders on PyPI. --strict makes
