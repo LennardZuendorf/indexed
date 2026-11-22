@@ -284,6 +284,16 @@ def search(
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
     collections_path = str(cli_ctx.collections_path)
+    selection = getattr(cli_ctx, "selection", None)
+
+    # Notices the resolver produced (deprecated pointer, ignored --local) belong
+    # to whoever owns the output stream: plain text on stderr under --json /
+    # --simple-output, where stdout is a parseable envelope.
+    for notice in getattr(cli_ctx, "warnings", ()):
+        if simple:
+            typer.echo(notice, err=True)
+        else:
+            print_info(notice)
 
     # An explicit --engine on an existing-collection op is passed through so the
     # facade raises EngineMismatchError on a wrong engine (R2). Omit when unset
@@ -306,6 +316,27 @@ def search(
     if collection is None:
         # Search all collections
         all_statuses = status_svc(collections_path=collections_path)
+        if selection is not None and all_statuses:
+            # A definition is a SCOPE, so the store's enumeration is narrowed to
+            # it — in definition order, which is the order the user wrote. The
+            # entries were validated when the definition was resolved, so a
+            # selected collection that has no status now means the store changed
+            # under this command: fail closed, never silently widen or narrow.
+            by_name = {status.name: status for status in all_statuses}
+            missing = [name for name in selection.names if name not in by_name]
+            if missing:
+                named = ", ".join(f"'{name}'" for name in missing)
+                message = (
+                    f"Workspace definition '{selection.path}' selects {named}, "
+                    f"which the store at '{collections_path}' no longer serves. "
+                    f"Run `indexed collection list` to see what it can select."
+                )
+                if simple:
+                    print_json({"error": message})
+                else:
+                    print_error(message)
+                raise typer.Exit(1)
+            all_statuses = [by_name[name] for name in selection.names]
         if not all_statuses:
             if simple:
                 print_json({"error": "No collections found"})
@@ -340,6 +371,17 @@ def search(
             raise typer.Exit(1)
 
         collections_to_search = [collection]
+        if selection is not None and collection not in selection:
+            # R5: the definition is a default scope, not an access boundary. An
+            # explicit --collection outside it still runs, but never silently.
+            notice = (
+                f"Collection '{collection}' is outside the workspace selection in "
+                f"'{selection.path}'; searching it anyway."
+            )
+            if simple:
+                typer.echo(notice, err=True)
+            else:
+                print_info(notice)
 
     # Build search configs for all collections, reusing the status objects
     # already fetched above rather than re-querying per name: a second lookup

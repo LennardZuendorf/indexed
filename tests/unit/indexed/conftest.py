@@ -24,6 +24,11 @@ def make_cli_context(config_service: MagicMock | None = None):
             "mode": "global",
             "config_service": mock_config,
             "connector_registry": {},
+            # No workspace definition unless a test says otherwise (R4: a
+            # directory without ``indexed.toml`` searches everything).
+            "workspace": Path("/tmp/test-workspace"),
+            "selection": None,
+            "warnings": (),
         },
     )()
 

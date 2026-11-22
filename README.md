@@ -470,10 +470,37 @@ indexed lsp                              # point your editor's LSP client here
 ```
 
 `indexed storage migrate` gives a collection a stable id in the global store and
-leaves a pointer in `./.indexed/collections.json`, so a second project reads the
-same index instead of rebuilding it. It journals every step, so an interrupted
-run resumes where it stopped, and `--rollback` restores the original local
-collection.
+records that id in a committed **`indexed.toml` at your repository root**, so a
+second clone reads the same index instead of rebuilding it. It journals every
+step, so an interrupted run resumes where it stopped, and `--rollback` restores
+the original local collection.
+
+Commit that file — it is the repository's scope, and it is the only thing that
+travels between clones:
+
+```toml
+# indexed.toml — commit this file.
+version = 1
+
+[collections]
+use = ["indexed-docs", "8b1d2f5e6a7c4b9d0e3f2a1c8d7b6e5f"]
+```
+
+Entries are stable ids (what `storage migrate` writes) or collection names (what
+you type); both resolve against `~/.indexed/data/`, so nothing is copied into the
+repository. With the file in place `indexed search` searches **only** the listed
+collections, and `indexed lsp` scopes `workspace/symbol`, hover and diagnostics
+the same way; `--collection NAME` still searches outside the list, with one
+warning line. Without the file nothing changes: every collection in the store is
+in scope. A malformed file, an unsupported `version`, or an entry that no longer
+resolves is an error naming the file and the entry — never a silent widening or
+emptying of the scope. `index create` does not edit the file: a collection
+created in a repo with a definition warns that it is outside the scope until you
+list it.
+
+The older `./.indexed/collections.json` pointer is deprecated and read-only; it
+keeps working with one warning naming `indexed.toml`, and is removed in the next
+minor.
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
 

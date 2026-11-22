@@ -5,12 +5,15 @@ The contract, in one place:
 * **Plan.** Enumerate the workspace's local collections (through the facade, so
   engine detection and the reserved-directory exclusions are the production
   ones), fingerprint each, and decide what would happen to it.
-* **Migrate.** Journal every step to ``<global>/data/registry-migration.json``
-  BEFORE touching data, then move -> register -> point. Every step is
+* **Migrate.** Journal every step to ``<global>/data/registry-migration-<ws>.json``
+  BEFORE touching data, then move -> register -> select. Every step is
   idempotent and every step is reconcilable from the filesystem, so a run
-  killed mid-way resumes instead of duplicating or losing a collection.
+  killed mid-way resumes instead of duplicating or losing a collection. The
+  "select" step adds the collection's stable id to the committed
+  ``indexed.toml`` at the Git worktree root (#344) — the repository's own
+  artifact, not a workspace pointer.
 * **Roll back.** Reverse the journal: put the data back where it was, drop the
-  pointer and the registry record. A collection that was *adopted* (the
+  definition entry and the registry record. A collection that was *adopted* (the
   workspace held a byte-identical copy of one already in the store) is restored
   from the shared copy, because its local copy was removed on adoption — the
   shared collection itself is left alone for the workspaces still using it.
@@ -38,6 +41,11 @@ from indexed.config.collections_registry import (
 )
 from indexed.config.errors import StorageError
 from indexed.config.storage import get_collections_path, get_local_root
+from indexed.config.workspace_selection import (
+    add_collection,
+    find_git_root,
+    remove_collection,
+)
 
 COLLISION_POLICIES = ("abort", "adopt", "rename")
 
@@ -325,6 +333,24 @@ def _reconcile(step: dict, *, action: str, fingerprint: str) -> None:
     )
 
 
+def _definition_root(workspace: Path) -> Path:
+    """The Git worktree root the committed ``indexed.toml`` belongs to.
+
+    A definition must belong to a repository: it is the portable artifact two
+    clones share, so writing it into a bare directory would make it invisible
+    to the next clone. Fail with the remedy instead of guessing a location.
+    """
+    root = find_git_root(workspace)
+    if root is None:
+        raise MigrationError(
+            f"'{workspace}' is not inside a Git worktree. `indexed storage migrate` "
+            "records the shared collections in a committed 'indexed.toml' at the "
+            "repository root, so run it from the repository whose definition should "
+            "list them."
+        )
+    return root
+
+
 def migrate(
     workspace: Path,
     *,
@@ -336,10 +362,13 @@ def migrate(
 
     A dry run performs zero writes and reports collisions. A real run journals
     every step first, so interrupting it and re-running resumes; running it
-    again after it completed is a no-op.
+    again after it completed is a no-op. Each migrated collection is added to
+    the committed ``indexed.toml`` at the Git worktree root — that definition,
+    not a workspace pointer, is what tells this repository what it selects.
     """
     workspace = Path(workspace)
     registry = registry or CollectionRegistry()
+    definition_root = _definition_root(workspace)
     pointers = WorkspacePointers(workspace)
     workspace_key = pointers.workspace_key()
 
@@ -360,9 +389,9 @@ def migrate(
             existing,
             journal_path=journal_path,
             registry=registry,
-            pointers=pointers,
             workspace_key=workspace_key,
             global_collections=Path(report.global_collections),
+            definition_root=definition_root,
         )
 
     if not report.collections:
@@ -381,6 +410,7 @@ def migrate(
     journal = {
         "version": REGISTRY_VERSION,
         "workspace": workspace_key,
+        "definition": str(definition_root),
         "started_at": utc_now(),
         "completed_at": None,
         "steps": [
@@ -402,10 +432,10 @@ def migrate(
         journal,
         journal_path=journal_path,
         registry=registry,
-        pointers=pointers,
         workspace_key=workspace_key,
         global_collections=Path(report.global_collections),
         report=report,
+        definition_root=definition_root,
     )
 
 
@@ -448,9 +478,9 @@ def _resume(
     *,
     journal_path: Path,
     registry: CollectionRegistry,
-    pointers: WorkspacePointers,
     workspace_key: str,
     global_collections: Path,
+    definition_root: Path,
 ) -> MigrationReport:
     """Continue an interrupted run from its journal (no re-planning)."""
     report = _journal_report(report, journal, action="migrate", resumed=True)
@@ -458,10 +488,10 @@ def _resume(
         journal,
         journal_path=journal_path,
         registry=registry,
-        pointers=pointers,
         workspace_key=workspace_key,
         global_collections=global_collections,
         report=report,
+        definition_root=definition_root,
         resumed=True,
     )
 
@@ -471,10 +501,10 @@ def _run_steps(
     *,
     journal_path: Path,
     registry: CollectionRegistry,
-    pointers: WorkspacePointers,
     workspace_key: str,
     global_collections: Path,
     report: MigrationReport,
+    definition_root: Path,
     resumed: bool = False,
 ) -> MigrationReport:
     """Drive every journal step to ``linked``, reconciling from disk each time."""
@@ -504,7 +534,7 @@ def _run_steps(
         step["state"] = "registered"
         _save_journal(journal_path, journal)
 
-        pointers.link(step["name"], record.id, global_collections)
+        add_collection(definition_root, record.id)
         registry.link_workspace(record.id, workspace_key)
         step["state"] = "linked"
         _save_journal(journal_path, journal)
@@ -537,6 +567,7 @@ def rollback(
 
     local_collections = get_collections_path(get_local_root(workspace))
     global_collections = get_collections_path(registry.global_root)
+    definition_root = find_git_root(workspace)
     messages: list[str] = []
     plans: list[CollectionPlan] = []
 
@@ -547,7 +578,13 @@ def rollback(
         target = Path(step["target"])
         collection_id = step.get("id")
 
+        # Both artifacts are undone: the definition entry this migration added
+        # (deleting the file when it was the only one) and, for workspaces
+        # migrated under #346, the legacy pointer — left behind it would keep
+        # routing at a store that no longer holds the collection.
         pointers.unlink(step["name"])
+        if collection_id and definition_root is not None:
+            remove_collection(definition_root, collection_id)
         if collection_id:
             registry.unlink_workspace(collection_id, workspace_key)
             if step["action"] != "adopt":

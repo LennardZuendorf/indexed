@@ -2483,3 +2483,170 @@ def test_v1_invalid_ref_is_shape_problem_not_ref_problem(monkeypatch, git_repo):
         search_cmd._changed_since_problems("missing-ref", "unused", ["v2"])[0][0]
         == search_cmd._REF_PROBLEM
     )
+
+
+class TestWorkspaceSelectionScope:
+    """#344: a committed ``indexed.toml`` narrows the default search scope."""
+
+    def _status(self, name: str):
+        from unittest.mock import Mock
+
+        status = Mock()
+        status.name = name
+        status.indexers = ["default"]
+        return status
+
+    def _selection(self, names):
+        from indexed.config.workspace_selection import (
+            SelectedCollection,
+            WorkspaceSelection,
+        )
+
+        return WorkspaceSelection(
+            path=Path("/repo/indexed.toml"),
+            root=Path("/repo"),
+            collections=tuple(SelectedCollection(name=name) for name in names),
+        )
+
+    def _install(self, monkeypatch, selection, statuses, seen, *, warnings=()):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, Mock
+
+        context = type(
+            "SelectionContext",
+            (),
+            {
+                "collections_path": Path("/tmp/test-collections"),
+                "mode": "global",
+                "config_service": MagicMock(),
+                "workspace": Path("/repo"),
+                "selection": selection,
+                "warnings": tuple(warnings),
+            },
+        )()
+        monkeypatch.setattr(
+            "indexed.cli.composition.resolve_collections_context",
+            lambda *args, **kwargs: context,
+        )
+
+        def fake_status(names=None, *args, **kwargs):
+            if names is None:
+                return statuses
+            return [status for status in statuses if status.name in names]
+
+        monkeypatch.setattr(search_cmd, "status", fake_status)
+        monkeypatch.setattr(search_cmd, "setup_root_logger", lambda **kwargs: None)
+        monkeypatch.setattr(search_cmd, "is_verbose_mode", lambda: False)
+        # A SourceConfig stand-in that keeps the name: the config list is how a
+        # collection reaches svc_search.
+        monkeypatch.setattr(
+            search_cmd, "SourceConfig", lambda **kwargs: SimpleNamespace(**kwargs)
+        )
+
+        def fake_search(query, configs, *args, **kwargs):
+            seen.extend(config.name for config in configs)
+            return {config.name: {"results": []} for config in configs}
+
+        monkeypatch.setattr(search_cmd, "svc_search", fake_search)
+        phased = MagicMock()
+        phased.__enter__ = Mock(return_value=phased)
+        phased.__exit__ = Mock(return_value=False)
+        monkeypatch.setattr(
+            search_cmd, "create_phased_progress", lambda **kwargs: phased
+        )
+        return context
+
+    def test_search_without_collection_searches_only_the_selection(
+        self, monkeypatch
+    ) -> None:
+        """R1/R2: the store is enumerated, then narrowed to the definition."""
+        seen: list = []
+        self._install(
+            monkeypatch,
+            self._selection(("docs",)),
+            [self._status("notes"), self._status("docs")],
+            seen,
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0, result.stdout
+        assert seen == ["docs"]
+
+    def test_no_selection_searches_every_collection(self, monkeypatch) -> None:
+        """R4: a workspace without a definition loses nothing."""
+        seen: list = []
+        self._install(
+            monkeypatch,
+            None,
+            [self._status("notes"), self._status("docs")],
+            seen,
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 0, result.stdout
+        assert seen == ["notes", "docs"]
+
+    def test_out_of_selection_collection_warns_and_runs(self, monkeypatch) -> None:
+        """R5: the definition is a default scope, not an access boundary."""
+        seen: list = []
+        self._install(
+            monkeypatch,
+            self._selection(("docs",)),
+            [self._status("docs"), self._status("notes")],
+            seen,
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query", "--collection", "notes"])
+
+        assert result.exit_code == 0, result.stdout
+        assert seen == ["notes"]
+        assert "outside the workspace selection" in result.stdout
+
+    def test_out_of_selection_warning_stays_off_json_stdout(self, monkeypatch) -> None:
+        """Machine mode keeps stdout parseable: the notice goes to stderr."""
+        import json
+
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        seen: list = []
+        self._install(
+            monkeypatch,
+            self._selection(("docs",)),
+            [self._status("docs"), self._status("notes")],
+            seen,
+        )
+
+        set_simple_output(True)
+        try:
+            result = runner.invoke(
+                search_cmd.app, ["my-query", "--collection", "notes"]
+            )
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0
+        assert "outside the workspace selection" in result.stderr
+        assert "documents" in json.loads(result.stdout)
+
+    def test_a_selected_collection_that_vanished_fails_closed(
+        self, monkeypatch
+    ) -> None:
+        """R3: never widen to the store, never narrow to nothing."""
+        seen: list = []
+        self._install(
+            monkeypatch,
+            self._selection(("docs", "gone")),
+            [self._status("docs")],
+            seen,
+        )
+
+        result = runner.invoke(search_cmd.app, ["my-query"])
+
+        assert result.exit_code == 1
+        assert "'gone'" in result.stdout
+        assert seen == []

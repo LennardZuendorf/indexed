@@ -27,6 +27,7 @@ Root roadmap: whole-feature gates only, no unit-level backlog, no long-horizon w
 | lsp-tier0 | [product](features/lsp-tier0/product.md), [plan](features/lsp-tier0/plan.md) |
 | lsp-tier1 | [product](features/lsp-tier1/product.md) |
 | retrieval-eval | [product](features/retrieval-eval/product.md), [plan](features/retrieval-eval/plan.md) |
+| workspace-selection | [product](features/workspace-selection/product.md), [plan](features/workspace-selection/plan.md) |
 
 ## Decisions
 
