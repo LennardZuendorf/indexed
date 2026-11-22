@@ -1,7 +1,7 @@
 ---
 type: plan
 scope: roadmap
-updated: 2026-11-14
+updated: 2026-11-22
 ---
 
 # Development Plan: indexed
@@ -51,6 +51,7 @@ is the truth. Cross-feature order is a whole-feature gate, never a unit edge.
 | 22 | lsp-tier1 (issue #241) | navigation on the same server: `textDocument/definition` and bounded `textDocument/references` with the file-level degradation rule and one keyed query per request, plus honest `publishDiagnostics` (only "not in any collection" / "indexed version differs", never a fabricated warning) | IN PROGRESS | [features/lsp-tier1/](features/lsp-tier1/) · `src/indexed/lsp/{resolver,diagnostics}.py` · `tests/system/lsp_evidence/` |
 
 | 23 | file-watcher (issue #67) | Foreground collection refresh, debounce and missing-source protection | IN REVIEW | [features/file-watcher/](features/file-watcher/) · `cli/knowledge/commands/{watch,watch_service}.py` |
+| 24 | collection-registry (issue #346) | stable collection ids in the global store; local→global migration with dry run, resume and rollback; two projects read one on-disk copy | IN REVIEW | [features/collection-registry/](features/collection-registry/) · `config/collections_registry.py`, `cli/storage/`, `cli/composition.py` |
 
 **Feature 10 detail:** items #1 (ConfigService split), #2 (MCP decompose), #4
 (flag parsing), #5 (exception hierarchy), #6 (schema versioning), #7 (public API)

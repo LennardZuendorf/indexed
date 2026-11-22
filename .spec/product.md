@@ -2,7 +2,7 @@
 type: entrypoint
 scope: product
 children: []
-updated: 2026-09-09
+updated: 2026-11-22
 ---
 
 # Product Spec: indexed
@@ -123,6 +123,7 @@ Direction, not yet shipped — see § Vision above.
 | **System Info** | ✅ Shipped | `indexed info` |
 | **Engine Selection** | ✅ Shipped | `--engine v1/v2` on `index create` (root, group, and leaf flags) — new collections only |
 | **Migrate to v2** | ✅ Shipped | `indexed index migrate` — dry-run/backup/rollback-safe v1→v2 conversion |
+| **Shared Collections** | ✅ Shipped | `indexed storage migrate` — stable collection ids in the global store; dry-run, resume, rollback, and `--on-collision adopt` so two projects read one on-disk index |
 | Interactive TUI | 📋 Planned | Full-screen interactive mode |
 | Progress Indicators | ⚠️ Partial | Spinners exist, bars planned |
 

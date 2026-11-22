@@ -3,7 +3,7 @@ type: branch
 scope: config
 parent: tech.md
 covers: single-source config resolution, .env loading hierarchy, storage directory layout, .gitignore guard, schema versioning, config schema
-updated: 2026-11-16
+updated: 2026-11-22
 ---
 
 # Tech Branch: Config (`src/indexed/config/`)
@@ -109,6 +109,7 @@ Not applied to `~/.indexed/` (outside git repos).
 - `provider.py` — `Provider`, the immutable typed view over merged config
 - `path_utils.py` — dot-path helpers (`get_by_path`) over nested config dicts
 - `storage.py` — `StorageResolver` + storage-dir layout (see § Storage Directory Structure)
+- `collections_registry.py` — global collection registry (stable ids) + per-workspace pointer file (#346)
 - `errors.py` — `IndexedError` hierarchy
 
 Pydantic validation models are not centralized in a `config/models.py` — each
