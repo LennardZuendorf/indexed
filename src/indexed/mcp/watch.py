@@ -4,9 +4,9 @@ The server otherwise serves whatever was on disk at the last ``index update``.
 With ``[mcp] watch_enabled = true`` it also keeps the local collections that
 existed at startup fresh: one reused ``run_watch_loop`` per collection, each on
 its own thread (``asyncio.to_thread``) so a blocking update never stalls the
-event loop. The opening catch-up pass of every collection is serialised behind
-one gate so the process's first LlamaIndex/embedder import has exactly one
-owner; every pass after that is independent (#358).
+event loop. The update path's cold stack (LlamaIndex, the embedder) is imported
+once, behind a gate, before the first catch-up pass runs, so that import has a
+single owner; every pass after it is independent (#358).
 
 Scope is fixed at startup on purpose. A collection created while the server
 runs is picked up on the next restart — the set is never re-planned behind the
@@ -36,11 +36,11 @@ class WatcherHandle:
 
     stop_event: threading.Event = field(default_factory=threading.Event)
     tasks: list[asyncio.Task[None]] = field(default_factory=list)
-    # One gate and one flag for the *opening* catch-up pass of every watcher
-    # (issue #358). The first pass is the process's first heavy import —
-    # LlamaIndex and the embedder — so exactly one thread runs it; a thread
-    # that lost that race used to get a half-initialised module, which stays in
-    # ``sys.modules`` and fails every later pass for the whole process.
+    # One gate and one flag for the update path's cold-stack warm-up (issue
+    # #358). Whichever watcher thread arrives first imports LlamaIndex and the
+    # embedder while the others wait here; a thread that lost that race used to
+    # get a half-initialised module, which stays in ``sys.modules`` and fails
+    # every later pass for the whole process.
     first_pass_gate: threading.Lock = field(default_factory=threading.Lock)
     stack_warm: threading.Event = field(default_factory=threading.Event)
 
@@ -49,8 +49,8 @@ class WatcherHandle:
 
         The loops poll with a short sleep and re-check the event, so this
         returns in roughly one poll interval plus at most one running update
-        (plus, on startup, the single pass holding the opening gate) — never a
-        hard kill that would abandon a half-written collection.
+        (plus, on startup, the single cold-stack warm-up holding the gate) —
+        never a hard kill that would abandon a half-written collection.
         """
         self.stop_event.set()
         if self.tasks:
@@ -112,6 +112,23 @@ def _plan_targets(
     return planned
 
 
+def warm_shared_stack() -> None:
+    """Import the update path's cold stack on the calling thread (#358).
+
+    Nothing about a collection decides this import: the opening catch-up pass of
+    every watcher needs it, and whichever pass runs first happens to pay it — so
+    with several collections they all paid it at the same instant. Doing it once,
+    here, gives the process a single owner for it.
+
+    ``llama_index.embeddings.huggingface`` is the module that reported the
+    partially initialized ``BaseEmbedding`` import, and importing it pulls
+    ``llama_index.core``, ``transformers`` and ``sentence-transformers`` — the
+    cold stack of both engines. Function-local for the same reason the rest of
+    this module keeps its engine imports inside the thread body.
+    """
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding  # noqa: F401
+
+
 def _watch_one(
     target: Any,
     source_config: Any,
@@ -140,30 +157,36 @@ def _watch_one(
         )
 
     def apply_update() -> None:
-        """Apply one pass, letting the opening one warm the stack alone (#358).
+        """Apply one pass, warming the shared stack once behind a gate (#358).
 
         Every collection that existed at startup runs its catch-up immediately,
         so with N collections N threads entered LlamaIndex's lazy import (and
-        the embedder load) at the same instant. Serialising only the first pass
-        gives the process one owner of that import; once the stack is warm the
-        loops are independent again, and a thread waiting here waits at most one
-        update pass — never a hard block on the loop.
+        the embedder load) at the same instant. The warm-up below therefore runs
+        exactly once, under the gate, before that thread's own pass: one owner
+        for the import, and every pass after it is ungated so the loops stay
+        independent. A thread waiting here waits at most one import.
         """
-        if stack_warm.is_set():
-            run_pass()
-            return
-        with first_pass_gate:
-            already_warm = stack_warm.is_set()
-            if not already_warm:
-                try:
-                    run_pass()
-                finally:
-                    # The gate serialises the first *attempt*, not the first
-                    # success: one broken collection must not queue every other
-                    # collection's retries behind it.
-                    stack_warm.set()
-        if already_warm:
-            run_pass()
+        if not stack_warm.is_set():
+            with first_pass_gate:
+                if not stack_warm.is_set():
+                    try:
+                        warm_shared_stack()
+                    except Exception as exc:  # noqa: BLE001 — the pass reports it
+                        # The warm-up is an optimisation, never a new failure
+                        # mode: the pass below imports the same stack itself and
+                        # is where a broken install must surface.
+                        logger.debug(
+                            f"collection watch: stack warm-up failed ({exc}); "
+                            "the update pass imports it itself"
+                        )
+                    finally:
+                        # One ATTEMPT per server, not one success. A broken
+                        # install must not queue every collection's retries
+                        # behind the gate, and a failed import has already left
+                        # ``sys.modules`` unusable, so retrying under the gate
+                        # buys nothing.
+                        stack_warm.set()
+        run_pass()
 
     def info(message: str) -> None:
         logger.info(f"collection watch [{target.collection}]: {message}")

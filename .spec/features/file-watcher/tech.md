@@ -67,15 +67,20 @@ the gate off the branch is still one attribute read — no warming, no import.
 
 The tokenizer warm-up covers one module, not the whole update path: the first
 catch-up pass also pulls LlamaIndex and the embedder in, from a worker thread,
-and every collection catches up at once on startup. The opening pass is
-therefore gated (#358) — `WatcherHandle.first_pass_gate`/`stack_warm` let
-exactly one thread run the first pass while the others wait on the gate, and
-`stack_warm` releases them once it returns, so every pass after the first two
-is ungated again. A thread that lost the concurrent import got a
-half-initialised `llama_index` module, which stays in `sys.modules` and fails
-every later pass of that process — a permanent stale collection, which the
-macOS system test saw as a restart that never caught up. The gate is not a
-fleet-wide lock: it bounds startup (and shutdown) by one update pass.
+and every collection catches up at once on startup. `watch.warm_shared_stack()`
+therefore runs once per server under a gate (`WatcherHandle.first_pass_gate` /
+`stack_warm`) before the first pass runs: one owner for the cold import, and a
+thread that waited on the gate runs its own pass ungated as soon as the flag is
+set, so every pass after the warm-up is independent. The flag records one
+*attempt*, not one success — a broken collection must not queue every other
+collection's retries behind the gate, and the pass itself is where a broken
+install surfaces (the warm-up failure is DEBUG). A thread that lost the
+concurrent import got a half-initialised `llama_index` module, which stays in
+`sys.modules` and fails every later pass of that process — a permanent stale
+collection, which the macOS system test saw as a restart that never caught up.
+The warm-up imports `llama_index.embeddings.huggingface`, the module that logged
+the partially initialized `BaseEmbedding`, which pulls `llama_index.core`,
+`transformers` and `sentence-transformers` — the cold stack of both engines.
 
 The plan is not re-run while the server lives: collections created after
 startup are watched only after the next restart (documented in
@@ -148,5 +153,6 @@ period even without a new edit. On a signature change it waits for a full quiet
   missing/unindexable sources; the plan runs exactly once per start; stop joins
   the threads; `resolve_watch_target(...).scan()` is `None` once the source
   directory disappears; with the gate on the tokenizer warm-up precedes
-  `start_watchers_if_enabled` and the serving window (#335); two opening
-  catch-up passes never overlap, and both collections still catch up (#358).
+  `start_watchers_if_enabled` and the serving window (#335); the cold stack is
+  warmed exactly once, no pass starts before it, a failed warm-up and a failed
+  collection both leave the other collections running (#358).

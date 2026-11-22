@@ -2336,16 +2336,18 @@ too, and N collections catch up at once — so the class of bug survived the fix
   process fails too; the collection never catches up and the symptom is a
   timeout, not a delay. When a system test times out on a restart, look for
   "partially initialized module" in the log before suspecting slowness.
-- **Prefer a one-time gate over enumerating the modules to prewarm.** A
-  `threading.Lock` + `threading.Event` around the *opening* pass of the first
-  worker gives the first import one owner without listing the stack, without
-  tracking the update path's lazy imports in a second place, and without
-  serialising the fleet afterwards. Enumerating modules works until the update
-  path gains an import.
-- **A gate needs a re-check under the lock and a bounded wait.** Release the
-  others with an event (so later passes are ungated), and say in the docstring
-  what a blocked thread waits for — one update pass — because it also sets the
-  shutdown bound.
+- **Warm the deepest module the worker needs, under a gate, not one worker's
+  pass.** Importing `llama_index.embeddings.huggingface` pulls the whole cold
+  stack, and a `threading.Lock` + `threading.Event` around that single warm-up
+  gives the import one owner without depending on which collection's pass runs
+  first. Warming "as a side effect of the first pass" looks simpler and is
+  wrong: a pass can return early or raise before it touches the import, and then
+  the flag lies.
+- **The gate's release must not depend on a worker's success.** Set the warm
+  flag in `finally`, log a failed warm-up at DEBUG and let the pass report the
+  real error — otherwise one broken collection serialises every other
+  collection's retries behind the gate. One attempt per process is enough: a
+  failed import has already poisoned `sys.modules`, so retrying buys nothing.
 **Tags:** concurrency, mcp, imports, tests
 **Date:** 2026-11-22
 
