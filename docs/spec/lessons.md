@@ -2483,4 +2483,3 @@ operator state produces *after* probing it, never from the stack you assume: the
 corruption path was already tolerated upstream.
 **Tags:** mcp, errors, spec
 **Date:** 2026-11-23
-
