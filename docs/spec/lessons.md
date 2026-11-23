@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Lessons Learned
@@ -2467,3 +2467,19 @@ test names that did not exist; `git status` showed only the slice-1 module.
 and the named test files. Restore the table to reality first, then build; a plan
 that outruns the tree is the same failure mode as spec drift.
 **Tags:** spec, planning
+
+### A boundary contract is enforced per handler, not per module (2026-11-23)
+**Pattern:** `app-mcp-freshness-errors.md` said the MCP boundary envelopes "**every**
+exception" and `tools.py` honoured it, but the two list resources
+(`resource://collections`, `resource://collections/status`) caught only `IndexedError` —
+and the suite *encoded* the leak: `test_collections_list_propagates_unexpected_error`
+asserted the raw `RuntimeError` escaped. A live probe also corrected the assumed trigger:
+a corrupt `manifest.json` is swallowed per-collection by core (status omits it and returns
+`[]` by design), while the root `scandir` failing raises `PermissionError`, which is what a
+handler actually sees.
+**Rule:** Grep every `except` at a layer that claims one contract, and invert any test that
+asserts the leak — a test can be the defect's proof of intent. Name the exception type a real
+operator state produces *after* probing it, never from the stack you assume: the obvious
+corruption path was already tolerated upstream.
+**Tags:** mcp, errors, spec
+**Date:** 2026-11-23

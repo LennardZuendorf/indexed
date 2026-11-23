@@ -276,16 +276,72 @@ class TestResourceErrorHandling:
         }
 
     @patch.object(resources_module, "svc_status")
-    def test_collections_list_propagates_unexpected_error(
+    def test_collections_list_returns_envelope_for_unexpected_error(
         self,
         mock_status: MagicMock,
     ) -> None:
-        mock_status.side_effect = RuntimeError("unexpected failure")
+        """Issue #125: the list resource is the boundary — its spec says
+        "the boundary envelopes **every** exception". A collections root that
+        cannot be scanned raises ``PermissionError`` (measured live: `svc_status`
+        returns [] for a corrupt manifest, but the root ``scandir`` fails
+        outside that per-collection tolerance), and it must become the
+        documented envelope, never a raw MCP protocol error that costs every
+        client the whole listing.
+        """
+        mock_status.side_effect = PermissionError(
+            "[Errno 13] Permission denied: '/home/me/.indexed/data/collections'"
+        )
 
         resource = _get_resource("resource://collections")
+        result = run_async(resource.fn())
 
-        with pytest.raises(RuntimeError, match="unexpected failure"):
-            run_async(resource.fn())
+        assert result == {
+            "error": (
+                "Internal error: [Errno 13] Permission denied: "
+                "'/home/me/.indexed/data/collections'"
+            ),
+            "type": "MCPError",
+        }
+
+    @patch.object(resources_module, "svc_status")
+    @patch.object(resources_module, "_resolve_config")
+    def test_collections_status_list_returns_envelope_for_indexed_error(
+        self,
+        mock_resolve_config: MagicMock,
+        mock_status: MagicMock,
+    ) -> None:
+        mock_resolve_config.return_value = MagicMock()
+        mock_status.side_effect = StorageError("status store unreadable")
+
+        resource = _get_resource("resource://collections/status")
+        result = run_async(resource.fn())
+
+        assert result == {
+            "error": "status store unreadable",
+            "type": "StorageError",
+        }
+
+    @patch.object(resources_module, "svc_status")
+    @patch.object(resources_module, "_resolve_config")
+    def test_collections_status_list_returns_envelope_for_unexpected_error(
+        self,
+        mock_resolve_config: MagicMock,
+        mock_status: MagicMock,
+    ) -> None:
+        """Issue #125: same containment for the second list resource — a scan
+        that fails with an ``OSError`` (I/O error on the data volume) must be
+        an envelope here too, not a protocol error.
+        """
+        mock_resolve_config.return_value = MagicMock()
+        mock_status.side_effect = OSError("[Errno 5] Input/output error")
+
+        resource = _get_resource("resource://collections/status")
+        result = run_async(resource.fn())
+
+        assert result == {
+            "error": "Internal error: [Errno 5] Input/output error",
+            "type": "MCPError",
+        }
 
     @patch.object(resources_module, "svc_status")
     @patch.object(resources_module, "_resolve_config")
