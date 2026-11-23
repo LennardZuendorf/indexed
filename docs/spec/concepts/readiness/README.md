@@ -19,14 +19,14 @@ Use this workflow across the milestones. Add separate cases for exact symbol nam
 
 | # | Milestone | Deliverable | Acceptance | Status | Starts when |
 | ---: | --- | --- | --- | --- | --- |
-| 1 | [Shared Project Workspace](m1-shared-project-workspace.md) | Global collections and versioned project selection | Two clones, per-request scope, migration and rollback | IN PROGRESS | — |
+| 1 | [Shared Project Workspace](m1-shared-project-workspace.md) | Global collections and versioned project selection | Two clones, per-request scope, migration and rollback | PARTIAL — registry, selection and migration shipped; acceptance run not yet demonstrated | — |
 | 2 | [Merged Project Search](m2-merged-project-search.md) | Ranked issues, wiki and code evidence | Held-out mixed-source evaluation and CLI/MCP workflow | NOT STARTED | Shared Project Workspace DONE |
 | 3 | [Git and Development Sources](m3-git-and-development-sources.md) | Searchable history and ref-scoped evidence | History, rename, ref and source-failure workflows | NOT STARTED | Shared Project Workspace DONE |
 | 4 | [Code Graph and Language Server](m4-code-graph-and-language-server.md) | Bounded traversal and verified editor capabilities | Search-to-graph workflow and editor/language capability tests | NOT STARTED | Merged Project Search and Git and Development Sources DONE |
-| 5 | [Agent Plugin Installation](m5-agent-plugin-installation.md) | Tested integrations for six clients | Per-client install lifecycle and scoped search | IN PROGRESS | Merged Project Search DONE; began early on the shipped `indexed.search/1` payload |
+| 5 | [Agent Plugin Installation](m5-agent-plugin-installation.md) | Tested integrations for six clients | Per-client install lifecycle and scoped search | PARTIAL — three of six installers shipped; per-client acceptance not yet demonstrated | Merged Project Search DONE; began early on the shipped `indexed.search/1` payload |
 | 6 | [Documentation and Readiness](m6-documentation-and-readiness.md) | Versioned guides, product copy and packaged workflow proof | Published clean install and attributable agent-task replay | NOT STARTED | All five capability milestones DONE |
 
-The Status column is the GitHub milestone and issue state: how much of that milestone's own acceptance is met on `main`. It is a different axis from [Feature Sequence](../feature-sequence.md), which records whether a shipped feature's live surface is complete, so the two tables are not duplicates — a feature can be `IN REVIEW` there while its milestone is `IN PROGRESS` here.
+The Status column is the GitHub milestone and issue state: how much of that milestone's own acceptance is met on `main`. `PARTIAL` means the named parts are on `main` and the acceptance run has not been demonstrated. It is a different axis from [Feature Sequence](../feature-sequence.md), which records whether a shipped feature's live surface is complete, so the two tables are not duplicates — a feature can be `IN REVIEW` there while its milestone is `PARTIAL` here.
 
 ## Contracts
 
