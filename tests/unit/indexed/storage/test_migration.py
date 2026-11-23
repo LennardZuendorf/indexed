@@ -367,13 +367,19 @@ def test_hash_verify_peak_memory_stays_bounded_on_a_large_file(
 
 
 def test_cli_help_and_validation_state_the_verify_default() -> None:
+    import re
+
     from typer.testing import CliRunner
 
     from indexed.cli.app import app
 
     runner = CliRunner()
     helped = runner.invoke(app, ["storage", "migrate", "--help"])
-    flat = " ".join(helped.output.split())
+    # Rich wraps every flag in ANSI colour codes when the environment asks for colour
+    # (CI does), so the literal "--verify" is not contiguous in the raw output. Strip the
+    # escape sequences: the assertion is about the help text, not the renderer.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", helped.output)
+    flat = " ".join(plain.split())
     assert "--verify" in flat
     assert "structural (default" in flat
     assert "does NOT compare content" in flat
