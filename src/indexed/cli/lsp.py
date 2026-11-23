@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import typer
 
+from loguru import logger
+
 
 def lsp(ctx: typer.Context) -> None:
     """Serve the index over the Language Server Protocol (stdio).
@@ -31,5 +33,12 @@ def lsp(ctx: typer.Context) -> None:
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
     cli_ctx = resolve_collections_context(mode_override=mode_override)
-    backend = KnowledgeBackend(str(cli_ctx.collections_path))
+    # stdout is the protocol: the resolver's notices go to the log (stderr),
+    # never to the console.
+    for notice in cli_ctx.warnings:
+        logger.info(notice)
+    backend = KnowledgeBackend(
+        str(cli_ctx.collections_path),
+        selected_names=cli_ctx.selection.names if cli_ctx.selection else None,
+    )
     raise typer.Exit(serve(backend))

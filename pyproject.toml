@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development",
@@ -120,9 +121,22 @@ packages = ["src/indexed"]
 # real user (`uv tool install indexed-sh` has no repo root to fall back to).
 [tool.hatch.build.targets.wheel.force-include]
 "skills/index-use" = "indexed/skills/index-use"
+# Same reason for the PreToolUse hook: it ships as a real .sh file so the
+# installed command copies bytes a user can read, not a string buried in Python.
+"installers/claude-code/indexed-suggest-mcp.sh" = "indexed/installers/claude-code/indexed-suggest-mcp.sh"
+# Codex reads the same skill root but its own skill text (it has no Grep/Glob
+# tool and no `$ARGUMENTS`, so the Claude payload would mislead it), plus its
+# own nudge hook that reads the Bash command line.
+"installers/codex/index-use.SKILL.md" = "indexed/installers/codex/index-use.SKILL.md"
+"installers/codex/indexed-nudge.sh" = "indexed/installers/codex/indexed-nudge.sh"
+# OpenCode reaches MCP tools through Code Mode (`tools.indexed.search` inside
+# `execute`), so it needs its own skill text, and its nudge is a JS plugin the
+# host imports from `<config>/plugins` rather than a shell hook.
+"installers/opencode/index-use.SKILL.md" = "indexed/installers/opencode/index-use.SKILL.md"
+"installers/opencode/indexed-nudge.js" = "indexed/installers/opencode/indexed-nudge.js"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/indexed", "skills"]
+only-include = ["src/indexed", "skills", "installers"]
 
 [dependency-groups]
 dev = [

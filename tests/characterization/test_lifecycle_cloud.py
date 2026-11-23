@@ -42,7 +42,7 @@ def _search_ids(collections_dir: Path, collection: str, query: str) -> list[str]
 def test_cloud_lifecycle(source_name: str, request, local_workspace, build_collection):
     # Warm the engine through the services package first: this is the import
     # entry that resolves the current cold-import cycle (importing the factories
-    # or the creator directly fails cold — see .spec/lessons.md).
+    # or the creator directly fails cold — see docs/spec/lessons.md).
     import indexed.core.v1.engine.services  # noqa: F401
     from indexed.core.v1.engine.factories.update_collection_factory import (
         create_collection_updater,

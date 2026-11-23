@@ -80,7 +80,10 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[LifespanState, None]:
         # The catch-up update runs in a worker thread while the first search
         # may first-import `transformers` on this one; the loser of that race
         # used to cache a degraded tokenizer for the whole process (#335).
-        # Warm it here, before any watcher thread exists.
+        # Warm it here, before any watcher thread exists. The deeper LlamaIndex
+        # stack gets the same treatment one call down, inside
+        # `start_watchers_if_enabled`, which imports it on this thread before it
+        # creates a single watcher (#358).
         prewarm_tokenizer()
 
         update_wiring = wiring_kwargs_for_update(cli_context)

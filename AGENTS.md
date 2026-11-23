@@ -1,9 +1,9 @@
 # AGENTS.md — indexed Engineering Guide
 
-**indexed** · Python 3.11+ single-package project (`uv`, one wheel `indexed-sh`) ·
+**indexed** · Python 3.11–3.14 single-package project (`uv`, one wheel `indexed-sh`) ·
 local-first semantic search over files/Jira/Confluence/Outline, served by a Typer **CLI**
 and a FastMCP **server**. This is the operating contract for any agent in this repo. The design
-source of truth is `.spec/`; earned lessons are in `.spec/lessons.md` — read both at
+source of truth is `docs/spec/`; earned lessons are in `docs/spec/lessons.md` — read both at
 session start.
 
 ## Context
@@ -23,7 +23,7 @@ src/indexed/           the single package (one wheel: indexed-sh)
   cli/                 Typer app · composition.py (the single wiring site)
   mcp/                 FastMCP server
 tests/                 unit/ · system/ · characterization/ · benchmarks/
-.spec/                 design source of truth (root specs + features/<name>/)
+docs/spec/            design source of truth (root specs + features/<name>/)
 ```
 
 Config priority (low→high): defaults → `~/.indexed/config.toml` →
@@ -40,7 +40,7 @@ uv run indexed-mcp run
 
 ## Rules
 
-**MUST** — run the full Workflow cycle; read `.spec/` before coding and cite it; run
+**MUST** — run the full Workflow cycle; read `docs/spec/` before coding and cite it; run
 everything via `uv run` from the PROJECT ROOT; keep ty clean (0 diagnostics) and
 ruff clean; hold coverage >85% and run the full suite before any push; commit
 `uv.lock` with dependency changes; keep the four module edges (`core ↛ connectors`,
@@ -58,7 +58,7 @@ commit subject or add a body/footer; leave a spec drifting from the code; over-c
 
 ## Learnings
 
-Earned defaults live in **`.spec/lessons.md`** — read at session start, apply without
+Earned defaults live in **`docs/spec/lessons.md`** — read at session start, apply without
 being asked, and add a lesson after every correction. Load-bearing highlights: lazy ML
 imports keep startup <1s; ty must be fully clean tree-wide (0 diagnostics, no baseline);
 coverage is measured on installed packages (`--cov=src`); `ConfigService` is a singleton
@@ -76,12 +76,12 @@ Scoped evaluation config restores overrides and validates only measured namespac
 Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
 Clear hook Git routing variables before temporary-repository tests.
 Refresh touched spec dates when publication crosses calendar days.
-Read saved totals/verdicts; retain environment notes; step success is not a verdict. Read back issue parents and milestone IDs.
+Read saved totals/verdicts; retain environment notes; step success is not a verdict.
 Bound formatted comments after escaping and link omitted details to artifacts.
 Canonical search retains errors and matched text; rank before rounding.
 Check exceptional CLI exit status before parsing stdout.
 Empty collections may mean all searches failed; inspect collection_errors.
-Freeze hashes after pinned formatting; check branch and HEAD before mutations. Read effective branch rules before publishing. Reproduce host-specific failures on clean main.
+Freeze hashes after pinned formatting; check branch and HEAD before mutations.
 Read hit paths before document paths; decode local file URLs and fetch remote URLs.
 Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
 Verify exact dependency-PR package unions and baseline assertion failures before publishing.

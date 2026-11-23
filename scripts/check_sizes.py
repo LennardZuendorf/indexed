@@ -265,7 +265,7 @@ def check(
                     f"{name} grew {delta:+d} lines over {baseline_ref} "
                     f"({baseline} -> {measured}); the per-branch allowance is "
                     f"+{allowance}. Split the branch, or trim boilerplate first "
-                    "(.spec/lessons.md, 'CI-only gates'), rather than raising "
+                    "(docs/spec/lessons.md, 'CI-only gates'), rather than raising "
                     "GROWTH_ALLOWANCE."
                 )
 

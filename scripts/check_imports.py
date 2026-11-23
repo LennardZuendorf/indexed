@@ -114,7 +114,7 @@ def _v2_imports_v1(tree: ast.AST) -> list[tuple[int, str]]:
 
 def _app_layer_imports_core_v1_v2(tree: ast.AST) -> list[tuple[int, str]]:
     """Yield (lineno, module) for a cli/mcp file importing indexed.core.v1.*
-    or indexed.core.v2.* directly — forbidden (issue #186; .spec/tech.md "no
+    or indexed.core.v2.* directly — forbidden (issue #186; docs/spec/tech/core-facade-wiring.md "no
     code above the facade may import core.v1.*/core.v2.* directly"). The
     facade itself (core.engine, core.errors, core.versioning,
     core.facade_config) stays legal — only the v1/v2-internals dotted prefix

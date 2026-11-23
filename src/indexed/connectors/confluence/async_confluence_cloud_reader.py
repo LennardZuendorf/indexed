@@ -362,7 +362,7 @@ class AsyncConfluenceCloudDocumentReader:
         # media/S3 CDN — follow_redirects=True is required or every
         # attachment download fails on the redirect (D1). The CDN is a
         # legitimate off-origin host, so _url_guard is deliberately not
-        # applied to this client (see .spec/tech-connectors.md § Credential Security).
+        # applied to this client (see docs/spec/tech/connectors/connectors-credential-security.md).
         async with httpx.AsyncClient(
             auth=(self.email, self.api_token),
             timeout=60.0,

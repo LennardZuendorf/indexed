@@ -73,7 +73,7 @@ class TestPinnedBenchmarkCorpus:
         source = (BENCHMARKS_DIR / "test_parsing_performance.py").read_text(
             encoding="utf-8"
         )
-        assert 'PROJECT_ROOT / ".spec"' not in source, (
+        assert 'PROJECT_ROOT / "docs" / "spec"' not in source, (
             "test_parsing_performance.py points a benchmark at the live spec "
             "tree again; read CORPUS_DIR (tests/benchmarks/fixtures/"
             "parsing_corpus) instead, or every spec-bearing PR reds the gate by "

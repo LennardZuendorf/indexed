@@ -4,7 +4,9 @@ The server otherwise serves whatever was on disk at the last ``index update``.
 With ``[mcp] watch_enabled = true`` it also keeps the local collections that
 existed at startup fresh: one reused ``run_watch_loop`` per collection, each on
 its own thread (``asyncio.to_thread``) so a blocking update never stalls the
-event loop.
+event loop. The update path's cold stack (LlamaIndex, the embedder) is imported
+once, synchronously, before the first watcher thread exists — so neither another
+watcher nor the search handler on its own thread can see it half-built (#358).
 
 Scope is fixed at startup on purpose. A collection created while the server
 runs is picked up on the next restart — the set is never re-planned behind the
@@ -30,7 +32,7 @@ from loguru import logger
 
 @dataclass
 class WatcherHandle:
-    """The watcher tasks of one running server, and their stop signal."""
+    """The watcher tasks of one running server, and their shared signals."""
 
     stop_event: threading.Event = field(default_factory=threading.Event)
     tasks: list[asyncio.Task[None]] = field(default_factory=list)
@@ -39,7 +41,8 @@ class WatcherHandle:
         """Stop every loop and wait for its in-flight update to finish.
 
         The loops poll with a short sleep and re-check the event, so this
-        returns in roughly one poll interval plus at most one running update —
+        returns in roughly one poll interval plus at most one running update
+        (plus, on startup, the single cold-stack warm-up holding the gate) —
         never a hard kill that would abandon a half-written collection.
         """
         self.stop_event.set()
@@ -102,6 +105,26 @@ def _plan_targets(
     return planned
 
 
+def warm_shared_stack() -> None:
+    """Import the update path's cold stack on the caller's thread (#358).
+
+    Nothing about a collection decides this import: the opening catch-up pass of
+    every watcher needs it, and whichever pass runs first happens to pay it. So
+    it is paid by ``start_watchers_if_enabled`` instead — on the thread that
+    creates the watcher threads, before any of them (or the search handler that
+    FastMCP runs on its own thread) exists. The import is then a single
+    ``sys.modules`` population with no second importer alive to observe a
+    half-initialised module.
+
+    ``llama_index.embeddings.huggingface`` is the module that reported the
+    partially initialized ``BaseEmbedding`` import, and importing it pulls
+    ``llama_index.core``, ``transformers`` and ``sentence-transformers`` — the
+    cold stack of both engines. Function-local for the same reason the rest of
+    this module keeps its engine imports inside the thread body.
+    """
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding  # noqa: F401
+
+
 def _watch_one(
     target: Any,
     source_config: Any,
@@ -117,7 +140,7 @@ def _watch_one(
     from indexed.cli.knowledge.commands import watch_service
     from indexed.core.engine import update as run_update
 
-    def apply_update() -> None:
+    def run_pass() -> None:
         # Clean overlay per pass, mirroring ``index update``/``index watch``:
         # the manifest factory re-applies this collection's stored settings.
         config_service.clear_overlay()
@@ -136,7 +159,7 @@ def _watch_one(
     try:
         code = watch_service.run_watch_loop(
             scan=target.scan,
-            apply_update=apply_update,
+            apply_update=run_pass,
             debounce_seconds=debounce_seconds,
             poll_interval_seconds=poll_interval_seconds,
             log_info=info,
@@ -164,6 +187,14 @@ async def start_watchers_if_enabled(
 
     Returns ``None`` when the gate is off — no import, no thread, no task — so a
     default server's startup and behaviour are exactly what they were before.
+
+    The cold stack is imported here, synchronously, before the first watcher
+    thread exists (#358). That is the whole fix: an import only races when
+    something else can import the same modules at the same time, and after this
+    call there is nothing left to import — the catch-up passes find ``sys.modules``
+    populated, and the search handler FastMCP will run on its own thread cannot
+    observe a half-built ``llama_index`` because it is not served until startup
+    returns.
     """
     if not getattr(mcp_config, "watch_enabled", False):
         return None
@@ -172,6 +203,17 @@ async def start_watchers_if_enabled(
     if not targets:
         logger.info("collection watch: enabled but no watchable local collection")
         return None
+
+    try:
+        warm_shared_stack()
+    except Exception as exc:  # noqa: BLE001 — the pass reports it
+        # The warm-up is an optimisation, never a new failure mode: each pass
+        # below imports the same stack itself and is where a broken install has
+        # to surface. One warning here beats N identical traces from threads.
+        logger.warning(
+            f"collection watch: stack warm-up failed ({exc}); "
+            "each catch-up pass will import it itself"
+        )
 
     handle = WatcherHandle()
     for target, source_config in targets:

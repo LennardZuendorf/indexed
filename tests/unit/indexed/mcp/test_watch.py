@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -120,6 +121,216 @@ def test_startup_scope_is_fixed_and_stop_joins_the_threads(
         assert all(task.done() for task in handle.tasks)
 
     asyncio.run(scenario())
+
+
+def test_the_cold_stack_is_warmed_before_any_watcher_thread_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#358: the process's first heavy import has no concurrent importer.
+
+    The import only races if something else can run while it is half done, so
+    the fix is ordering, not retrying: ``start_watchers_if_enabled`` warms the
+    stack on its own thread before it creates the first watcher task. The old
+    shape warmed from inside the first catch-up pass, which put the import on a
+    worker thread while FastMCP could be importing the same LlamaIndex modules
+    for the first search — and the loser saw a partially initialised
+    ``BaseEmbedding`` that stayed in ``sys.modules`` for the whole process.
+    """
+    import indexed.core.engine as engine_module
+    import indexed.mcp.watch as watch_module
+
+    caller_thread = threading.current_thread().name
+    warm_calls: list[tuple[str, list[str]]] = []
+    passes: list[tuple[str, bool]] = []
+    warm_done = threading.Event()
+
+    def fake_warm() -> None:
+        # (thread it ran on, the other threads alive while it ran)
+        warm_calls.append(
+            (
+                threading.current_thread().name,
+                [t.name for t in threading.enumerate()],
+            )
+        )
+        time.sleep(0.1)  # a watcher thread would have started by now if it could
+        warm_done.set()
+
+    def fake_update(configs, **_kwargs):
+        passes.append((configs[0].name, warm_done.is_set()))
+
+    def fake_loop(*, apply_update, stop, **_kwargs):
+        apply_update()
+        stop.wait(5)
+        return 0
+
+    targets = [
+        (
+            SimpleNamespace(collection=f"local-{i}", scan=lambda: None),
+            SimpleNamespace(name=f"local-{i}"),
+        )
+        for i in (1, 2)
+    ]
+    monkeypatch.setattr(watch_module, "_plan_targets", lambda *_: targets)
+    monkeypatch.setattr(watch_module, "warm_shared_stack", fake_warm, raising=False)
+    monkeypatch.setattr(engine_module, "update", fake_update)
+    monkeypatch.setattr(
+        "indexed.cli.knowledge.commands.watch_service.run_watch_loop", fake_loop
+    )
+
+    async def scenario() -> None:
+        handle = await watch_module.start_watchers_if_enabled(
+            MCPConfig(watch_enabled=True),
+            collections_path=tmp_path,
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            manifest_factory=None,
+        )
+        assert isinstance(handle, WatcherHandle)
+        assert warm_calls, "the stack must be warm before the call returns"
+        await handle.stop()
+
+    asyncio.run(scenario())
+
+    assert len(warm_calls) == 1, (
+        f"the cold import must have exactly one owner, not {len(warm_calls)}: "
+        f"{warm_calls!r}"
+    )
+    thread, others = warm_calls[0]
+    assert thread == caller_thread, (
+        "the warm-up must run on the thread that starts the watchers, not on a "
+        f"watcher thread (ran on {thread!r})"
+    )
+    # ``asyncio.to_thread`` names its workers ``asyncio_N``; none may exist yet.
+    watchers = sorted(name for name in others if name.startswith("asyncio_"))
+    assert not watchers, (
+        "a watcher thread was alive during the warm-up — that is the race #358 "
+        f"is about ({watchers!r} of {others!r})"
+    )
+    assert sorted(name for name, _ in passes) == ["local-1", "local-2"], passes
+    assert all(saw_warm for _, saw_warm in passes), (
+        f"a catch-up pass started before the shared stack was warm: {passes!r}"
+    )
+
+
+def test_a_broken_collection_does_not_stop_the_warm_up_or_the_others(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#358: one collection's failing pass is its own business.
+
+    The warm-up happens before any pass, so a collection that raises cannot
+    hold, reset or bypass it — and the healthy collection still runs.
+    """
+    import indexed.core.engine as engine_module
+    import indexed.mcp.watch as watch_module
+
+    warm_calls: list[int] = []
+    passes: list[str] = []
+    both_ran = threading.Event()
+
+    def fake_warm() -> None:
+        warm_calls.append(1)
+
+    def fake_update(configs, **_kwargs):
+        passes.append(configs[0].name)
+        if len(passes) == 2:
+            both_ran.set()
+        if configs[0].name == "broken":
+            raise RuntimeError("collection is unreadable")
+
+    def fake_loop(*, apply_update, stop, **_kwargs):
+        try:
+            apply_update()
+        except RuntimeError:
+            pass
+        stop.wait(5)
+        return 0
+
+    targets = [
+        (
+            SimpleNamespace(collection=name, scan=lambda: None),
+            SimpleNamespace(name=name),
+        )
+        for name in ("broken", "healthy")
+    ]
+    monkeypatch.setattr(watch_module, "_plan_targets", lambda *_: targets)
+    monkeypatch.setattr(watch_module, "warm_shared_stack", fake_warm)
+    monkeypatch.setattr(engine_module, "update", fake_update)
+    monkeypatch.setattr(
+        "indexed.cli.knowledge.commands.watch_service.run_watch_loop", fake_loop
+    )
+
+    async def scenario() -> None:
+        handle = await watch_module.start_watchers_if_enabled(
+            MCPConfig(watch_enabled=True),
+            collections_path=tmp_path,
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            manifest_factory=None,
+        )
+        assert isinstance(handle, WatcherHandle)
+        await asyncio.to_thread(both_ran.wait, 5.0)
+        await handle.stop()
+
+    asyncio.run(scenario())
+
+    assert len(warm_calls) == 1, warm_calls
+    assert sorted(passes) == ["broken", "healthy"], passes
+
+
+def test_a_broken_warm_up_does_not_stop_the_watchers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#358: an unusable install must not turn the watcher into a crash.
+
+    The warm-up is an optimisation: when it fails, each pass imports the stack
+    itself and is where the real error surfaces. Failure must not abort startup.
+    """
+    import indexed.core.engine as engine_module
+    import indexed.mcp.watch as watch_module
+
+    warm_calls: list[int] = []
+    passes: list[str] = []
+
+    def fake_warm() -> None:
+        warm_calls.append(1)
+        raise ImportError("llama_index is not installed")
+
+    def fake_update(configs, **_kwargs):
+        passes.append(configs[0].name)
+
+    def fake_loop(*, apply_update, stop, **_kwargs):
+        apply_update()
+        stop.wait(5)
+        return 0
+
+    targets = [
+        (
+            SimpleNamespace(collection=f"local-{i}", scan=lambda: None),
+            SimpleNamespace(name=f"local-{i}"),
+        )
+        for i in (1, 2)
+    ]
+    monkeypatch.setattr(watch_module, "_plan_targets", lambda *_: targets)
+    monkeypatch.setattr(watch_module, "warm_shared_stack", fake_warm)
+    monkeypatch.setattr(engine_module, "update", fake_update)
+    monkeypatch.setattr(
+        "indexed.cli.knowledge.commands.watch_service.run_watch_loop", fake_loop
+    )
+
+    async def scenario() -> None:
+        handle = await watch_module.start_watchers_if_enabled(
+            MCPConfig(watch_enabled=True),
+            collections_path=tmp_path,
+            config_service=SimpleNamespace(clear_overlay=lambda: None),
+            manifest_factory=None,
+        )
+        assert isinstance(handle, WatcherHandle), (
+            "a failed warm-up must not swallow the watchers"
+        )
+        await handle.stop()
+
+    asyncio.run(scenario())
+
+    assert len(warm_calls) == 1, warm_calls
+    assert sorted(passes) == ["local-1", "local-2"], passes
 
 
 def test_missing_source_directory_is_never_a_signature(tmp_path: Path) -> None:

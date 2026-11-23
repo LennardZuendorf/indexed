@@ -49,7 +49,7 @@ def _is_pre_setup_verbose(verbose: bool, log_level: Optional[str]) -> bool:
 
     Use this at command-function top, before ``execute_create_command`` runs
     ``setup_root_logger``. ``is_verbose_mode()`` is unreliable there — it reads
-    the global log level, which is not set yet (see .spec/lessons.md).
+    the global log level, which is not set yet (see docs/spec/lessons.md).
     """
     return verbose or (log_level or "").upper() in ("INFO", "DEBUG")
 

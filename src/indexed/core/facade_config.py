@@ -6,7 +6,7 @@ collections; it lives here (not inside core.v1, which stays frozen).
 The lazy re-exports below (mirroring core.engine's own __getattr__ pattern)
 let cli/mcp reference v1 config-model types and small utility
 constants/functions without importing core.v1.*/core.v2.* directly anywhere
-in their own files — satisfying .spec/tech.md's "no code above the facade
+in their own files — satisfying docs/spec/tech/core-facade-wiring.md's "no code above the facade
 may import core.v1.*/core.v2.* directly" contract for every cli/mcp file the
 check_imports.py rule covers, not just for CoreEngineConfig. (config/commands/
 is a separate, pre-existing exemption in check_imports.py's _EXEMPT_DIRS, for

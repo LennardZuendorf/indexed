@@ -11,7 +11,7 @@ on:
       - 'tests/benchmarks/**'
   # Dispatch-only refresh lane: run this workflow on `main` and the second job
   # re-measures the numbers and opens a baseline-only PR. A PR run never writes.
-  # See .spec/tech.md § CI Benchmarking and issue #253.
+  # See docs/spec/tech/ci-benchmarking/README.md and issue #253.
   workflow_dispatch:
     inputs:
       accept_cpu_change:
@@ -457,7 +457,7 @@ jobs:
           echo "Re-measures \`main\` and stores the numbers this run produced."
           echo
           echo "Changes only \`$FILE\` — the one shape of baseline move a PR may"
-          echo "make (see \`.spec/tech.md\` § CI Benchmarking). No code change, so no"
+          echo "make (see \`docs/spec/tech/ci-benchmarking/README.md\`). No code change, so no"
           echo "gate decision here is made against numbers this PR writes."
           echo
           if [ -f cpu-change.md ]; then cat cpu-change.md; fi

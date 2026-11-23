@@ -17,8 +17,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Type
 
-from indexed.config import ConfigService, StorageMode, get_config, reload
+from indexed.config import (
+    ConfigService,
+    StorageMode,
+    get_caches_path,
+    get_collections_path,
+    get_config,
+    get_global_root,
+    reload,
+)
+from indexed.config.collections_registry import CollectionRegistry, WorkspacePointers
 from indexed.config.errors import ConfigurationError
+from indexed.config.workspace_selection import (
+    WorkspaceSelection,
+    find_definition,
+    load_selection,
+)
 from indexed.protocols import BaseConnector, ConnectorRun, Manifest, SourceConfig
 
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
@@ -171,6 +185,18 @@ class CliContext:
     collections_path: Path
     caches_path: Path
     config_service: ConfigService
+    #: The directory the resolved workspace definition belongs to (``Path.cwd()``
+    #: for CLI commands). Kept so per-request scope (#345) and diagnostics can
+    #: name it without re-walking the tree.
+    workspace: Path = field(default_factory=Path.cwd)
+    #: The resolved ``indexed.toml``, or ``None`` when the workspace has none.
+    selection: WorkspaceSelection | None = None
+    #: One-line notices this resolution produced (a deprecated pointer, or an
+    #: ignored ``--local``). They are DATA, not prints: the resolver runs twice
+    #: per human search (``search`` + ``display_storage_mode_for_command``) and
+    #: ``indexed lsp`` must never write to stdout, so the command that owns the
+    #: output stream decides where each line goes.
+    warnings: tuple[str, ...] = ()
     # Built lazily on first access (see ``connector_registry``): constructing it
     # imports every connector module, so commands that never touch the registry
     # (search/update/inspect/remove — update dispatches through the
@@ -209,15 +235,69 @@ def resolve_collections_context(
     register_app_config(config_service)
     mode = config_service.resolve_storage_mode()
     resolver = config_service.resolver
+    workspace_path = Path(workspace) if workspace is not None else Path.cwd()
+
+    # Precedence (#344, one store): a committed ``indexed.toml`` at or above the
+    # workspace selects collections from the GLOBAL store, never a per-repo one.
+    # ``--local`` is therefore ignored when a definition exists — and says so.
+    # The definition is resolved through the plain storage helpers, not the
+    # resolver: ``StorageResolver`` replays its mode override first, so
+    # ``get_collections_path("global")`` would still return the local path.
+    global_collections = get_collections_path(get_global_root())
+    selection: WorkspaceSelection | None = None
+    if find_definition(workspace_path) is not None:
+        selection = load_selection(
+            workspace_path,
+            registry=CollectionRegistry(),
+            collections_path=global_collections,
+        )
+
+    warnings: list[str] = []
+    if selection is not None:
+        collections_path = global_collections
+        if mode_override == "local":
+            warnings.append(
+                f"--local is ignored: '{selection.path}' selects collections "
+                f"from the global store at '{get_global_root()}'."
+            )
+    else:
+        # A workspace that migrated under #346 holds a pointer file. Keep it
+        # working (its collections would otherwise become unreachable), but it
+        # is deprecated: the committed definition above replaces it, and nothing
+        # writes a pointer any more. A pointer whose root has disappeared is
+        # ignored — the workspace falls back to its own storage rather than
+        # failing every command.
+        pointers = WorkspacePointers(workspace_path)
+        shared_root = pointers.shared_root()
+        if shared_root is not None:
+            collections_path = shared_root
+            warnings.append(
+                f"'{pointers.path}' is deprecated and read-only. Commit an "
+                f"'indexed.toml' at the repository root instead "
+                f"(see `indexed storage migrate`)."
+            )
+        else:
+            collections_path = resolver.get_collections_path(mode)
+    # A definition pins the whole store: collections AND document caches. Mixing
+    # global collections with local caches would look for cache entries the
+    # store never wrote.
+    caches_path = (
+        get_caches_path(get_global_root())
+        if selection is not None
+        else resolver.get_caches_path(mode)
+    )
     # ``connector_registry`` is intentionally omitted: CliContext builds it
     # lazily on first access so commands that never need connectors skip the
     # import cost (startup <1s). Create-time wiring still gets it via the
     # ``connector_factory`` closure.
     return CliContext(
         mode=mode,
-        collections_path=resolver.get_collections_path(mode),
-        caches_path=resolver.get_caches_path(mode),
+        collections_path=collections_path,
+        caches_path=caches_path,
         config_service=config_service,
+        workspace=workspace_path,
+        selection=selection,
+        warnings=tuple(warnings),
     )
 
 

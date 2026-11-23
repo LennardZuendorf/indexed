@@ -87,7 +87,7 @@ def test_set_preference_does_not_bake_env_secret_into_disk(
     """Bug 1: set_preference() must persist the disk-only baseline, never the
     env-merged view — an active INDEXED__* secret must not be round-tripped
     into config.toml (same class of bug ConfigService.set()/delete() guard
-    against; see tech-config.md "never baked back into TOML")."""
+    against; see docs/spec/tech/config/config-read-mostly-write-safety.md "never baked back into TOML")."""
     global_root = tmp_path / "global"
     monkeypatch.setattr("indexed.config.store.get_global_root", lambda: global_root)
     monkeypatch.setenv("INDEXED__SOURCES__JIRA__API_TOKEN", "envsecretXYZ")

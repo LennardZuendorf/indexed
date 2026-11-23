@@ -1,6 +1,6 @@
 """Unit tests for ``mcp.formatting.build_search_payload`` — the one machine shape.
 
-The payload is documented in ``.spec/tech-app.md`` § Search result contract and typed in
+The payload is documented in ``docs/spec/tech/app/app-search-result-contract.md`` and typed in
 ``indexed.protocols.results`` (issues #108/#109). These tests pin the three
 properties the shape exists for:
 

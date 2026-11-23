@@ -24,7 +24,7 @@ from __future__ import annotations
 
 # Warm the engine through the services package first: this is the import entry
 # that resolves the cold-import cycle (importing the factories / creator / a
-# searcher directly fails cold — see .spec/lessons.md and test_lifecycle_cloud).
+# searcher directly fails cold — see docs/spec/lessons.md and test_lifecycle_cloud).
 import indexed.core.v1.engine.services  # noqa: F401
 
 import json

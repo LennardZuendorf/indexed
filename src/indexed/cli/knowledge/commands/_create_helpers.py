@@ -406,6 +406,23 @@ def execute_create_command(
 
         run_succeeded = True
 
+        selection = getattr(cli_ctx, "selection", None)
+        if selection is not None and collection not in selection:
+            # The definition is the repository's scope, so a collection created
+            # here is NOT searchable from here until it is listed (#344).
+            # Saying nothing would make the next `search` mysteriously empty.
+            notice = (
+                f"Collection '{collection}' is not in '{selection.path}', "
+                "so searches in this repository will not include it until the "
+                "definition lists it."
+            )
+            from indexed.cli.utils.simple_output import is_simple_output
+
+            if is_simple_output():
+                typer.echo(notice, err=True)
+            else:
+                print_warning(notice)
+
     finally:
         # Review Finding 1: a run that didn't reach the success path above —
         # any exception, or a `typer.Exit` for any reason (creation failure,

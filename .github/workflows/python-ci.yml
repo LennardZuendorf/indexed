@@ -10,6 +10,7 @@ on:
       - '.github/workflows/python-ci.yml'
       - 'tests/system/**'
       - 'skills/**'
+      - 'installers/**'
   push:
     branches: [ "main", "building" ]
 
@@ -71,7 +72,7 @@ jobs:
         # LOC ceilings are growth against the base the tree was built on — never
         # a stored number. On a PR the checkout is the merge commit, so its first
         # parent IS that base (pull_request.base.sha is only a snapshot the merge
-        # may already have moved past — see .spec/lessons.md, "Benchmark
+        # may already have moved past — see docs/spec/lessons.md, "Benchmark
         # provenance"). On a push it is the commit being replaced, so the
         # ratchet also runs after merge.
         if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -110,6 +111,10 @@ jobs:
         "
 
     - name: Run System Tests
+      env:
+        # A skipped system test proves nothing; the model is cached above, so
+        # demand it here rather than letting the live proofs quietly not run.
+        INDEXED_REQUIRE_LIVE_MODEL: "1"
       run: |
         uv run pytest tests/system/ -q --tb=short
 
@@ -121,28 +126,382 @@ jobs:
 
     - name: Installer smoke (Claude Code, temp HOME)
       # Exercises `indexed install claude-code` the way a user does, and covers
-      # what the unit tests cannot see: the index-use skill must be inside the
-      # built wheel, or the command works from a checkout and fails installed.
+      # what the unit tests cannot see: the index-use skill and the hook script
+      # must be inside the built wheel, or the command works from a checkout and
+      # fails installed. The lifecycle is checked end to end — install, upgrade,
+      # remove — against a config that already holds another tool's keys.
       run: |
         set -euo pipefail
         unzip -l dist/*.whl | grep -q 'indexed/skills/index-use/SKILL.md'
+        unzip -l dist/*.whl | grep -q 'indexed/installers/claude-code/indexed-suggest-mcp.sh'
         home="$(mktemp -d)"
+        mkdir -p "$home/.claude"
+        # Foreign configuration this installer must never drop.
+        printf '%s\n' '{"numStartups": 5, "mcpServers": {"other": {"command": "keep-me"}}}' \
+          > "$home/.claude.json"
+        printf '%s\n' '{"model": "opus", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "keep.sh"}]}]}}' \
+          > "$home/.claude/settings.json"
+
         HOME="$home" uv run indexed install claude-code --dry-run
-        test ! -e "$home/.claude.json"
+        test ! -e "$home/.claude/hooks/indexed-suggest-mcp.sh"
         HOME="$home" uv run indexed install claude-code
         first="$(cat "$home/.claude.json")"
         HOME="$home" uv run indexed install claude-code
         test "$(cat "$home/.claude.json")" = "$first"
         test -s "$home/.claude/skills/index-use/SKILL.md"
-        uv run python - "$home/.claude.json" <<'PY'
+        test -x "$home/.claude/hooks/indexed-suggest-mcp.sh"
+
+        # The installed hook answers with the JSON Claude Code expects, and only
+        # where indexed actually has collections.
+        mkdir -p "$home/.indexed/data/collections/demo"
+        hook_out="$(HOME="$home" "$home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{"tool_name": "Grep"}')"
+        printf '%s' "$hook_out" | uv run python -c '
+        import json, sys
+        payload = json.load(sys.stdin)["hookSpecificOutput"]
+        assert payload["hookEventName"] == "PreToolUse", payload
+        assert "permissionDecision" not in payload, "a nudge hook must not decide permissions"
+        assert "mcp__indexed__search" in payload["additionalContext"], payload
+        print("hook ok")
+        '
+        # A machine with no collections gets no output (and never a broken hook).
+        silent_home="$(mktemp -d)"
+        HOME="$silent_home" uv run indexed install claude-code
+        test -z "$(HOME="$silent_home" "$silent_home/.claude/hooks/indexed-suggest-mcp.sh" <<< '{}')"
+
+        uv run python - "$home" <<'PY'
         import json
         import sys
+        from pathlib import Path
 
-        entry = json.load(open(sys.argv[1]))["mcpServers"]["indexed"]
+        home = Path(sys.argv[1])
+        config = json.loads((home / ".claude.json").read_text())
+        entry = config["mcpServers"]["indexed"]
         assert entry["type"] == "stdio", entry
         assert entry["args"] == ["mcp", "run"], entry
         assert entry["command"].startswith("/"), entry
+        assert config["numStartups"] == 5, "foreign .claude.json key was dropped"
+        assert config["mcpServers"]["other"] == {"command": "keep-me"}, "foreign server lost"
+
+        settings = json.loads((home / ".claude/settings.json").read_text())
+        assert settings["model"] == "opus", "foreign settings key was dropped"
+        assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "keep.sh", (
+            "foreign PreToolUse group lost"
+        )
+        ours = [
+            group
+            for group in settings["hooks"]["PreToolUse"]
+            if "indexed-suggest-mcp.sh" in json.dumps(group)
+        ]
+        assert len(ours) == 1, f"expected exactly one installed hook group, got {ours}"
         print("installer smoke ok:", entry["command"])
+        PY
+
+        HOME="$home" uv run indexed install claude-code --remove
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = json.loads((home / ".claude.json").read_text())
+        assert "indexed" not in config["mcpServers"], "removal left our server behind"
+        assert config["numStartups"] == 5, "removal dropped a foreign .claude.json key"
+        assert config["mcpServers"]["other"] == {"command": "keep-me"}
+
+        settings = json.loads((home / ".claude/settings.json").read_text())
+        assert settings["model"] == "opus", "removal dropped a foreign settings key"
+        assert "indexed-suggest-mcp.sh" not in json.dumps(settings)
+        for gone in (
+            ".claude/hooks/indexed-suggest-mcp.sh",
+            ".claude/skills/index-use/SKILL.md",
+            ".claude/indexed-install.json",
+        ):
+            assert not (home / gone).exists(), f"removal left {gone} behind"
+        print("removal smoke ok")
+        PY
+
+    - name: Installer smoke (Codex, temp HOME)
+      # Codex's config is hand-edited TOML and its hooks live in hooks.json, so
+      # this checks what the unit tests cannot see: the payloads are inside the
+      # wheel, the installer edits text without re-serialising the document, and
+      # the installed hook answers Codex's PreToolUse contract.
+      run: |
+        set -euo pipefail
+        # `unzip -l | grep -q` trips pipefail on SIGPIPE once the archive is big
+        # enough, so match against the listing held in a variable instead.
+        wheel_listing="$(unzip -l dist/*.whl)"
+        case "$wheel_listing" in
+          *indexed/installers/codex/index-use.SKILL.md*) ;;
+          *) echo "codex skill payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        case "$wheel_listing" in
+          *indexed/installers/codex/indexed-nudge.sh*) ;;
+          *) echo "codex hook payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        home="$(mktemp -d)"
+        mkdir -p "$home/.codex"
+        # Foreign configuration this installer must never drop, comments included.
+        printf '%s\n' \
+          '# hand-written, do not reformat' \
+          'model = "gpt-6"' \
+          '' \
+          '[projects."/home/someone/secret-project"]' \
+          'trust_level = "trusted"' \
+          '' \
+          '[mcp_servers.other]' \
+          'command = "/bin/echo"' \
+          'args = ["keep-me"]' > "$home/.codex/config.toml"
+        printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "keep-hook.sh", "timeout": 10}]}]}}' \
+          > "$home/.codex/hooks.json"
+        # A Windows-edited file: every write that touches it has to keep the
+        # bytes it did not own, CRLF included, or the removal assertion below
+        # fails. Written through Python because printf cannot emit a bare CR
+        # portably.
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        path = Path(sys.argv[1]) / ".codex/config.toml"
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        PY
+        cp "$home/.codex/config.toml" "$home/config.before.toml"
+        cp "$home/.codex/hooks.json" "$home/hooks.before.json"
+
+        HOME="$home" uv run indexed install codex --dry-run
+        test ! -e "$home/.codex/indexed/indexed-nudge.sh"
+        HOME="$home" uv run indexed install codex
+        first="$(cat "$home/.codex/config.toml")"
+        HOME="$home" uv run indexed install codex
+        test "$(cat "$home/.codex/config.toml")" = "$first"
+        test -s "$home/.codex/skills/index-use/SKILL.md"
+        test -x "$home/.codex/indexed/indexed-nudge.sh"
+
+        # The installed hook answers the JSON Codex expects, and only where
+        # indexed actually has collections.
+        mkdir -p "$home/.indexed/data/collections/demo"
+        hook_out="$(printf '{"hook_event_name": "PreToolUse", "cwd": "%s", "tool_name": "Bash", "tool_input": {"command": "rg -n retry src/"}}' "$home" \
+          | HOME="$home" "$home/.codex/indexed/indexed-nudge.sh")"
+        printf '%s' "$hook_out" | uv run python -c '
+        import json, sys
+        payload = json.load(sys.stdin)["hookSpecificOutput"]
+        assert payload["hookEventName"] == "PreToolUse", payload
+        assert "permissionDecision" not in payload, "a nudge hook must not decide permissions"
+        assert "mcp__indexed__search" in payload["additionalContext"], payload
+        print("codex hook ok")
+        '
+        # A non-search command gets nothing.
+        test -z "$(printf '{"hook_event_name": "PreToolUse", "cwd": "%s", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}}' "$home" \
+          | HOME="$home" "$home/.codex/indexed/indexed-nudge.sh")"
+
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        import tomllib
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = tomllib.loads((home / ".codex/config.toml").read_text())
+        entry = config["mcp_servers"]["indexed"]
+        assert entry["args"] == ["mcp", "run"], entry
+        assert Path(entry["command"]).is_absolute(), entry
+        assert config["mcp_servers"]["other"] == {
+            "command": "/bin/echo",
+            "args": ["keep-me"],
+        }, "foreign server lost"
+        assert config["projects"]["/home/someone/secret-project"]["trust_level"] == "trusted"
+        assert config["model"] == "gpt-6", "foreign top-level key dropped"
+        assert "# hand-written, do not reformat" in (home / ".codex/config.toml").read_text()
+
+        hooks = json.loads((home / ".codex/hooks.json").read_text())
+        groups = hooks["hooks"]["PreToolUse"]
+        assert groups[0]["hooks"][0]["command"] == "keep-hook.sh", "foreign hook group lost"
+        ours = [group for group in groups if "indexed-nudge.sh" in json.dumps(group)]
+        assert len(ours) == 1, f"expected exactly one installed hook group, got {ours}"
+        print("codex installer smoke ok:", entry["command"])
+        PY
+
+        HOME="$home" uv run indexed install codex --remove
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        for gone in (
+            ".codex/indexed/indexed-nudge.sh",
+            ".codex/skills/index-use/SKILL.md",
+            ".codex/indexed-install.json",
+        ):
+            assert not (home / gone).exists(), f"removal left {gone} behind"
+        # config.toml is edited as text, so the user's file comes back byte for
+        # byte; hooks.json is a JSON document we merge into, so the promise there
+        # is the same content, not the same bytes.
+        assert (home / ".codex/config.toml").read_bytes() == (home / "config.before.toml").read_bytes(), (
+            "removal did not restore config.toml"
+        )
+        assert json.loads((home / ".codex/hooks.json").read_text()) == json.loads(
+            (home / "hooks.before.json").read_text()
+        ), "removal did not restore hooks.json"
+        print("codex removal smoke ok")
+        PY
+
+    - name: Installer smoke (OpenCode, temp HOME)
+      # One leg only: this downloads and runs the real host, so a 4-way matrix
+      # would install and exercise it four times per PR for no extra coverage.
+      if: matrix.python-version == '3.13'
+      # OpenCode's config is hand-edited JSONC that the host never rewrites, and
+      # its plugin needs no trust gate, so this checks what the unit tests cannot
+      # see: the payloads are inside the wheel, the installer splices text rather
+      # than re-serialising the document (comments, key order and CRLF survive),
+      # and the real host reads the entry and loads the plugin.
+      run: |
+        set -euo pipefail
+        # `unzip -l | grep -q` trips pipefail on SIGPIPE once the archive is big
+        # enough, so match against the listing held in a variable instead.
+        wheel_listing="$(unzip -l dist/*.whl)"
+        case "$wheel_listing" in
+          *indexed/installers/opencode/index-use.SKILL.md*) ;;
+          *) echo "opencode skill payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+        case "$wheel_listing" in
+          *indexed/installers/opencode/indexed-nudge.js*) ;;
+          *) echo "opencode plugin payload is missing from the wheel" >&2; exit 1 ;;
+        esac
+
+        home="$(mktemp -d)"
+        # OPENCODE_CONFIG_DIR is the host's own isolation lever; the XDG dirs keep
+        # its state and managed service inside the same throwaway tree.
+        export OPENCODE_CONFIG_DIR="$home/config/opencode"
+        export XDG_CONFIG_HOME="$home/config"
+        export XDG_DATA_HOME="$home/data"
+        export XDG_STATE_HOME="$home/state"
+        export XDG_CACHE_HOME="$home/cache"
+        export OPENCODE_DISABLE_AUTOUPDATE=1
+        mkdir -p "$OPENCODE_CONFIG_DIR/plugins"
+        # Foreign configuration this installer must never drop, comments included.
+        printf '%s\n' \
+          '{' \
+          '  // hand-written, do not reformat' \
+          '  "myForeignKey": {"nested": [1, 2, 3]},' \
+          '  "provider": {"ollama-cloud": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "http://127.0.0.1:11434/v1"}}},' \
+          '  "mcp": {"foreignServer": {"type": "local", "command": ["/bin/echo", "keep-me"]}}' \
+          '}' > "$OPENCODE_CONFIG_DIR/opencode.json"
+        printf '%s\n' 'export default { id: "someone-elses", setup() {} }' \
+          > "$OPENCODE_CONFIG_DIR/plugins/their-plugin.js"
+        # A Windows-edited file: every write that touches it has to keep the bytes
+        # it did not own, CRLF included, or the removal assertion below fails.
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        path = Path(sys.argv[1]) / "config/opencode/opencode.json"
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        PY
+        cp "$OPENCODE_CONFIG_DIR/opencode.json" "$home/config.before.json"
+
+        uv run indexed install opencode --dry-run
+        test ! -e "$OPENCODE_CONFIG_DIR/skills/index-use/SKILL.md"
+        uv run indexed install opencode
+        first="$(cat "$OPENCODE_CONFIG_DIR/opencode.json")"
+        uv run indexed install opencode
+        test "$(cat "$OPENCODE_CONFIG_DIR/opencode.json")" = "$first"
+        test -s "$OPENCODE_CONFIG_DIR/skills/index-use/SKILL.md"
+        test -s "$OPENCODE_CONFIG_DIR/plugins/indexed-nudge.js"
+        # Every line still ends CRLF: no LF-only line was introduced.
+
+        uv run python - "$home" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = home / "config/opencode/opencode.json"
+        raw = config.read_bytes()
+        # Byte-level CRLF assertion: a text-mode write produces `\r\r\n` (which a
+        # per-line `grep -c $'\r'` cannot tell from a clean file) or bare `\n`.
+        assert b"\r\r\n" not in raw, "a text-mode write doubled the CR"
+        assert b"\n" not in raw.replace(b"\r\n", b""), "install introduced bare LF"
+        text = raw.decode("utf-8")
+        assert "// hand-written, do not reformat" in text, "the comment was dropped"
+        assert '"foreignServer"' in text, "foreign mcp entry lost"
+        # JSONC: drop the comment line, then parse what the host would see.
+        data = json.loads(
+            "\n".join(
+                line for line in text.splitlines() if not line.lstrip().startswith("//")
+            )
+        )
+        entry = data["mcp"]["indexed"]
+        assert entry["type"] == "local", entry
+        assert entry["command"][-2:] == ["mcp", "run"], entry
+        assert Path(entry["command"][0]).is_absolute(), entry
+        assert data["mcp"]["foreignServer"]["command"] == ["/bin/echo", "keep-me"], (
+            "foreign server lost"
+        )
+        assert data["myForeignKey"] == {"nested": [1, 2, 3]}, "foreign top-level key lost"
+        assert "ollama-cloud" in data["provider"], "foreign provider block lost"
+        print("opencode installer smoke ok:", entry["command"][0])
+        PY
+
+        # The real host: it must read our flat `mcp.indexed`, connect to it, and
+        # load the plugin from the plugins dir with no registration and no trust
+        # prompt. The service is per state root, so it is started explicitly and
+        # `mcp list` is polled (it is eventually consistent — a cold service
+        # answers "No MCP servers configured" once). Every host call is
+        # time-boxed: a hung TUI-less service must fail the step, not the job.
+        npm i -g @opencode/cli@2.3.2
+        # Wall-clock bound: a host that never answers must fail this step, not
+        # burn the leg. `SECONDS` is bash's, and `timeout` bounds each call.
+        deadline=$((SECONDS + 300))
+        timeout 120 opencode service start >/dev/null 2>&1 || true
+        listed=""
+        while [ "$SECONDS" -lt "$deadline" ]; do
+          # A non-zero exit is not a listing: retry rather than parse an error.
+          if listed="$(timeout 120 opencode mcp list 2>/dev/null)"; then
+            case "$listed" in
+              *"✓ indexed "*|*"✓ indexed") break ;;
+            esac
+          fi
+          sleep 5
+        done
+        case "$listed" in
+          *"✓ indexed "*|*"✓ indexed") ;;
+          *)
+            echo "opencode did not list the indexed server:" >&2
+            printf '%s\n' "$listed" >&2
+            exit 1
+            ;;
+        esac
+        printf '%s\n' "$listed"
+        # Capture then match: `opencode | grep -q` exits on the first match and
+        # the host then dies of SIGPIPE, which pipefail turns into a red step.
+        plugins="$(timeout 120 opencode plugin list 2>/dev/null || true)"
+        case "$plugins" in
+          *indexed-nudge*) ;;
+          *)
+            echo "opencode did not load the indexed plugin:" >&2
+            printf '%s\n' "$plugins" >&2
+            exit 1
+            ;;
+        esac
+
+        uv run indexed install opencode --remove
+        cmp "$OPENCODE_CONFIG_DIR/opencode.json" "$home/config.before.json"
+        uv run python - "$home" <<'PY'
+        import sys
+        from pathlib import Path
+
+        home = Path(sys.argv[1])
+        config = home / "config/opencode"
+        for gone in (
+            "skills/index-use/SKILL.md",
+            "plugins/indexed-nudge.js",
+            "indexed-install.json",
+        ):
+            assert not (config / gone).exists(), f"removal left {gone} behind"
+        assert (config / "plugins/their-plugin.js").is_file(), (
+            "removal took a foreign plugin"
+        )
+        print("opencode removal smoke ok")
         PY
 
     - name: Check distribution metadata (twine)

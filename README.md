@@ -93,7 +93,7 @@ AI agents search your codebase on demand with grep — fast for small repos, but
 
 Indexed pre-computes a semantic search index over your code, docs, and project tools, then exposes it via MCP. The result: instant, relevant context retrieval without the token overhead.
 
-- **Not just search.** A single index over one source is the easy part — every RAG toolkit does that. The hard, useful part is that no single source has the answer: code doesn't explain *why*, a ticket doesn't show *what shipped*, history doesn't say *if it's still true*. Indexed's direction is one merged knowledge base per project — code, docs, issues, and wikis tied together, not five indexes you query separately. See [`.spec/product.md`](.spec/product.md) § Vision for where this is headed (structural graph relationships, graph-aware retrieval, optional local-model-driven merging).
+- **Not just search.** A single index over one source is the easy part — every RAG toolkit does that. The hard, useful part is that no single source has the answer: code doesn't explain *why*, a ticket doesn't show *what shipped*, history doesn't say *if it's still true*. Indexed's direction is one merged knowledge base per project — code, docs, issues, and wikis tied together, not five indexes you query separately. See [`docs/spec/concepts/vision.md`](docs/spec/concepts/vision.md) for where this is headed (structural graph relationships, graph-aware retrieval, optional local-model-driven merging).
 - **Not just code.** Index Markdown, PDFs, DOCX, PPTX, images, and 25+ formats via Docling. AST-aware code chunking via tree-sitter.
 - **Not just local files.** Native Jira, Confluence, Outline Wiki, and GitHub connectors pull tickets, pages, issues, and PRs into your index.
 - **Not cloud-dependent.** Runs entirely on your machine. Local embedding models, FAISS or LlamaIndex-managed vector storage. No API keys required.
@@ -106,21 +106,43 @@ Indexed exposes a Model Context Protocol server for AI agent integration.
 ### Claude Code (CLI, VS Code, JetBrains)
 
 Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin.
-One command registers the MCP server and installs the `index-use` skill, which
-teaches Claude to reach for semantic search instead of Grep/Glob:
+One command registers the MCP server, installs the `index-use` skill and adds a
+`PreToolUse` hook that nudges Claude away from Grep/Glob toward semantic search:
 
 ```bash
-indexed install claude-code             # ~/.claude.json + ~/.claude/skills/index-use
-indexed install claude-code --dry-run   # print the config, write nothing
+indexed install claude-code             # server + skill + hook
+indexed install claude-code --dry-run   # print the plan, write nothing
+indexed install claude-code --remove    # undo exactly what it installed
 indexed install claude-code --home /data/agent-home  # collections in /data/agent-home/.indexed
 ```
 
 It writes a *user-scope* server (available in every project) using the absolute
-path of the running `indexed` executable, preserves any other servers already in
-`~/.claude.json`, and is safe to run twice. Restart Claude Code, then use
-`/index-use`.
+path of the running `indexed` executable, and touches five files:
 
-Manual alternative (registers the server only — no skill):
+| Path | What it owns |
+| --- | --- |
+| `~/.claude.json` | the `mcpServers.indexed` entry |
+| `~/.claude/skills/index-use/SKILL.md` | the `index-use` skill |
+| `~/.claude/hooks/indexed-suggest-mcp.sh` | the nudge hook script |
+| `~/.claude/settings.json` | the `PreToolUse` group that runs that hook |
+| `~/.claude/indexed-install.json` | the manifest: what was installed, by which version |
+
+Everything else in those files — other servers, other hooks, `projects`,
+credentials — is preserved, and each rewritten file keeps a `.bak` beside it.
+Safe to run twice: an existing install is upgraded in place, never duplicated.
+`--remove` deletes only the artifacts above (and only ones it recognises as its
+own) and prunes the directories it emptied.
+
+The hook is silent unless indexed actually has collections (the collections root
+this install points at, or a `.indexed/collections.json` workspace pointer), so it
+costs nothing on a machine that does not use indexed. It only *adds context* to
+Grep/Glob calls — it never approves, blocks or prompts, so your permission rules
+and directory prompts behave exactly as before. Set
+`INDEXED_HOOK_LOG=/path/to/log` to trace its firings.
+
+Restart Claude Code, then use `/index-use`.
+
+Manual alternative (registers the server only — no skill, no hook):
 
 ```bash
 claude mcp add indexed -s user -- indexed mcp run
@@ -137,6 +159,126 @@ To add it per project instead, create or edit `.mcp.json` in your project root:
     }
   }
 }
+```
+
+The installed skill documents the `indexed.search/1` result shape; the full
+contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
+
+### Codex CLI
+
+One command registers the MCP server, installs the `index-use` skill and adds a
+`PreToolUse` hook that nudges Codex away from shell `grep`/`rg` toward semantic
+search:
+
+```bash
+indexed install codex             # server + skill + hook
+indexed install codex --dry-run   # print the plan, write nothing
+indexed install codex --remove    # undo exactly what it installed
+indexed install codex --home /data/agent-home  # collections in /data/agent-home/.indexed
+```
+
+It writes a *user-scope* server (available in every project) using the absolute
+path of the running `indexed` executable, into `~/.codex` — or `$CODEX_HOME`
+when you set one:
+
+| Path | What it owns |
+| --- | --- |
+| `~/.codex/config.toml` | the `mcp_servers.indexed` table |
+| `~/.codex/skills/index-use/SKILL.md` | the `index-use` skill |
+| `~/.codex/hooks.json` | the `PreToolUse` group that runs the nudge hook |
+| `~/.codex/indexed/indexed-nudge.sh` | the nudge hook script |
+| `~/.codex/indexed-install.json` | the manifest: what was installed, by which version |
+
+`config.toml` is hand-edited TOML, so the installer edits it as *text*: only its
+own table block is ever written or deleted, and everything else — comments,
+spacing, `projects`, other servers — stays byte for byte. (This is deliberate:
+`codex mcp add` re-serialises the whole `[mcp_servers]` region and drops the
+comments inside it.) Files the command rewrote keep a `.bak` beside them, and
+running it twice upgrades in place rather than duplicating. `--remove` deletes
+only the artifacts above, only ones it recognises as its own, and puts the rest
+of `config.toml` back exactly as it was.
+
+Codex does not run a hook until it is trusted. Rather than forge that state, the
+installer asks Codex for the hash it computed (`codex app-server` → `hooks/list`)
+and records it in `config.toml` — the same write Codex's TUI makes when you
+approve a hook. If `codex` is not on `PATH`, the install still completes and says
+the hook needs a one-time approval.
+
+Codex has no Grep/Glob tool: it searches through the shell. So the installed hook
+watches `Bash` (and the platform equivalents), and when the command line looks
+like a recursive text search while indexed has collections, it adds a reminder
+pointing at `mcp__indexed__search`. It is silent for anything else — non-search
+commands, commands already using `indexed`, machines with no collections — and
+it never approves, blocks or prompts. Set `INDEXED_HOOK_LOG=/path/to/log` to
+trace its firings.
+
+Restart Codex; the `index-use` skill is listed and the nudge hook runs on shell
+search commands.
+
+Manual alternative (registers the server only — no skill, no hook):
+
+```bash
+codex mcp add indexed -- indexed mcp run
+```
+
+The installed skill documents the `indexed.search/1` result shape; the full
+contract is in [docs/reference/search-output.md](docs/reference/search-output.md).
+
+### OpenCode
+
+Same four commands, against OpenCode's own config dir (`$OPENCODE_CONFIG_DIR`,
+else `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`):
+
+```bash
+indexed install opencode             # server + skill + context nudge
+indexed install opencode --dry-run   # print the plan, write nothing
+indexed install opencode --remove    # undo exactly what it installed
+indexed install opencode --home /data/agent-home  # collections in /data/agent-home/.indexed
+```
+
+| Path | What it owns |
+| --- | --- |
+| `opencode.json` (or `opencode.jsonc`) | the `mcp.indexed` server entry |
+| `skills/index-use/SKILL.md` | the `index-use` skill |
+| `plugins/indexed-nudge.js` | the context nudge plugin |
+| `indexed-install.json` | the manifest: what was installed, by which version |
+
+The server goes under the flat `mcp.indexed` key. This build normalises that into
+`mcp.servers` in memory, and public opencode 1.x only understands the flat form,
+so one file serves both. Tested against opencode v2.3.2
+(`@opencode/cli@2.3.2`); the plugin API it uses is the 2.x one.
+
+The config is hand-edited JSONC, and OpenCode never rewrites it — no command, not
+even loading a server, touches the bytes. So the installer splices *text*: only
+the `indexed` member is written or deleted, and comments, key order, indentation
+and CRLF endings all survive. `--remove` puts the file back byte for byte, and
+prunes the `mcp` block only if this install created it. Each file the command
+rewrites has a `.bak` of its previous contents beside it (last write only), and
+a second run upgrades in place rather than duplicating.
+
+There is no hook-trust gate on this host: a plugin is a bare `.js` file in
+`plugins/`, which OpenCode imports and calls `setup()` on with no prompt, no hash
+and no approval marker. So there is nothing to approve after installing, and the
+command writes each file exactly once. The plugin registers one
+`session.hook("context")` handler and only ever appends a paragraph to the system
+prompt — it registers no permission or tool hook, so it cannot allow, deny or
+rewrite a tool call. It is silent when indexed has no collections, and every
+filesystem read is wrapped, so a broken install cannot break a session. Set
+`INDEXED_HOOK_LOG=/path/to/log` to append one JSON line per firing.
+
+Code Mode is on by default in OpenCode, so the skill teaches
+`await tools.indexed.search({ query: "..." })` (and
+`tools.indexed.search_collection({...})`) inside the `execute` tool, with the
+flat `indexed_search` named for `codemode: false` installs. The skill text is
+advertised from `skills/index-use/SKILL.md`; the directory name is the skill id.
+
+Restart OpenCode; the `index-use` skill is advertised and the nudge plugin loads
+from `plugins/`.
+
+Manual alternative (registers the server only — no skill, no plugin):
+
+```bash
+opencode mcp add --global indexed -- indexed mcp run
 ```
 
 The installed skill documents the `indexed.search/1` result shape; the full
@@ -317,9 +459,54 @@ indexed index watch my-project --debounce 5 --poll-interval 1
 indexed config list                              # resolved configuration
 indexed config set core.v1.search.max_docs 20    # set a value
 
+# Share one collection between projects (stable id in ~/.indexed)
+indexed storage migrate --dry-run         # report collisions and affected data
+indexed storage migrate                   # move this project's collections to the shared store
+indexed storage migrate --on-collision adopt  # reuse an identical copy instead of keeping a second
+indexed storage migrate --verify hash     # compare file content, not just names and sizes
+indexed storage migrate --rollback        # put this project's collections back
+
 # Editor integration (Language Server Protocol, stdio)
 indexed lsp                              # point your editor's LSP client here
 ```
+
+`indexed storage migrate` gives a collection a stable id in the global store and
+records that id in a committed **`indexed.toml` at your repository root**, so a
+second clone reads the same index instead of rebuilding it. It journals every
+step, so an interrupted run resumes where it stopped, and `--rollback` restores
+the original local collection. Two collections are judged identical by
+`--verify structural` by default — manifest plus file names and sizes, which is
+fast but does **not** compare content — so a same-size, different-bytes copy
+passes. Use `--verify hash` for a streamed SHA-256 of every file: it refuses on
+any mismatch (naming the files), checks the moved bytes before registering them,
+and `--on-collision adopt` then never deletes a local copy whose content differs.
+
+Commit that file — it is the repository's scope, and it is the only thing that
+travels between clones:
+
+```toml
+# indexed.toml — commit this file.
+version = 1
+
+[collections]
+use = ["indexed-docs", "8b1d2f5e6a7c4b9d0e3f2a1c8d7b6e5f"]
+```
+
+Entries are stable ids (what `storage migrate` writes) or collection names (what
+you type); both resolve against `~/.indexed/data/`, so nothing is copied into the
+repository. With the file in place `indexed search` searches **only** the listed
+collections, and `indexed lsp` scopes `workspace/symbol`, hover and diagnostics
+the same way; `--collection NAME` still searches outside the list, with one
+warning line. Without the file nothing changes: every collection in the store is
+in scope. A malformed file, an unsupported `version`, or an entry that no longer
+resolves is an error naming the file and the entry — never a silent widening or
+emptying of the scope. `index create` does not edit the file: a collection
+created in a repo with a definition warns that it is outside the scope until you
+list it.
+
+The older `./.indexed/collections.json` pointer is deprecated and read-only; it
+keeps working with one warning naming `indexed.toml`, and is removed in the next
+minor.
 
 For the full CLI reference and configuration guide, see the [documentation](https://indexed.sh/docs).
 
@@ -375,7 +562,7 @@ rule and its cost.
 Indexed today runs parallel semantic indexes per source. The direction is one merged
 knowledge graph per project — code, docs, issues, git history, connected codebases, and
 accumulated lessons/memory as one structure instead of several. See
-[`.spec/product.md`](.spec/product.md) § Vision and § Knowledge Graph for what's shipped
+[`docs/spec/concepts/vision.md`](docs/spec/concepts/vision.md) and [Knowledge Graph](docs/spec/concepts/knowledge-graph.md) for what's shipped
 vs. planned.
 
 ## Documentation
@@ -414,7 +601,7 @@ uv run indexed-eval compare --report /tmp/report.json
 See [`eval/README.md`](eval/README.md) for provenance, the metric definitions and
 the measured baseline.
 
-See [`AGENTS.md`](AGENTS.md) and [`.spec/tech.md`](.spec/tech.md) for architecture details.
+See [`AGENTS.md`](AGENTS.md) and [`docs/spec/tech.md`](docs/spec/tech.md) for architecture details.
 
 ## License
 

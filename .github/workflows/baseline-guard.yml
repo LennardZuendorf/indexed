@@ -17,7 +17,7 @@ name: Benchmark Baseline Guard
 #
 # A `pull_request`-only guard would miss a bot commit pushed with `[skip ci]`,
 # because that suppresses `synchronize` — hence the `pull_request_review` and
-# `workflow_dispatch` triggers below. See .spec/tech.md § CI Benchmarking.
+# `workflow_dispatch` triggers below. See docs/spec/tech/ci-benchmarking/README.md.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]

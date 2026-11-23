@@ -22,7 +22,7 @@ def _package_version(name: str) -> str:
     """Resolve an installed distribution's version, or ``"unknown"``.
 
     Robust to running outside an installed dist (e.g. a bare source checkout)
-    per ``.spec/features/core-v2/tech.md`` "Dependency pinning".
+    per ``docs/spec/features/core-v2/tech.md`` "Dependency pinning".
     """
     from importlib.metadata import PackageNotFoundError, version
 
@@ -73,7 +73,7 @@ class V2Manifest(BaseModel):
     """Typed v2 ``manifest.json``. Reads/writes are by model, never by dict key.
 
     Fields are declared in on-disk key order so ``model_dump(by_alias=True)``
-    round-trips byte-stable (``.spec/lessons.md``); ``extra="allow"`` lets
+    round-trips byte-stable (``docs/spec/lessons.md``); ``extra="allow"`` lets
     future top-level keys pass through untouched.
     """
 
