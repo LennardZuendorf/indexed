@@ -44,6 +44,11 @@ in this feature.
 - **R5 — The pointer decides where commands read.** CLI and MCP resolve the
   collections root through the same function, so a pointed workspace searches
   the shared store in both surfaces.
+- **R6 — Verification strength is the user's choice, and the default is stated.**
+  `--verify structural` (default, in `--help` and the README) compares manifest
+  and file names/sizes, not content; `--verify hash` streams a SHA-256 of every
+  file, refuses mismatches by naming the files, and `adopt` never deletes a
+  local copy whose content differs.
 
 ## Non-goals
 
@@ -65,3 +70,4 @@ in this feature.
 | R3 | `tests/system/test_collection_registry.py::test_rollback_restores_local_collection_and_engine_reads_correct_engine` |
 | R4 | `tests/unit/indexed/storage/test_migration.py` (plan/adopt/rename/refuse) |
 | R5 | the R1 test searches from both workspaces through the CLI |
+| R6 | `tests/unit/indexed/storage/test_migration.py::test_hash_verify_refuses_same_size_collections_and_names_the_file`, `::test_adopt_with_hash_never_deletes_a_mismatching_local_copy`, `::test_hash_verify_peak_memory_stays_bounded_on_a_large_file` |

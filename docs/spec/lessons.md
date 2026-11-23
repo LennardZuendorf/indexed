@@ -2447,6 +2447,12 @@ state is never touched.
 **Tags:** spec, docs
 **Date:** 2026-11-22
 
+### Structural fingerprints do not justify deleting data (2026-11-22)
+**Pattern:** `storage migrate` compared collections by manifest bytes plus file names and sizes, so `--on-collision adopt` deleted a local copy that merely had the same shape as the shared one.
+**Rule:** Any destructive step needs a check that sees the thing it destroys. Offer a streamed content hash (`--verify hash`), keep the cheap check as the stated default, and log which check justified each delete. Prove the gap with a same-name, same-size, different-bytes fixture that fails on main.
+**Tags:** migration, verification, storage
+**Date:** 2026-11-22
+
 ### Workspace scope must ride the context, not be re-derived (2026-11-22)
 **Pattern:** `resolve_collections_context` was called once by `search` and again by
 `display_storage_mode_for_command`, and `indexed lsp` shares it — so any notice

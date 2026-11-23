@@ -38,6 +38,7 @@ updated: 2026-11-22
 | R4 collisions named | `tests/unit/indexed/storage/test_migration.py::test_plan_reports_collision_kinds_without_writing`, `::test_adopt_policy_marks_identical_copies`, `::test_rename_policy_targets_a_distinct_name`, `::test_real_migration_refuses_collisions_before_touching_data` |
 | Registry durability | `tests/unit/indexed/config/test_collections_registry.py` (11 cases) |
 | R5 same surface in CLI and MCP | the R1 test drives `indexed ... search` in both workspaces; both go through `resolve_collections_context` |
+| R6 verify=hash | `tests/unit/indexed/storage/test_migration.py::test_hash_verify_refuses_same_size_collections_and_names_the_file`, `::test_adopt_with_hash_never_deletes_a_mismatching_local_copy`, `::test_hash_verify_checks_the_moved_bytes_against_the_planned_content`, `::test_hash_verify_peak_memory_stays_bounded_on_a_large_file` |
 
 Run:
 

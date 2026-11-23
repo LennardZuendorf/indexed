@@ -463,6 +463,7 @@ indexed config set core.v1.search.max_docs 20    # set a value
 indexed storage migrate --dry-run         # report collisions and affected data
 indexed storage migrate                   # move this project's collections to the shared store
 indexed storage migrate --on-collision adopt  # reuse an identical copy instead of keeping a second
+indexed storage migrate --verify hash     # compare file content, not just names and sizes
 indexed storage migrate --rollback        # put this project's collections back
 
 # Editor integration (Language Server Protocol, stdio)
@@ -473,7 +474,12 @@ indexed lsp                              # point your editor's LSP client here
 records that id in a committed **`indexed.toml` at your repository root**, so a
 second clone reads the same index instead of rebuilding it. It journals every
 step, so an interrupted run resumes where it stopped, and `--rollback` restores
-the original local collection.
+the original local collection. Two collections are judged identical by
+`--verify structural` by default — manifest plus file names and sizes, which is
+fast but does **not** compare content — so a same-size, different-bytes copy
+passes. Use `--verify hash` for a streamed SHA-256 of every file: it refuses on
+any mismatch (naming the files), checks the moved bytes before registering them,
+and `--on-collision adopt` then never deletes a local copy whose content differs.
 
 Commit that file — it is the repository's scope, and it is the only thing that
 travels between clones:

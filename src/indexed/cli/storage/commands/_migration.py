@@ -18,15 +18,19 @@ The contract, in one place:
   from the shared copy, because its local copy was removed on adoption — the
   shared collection itself is left alone for the workspaces still using it.
 
-Fingerprints are structural (manifest bytes + the sorted file list with sizes),
-not a byte hash of the whole tree: a dry run must stay cheap on a multi-GB FAISS
-index, and the fingerprint only has to answer "is this the same collection?".
+Fingerprints answer "is this the same collection?" in one of two modes
+(``--verify``). ``structural`` (the default) is manifest bytes plus the sorted
+file list with sizes: cheap on a multi-GB FAISS index, but two collections whose
+files share names and sizes look identical. ``hash`` adds a streamed SHA-256 of
+every file, so it refuses a same-size, different-bytes copy and a move that
+corrupted a payload — at the cost of reading the whole tree.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -48,6 +52,11 @@ from indexed.config.workspace_selection import (
 )
 
 COLLISION_POLICIES = ("abort", "adopt", "rename")
+VERIFY_MODES = ("structural", "hash")
+HASH_CHUNK_BYTES = 1024 * 1024
+_MAX_NAMED_DIFFERENCES = 5
+
+logger = logging.getLogger(__name__)
 
 
 class MigrationError(StorageError):
@@ -94,6 +103,7 @@ class MigrationReport:
     collisions: int = 0
     affected_bytes: int = 0
     messages: tuple[str, ...] = field(default_factory=tuple)
+    verify: str = "structural"
 
     def to_dict(self) -> dict:
         """JSON-ready payload shared by the JSON renderer and the tests."""
@@ -104,6 +114,7 @@ class MigrationReport:
             "local_collections": self.local_collections,
             "global_collections": self.global_collections,
             "resumed": self.resumed,
+            "verify": self.verify,
             "collisions": self.collisions,
             "affected_bytes": self.affected_bytes,
             "collections": [plan.to_dict() for plan in self.collections],
@@ -114,15 +125,61 @@ class MigrationReport:
 # --- discovery / fingerprints ------------------------------------------------
 
 
-def fingerprint_collection(path: Path) -> str:
-    """Structural fingerprint: manifest bytes plus every file's size."""
+def _check_verify(verify: str) -> str:
+    if verify not in VERIFY_MODES:
+        raise MigrationError(
+            f"Unknown verify mode {verify!r}; choose one of {', '.join(VERIFY_MODES)}."
+        )
+    return verify
+
+
+def _hash_file(path: Path) -> str:
+    """SHA-256 of a file, read in bounded chunks (indexes run to many GB)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(HASH_CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _scan(path: Path, verify: str) -> dict[str, str]:
+    """``relative path -> "size"`` (structural) or ``"size:sha256"`` (hash)."""
+    entries: dict[str, str] = {}
+    for entry in sorted(p for p in path.rglob("*") if p.is_file()):
+        described = str(entry.stat().st_size)
+        if verify == "hash":
+            described = f"{described}:{_hash_file(entry)}"
+        entries[entry.relative_to(path).as_posix()] = described
+    return entries
+
+
+def _fingerprint(path: Path, entries: dict[str, str]) -> str:
     digest = hashlib.sha256()
     manifest = path / "manifest.json"
     digest.update(manifest.read_bytes() if manifest.is_file() else b"")
-    for entry in sorted(p for p in path.rglob("*") if p.is_file()):
-        relative = entry.relative_to(path).as_posix()
-        digest.update(f"{relative}\0{entry.stat().st_size}\n".encode())
+    for relative, described in entries.items():
+        digest.update(f"{relative}\0{described}\n".encode())
     return digest.hexdigest()
+
+
+def fingerprint_collection(path: Path, verify: str = "structural") -> str:
+    """Fingerprint a collection: manifest bytes plus per-file size (and hash)."""
+    return _fingerprint(path, _scan(path, _check_verify(verify)))
+
+
+def _differences(first: dict[str, str], second: dict[str, str]) -> str:
+    """A bounded ``(differs in: a, b)`` suffix naming what does not match."""
+    names = sorted(
+        name
+        for name in first.keys() | second.keys()
+        if first.get(name) != second.get(name)
+    )
+    if not names:
+        return ""
+    shown = ", ".join(names[:_MAX_NAMED_DIFFERENCES])
+    more = len(names) - _MAX_NAMED_DIFFERENCES
+    tail = f", +{more} more" if more > 0 else ""
+    return f" (differs in: {shown}{tail})"
 
 
 def _tree_size(path: Path) -> int:
@@ -177,8 +234,10 @@ def plan(
     *,
     on_collision: str = "abort",
     registry: Optional[CollectionRegistry] = None,
+    verify: str = "structural",
 ) -> MigrationReport:
     """Describe what ``migrate`` would do. Reads only — never writes."""
+    _check_verify(verify)
     if on_collision not in COLLISION_POLICIES:
         raise MigrationError(
             f"Unknown collision policy {on_collision!r}; "
@@ -193,12 +252,14 @@ def plan(
     plans: list[CollectionPlan] = []
     for name in sorted(described):
         source = local_collections / name
-        fingerprint = fingerprint_collection(source)
+        source_entries = _scan(source, verify)
+        fingerprint = _fingerprint(source, source_entries)
         target = global_collections / name
         action = "move"
         collision = None
         if target.exists():
-            existing = fingerprint_collection(target)
+            target_entries = _scan(target, verify)
+            existing = _fingerprint(target, target_entries)
             if existing == fingerprint:
                 action = "conflict"
                 collision = (
@@ -211,6 +272,7 @@ def plan(
                 collision = (
                     f"a DIFFERENT collection named '{name}' is already in the "
                     f"shared store at '{target}'"
+                    f"{_differences(source_entries, target_entries)}"
                 )
                 if on_collision == "rename":
                     suffix = fingerprint[:8]
@@ -247,6 +309,7 @@ def plan(
         collections=tuple(plans),
         collisions=sum(1 for item in plans if item.action == "conflict"),
         affected_bytes=sum(item.size_bytes for item in plans),
+        verify=verify,
     )
 
 
@@ -289,7 +352,24 @@ def _move_dir(source: Path, target: Path) -> None:
     shutil.move(str(source), str(target))
 
 
-def _reconcile(step: dict, *, action: str, fingerprint: str) -> None:
+def _log_source_removed(step: dict, verify: str) -> None:
+    """One line naming the check that justified deleting a local copy."""
+    check = (
+        "the content hash check (sha256 of every file)"
+        if verify == "hash"
+        else "the structural check (file names and sizes, not content)"
+    )
+    logger.info(
+        "Removed local copy of '%s' at '%s': %s found it identical to the shared copy.",
+        step["name"],
+        step["source"],
+        check,
+    )
+
+
+def _reconcile(
+    step: dict, *, action: str, fingerprint: str, verify: str = "structural"
+) -> None:
     """Bring a step's recorded state in line with what is actually on disk."""
     state = step["state"]
     if state in ("linked", "rolled_back"):
@@ -306,14 +386,18 @@ def _reconcile(step: dict, *, action: str, fingerprint: str) -> None:
         step["state"] = "planned"
         return
     if source_exists and target_exists:
-        source_print = fingerprint_collection(source)
-        target_print = fingerprint_collection(target)
+        source_print = fingerprint_collection(source, verify)
+        target_print = fingerprint_collection(target, verify)
         if target_print == fingerprint and source_print == fingerprint:
             # An interrupted copy left two identical trees; the target wins.
+            _log_source_removed(step, verify)
             shutil.rmtree(source)
             step["state"] = "moved"
             return
-        if action == "adopt" and target_print == fingerprint:
+        # Structural adoption trusts the shared copy alone; a content hash never
+        # deletes a local copy it has not itself matched.
+        if action == "adopt" and target_print == fingerprint and verify != "hash":
+            _log_source_removed(step, verify)
             shutil.rmtree(source)
             step["state"] = "moved"
             return
@@ -331,6 +415,18 @@ def _reconcile(step: dict, *, action: str, fingerprint: str) -> None:
         f"Collection '{step['name']}' is nowhere to be found: neither "
         f"'{step['source']}' nor '{step['target']}' exists."
     )
+
+
+def _verify_moved(step: dict) -> None:
+    """Refuse to register a target whose bytes are not what was planned."""
+    target = Path(step["target"])
+    if fingerprint_collection(target, "hash") != step["fingerprint"]:
+        raise MigrationError(
+            f"The moved collection '{step['name']}' at '{target}' does not match "
+            "the content hash taken before the move (a file changed or was "
+            "corrupted in transit). It was not registered; re-run to retry the "
+            "check, or --rollback to restore the original location."
+        )
 
 
 def _definition_root(workspace: Path) -> Path:
@@ -357,6 +453,7 @@ def migrate(
     dry_run: bool = False,
     on_collision: str = "abort",
     registry: Optional[CollectionRegistry] = None,
+    verify: Optional[str] = None,
 ) -> MigrationReport:
     """Move this workspace's local collections into the shared global store.
 
@@ -365,6 +462,9 @@ def migrate(
     again after it completed is a no-op. Each migrated collection is added to
     the committed ``indexed.toml`` at the Git worktree root — that definition,
     not a workspace pointer, is what tells this repository what it selects.
+    ``verify`` picks the fingerprint mode (default ``structural``); a resumed
+    run keeps the mode its journal began with, since the journaled fingerprints
+    are only comparable to that mode.
     """
     workspace = Path(workspace)
     registry = registry or CollectionRegistry()
@@ -372,9 +472,32 @@ def migrate(
     pointers = WorkspacePointers(workspace)
     workspace_key = pointers.workspace_key()
 
-    report = plan(workspace, on_collision=on_collision, registry=registry)
     journal_path = registry.journal_path_for(workspace_key)
     existing = _load_journal(journal_path)
+    resuming = existing is not None and not dry_run
+    if verify is not None:
+        _check_verify(verify)
+    if resuming:
+        assert existing is not None
+        journaled = _check_verify(existing.get("verify", "structural"))
+        pending = any(s["state"] != "linked" for s in _step_by_name(existing))
+        if verify is not None and verify != journaled and pending:
+            raise MigrationError(
+                f"This migration was started with --verify={journaled}; resume it "
+                f"with --verify={journaled} (or omit the flag), or --rollback."
+            )
+        verify = journaled
+    verify = verify or "structural"
+
+    # A resumed run is driven by its journal, so the plan only supplies the report
+    # skeleton; skip the hashing it would otherwise repeat over every tree.
+    report = plan(
+        workspace,
+        on_collision=on_collision,
+        registry=registry,
+        verify="structural" if resuming else verify,
+    )
+    report = replace(report, verify=verify)
 
     if dry_run:
         if existing is not None:
@@ -410,6 +533,7 @@ def migrate(
     journal = {
         "version": REGISTRY_VERSION,
         "workspace": workspace_key,
+        "verify": verify,
         "definition": str(definition_root),
         "started_at": utc_now(),
         "completed_at": None,
@@ -508,12 +632,14 @@ def _run_steps(
     resumed: bool = False,
 ) -> MigrationReport:
     """Drive every journal step to ``linked``, reconciling from disk each time."""
+    verify = _check_verify(journal.get("verify", "structural"))
     pending = [step for step in _step_by_name(journal) if step["state"] != "linked"]
     for step in pending:
         _reconcile(
             step,
             action=step["action"],
             fingerprint=step["fingerprint"],
+            verify=verify,
         )
         _save_journal(journal_path, journal)
 
@@ -521,6 +647,9 @@ def _run_steps(
             _move_dir(Path(step["source"]), Path(step["target"]))
             step["state"] = "moved"
             _save_journal(journal_path, journal)
+
+        if verify == "hash" and step["action"] == "move":
+            _verify_moved(step)
 
         record = registry.add(
             name=step["name"],
@@ -551,8 +680,13 @@ def rollback(
     workspace: Path,
     *,
     registry: Optional[CollectionRegistry] = None,
+    verify: Optional[str] = None,
 ) -> MigrationReport:
-    """Undo this workspace's migration, restoring its local collections."""
+    """Undo this workspace's migration, restoring its local collections.
+
+    The "both copies exist" cleanup deletes the shared copy only if ``verify``
+    (default: the mode the migration ran with) finds the two identical.
+    """
     workspace = Path(workspace)
     registry = registry or CollectionRegistry()
     pointers = WorkspacePointers(workspace)
@@ -564,6 +698,7 @@ def rollback(
             "No migration to roll back for this workspace "
             f"(looked for a journal at '{journal_path}')."
         )
+    verify = _check_verify(verify or journal.get("verify", "structural"))
 
     local_collections = get_collections_path(get_local_root(workspace))
     global_collections = get_collections_path(registry.global_root)
@@ -608,7 +743,9 @@ def rollback(
             source.parent.mkdir(parents=True, exist_ok=True)
             _move_dir(target, source)
         elif target.is_dir() and source.is_dir():
-            if fingerprint_collection(target) == fingerprint_collection(source):
+            if fingerprint_collection(target, verify) == fingerprint_collection(
+                source, verify
+            ):
                 shutil.rmtree(target)
             else:
                 raise MigrationError(
@@ -640,6 +777,7 @@ def rollback(
         collections=tuple(plans),
         affected_bytes=sum(item.size_bytes for item in plans),
         messages=tuple(messages),
+        verify=verify,
     )
 
 
