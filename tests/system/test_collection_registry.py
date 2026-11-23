@@ -27,13 +27,14 @@ from typer.testing import CliRunner
 
 from indexed.cli.app import app
 from indexed.cli.storage.commands import _migration
-from indexed.config.collections_registry import CollectionRegistry, WorkspacePointers
+from indexed.config.collections_registry import CollectionRegistry
 from indexed.config.storage import (
     get_collections_path,
     get_global_root,
     get_local_root,
     ensure_storage_dirs,
 )
+from indexed.config.workspace_selection import read_definition
 from tests.conftest import model_available
 
 runner = CliRunner()
@@ -77,8 +78,13 @@ def _clean_global_store():
 
 
 def _workspace(path: Path) -> Path:
-    """A project directory with its own ``./.indexed`` storage dirs."""
+    """A project directory with its own ``./.indexed`` storage dirs.
+
+    It is a Git worktree root because that is where the committed ``indexed.toml``
+    belongs — ``storage migrate`` writes the definition there (#344).
+    """
     path.mkdir(parents=True)
+    (path / ".git").mkdir()
     ensure_storage_dirs(get_local_root(path), is_local=True)
     return path
 
@@ -191,11 +197,12 @@ def test_two_workspaces_reuse_one_collection(
     assert sorted(records[0].linked_workspaces) == sorted(
         [str(project_a.resolve()), str(project_b.resolve())]
     )
-    pointer_ids = {
-        WorkspacePointers(project_a).resolve(COLLECTION),
-        WorkspacePointers(project_b).resolve(COLLECTION),
+    definition_ids = {
+        entry
+        for project in (project_a, project_b)
+        for entry in read_definition(project / "indexed.toml")
     }
-    assert pointer_ids == {records[0].id}
+    assert definition_ids == {records[0].id}
 
     # Both projects read the shared collection through the engine.
     assert _search_ids(monkeypatch, project_a) == ["needle.txt"]
@@ -254,7 +261,7 @@ def test_dry_run_is_idempotent_and_resumable(
     assert [path.name for path in _global_collection_dirs()] == [COLLECTION]
     record = registry.find(COLLECTION)
     assert record is not None
-    assert WorkspacePointers(project).resolve(COLLECTION) == record.id
+    assert read_definition(project / "indexed.toml") == (record.id,)
 
     # A second completed run is a no-op: no duplicate, no second id.
     again = _json_run(
@@ -297,7 +304,7 @@ def test_rollback_restores_local_collection_and_engine_reads_correct_engine(
     assert [
         item for item in CollectionRegistry().records() if item.name == COLLECTION
     ] == []
-    assert WorkspacePointers(project).resolve(COLLECTION) is None
+    assert not (project / "indexed.toml").exists()
     assert _global_collection_dirs() == []
 
     # Through the engine: the right engine version, and a known hit.

@@ -2452,3 +2452,24 @@ state is never touched.
 **Rule:** Any destructive step needs a check that sees the thing it destroys. Offer a streamed content hash (`--verify hash`), keep the cheap check as the stated default, and log which check justified each delete. Prove the gap with a same-name, same-size, different-bytes fixture that fails on main.
 **Tags:** migration, verification, storage
 **Date:** 2026-11-22
+
+### Workspace scope must ride the context, not be re-derived (2026-11-22)
+**Pattern:** `resolve_collections_context` was called once by `search` and again by
+`display_storage_mode_for_command`, and `indexed lsp` shares it — so any notice
+printed inside the resolver doubles, and a Rich panel on stdout corrupts both
+`json.loads(result.stdout)` and LSP frames.
+**Rule:** Resolve a workspace definition once in the composition root, put the
+selection and its notices on `CliContext` as data, and let the command that owns
+an output stream choose the stream (`print_info`, `typer.echo(err=True)`,
+`loguru`). Force the global store through `get_collections_path(get_global_root())`,
+never `resolver.get_collections_path("global")` — the resolver replays its mode
+override first and would return the local path under `--local`.
+**Tags:** config, cli, lsp, storage
+
+### A plan status is a claim that needs a diff (2026-11-22)
+**Pattern:** a crashed run left `plan.md` marking slices 2–6 "✅ DONE" and citing
+test names that did not exist; `git status` showed only the slice-1 module.
+**Rule:** Before resuming interrupted work, check every ✅ against `git status`
+and the named test files. Restore the table to reality first, then build; a plan
+that outruns the tree is the same failure mode as spec drift.
+**Tags:** spec, planning
