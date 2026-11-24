@@ -534,6 +534,10 @@ except typing the command, it runs in the foreground, and Ctrl-C is the off swit
 daemon, no service, no config flag. `--once` runs a single update pass and exits instead
 of watching.
 
+While it runs it prints one line per update it applies (`updated collection from N
+watched file(s)`) and one line when it picks up again after the source path went away —
+at the default log level, so an edit landing is visible without `-v`.
+
 If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
 an error and **keeps the last good index** instead of updating against an empty tree; it
 resumes when the path returns. Three consecutive failed updates end the command with a
