@@ -3,7 +3,7 @@ type: feature-tech
 feature: file-watcher
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-22
+updated: 2026-11-24
 ---
 
 # Feature: File Watcher — Architecture
@@ -124,6 +124,23 @@ period even without a new edit. On a signature change it waits for a full quiet
 **one** update. It is fully injectable (`scan`, `apply_update`, `clock`,
 `sleep`, `stop`) so the burst/failure semantics are unit-tested without waiting.
 
+## Reporting contract
+
+The loop never decides how its events reach a human: it takes two injected
+channels, `log_info` (an update was applied, or the source path came back) and
+`log_error` (path vanished, update pass failed, failures exhausted). Each caller
+maps them to its own surface:
+
+- **CLI** (`index watch`) prints every `log_info` event to the console *and*
+  logs it at INFO. The console level defaults to WARNING
+  (`utils/logger.py`), so routing these events to the logger alone would make
+  the command silent exactly while it reindexes — and would leave the documented
+  "it resumes when the path returns" with no observable event. One visible line
+  per applied update, one per resume, no `-v` needed.
+- **MCP server** (`mcp/watch.py`) logs them at INFO on the server's own stream,
+  prefixed with the collection name; a server has no foreground console and its
+  INFO stream is the operator's surface.
+
 ## Write contract (must not be broken)
 
 - **Single writer per collection by contract.** There is no lock in the store;
@@ -144,7 +161,8 @@ period even without a new edit. On a signature change it waits for a full quiet
 - `tests/unit/indexed/knowledge/commands/test_watch.py` — burst coalescing
   (5 changes → 1 update), quiet tree (0 updates), vanished path (0 updates, one
   error, resumes), 3 consecutive failures → exit 1, gitignore/excluded-dir
-  fingerprints, `--once`, refusals.
+  fingerprints, `--once`, refusals, and the reporting contract (the applied-update
+  and resume lines reach stdout at the default log level).
 - `tests/system/test_watch_live_edit.py` — real corpus, real files connector,
   real v2 ingestion (embedding mocked): a file written while the loop runs
   becomes a document and is searchable, with no manual `index update`.

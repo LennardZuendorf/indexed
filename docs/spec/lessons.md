@@ -2489,3 +2489,19 @@ operator state produces *after* probing it, never from the stack you assume: the
 corruption path was already tolerated upstream.
 **Tags:** mcp, errors, spec
 **Date:** 2026-11-23
+
+### A long-running command is silent where its level filter is (2026-11-24)
+**Pattern:** `index watch` reported every applied update and every resume through
+`logger.info` while the CLI console level defaults to WARNING, so the command printed its
+banner and then nothing at all while it reindexed — and README's "it resumes when the path
+returns" had no observable event. Live: 24 s run with a real file edit at `dee739f1`,
+zero update lines; the same run with the progress routed to `console.print` shows two.
+The loop was already right — it takes injected `log_info`/`log_error` channels; only the
+CLI's mapping of the success channel was wrong.
+**Rule:** For any command a human watches, check which log level its success events use
+against the default console level — a progress event that only a `-v` reveals is a silent
+UI for every user who did not pass it. Put presentation in the caller (console AND log),
+keep the loop presentation-free, and assert the message on stdout in a test that runs at
+default verbosity, because a test that passes `-v` cannot see this defect.
+**Tags:** cli, logging, ux
+**Date:** 2026-11-24

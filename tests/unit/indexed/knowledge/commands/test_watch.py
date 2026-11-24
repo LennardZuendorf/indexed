@@ -293,6 +293,43 @@ def test_watch_stops_cleanly_on_ctrl_c(monkeypatch, tmp_path: Path):
     assert "Traceback" not in result.stdout
 
 
+def test_watch_prints_applied_update_and_resume_at_default_verbosity(
+    monkeypatch, tmp_path: Path
+):
+    """A user must see the watcher work without passing ``-v``.
+
+    The loop's success events are INFO and the CLI default level is WARNING, so a
+    logger-only channel leaves ``index watch`` silent while it reindexes the tree —
+    and README's "it resumes when the path returns" has nothing to observe.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.txt").write_text("a")
+    (tmp_path / "collections" / "docs").mkdir(parents=True)
+    (tmp_path / "collections" / "docs" / "manifest.json").write_text(
+        '{"reader": {"type": "localFiles", "basePath": "%s"}}' % corpus
+    )
+    _patch_watch_wiring(
+        monkeypatch,
+        tmp_path,
+        [SimpleNamespace(name="docs", source_type="localFiles", indexers=["default"])],
+    )
+
+    def fake_loop(**kwargs):
+        kwargs["log_info"]("updated collection from 2 watched file(s)")
+        kwargs["log_info"]("watched source path is back — resuming")
+        return 0
+
+    monkeypatch.setattr(watch_service, "run_watch_loop", fake_loop)
+
+    result = runner.invoke(app, ["--local", "watch", "docs"])
+    stdout = ANSI_ESCAPE.sub("", result.stdout)
+
+    assert result.exit_code == 0, stdout
+    assert "updated collection from 2 watched file(s)" in stdout
+    assert "watched source path is back — resuming" in stdout
+
+
 def test_watch_rejects_positional_and_option_together(monkeypatch, tmp_path: Path):
     _patch_watch_wiring(monkeypatch, tmp_path, [])
 

@@ -188,13 +188,25 @@ def watch(
         f"Watching {base_path} for '{collection}' "
         f"(debounce {debounce_seconds:g}s, poll {poll_seconds:g}s) — Ctrl-C to stop."
     )
+
+    def report_progress(message: str) -> None:
+        """Show the loop's success events at the default log level.
+
+        Applied updates and the resume after a vanished source are INFO in the
+        loop, and the CLI console level defaults to WARNING — a logger-only
+        channel leaves the command silent while it reindexes, which is why the
+        resume README describes had nothing to observe.
+        """
+        console.print(message)
+        logger.info(message)
+
     try:
         exit_code = watch_service.run_watch_loop(
             scan=scan,
             apply_update=apply_update,
             debounce_seconds=debounce_seconds,
             poll_interval_seconds=poll_seconds,
-            log_info=logger.info,
+            log_info=report_progress,
             log_error=logger.error,
         )
     except KeyboardInterrupt:
