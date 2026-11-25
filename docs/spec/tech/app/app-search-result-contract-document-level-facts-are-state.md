@@ -1,6 +1,6 @@
 ---
 type: tech
-updated: 2026-11-22
+updated: 2026-11-25
 applies: ["src/indexed/mcp/**", src/indexed/protocols/results.py]
 ---
 
@@ -40,9 +40,12 @@ applies: ["src/indexed/mcp/**", src/indexed/protocols/results.py]
   `collections`: a **failed** collection (unreachable engine, unreadable manifest,
   no indexers) is absent from `collections` and contributes no documents; a
   collection whose requested Git option was **skipped** stays in `collections`
-  with its rows present — a skipped `--changed-since` leaves them unfiltered and a
-  skipped `--git-rerank` leaves them similarity-ordered, both stamped by
-  `gitFilter`/`gitRerank` and turned into an entry by `mcp/formatting.py`. Entries
+  with its rows present — a skipped `--changed-since` leaves them unfiltered, a
+  skipped `--git-rerank` leaves them similarity-ordered, and a skipped
+  `--git-provenance`/`--git-line-blame` leaves documents and hits without
+  attribution (all four v2-only). Every skip is stamped by
+  `gitFilter`/`gitRerank`/`gitProvenance`/`gitLineBlame` and turned into an entry
+  by `mcp/formatting.py`. Entries
   are per request-not-applied, so one collection may have two. CLI also retains
   skipped no-indexer statuses when other collections are searched; CLI status omits
   unreadable manifests; named MCP searches return a top-level error when status is

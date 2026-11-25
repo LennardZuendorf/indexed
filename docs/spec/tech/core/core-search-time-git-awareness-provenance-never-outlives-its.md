@@ -1,6 +1,6 @@
 ---
 type: tech
-updated: 2026-11-22
+updated: 2026-11-25
 applies: "src/indexed/core/**"
 ---
 
@@ -30,6 +30,15 @@ A requested **re-rank** that could not run follows the same rule via `gitRerank`
 (`not-a-files-collection`, `no-git-repository`, or `v1-engine`, stamped by the facade),
 rendered by `utils/git_meta.rerank_skip_message` as an MCP `collection_errors` entry and
 a CLI warning. Rows must never look re-ranked when they are not.
+
+The two **annotations** follow it exactly (dogfood M7). A requested
+`git_provenance`/`git_line_blame` on a collection that cannot carry it stamps
+`gitProvenance`/`gitLineBlame` = `{"applied": false, "reason": "v1-engine"}` (the facade
+does this for v1, which has no git blocks at all), rendered by
+`utils/git_meta.provenance_skip_message` / `line_blame_skip_message` as an MCP
+`collection_errors` entry and a CLI warning. Silence there is worse than for a filter: a
+document with no `git` block reads as "this file has no commit" rather than "this engine
+cannot attribute", and the README's own usage block already says the flags are v2-only.
 
 The CLI and MCP accept independent filter, document provenance, line blame and
 rerank options. Omitted booleans use `[core.v1.search]` defaults. The grouped

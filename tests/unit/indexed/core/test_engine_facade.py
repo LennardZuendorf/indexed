@@ -197,6 +197,65 @@ def test_search_changed_since_marks_v1_results_unfiltered(
     }
 
 
+def test_search_git_annotation_flags_mark_v1_results_unannotated(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """v1 ignores ``git_provenance``/``git_line_blame`` — so its results must SAY so.
+
+    ``changed_since`` and ``git_rerank`` already report their skip per
+    collection (#279 review, #144). Provenance and line blame are the same
+    class of degrade: the rows arrive without the attribution that was asked
+    for, and both surfaces said nothing at all (dogfood report M7).
+    """
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy")
+    monkeypatch.setattr(
+        v1_services, "search", lambda query, **kw: {"legacy": {"results": []}}
+    )
+
+    result = facade.search(
+        "q",
+        configs=[type("Cfg", (), {"name": "legacy"})()],
+        collections_path=str(tmp_path),
+        git_provenance=True,
+        git_line_blame=True,
+    )
+
+    assert result["legacy"]["gitProvenance"] == {
+        "applied": False,
+        "reason": "v1-engine",
+    }
+    assert result["legacy"]["gitLineBlame"] == {
+        "applied": False,
+        "reason": "v1-engine",
+    }
+
+
+def test_search_without_git_annotation_flags_adds_no_status(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """An unrequested (or explicitly off) annotation leaves the result untouched."""
+    import indexed.core.engine as facade
+    import indexed.core.v1.engine.services as v1_services
+
+    _make_collection(tmp_path, "legacy")
+    monkeypatch.setattr(
+        v1_services, "search", lambda query, **kw: {"legacy": {"results": []}}
+    )
+
+    result = facade.search(
+        "q",
+        configs=[type("Cfg", (), {"name": "legacy"})()],
+        collections_path=str(tmp_path),
+        git_provenance=False,
+    )
+
+    assert "gitProvenance" not in result["legacy"]
+    assert "gitLineBlame" not in result["legacy"]
+
+
 def test_search_without_changed_since_adds_no_git_filter(
     monkeypatch, tmp_path: Path
 ) -> None:
