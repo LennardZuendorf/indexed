@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-23
+updated: 2026-11-25
 ---
 
 # Lessons Learned
@@ -2505,3 +2505,17 @@ keep the loop presentation-free, and assert the message on stdout in a test that
 default verbosity, because a test that passes `-v` cannot see this defect.
 **Tags:** cli, logging, ux
 **Date:** 2026-11-24
+
+### A v1 collection answers a v2-only flag by doing nothing (2026-11-25)
+**Pattern:** `--git-provenance` and `--git-line-blame` on a v1 collection returned exit 0
+with rows, no git block, no warning and no payload status — byte-indistinguishable from
+"this file has no commit" — while the same collection under `--changed-since` exited 1 and
+under `--git-rerank` printed a per-collection warning stamped `gitRerank`. The README had
+already annotated all four flags "v2 files collections only"; only the code was silent.
+The fix is the third and fourth copy of a contract that already existed (dogfood M7).
+**Rule:** when an option is documented for one engine, the engine that cannot honour it
+must say so in the same place its siblings do — a status key on the collection result, a
+message helper in `git_meta`, one line in each renderer, one `collection_errors` entry on
+MCP. An option silently dropped is worse than one that errors: the rows look like an answer.
+**Tags:** cli, mcp, git, ux
+**Date:** 2026-11-25

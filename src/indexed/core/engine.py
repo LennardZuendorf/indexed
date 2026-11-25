@@ -828,6 +828,20 @@ def search(
                         "gitRerank",
                         {"applied": False, "reason": "v1-engine"},
                     )
+        if version != "2":
+            # And for the two annotations: v1 has no git blocks at all, so a
+            # requested provenance/blame that silently produced none reads as
+            # "this file has no commit" rather than "this engine cannot tell"
+            # (dogfood M7).
+            for key, requested in (
+                ("gitProvenance", git_provenance),
+                ("gitLineBlame", git_line_blame),
+            ):
+                if not requested:
+                    continue
+                for entry in out.values():
+                    if isinstance(entry, dict) and "error" not in entry:
+                        entry.setdefault(key, {"applied": False, "reason": "v1-engine"})
         return out
 
     names = (

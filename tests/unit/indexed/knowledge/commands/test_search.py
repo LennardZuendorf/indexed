@@ -2416,6 +2416,78 @@ class TestGitFilterSkipRendering:
         assert mock_warn.call_count == 0
 
 
+class TestGitAnnotationSkipRendering:
+    """A skipped ``--git-provenance``/``--git-line-blame`` must be announced too.
+
+    Both are v2-only (README:441-442); on a v1 collection the rows arrive with
+    no attribution at all, and before this the CLI printed nothing (dogfood M7).
+    """
+
+    @pytest.mark.parametrize(
+        ("status_key", "expected"),
+        [
+            ("gitProvenance", "commit attribution"),
+            ("gitLineBlame", "per-line attribution"),
+        ],
+    )
+    def test_skipped_annotation_warns_with_collection(
+        self, monkeypatch, status_key, expected
+    ):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+        results: Dict[str, Any] = {
+            "v1demo": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "path": "/path/doc1",
+                        "matchedChunks": [
+                            {"id": "c1", "score": 0.4, "content": {"indexedData": "x"}}
+                        ],
+                    }
+                ],
+                status_key: {"applied": False, "reason": "v1-engine"},
+            }
+        }
+
+        with patch.object(search_render, "print_warning") as mock_warn:
+            search_render.format_search_results_compact("query", results=results)
+
+        messages = [call[0][0] for call in mock_warn.call_args_list]
+        assert any(
+            "v1demo" in m and "not applied" in m and expected in m for m in messages
+        ), messages
+
+    def test_applied_annotation_prints_no_skip_warning(self, monkeypatch):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            search_render, "console", type("C", (), {"print": lambda *a, **kw: None})()
+        )
+        results: Dict[str, Any] = {
+            "c1": {
+                "results": [
+                    {
+                        "id": "doc1",
+                        "path": "/path/doc1",
+                        "matchedChunks": [
+                            {"id": "c1", "score": 0.4, "content": {"indexedData": "x"}}
+                        ],
+                    }
+                ],
+                "gitProvenance": {"applied": True},
+            }
+        }
+
+        with patch.object(search_render, "print_warning") as mock_warn:
+            search_render.format_search_results_compact("query", results=results)
+
+        assert mock_warn.call_count == 0
+
+
 class TestFormatSearchResultsCompactEdgeCases:
     """Tests for edge cases in compact formatter."""
 

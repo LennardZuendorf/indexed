@@ -682,6 +682,34 @@ def test_skipped_git_rerank_becomes_a_collection_error() -> None:
     ]
 
 
+def test_skipped_git_provenance_becomes_a_collection_error() -> None:
+    """A v1 collection cannot attribute; the payload must not stay silent (M7)."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "l2_squared",
+            "results": [_doc("alpha", 0.9)],
+            "gitProvenance": {"applied": False, "reason": "v1-engine"},
+            "gitLineBlame": {"applied": False, "reason": "v1-engine"},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "git provenance was not applied: git provenance applies to "
+            "v2 collections only; results carry no commit attribution",
+        },
+        {
+            "collection": "c1",
+            "error": "git line blame was not applied: git line blame applies to "
+            "v2 collections only; hits carry no per-line attribution",
+        },
+    ]
+
+
 def test_applied_git_rerank_adds_no_error_and_ranks_on_its_score() -> None:
     """An applied re-rank is silent, and its blended score is the rank basis."""
     raw = {

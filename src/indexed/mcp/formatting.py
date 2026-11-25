@@ -25,7 +25,12 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from indexed.protocols.results import SEARCH_SCHEMA, Hit
-from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
+from indexed.utils.git_meta import (
+    filter_skip_message,
+    line_blame_skip_message,
+    provenance_skip_message,
+    rerank_skip_message,
+)
 from indexed.utils.provenance import build_locator, chunk_parts, strip_context_prefix
 from indexed.utils.relevance import V1_SCORE_KIND, unified_relevance
 
@@ -83,6 +88,21 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     "error": rerank_skip_message(git_rerank),
                 }
             )
+        # And for the two annotations (dogfood M7): a v1 collection returns no
+        # git block at all, so a requested provenance/blame that produced none
+        # must say why rather than read as "this file has no commit".
+        for status_key, message in (
+            ("gitProvenance", provenance_skip_message),
+            ("gitLineBlame", line_blame_skip_message),
+        ):
+            status = collection_data.get(status_key)
+            if isinstance(status, dict) and status.get("applied") is False:
+                collection_errors.append(
+                    {
+                        "collection": collection_name,
+                        "error": message(status),
+                    }
+                )
 
         verdict = collection_data.get("freshness")
         if isinstance(verdict, dict):

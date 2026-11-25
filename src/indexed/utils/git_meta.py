@@ -475,6 +475,38 @@ def rerank_skip_message(status: dict) -> str:
     )
 
 
+# Why a requested git annotation was not applied (dogfood M7). Same visible
+# degrade rule: a document without attribution says why it has none.
+_PROVENANCE_SKIP_REASONS = {
+    "v1-engine": "git provenance applies to v2 collections only",
+}
+
+
+def provenance_skip_message(status: dict) -> str:
+    """One line explaining a ``gitProvenance`` status that was not applied."""
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        "git provenance was not applied: "
+        f"{_PROVENANCE_SKIP_REASONS.get(reason, reason)}; "
+        "results carry no commit attribution"
+    )
+
+
+_LINE_BLAME_SKIP_REASONS = {
+    "v1-engine": "git line blame applies to v2 collections only",
+}
+
+
+def line_blame_skip_message(status: dict) -> str:
+    """One line explaining a ``gitLineBlame`` status that was not applied."""
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        "git line blame was not applied: "
+        f"{_LINE_BLAME_SKIP_REASONS.get(reason, reason)}; "
+        "hits carry no per-line attribution"
+    )
+
+
 def repo_relative(repo: str, base_path: str, source_id: str) -> str:
     """Repo-relative POSIX path for a document id.
 
