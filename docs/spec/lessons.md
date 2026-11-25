@@ -2519,4 +2519,3 @@ message helper in `git_meta`, one line in each renderer, one `collection_errors`
 MCP. An option silently dropped is worse than one that errors: the rows look like an answer.
 **Tags:** cli, mcp, git, ux
 **Date:** 2026-11-25
-
