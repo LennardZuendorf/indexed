@@ -226,10 +226,33 @@ def test_an_emptied_source_is_reported_empty(project: Path) -> None:
     assert sources[WIKI]["status"] == "empty"
     assert "indexes no documents" in sources[WIKI]["error"]
     assert WIKI not in _hits_by_collection(payload)
+    # Empty is not a searched collection: it answered nothing (search-output.md).
+    assert WIKI not in payload["collections"]
     assert any(
         error["collection"] == WIKI and "indexes no documents" in error["error"]
         for error in payload["collection_errors"]
     )
+
+
+def test_a_dead_selected_source_still_fails_non_search_commands(project: Path) -> None:
+    """Only search degrades past a vanished entry; every other command is strict.
+
+    ``indexed init`` used to exit 3 naming the entry at the parent commit. The
+    shared storage-mode indicator made resolution non-strict for *every* command
+    (#340 review), which silently turned that failure into "Setup complete".
+    """
+    from indexed.cli.app import app as cli_app
+    from indexed.config import get_collections_path, get_global_root
+    from indexed.config.workspace_selection import WorkspaceSelectionError
+
+    shutil.rmtree(get_collections_path(get_global_root()) / CODE)
+
+    result = runner.invoke(cli_app, ["init", "--skip-model"])
+
+    assert isinstance(result.exception, WorkspaceSelectionError), result.output + (
+        str(result.exception) if result.exception else ""
+    )
+    assert CODE in str(result.exception)
 
 
 def test_payload_and_hit_text_stay_bounded(project: Path) -> None:

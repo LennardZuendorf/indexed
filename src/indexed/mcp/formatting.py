@@ -21,7 +21,8 @@ was never built, whose index was deleted, or that indexes nothing used to leave
 no trace at all: "two sources answered" and "three were meant to, one died"
 looked identical. The builder never invents a source: callers pass the intended
 scope they resolved (see `indexed.cli.search_sources`), and an undeclared
-collection the engine did answer is appended as `ok` rather than hidden.
+collection the engine did answer is appended as `ok` — or as `failed` when the
+engine returned an error for it — rather than hidden.
 """
 
 from __future__ import annotations
@@ -100,9 +101,9 @@ def build_search_payload(
             continue
 
         if isinstance(collection_data, dict) and "error" in collection_data:
-            collection_errors.append(
-                {"collection": collection_name, "error": collection_data["error"]}
-            )
+            # The failure becomes a `failed` record in `sources` below, which
+            # mirrors it into `collection_errors` exactly once — appending it
+            # here too repeated every declared engine failure (#340 review).
             continue
 
         if not isinstance(collection_data, dict):
@@ -240,17 +241,28 @@ def build_search_payload(
             {"collection": state["collection"], "error": state.get("error", "")}
         )
 
+    # `collections` lists what was SEARCHED. A source that answered `empty` or
+    # `failed` matched nothing because it answered nothing, so listing it here
+    # would let a consumer read a dead source as a legitimate no-match. This is
+    # the documented contract (docs/reference/search-output.md): every non-`ok`
+    # source is absent from `collections` and named in `sources` instead.
+    non_ok = {state["collection"] for state in source_states if state["status"] != "ok"}
+    answered_collections = [name for name in searched if name not in non_ok]
+    answered_freshness = [
+        entry for entry in freshness if entry["collection"] not in non_ok
+    ]
+
     payload = {
         "schema": SEARCH_SCHEMA,
         "query": query,
         "counts": {"documents": len(documents_out), "hits": len(ranked)},
-        "collections": searched,
+        "collections": answered_collections,
         "collection_errors": collection_errors,
         "sources": source_states,
         "documents": documents_out,
     }
-    if freshness:
-        payload["freshness"] = freshness
+    if answered_freshness:
+        payload["freshness"] = answered_freshness
     return payload
 
 
@@ -267,7 +279,10 @@ def _build_sources(
     engine's own answer does: an ``error`` entry is ``failed``, an answered
     collection is ``ok``. A declared name the engine never mentioned was not
     searched — it keeps the caller's ``missing``/``unusable`` and its error,
-    which is precisely the case that used to disappear.
+    which is precisely the case that used to disappear. A failure the caller
+    never declared (no selection, ``--collection``) is still a source that was
+    handed to the engine, so it is appended as ``failed`` rather than left to
+    ``collection_errors`` alone.
     """
     states: List[SourceState] = []
     seen: set[str] = set()
@@ -315,12 +330,29 @@ def _build_sources(
             )
         states.append(state)
 
-    for name in collections:
+    for name, data in raw_results.items():
         if name in seen:
             continue
         seen.add(name)
+        if not isinstance(data, dict):
+            continue
+        if "error" in data:
+            # An undeclared failure is still a source the request meant to use:
+            # MCP `search` without a selection and CLI `--collection` have no
+            # declarations, and a failure there used to vanish from `sources`
+            # while lingering in `collection_errors` (#340 review).
+            states.append(
+                {
+                    "collection": name,
+                    "status": "failed",
+                    "error": str(data["error"]),
+                }
+            )
+            continue
+        if name not in collections:
+            continue
         hits = hits_per_collection.get(name, 0)
-        source_type = (raw_results.get(name) or {}).get("sourceType")
+        source_type = data.get("sourceType")
         answered: SourceState
         if source_type:
             answered = {

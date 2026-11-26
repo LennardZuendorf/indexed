@@ -149,7 +149,9 @@ def get_storage_mode_and_reason(
     return ("global", "default")
 
 
-def display_storage_mode_for_command(console: Console) -> None:
+def display_storage_mode_for_command(
+    console: Console, *, strict_selection: bool = True
+) -> None:
     """
     Display the storage mode indicator for the current command.
 
@@ -157,8 +159,14 @@ def display_storage_mode_for_command(console: Console) -> None:
     It determines the storage mode based on ConfigService state and displays
     a brief indicator to the user.
 
+    ``strict_selection`` is only relaxed by ``index search``, whose payload
+    reports a vanished selected collection per source instead of aborting
+    (#340). Every other command keeps the fail-closed default: a broken
+    workspace definition must fail the command, not print "Setup complete".
+
     Parameters:
         console (Console): Rich Console to print to.
+        strict_selection (bool): Resolve ``indexed.toml`` strictly (default).
     """
     from indexed.config import has_local_config, get_local_root, get_global_root
 
@@ -167,7 +175,7 @@ def display_storage_mode_for_command(console: Console) -> None:
     mode_override = get_context_mode_override()
 
     cli_ctx = resolve_collections_context(
-        mode_override=mode_override, strict_selection=False
+        mode_override=mode_override, strict_selection=strict_selection
     )
     config_service = cli_ctx.config_service
     workspace = Path.cwd()

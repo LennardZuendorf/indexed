@@ -304,6 +304,54 @@ class TestGetStorageModeAndReason:
 class TestDisplayStorageModeForCommand:
     """Test display_storage_mode_for_command function."""
 
+    def _resolved_context(self):
+        from types import SimpleNamespace
+
+        config_service = Mock()
+        config_service.load_raw.return_value = {}
+        config_service.get_workspace_preference.return_value = None
+        return SimpleNamespace(
+            mode="global",
+            collections_path=Path("/tmp/collections"),
+            config_service=config_service,
+        )
+
+    def _call_display(self, monkeypatch, *, strict_selection):
+        from indexed.cli.utils import storage_info
+
+        calls = {}
+
+        def fake_resolve(**kwargs):
+            calls.update(kwargs)
+            return self._resolved_context()
+
+        monkeypatch.setattr(
+            "indexed.cli.composition.resolve_collections_context", fake_resolve
+        )
+        monkeypatch.setattr(storage_info, "get_context_mode_override", lambda: None)
+        monkeypatch.setattr("indexed.config.has_local_config", lambda _w: False)
+
+        if strict_selection is None:
+            storage_info.display_storage_mode_for_command(Mock(spec=Console))
+        else:
+            storage_info.display_storage_mode_for_command(
+                Mock(spec=Console), strict_selection=strict_selection
+            )
+        return calls
+
+    def test_display_resolves_the_workspace_definition_strictly_by_default(
+        self, monkeypatch
+    ):
+        """Every command keeps the fail-closed default; only search opts out."""
+        calls = self._call_display(monkeypatch, strict_selection=None)
+
+        assert calls["strict_selection"] is True
+
+    def test_display_can_relax_resolution_for_search(self, monkeypatch):
+        calls = self._call_display(monkeypatch, strict_selection=False)
+
+        assert calls["strict_selection"] is False
+
     def test_display_calls_print_storage_info(self):
         from indexed.cli.utils.storage_info import display_storage_mode_for_command
 
