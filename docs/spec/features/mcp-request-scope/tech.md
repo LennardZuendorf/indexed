@@ -74,10 +74,10 @@ be able to tell "nothing matched" from "you may not see".
 
 | Surface | Behaviour |
 |---|---|
-| `search` | builds per-collection search configs from the selection, in definition order (the CLI's code path) — the store is never enumerated unfiltered |
-| `search_collection(name)` | `name` outside the selection → `CollectionOutsideScopeError`; inside → unchanged |
-| `resource://collections` | the selection's names, definition order |
-| `resource://collections/status` | the selection's statuses, definition order |
+| `search` | declares the request's scope per source (`declare_sources`, #340) and builds per-collection search configs in definition order — the store is never enumerated unfiltered; a selected collection the store cannot serve is named `missing`/`unusable` in `sources`, never silently widened or dropped |
+| `search_collection(name)` | `name` outside the selection → `CollectionOutsideScopeError`; inside → unchanged (a listed-but-gone name reaches the store and is reported as unusable/missing) |
+| `resource://collections` | the selection's answering names, definition order, plus the same `sources` declarations |
+| `resource://collections/status` | the selection's statuses, definition order, plus `sources` |
 | `resource://collection/{name}` | out of scope → `CollectionOutsideScopeError`; inside → unchanged |
 
 Tools and resources become `async def` because `ctx.list_roots()` is a coroutine;
@@ -85,10 +85,11 @@ FastMCP runs async tools on the server loop, and the scope lookup is the only
 awaited call before the existing synchronous engine work. Search execution stays
 sync — it is CPU/IO-bound engine work, not I/O the loop can overlap.
 
-A selected collection the store no longer serves is caught during resolution
-(`load_selection` validates every entry against the store) and raises
-`WorkspaceSelectionError`; the tool surfaces it as an envelope, never as a
-narrower result.
+Resolution is lenient about a *store* problem and strict about a *file* problem:
+`load_selection(..., strict=False)` records an entry the store can no longer serve
+as `UnresolvedEntry` (so a search can name it per source, #340), while an
+unreadable or invalid definition still raises `WorkspaceSelectionError` — which
+the tool and resource boundaries envelope with its own type.
 
 ## Divergence from the CLI, on purpose
 
